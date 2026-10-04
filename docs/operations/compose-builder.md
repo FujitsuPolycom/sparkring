@@ -116,16 +116,21 @@ model serves at, with a copy button.
 
 | Heading | Two Sparks | Four Sparks – One Model | Four Sparks – Two Models |
 |---|---|---|---|
-| Install | The profile on both Sparks | The profile on all four | `--on 0,1` for the first pair, then `--on 2,3` for the second |
+| Install | The profile on both Sparks | The profile on all four | One command for both pairs, `--on 0,1 … --and … --on 2,3` |
 | Check | `sudo sparkring status` | `sudo sparkring status` | `sudo sparkring status`, which shows each pair's model separately |
-| Switch (optional) | None | The two pairs' commands, `--on 0,1` then `--on 2,3`; the first stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
+| Switch (optional) | None | One command for both pairs, which stops the four-Spark model | The four-Spark profile, which stops both pairs' models |
 
 - A model serves on the first Spark of its Sparks, at its profile's port from
   the page's data: Node A for a pair, a ring and the first pair, and Spark 2's
   own LAN address for the second pair. Without its own LAN connection, Spark 2
   is reachable only from Node A.
-- SparkRing runs one installation at a time, so each install command runs
-  after the one before it has finished.
+- Both pairs are one `sudo sparkring install` command joined by `--and` when
+  the source's `sparkring install` defines `--and`: it plans both, asks once
+  and installs them in order. Each pair keeps its own options, and
+  `--download-limit`, `--plan` and `--yes` follow both. Its line names both
+  addresses: "The first pair serves at …, the second at …". A source without
+  `--and` gets one command per pair, the second run after the first has
+  finished, because SparkRing runs one installation at a time.
 - When the source's `sparkring cabling` takes `--bandwidth`, Check also lists
   `sudo sparkring cabling --bandwidth`, which measures each cable and skips the
   cables a running model uses.

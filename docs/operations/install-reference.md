@@ -1434,6 +1434,7 @@ on Sparks 0 and 1, one on Sparks 2 and 3. Switch between them with
 ```bash
 sudo sparkring install --profile TWO_SPARK_PROFILE --on 0,1   # Sparks 0 and 1
 sudo sparkring install --profile TWO_SPARK_PROFILE --on 2,3   # Sparks 2 and 3
+sudo sparkring install --profile A --on 0,1 --and --profile B --on 2,3  # both halves, one run
 sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
 ```
 
@@ -1456,6 +1457,38 @@ sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
 - **Its own steps.** A half's checkpoint plan and model steps call its two
   Sparks Node 0 and Node 1 and name their host names. Package updates and the
   serving image go to every Spark; they restart no model.
+
+### One command for both halves
+
+`--and` joins a second installation to the same run, one for each half:
+
+```bash
+sudo sparkring install --profile A --on 0,1 [A's flags] --and --profile B --on 2,3 [B's flags] --yes
+```
+
+- **Flags.** Each installation names its `--profile` and its half with
+  `--on`, and has its own checkpoint, image, model paths, serving settings,
+  API options and `--no-auto-recover`. `--yes`, `--plan`, `--json`,
+  `--events`, `--env`, `--stop-workloads`, `--allow-driver-reload` and
+  `--download-limit` apply to the whole run and may be written in either
+  part; written in both, they must match. The one-command installer passes
+  the same arguments: `curl … | bash -s -- --profile A --on 0,1 --and
+  --profile B --on 2,3`.
+- **Planning and approval.** One installation lock covers the run. On a new
+  ring, setup runs once and its approval names both models. Both plans print
+  before any Spark changes, and a model that both installations would stop,
+  such as a running four-Spark model, is listed once. `--plan` saves both
+  plans, and a later `--yes` stays within them. One approval covers both:
+  `--yes`, or one question in a terminal.
+- **Order.** The installations run in the order written, and each is
+  verified before the next starts. The second reads again
+  which models it stops, so a four-Spark model the first stopped is not
+  stopped twice. Automatic release runs once, after the last.
+- **Failures.** When the first installation fails, the second does not start,
+  and the first's switch restores what it stopped. When the second fails,
+  the first keeps serving; the result names the command that repeats only
+  the second half. `--json` prints one document whose `installs` list holds
+  each installation's result, and `command` repeats the whole run.
 
 ### The ring's mesh while halves serve
 

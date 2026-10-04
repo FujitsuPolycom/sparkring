@@ -50,6 +50,7 @@ from pathlib import Path, PurePosixPath
 import subprocess
 import sys
 import time
+import types
 
 from runtime.common import distribution, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
@@ -891,7 +892,399 @@ def summary_lines(result):
     return [f"  {name + ':':<13}{value}" for name, value in rows if value]
 
 
-def execute(args):
+# A run of `sparkring install` may join a second installation with --and, for the
+# other half of a four-Spark ring (main). These options apply to the whole run;
+# every other option belongs to its own installation.
+RUN_WIDE = ("yes", "plan", "json", "events", "env", "stop_workloads", "allow_driver_reload", "download_limit")
+JOIN = "--and"
+
+
+class PartlyInstalled(Exception):
+    """An installation joined by ``--and`` stopped after the installations before it completed.
+
+    ``results`` are the completed installations' result documents, ``request``
+    the installation that stopped (``plan_request``) and ``error`` its error.
+    """
+
+    def __init__(self, results, request, error):
+        super().__init__(str(error))
+        self.results, self.request, self.error = results, request, error
+
+
+def plan_request(args, cluster, state_root, limit, *, earlier=()):
+    """Plan one installation of this run and print its plan; returns the request ``apply_request`` installs.
+
+    ``earlier`` are the installations planned before this one in the same run
+    (``--and``). They install first, so the models they stop are not listed
+    again for this one. A plan with problems raises ``NeedsInput``; with
+    ``--plan`` its checkpoint plan is saved as reviewed first.
+    """
+    if earlier:
+        print("")
+    placement = resolve_placement(args, cluster, state_root)
+    size = len(cluster["plan"]["nodes"])
+    # A half's model forwards no traffic through a Spark, so it needs no
+    # ConnectX hairpin setting, and a driver restart would interrupt the
+    # other half's model.
+    hairpin = hairpin_ring.requirement(cluster["plan"]) if placement is None else []
+    needs_hairpin = hairpin_ring.required(hairpin)
+    # Printed before the deployment is selected, so that a native-mesh
+    # refusal caused by Sparks without the setting follows its listing.
+    for line in hairpin_ring.consent_lines(cluster["plan"], hairpin):
+        print(line)
+    mesh_hint = hairpin_ring.mesh_hint(hairpin)
+    pending = placements.unfinished_switches(state_root, placement, size)
+    if pending:
+        # Its candidate may run on Sparks this switch uses; that switch finishes first.
+        slot, unfinished = pending[0]
+        raise NeedsInput(f"A model switch on {placements.text(slot)} to {Path(unfinished['candidate']).name} "
+                         f"stopped while {unfinished['state']}. Install that model again to finish it, then repeat "
+                         "this installation. Nothing has been changed.", field="transaction")
+    directory, lock, checkpoint = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint,
+                                                    placement=placement)
+    if lock is not None:
+        check_managed_namespace(lock)
+    previous = rollout.active(state_root, placement)
+    replaces = str(previous) if previous and previous != directory else None
+    stopped_earlier = {path for request in earlier for path in request.stops}
+    displaced = [path for path in placements.displaced(state_root, placement, size)
+                 if path != directory and path not in stopped_earlier]
+    stops = ([previous] if replaces and not placements.stopped(previous) else []) + displaced
+    if placement is None:
+        print(f"Install {checkpoint['profile']} on {len(checkpoint['nodes'])} Sparks.")
+    else:
+        names = [cluster["plan"]["nodes"][rank].get("hostname") for rank in placement]
+        print(f"Install {checkpoint['profile']} on {placements.text(placement)}"
+              + (f" ({', '.join(names)})." if all(names) else ".")
+              + " The checkpoint plan and the model steps call them Node 0 and Node 1.")
+        _, note = placements.api_address(cluster, placement)
+        if note:
+            print("Note: " + note)
+    for line in stop_lines(stops):
+        print(line)
+    print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
+                                                        else "start the selected model."))
+    if lock is not None and lock.get("serving"):
+        base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
+        print("Serving settings: " + "; ".join(serving_settings.describe(
+            lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
+        for line in serving_settings.warnings(lock["serving"], base):
+            print("Warning: " + line)
+    if lock is not None and endpoint_requested(args):
+        endpoint = api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))
+        print("Model API: " + endpoint["api_url"]
+              + (f" (SparkRing's own checks use {endpoint['check_url']})" if endpoint.get("check_url") else ""))
+    if lock is not None and "native_mesh" in lock["site_input"]:
+        if previous or displaced:
+            raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
+                             "replacing a running deployment." + mesh_hint, field="fabric")
+        print("Configure and start the profile's supervised native fabric.")
+    if limit and checkpoint["hub_files"]:
+        print(f"Downloads from huggingface.co are limited to {progress.rate_text(limit)}.")
+    # The plan's last line says what is downloaded, so it stays directly
+    # above any prompt.
+    for line in checkpoint_plan.describe(checkpoint):
+        print(line)
+    # A reviewed plan (saved by --plan or approved at a terminal) bounds
+    # every --yes run until the next --plan run or terminal approval.
+    previous_plan = saved_plan(directory) if lock is not None else None
+    reviewed = previous_plan if previous_plan and previous_plan.get("reviewed") else None
+    problems = checkpoint["problems"]
+    if problems:
+        if lock is not None:
+            if args.plan:
+                save_plan(directory, {**checkpoint, "reviewed": True})
+                forget_refused(directory)
+            elif reviewed is None:
+                save_plan(directory, checkpoint)
+            else:
+                save_refused(directory, checkpoint)
+        raise NeedsInput("\n".join(problem["message"] for problem in problems), field=problems[0]["field"],
+                         details={"problems": problems})
+    steps = ["verify-fabric", "update-workers", "prepare-images-and-checkpoints", "switch-model", "verify-serving"]
+    if needs_hairpin:
+        steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
+    plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
+            "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
+            "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
+            "serving": lock.get("serving") or {},
+            **api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))}
+    if placement is not None:
+        plan["placement"] = list(placement)
+    if size == 4:
+        plan["stops"] = stop_rows(stops)
+    if hairpin:
+        plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
+    if limit:
+        plan["download_limit_bps"] = limit * 8
+    plan["checkpoint"] = checkpoint_plan.summary(checkpoint)
+    return types.SimpleNamespace(args=args, placement=placement, size=size, hairpin=hairpin,
+                                 needs_hairpin=needs_hairpin, directory=directory, lock=lock, checkpoint=checkpoint,
+                                 previous=previous, replaces=replaces, displaced=displaced, stops=stops, plan=plan,
+                                 reviewed=reviewed)
+
+
+def stop_rows(stops):
+    """The ``stops`` rows of an installation's result: each model the switch stops, with its slot."""
+    return [{"deployment": str(path), "profile": placements.profile_of(path),
+             "placement": list(placements.of_directory(path) or ()) or None} for path in stops]
+
+
+def keep_refused(request, refusal):
+    """Save the plan of an installation whose approval was refused; the reviewed plan stays the bound.
+
+    A plan that leaves the reviewed plan is kept beside it, so a repeated
+    ``--yes`` is refused again until ``--plan``.
+    """
+    if request.reviewed is None:
+        save_plan(request.directory, request.checkpoint)
+    elif refusal.field == "checkpoint":
+        save_refused(request.directory, request.checkpoint)
+
+
+def record_approval(request, approved, approval):
+    """Record how an installation's checkpoint plan was approved and save the plan that bounds later runs."""
+    request.checkpoint["approval"] = approved["approval"] = approval
+    request.plan["checkpoint"]["approval"] = approval
+    forget_refused(request.directory)
+    if approval == "prompt":
+        # The operator saw this plan in full and approved it at the terminal.
+        save_plan(request.directory, {**request.checkpoint, "reviewed": True})
+        request.plan["checkpoint"]["reviewed"] = True
+    elif approval != "reviewed-plan":
+        save_plan(request.directory, request.checkpoint)
+
+
+def approve_request(request, cluster, *, command_line, setup_only, interactive):
+    """Approve one installation (``approve``); returns the approved checkpoint plan."""
+    consent = {}
+    if request.displaced:
+        # Stopping a model outside the requested slot is asked about; --yes approves it.
+        others = " and ".join(f"{placements.profile_of(path)} on {placements.text(placements.of_directory(path))}"
+                              for path in request.displaced)
+        consent["question"] = f"Stop {others} and apply this installation?"
+    if request.needs_hairpin:
+        # Sparks whose reload statistics are unavailable stop the step
+        # before the question, not after the answer.
+        hairpin_ring.refuse_unknown(request.hairpin)
+        consent = {"question": ("Apply the ConnectX hairpin setting and this installation?" if not request.displaced else
+                                consent["question"].replace(" and apply this installation?",
+                                                            ", apply the ConnectX hairpin setting and this "
+                                                            "installation?")),
+                   "default": hairpin_ring.consent_default(cluster["plan"], request.hairpin),
+                   "refusal": hairpin_ring.m7(request.hairpin)}
+    try:
+        approved, approval = approve(request.checkpoint, request.reviewed, command_line=command_line,
+                                     setup_only=setup_only, interactive=interactive, request=request.plan, **consent)
+    except NeedsInput as refusal:
+        keep_refused(request, refusal)
+        raise
+    record_approval(request, approved, approval)
+    return approved
+
+
+def joined_command(requests):
+    """The one ``sudo sparkring install`` command that repeats every installation of a run joined by ``--and``."""
+    commands = [request.checkpoint.get("command") or checkpoint_plan.COMMAND for request in requests]
+    return f" {JOIN} ".join([commands[0], *(command.removeprefix(checkpoint_plan.COMMAND + " ")
+                                            for command in commands[1:])])
+
+
+def approve_joined(requests, *, command_line, setup_only, interactive):
+    """Approve every installation of a run joined by ``--and`` before any of them changes a Spark.
+
+    ``--yes`` approves each (``approve``: a reviewed plan still bounds it). In a
+    terminal, one question covers every installation that needs one and names
+    every model the run stops; setup's approval of a first installation covers
+    each plan without attention items, and one question covers those with
+    them. Without a terminal an installation that needs a question refuses the
+    run, and nothing changes. Returns the approved checkpoint plans in order.
+    """
+    command = joined_command(requests)
+    stopped = []
+    for request in requests:
+        stopped += [path for path in request.stops if path not in stopped]
+    others = " and ".join(f"{placements.profile_of(path)} on {placements.text(placements.of_directory(path))}"
+                          for path in stopped)
+    refusal = (f"Approve both installations with {command} --yes, or review their plans first with "
+               f"{command} --plan. Nothing has been changed.")
+    results = []
+    for request in requests:
+        try:
+            results.append(approve(request.checkpoint, request.reviewed, command_line=command_line,
+                                   setup_only=setup_only, interactive=False, request=request.plan, refusal=refusal))
+        except NeedsInput as error:
+            question = error.field == "approval" or (error.field == "checkpoint" and "attention" in (error.details or {}))
+            if not (interactive and question):
+                keep_refused(request, error)
+                raise
+            results.append(None)
+    if None in results:
+        if setup_only:
+            try:
+                controller.confirm("Proceed with these checkpoint plans?")
+            except ValueError:
+                raise ValueError(f"Cancelled before any checkpoint or model change; setup is complete. Repeat {command} "
+                                 "to review the checkpoint plans again.") from None
+        else:
+            controller.confirm(f"Stop {others} and apply both installations?" if others else "Apply both installations?")
+        results = [(request.checkpoint, "prompt") if value is None else value for request, value in zip(requests, results)]
+    for request, (approved, approval) in zip(requests, results):
+        record_approval(request, approved, approval)
+    return [approved for approved, _ in results]
+
+
+def replan_stops(request, earlier, state_root):
+    """Read the models ``request`` stops again after the installations before it in the run.
+
+    The earlier installations may have stopped a model this one planned to
+    stop, such as a four-Spark model. Any other model it would now stop was
+    not approved, and the installation is refused before it changes a Spark.
+    """
+    previous = rollout.active(state_root, request.placement)
+    displaced = [path for path in placements.displaced(state_root, request.placement, request.size)
+                 if path != request.directory]
+    replaces = str(previous) if previous and previous != request.directory else None
+    stops = ([previous] if replaces and not placements.stopped(previous) else []) + displaced
+    approved = {Path(path).resolve() for item in [*earlier, request] for path in item.stops}
+    unexpected = [path for path in stops if Path(path).resolve() not in approved]
+    if unexpected:
+        raise ValueError(f"The models on {placements.text(request.placement)} changed while the installation before "
+                         "it ran: it would also stop " + ", ".join(placements.profile_of(path) for path in unexpected)
+                         + ". Nothing changed on those Sparks; repeat the command to plan them again.")
+    request.previous, request.replaces, request.displaced, request.stops = previous, replaces, displaced, stops
+    request.plan.update(replaces=replaces, stops=stop_rows(stops))
+
+
+def apply_request(request, approved, cluster, state_root, *, limit, interactive, retain, release=True):
+    """Install one approved installation: prepare its assets, switch its slot to it and verify it.
+
+    ``release`` runs automatic release of older deployments afterwards; a run
+    joined by ``--and`` releases once, after its last installation.
+    """
+    args, directory, lock, plan = request.args, request.directory, request.lock, request.plan
+    previous, displaced, placement = request.previous, request.displaced, request.placement
+    # The address shown for the model is the one this installation names,
+    # or none; status and the summary read it from the deployment.
+    api_endpoint.record(directory, getattr(args, "api_address", None))
+    _, receipts = retained_deployments(state_root, directory, lock["site"]["ranks"])
+
+    def approve_stop(host, names):
+        print(f"{host}: stopping unrelated GPU containers (not removing them): " + ", ".join(names))
+        if not args.stop_workloads:
+            controller.confirm("Stop these containers before installing?")
+    check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None,
+                    others=displaced)
+    transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
+    plan["transfer"] = transport.verify()
+    # Packages and the serving image go to every Spark of the cluster; the
+    # checkpoint moves between the deployment's own Sparks.
+    assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
+    checkpoints = (assets if placement is None else
+                   install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
+    if request.needs_hairpin:
+        record = {}
+        cluster = hairpin_step(cluster, assets, state_root, record,
+                               restart_approved=hairpin_ring.restart_expected(request.hairpin))
+        plan["hairpin"].update(ranks=hairpin_ring.result_ranks(request.hairpin, cluster["plan"], record),
+                               receipt=record.get("path"))
+    cache = state_root / "retained-sources"
+
+    def apply(path, operation):
+        if operation == "up" and placements.of_directory(path) is not None:
+            park_ring(cluster)
+        return retained_source.apply(path, operation, cache=cache)
+
+    def prepare(path):
+        for other in ([previous] if previous and previous != path else []) + displaced:
+            # Verify the rollback controller bundle before any downtime.
+            retained_source.checkout(other, cache)
+        assets.sync_packages()
+        # Image distribution starts at once and overlaps the prerequisite
+        # and source phases. The checkpoint phase waits for it: a download
+        # runs inside the serving image, and every checkpoint write is
+        # checked against free space once the image is in place.
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            images = pool.submit(assets.images, lock["selection"])
+            runner = checkpoints.runner(path, previous, images, plan=approved, receipts=receipts)
+            needed = failure = None
+            try:
+                installer.apply(path, "prepare", runner=runner, execute=True)
+            except RuntimeError as error:
+                # The checkpoint phase reports a request for input as a
+                # failed action; the runner keeps the request itself.
+                needed = getattr(runner, "needs_input", None)
+                failure = error
+            if needed is not None:
+                # An image failure never replaces the request; it is added to it.
+                try:
+                    images.result()
+                except Exception as error:  # noqa: BLE001 - reported with the request
+                    needed.details["image_error"] = str(error)
+                raise needed
+            # An image failure is the cause when the checkpoint phase waited for it.
+            images.result()
+            if failure is not None:
+                # The phase failure names only the phase; the checkpoint
+                # preparation's own error names the Spark and the cause.
+                cause = getattr(runner, "models_error", None)
+                if cause:
+                    raise RuntimeError(cause) from failure
+                raise failure
+        check_workloads(path, previous, others=displaced)
+
+    # check_workloads has confirmed that only the active or candidate
+    # deployment uses the GPUs, so an abandoned failed switch can be replaced.
+    # A state that recovery's own unfinished attempt left is not recovery's
+    # once this installation changes it.
+    for path in {previous, directory, *displaced} - {None}:
+        recovery.forget_attempt(path)
+    # A candidate whose own start did not complete, for example a first
+    # installation that failed its readiness check, stops before it is
+    # prepared again.
+    result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
+                             verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
+                             unfinished=installer.unfinished, placement=placement, displaced=displaced)
+    # Records the deployment's choice (on unless --no-auto-recover, also
+    # after sparkring recover off), resets failures and restarts, records
+    # the generation's boots and enables the timer.
+    record = recovery.started(directory, enabled=not args.no_auto_recover)
+    plan["recovery"] = ("unrecorded" if record is None else "unsupported" if not record.get("supported", True)
+                        else "on" if record["enabled"] else "off")
+    plan["auto_recover"] = plan["recovery"] == "on"
+    if release:
+        # Releases what older deployments hold on the Sparks; never fails the installation.
+        plan["retention"] = retention.after_operation(state_root, discovery.ssh, preference=retain)
+    try:
+        plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
+    except (OSError, ValueError):
+        pass
+    try:
+        plan["checkpoint"]["derivation_result"] = installer.read(directory / "assets/derivation-result.json")
+    except (OSError, ValueError):
+        pass
+    return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
+            **summary(lock, plan, request.replaces, displaced=displaced)}
+
+
+def execute(args, more=()):
+    """Run one installation, or with ``more`` the installations joined to it by ``--and``.
+
+    Joined installations each name another half of a four-Spark ring and share
+    the run-wide options (RUN_WIDE; ``parse_joined`` checks both). They run
+    under one hold of install.lock: setup runs once and its approval names
+    every installation, every installation is planned and printed before any
+    Spark changes, one approval covers them all (``approve_joined``), and they
+    install in order. Before an installation after the first changes a Spark,
+    the models it stops are read again (``replan_stops``). Older deployments
+    are released once, after the last.
+
+    Returns the installation's result document, or for joined installations
+    ``{"schema", "state", "command", "installs"}``, where ``installs`` holds
+    each installation's document. When an installation after the first stops,
+    ``PartlyInstalled`` carries the completed ones.
+    """
+    parts = [args, *more]
     state_root = controller.STATE
     require_head()
     limit = download_limit(args)
@@ -901,15 +1294,16 @@ def execute(args):
         print("--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD)
     # Checked before setup changes anything; the node numbers are checked
     # against the cluster once it is known.
-    try:
-        checkpoint_plan.named_paths(args.model_path)
-    except ValueError as error:
-        raise NeedsInput(str(error) + ". Nothing has been changed.", field="model_path") from None
-    if getattr(args, "api_address", None) is not None:
+    for part in parts:
         try:
-            args.api_address = api_endpoint.shown_address(args.api_address)
+            checkpoint_plan.named_paths(part.model_path)
         except ValueError as error:
-            raise NeedsInput(f"{error}. Nothing has been changed.", field="api_address") from None
+            raise NeedsInput(str(error) + ". Nothing has been changed.", field="model_path") from None
+        if getattr(part, "api_address", None) is not None:
+            try:
+                part.api_address = api_endpoint.shown_address(part.api_address)
+            except ValueError as error:
+                raise NeedsInput(f"{error}. Nothing has been changed.", field="api_address") from None
     command_line = args.yes
     with process_lock.hold(state_root / "install.lock"):
         if not (state_root / "cluster.json").exists():
@@ -918,318 +1312,176 @@ def execute(args):
             from runtime.host import single_uplink
             options = ((["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
                        + (["--stop-workloads"] if args.stop_workloads else []))
-            follow = "then install " + (args.profile or "the model profile you choose") + " and start it"
+            if more:
+                follow = ("then install " + " and ".join(f"{part.profile} on {placements.text(placements.parse(part.on))}"
+                                                         for part in parts) + " and start them")
+            else:
+                follow = "then install " + (args.profile or "the model profile you choose") + " and start it"
             if not args.yes and not interactive:
                 raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.",
                                  field="approval", details={"scope": single_uplink.scope(options, follow=follow)})
             if single_uplink.main(options, follow=follow):
                 raise ValueError("Cluster setup did not complete")
-            # The setup approval listed this installation as its final step.
-            # It did not show the checkpoint plan, which approve() checks.
-            args.yes = True
+            # The setup approval listed these installations as its final steps.
+            # It did not show their checkpoint plans, which approve() checks.
+            for part in parts:
+                part.yes = True
         setup_only = args.yes and not command_line
         cluster = installer.read(state_root / "cluster.json")
         check_access(cluster)
         cluster = refresh_cluster(cluster)
         if args.plan:
             cluster = planned_head(cluster)
-        placement = resolve_placement(args, cluster, state_root)
-        size = len(cluster["plan"]["nodes"])
-        # A half's model forwards no traffic through a Spark, so it needs no
-        # ConnectX hairpin setting, and a driver restart would interrupt the
-        # other half's model.
-        hairpin = hairpin_ring.requirement(cluster["plan"]) if placement is None else []
-        needs_hairpin = hairpin_ring.required(hairpin)
-        # Printed before the deployment is selected, so that a native-mesh
-        # refusal caused by Sparks without the setting follows its listing.
-        for line in hairpin_ring.consent_lines(cluster["plan"], hairpin):
-            print(line)
-        mesh_hint = hairpin_ring.mesh_hint(hairpin)
-        pending = placements.unfinished_switches(state_root, placement, size)
-        if pending:
-            # Its candidate may run on Sparks this switch uses; that switch finishes first.
-            slot, unfinished = pending[0]
-            raise NeedsInput(f"A model switch on {placements.text(slot)} to {Path(unfinished['candidate']).name} "
-                             f"stopped while {unfinished['state']}. Install that model again to finish it, then repeat "
-                             "this installation. Nothing has been changed.", field="transaction")
-        directory, lock, checkpoint = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint,
-                                                        placement=placement)
-        if lock is not None:
-            check_managed_namespace(lock)
-        previous = rollout.active(state_root, placement)
-        replaces = str(previous) if previous and previous != directory else None
-        displaced = [path for path in placements.displaced(state_root, placement, size) if path != directory]
-        stops = ([previous] if replaces and not placements.stopped(previous) else []) + displaced
-        if placement is None:
-            print(f"Install {checkpoint['profile']} on {len(checkpoint['nodes'])} Sparks.")
-        else:
-            names = [cluster["plan"]["nodes"][rank].get("hostname") for rank in placement]
-            print(f"Install {checkpoint['profile']} on {placements.text(placement)}"
-                  + (f" ({', '.join(names)})." if all(names) else ".")
-                  + " The checkpoint plan and the model steps call them Node 0 and Node 1.")
-            _, note = placements.api_address(cluster, placement)
-            if note:
-                print("Note: " + note)
-        for line in stop_lines(stops):
-            print(line)
-        print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
-                                                            else "start the selected model."))
-        if lock is not None and lock.get("serving"):
-            base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Serving settings: " + "; ".join(serving_settings.describe(
-                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
-            for line in serving_settings.warnings(lock["serving"], base):
-                print("Warning: " + line)
-        if lock is not None and endpoint_requested(args):
-            endpoint = api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))
-            print("Model API: " + endpoint["api_url"]
-                  + (f" (SparkRing's own checks use {endpoint['check_url']})" if endpoint.get("check_url") else ""))
-        if lock is not None and "native_mesh" in lock["site_input"]:
-            if previous or displaced:
-                raise NeedsInput("The replacement needs native fabric configuration. Review sparkring setup before "
-                                 "replacing a running deployment." + mesh_hint, field="fabric")
-            print("Configure and start the profile's supervised native fabric.")
-        if limit and checkpoint["hub_files"]:
-            print(f"Downloads from huggingface.co are limited to {progress.rate_text(limit)}.")
-        # The plan's last line says what is downloaded, so it stays directly
-        # above any prompt.
-        for line in checkpoint_plan.describe(checkpoint):
-            print(line)
-        # A reviewed plan (saved by --plan or approved at a terminal) bounds
-        # every --yes run until the next --plan run or terminal approval.
-        previous_plan = saved_plan(directory) if lock is not None else None
-        reviewed = previous_plan if previous_plan and previous_plan.get("reviewed") else None
-        problems = checkpoint["problems"]
-        if problems:
-            if lock is not None:
-                if args.plan:
-                    save_plan(directory, {**checkpoint, "reviewed": True})
-                    forget_refused(directory)
-                elif reviewed is None:
-                    save_plan(directory, checkpoint)
-                else:
-                    save_refused(directory, checkpoint)
-            raise NeedsInput("\n".join(problem["message"] for problem in problems), field=problems[0]["field"],
-                             details={"problems": problems})
-        steps = ["verify-fabric", "update-workers", "prepare-images-and-checkpoints", "switch-model", "verify-serving"]
-        if needs_hairpin:
-            steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
-        plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
-                "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
-                "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
-                "serving": lock.get("serving") or {},
-                **api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))}
-        if placement is not None:
-            plan["placement"] = list(placement)
-        if size == 4:
-            plan["stops"] = [{"deployment": str(path), "profile": placements.profile_of(path),
-                              "placement": list(placements.of_directory(path) or ()) or None} for path in stops]
-        if hairpin:
-            plan["hairpin"] = {"required": needs_hairpin, "ranks": hairpin_ring.rank_rows(hairpin, cluster["plan"])}
-        if limit:
-            plan["download_limit_bps"] = limit * 8
-        plan["checkpoint"] = checkpoint_plan.summary(checkpoint)
+        requests = []
+        for part in parts:
+            requests.append(plan_request(part, cluster, state_root, limit, earlier=requests))
         if args.plan:
-            save_plan(directory, {**checkpoint, "reviewed": True})
-            forget_refused(directory)
-            plan["checkpoint"]["reviewed"] = True
-            return plan
-        consent = {}
-        if displaced:
-            # Stopping a model outside the requested slot is asked about; --yes approves it.
-            others = " and ".join(f"{placements.profile_of(path)} on {placements.text(placements.of_directory(path))}"
-                                  for path in displaced)
-            consent["question"] = f"Stop {others} and apply this installation?"
-        if needs_hairpin:
-            # Sparks whose reload statistics are unavailable stop the step
-            # before the question, not after the answer.
-            hairpin_ring.refuse_unknown(hairpin)
-            consent = {"question": ("Apply the ConnectX hairpin setting and this installation?" if not displaced else
-                                    consent["question"].replace(" and apply this installation?",
-                                                                ", apply the ConnectX hairpin setting and this "
-                                                                "installation?")),
-                       "default": hairpin_ring.consent_default(cluster["plan"], hairpin),
-                       "refusal": hairpin_ring.m7(hairpin)}
-        try:
-            approved, approval = approve(checkpoint, reviewed, command_line=command_line, setup_only=setup_only,
-                                         interactive=interactive, request=plan, **consent)
-        except NeedsInput as refusal:
-            # The reviewed plan stays the bound: a plan that leaves it is kept
-            # beside it, so a repeated --yes is refused again until --plan.
-            if reviewed is None:
-                save_plan(directory, checkpoint)
-            elif refusal.field == "checkpoint":
-                save_refused(directory, checkpoint)
-            raise
-        checkpoint["approval"] = approved["approval"] = approval
-        plan["checkpoint"]["approval"] = approval
-        forget_refused(directory)
-        if approval == "prompt":
-            # The operator saw this plan in full and approved it at the terminal.
-            save_plan(directory, {**checkpoint, "reviewed": True})
-            plan["checkpoint"]["reviewed"] = True
-        elif approval != "reviewed-plan":
-            save_plan(directory, checkpoint)
-        # The address shown for the model is the one this installation names,
-        # or none; status and the summary read it from the deployment.
-        api_endpoint.record(directory, getattr(args, "api_address", None))
-        _, receipts = retained_deployments(state_root, directory, lock["site"]["ranks"])
-
-        def approve_stop(host, names):
-            print(f"{host}: stopping unrelated GPU containers (not removing them): " + ", ".join(names))
-            if not args.stop_workloads:
-                controller.confirm("Stop these containers before installing?")
-        check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None,
-                        others=displaced)
-        transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
-        plan["transfer"] = transport.verify()
-        # Packages and the serving image go to every Spark of the cluster; the
-        # checkpoint moves between the deployment's own Sparks.
-        assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
-        checkpoints = (assets if placement is None else
-                       install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
-        if needs_hairpin:
-            record = {}
-            cluster = hairpin_step(cluster, assets, state_root, record,
-                                   restart_approved=hairpin_ring.restart_expected(hairpin))
-            plan["hairpin"].update(ranks=hairpin_ring.result_ranks(hairpin, cluster["plan"], record),
-                                   receipt=record.get("path"))
-        cache = state_root / "retained-sources"
-
-        def apply(path, operation):
-            if operation == "up" and placements.of_directory(path) is not None:
-                park_ring(cluster)
-            return retained_source.apply(path, operation, cache=cache)
-
-        def prepare(path):
-            for other in ([previous] if previous and previous != path else []) + displaced:
-                # Verify the rollback controller bundle before any downtime.
-                retained_source.checkout(other, cache)
-            assets.sync_packages()
-            # Image distribution starts at once and overlaps the prerequisite
-            # and source phases. The checkpoint phase waits for it: a download
-            # runs inside the serving image, and every checkpoint write is
-            # checked against free space once the image is in place.
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                images = pool.submit(assets.images, lock["selection"])
-                runner = checkpoints.runner(path, previous, images, plan=approved, receipts=receipts)
-                request = failure = None
-                try:
-                    installer.apply(path, "prepare", runner=runner, execute=True)
-                except RuntimeError as error:
-                    # The checkpoint phase reports a request for input as a
-                    # failed action; the runner keeps the request itself.
-                    request = getattr(runner, "needs_input", None)
-                    failure = error
-                if request is not None:
-                    # An image failure never replaces the request; it is added to it.
-                    try:
-                        images.result()
-                    except Exception as error:  # noqa: BLE001 - reported with the request
-                        request.details["image_error"] = str(error)
-                    raise request
-                # An image failure is the cause when the checkpoint phase waited for it.
-                images.result()
-                if failure is not None:
-                    # The phase failure names only the phase; the checkpoint
-                    # preparation's own error names the Spark and the cause.
-                    cause = getattr(runner, "models_error", None)
-                    if cause:
-                        raise RuntimeError(cause) from failure
-                    raise failure
-            check_workloads(path, previous, others=displaced)
-
-        # check_workloads has confirmed that only the active or candidate
-        # deployment uses the GPUs, so an abandoned failed switch can be replaced.
-        # A state that recovery's own unfinished attempt left is not recovery's
-        # once this installation changes it.
-        for path in {previous, directory, *displaced} - {None}:
-            recovery.forget_attempt(path)
-        # A candidate whose own start did not complete, for example a first
-        # installation that failed its readiness check, stops before it is
-        # prepared again.
-        result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
-                                 verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
-                                 unfinished=installer.unfinished, placement=placement, displaced=displaced)
-        # Records the deployment's choice (on unless --no-auto-recover, also
-        # after sparkring recover off), resets failures and restarts, records
-        # the generation's boots and enables the timer.
-        record = recovery.started(directory, enabled=not args.no_auto_recover)
-        plan["recovery"] = ("unrecorded" if record is None else "unsupported" if not record.get("supported", True)
-                            else "on" if record["enabled"] else "off")
-        plan["auto_recover"] = plan["recovery"] == "on"
-        # Releases what older deployments hold on the Sparks; never fails the installation.
-        plan["retention"] = retention.after_operation(state_root, discovery.ssh, preference=retain)
-        try:
-            plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
-        except (OSError, ValueError):
-            pass
-        try:
-            plan["checkpoint"]["derivation_result"] = installer.read(directory / "assets/derivation-result.json")
-        except (OSError, ValueError):
-            pass
-        return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
-                **summary(lock, plan, replaces, displaced=displaced)}
+            for request in requests:
+                save_plan(request.directory, {**request.checkpoint, "reviewed": True})
+                forget_refused(request.directory)
+                request.plan["checkpoint"]["reviewed"] = True
+            if not more:
+                return requests[0].plan
+            return {"schema": "sparkring-install-result/v1", "state": "planned", "command": joined_command(requests),
+                    "installs": [request.plan for request in requests]}
+        if more:
+            approvals = approve_joined(requests, command_line=command_line, setup_only=setup_only,
+                                       interactive=interactive)
+        else:
+            approvals = [approve_request(requests[0], cluster, command_line=command_line, setup_only=setup_only,
+                                         interactive=interactive)]
+        results = []
+        for index, (request, approved) in enumerate(zip(requests, approvals)):
+            try:
+                if index:
+                    replan_stops(request, requests[:index], state_root)
+                results.append(apply_request(request, approved, cluster, state_root, limit=limit,
+                                             interactive=interactive, retain=retain,
+                                             release=index == len(requests) - 1))
+            except (NeedsInput, ValueError, RuntimeError, OSError, KeyError, TypeError,
+                    subprocess.SubprocessError) as error:
+                if not results:
+                    raise
+                raise PartlyInstalled(results, request, error) from error
+        if not more:
+            return results[0]
+        return {"schema": "sparkring-install-result/v1", "state": "complete", "command": joined_command(requests),
+                "installs": results, "log": results[-1]["log"]}
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
-    parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
-    parser.add_argument("--on", metavar="RANKS",
+def parser():
+    """The ``sparkring install`` argument parser; ``main`` parses each installation that ``--and`` joins with it."""
+    result = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
+    result.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
+    result.add_argument("--on", metavar="RANKS",
                         help="put a two-Spark profile on one half of a four-Spark ring: 0,1 or 2,3; without it, the "
                              "half that serves no model")
-    images = parser.add_mutually_exclusive_group()
+    result.add_argument("--and", action="store_true", dest="joined",
+                        help="install a second two-Spark profile on the ring's other half in the same run: --profile "
+                             "A --on 0,1 [its options] --and --profile B --on 2,3 [its options]; both are planned "
+                             "first, one approval covers both, and they install in order; --yes, --plan, --json, "
+                             "--events, --env, --stop-workloads, --allow-driver-reload and --download-limit apply to "
+                             "the whole run")
+    images = result.add_mutually_exclusive_group()
     images.add_argument("--image", metavar="NAME",
                         help="run the profile on another installer image: a name or release tag that sparkring images "
                              "lists; default: the installer's own image")
     images.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
-    parser.add_argument("--model-path", action="append", metavar="[N=]PATH",
+    result.add_argument("--model-path", action="append", metavar="[N=]PATH",
                         help="a local copy of the checkpoint; PATH for every Spark or N=PATH for Node N (repeatable); "
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "
                              "another filesystem read-only, and never writes to it")
-    parser.add_argument("--checkpoint", metavar="NAME",
+    result.add_argument("--checkpoint", metavar="NAME",
                         help="another checkpoint the profile lists, with the settings it needs; default: the profile's own")
-    parser.add_argument("--ignore-local-copies", action="store_true",
+    result.add_argument("--ignore-local-copies", action="store_true",
                         help="use only SparkRing's own checkpoint directories and named copies")
-    parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")
-    parser.add_argument("--env", type=Path, help="optional literal preferences: setup keys on first installation, the "
+    result.add_argument("--cache-path", help="optional local writable cache path on each Spark")
+    result.add_argument("--env", type=Path, help="optional literal preferences: setup keys on first installation, the "
                                                  "download limit and retained deployments on every run")
-    parser.add_argument("--plan", action="store_true",
+    result.add_argument("--plan", action="store_true",
                         help="print and save the setup, checkpoint and model plan without changing any Spark; a later "
                              "--yes stays within a saved plan")
-    parser.add_argument("--yes", action="store_true",
+    result.add_argument("--yes", action="store_true",
                         help="approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an "
                              "idle ring, and model replacement; SSH trust is still required")
-    parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
-    parser.add_argument("--stop-workloads", action="store_true",
+    result.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
+    result.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that are not SparkRing's current deployment")
-    parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
-    parser.add_argument("--download-limit", metavar="RATE",
+    result.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
+    result.add_argument("--download-limit", metavar="RATE",
                         help="cap checkpoint downloads from huggingface.co, in bits per second: 850Mbit, 2Gbit or none; "
                              "default: SPARKRING_DOWNLOAD_LIMIT of the --env file, else none")
-    parser.add_argument("--events", type=Path, metavar="FILE",
+    result.add_argument("--events", type=Path, metavar="FILE",
                         help="write one JSON progress event per line to FILE, replacing it; stdout is unchanged")
-    parser.add_argument("--no-auto-recover", action="store_true",
+    result.add_argument("--no-auto-recover", action="store_true",
                         help="do not restart this model automatically when a Spark stops serving; "
                              "sudo sparkring recover on turns it on later")
-    parser.add_argument("--api-address", metavar="ADDRESS",
+    result.add_argument("--api-address", metavar="ADDRESS",
                         help="the address that status, the dashboard link and Model ready show for the model, such "
                              "as a DNS name or another network's address; SparkRing's own checks keep using the "
                              "address the API listens on; default: that address")
-    parser.add_argument("--allow-loopback-bind", action="store_true",
+    result.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1: only programs on Node A can then use "
                              "the model")
-    serving_settings.add_arguments(parser)
-    args = parser.parse_args(argv)
-    if args.events is not None and not args.events.parent.is_dir():
-        parser.error(f"--events: the directory {args.events.parent} does not exist")
-    if args.image is not None:
-        # A named image is its lock in this package; naming the default image
-        # requests the same deployment as no selection.
+    serving_settings.add_arguments(result)
+    return result
+
+
+def parse_joined(command, argv):
+    """Parse ``argv``: one installation, or two that ``--and`` joins; returns the parsed installations.
+
+    Each joined installation names its own ``--profile`` and a different half
+    with ``--on``. A run-wide option (RUN_WIDE) may be written in either; given
+    in both, it must have the same value. Every installation receives the
+    run-wide values.
+    """
+    parts = [[]]
+    for word in argv:
+        if word == JOIN:
+            parts.append([])
+        else:
+            parts[-1].append(word)
+    if len(parts) > 2:
+        command.error(f"{JOIN} joins two installations, one on each half of a four-Spark ring")
+    parsed = [command.parse_args(part) for part in parts]
+    if len(parsed) == 1:
+        return parsed
+    for name in RUN_WIDE:
+        default = command.get_default(name)
+        values = [getattr(args, name) for args in parsed if getattr(args, name) != default]
+        if len(set(map(str, values))) > 1:
+            command.error(f"--{name.replace('_', '-')} has a different value in each installation {JOIN} joins; "
+                          "give it once")
+        for args in parsed:
+            setattr(args, name, values[0] if values else default)
+    halves = []
+    for args in parsed:
+        if not args.profile or not args.on:
+            command.error(f"each installation that {JOIN} joins names its two-Spark --profile and its half: "
+                          "--on 0,1 or --on 2,3")
         try:
-            args.image_lock = installer_image.lock_path(args.image)
+            halves.append(placements.parse(args.on))
         except ValueError as error:
-            parser.error(f"--image: {error}")
+            command.error(f"--on: {error}")
+    if halves[0] == halves[1]:
+        command.error(f"the installations that {JOIN} joins go on different halves: --on 0,1 and --on 2,3")
+    return parsed
+
+
+def main(argv=None):
+    command = parser()
+    parsed = parse_joined(command, sys.argv[1:] if argv is None else list(argv))
+    args = parsed[0]
+    if args.events is not None and not args.events.parent.is_dir():
+        command.error(f"--events: the directory {args.events.parent} does not exist")
+    for part in parsed:
+        if part.image is not None:
+            # A named image is its lock in this package; naming the default image
+            # requests the same deployment as no selection.
+            try:
+                part.image_lock = installer_image.lock_path(part.image)
+            except ValueError as error:
+                command.error(f"--image: {error}")
     output = sys.stdout
     code = 0
     with contextlib.redirect_stdout(sys.stderr), progress.run("install", events=args.events):
@@ -1243,7 +1495,10 @@ def main(argv=None):
             except OSError:
                 before[journal] = None
         try:
-            result = execute(args)
+            result = execute(args) if len(parsed) == 1 else execute(args, parsed[1:])
+        except PartlyInstalled as stop:
+            result, code = partly_installed(stop), (3 if isinstance(stop.error, NeedsInput) else 2)
+            progress.failure(result["message"])
         except NeedsInput as error:
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
@@ -1253,7 +1508,9 @@ def main(argv=None):
                     result["transaction"] = installer.read(journal)
                     break
             progress.failure(str(error))
-        if result["state"] == "complete":
+        if result.get("installs") is not None:
+            print_joined(result)
+        elif result["state"] == "complete":
             if (result.get("hairpin") or {}).get("required"):
                 print(hairpin_ring.COMPLETE)
             print("Model ready: " + result["api_url"])
@@ -1267,10 +1524,45 @@ def main(argv=None):
                 for line in controller.detail_lines(result.get("details")):
                     print("  " + line)
         elif result["state"] == "planned":
-            command = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
-            print(f"Plan saved. Install it with {command} --yes.")
+            command_text = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
+            print(f"Plan saved. Install it with {command_text} --yes.")
         progress.emit(result["state"], "SparkRing install", phase="install", message=result.get("message"),
                       field=result.get("field"), api_url=result.get("api_url") if result["state"] == "complete" else None)
     if args.json:
         print(json.dumps(result, indent=2), file=output)
     return code
+
+
+def partly_installed(stop):
+    """The result of a joined run whose later installation stopped after the earlier ones completed."""
+    request, error = stop.request, stop.error
+    where = placements.text(request.placement)
+    failed = error.document() if isinstance(error, NeedsInput) else {"state": "failed", "message": str(error)}
+    failed.update(placement=list(request.placement), deployment=str(request.directory),
+                  command=request.checkpoint.get("command") or checkpoint_plan.COMMAND)
+    try:
+        failed["transaction"] = placements.journal(controller.STATE, request.placement)
+    except (OSError, ValueError):
+        pass
+    return {"schema": "sparkring-install-result/v1", "state": failed["state"],
+            "message": f"{where[0].upper() + where[1:]}: {failed['message']}",
+            "installs": [*stop.results, failed]}
+
+
+def print_joined(result):
+    """The terminal text of a run that ``--and`` joined: each installation's outcome, then what to do next."""
+    if result["state"] == "planned":
+        print(f"Plans saved. Install both with {result['command']} --yes.")
+        return
+    for item in result["installs"]:
+        where = placements.text(tuple(item["placement"]))
+        if item["state"] == "complete":
+            print(f"Model ready on {where}: {item['api_url']}")
+            for line in summary_lines(item):
+                print(line)
+        else:
+            print(f"Not installed on {where}: {item['message']}")
+            if item.get("field") != "checkpoint":
+                for line in controller.detail_lines(item.get("details")):
+                    print("  " + line)
+            print(f"The installations before it keep serving. Repeat only this half with {item['command']} --yes.")

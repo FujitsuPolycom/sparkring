@@ -68,6 +68,8 @@ ABSENT = ("zqhost", "zqdeploy", "zqfabric")
 FEATURES = {
     # sudo sparkring install --on 0,1 | 2,3: a two-Spark model on one half of a four-Spark ring.
     "ring_halves": ("runtime/host/install_workflow.py", "--on"),
+    # sudo sparkring install ... --on 0,1 --and ... --on 2,3: both halves' models in one run.
+    "joined_halves": ("runtime/host/install_workflow.py", "--and"),
     # sudo sparkring cabling --bandwidth: measure the bandwidth of every cable.
     "cable_check": ("runtime/host/cabling.py", "--bandwidth"),
     # sudo sparkring install --api-address ADDRESS: the address shown for the model.

@@ -95,13 +95,14 @@ def test_labels_refuse_a_missing_label_status_or_evidence(tmp_path, monkeypatch)
 
 
 def test_features_record_the_command_options_the_source_defines(data, tmp_path):
-    # This checkout's `sparkring install` defines --on.
-    assert data["features"]["ring_halves"] is True
+    # This checkout's `sparkring install` defines --on and --and.
+    assert data["features"]["ring_halves"] is True and data["features"]["joined_halves"] is True
     assert data["features"] == export.features()
     assert all(data["features"][name] for name in ("api_port", "api_bind", "api_address"))
     host = tmp_path / "runtime" / "host"
     host.mkdir(parents=True)
-    none = {"ring_halves": False, "cable_check": False, "api_address": False, "api_port": False, "api_bind": False}
+    none = {"ring_halves": False, "joined_halves": False, "cable_check": False, "api_address": False, "api_port": False,
+            "api_bind": False}
     assert export.features(tmp_path) == none
     (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--on", metavar="RANKS")\n')
     # A help text that names an option does not define it.
@@ -116,6 +117,8 @@ def test_features_record_the_command_options_the_source_defines(data, tmp_path):
     assert export.features(tmp_path) == {**none, "ring_halves": True, "cable_check": True, "api_port": True}
     (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--api-address")\n')
     assert export.features(tmp_path)["api_address"] is True
+    (host / "install_workflow.py").write_text('def main():\n    parser.add_argument("--on")\n    parser.add_argument("--and")\n')
+    assert export.features(tmp_path)["joined_halves"] is True
 
 
 def test_image_catalog_lists_the_default_first_with_options_install_accepts(data):
@@ -717,3 +720,31 @@ def test_a_new_installation_is_never_plan_only(data, node):
                                         f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
     assert not any("--plan" in c for c in commands(new))
     assert all(c.endswith("--plan") for c in commands(installed, "install") + commands(installed, "switch"))
+
+
+def test_both_halves_install_with_one_command_when_the_source_joins_them(data, node):
+    halves = [{"profile": TP2, "checkpoint": "qad-step-4000"}, {"profile": MIMO2}]
+    mimo_port = next(p for p in data["profiles"] if p["id"] == MIMO2)["checkpoints"][0]["port"]
+    joined = {**BOTH, "joined_halves": True}
+    pack, ring, installed = packs(node, data, [
+        {"layout": "halves", "features": joined, "main": {"profile": TP4}, "halves": halves,
+         "opts": {**NEW, "downloadLimit": "850Mbit"}},
+        {"layout": "ring", "features": joined, "main": {"profile": TP4}, "halves": halves, "opts": NEW},
+        {"layout": "halves", "features": joined, "main": {"profile": TP4}, "halves": halves,
+         "opts": {**NEW, "form": "installed", "approval": "yes"}},
+    ])
+    # One command for both halves; the run-wide flags follow both installations.
+    assert commands(pack, "install") == [SCRIPT + f"--profile {TP2} --on 0,1 --checkpoint qad-step-4000 --and "
+                                         f"--profile {MIMO2} --on 2,3 --download-limit 850Mbit"]
+    command, = pack["groups"][0]["commands"]
+    assert command["endpoints"] == ["http://NODE_A:8000/v1", f"http://SPARK_2:{mimo_port}/v1"]
+    assert command["what"] == ("Installs SparkRing on all four Sparks and starts Qwen3.8-Flash-Next (qad-step-4000) on the "
+                               "first pair (Node A and Spark 1) and MiMo-V2.6-Flash-MOPD on the second pair (Spark 2 and "
+                               "Spark 3). It plans both, asks once, then installs them in order.")
+    assert "Replace NODE_A with Node A's address and SPARK_2 with Spark 2's address." in pack["notes"]
+    assert commands(installed, "install") == [f"sudo sparkring install --profile {TP2} --on 0,1 --checkpoint qad-step-4000 "
+                                              f"--and --profile {MIMO2} --on 2,3 --yes"]
+    # A ring switches to two models with one command too.
+    assert commands(ring, "switch") == [f"sudo sparkring install --profile {TP2} --on 0,1 --checkpoint qad-step-4000 "
+                                        f"--and --profile {MIMO2} --on 2,3"]
+    assert ring["groups"][-1]["commands"][0]["what"].endswith(", and stops the model on all four.")
