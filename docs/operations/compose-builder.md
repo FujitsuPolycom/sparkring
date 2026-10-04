@@ -62,8 +62,8 @@ Step 2 chooses how the Sparks serve:
 | Layout | Models | Profiles listed in step 3 |
 |---|---|---|
 | Two Sparks | One model on a pair | Two-Spark profiles |
-| One model on all four | One model on a four-Spark ring | Four-Spark profiles |
-| Two models, one per pair | One model on each half of a ring: Sparks 0 and 1, and Sparks 2 and 3 ([two models on one ring](install-reference.md#two-models-on-one-ring)) | Two-Spark profiles, for each pair |
+| Four Sparks – One Model | One model on a four-Spark ring | Four-Spark profiles |
+| Four Sparks – Two Models | One model on each half of a ring: Sparks 0 and 1, and Sparks 2 and 3 ([two models on one ring](install-reference.md#two-models-on-one-ring)) | Two-Spark profiles, for each pair |
 
 With two pairs, steps 3 and 4 show one pair at a time behind **First pair**
 and **Second pair** tabs. Each pair keeps its own profile, checkpoint,
@@ -74,7 +74,7 @@ and one model on all four switches both pairs to that model's two-Spark
 profile, each with its default checkpoint, serving settings and the automatic
 API endpoint.
 
-The page offers **Two models, one per pair** only when its source's
+The page offers **Four Sparks – Two Models** only when its source's
 `sparkring install` takes `--on`. When building the page,
 [export.py](../../scripts/compose_builder/export.py) reads the options that
 the argument parsers of `runtime/host/install_workflow.py` and
@@ -114,7 +114,7 @@ This stops the models above." Every command runs on Node A, as a user with
 sudo. Each one says what it does and, for an installation, the address its
 model serves at, with a copy button.
 
-| Heading | Two Sparks | One model on all four | Two models, one per pair |
+| Heading | Two Sparks | Four Sparks – One Model | Four Sparks – Two Models |
 |---|---|---|---|
 | Install | The profile on both Sparks | The profile on all four | `--on 0,1` for the first pair, then `--on 2,3` for the second |
 | Check | `sudo sparkring status` | `sudo sparkring status` | `sudo sparkring status`, which shows each pair's model separately |
