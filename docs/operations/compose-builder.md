@@ -136,7 +136,7 @@ The options above the commands apply to every install command:
 |---|---|
 | New installation | The first command is the [one-command installer](install-reference.md#get-the-package) on Node A, pinned to the page's source with `--ref`, or from `main`. It passes `--on` and every other option to `sparkring install`. Later commands run the `sudo sparkring install` it installed. |
 | SparkRing already installed | Every command is `sudo sparkring install …` |
-| Approval | No flag (asks before changes), `--plan` or `--yes` |
+| Approval | No flag (asks before changes), `--plan` or `--yes`. A new installation offers no `--plan`: `install.sh --plan` stops on a Spark without the SparkRing package |
 | Spark order | Automatic, Ask during install or Fill in my Sparks ([below](#spark-order)) |
 | Download limit | `--download-limit`, such as `850Mbit` |
 
@@ -230,8 +230,7 @@ Neither the order nor a pair's head can be chosen.
 
 - **Automatic** writes the commands as the options above set them and names
   the Sparks Node A and Spark 1 to Spark 3. `NODE_A` stands for Node A's
-  address and `SPARK_2` for the address of the Spark that isn't cabled to
-  Node A.
+  address and `SPARK_2` for Spark 2's address.
 - **Ask during install** leaves out `--yes`, so every installation shows which
   Spark is which and asks before it changes anything.
 - **Fill in my Sparks** takes a name, an address or both for each Spark in
@@ -245,7 +244,7 @@ where each model answers:
 |---|---|
 | Two Sparks | Node A: run the commands here; the model answers at its address. The other Spark: nothing to run on it. |
 | One model on all four | Node A, as for two Sparks. The other three: nothing to run on them. |
-| Two models, one per pair | First pair: Node A and the Spark on its port 0, answering at Node A's address. Second pair: the other two, answering at the address of the Spark that isn't cabled to Node A. Then "Run every command on Node A." and one line saying the cables set the order. |
+| Two models, one per pair | First pair: Node A and Spark 1, answering at Node A's address. Second pair: Spark 2 and Spark 3, answering at Spark 2's address. Then "Run every command on Node A." and one line numbering the Sparks by their cables: Spark 1 on Node A's port 0, Spark 3 on its port 1, Spark 2 with no cable to Node A. |
 
 With **Fill in my Sparks** it uses the names and addresses from step 5.
 

@@ -243,7 +243,7 @@ def test_pack_for_a_pair_installs_and_checks(data, node):
     assert [g["key"] for g in plain["groups"]] == ["install", "check"]
     install, = plain["groups"][0]["commands"]
     assert install["command"] == SCRIPT + f"--profile {TP2}"
-    assert install["where"] == "On Node A, the Spark on your network, as a user with sudo"
+    assert install["where"] == "On Node A, the Spark connected to your network, as a user with sudo"
     assert install["what"] == "Installs SparkRing and starts Qwen3.8-Flash-Next on both Sparks."
     assert install["endpoint"] == "http://NODE_A:8000/v1"
     assert commands(plain, "check") == ["sudo sparkring status"]
@@ -272,7 +272,7 @@ def test_pack_for_a_ring_serves_its_profile_port_and_switches_to_two_pairs(data,
         f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
     assert [c["endpoint"] for c in switch["commands"]] == ["http://NODE_A:8000/v1", "http://SPARK_2:8000/v1"]
     assert "stops the model on all four" in switch["commands"][0]["what"]
-    assert "once the one before has finished" in switch["commands"][1]["what"]
+    assert switch["commands"][1]["what"].endswith("Run it after the command above finishes.")
     assert [g["key"] for g in without["groups"]] == ["install", "check"]
     assert [(r["spark"], r["text"]) for r in ring["roles"]] == [
         ("Node A", "Run the commands here. The model answers at its address."), ("The other three", "Nothing to run on them.")]
@@ -295,19 +295,21 @@ def test_pack_for_two_pairs_installs_each_half_then_switches_back(data, node):
                                          f"sudo sparkring install --profile {MIMO2} --on 2,3"]
     assert endpoints(auto, "install") == ["http://NODE_A:8000/v1", f"http://SPARK_2:{mimo_port}/v1"]
     first, second = auto["groups"][0]["commands"]
-    assert first["what"] == "Installs SparkRing and starts Qwen3.8-Flash-Next (qad-step-4000) on the first pair: Node A and Spark 1."
+    assert first["what"] == ("Installs SparkRing on all four Sparks and starts Qwen3.8-Flash-Next (qad-step-4000) "
+                             "on the first pair: Node A and Spark 1.")
     assert second["what"].startswith("Starts MiMo-V2.6-Flash-MOPD on the second pair: Spark 2 and Spark 3.")
     assert commands(auto, "switch") == [f"sudo sparkring install --profile {TP4}"]
     assert "stops both pairs' models" in auto["groups"][2]["commands"][0]["what"]
     assert auto["groups"][1]["commands"][0]["what"] == "Shows each pair's model separately."
     # Spark 2, two cables from Node A in the ring order, serves the second pair; SPARK_2 stands for its address.
     assert [(r["spark"], r["text"]) for r in auto["roles"]] == [
-        ("First pair", "Node A and the Spark on its port 0. Answers at Node A's address."),
-        ("Second pair", "The other two. Answers at the address of the Spark that isn't cabled to Node A.")]
+        ("First pair", "Node A and Spark 1. Answers at Node A's address."),
+        ("Second pair", "Spark 2 and Spark 3. Answers at Spark 2's address.")]
     assert auto["run"] == "Run every command on Node A."
-    assert auto["order"] == "The cables set this order; you can't choose which Spark leads a pair."
-    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
-            in auto["notes"])
+    assert auto["order"] == ("Node A is the Spark you run setup on. The cables number the others: Spark 1 is on Node A's "
+                             "port 0, Spark 3 is on its port 1, and Spark 2 is the one with no cable to Node A.")
+    assert "Replace NODE_A with Node A's address and SPARK_2 with Spark 2's address." in auto["notes"]
+    assert "If Spark 2 has no network cable of its own, only Node A can reach the second pair's model." in auto["notes"]
     # Fill in my Sparks: the user's names say where to run, their addresses where each model answers.
     assert commands(filled) == commands(auto)
     assert {c["where"] for c in filled["groups"][0]["commands"][1:] + filled["groups"][1]["commands"]} == {
@@ -395,8 +397,7 @@ def test_pack_carries_each_deployed_selection_s_api_endpoint(data, node):
     assert endpoints(pack, "install") == ["http://llm.example.net:9100/v1", f"http://SPARK_2:{mimo_port}/v1"]
     # The switch command takes the automatic endpoint.
     assert commands(pack, "switch") == [f"sudo sparkring install --profile {TP4} --yes"]
-    assert ("Replace NODE_A with Node A's address and SPARK_2 with the address of the Spark that isn't cabled to Node A."
-            in pack["notes"])
+    assert "Replace NODE_A with Node A's address and SPARK_2 with Spark 2's address." in pack["notes"]
     assert ("An install set to ask lists the Spark's addresses and asks which address and port the model uses."
             in pack["notes"])
     first, = bad["groups"][0]["commands"]
@@ -702,3 +703,17 @@ def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     other = next(row for row in embedded["images"] if not row["default"])
     image = json.loads((output / other["file"]).read_text(encoding="utf-8"))
     assert image["image"] == other["name"] and {p["id"] for p in image["profiles"]} == set(other["profiles"])
+
+
+def test_a_new_installation_is_never_plan_only(data, node):
+    # install.sh --plan stops on a Spark without the SparkRing package, so a new installation asks instead.
+    halves = [{"profile": TP2}, {"profile": GLM2, "checkpoint": "nvfp4-qad"}]
+    new, installed = packs(node, data, [
+        {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves, "opts": {**NEW, "approval": "plan"}},
+        {"layout": "halves", "features": BOTH, "main": {"profile": TP4}, "halves": halves,
+         "opts": {**NEW, "form": "installed", "approval": "plan"}},
+    ])
+    assert commands(new, "install") == [SCRIPT + f"--profile {TP2} --on 0,1",
+                                        f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
+    assert not any("--plan" in c for c in commands(new))
+    assert all(c.endswith("--plan") for c in commands(installed, "install") + commands(installed, "switch"))
