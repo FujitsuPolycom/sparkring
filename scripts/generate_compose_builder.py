@@ -4,13 +4,16 @@ The page (docs/operations/compose-builder.md) writes `sparkring install`
 commands and `sparkring compose render` deployments for the profiles of the
 checkout it is built from:
 
-    python scripts/generate_compose_builder.py --output DIRECTORY [--verify]
+    python scripts/generate_compose_builder.py --output DIRECTORY [--verify] [--usage-counter URL]
 
 The page's directory also receives images/NAME.json for every other installer
 image, which the page loads when that image is selected. --verify first
 compares the page's engine with compose.build under Node.js
 (scripts/compose_builder/verify.py) on every image and writes nothing if any
-case differs; the page's data records the comparison's counts.
+case differs; the page's data records the comparison's counts. --usage-counter
+names a GoatCounter count endpoint that the page reports its views and copied
+output to (docs/operations/compose-builder.md#usage-counts); without it the
+page sends nothing.
 """
 
 import argparse
@@ -39,7 +42,12 @@ def main(argv=None):
                         help="random valid sites per profile checkpoint for --verify on each non-default image")
     parser.add_argument("--default-image-only", action="store_true",
                         help="write no data files for the other installer images")
+    parser.add_argument("--usage-counter", default="",
+                        help="GoatCounter count endpoint, https://NAME.goatcounter.com/count; empty: count nothing")
     args = parser.parse_args(argv)
+    counter = args.usage_counter.strip() or None
+    if counter is not None and not export.USAGE_COUNTER.fullmatch(counter):
+        parser.error("--usage-counter must be an https://HOST/count endpoint")
     data = export.export(tag=args.tag, commit=args.commit, repository=args.repository)
     if args.default_image_only:
         data["images"] = [row for row in data["images"] if row["default"]]
@@ -64,12 +72,12 @@ def main(argv=None):
             return 1
     args.output.mkdir(parents=True, exist_ok=True)
     path = args.output / "index.html"
-    path.write_text(export.page(data, summary), encoding="utf-8", newline="\n")
+    path.write_text(export.page(data, summary, usage_counter=counter), encoding="utf-8", newline="\n")
     for file, image in images.items():
         (args.output / file).parent.mkdir(parents=True, exist_ok=True)
         (args.output / file).write_text(json.dumps(image, separators=(",", ":")), encoding="utf-8", newline="\n")
     print(json.dumps({"page": str(path), "ref": data["ref"], "profiles": len(data["profiles"]), "images": len(data["images"]),
-                      "verification": summary}))
+                      "verification": summary, "usage_counter": counter}))
     return 0
 
 

@@ -33,7 +33,8 @@ at every boot.
 More: [documentation by task](docs/README.md) ·
 [all commands](docs/operations/commands.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
-[Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md)) ·
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) ([how it works](docs/operations/compose-builder.md),
+[usage counts](docs/operations/compose-builder.md#usage-counts)) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
 
 ## Profiles

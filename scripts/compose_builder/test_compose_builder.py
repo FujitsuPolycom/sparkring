@@ -491,6 +491,51 @@ def test_template_check_refuses_values_the_engine_cannot_place(line, message):
         export._check_template(line + "\n", site, 0, "f" * 64, export._yaml_key, "test")
 
 
+def test_usage_events_name_only_catalog_values(data, node):
+    by_id = {p["id"]: p for p in data["profiles"] if p["id"] in {TP2, TP4, GLM2}}
+    pair = {"profile": TP2, "checkpoint": "qad-step-4000"}
+    cases = [
+        ["copy-command", {"layout": "ring", "mode": "install", "main": {"profile": TP4, "checkpoint": None}, "halves": []}],
+        ["copy-file", {"layout": "halves", "mode": "compose", "main": {"profile": TP4},
+                       "halves": [pair, {"profile": GLM2, "checkpoint": None}]}],
+        # A site value, an unknown checkpoint or action, and a forged layout or mode never reach the path.
+        ["copy-command", {"layout": "pair", "mode": "install", "main": {"profile": "198.51.100.7"}, "halves": []}],
+        ["paste", {"layout": "triple", "mode": "x", "main": {"profile": TP2, "checkpoint": "/models/target"}, "halves": []}],
+        ["download-zip", {"layout": "halves", "mode": "compose", "main": {"profile": TP4},
+                          "halves": [{"profile": "constructor"}, {"profile": "__proto__"}]}],
+    ]
+    found = run_engine(node, "console.log(JSON.stringify(value.cases.map(([a, c]) => E.usageEvent(a, c, value.byId))))",
+                       {"cases": cases, "byId": by_id})
+    assert found == [
+        f"copy-command/ring/install/{TP4}",
+        f"copy-file/halves/compose/{TP2}:qad-step-4000+{GLM2}",
+        "copy-command/pair/install/other",
+        f"other/other/other/{TP2}",
+        "download-zip/halves/compose/other+other",
+    ]
+
+
+@pytest.mark.parametrize("counter", ["http://name.goatcounter.com/count", "https://name.goatcounter.com/count?p=/",
+                                     "https://name.goatcounter.com/", "https://user@name.goatcounter.com/count",
+                                     "https://name.goatcounter.com/count\"><script>"])
+def test_page_refuses_a_usage_counter_that_is_not_an_https_count_endpoint(data, counter):
+    with pytest.raises(ValueError, match="https://HOST/count"):
+        export.page(data, usage_counter=counter)
+
+
+def test_page_records_its_usage_counter_and_loads_no_counter_script(data):
+    def embedded(html):
+        return json.loads(html.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0])
+    assert embedded(export.page(data))["usage_counter"] is None
+    html = export.page(data, usage_counter="https://sparkring.goatcounter.com/count")
+    assert embedded(html)["usage_counter"] == "https://sparkring.goatcounter.com/count"
+    # Counts are image requests made by the page's own code; no third-party script is loaded.
+    assert "gc.zgo.at" not in html and "data-goatcounter" not in html
+    assert "referrerPolicy = 'no-referrer'" in html
+    with pytest.raises(ValueError, match="standalone"):
+        export.page(data, standalone=False, usage_counter="https://sparkring.goatcounter.com/count")
+
+
 def test_page_inlines_data_engine_and_verification(data):
     html = export.page(data, {"valid": 1, "invalid": 2, "stricter": 3, "archives": 4, "seed": 5})
     assert "__DATA__" not in html and "__ENGINE__" not in html
@@ -520,3 +565,21 @@ def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     other = next(row for row in embedded["images"] if not row["default"])
     image = json.loads((output / other["file"]).read_text(encoding="utf-8"))
     assert image["image"] == other["name"] and {p["id"] for p in image["profiles"]} == set(other["profiles"])
+
+
+def test_generator_refuses_a_usage_counter_before_building(tmp_path):
+    with pytest.raises(SystemExit):
+        generate_compose_builder.main(["--output", str(tmp_path / "site"), "--usage-counter", "http://name.goatcounter.com/count"])
+    assert not (tmp_path / "site").exists()
+
+
+def test_page_scripts_parse(data, node, tmp_path):
+    html = export.page(data, usage_counter="https://sparkring.goatcounter.com/count")
+    scripts = [block.split(">", 1)[1].split("</script>", 1)[0] for block in html.split("<script")[1:]
+               if not block.startswith(' type="application/json"')]
+    assert scripts
+    for index, script in enumerate(scripts):
+        path = tmp_path / f"script{index}.js"
+        path.write_text(script, encoding="utf-8")
+        result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, encoding="utf-8")
+        assert result.returncode == 0, result.stderr

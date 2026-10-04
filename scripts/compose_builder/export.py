@@ -37,6 +37,9 @@ HERE = Path(__file__).resolve().parent
 ROOT = compose.ROOT
 SCHEMA = "sparkring-compose-builder-data/v1"
 REPOSITORY = "FujitsuPolycom/sparkring"
+# A GoatCounter count endpoint, such as https://NAME.goatcounter.com/count: HTTPS, a host name and
+# the /count path, so the page can append its own query to it.
+USAGE_COUNTER = re.compile(r"https://[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+/count")
 # Compose-supported profiles the builder does not list.
 EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
 
@@ -415,18 +418,28 @@ def engine_source():
     return text
 
 
-def page(data, verification=None, *, standalone=True):
+def page(data, verification=None, *, standalone=True, usage_counter=None):
     """index.html: page.html with the data, the verification summary and the engine inlined.
 
     ``standalone`` makes a complete document, with the charset, viewport, title
     and style in its head, for a static host such as GitHub Pages. Without it
     the result is page.html's content alone, for a host that supplies the
     document around it, such as a claude.ai artifact.
+
+    ``usage_counter``, a GoatCounter count endpoint (USAGE_COUNTER), makes a
+    standalone page count its views and the output visitors take from it
+    (docs/operations/compose-builder.md#usage-counts). Without it the page
+    sends nothing.
     """
+    if usage_counter is not None:
+        if not standalone:
+            raise ValueError("only a standalone page counts its usage")
+        if not USAGE_COUNTER.fullmatch(usage_counter):
+            raise ValueError(f"usage counter must be an https://HOST/count endpoint; got {usage_counter!r}")
     template = (HERE / "page.html").read_text(encoding="utf-8")
     if template.count("__DATA__") != 1 or template.count("__ENGINE__") != 1:
         raise ValueError("page.html needs exactly one __DATA__ and one __ENGINE__ placeholder")
-    document = {**data, "verification": verification}
+    document = {**data, "verification": verification, "usage_counter": usage_counter}
     # JSON inside <script type="application/json">: escaping "<" keeps "</script" out of it.
     text = json.dumps(document, separators=(",", ":")).replace("<", "\\u003c")
     content = template.replace("__DATA__", text).replace("__ENGINE__", engine_source())
