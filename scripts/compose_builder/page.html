@@ -352,7 +352,7 @@ footer p { margin: 0; max-width: 110ch; }
         </div>
         <span class="chip" id="out-state">Ready</span>
       </div>
-      <p class="hint" id="mode-note" hidden>Install command only for two pairs on a ring.</p>
+      <p class="hint" id="mode-note" hidden>Docker Compose can't set up two pairs on a ring, so this layout has install commands only.</p>
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
@@ -383,6 +383,7 @@ footer p { margin: 0; max-width: 110ch; }
               <label for="approval-plan"><input type="radio" name="approval" id="approval-plan" value="plan">Plan only</label>
               <label for="approval-yes"><input type="radio" name="approval" id="approval-yes" value="yes">Approve (<code>--yes</code>)</label>
             </div>
+            <p class="hint opt-hint" id="approval-hint" hidden>Plan only needs SparkRing installed. A new installation shows each step and asks before it changes anything.</p>
           </div>
           <div class="opt" role="radiogroup" aria-labelledby="opt-order">
             <span class="opt-label" id="opt-order">Spark order</span>
@@ -1289,12 +1290,16 @@ __ENGINE__
   function renderInstall() {
     renderShared();
     const o = state.install;
-    // "Ask during install" leaves out --yes, so the installer asks.
+    // "Ask during install" leaves out --yes, so the installer asks. A new installation cannot be
+    // planned: install.sh --plan stops on a Spark without the SparkRing package.
     if (o.order === 'ask' && o.approval === 'yes') o.approval = 'ask';
+    if (o.form === 'script' && o.approval === 'plan') o.approval = 'ask';
     for (const [name, value] of [['form', o.form], ['source', o.source], ['approval', o.approval], ['order', o.order]]) {
       for (const input of document.querySelectorAll(`input[name="${name}"]`)) input.checked = input.value === value;
     }
     $('approval-yes').disabled = o.order === 'ask';
+    $('approval-plan').disabled = o.form === 'script';
+    $('approval-hint').hidden = o.form !== 'script';
     $('order-hint').textContent = 'The Spark you run setup on becomes Node A.' + (o.order === 'fill' ? ' Enter your Sparks in step 5.' : '');
     if ($('download-limit').value !== o.limit) $('download-limit').value = o.limit;
     $('source-row').hidden = o.form !== 'script';
@@ -1392,11 +1397,11 @@ __ENGINE__
     const from = BY_ID[state.layout === 'halves' ? state.halves[0].profile : state.profile];
     const to = BY_ID[(state.layout === 'halves' ? switchMain() : switchHalves()[0]).profile];
     if (state.layout === 'halves') {
-      return to.model_name === from.model_name ? "The first pair's model on all four Sparks, with its default checkpoint."
-        : `The first pair's model has no four-Spark version, so this uses ${to.model_name}, with its default checkpoint.`;
+      return to.model_name === from.model_name ? "It uses the first pair's model in its four-Spark version, with the default checkpoint."
+        : `The first pair's model has no four-Spark version, so it uses ${to.model_name}, with the default checkpoint.`;
     }
-    return to.model_name === from.model_name ? 'This model on both pairs, with its default checkpoint.'
-      : `This model has no two-Spark version, so both pairs use ${to.model_name}, with its default checkpoint.`;
+    return to.model_name === from.model_name ? "It uses this model's two-Spark version on both pairs, with the default checkpoint."
+      : `This model has no two-Spark version, so both pairs use ${to.model_name}, with the default checkpoint.`;
   }
 
   // ---- Compose files ---------------------------------------------------------

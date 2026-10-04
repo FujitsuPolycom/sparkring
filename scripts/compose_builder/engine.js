@@ -814,7 +814,8 @@ const SparkRingEngine = (() => {
   // optional `problems` are its fields' (readSelection). `opts` carries installCommand's form,
   // pin, approval and downloadLimit, and `order`: "auto", "ask", which leaves out --yes so that
   // every installation asks before it changes a Spark, or "fill", which names the Sparks after
-  // `opts.sparks`.
+  // `opts.sparks`. A new installation is never plan-only: `install.sh --plan` stops on a Spark
+  // without the SparkRing package, so "plan" asks before each change instead.
   //
   // `problems` lists every field the pack cannot use, as {field, message, pair}: a selection's
   // fields (`pair` 0 or 1 for a half, else null), the download limit ("download_limit") and, for
@@ -824,7 +825,8 @@ const SparkRingEngine = (() => {
   function commandPack(plan, meta, opts) {
     const layout = plan.layout, features = plan.features || {};
     const names = sparkNames(LAYOUT_SPARKS[layout], opts.order === 'fill' ? opts.sparks : null);
-    const approval = opts.order === 'ask' && opts.approval === 'yes' ? 'ask' : opts.approval;
+    const approval = (opts.order === 'ask' && opts.approval === 'yes') || (opts.form === 'script' && opts.approval === 'plan')
+      ? 'ask' : opts.approval;
     const pairOf = half => `${names[2 * half].short} and ${names[2 * half + 1].short}`;
     const run = 'On ' + names[0].label + ', as a user with sudo';
     const problems = [];
@@ -852,8 +854,9 @@ const SparkRingEngine = (() => {
       const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
         : selection.profile.model_name;
       return {
-        where: form === 'script' ? 'On ' + names[0].label + ', the Spark on your network, as a user with sudo' : run,
-        what: (form === 'script' ? 'Installs SparkRing and starts ' : 'Starts ') + model + what,
+        where: form === 'script' ? 'On ' + names[0].label + ', the Spark connected to your network, as a user with sudo' : run,
+        what: (form === 'script' ? (layout === 'halves' ? 'Installs SparkRing on all four Sparks and starts ' : 'Installs SparkRing and starts ')
+          : 'Starts ') + model + what,
         command: problem ? '' : installCommand(selection.profile, check.checkpoint, check.settings, meta,
           { form, pin: opts.pin, approval: endpoint.ask && approval === 'yes' ? 'ask' : approval,
             downloadLimit: limit.value, on, apiAddress: address }),
@@ -861,7 +864,7 @@ const SparkRingEngine = (() => {
         error: problem,
       };
     };
-    const next = ' Run it once the one before has finished.';
+    const next = ' Run it after the command above finishes.';
     const groups = [];
     let switching = null;
     const optional = { optional: true, note: 'Optional: switch layouts later. This stops the models above.' };
@@ -893,18 +896,16 @@ const SparkRingEngine = (() => {
     groups.push({ key: 'check', title: 'Check', commands: check });
     if (switching) groups.push(switching);
 
-    // Where to run the commands and where each model answers. In the ring order, Spark 2 is the
-    // only Spark that no cable joins to Node A: Node A's port 0 leads to Spark 1, and Spark 3's
-    // port 0 leads back to Node A. Sparks the user named are called by their names and addresses.
+    // Where to run the commands and where each model answers. In the ring order, Node A's port 0
+    // leads to Spark 1 and its port 1 to Spark 3; Spark 2 is the only Spark that no cable joins to
+    // Node A. Sparks the user named are called by their names and addresses.
     const roles = [];
-    const far = names[2] && (names[2].given ? names[2].short : "the Spark that isn't cabled to Node A");
+    const far = names[2] && names[2].short;
     const at = (spark, unnamed) => spark.given ? spark.address : unnamed;
     if (layout === 'halves') {
       const [a, b, c, d] = names;
-      roles.push({ spark: 'First pair', text: (a.given || b.given ? `${a.short} and ${b.short}` : 'Node A and the Spark on its port 0')
-        + `. Answers at ${at(a, "Node A's address")}.` });
-      roles.push({ spark: 'Second pair', text: (c.given || d.given ? `${c.short} and ${d.short}` : 'The other two')
-        + `. Answers at ${at(c, 'the address of ' + far)}.` });
+      roles.push({ spark: 'First pair', text: `${a.short} and ${b.short}. Answers at ${at(a, "Node A's address")}.` });
+      roles.push({ spark: 'Second pair', text: `${c.short} and ${d.short}. Answers at ${at(c, "Spark 2's address")}.` });
     } else {
       const others = names.slice(1), shorts = others.map(spark => spark.short);
       const named = shorts.length < 3 ? shorts.join(' and ') : shorts.slice(0, -1).join(', ') + ' and ' + shorts[shorts.length - 1];
@@ -921,8 +922,7 @@ const SparkRingEngine = (() => {
     // NODE_A and SPARK_2 stand for the addresses of Sparks the user did not name.
     const placeholders = names.filter(spark => !spark.given && serves(spark));
     if (placeholders.length) {
-      notes.push('Replace ' + placeholders.map(spark => `${spark.address} with ` + (spark === names[0] ? "Node A's address"
-        : `the address of ${far}`)).join(' and ') + '.');
+      notes.push('Replace ' + placeholders.map(spark => `${spark.address} with ${spark.role}'s address`).join(' and ') + '.');
     }
     // A half's API on Spark 2 is its own LAN address, or its administration address without one.
     if (names.length > 2 && serves(names[2])) {
@@ -933,7 +933,8 @@ const SparkRingEngine = (() => {
     return {
       layout, roles, groups, notes, problems,
       run: layout === 'halves' ? `Run every command on ${names[0].given ? names[0].short : 'Node A'}.` : null,
-      order: layout === 'halves' ? "The cables set this order; you can't choose which Spark leads a pair." : null,
+      order: layout === 'halves' ? "Node A is the Spark you run setup on. The cables number the others: Spark 1 is on Node A's "
+        + "port 0, Spark 3 is on its port 1, and Spark 2 is the one with no cable to Node A." : null,
       ready: !problems.length && commands.every(c => c.command),
     };
   }
