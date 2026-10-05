@@ -69,6 +69,8 @@ def checkpoint_contract(card):
     acquires first, gets the base entry's model, and the derived checkpoint's
     own card (derived_checkpoint.view) the entry's model.
     """
+    if card.get("generic") is not None:
+        return card["generic"]["model"]
     source, _ = profiles.load(card["profile"])
     model = profiles.resolve(card["profile"])["model"]
     configuration = profiles.read_json(profiles.local_path(source["configuration"]["path"]))
@@ -128,12 +130,19 @@ def checkpoint_pins(card, *, root=None):
     components, NUL, CR, LF or backslash, every size is a positive integer and
     every digest well formed, the index and weights are required files, and
     `optional` names only pinned files. `root` selects another checkout.
+
+    The card of a generic deployment carries its manifest, which the plan read
+    from the Hub (runtime/common/generic_model.py), and is checked the same way.
     """
     relative = f"profiles/checkpoints/{_checkpoint_slug(card)}/{card['model_revision']}.json"
-    path = Path(root if root is not None else ROOT) / relative
-    if not path.is_file():
-        raise ValueError(f"No pin manifest {relative}; generate it with scripts/pin_checkpoint.py")
-    pins = profiles.read_json(path)
+    if card.get("generic") is not None:
+        relative = f"the pin manifest of {card['model_repository']}@{card['model_revision']}"
+        pins = card["generic"]["pins"]
+    else:
+        path = Path(root if root is not None else ROOT) / relative
+        if not path.is_file():
+            raise ValueError(f"No pin manifest {relative}; generate it with scripts/pin_checkpoint.py")
+        pins = profiles.read_json(path)
 
     def check(condition, reason):
         if not condition:
@@ -309,13 +318,28 @@ def backend(card):
     return "glm-managed" if card["profile"] in (GLM_LEGACY[4], GLM_NO_CACHE[4]) else "compose"
 
 
-def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None):
+def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None,
+              generic=None):
+    """The deployment lock of ``profile`` on ``raw_site`` from the source ``revision``.
+
+    ``generic`` is the request of a generic template profile
+    (runtime/common/generic_model.py), which the selection card records; a
+    generic template needs one, and no other profile takes one.
+    """
+    from runtime.common import generic_model
     if profile not in SUPPORTED:
         raise ValueError(f"The installer does not deploy {profile}; 'sparkring models' marks the profiles it installs, "
                          "and other profiles use their own guides")
     if not re.fullmatch(r"[0-9a-f]{40}", revision) or not re.fullmatch(r"[0-9a-f]{64}", bundle_sha256):
         raise ValueError("Lock requires the exact source commit and bundle checksum")
+    if (generic is not None) != generic_model.is_generic(profile):
+        raise ValueError(f"{profile} is the template of `sparkring install --model`; it serves a requested model"
+                         if generic is None else f"{profile} serves its own model, not a requested one")
     card = setup.selection(profile, variant)
+    if generic is not None:
+        if variant is not None:
+            raise ValueError("A generic deployment has no checkpoint choice")
+        card = generic_model.selection(card, generic)
     if image_runtime is not None:
         from runtime.common import installer_image
         card = installer_image.selection(card, image_runtime)
@@ -340,7 +364,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
 def validate(lock):
     expected = make_lock(lock["selection"]["profile"], lock["site_input"], lock["source_revision"],
                          lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"),
-                         settings=lock.get("serving"))
+                         settings=lock.get("serving"), generic=lock["selection"].get("generic"))
     if expected != lock:
         raise ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
     return lock
@@ -354,13 +378,14 @@ def load(directory):
     return lock
 
 
-def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None):
+def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None, generic=None):
     directory = Path(directory).resolve()
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
     revision = distribution.identity(ROOT)
-    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings)
+    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings,
+                            generic=generic)
     if settings:
         # Refuses a switch that the deployment's image cannot apply, and a
         # setting whose vLLM flag the profile does not set. A recorded
@@ -374,7 +399,7 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     bundle = directory / "source.bundle"
     distribution.bundle(ROOT, bundle)
     lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant,
-                     image_runtime=image_runtime, settings=settings)
+                     image_runtime=image_runtime, settings=settings, generic=generic)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
     if lock["backend"] == "compose":
@@ -408,7 +433,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     if lock["backend"] != "compose":
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
     if card["profile"] in compose.SUPPORTED:
-        specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"])
+        specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"],
+                                          generic=card.get("generic"))
         if "image_runtime" in lock:
             from runtime.common import installer_image
             specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row),

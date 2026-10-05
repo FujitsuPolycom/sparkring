@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes, quickstart_status  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
-from runtime.common import thinking  # noqa: E402
+from runtime.common import generic_model, thinking  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
@@ -163,7 +163,8 @@ def check_capacity_records(capacity, root=ROOT):
 
 
 def profile_table(root=ROOT, *, compact=False):
-    rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root)]
+    # The generic templates serve a model named at install time, so they have no row.
+    rows = [(load(id, root)[0], resolve(id, root=root)) for id in catalog(root) if not generic_model.is_generic(id)]
     model_labels = read_json(root/'profiles/model-names.json')
     names = model_labels['models']
     quant_labels = model_labels['quant_labels']

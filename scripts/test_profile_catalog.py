@@ -1,4 +1,5 @@
 """Deployment navigation groups variants without losing their individual guides."""
+from runtime.common import generic_model
 from runtime.common.profiles import catalog, load
 from runtime.common.profiles import resolve
 from scripts.generate_profiles import profile_table
@@ -52,6 +53,10 @@ def test_catalog_groups_glm_choices_and_preserves_every_profile_link():
     assert len(installer_rows) == 2 and all(row.endswith('| Development |') for row in installer_rows)
     assert '1,048,576' not in summary
     for profile_id in catalog():
+        if generic_model.is_generic(profile_id):
+            # A generic template serves a model named at install time and has no row.
+            assert profile_id not in variants
+            continue
         profile, _ = load(profile_id)
         label = profile_id + (' (default)' if profile['recommendation'] == 'recommended' else '')
         guide = (profile['guide'] if profile['configuration']['format'] == 'serving-profile'

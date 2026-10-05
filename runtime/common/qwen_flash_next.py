@@ -36,7 +36,8 @@ TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
     "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4",
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4",
-    "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"))
+    "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4",
+    "generic-vllm-tp2", "generic-vllm-tp4"))
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
 
 
@@ -341,9 +342,23 @@ def verify_image(image, *, cache_enabled=False, feature_enabled=False,
 
 def container_spec(profile, *, rank, master, host_ip, interface, image, model, cache,
                    remote=False, hcas=None, gid=None, local_source_extension=None,
-                   local_kv_cache_gib=None, local_master_port=None, checkpoint=None):
+                   local_kv_cache_gib=None, local_master_port=None, checkpoint=None, generic=None):
+    """One rank's container for ``profile`` on the given site values.
+
+    ``checkpoint`` selects an entry of the profile's checkpoints table, and
+    ``generic`` is the request of a generic deployment
+    (runtime/common/generic_model.py), which only a generic template profile
+    takes.
+    """
     canonical(profile)
     profile = checkpoint_settings(profile, checkpoint)
+    if generic is not None:
+        # Without a request, a template renders its placeholder model, as its
+        # public Compose examples show; installer.make_lock refuses to install it.
+        from runtime.common import generic_model
+        if profile["model"]["repository"] != generic_model.TEMPLATE_REPOSITORY:
+            raise ValueError("Only a generic template profile serves a requested model")
+        profile = generic_model.apply(profile, generic)
     policy = image_policy(profile, local_source_extension=local_source_extension)
     entrypoint = candidate.ENTRYPOINT
     if policy["kind"] == "toolchain":

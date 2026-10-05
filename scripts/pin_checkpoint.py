@@ -159,8 +159,13 @@ def fetch(hub, repository, revision, name, size):
     return data
 
 
-def manifest(hub, repository, revision):
-    """The pin manifest of ``repository`` at the full commit id ``revision``."""
+def manifest(hub, repository, revision, *, keep=None):
+    """The pin manifest of ``repository`` at the full commit id ``revision``.
+
+    ``keep``, a dict, receives the bytes of every file that was downloaded
+    (the files that are not LFS objects, such as ``config.json``, and the
+    index), keyed by file name.
+    """
     if not valid_repository(repository):
         raise ValueError(f"{repository!r} is not a Hugging Face owner/name repository")
     if not hexadecimal(revision, 40):
@@ -219,6 +224,8 @@ def manifest(hub, repository, revision):
     missing = [name for name in [INDEX, "config.json", *weights] if name not in required]
     if missing:
         raise ValueError(f"Required files are absent or classified as documentation: {', '.join(missing)}")
+    if keep is not None:
+        keep.update(contents, **{INDEX: index})
     return {"schema": SCHEMA, "repository": repository, "revision": revision, "index": INDEX,
             "weights": weights, "optional": documentation, "files": {name: files[name] for name in sorted(files)}}
 

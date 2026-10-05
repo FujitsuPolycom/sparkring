@@ -17,6 +17,7 @@ sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # r
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
 sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
 sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
+sudo sparkring install --model OWNER/NAME -- --max-num-seqs 8  # any public Hugging Face model with vLLM
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -61,6 +62,9 @@ serves, it releases what older deployments hold on the Sparks
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
+| `--model OWNER/NAME[@REVISION]` | Serve a public Hugging Face model with vLLM in place of `--profile`, on every Spark or the half `--on` names ([any Hugging Face model](install-reference.md#any-hugging-face-model)); research-only |
+| `--name SERVED_NAME` | With `--model`: the name the API serves the model as; default: the repository's name |
+| `-- VLLM_ARG ...` | With `--model`: arguments for vLLM, which replace or add to SparkRing's; SparkRing's own options are refused |
 | `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |

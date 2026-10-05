@@ -53,7 +53,9 @@ REPOSITORY = "FujitsuPolycom/sparkring"
 # The status values of profiles and checkpoints (docs/development/writing.md).
 STATUSES = ("qualified", "implemented", "research-only", "unsupported")
 # Compose-supported profiles the builder does not list.
-EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
+# The generic templates serve a model named at install time (runtime/common/generic_model.py).
+EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache",
+                      "generic-vllm-tp2", "generic-vllm-tp4"})
 
 # Lines on which a substituted site value may appear: these YAML keys, or a list item ("-").
 SITE_KEYS = {"name", "container_name", "VLLM_HOST_IP", "GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME",

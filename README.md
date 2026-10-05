@@ -23,6 +23,10 @@ model, and prints the API address when the model is ready. It asks before it
 changes anything: `--yes` approves, `--plan` previews. Run it again to update
 or switch models.
 
+To try a model that has no profile, use `--model OWNER/NAME` with any public
+Hugging Face model in place of `--profile`. It's experimental:
+[how it works](docs/operations/install-reference.md#any-hugging-face-model).
+
 More: [documentation](docs/README.md) · [commands](docs/operations/commands.md) ·
 [status dashboard](docs/operations/dashboard.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·

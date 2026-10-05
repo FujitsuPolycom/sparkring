@@ -140,6 +140,14 @@
     {
       "id": "swift15-qwen38-flash-next-tp4",
       "path": "profiles/swift15-qwen38-flash-next-tp4/profile.json"
+    },
+    {
+      "id": "generic-vllm-tp2",
+      "path": "profiles/generic-vllm-tp2/profile.json"
+    },
+    {
+      "id": "generic-vllm-tp4",
+      "path": "profiles/generic-vllm-tp4/profile.json"
     }
   ]
 }
