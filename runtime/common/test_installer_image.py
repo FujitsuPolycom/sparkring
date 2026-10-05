@@ -279,13 +279,13 @@ def test_capability_records_name_recorded_releases_and_their_layers(tmp_path):
 def test_release_tags_name_published_installer_images():
     tags = installer_image.release_tags()
     assert tags["2026.10.0"] == "dev-20261001-kraken-cuda1342-nccl2323-status034"
+    assert tags["2026.10.1"] == "dev-20261004-kraken-cuda1342-nccl2323-status034"
     assert set(tags.values()) <= {row["name"] for row in installer_image.catalog()}
 
 
 def test_catalog_lists_the_default_first_and_only_registry_images():
     rows = installer_image.catalog()
-    # No GitHub release has published the default image yet; release 2026.10.0 published its rollback image.
-    assert rows[0]["path"] == installer_image.DEFAULT_LOCK and rows[0]["default"] and rows[0]["tags"] == []
+    assert rows[0]["path"] == installer_image.DEFAULT_LOCK and rows[0]["default"] and rows[0]["tags"] == ["2026.10.1"]
     tags = {row["name"]: row["tags"] for row in rows}
     assert tags["dev-20261001-kraken-cuda1342-nccl2323-status034"] == ["2026.10.0"]
     assert sum(row["default"] for row in rows) == 1
@@ -299,7 +299,7 @@ def test_image_names_resolve_by_release_name_tag_or_unique_part():
     assert installer_image.lock_path("2026.09.5").parent.name == "dev-20260927-mimovision-cuda1342-nccl2323-status032"
     assert installer_image.lock_path("2026.10.0").parent.name == "dev-20261001-kraken-cuda1342-nccl2323-status034"
     # The default image, however it is named, is no selection.
-    for name in ("20261004", installer_image.DEFAULT_LOCK.parent.name):
+    for name in ("2026.10.1", "20261004", installer_image.DEFAULT_LOCK.parent.name):
         assert installer_image.lock_path(name) is None
     # A part that several images share names none of them, even when one is the default.
     for shared in ("20261001", "kraken"):
