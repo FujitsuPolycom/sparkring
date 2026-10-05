@@ -380,24 +380,28 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Every installer profile runs on one shared ARM64 serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json)
+[installer image lock](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json)
 (`sparkring-installer-image/v2`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567` |
-| Tag | `dev-20261001-kraken-cuda1342-nccl2323-status034` |
-| Configuration | `sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` |
+| Tag | `dev-20261004-kraken-cuda1342-nccl2323-status034` |
+| Configuration | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Base image | `eugr/spark-vllm-b12x` nightly-20261001, `sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052` |
-| vLLM and B12X | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261001` |
+| vLLM and B12X | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
 
 The image adds two layers to that base: SparkRing's vLLM and B12X sources
 with its transports, features, SparkCache assets and runtime-status dashboard
 0.3.4, then the CUDA 13.4.2 and NCCL 2.32.3 toolchain. The
-[composition record](../../runtime/images/compositions/external-kraken-20261001/README.md)
+[composition record](../../runtime/images/compositions/external-kraken-20261004/README.md)
 lists the source commits and pinned inputs; the image's
-[publication record](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/publication.json)
-describes both layers.
+[publication record](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/publication.json)
+describes both layers. The rollback image,
+`dev-20261001-kraken-cuda1342-nccl2323-status034`, has the same base,
+integration assets and toolchain, and the vLLM and B12X sources of branches
+`sparkring/kraken-beta-20261001`; `--image 2026.10.0` selects it
+([Another image](#another-image)).
 
 `sparkring models` lists exact model/version/quantization/topology profiles,
 including guide-only ones with their guides, and marks only these as
@@ -435,7 +439,7 @@ sudo sparkring install --profile qwen38-flash-next-tp2 --image statusrows
 `NAME` is an image's full name
 (`dev-20261001-statusrows-cuda1342-nccl2323-status034`), the release tag that
 published it (`2026.10.0`), or a part of the name that only one image has
-(`kraken`, `statusrows`). `sparkring images --profile PROFILE` lists only the
+(`statusrows`, `portgid`). `sparkring images --profile PROFILE` lists only the
 images that run that profile.
 
 - The image is part of the deployment: another image installs a separate
@@ -1613,7 +1617,7 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`,
+    download-size differences. The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
     names no release it derives from, so this case does not arise for it;
   - no image it derives from: the unpacked size plus the download size plus
     8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
@@ -1665,7 +1669,7 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The serving image `dev-20261001-kraken-cuda1342-nccl2323-status034` is a
+The serving image `dev-20261004-kraken-cuda1342-nccl2323-status034` is a
 14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
 image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
 figure: the need of a Spark holding neither the image nor a checkpoint file,

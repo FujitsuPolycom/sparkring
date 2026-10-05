@@ -77,12 +77,15 @@ The installer container of every installer profile sets
 `SPARKRING_TOOL_CHOICE_CONTRACT=1` unless the profile's `environment` sets the
 variable (`installer_image.adapt`); a profile opts out with `0`. Only an image
 whose vLLM sources carry this layer's two files reads the variable. The default
-installer image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, carries
-both in its vLLM sources (SparkRing's vLLM branch
+installer image, `dev-20261004-kraken-cuda1342-nccl2323-status034`, and its
+rollback image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, carry both
+in their vLLM sources (SparkRing's vLLM branches
+[`sparkring/kraken-beta-20261004`](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261004)
+and
 [`sparkring/kraken-beta-20261001`](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261001)),
-so installer deployments apply the policy; its acceptance runs passed the
+so installer deployments apply the policy; their acceptance runs passed the
 automatic and forced tool-call checks, and the eight probe cases below were
-not repeated on it. On the published layer,
+not repeated on them. On the published layer,
 `api_probe.py` passed all eight cases (named and required, streaming and not,
 `max_tokens` 400 and 16) on MiMo-V2.6-Flash-RL (four Sparks),
 Qwen3.8-Flash-Next (two Sparks) and DeepSeek-V4.1-Flash (four Sparks); each

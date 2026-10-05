@@ -8,7 +8,7 @@
     "format": "serving-profile",
     "path": "profiles/swift15-qwen38-flash-next-tp2/config.json"
   },
-  "release": "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/release.json",
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
   "guide": "profiles/swift15-qwen38-flash-next-tp2/README.md",
   "evidence_scope": "Revision 3ff0520224f264a2d0ac4ab56ece8f2f13aadb38 of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 with the qwen38-flash-next-tp2 settings for the same Qwen4Exp architecture, except where this checkpoint's format differs: ModelOpt NVFP4 routed experts (--quantization modelopt_fp4), the 95.4 GiB BF16 PLE n-gram table read from the checkpoint files with io_uring (VLLM_PLE_TABLE_MEMORY=disk), and BF16 MTP draft experts on vLLM's unquantized MoE kernel. On installer image dev-20260927-b12xcache-cuda1342-nccl2323-status032, an installation through install.sh on one pair, adopting the checkpoint copies on the Sparks, passed 7 of 7 functional checks (counting, arithmetic, code, tool calls, image, thinking) and a 256-request correctness screen with no degenerate response, and decoded 48.5 / 191 / 262 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 3,597 tokens/s (performance/records/images/dev-20260927-b12xcache-swift15-qwen38-tp2-20260927.md). Single-run timing; not serving-qualified.",
   "overrides": [],

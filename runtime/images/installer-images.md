@@ -6,16 +6,20 @@ a builder in [builders.json](builders.json); the entry's `releases` field names
 it. The [repository layout check](../../scripts/check_repository_layout.py)
 requires a builder for every release that has an `installer-image.json` lock.
 
-The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, is built
+The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`, is built
 in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
 that [external_context.py](external_context.py) prepares from SparkRing's merges
 of Local Inference Lab's Karmic Kraken beta vLLM and B12X branches and from the
 integration assets of `dev-20261001-statusrows-cuda1342-nccl2323-status034`,
 then the CUDA 13.4.2 and NCCL 2.32.3 layer of
 [toolchain_assembly.py](toolchain_assembly.py). Its
-[composition record](compositions/external-kraken-20261001/README.md) lists the
-pinned inputs and the rebuild steps. Its `publication.json` has no
-`derivation`, so the install plan counts its whole download.
+[composition record](compositions/external-kraken-20261004/README.md) lists the
+source commits and merge decisions and refers to the rebuild steps of
+`dev-20261001-kraken-cuda1342-nccl2323-status034`
+([composition record](compositions/external-kraken-20261001/README.md)), the
+rollback image, which is built the same way from other vLLM and B12X commits.
+Neither image's `publication.json` has a `derivation`, so the install plan
+counts each one's whole download.
 
 The images of the chain below build on one another; each adds one layer to its
 parent.
@@ -73,14 +77,15 @@ window reads.
 releases whose own layer adds it and the file that describes that layer:
 `dev-20260930-spinwait-cuda1342-nccl2323-status033` through
 [derive_spin_wait.py](derive_spin_wait.py), and
-`dev-20261001-kraken-cuda1342-nccl2323-status034`, whose vLLM branch carries
-the same edit. `installer_image.capabilities` gives an image what its own
-layer adds and what every image it derives from has, following
-`derivation.parent_release` in each `publication.json`.
-`runtime/common/serving.py` `NEEDS` names the capability each setting needs;
-the installer, `sparkring compose render` and the
-[Install Builder](../../docs/operations/compose-builder.md) refuse the setting,
-or do not offer it, on an image without it. A release whose own layer adds a
+`dev-20261001-kraken-cuda1342-nccl2323-status034` and
+`dev-20261004-kraken-cuda1342-nccl2323-status034`, whose vLLM branches carry
+the same edit, through their composition records.
+`installer_image.capabilities` gives an image what its own layer adds and what
+every image it derives from has, following `derivation.parent_release` in each
+`publication.json`. `runtime/common/serving.py` `NEEDS` names the capability
+each setting needs; the installer, `sparkring compose render` and the [Install
+Builder](../../docs/operations/compose-builder.md) refuse the setting, or do
+not offer it, on an image without it. A release whose own layer adds a
 capability, such as an image built from new sources, is listed in the file.
 
 ## Derived layers

@@ -1512,7 +1512,10 @@ def test_a_named_image_installs_its_lock_and_the_default_name_installs_no_lock(m
 
     named = planned("--image", "statusrows")
     assert named == planned("--image-lock", str(RELEASES / STATUSROWS / "installer-image.json"))
-    assert planned("--image", "2026.10.0") == planned() != named
+    assert planned("--image", installer_image.DEFAULT_LOCK.parent.name) == planned() != named
+    # A release tag names the image that release published, here the rollback image of the default.
+    rollback = RELEASES / "dev-20261001-kraken-cuda1342-nccl2323-status034" / "installer-image.json"
+    assert planned("--image", "2026.10.0") == planned("--image-lock", str(rollback)) != planned()
     for options in (["--image", "nope"], ["--image", "statusrows", "--image-lock", "lock.json"]):
         with pytest.raises(SystemExit) as stopped:
             sparkring.main(["install", "--profile", PROFILE, *options, "--plan"])
