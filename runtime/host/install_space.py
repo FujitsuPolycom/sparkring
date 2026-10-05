@@ -238,6 +238,10 @@ def cache_names(card, image_id):
     configuration = qwen_flash_next.read(profiles.ROOT / card["configuration"])
     if configuration.get("checkpoints"):
         configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
+    if card.get("generic") is not None:
+        # The cache names carry the requested model's revision (runtime/common/generic_model.py).
+        from runtime.common import generic_model
+        configuration = generic_model.apply(configuration, card["generic"])
     toolchain = qwen_flash_next.image_policy(configuration)["kind"] == "toolchain"
     return storage.cache_names(configuration, image_id, toolchain=toolchain)
 

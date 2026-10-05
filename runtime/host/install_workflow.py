@@ -179,7 +179,8 @@ def resolve_placement(args, cluster, state_root):
     except ValueError as error:
         raise NeedsInput(f"{error}. Nothing has been changed.", field="placement") from None
     rows = {row["profile"]: row for row in models.catalog()}
-    nodes = (rows.get(args.profile) or {}).get("nodes") if args.profile else (2 if requested else None)
+    nodes = ((rows.get(args.profile) or {}).get("nodes") if args.profile
+             else 2 if requested else size if getattr(args, "model", None) else None)
     try:
         if requested is not None:
             return placements.check(requested, cluster_size=size, profile_nodes=nodes or 2,
@@ -386,6 +387,9 @@ def profile_arguments(card):
     configuration = profiles.read_json(installer.ROOT / card["configuration"])
     if "checkpoints" in configuration:
         configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
+    if card.get("generic") is not None:
+        from runtime.common import generic_model
+        configuration = generic_model.apply(configuration, card["generic"])
     return configuration.get("vllm_args", [])
 
 
@@ -482,7 +486,20 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     """
     count = len(placement) if placement is not None else len(cluster["plan"]["nodes"])
     interactive = not args.json and sys.stdin.isatty()
-    profile = choose_profile(args.profile, count, interactive)
+    generic = None
+    if getattr(args, "model", None):
+        # A generic request reads its model's commit and file pins from the Hub
+        # before any Spark is surveyed (runtime/common/generic_model.py).
+        from runtime.common import generic_model
+        profile = generic_model.profile_for(count)
+        try:
+            generic = generic_model.resolve(args.model, served_model_name=args.name, extra=args.vllm_args)
+        except ValueError as error:
+            raise NeedsInput(f"{error}. Nothing has been changed.", field="model") from None
+        for line in generic_model.notes(generic):
+            print(line)
+    else:
+        profile = choose_profile(args.profile, count, interactive)
     image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
     # A switch the image cannot apply, such as --save-cpu without the shared-memory
     # reader window, is refused before anything is asked or surveyed.
@@ -495,6 +512,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         card = installer.setup.selection(profile, args.checkpoint)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
+    if generic is not None:
+        from runtime.common import generic_model
+        card = generic_model.selection(card, generic)
     # A checkpoint is requested by its listed name: an alias requests the same
     # deployment as that name, and the profile's default the same as no flag.
     checkpoint = (card["target_variant"] if args.checkpoint is not None
@@ -510,6 +530,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         request["placement"] = list(placement)
     if checkpoint is not None:
         request["checkpoint"] = checkpoint
+    if generic is not None:
+        # The model's commit, served name and vLLM arguments make the deployment;
+        # its pins follow from the commit.
+        request["generic"] = {key: generic[key] for key in ("model", "served_model_name", "arguments")}
     # In a terminal without --yes, where the model's API listens is asked
     # unless the command line names the endpoint; the answers are serving
     # settings like --api-bind and --api-port.
@@ -567,6 +591,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                 operator=operator, images=images, caches=caches, relay_device=_device(directory),
                                 retained=retained, locked=locked,
                                 request={"profile": profile, "checkpoint": checkpoint, "cache_path": args.cache_path,
+                                         **({"model": f"{generic['model']['repository']}@{generic['model']['revision']}",
+                                             "name": args.name, "arguments": list(generic["arguments"])}
+                                            if generic is not None else {}),
                                          "api_address": getattr(args, "api_address", None),
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
                                          **({"placement": list(placement)} if placement is not None else {}),
@@ -582,7 +609,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
             site = _select_mesh(site, cluster, profile, mesh_hint)
         elif installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
-        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image, settings=requested)
+        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image, settings=requested,
+                              generic=generic)
     return directory, lock, plan
 
 
@@ -1175,6 +1203,15 @@ def execute(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
     parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
+    parser.add_argument("--model", metavar="OWNER/NAME[@REVISION]",
+                        help="serve a public Hugging Face model with vLLM instead of a profile, on every Spark or on "
+                             "the half --on names; arguments after -- go to vLLM")
+    parser.add_argument("--name", metavar="SERVED_NAME",
+                        help="with --model: the name the API serves the model as; default: the repository's name")
+    parser.add_argument("vllm_args", nargs="*", metavar="VLLM_ARG",
+                        help="with --model, after --: arguments for vLLM, which replace or add to SparkRing's; "
+                             "SparkRing's own options (host, port, parallel sizes, node rank, master address, model) "
+                             "are refused")
     parser.add_argument("--on", metavar="RANKS",
                         help="put a two-Spark profile on one half of a four-Spark ring: 0,1 or 2,3; without it, the "
                              "half that serves no model")
@@ -1221,6 +1258,10 @@ def main(argv=None):
                              "the model")
     serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
+    if args.model and (args.profile or args.checkpoint):
+        parser.error("--model serves a Hugging Face model in place of a profile; give --model or --profile")
+    if not args.model and (args.name or args.vllm_args):
+        parser.error("--name and vLLM arguments after -- go with --model")
     if args.events is not None and not args.events.parent.is_dir():
         parser.error(f"--events: the directory {args.events.parent} does not exist")
     if args.image is not None:

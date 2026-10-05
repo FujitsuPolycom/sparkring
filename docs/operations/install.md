@@ -92,6 +92,12 @@ A ring can also serve two two-Spark models, one on each half:
 `sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
 [Two models on one ring](install-reference.md#two-models-on-one-ring).
 
+## Any Hugging Face model
+
+`--model OWNER/NAME` serves a public Hugging Face model with vLLM in place of a
+profile; arguments after `--` go to vLLM. This is research-only:
+[any Hugging Face model](install-reference.md#any-hugging-face-model).
+
 ## Reuse a model already on disk
 
 The installer looks for the model on every Spark (Hugging Face caches and

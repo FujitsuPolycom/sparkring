@@ -22,10 +22,12 @@ EXAMPLES = ("qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", *EXAMPL
 # DeepSeek, GLM, MiMo and Swift installer profiles. Like the two Qwen installer profiles
 # they run only on the shared toolchain image of an installer image lock; see
 # installer_container for how Compose exports apply that image.
+# The generic template profiles (runtime/common/generic_model.py) serve a
+# requested Hugging Face model on the same image.
 TOOLCHAIN_TP4 = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp4",
-                 "swift15-qwen38-flash-next-tp4")
+                 "swift15-qwen38-flash-next-tp4", "generic-vllm-tp4")
 TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp2", "swift15-qwen38-flash-next-tp2",
-             *TOOLCHAIN_TP4)
+             "generic-vllm-tp2", *TOOLCHAIN_TP4)
 # Four-node profiles require each host's prepared mesh fabric reference.
 TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
 # Every supported profile has generated public examples under profiles/*/compose.
@@ -306,11 +308,12 @@ def installer_image_runtime(profile_id):
 
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
                    local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None,
-                   serving=None):
+                   serving=None, generic=None):
     """Per-rank container specifications and the image reference Compose names.
 
     ``checkpoint`` selects an entry of the profile's checkpoints table; None
-    keeps the profile's default checkpoint.
+    keeps the profile's default checkpoint. ``generic`` is the request that a
+    generic template profile serves (runtime/common/generic_model.py).
 
     ``serving`` holds runtime/common/serving.py settings, which replace the
     profile's vLLM values and set their switches' variables in every rank's
@@ -394,6 +397,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             local_kv_cache_gib=local_kv_cache_gib,
             local_master_port=local_master_port,
             checkpoint=checkpoint,
+            generic=generic,
         )
         if image_runtime is not None:
             spec = installer_container(spec, image_runtime, profile_id=profile_id,

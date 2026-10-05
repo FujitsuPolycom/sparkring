@@ -201,11 +201,20 @@ def install_command(request=None, named=(), *, ignore_local=False):
     whose plan the command repeats.
     ``api_address``, the address SparkRing shows for the model
     (``runtime.host.api_endpoint``), is repeated as ``--api-address``; it is
-    not part of the deployment's identity.
+    not part of the deployment's identity. A generic request names ``model``
+    (``OWNER/NAME@COMMIT``) in place of ``profile``, an optional served
+    ``name`` and its vLLM ``arguments``.
     """
     request = request or {}
     argv = ["sudo", "sparkring", "install"]
-    if request.get("profile"):
+    if request.get("model"):
+        # A generic deployment (runtime/common/generic_model.py) names its model
+        # at the planned commit, its served name when one was given, and its vLLM
+        # arguments after --.
+        argv += ["--model", str(request["model"])]
+        if request.get("name"):
+            argv += ["--name", str(request["name"])]
+    elif request.get("profile"):
         argv += ["--profile", str(request["profile"])]
     if request.get("placement"):
         argv += ["--on", ",".join(str(rank) for rank in request["placement"])]
@@ -232,6 +241,8 @@ def install_command(request=None, named=(), *, ignore_local=False):
         argv.append("--allow-loopback-bind")
     if ignore_local:
         argv.append("--ignore-local-copies")
+    if request.get("arguments"):
+        argv += ["--", *map(str, request["arguments"])]
     return shlex.join(argv)
 
 
@@ -773,6 +784,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if given.get("serving"):
         # Only a deployment with other serving settings than its profile's records them.
         request["serving"] = dict(given["serving"])
+    if given.get("model"):
+        # A generic deployment records its model, served name and vLLM arguments.
+        request.update(model=given["model"], name=given.get("name"), arguments=list(given.get("arguments") or ()))
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()

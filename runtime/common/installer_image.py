@@ -93,7 +93,10 @@ def validate(value, profile):
         if (not isinstance(listed, list) or not listed or listed != sorted(set(listed))
                 or not set(listed) <= set(SUPPORTED) | set(profiles.REPLACED)):
             raise ValueError("A v2 image lock lists sorted, distinct, supported installer profiles")
-        if profile not in listed:
+        # A generic template (runtime/common/generic_model.py) runs on every
+        # installer image: it needs nothing beyond the image's vLLM and transport.
+        from runtime.common import generic_model
+        if profile not in listed and not generic_model.is_generic(profile):
             raise ValueError(f"{profile} is not admitted on image lock {value['name']}")
         if any(type(value[key]) is not int or value[key] <= 0 for key in ("image_bytes", "download_bytes")):
             raise ValueError("A v2 image lock records positive image_bytes and download_bytes")

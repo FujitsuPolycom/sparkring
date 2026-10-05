@@ -2115,6 +2115,10 @@ def perform(operation, lock, number):
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
                 profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
+                if card.get("generic") is not None:
+                    # A generic deployment checks the requested model's files (runtime/common/generic_model.py).
+                    from runtime.common import generic_model
+                    profile = generic_model.apply(profile, card["generic"])
                 qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
             if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
                 from runtime.common import qwen_mesh

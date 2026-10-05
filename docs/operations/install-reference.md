@@ -1429,6 +1429,63 @@ after `docker container prune` removed them while the model was stopped, the
 deployment's next `up` installs its mesh services again for the new
 containers, in the same way.
 
+## Any Hugging Face model
+
+Status: **research-only**. No generic deployment has been run on hardware.
+
+`--model` serves a public Hugging Face model with the installer image's vLLM
+in place of an installer profile:
+
+```bash
+sudo sparkring install --model OWNER/NAME[@REVISION] [--name SERVED_NAME] [--on 0,1|2,3] -- [vLLM arguments]
+```
+
+- **Where it runs.** On a pair, on all four Sparks of a ring, or with `--on`
+  on one half of a ring. The template profile for that size,
+  `generic-vllm-tp2` or `generic-vllm-tp4`, holds SparkRing's part of the
+  command: the parallel layout, the API on port 8000 (two Sparks) or 8015
+  (four), and the fabric settings that SparkRing's installer profiles of that
+  size share. The templates run on every installer image and are not
+  installed by their own names.
+- **The model.** A public repository with safetensors weights and a
+  `model.safetensors.index.json`. `@REVISION` names a branch, tag or commit;
+  the default is the repository's default branch. Before any Spark is
+  surveyed, the plan resolves the revision to its commit and reads the size and
+  SHA-256 of every file from the Hub, without downloading weights. The
+  deployment records that file list, so the checkpoint search, the download,
+  copies over the cables and the file checks work as they do for a profile's
+  checkpoint. Gated and private repositories are refused: SparkRing sends no
+  token. A repository of more than about 200 files is refused, because every
+  Spark receives the file list in the deployment lock.
+- **The command.** The served name is the repository's name unless `--name`
+  sets another. SparkRing starts with a context of at most 32,768 tokens (the
+  model's own maximum when it is lower), 16 concurrent requests, 16 GiB of KV
+  cache per Spark, prefix caching and chunked prefill. Each argument after
+  `--` replaces the value of the same vLLM option or adds an option, for
+  example `-- --enable-auto-tool-choice --tool-call-parser hermes`. The
+  options SparkRing sets itself are refused: `--host` (use `--api-bind`),
+  `--port` (use `--api-port`), `--served-model-name` (use `--name`), the model
+  path, the parallel sizes, `--nnodes`, `--node-rank`, `--master-addr`,
+  `--master-port`, `--distributed-executor-backend` and `--headless`. A model
+  whose configuration names its own code (`auto_map`) needs
+  `--trust-remote-code`, and the plan says so.
+- **Serving settings.** `--context-length`, `--max-concurrency`,
+  `--kv-cache-gib`, `--api-port` and `--api-bind` apply as for other
+  profiles. `--kv-cache-gib` accepts at most a tenth above the KV cache the
+  command sets: 16 GiB, or the value given with `--kv-cache-memory-bytes`
+  after `--`.
+- **The deployment.** The model's commit, served name and vLLM arguments
+  make the deployment, so a change installs another deployment and the
+  previous one stays for switching back. The plan's command repeats the
+  request at its commit (`--model OWNER/NAME@COMMIT`). `sparkring status`,
+  `up`, `down`, automatic recovery and automatic release treat it like any
+  other deployment.
+- **Limits.** Whether a model serves depends on whether the image's vLLM
+  supports its architecture and quantization on GB10, and on its memory need
+  per Spark: the weights divided across the Sparks, plus the KV cache. A
+  model that fails its first start leaves the previous model running, as any
+  failed switch does.
+
 ## Two models on one ring
 
 A four-Spark ring serves one four-Spark model, or two two-Spark models: one

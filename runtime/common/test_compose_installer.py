@@ -20,7 +20,7 @@ import sys
 import pytest
 import yaml
 
-from runtime.common import compose, installer, installer_image, loader_policy
+from runtime.common import compose, generic_model, installer, installer_image, loader_policy
 from runtime.common.test_compose import compose_cli  # noqa: F401  (pytest fixture)
 
 PROFILES = installer_image.SUPPORTED
@@ -53,7 +53,8 @@ def example_site(profile):
 def test_installer_profiles_are_compose_profiles_on_the_default_lock():
     assert set(PROFILES) == set(installer.INSTALLABLE) <= set(compose.SUPPORTED)
     for profile in compose.SUPPORTED:
-        expected = installer_image.default_lock() if profile in PROFILES else None
+        # The generic templates run on every installer image (generic_model).
+        expected = installer_image.default_lock() if profile in PROFILES or generic_model.is_generic(profile) else None
         assert compose.installer_image_runtime(profile) == expected
 
 
