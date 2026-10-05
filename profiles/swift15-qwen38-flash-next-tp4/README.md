@@ -7,7 +7,11 @@ reasoning-efficient fine-tune of Qwen's
 `3ff0520224f2`) on a four-Spark ring, with MTP speculative decoding and 262K
 context. Node A serves the API on port 8015 as
 `Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP4`, with no API key. Status:
-Experimental; no GB10 serving run covers this profile.
+Experimental. On installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`, an installation on one four-Spark ring
+passed the functional checks and the correctness screen
+([record](../../performance/records/images/dev-20261004-kraken-swift15-qwen38-flash-next-tp4-20261004.md));
+decode by context and the coding peak are in the
+[matrix record](../../performance/records/images/dev-20261004-kraken-matrix-20261004.md#swift15-qwen38-flash-next-tp4).
 
 On the Spark connected to your network:
 

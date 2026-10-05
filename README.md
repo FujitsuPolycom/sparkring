@@ -42,15 +42,15 @@ More: [documentation by task](docs/README.md) ·
 
 | Model | Checkpoint | Sparks | `--profile` value | API port | Thinking | Decode at 16K context, 1 / 4 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
 |---|---|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh | 45.1 / 120 / 169 / 243 | 3,649 |
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh | 64.9 / 167 / 235 / 341 | 4,524 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 38.0 / 78 / 106 / 85\* | 2,454 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.0 / 137 / 199 / 261 | 3,610 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on | 37.5 / 78 / 115 / 184 | 2,754 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on | 47.7 / 119 / 167 / 295 | 3,959 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high | 62.2 / 135 / 206 / 278 | 4,302 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh | — | — |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh | — | — |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh | 46.5 / 119 / 165 / 230 | 3,590 |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh | 64.0 / 173 / 239 / 328 | 4,424 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 36.0 / 73 / 100 / 67\* | 2,460 |
+| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.1 / 133 / 200 / 231 | 3,500 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on | 30.2 / 76 / 120 / 182 | 2,806 |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on | 62.8 / 124 / 181 / 317 | 4,094 |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high | 57.0 / 135 / 201 / 275 | 4,396 |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh | 43.5 / 110 / 157 / 204 | 3,567 |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh | 64.7 / 161 / 232 / 340 | 4,404 |
 
 Thinking is what the model does when a request doesn't say: *on* (a request
 can turn it off) or *always*, then how hard it thinks. Requests can choose
@@ -58,24 +58,25 @@ otherwise, and `--reasoning-effort LEVEL` or `--thinking off` change the default
 for an install ([details](docs/operations/install-reference.md#thinking)).
 
 Decode is the total output rate with 1, 4, 8 and 16 users at once, each with
-16K tokens of context, averaged over three runs of
+16K tokens of context, averaged over two runs of
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
-0.6.2 at temperature 1.0. Prefill, from the same runs, is one cold 64K-token
+0.7.6 at temperature 1.0. Prefill, from the same runs, is one cold 64K-token
 prompt divided by its time to first token. \* The two-Spark GLM profile serves 8
-requests at a time, so 16 users queue. Swift hasn't been measured this way yet.
-Full results for each profile, from 8K to 128K context:
-Qwen [two](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-qwen38-flash-next-qad-tp4-context-20260929.md) Sparks,
-GLM [two](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-context-20260929.md),
-MiMo [two](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp2-context-20260929.md) and [four](performance/records/images/dev-20260928-plainstatus-mimo-v26-flash-mopd-tp4-context-20260929.md),
-DeepSeek [four](performance/records/images/dev-20260928-plainstatus-deepseek-v41-flash-tp4-context-20260929.md).
-These were measured on installer image `dev-20260928-plainstatus-cuda1342-nccl2323-status033`.
-The default image, `dev-20261001-kraken-cuda1342-nccl2323-status034`, passed
-the same functional and correctness checks with single-run throughput at no
-added context:
-Qwen [two](performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-20261001.md) Sparks,
-GLM [two](performance/records/images/dev-20261001-kraken-glm53-flash-nvfp4-spark-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-glm53-flash-nvfp4-spark-tp4-20261001.md),
-MiMo [two](performance/records/images/dev-20261001-kraken-mimo-v26-flash-mopd-tp2-20261001.md) and [four](performance/records/images/dev-20261001-kraken-mimo-v26-flash-mopd-tp4-20261001.md),
-DeepSeek [four](performance/records/images/dev-20261001-kraken-deepseek-v41-flash-tp4-20261001.md).
+requests at a time, so 16 users queue.
+Full results for each profile, from 16K to 128K context:
+Qwen [two](performance/records/images/dev-20261004-kraken-matrix-20261004.md#qwen38-flash-next-tp2) and [four](performance/records/images/dev-20261004-kraken-matrix-20261004.md#qwen38-flash-next-qad-tp4) Sparks,
+GLM [two](performance/records/images/dev-20261004-kraken-matrix-20261004.md#glm53-flash-nvfp4-spark-tp2) and [four](performance/records/images/dev-20261004-kraken-matrix-20261004.md#glm53-flash-nvfp4-spark-tp4),
+MiMo [two](performance/records/images/dev-20261004-kraken-matrix-20261004.md#mimo-v26-flash-mopd-tp2) and [four](performance/records/images/dev-20261004-kraken-matrix-20261004.md#mimo-v26-flash-mopd-tp4),
+DeepSeek [four](performance/records/images/dev-20261004-kraken-matrix-20261004.md#deepseek-v41-flash-tp4),
+Swift [two](performance/records/images/dev-20261004-kraken-matrix-20261004.md#swift15-qwen38-flash-next-tp2) and [four](performance/records/images/dev-20261004-kraken-matrix-20261004.md#swift15-qwen38-flash-next-tp4).
+These were measured on installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`,
+the default, which passed the functional and correctness checks with two-run
+throughput at no added context:
+Qwen [two](performance/records/images/dev-20261004-kraken-qwen38-flash-next-tp2-20261004.md) and [four](performance/records/images/dev-20261004-kraken-qwen38-flash-next-qad-tp4-20261004.md) Sparks,
+GLM [two](performance/records/images/dev-20261004-kraken-glm53-flash-nvfp4-spark-tp2-20261004.md) and [four](performance/records/images/dev-20261004-kraken-glm53-flash-nvfp4-spark-tp4-20261004.md),
+MiMo [two](performance/records/images/dev-20261004-kraken-mimo-v26-flash-mopd-tp2-20261004.md) and [four](performance/records/images/dev-20261004-kraken-mimo-v26-flash-mopd-tp4-20261004.md),
+DeepSeek [four](performance/records/images/dev-20261004-kraken-deepseek-v41-flash-tp4-20261004.md),
+Swift [two](performance/records/images/dev-20261004-kraken-swift15-qwen38-flash-next-tp2-20261004.md) and [four](performance/records/images/dev-20261004-kraken-swift15-qwen38-flash-next-tp4-20261004.md).
 
 Other setups, including SparkCache variants and models the installer doesn't
 cover, each have their own guide in the [profile catalog](profiles/README.md).

@@ -1,0 +1,458 @@
+SparkRing install. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: inspect hardware, links and software
+Node 1: inspect hardware, links and software
+Node 2: inspect hardware, links and software
+Node 3: inspect hardware, links and software
+Done: Node 0: inspect hardware, links and software (2.6s)
+Done: Node 1: inspect hardware, links and software (3.4s)
+Done: Node 3: inspect hardware, links and software (3.5s)
+Done: Node 2: inspect hardware, links and software (3.7s)
+Four-Spark forwarding needs the ConnectX hairpin setting (hairpin_queue_size 8192):
+  ranks 1-3: update SparkRing to 8e27a4fe9a15 first; they show hairpin_queue_size 8192, so SparkRing expects only to record it
+No driver restarts now. SparkRing records the setting and applies it at every boot
+before networking starts (about 30 seconds per boot).
+If an updated Spark then needs a driver restart, SparkRing stops and asks for it first.
+Looking for existing copies of local-inference-lab/GLM-5.3-Flash-NVFP4-Spark at a608241037e4 on 4 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
+Install glm53-flash-nvfp4-spark-tp4 on 4 Sparks.
+It stops qwen38-flash-next-qad-tp4 on all four Sparks.
+Update workers and prepare assets; then replace the current model.
+Checkpoint local-inference-lab/GLM-5.3-Flash-NVFP4-Spark at a608241037e4: 55 files, 174.8 GiB
+Searched spark-3286 in 2.7 s, spark-0a0f in 1.6 s, spark-931e in 3.0 s and spark-aa42 in 6.5 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+
+Node 0 spark-3286 -> /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
+    from /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
+        plain folder, files owned by code and root
+        9 of 55 files identified by SparkRing's earlier checksums; 46 files differ from the pinned revision
+    7 of 55 files already in place
+    hard-link 3 weight files (no copy, no extra space); copy 6 other files (20.2 MB)
+    receives 39 files (162.3 GiB) from Node 3 over the fabric
+    needs 171.0 GiB free on /: 167.0 GiB for checkpoint files, 4 GiB for the compile cache; 2606 GiB free
+Node 1 spark-0a0f -> /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
+    from /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
+        plain folder, files owned by root
+        9 of 55 files identified by SparkRing's earlier checksums; 46 files differ from the pinned revision
+    hard-link 3 weight files (no copy, no extra space); copy 6 other files (20.2 MB)
+    receives 46 files (174.7 GiB) from Node 2 over the fabric
+    needs 183.4 GiB free on /: 179.4 GiB for checkpoint files, 4 GiB for the compile cache; 2669 GiB free
+Node 2 spark-931e -> /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
+    55 of 55 files already in place
+    needs 4.0 GiB free on /: 4 GiB for the compile cache; 2072 GiB free
+Node 3 spark-aa42: as Node 2 (1887 GiB free)
+
+Also updates the recorded file identities of the retained deployments that serve the linked folder: glm53-flash-nvfp4-spark-tp2-i1e861aefcc58, glm53-flash-nvfp4-spark-tp2-i80c1b1da0dcd, glm53-flash-nvfp4-spark-tp2-ib0ec667e8912
+SparkRing checks the SHA-256 of every file before it links or copies it (about 20 s to 5 minutes per Spark); later starts compare recorded file identities and re-hash any file that changed.
+SparkRing only reads your copies and adds hard links to their weight files; it never writes, moves or deletes them.
+While this checkpoint directory exists, deleting a linked copy does not free its disk space (see sudo sparkring checkpoints).
+Nothing is downloaded.
+Update SparkRing on the Sparks that run another revision
+Refresh the package index on Node A
+Done: Refresh the package index on Node A (6.1s)
+Download worker prerequisites on Node A
+Done: Download worker prerequisites on Node A (4.1s)
+Package the installed SparkRing revision for workers
+Done: Package the installed SparkRing revision for workers (12.8s)
+Node 1: Update SparkRing from Node A's package
+Node 1: Install verified package bundle
+Still working: Update SparkRing on the Sparks that run another revision (30s)
+Done: Node 1: Install verified package bundle (9.0s)
+Done: Node 1: Update SparkRing from Node A's package (10.3s)
+Node 2: Update SparkRing from Node A's package
+Node 2: Install verified package bundle
+Done: Node 2: Install verified package bundle (9.0s)
+Done: Node 2: Update SparkRing from Node A's package (11.1s)
+Node 3: Update SparkRing from Node A's package
+Node 3: Install verified package bundle
+Done: Node 3: Install verified package bundle (9.2s)
+Done: Node 3: Update SparkRing from Node A's package (10.6s)
+Done: Update SparkRing on the Sparks that run another revision (58.8s)
+Re-inspect the ring after the ConnectX hairpin step
+Node 0: inspect hardware, links and software
+Node 1: inspect hardware, links and software
+Node 2: inspect hardware, links and software
+Node 3: inspect hardware, links and software
+Done: Node 3: inspect hardware, links and software (2.4s)
+Done: Node 2: inspect hardware, links and software (2.5s)
+Done: Node 1: inspect hardware, links and software (2.5s)
+Done: Node 0: inspect hardware, links and software (2.6s)
+Done: Re-inspect the ring after the ConnectX hairpin step (3.7s)
+Node 0: Check host before preparing assets
+Node 1: Check host before preparing assets
+Node 2: Check host before preparing assets
+Node 3: Check host before preparing assets
+Done: Node 0: Check host before preparing assets (0.5s)
+Done: Node 1: Check host before preparing assets (0.5s)
+Done: Node 3: Check host before preparing assets (0.5s)
+Done: Node 2: Check host before preparing assets (0.5s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Node 2: Copy installer source
+Node 3: Copy installer source
+Done: Node 0: Copy installer source (1.4s)
+Node 0: Verify installer source
+Done: Node 1: Copy installer source (1.4s)
+Node 1: Verify installer source
+Done: Node 3: Copy installer source (1.5s)
+Node 3: Verify installer source
+Done: Node 2: Copy installer source (1.5s)
+Node 2: Verify installer source
+Done: Node 0: Verify installer source (0.4s)
+Done: Node 3: Verify installer source (0.4s)
+Done: Node 1: Verify installer source (0.5s)
+Done: Node 2: Verify installer source (0.4s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 2: Prepare checkpoint and verify all shards
+Node 3: Prepare checkpoint and verify all shards
+Node 0: Link and verify local checkpoint files
+Node 1: Link and verify local checkpoint files
+Node 2: Link and verify local checkpoint files
+Node 3: Link and verify local checkpoint files
+Done: Node 0: Link and verify local checkpoint files (0.8s)
+Done: Node 1: Link and verify local checkpoint files (0.9s)
+Still working: Node 2: Prepare checkpoint and verify all shards (30s)
+Still working: Node 0: Prepare checkpoint and verify all shards (30s)
+Still working: Node 1: Prepare checkpoint and verify all shards (30s)
+Still working: Node 3: Prepare checkpoint and verify all shards (30s)
+Still working: Node 2: Link and verify local checkpoint files (30s)
+Still working: Node 3: Link and verify local checkpoint files (30s)
+Still working: Node 2: Prepare checkpoint and verify all shards (60s)
+Still working: Node 0: Prepare checkpoint and verify all shards (60s)
+Still working: Node 1: Prepare checkpoint and verify all shards (60s)
+Still working: Node 3: Prepare checkpoint and verify all shards (60s)
+Still working: Node 2: Link and verify local checkpoint files (60s)
+Still working: Node 3: Link and verify local checkpoint files (60s)
+Still working: Node 2: Prepare checkpoint and verify all shards (90s)
+Still working: Node 0: Prepare checkpoint and verify all shards (90s)
+Still working: Node 3: Prepare checkpoint and verify all shards (90s)
+Still working: Node 1: Prepare checkpoint and verify all shards (90s)
+Still working: Node 2: Link and verify local checkpoint files (90s)
+Still working: Node 3: Link and verify local checkpoint files (90s)
+Still working: Node 2: Prepare checkpoint and verify all shards (120s)
+Still working: Node 0: Prepare checkpoint and verify all shards (120s)
+Still working: Node 3: Prepare checkpoint and verify all shards (120s)
+Still working: Node 1: Prepare checkpoint and verify all shards (120s)
+Still working: Node 2: Link and verify local checkpoint files (120s)
+Still working: Node 3: Link and verify local checkpoint files (120s)
+Still working: Node 2: Prepare checkpoint and verify all shards (150s)
+Still working: Node 0: Prepare checkpoint and verify all shards (150s)
+Still working: Node 3: Prepare checkpoint and verify all shards (150s)
+Still working: Node 1: Prepare checkpoint and verify all shards (150s)
+Still working: Node 2: Link and verify local checkpoint files (150s)
+Still working: Node 3: Link and verify local checkpoint files (150s)
+Still working: Node 2: Prepare checkpoint and verify all shards (180s)
+Still working: Node 0: Prepare checkpoint and verify all shards (180s)
+Still working: Node 3: Prepare checkpoint and verify all shards (180s)
+Still working: Node 1: Prepare checkpoint and verify all shards (180s)
+Still working: Node 2: Link and verify local checkpoint files (180s)
+Still working: Node 3: Link and verify local checkpoint files (180s)
+Still working: Node 2: Prepare checkpoint and verify all shards (210s)
+Still working: Node 0: Prepare checkpoint and verify all shards (210s)
+Still working: Node 3: Prepare checkpoint and verify all shards (210s)
+Still working: Node 1: Prepare checkpoint and verify all shards (210s)
+Still working: Node 2: Link and verify local checkpoint files (210s)
+Still working: Node 3: Link and verify local checkpoint files (210s)
+Still working: Node 2: Prepare checkpoint and verify all shards (240s)
+Still working: Node 0: Prepare checkpoint and verify all shards (240s)
+Still working: Node 3: Prepare checkpoint and verify all shards (240s)
+Still working: Node 1: Prepare checkpoint and verify all shards (240s)
+Still working: Node 2: Link and verify local checkpoint files (240s)
+Still working: Node 3: Link and verify local checkpoint files (240s)
+Done: Node 3: Link and verify local checkpoint files (245.5s)
+Done: Node 2: Link and verify local checkpoint files (249.8s)
+Node 1: Copy checkpoint files from Node 2 over the fabric
+Still working: Node 2: Prepare checkpoint and verify all shards (270s)
+Still working: Node 0: Prepare checkpoint and verify all shards (270s)
+Still working: Node 3: Prepare checkpoint and verify all shards (270s)
+Still working: Node 1: Prepare checkpoint and verify all shards (270s)
+Still working: Node 1: Copy checkpoint files from Node 2 over the fabric (30s)
+Still working: Node 2: Prepare checkpoint and verify all shards (300s)
+Still working: Node 0: Prepare checkpoint and verify all shards (300s)
+Still working: Node 3: Prepare checkpoint and verify all shards (300s)
+Still working: Node 1: Prepare checkpoint and verify all shards (300s)
+Still working: Node 1: Copy checkpoint files from Node 2 over the fabric (60s)
+Still working: Node 2: Prepare checkpoint and verify all shards (330s)
+Still working: Node 0: Prepare checkpoint and verify all shards (330s)
+Still working: Node 3: Prepare checkpoint and verify all shards (330s)
+Still working: Node 1: Prepare checkpoint and verify all shards (330s)
+Still working: Node 1: Copy checkpoint files from Node 2 over the fabric (90s)
+Still working: Node 2: Prepare checkpoint and verify all shards (360s)
+Still working: Node 0: Prepare checkpoint and verify all shards (360s)
+Still working: Node 3: Prepare checkpoint and verify all shards (360s)
+Still working: Node 1: Prepare checkpoint and verify all shards (360s)
+Still working: Node 1: Copy checkpoint files from Node 2 over the fabric (120s)
+Still working: Node 2: Prepare checkpoint and verify all shards (390s)
+Still working: Node 0: Prepare checkpoint and verify all shards (390s)
+Still working: Node 3: Prepare checkpoint and verify all shards (390s)
+Still working: Node 1: Prepare checkpoint and verify all shards (390s)
+Done: Node 1: Copy checkpoint files from Node 2 over the fabric (147.6s)
+Node 0: Copy checkpoint files from Node 3 over the fabric
+Still working: Node 2: Prepare checkpoint and verify all shards (420s)
+Still working: Node 0: Prepare checkpoint and verify all shards (420s)
+Still working: Node 3: Prepare checkpoint and verify all shards (420s)
+Still working: Node 1: Prepare checkpoint and verify all shards (420s)
+Still working: Node 0: Copy checkpoint files from Node 3 over the fabric (30s)
+Still working: Node 2: Prepare checkpoint and verify all shards (450s)
+Still working: Node 0: Prepare checkpoint and verify all shards (450s)
+Still working: Node 3: Prepare checkpoint and verify all shards (450s)
+Still working: Node 1: Prepare checkpoint and verify all shards (450s)
+Still working: Node 0: Copy checkpoint files from Node 3 over the fabric (60s)
+Still working: Node 2: Prepare checkpoint and verify all shards (480s)
+Still working: Node 0: Prepare checkpoint and verify all shards (480s)
+Still working: Node 3: Prepare checkpoint and verify all shards (480s)
+Still working: Node 1: Prepare checkpoint and verify all shards (480s)
+Still working: Node 0: Copy checkpoint files from Node 3 over the fabric (90s)
+Still working: Node 2: Prepare checkpoint and verify all shards (510s)
+Still working: Node 0: Prepare checkpoint and verify all shards (510s)
+Still working: Node 3: Prepare checkpoint and verify all shards (510s)
+Still working: Node 1: Prepare checkpoint and verify all shards (510s)
+Still working: Node 0: Copy checkpoint files from Node 3 over the fabric (120s)
+Done: Node 0: Copy checkpoint files from Node 3 over the fabric (138.7s)
+Done: Node 0: Prepare checkpoint and verify all shards (538.7s)
+Node 0: Verify checkpoint receipt
+Done: Node 1: Prepare checkpoint and verify all shards (539.0s)
+Node 1: Verify checkpoint receipt
+Done: Node 3: Prepare checkpoint and verify all shards (539.1s)
+Node 3: Verify checkpoint receipt
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Done: Node 2: Prepare checkpoint and verify all shards (539.3s)
+Node 2: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 3: Verify checkpoint receipt (0.5s)
+Done: Node 2: Verify checkpoint receipt (0.4s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Node 2: Prepare pinned image
+Node 3: Prepare pinned image
+Done: Node 1: Prepare pinned image (17.4s)
+Node 1: Verify image
+Done: Node 0: Prepare pinned image (17.7s)
+Node 0: Verify image
+Done: Node 1: Verify image (0.5s)
+Done: Node 3: Prepare pinned image (17.9s)
+Node 3: Verify image
+Done: Node 0: Verify image (0.5s)
+Done: Node 3: Verify image (0.6s)
+Done: Node 2: Prepare pinned image (19.2s)
+Node 2: Verify image
+Done: Node 2: Verify image (0.7s)
+SparkRing retained deployment down. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: owned
+Node 1: owned
+Node 2: owned
+Node 3: owned
+Done: Node 1: owned (0.7s)
+Done: Node 3: owned (0.7s)
+Done: Node 2: owned (0.7s)
+Done: Node 0: owned (0.7s)
+Node 0: Stop model
+Node 1: Stop model
+Node 2: Stop model
+Node 3: Stop model
+Done: Node 0: Stop model (2.0s)
+Node 0: Confirm model stopped
+Done: Node 0: Confirm model stopped (0.5s)
+Done: Node 1: Stop model (12.5s)
+Node 1: Confirm model stopped
+Done: Node 3: Stop model (12.8s)
+Node 3: Confirm model stopped
+Done: Node 2: Stop model (12.9s)
+Node 2: Confirm model stopped
+Done: Node 1: Confirm model stopped (0.5s)
+Done: Node 3: Confirm model stopped (0.6s)
+Done: Node 2: Confirm model stopped (0.6s)
+Node 0: Check host and GPU availability
+Node 1: Check host and GPU availability
+Node 2: Check host and GPU availability
+Node 3: Check host and GPU availability
+Done: Node 0: Check host and GPU availability (0.5s)
+Done: Node 1: Check host and GPU availability (0.5s)
+Done: Node 3: Check host and GPU availability (0.5s)
+Done: Node 2: Check host and GPU availability (0.6s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Node 2: Copy installer source
+Node 3: Copy installer source
+Done: Node 1: Copy installer source (0.6s)
+Node 1: Verify installer source
+Done: Node 3: Copy installer source (0.7s)
+Node 3: Verify installer source
+Done: Node 0: Copy installer source (0.7s)
+Node 0: Verify installer source
+Done: Node 2: Copy installer source (0.7s)
+Node 2: Verify installer source
+Done: Node 1: Verify installer source (0.4s)
+Done: Node 3: Verify installer source (0.4s)
+Done: Node 0: Verify installer source (0.4s)
+Done: Node 2: Verify installer source (0.4s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 2: Prepare checkpoint and verify all shards
+Node 3: Prepare checkpoint and verify all shards
+Done: Node 0: Prepare checkpoint and verify all shards (0.4s)
+Node 0: Verify checkpoint receipt
+Done: Node 3: Prepare checkpoint and verify all shards (0.5s)
+Node 3: Verify checkpoint receipt
+Done: Node 1: Prepare checkpoint and verify all shards (0.5s)
+Node 1: Verify checkpoint receipt
+Done: Node 2: Prepare checkpoint and verify all shards (0.5s)
+Node 2: Verify checkpoint receipt
+Done: Node 0: Verify checkpoint receipt (0.4s)
+Done: Node 1: Verify checkpoint receipt (0.4s)
+Done: Node 3: Verify checkpoint receipt (0.5s)
+Done: Node 2: Verify checkpoint receipt (0.5s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Node 2: Prepare pinned image
+Node 3: Prepare pinned image
+Done: Node 0: Prepare pinned image (0.5s)
+Node 0: Verify image
+Done: Node 1: Prepare pinned image (0.5s)
+Node 1: Verify image
+Done: Node 2: Prepare pinned image (0.5s)
+Node 2: Verify image
+Done: Node 3: Prepare pinned image (0.5s)
+Node 3: Verify image
+Done: Node 1: Verify image (0.4s)
+Done: Node 0: Verify image (0.5s)
+Done: Node 2: Verify image (0.5s)
+Done: Node 3: Verify image (0.4s)
+Node 0: Stop the ring mesh where it must restart
+Node 1: Stop the ring mesh where it must restart
+Node 2: Stop the ring mesh where it must restart
+Node 3: Stop the ring mesh where it must restart
+Done: Node 1: Stop the ring mesh where it must restart (0.6s)
+Node 1: Check that only a healthy ring mesh runs
+Done: Node 0: Stop the ring mesh where it must restart (0.6s)
+Node 0: Check that only a healthy ring mesh runs
+Done: Node 3: Stop the ring mesh where it must restart (0.6s)
+Node 3: Check that only a healthy ring mesh runs
+Done: Node 2: Stop the ring mesh where it must restart (0.6s)
+Node 2: Check that only a healthy ring mesh runs
+Done: Node 1: Check that only a healthy ring mesh runs (0.5s)
+Done: Node 3: Check that only a healthy ring mesh runs (0.5s)
+Done: Node 2: Check that only a healthy ring mesh runs (0.5s)
+Done: Node 0: Check that only a healthy ring mesh runs (0.6s)
+Node 0: Start and check the ring mesh
+Node 1: Start and check the ring mesh
+Node 2: Start and check the ring mesh
+Node 3: Start and check the ring mesh
+Done: Node 3: Start and check the ring mesh (0.8s)
+Node 3: Check the ring mesh
+Done: Node 2: Start and check the ring mesh (0.8s)
+Node 2: Check the ring mesh
+Done: Node 1: Start and check the ring mesh (0.9s)
+Node 1: Check the ring mesh
+Done: Node 0: Start and check the ring mesh (0.9s)
+Node 0: Check the ring mesh
+Done: Node 2: Check the ring mesh (0.5s)
+Done: Node 3: Check the ring mesh (0.5s)
+Done: Node 0: Check the ring mesh (0.5s)
+Done: Node 1: Check the ring mesh (0.5s)
+Node 0: Check model and fabric
+Node 1: Check model and fabric
+Node 2: Check model and fabric
+Node 3: Check model and fabric
+Done: Node 0: Check model and fabric (0.7s)
+Done: Node 2: Check model and fabric (0.7s)
+Done: Node 3: Check model and fabric (0.7s)
+Done: Node 1: Check model and fabric (0.7s)
+Node 0: Create stopped model container
+Node 1: Create stopped model container
+Node 2: Create stopped model container
+Node 3: Create stopped model container
+Done: Node 0: Create stopped model container (0.9s)
+Node 0: Verify model container
+Done: Node 1: Create stopped model container (0.9s)
+Node 1: Verify model container
+Done: Node 2: Create stopped model container (0.9s)
+Node 2: Verify model container
+Done: Node 3: Create stopped model container (0.9s)
+Node 3: Verify model container
+Done: Node 0: Verify model container (0.6s)
+Done: Node 1: Verify model container (0.6s)
+Done: Node 2: Verify model container (0.6s)
+Done: Node 3: Verify model container (0.6s)
+Node 1: Start model
+Node 2: Start model
+Node 3: Start model
+Done: Node 1: Start model (2.5s)
+Node 1: Check model process
+Done: Node 3: Start model (2.5s)
+Node 3: Check model process
+Done: Node 2: Start model (2.7s)
+Node 2: Check model process
+Done: Node 1: Check model process (0.9s)
+Done: Node 3: Check model process (1.0s)
+Done: Node 2: Check model process (0.9s)
+Node 0: Start model
+Done: Node 0: Start model (2.4s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.8s)
+The model is loading: weights, then kernel compilation and tuning, then CUDA graph capture. A first start on new Sparks can take 10-30 minutes.
+Node 1: Wait for API readiness
+Node 0: Wait for API readiness
+Node 2: Wait for API readiness
+Node 3: Wait for API readiness
+Done: Node 1: Wait for API readiness (0.5s)
+Done: Node 3: Wait for API readiness (0.5s)
+Done: Node 2: Wait for API readiness (0.6s)
+Still working: Node 0: Wait for API readiness (30s)
+Still working: Node 0: Wait for API readiness (60s)
+Still working: Node 0: Wait for API readiness (90s)
+Still working: Node 0: Wait for API readiness (121s)
+Still working: Node 0: Wait for API readiness (151s) - compiling kernels
+Still working: Node 0: Wait for API readiness (181s) - compiling kernels
+Still working: Node 0: Wait for API readiness (212s) - compiling kernels
+Still working: Node 0: Wait for API readiness (242s) - tuning kernels
+Still working: Node 0: Wait for API readiness (272s) - compiling kernels
+Still working: Node 0: Wait for API readiness (303s) - tuning kernels
+Still working: Node 0: Wait for API readiness (333s) - compiling kernels
+Still working: Node 0: Wait for API readiness (363s) - compiling kernels
+Still working: Node 0: Wait for API readiness (394s) - compiling kernels
+Still working: Node 0: Wait for API readiness (424s) - tuning kernels
+Still working: Node 0: Wait for API readiness (454s) - compiling kernels
+Still working: Node 0: Wait for API readiness (485s) - compiling kernels
+Still working: Node 0: Wait for API readiness (515s) - compiling kernels
+Still working: Node 0: Wait for API readiness (545s) - warming up
+Still working: Node 0: Wait for API readiness (576s) - starting the API server
+Done: Node 0: Wait for API readiness (577.6s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (0.9s)
+Node 0: Confirm checkpoint unchanged during loading
+Node 1: Confirm checkpoint unchanged during loading
+Node 2: Confirm checkpoint unchanged during loading
+Node 3: Confirm checkpoint unchanged during loading
+Done: Node 0: Confirm checkpoint unchanged during loading (0.4s)
+Done: Node 1: Confirm checkpoint unchanged during loading (0.4s)
+Done: Node 2: Confirm checkpoint unchanged during loading (0.5s)
+Done: Node 3: Confirm checkpoint unchanged during loading (0.5s)
+Node 0: owned
+Done: Node 0: owned (0.6s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.5s)
+Node 1: owned
+Done: Node 1: owned (0.6s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.5s)
+Node 2: owned
+Done: Node 2: owned (0.6s)
+Node 2: Check model process
+Done: Node 2: Check model process (0.5s)
+Node 3: owned
+Done: Node 3: owned (0.6s)
+Node 3: Check model process
+Done: Node 3: Check model process (0.5s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (1.7s)
+ConnectX hairpin setting: in effect on 4 Sparks and applied at every boot.
+Model ready: http://NODE_A:8015/v1
+  Model:       GLM-5.3-Flash-NVFP4-Spark-TP4
+  API:         http://NODE_A:8015/v1
+  Dashboard:   http://NODE_A:8015/v1/sparkring/status/view
+  Try it:      curl http://NODE_A:8015/v1/chat/completions -H 'Content-Type: application/json' -d '{"model": "GLM-5.3-Flash-NVFP4-Spark-TP4", "messages": [{"role": "user", "content": "Hello"}]}'
+  Switch back: sudo sparkring install --profile qwen38-flash-next-qad-tp4 --image-lock LOCK
+  Stop:        sudo sparkring down --execute
+  Recovery:    restarts the model if a Spark stops serving; turn off: sudo sparkring recover off
+  Uninstall:   stop the model, then sudo apt remove sparkring on each Spark
