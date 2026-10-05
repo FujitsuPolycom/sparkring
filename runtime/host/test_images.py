@@ -11,7 +11,7 @@ MIMO = ("mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
 def test_images_lists_the_default_first_and_each_image_s_release_tag(capsys):
     assert images.main([]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == installer_image.DEFAULT_LOCK.parent.name + "  (default)"
+    assert lines[0] == installer_image.DEFAULT_LOCK.parent.name + "  (2026.10.1, default)"
     assert "dev-20261001-kraken-cuda1342-nccl2323-status034  (2026.10.0)" in lines
     assert lines[1].endswith("GiB download; runs every installer profile")
     mimovision = lines.index("dev-20260927-mimovision-cuda1342-nccl2323-status032  (2026.09.5)")
