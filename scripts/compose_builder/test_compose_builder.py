@@ -126,7 +126,16 @@ def test_image_catalog_lists_the_default_first_with_options_install_accepts(data
         path = installer_image.lock_path(row["option"])
         assert path is None if row["default"] else path.parent.name == row["name"]
         assert row["default"] or row["file"] == f"images/{row['name']}.json"
-    assert {row["name"]: row["option"] for row in rows}["dev-20261001-statusrows-cuda1342-nccl2323-status034"] == "statusrows"
+    # The page offers the default image and the images a release published, each by its release tag.
+    catalog = installer_image.catalog()
+    released = {name for name in installer_image.release_tags().values()
+                if set(installer_image.profiles_of(next(r for r in catalog if r["name"] == name)["lock"])) & set(export.profile_ids())}
+    assert all(row["default"] or row["tags"] for row in rows) and {row["name"] for row in rows} >= released
+    assert all(row["option"] in row["tags"] for row in rows if row["tags"])
+    # A development image stays out of the page; --image still takes its short name.
+    statusrows = "dev-20261001-statusrows-cuda1342-nccl2323-status034"
+    assert statusrows not in {row["name"] for row in rows}
+    assert export._image_option(next(r for r in catalog if r["name"] == statusrows), [r["name"] for r in catalog]) == "statusrows"
 
 
 def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, monkeypatch):

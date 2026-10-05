@@ -6,8 +6,9 @@ checkout it is built from:
 
     python scripts/generate_compose_builder.py --output DIRECTORY [--verify]
 
-The page's directory also receives images/NAME.json for every other installer
-image, which the page loads when that image is selected. --verify first
+The page's directory also receives images/NAME.json for every other image the
+page offers (export.image_catalog), which the page loads when that image is
+selected. --verify first
 compares the page's engine with compose.build under Node.js
 (scripts/compose_builder/verify.py) on every image and writes nothing if any
 case differs; the page's data records the comparison's counts.

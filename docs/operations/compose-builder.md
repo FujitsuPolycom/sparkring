@@ -39,20 +39,22 @@ page's file generator with SparkRing's own and needs Node.js
 
 ## Installer image
 
-Step 1 offers the installer images that run the profiles the layout installs,
-as [`sparkring images`](commands.md#images) lists them, the default first.
+Step 1 offers the installer images that run the profiles the layout installs:
+the default image first, then the images a SparkRing release published, named
+by their release tags. The development images that
+[`sparkring images`](commands.md#images) also lists are not offered;
+`sudo sparkring install --image NAME` still takes them.
 Another image adds `--image NAME` to every install command whose profile it
 runs, and to the `render` command in the zip's README, and the Compose files
 use that image's digest. A command whose profile the image does not run uses
 the default image, and the page says so. `NAME` is the release tag that
-published the image, such as `2026.09.5`, or the part of its name that only it
-has, such as `statusrows`
+published the image, such as `2026.09.5`
 ([another image](install-reference.md#another-image)).
 
 Step 4 offers **Save CPU between decode steps** only for a model whose image
 reads its variable, as the page's data records for each image
 ([serving settings](install-reference.md#serving-settings)). On another
-image, such as `plainstatus`, step 4 says the image can't, and the commands
+image, such as `2026.09.5`, step 4 says the image can't, and the commands
 and files leave the switch out.
 
 ## Layout

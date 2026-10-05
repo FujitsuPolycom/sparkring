@@ -438,7 +438,12 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
 
 
 def image_catalog():
-    """The installer images `sparkring images` lists, default first, with the listed profiles each runs.
+    """The installer images the page offers, default first, with the listed profiles each runs.
+
+    The page offers the default image and the images that a GitHub release
+    published (their release ``tags``, from installer-releases.json). The
+    development images that `sparkring images` also lists stay out of the page;
+    `sudo sparkring install --image NAME` still accepts them.
 
     ``option`` is the value `--image` takes: the release tag that published the
     image when there is one, else the first part of its release name that
@@ -453,7 +458,7 @@ def image_catalog():
     rows = []
     for row in catalog:
         runs = [profile_id for profile_id in installer_image.profiles_of(row["lock"]) if profile_id in listed]
-        if not runs:
+        if not runs or not (row["default"] or row["tags"]):
             continue
         rows.append({"name": row["name"], "default": row["default"], "tags": row["tags"],
                      "option": _image_option(row, names),
