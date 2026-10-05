@@ -242,11 +242,12 @@ def test_up_takes_a_named_image_only_with_an_exact_profile():
 
 def test_capabilities_follow_each_image_s_own_layer_and_its_parents():
     found = {row["name"]: installer_image.capabilities(row["name"]) for row in installer_image.catalog()}
-    # The spin-wait layer adds the shared-memory reader window, its descendants keep it, and the default
-    # image's vLLM source carries the same edit; the images before the spin-wait layer lack it.
+    # The spin-wait layer adds the shared-memory reader window, its descendants keep it, and the vLLM
+    # sources of both Karmic Kraken images carry the same edit; the images before the spin-wait layer lack it.
     assert {name for name, capabilities in found.items() if "shm_reader_window" in capabilities} == {
         "dev-20260930-spinwait-cuda1342-nccl2323-status033", "dev-20261001-portgid-cuda1342-nccl2323-status033",
-        "dev-20261001-statusrows-cuda1342-nccl2323-status034", "dev-20261001-kraken-cuda1342-nccl2323-status034"}
+        "dev-20261001-statusrows-cuda1342-nccl2323-status034", "dev-20261001-kraken-cuda1342-nccl2323-status034",
+        "dev-20261004-kraken-cuda1342-nccl2323-status034"}
     assert found[installer_image.default_lock()["name"]] == ("shm_reader_window",)
     for name in ("shared-2026.09.3", "unrecorded-release", "../escape", None):
         assert installer_image.capabilities(name) == ()
@@ -277,13 +278,16 @@ def test_capability_records_name_recorded_releases_and_their_layers(tmp_path):
 
 def test_release_tags_name_published_installer_images():
     tags = installer_image.release_tags()
-    assert tags["2026.10.0"] == installer_image.DEFAULT_LOCK.parent.name
+    assert tags["2026.10.0"] == "dev-20261001-kraken-cuda1342-nccl2323-status034"
+    assert tags["2026.10.1"] == "dev-20261004-kraken-cuda1342-nccl2323-status034"
     assert set(tags.values()) <= {row["name"] for row in installer_image.catalog()}
 
 
 def test_catalog_lists_the_default_first_and_only_registry_images():
     rows = installer_image.catalog()
-    assert rows[0]["path"] == installer_image.DEFAULT_LOCK and rows[0]["default"] and rows[0]["tags"] == ["2026.10.0"]
+    assert rows[0]["path"] == installer_image.DEFAULT_LOCK and rows[0]["default"] and rows[0]["tags"] == ["2026.10.1"]
+    tags = {row["name"]: row["tags"] for row in rows}
+    assert tags["dev-20261001-kraken-cuda1342-nccl2323-status034"] == ["2026.10.0"]
     assert sum(row["default"] for row in rows) == 1
     assert all("@sha256:" in row["lock"]["image_reference"] for row in rows)
 
@@ -293,18 +297,21 @@ def test_image_names_resolve_by_release_name_tag_or_unique_part():
     assert installer_image.lock_path("statusrows") == statusrows
     assert installer_image.lock_path(statusrows.parent.name) == statusrows
     assert installer_image.lock_path("2026.09.5").parent.name == "dev-20260927-mimovision-cuda1342-nccl2323-status032"
+    assert installer_image.lock_path("2026.10.0").parent.name == "dev-20261001-kraken-cuda1342-nccl2323-status034"
     # The default image, however it is named, is no selection.
-    for name in ("2026.10.0", "kraken", installer_image.DEFAULT_LOCK.parent.name):
+    for name in ("2026.10.1", "20261004", installer_image.DEFAULT_LOCK.parent.name):
         assert installer_image.lock_path(name) is None
-    with pytest.raises(ValueError, match="matches several images"):
-        installer_image.lock_path("20261001")
+    # A part that several images share names none of them, even when one is the default.
+    for shared in ("20261001", "kraken"):
+        with pytest.raises(ValueError, match="matches several images"):
+            installer_image.lock_path(shared)
     with pytest.raises(ValueError, match="No installer image is named status"):
         installer_image.lock_path("status")
 
 
 def test_an_image_without_the_profile_names_the_images_that_run_it():
     lock = installer.read(installer_image.lock_path("qwendecode"))
-    with pytest.raises(ValueError, match="images that run it: dev-20261001-kraken") as refused:
+    with pytest.raises(ValueError, match="images that run it: dev-20261004-kraken") as refused:
         installer_image.for_profile("deepseek-v41-flash-tp4", lock)
     assert "qwendecode" not in str(refused.value).split("images that run it:")[1]
 

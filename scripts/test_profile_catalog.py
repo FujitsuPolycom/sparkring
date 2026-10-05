@@ -165,7 +165,7 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
                     'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
                     'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
     # A stale cell is rewritten; the hand-maintained cells stay as written.
-    stale = text.replace('| 8000 | on · xhigh | 45.1', '| 8000 | off | 45.1')
+    stale = text.replace('`qwen38-flash-next-tp2` | 8000 | on · xhigh |', '`qwen38-flash-next-tp2` | 8000 | off |')
     assert stale != text and thinking_column(stale) == text
     with pytest.raises(ValueError, match='requires a Thinking column'):
         thinking_column(text.replace('| API port | Thinking |', '| API port | Effort |'))

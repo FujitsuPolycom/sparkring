@@ -14,7 +14,8 @@
       "reason": "Bind the recorded prebuilt CUDA 13.4.2 toolkit stage and NCCL 2.32.3 library to a software-layer parent and seal the toolchain receipt; preparation does not invoke Docker.",
       "releases": [
         "dev-20260924-cuda1342-nccl2323-status031",
-        "dev-20261001-kraken-cuda1342-nccl2323-status034"
+        "dev-20261001-kraken-cuda1342-nccl2323-status034",
+        "dev-20261004-kraken-cuda1342-nccl2323-status034"
       ]
     },
     {

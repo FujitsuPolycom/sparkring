@@ -1,12 +1,16 @@
 # Reconciled B12X tuning selections on multi-rank starts
 
 Status: **implemented**. Installer image
-`dev-20261001-kraken-cuda1342-nccl2323-status034`, which every installer
-profile runs, implements the same condition in B12X itself: its
-`b12x/preparation/session.py`, from SparkRing's B12X branch
+`dev-20261004-kraken-cuda1342-nccl2323-status034`, which every installer
+profile runs, and its rollback image,
+`dev-20261001-kraken-cuda1342-nccl2323-status034`, implement the same
+condition in B12X itself: their `b12x/preparation/session.py`, from SparkRing's
+B12X branches
+[`sparkring/kraken-beta-20261004`](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261004)
+and
 [`sparkring/kraken-beta-20261001`](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261001),
 skips a selection-cache hit only while `_tuning_cache_synchronized` is false.
-This integration does not install on that image, because its pinned
+This integration does not install on those images, because its pinned
 `session.py` digest differs. Installer images derived from
 `dev-20260927-b12xcache-cuda1342-nccl2323-status032` carry this integration.
 

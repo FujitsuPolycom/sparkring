@@ -49,7 +49,14 @@ keeps the table in GPU memory.
 
 ## Performance
 
-One pair ([record](../../performance/records/images/dev-20260927-h2dstaging-swift15-qwen38-tp2-20260927.md)).
+On installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`, an installation on two Sparks of a four-Spark ring
+passed the functional checks and the correctness screen
+([record](../../performance/records/images/dev-20261004-kraken-swift15-qwen38-flash-next-tp2-20261004.md));
+decode by context and the coding peak are in the
+[matrix record](../../performance/records/images/dev-20261004-kraken-matrix-20261004.md#swift15-qwen38-flash-next-tp2).
+
+On installer image `dev-20260927-h2dstaging-cuda1342-nccl2323-status031`, one
+pair ([record](../../performance/records/images/dev-20260927-h2dstaging-swift15-qwen38-tp2-20260927.md)).
 Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench),
 temperature 1.0), total tokens/s across streams:
 

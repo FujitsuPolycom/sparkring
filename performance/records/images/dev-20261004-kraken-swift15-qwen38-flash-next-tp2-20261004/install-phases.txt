@@ -1,0 +1,415 @@
+SparkRing install. Progress: /var/log/sparkring/install.log
+Follow from another terminal: sudo sparkring logs --follow
+Node 0: inspect hardware, links and software
+Node 1: inspect hardware, links and software
+Node 2: inspect hardware, links and software
+Node 3: inspect hardware, links and software
+Done: Node 0: inspect hardware, links and software (2.6s)
+Done: Node 3: inspect hardware, links and software (3.2s)
+Done: Node 2: inspect hardware, links and software (3.3s)
+Done: Node 1: inspect hardware, links and software (3.8s)
+Looking for existing copies of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2 on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
+Install swift15-qwen38-flash-next-tp2 on Sparks 2 and 3 (spark-931e, spark-aa42). The checkpoint plan and the model steps call them Node 0 and Node 1.
+It stops deepseek-v41-flash-tp4 on all four Sparks.
+Update workers and prepare assets; then replace the current model.
+Checkpoint ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2: 95 files, 173.7 GiB
+Searched spark-931e in 3.3 s and spark-aa42 in 5.0 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+
+Node 0 spark-931e: no copy found (searched 122,846 folder entries in 3.3 s)
+    downloads 95 files (173.7 GiB) from huggingface.co; needs 185.7 GiB free on /: 181.7 GiB for checkpoint files, 4 GiB for the compile cache; 2071 GiB free
+Node 1 spark-aa42: no copy found (searched 195,288 folder entries in 5.0 s)
+    95 files (173.7 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 185.7 GiB free on /: 181.7 GiB for checkpoint files, 4 GiB for the compile cache; 1887 GiB free
+
+No Spark holds the checkpoint: Node 0 downloads it once from huggingface.co (173.7 GiB) and copies it to the other Sparks over the fabric.
+Downloads 173.7 GiB from huggingface.co on Node 0.
+Node 0: Check host before preparing assets
+Node 1: Check host before preparing assets
+Done: Node 1: Check host before preparing assets (0.5s)
+Done: Node 0: Check host before preparing assets (0.7s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 1: Copy installer source (1.5s)
+Node 1: Verify installer source
+Done: Node 0: Copy installer source (1.6s)
+Node 0: Verify installer source
+Done: Node 1: Verify installer source (0.5s)
+Done: Node 0: Verify installer source (0.5s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 0: Prepare SparkRing's checkpoint directory
+Node 1: Prepare SparkRing's checkpoint directory
+Done: Node 1: Prepare SparkRing's checkpoint directory (0.5s)
+Done: Node 0: Prepare SparkRing's checkpoint directory (0.5s)
+Node 0: Download missing checkpoint files from huggingface.co
+Still working: Node 0: Prepare checkpoint and verify all shards (30s)
+Still working: Node 1: Prepare checkpoint and verify all shards (30s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (30s)
+Still working: Node 0: Prepare checkpoint and verify all shards (60s)
+Still working: Node 1: Prepare checkpoint and verify all shards (60s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (60s)
+Still working: Node 0: Prepare checkpoint and verify all shards (90s)
+Still working: Node 1: Prepare checkpoint and verify all shards (90s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (90s)
+Still working: Node 0: Prepare checkpoint and verify all shards (120s)
+Still working: Node 1: Prepare checkpoint and verify all shards (120s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (120s)
+Still working: Node 0: Prepare checkpoint and verify all shards (150s)
+Still working: Node 1: Prepare checkpoint and verify all shards (150s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (150s)
+Still working: Node 0: Prepare checkpoint and verify all shards (180s)
+Still working: Node 1: Prepare checkpoint and verify all shards (180s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (180s)
+Still working: Node 0: Prepare checkpoint and verify all shards (210s)
+Still working: Node 1: Prepare checkpoint and verify all shards (210s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (210s)
+Still working: Node 0: Prepare checkpoint and verify all shards (240s)
+Still working: Node 1: Prepare checkpoint and verify all shards (240s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (240s)
+Still working: Node 0: Prepare checkpoint and verify all shards (270s)
+Still working: Node 1: Prepare checkpoint and verify all shards (270s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (270s)
+Still working: Node 0: Prepare checkpoint and verify all shards (300s)
+Still working: Node 1: Prepare checkpoint and verify all shards (300s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (300s)
+Still working: Node 0: Prepare checkpoint and verify all shards (330s)
+Still working: Node 1: Prepare checkpoint and verify all shards (330s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (330s)
+Still working: Node 0: Prepare checkpoint and verify all shards (360s)
+Still working: Node 1: Prepare checkpoint and verify all shards (360s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (360s)
+Still working: Node 0: Prepare checkpoint and verify all shards (390s)
+Still working: Node 1: Prepare checkpoint and verify all shards (390s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (390s)
+Still working: Node 0: Prepare checkpoint and verify all shards (420s)
+Still working: Node 1: Prepare checkpoint and verify all shards (420s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (420s)
+Still working: Node 0: Prepare checkpoint and verify all shards (450s)
+Still working: Node 1: Prepare checkpoint and verify all shards (450s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (450s)
+Still working: Node 0: Prepare checkpoint and verify all shards (480s)
+Still working: Node 1: Prepare checkpoint and verify all shards (480s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (480s)
+Still working: Node 0: Prepare checkpoint and verify all shards (510s)
+Still working: Node 1: Prepare checkpoint and verify all shards (510s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (510s)
+Still working: Node 0: Prepare checkpoint and verify all shards (540s)
+Still working: Node 1: Prepare checkpoint and verify all shards (540s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (540s)
+Still working: Node 0: Prepare checkpoint and verify all shards (570s)
+Still working: Node 1: Prepare checkpoint and verify all shards (570s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (570s)
+Still working: Node 0: Prepare checkpoint and verify all shards (600s)
+Still working: Node 1: Prepare checkpoint and verify all shards (600s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (600s)
+Still working: Node 0: Prepare checkpoint and verify all shards (630s)
+Still working: Node 1: Prepare checkpoint and verify all shards (630s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (630s)
+Still working: Node 0: Prepare checkpoint and verify all shards (660s)
+Still working: Node 1: Prepare checkpoint and verify all shards (660s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (660s)
+Still working: Node 0: Prepare checkpoint and verify all shards (690s)
+Still working: Node 1: Prepare checkpoint and verify all shards (690s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (690s)
+Still working: Node 0: Prepare checkpoint and verify all shards (720s)
+Still working: Node 1: Prepare checkpoint and verify all shards (720s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (720s)
+Still working: Node 0: Prepare checkpoint and verify all shards (750s)
+Still working: Node 1: Prepare checkpoint and verify all shards (750s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (750s)
+Still working: Node 0: Prepare checkpoint and verify all shards (780s)
+Still working: Node 1: Prepare checkpoint and verify all shards (780s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (780s)
+Still working: Node 0: Prepare checkpoint and verify all shards (810s)
+Still working: Node 1: Prepare checkpoint and verify all shards (810s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (810s)
+Still working: Node 0: Prepare checkpoint and verify all shards (840s)
+Still working: Node 1: Prepare checkpoint and verify all shards (840s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (840s)
+Still working: Node 0: Prepare checkpoint and verify all shards (870s)
+Still working: Node 1: Prepare checkpoint and verify all shards (870s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (870s)
+Still working: Node 0: Prepare checkpoint and verify all shards (900s)
+Still working: Node 1: Prepare checkpoint and verify all shards (900s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (900s)
+Still working: Node 0: Prepare checkpoint and verify all shards (930s)
+Still working: Node 1: Prepare checkpoint and verify all shards (930s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (930s)
+Still working: Node 1: Prepare checkpoint and verify all shards (960s)
+Still working: Node 0: Prepare checkpoint and verify all shards (960s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (960s)
+Still working: Node 1: Prepare checkpoint and verify all shards (990s)
+Still working: Node 0: Prepare checkpoint and verify all shards (990s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (990s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1020s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1020s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1020s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1050s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1050s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1050s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1080s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1080s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1080s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1110s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1110s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1110s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1140s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1140s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1140s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1170s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1170s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1170s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1200s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1200s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1200s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1230s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1230s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1230s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1260s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1260s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1260s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1290s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1290s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1290s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1320s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1320s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1320s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1350s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1350s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1350s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1380s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1380s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1380s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1410s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1410s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1410s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1440s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1440s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1440s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1470s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1470s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1470s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1500s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1500s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1500s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1530s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1530s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1530s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1560s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1560s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1560s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1590s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1590s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1590s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1620s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1620s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1620s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1650s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1650s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1650s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1680s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1680s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1680s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1710s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1710s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1710s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1740s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1740s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1740s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1770s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1770s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1770s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1800s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1800s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1800s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1830s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1830s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1830s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1860s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1860s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1860s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1890s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1890s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1890s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1920s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1920s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1920s)
+Still working: Node 1: Prepare checkpoint and verify all shards (1950s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1950s)
+Still working: Node 0: Download missing checkpoint files from huggingface.co (1950s)
+Done: Node 0: Download missing checkpoint files from huggingface.co (1975.0s)
+Node 1: Copy checkpoint files from Node 0 over the fabric
+Still working: Node 1: Prepare checkpoint and verify all shards (1980s)
+Still working: Node 0: Prepare checkpoint and verify all shards (1980s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (30s)
+Still working: Node 1: Prepare checkpoint and verify all shards (2010s)
+Still working: Node 0: Prepare checkpoint and verify all shards (2010s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (60s)
+Still working: Node 1: Prepare checkpoint and verify all shards (2040s)
+Still working: Node 0: Prepare checkpoint and verify all shards (2040s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (90s)
+Still working: Node 1: Prepare checkpoint and verify all shards (2070s)
+Still working: Node 0: Prepare checkpoint and verify all shards (2070s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (120s)
+Still working: Node 1: Prepare checkpoint and verify all shards (2100s)
+Still working: Node 0: Prepare checkpoint and verify all shards (2100s)
+Still working: Node 1: Copy checkpoint files from Node 0 over the fabric (150s)
+Still working: Node 1: Prepare checkpoint and verify all shards (2130s)
+Still working: Node 0: Prepare checkpoint and verify all shards (2130s)
+Done: Node 1: Copy checkpoint files from Node 0 over the fabric (158.9s)
+Done: Node 1: Prepare checkpoint and verify all shards (2134.9s)
+Node 1: Verify checkpoint receipt
+Done: Node 0: Prepare checkpoint and verify all shards (2135.3s)
+Node 0: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.5s)
+Done: Node 0: Verify checkpoint receipt (0.5s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 0: Prepare pinned image (19.8s)
+Node 0: Verify image
+Done: Node 1: Prepare pinned image (20.4s)
+Node 1: Verify image
+Done: Node 0: Verify image (0.7s)
+Done: Node 1: Verify image (0.5s)
+Node 0: owned
+Node 1: owned
+Node 2: owned
+Node 3: owned
+Done: Node 2: owned (0.7s)
+Done: Node 3: owned (0.7s)
+Done: Node 0: owned (0.8s)
+Done: Node 1: owned (1.1s)
+Node 0: Stop model
+Node 1: Stop model
+Node 2: Stop model
+Node 3: Stop model
+Done: Node 0: Stop model (2.5s)
+Node 0: Confirm model stopped
+Done: Node 0: Confirm model stopped (0.5s)
+Done: Node 1: Stop model (12.7s)
+Node 1: Confirm model stopped
+Done: Node 1: Confirm model stopped (0.5s)
+Done: Node 3: Stop model (15.8s)
+Node 3: Confirm model stopped
+Done: Node 2: Stop model (15.8s)
+Node 2: Confirm model stopped
+Done: Node 3: Confirm model stopped (0.6s)
+Done: Node 2: Confirm model stopped (0.6s)
+Stop and disable the four-Spark mesh on every Spark
+Done: Stop and disable the four-Spark mesh on every Spark (1.3s)
+Node 0: Check host and GPU availability
+Node 1: Check host and GPU availability
+Done: Node 1: Check host and GPU availability (0.5s)
+Done: Node 0: Check host and GPU availability (0.6s)
+Node 0: Copy installer source
+Node 1: Copy installer source
+Done: Node 1: Copy installer source (0.6s)
+Node 1: Verify installer source
+Done: Node 1: Verify installer source (0.4s)
+Done: Node 0: Copy installer source (1.0s)
+Node 0: Verify installer source
+Done: Node 0: Verify installer source (0.4s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Done: Node 1: Prepare checkpoint and verify all shards (0.5s)
+Node 1: Verify checkpoint receipt
+Done: Node 0: Prepare checkpoint and verify all shards (0.5s)
+Node 0: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.5s)
+Done: Node 0: Verify checkpoint receipt (0.5s)
+Node 0: Prepare pinned image
+Node 1: Prepare pinned image
+Done: Node 1: Prepare pinned image (0.5s)
+Node 1: Verify image
+Done: Node 1: Verify image (9.0s)
+Done: Node 0: Prepare pinned image (9.6s)
+Node 0: Verify image
+Done: Node 0: Verify image (0.5s)
+Node 0: Stop and disable the four-Spark mesh
+Node 1: Stop and disable the four-Spark mesh
+Done: Node 1: Stop and disable the four-Spark mesh (0.5s)
+Node 1: Check that no four-Spark mesh runs
+Done: Node 0: Stop and disable the four-Spark mesh (0.5s)
+Node 0: Check that no four-Spark mesh runs
+Done: Node 1: Check that no four-Spark mesh runs (0.5s)
+Done: Node 0: Check that no four-Spark mesh runs (0.5s)
+Node 0: Restore fabric addresses in RoCE GID index 3
+Node 1: Restore fabric addresses in RoCE GID index 3
+Done: Node 1: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 1: Check RoCE GID index 3
+Done: Node 0: Restore fabric addresses in RoCE GID index 3 (0.5s)
+Node 0: Check RoCE GID index 3
+Done: Node 1: Check RoCE GID index 3 (0.4s)
+Done: Node 0: Check RoCE GID index 3 (0.5s)
+Node 0: Check model and fabric
+Node 1: Check model and fabric
+Done: Node 1: Check model and fabric (0.6s)
+Done: Node 0: Check model and fabric (0.7s)
+Node 0: Create stopped model container
+Node 1: Create stopped model container
+Done: Node 1: Create stopped model container (0.9s)
+Node 1: Verify model container
+Done: Node 0: Create stopped model container (0.9s)
+Node 0: Verify model container
+Done: Node 0: Verify model container (0.6s)
+Done: Node 1: Verify model container (0.8s)
+Node 1: Start model
+Done: Node 1: Start model (1.9s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.9s)
+Node 0: Start model
+Done: Node 0: Start model (2.5s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.9s)
+The model is loading: weights, then kernel compilation and tuning, then CUDA graph capture. A first start on new Sparks can take 10-30 minutes.
+Node 1: Wait for API readiness
+Node 0: Wait for API readiness
+Done: Node 1: Wait for API readiness (0.5s)
+Still working: Node 0: Wait for API readiness (30s)
+Still working: Node 0: Wait for API readiness (60s)
+Still working: Node 0: Wait for API readiness (91s)
+Still working: Node 0: Wait for API readiness (121s)
+Still working: Node 0: Wait for API readiness (152s) - weights loaded
+Still working: Node 0: Wait for API readiness (182s) - tuning kernels
+Still working: Node 0: Wait for API readiness (212s) - compiling kernels
+Still working: Node 0: Wait for API readiness (243s) - tuning kernels
+Still working: Node 0: Wait for API readiness (273s) - compiling kernels
+Still working: Node 0: Wait for API readiness (304s) - compiling kernels
+Still working: Node 0: Wait for API readiness (334s) - compiling kernels
+Still working: Node 0: Wait for API readiness (365s) - compiling kernels
+Still working: Node 0: Wait for API readiness (395s) - compiling kernels
+Still working: Node 0: Wait for API readiness (426s) - compiling kernels
+Still working: Node 0: Wait for API readiness (456s) - compiling kernels
+Still working: Node 0: Wait for API readiness (487s) - compiling kernels
+Still working: Node 0: Wait for API readiness (517s) - compiling kernels
+Still working: Node 0: Wait for API readiness (548s) - compiling kernels
+Still working: Node 0: Wait for API readiness (578s) - compiling kernels
+Still working: Node 0: Wait for API readiness (609s) - capturing CUDA graphs (18/18)
+Done: Node 0: Wait for API readiness (626.2s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (0.8s)
+Node 0: Confirm checkpoint unchanged during loading
+Node 1: Confirm checkpoint unchanged during loading
+Done: Node 1: Confirm checkpoint unchanged during loading (0.5s)
+Done: Node 0: Confirm checkpoint unchanged during loading (0.5s)
+Node 0: owned
+Done: Node 0: owned (0.6s)
+Node 0: Check model process
+Done: Node 0: Check model process (0.6s)
+Node 1: owned
+Done: Node 1: owned (0.5s)
+Node 1: Check model process
+Done: Node 1: Check model process (0.5s)
+Node 0: Test a short model response
+Done: Node 0: Test a short model response (0.7s)
+Release what older deployments hold on the Sparks
+Done: Release what older deployments hold on the Sparks (0.6s)
+Released 1 older deployment's containers, workspaces and caches: 1.9 GiB
+Model ready: http://NODE_A:8000/v1
+  Model:       Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP2
+  API:         http://NODE_A:8000/v1
+  Dashboard:   http://NODE_A:8000/v1/sparkring/status/view
+  Try it:      curl http://NODE_A:8000/v1/chat/completions -H 'Content-Type: application/json' -d '{"model": "Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP2", "messages": [{"role": "user", "content": "Hello"}]}'
+  Switch back: sudo sparkring install --profile deepseek-v41-flash-tp4 --image-lock LOCK
+  Stop:        sudo sparkring down --on 2,3 --execute
+  Recovery:    restarts the model if a Spark stops serving; turn off: sudo sparkring recover off
+  Uninstall:   stop the model, then sudo apt remove sparkring on each Spark

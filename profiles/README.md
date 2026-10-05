@@ -16,7 +16,7 @@ NVIDIA and Local Inference Lab NVFP4 QAD checkpoints with `--checkpoint`
 ([names and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
-runs on image `dev-20261001-kraken-cuda1342-nccl2323-status034`
+runs on image `dev-20261004-kraken-cuda1342-nccl2323-status034`
 ([Install SparkRing](../docs/operations/install.md)). Their KV links point to
 the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
 whose figures were measured on the shared-2026.09.3 image with checkpoint step

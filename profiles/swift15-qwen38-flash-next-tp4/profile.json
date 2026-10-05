@@ -8,9 +8,9 @@
     "format": "serving-profile",
     "path": "profiles/swift15-qwen38-flash-next-tp4/config.json"
   },
-  "release": "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/release.json",
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
   "guide": "profiles/swift15-qwen38-flash-next-tp4/README.md",
-  "evidence_scope": "Revision 3ff0520224f264a2d0ac4ab56ece8f2f13aadb38 of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 with the qwen38-flash-next-qad-tp4 settings for the same Qwen4Exp architecture, except where this checkpoint's format differs: ModelOpt NVFP4 routed experts (--quantization modelopt_fp4), the BF16 PLE n-gram table resident in GPU memory (VLLM_PLE_CPU_OFFLOAD=0, 23.8 GiB per rank), and BF16 MTP draft experts on vLLM's unquantized MoE kernel. No GB10 serving run covers this profile; only CPU configuration, rendering and checkpoint-pin checks do.",
+  "evidence_scope": "Revision 3ff0520224f264a2d0ac4ab56ece8f2f13aadb38 of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 with the qwen38-flash-next-qad-tp4 settings for the same Qwen4Exp architecture, except where this checkpoint's format differs: ModelOpt NVFP4 routed experts (--quantization modelopt_fp4), the BF16 PLE n-gram table resident in GPU memory (VLLM_PLE_CPU_OFFLOAD=0, 23.8 GiB per rank), and BF16 MTP draft experts on vLLM's unquantized MoE kernel. On installer image dev-20261004-kraken-cuda1342-nccl2323-status034, an installation through install.sh on one four-Spark ring passed 7 of 7 functional checks and a 256-request correctness screen with no degenerate or failed response, and decoded 74.1 / 276 / 402 tokens/s at 1 / 8 / 16 streams at temperature 1.0 with 64K-token prefill at 4,582 tokens/s, medians of two runs, the 1-stream rate from one (performance/records/images/dev-20261004-kraken-swift15-qwen38-flash-next-tp4-20261004.md). Not serving-qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",

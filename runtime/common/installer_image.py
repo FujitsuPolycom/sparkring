@@ -36,7 +36,7 @@ SCHEMA_V1 = "sparkring-installer-image/v1"
 SCHEMA = "sparkring-installer-image/v2"
 # The release whose image every installer profile uses unless an operator
 # supplies an explicit development lock.
-DEFAULT_LOCK = ROOT / "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json"
+DEFAULT_LOCK = ROOT / "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json"
 RELEASES = ROOT / "runtime/releases"
 # GitHub release tag -> the installer image release that release published, so
 # that `--image 2026.10.0` selects the image its release notes name.
@@ -220,8 +220,8 @@ def lock_path(name):
     ``name`` is an image's release name
     (``dev-20261001-kraken-cuda1342-nccl2323-status034``), the GitHub release
     tag that published it (``2026.10.0``), or a part of a release name between
-    hyphens that only one image has (``kraken``). Selecting the default image
-    returns None, so the request equals one without a selection.
+    hyphens that only one image has (``statusrows``). Selecting the default
+    image returns None, so the request equals one without a selection.
     """
     rows = catalog()
     by_name = {row["name"]: row for row in rows}

@@ -7,7 +7,7 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:b01442df4e1496bea2f1339feb629eb61dc8175700c82b0e26abbcebd5b49567` | `sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84` |
+| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -15,20 +15,28 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20261001-kraken-cuda1342-nccl2323-status034`.
-The download is 14.2 GiB and the unpacked image 29.7 GiB.
+Development image, tag `dev-20261004-kraken-cuda1342-nccl2323-status034`.
+The download is 14.2 GiB and the unpacked image 29.7 GiB. It shares 32 of its
+45 registry layers with `dev-20261001-kraken-cuda1342-nccl2323-status034`, so
+a Spark that holds that image downloads the other 13, about 3.8 GiB.
 
-- The [installer image lock](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/installer-image.json)
+- The [installer image lock](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json)
   lists the nine profiles and pins the image's identity.
-- The [publication record](../../runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/publication.json)
+- The [publication record](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/publication.json)
   names the base image and the two layers.
-- The [composition record](../../runtime/images/compositions/external-kraken-20261001/README.md)
-  lists the source commits and pinned build inputs.
+- The [composition record](../../runtime/images/compositions/external-kraken-20261004/README.md)
+  lists the source commits, the merge decisions and the pinned build inputs.
+
+`dev-20261001-kraken-cuda1342-nccl2323-status034`, built the same way from
+SparkRing's `sparkring/kraken-beta-20261001` branches
+([composition record](../../runtime/images/compositions/external-kraken-20261001/README.md)),
+is the rollback image: `sudo sparkring install --profile PROFILE --image 2026.10.0`
+installs a profile on it ([Another image](install-reference.md#another-image)).
 
 | Component | Purpose |
 |---|---|
 | `eugr/spark-vllm-b12x` nightly-20261001 base | Torch 2.13.0 for CUDA 13.0, FlashInfer 0.7.1 and vLLM's compiled extensions, built for GB10 (SM121a) |
-| vLLM and [B12X](https://github.com/local-inference-lab/b12x) sources | Local Inference Lab's Karmic Kraken beta branches (`integration/karmic-kraken-beta`) merged with SparkRing's changes: branches `sparkring/kraken-beta-20261001` of [FujitsuPolycom/vllm](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261001) and [FujitsuPolycom/b12x](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261001) |
+| vLLM and [B12X](https://github.com/local-inference-lab/b12x) sources | Local Inference Lab's Karmic Kraken beta branches (`integration/karmic-kraken-beta`) merged with SparkRing's changes: branches `sparkring/kraken-beta-20261004` of [FujitsuPolycom/vllm](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261004) and [FujitsuPolycom/b12x](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261004) |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
 | Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives; a send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
 | RoCE GID index per port | Each HCA uses the RoCE GID index of its fabric address, read at startup. NCCL still uses index 3, which the installer restores before a model starts ([RoCE GID index 3](install-reference.md#roce-gid-index-3)). Ranks of images with proxy ABI 5 and 6 refuse to connect, so all Sparks must run the same image ([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)) |
