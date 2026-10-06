@@ -1,9 +1,18 @@
 # Optional shared-memory reader spin interval
 
-Status: **research-only**. This build-time source patch exposes
-`SPARKRING_SHM_BUSY_LOOP_S` for controlled vLLM IPC experiments. It retains the
-one-second default. No published image, profile default or running deployment
-is changed by this directory.
+Status: the reader window is **implemented** in installer images, where
+`sparkring install --save-cpu` selects it. This directory's source patch,
+probe and preflight are **research-only** tools for controlled vLLM IPC
+experiments; no published image is built with them.
+
+| Path | What reads `SPARKRING_SHM_BUSY_LOOP_S` | Value handling | Status |
+|---|---|---|---|
+| Installer images listed in [installer-capabilities.json](../../../runtime/releases/installer-capabilities.json) (`shm_reader_window`) | A layer from [derive_spin_wait.py](../../../runtime/images/derive_spin_wait.py), or the image's vLLM branch carrying the same edit | `float()` of the variable, no range check; `--save-cpu` sets `0.002` | implemented |
+| An image derived with this directory's [apply.py](apply.py) | The patched constructor for the two sources in [sources.json](sources.json) | Finite, 0 to 1 second; anything else is rejected | research-only |
+
+In both, an unset variable keeps vLLM's one-second window, so the default is
+unchanged. The installer refuses `--save-cpu` on an image without the window
+([serving settings](../../../docs/operations/install-reference.md#serving-settings)).
 
 vLLM's `SpinCondition` repeatedly yields the CPU while waiting for a shared
 memory message, until its inactivity interval expires. It then waits for a
@@ -11,12 +20,19 @@ ZeroMQ notification. Shortening this interval can reduce CPU time between
 messages while increasing notification latency. It is independent of NCCL,
 RoCEnante and GPU collective routing.
 
-The [CPU measurement](../../../performance/records/transport/ipc-wait-linux-cpu-20260917.md)
-compares one second with two milliseconds using the actual class, separate
-processes and real IPC sockets. It supports a hardware experiment; it does not
-establish GB10 power savings, model performance or serving reliability.
-The originating [issue #189](https://github.com/FujitsuPolycom/sparkring/issues/189)
-proposes a default change; this patch deliberately leaves that decision pending.
+Evidence:
+
+- The [CPU measurement](../../../performance/records/transport/ipc-wait-linux-cpu-20260917.md)
+  compares one second with two milliseconds using the actual class, separate
+  processes and real IPC sockets. It does not establish GB10 power savings,
+  model performance or serving reliability.
+- The [two-Spark measurement](../../../performance/records/qwen38-flash-next/shm-spin-window-20260930.md)
+  of `--save-cpu` on `qwen38-flash-next-tp2` freed about 1.7 CPU cores on
+  Node A while decoding and lowered decode steps per second by about 1% with
+  one request and 2% with eight. It covers one profile on one installer image.
+- [Issue #189](https://github.com/FujitsuPolycom/sparkring/issues/189), which
+  proposed a two-millisecond default, is closed. The default remains one
+  second; the shorter window is opt-in.
 
 ## Source contract and selection
 
@@ -67,11 +83,11 @@ parent identity, patch source and installed output; do not relabel the result
 with the parent's image or source attestation. A source verifier that rejects
 the altered module needs a separately reviewed derivative contract.
 
-For a temporary test deployment, pass `SPARKRING_SHM_BUSY_LOOP_S=0.002` to each
-relevant process. Omit it or set `1` for the control. Do not put the setting into
-canonical profiles before testing their exact image and executor. Existing
-launchers may reject an unknown ENV key; use an explicit experimental container
-specification instead of bypassing their configuration validation.
+On an installer image with the window, use `sparkring install --save-cpu`
+instead of this patch. For a derivative built with this patch, set
+`SPARKRING_SHM_BUSY_LOOP_S=0.002` in each vLLM process's environment through an
+explicit experimental container specification; omit it or set `1` for the
+control.
 
 ## CPU checks and hardware acceptance
 
@@ -100,12 +116,12 @@ intervals. It uses no injected globals or model execution. Require this check
 inside the derivative image before a serving test; class extraction alone is
 not a complete module-import check.
 
-Before enabling a profile, compare `1` and `0.002` on the same image with the
-same model, cache policy and workload. Capture actual IPC-reader CPU usage,
-idle-to-request and burst wakeups, bounded prefill/decode latency, cancellation
-and clean shutdown. Include concurrent readers and a restart. Verify semantic
-responses and report latency tails as well as CPU savings. Preserve the model
-owner and rollback containers during this window.
+The two-Spark measurement covers reader CPU and decode steps per second.
+Making the shorter window a profile's default would also need a comparison of
+`1` and `0.002` on that profile's image, model, cache policy and workload:
+idle-to-request and burst wakeups, prefill and decode latency tails,
+cancellation, clean shutdown, concurrent readers, a restart and semantic
+responses.
 
 DeepSeek's pinned queue can wait indefinitely when its caller disables warnings
 and supplies no timeout; R37 periodically rechecks the authoritative shared
