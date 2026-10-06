@@ -59,7 +59,9 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
   third-party hybrid (research-only). GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
   for Local Inference Lab's QAD checkpoint, or on four Sparks
-  `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On two Sparks, QAD
+  `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint, or
+  `--checkpoint nvfp4-mxfp8-csf-qad` for Local Inference Lab's compressed-scale
+  QAD checkpoint (research-only; not yet run on Sparks). On two Sparks, QAD
   runs with a shorter context window
   ([checkpoints](install-reference.md#another-checkpoint-of-a-profile)).
 - `--download-limit 850Mbit` caps the model download from Hugging Face

@@ -1683,6 +1683,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | GLM, `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark` @ `a608241037e4` | 174.8 GiB | 179.5 GiB | 235.4 GiB |
 | GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.6 GiB |
 | GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.7 GiB |
+| GLM `--checkpoint nvfp4-mxfp8-csf-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `fd660d51d1fc` | 166.3 GiB | 171.0 GiB | 226.9 GiB |
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
@@ -1971,6 +1972,7 @@ sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-400
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint jmni-qad5500-hybrid
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvfp4-mxfp8-csf-qad
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
 ```
 
@@ -1985,6 +1987,7 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-mxfp8-csf-qad` | [GLM-5.3-Flash NVFP4 MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/fd660d51d1fc3caae26a4bf31b7451475bbb9bdc) by Local Inference Lab, revision `fd660d51d1fc`: QAD experts, MXFP8 attention, and NVFP4 scales stored compressed in an NVFP4-CSF container | `--quantization nvfp4_csf` and `--load-format nvfp4_csf`; serves the container's `metadata/` directory, with `--hf-overrides` naming the mounted container as the checkpoint root; routed experts as W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=1`, `B12X_W4A16_FP32_TOPK_WEIGHTS=1`); served as `GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD-TP4` |
 
 - The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
   installer image on two and four Sparks. On one pair and one four-Spark
@@ -2036,6 +2039,28 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   decoded 53.2 / 171 / 244 tok/s at 1 / 8 / 16 streams in one run
   ([record](../../performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvidia-nvfp4-20261001.md)).
   Its host memory headroom and multi-turn tool calls were not checked.
+- The GLM `nvfp4-mxfp8-csf-qad` checkpoint is **research-only**: no
+  installation has run on Sparks. Its container format,
+  `lil-nvfp4-csf-checkpoint/1`, keeps the served configuration, tokenizer,
+  chat template and weight index under `metadata/` and the 44 weight shards
+  under `tensors/`. The pin manifest covers both, and the entry serves
+  `metadata/` while vLLM's `nvfp4_csf` loader reads the shards and checks the
+  container's `manifest.json` and `build-contract.json` from the root that
+  `--hf-overrides` names, `/models/target` in every container. The override
+  carries the checkpoint's own ModelOpt quantization table, copied into
+  `profiles/glm53-flash-nvfp4-spark-tp4/nvfp4-mxfp8-csf-qad.quantization.json`.
+  The entry keeps the profile's 40 GiB of KV cache: its files are 8.5 GiB
+  smaller than NVFP4-Spark's, but its loaded weight memory has not been
+  measured.
+  - The profile's installer image,
+    `dev-20261004-kraken-cuda1342-nccl2323-status034`, has the `nvfp4_csf`
+    loader, but not the later vLLM and B12X changes for CSF scale prefetch
+    and W4A16 CSF performance; an image built after them is expected to
+    decode faster.
+  - The checkpoint is published under the LIL License 1.0, which forbids
+    re-uploading it and requires its attribution notice at the top of any
+    README or landing page of a service that runs it. Read the licence on the
+    model page before serving it.
 - The four-Spark GLM profile's evidence and the
   [GLM memory record](../../performance/records/glm53-flash/installer-memory-20260929.md)
   cover NVFP4-Spark only.

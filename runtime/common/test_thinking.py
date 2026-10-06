@@ -37,14 +37,20 @@ def test_each_record_reads_the_chat_template_that_the_checkpoint_pins():
     data = thinking.catalog()
     for key, name in data["checkpoints"].items():
         source = data["behaviours"][name]["source"]
-        files = pins(key)["files"]
+        manifest = pins(key)
+        files = manifest["files"]
+        # The served files sit beside the index: the repository root, or
+        # metadata/ in an NVFP4-CSF container.
+        served = manifest["index"].rpartition("/")[0]
+        template, tokenizer = (f"{served}/{name}" if served else name
+                               for name in ("chat_template.jinja", "tokenizer_config.json"))
         if source["chat_templates"]:
-            assert files["chat_template.jinja"]["sha256"] in source["chat_templates"], key
+            assert files[template]["sha256"] in source["chat_templates"], key
         else:
             # An encoder replaces the chat template: the checkpoint has none,
             # and its tokenizer configuration is the one that was read.
-            assert "chat_template.jinja" not in files, key
-            assert files["tokenizer_config.json"]["sha256"] == source["tokenizer_config_sha256"], key
+            assert template not in files, key
+            assert files[tokenizer]["sha256"] == source["tokenizer_config_sha256"], key
 
 
 def test_records_state_each_models_default_levels_and_switches():

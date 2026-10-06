@@ -42,6 +42,9 @@ LISTED = {
         [("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad"), ("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad")],
     ("nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"):
         [("glm53-flash-nvfp4-spark-tp4", "nvidia-nvfp4")],
+    # An NVFP4-CSF container: its index is under metadata/ and its weights under tensors/.
+    ("local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "fd660d51d1fc3caae26a4bf31b7451475bbb9bdc"):
+        [("glm53-flash-nvfp4-spark-tp4", "nvfp4-mxfp8-csf-qad")],
     ("JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid", "87c8f2fb738b597de99bf9a885130f4a18a94f3d"):
         [("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid"), ("qwen38-flash-next-tp2", "jmni-qad5500-hybrid")],
 }

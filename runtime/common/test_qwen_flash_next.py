@@ -156,14 +156,16 @@ def glm_command(checkpoint=None, rank=0, path=GLM_TP4):
     return spec, list(spec.command)
 
 
-def test_the_glm_ring_lists_three_checkpoints_of_three_repositories():
+def test_the_glm_ring_lists_four_checkpoints_of_four_repositories():
     profile = adapter.read(GLM_TP4)
-    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("nvfp4-qad", "nvfp4-spark", "nvidia-nvfp4"))
+    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("nvfp4-mxfp8-csf-qad", "nvfp4-qad", "nvfp4-spark",
+                                                                 "nvidia-nvfp4"))
     assert adapter.checkpoint_settings(profile, "nvfp4-spark") is profile
     repositories = {name: entry["model"]["repository"] for name, entry in profile["checkpoints"].items()}
     assert repositories == {"nvfp4-spark": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
                             "nvfp4-qad": "local-inference-lab/GLM-5.3-Flash-NVFP4",
-                            "nvidia-nvfp4": "nvidia/GLM-5.3-Flash-NVFP4"}
+                            "nvidia-nvfp4": "nvidia/GLM-5.3-Flash-NVFP4",
+                            "nvfp4-mxfp8-csf-qad": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"}
     # The QAD checkpoint is the target record's; NVIDIA's revision da920bb0
     # holds the weights and index of the record's 423acf37 and a config that
     # excludes the BF16 MTP layer from quantization.
@@ -613,3 +615,48 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
     # Compile caches and container names stay separate from the Qwen checkpoint's.
     assert spec.name == f"swift15-qwen38-flash-next-tp{nodes}-r0"
     assert spec.environment["B12X_COMPILE_CACHE_DIR"].startswith("/cache/swift15-qwen38-flash-next-cuda")
+
+
+def test_the_csf_checkpoint_serves_its_metadata_with_the_nvfp4_csf_quantization(tmp_path):
+    profile = adapter.read(GLM_TP4)
+    selected = adapter.checkpoint_settings(profile, "nvfp4-mxfp8-csf-qad")
+    args = selected["vllm_args"]
+    assert (args[args.index("--quantization") + 1], args[args.index("--load-format") + 1]) == ("nvfp4_csf", "nvfp4_csf")
+    overrides = json.loads(args[args.index("--hf-overrides") + 1])["quantization_config"]
+    source = json.loads((adapter.ROOT / "profiles/glm53-flash-nvfp4-spark-tp4/nvfp4-mxfp8-csf-qad.quantization.json")
+                        .read_text(encoding="utf-8"))
+    assert overrides == {"quant_method": "nvfp4_csf", "format_version": 1, "checkpoint_root": "/models/target",
+                         "source_quantization_config": source}
+    assert source["quant_method"] == "modelopt" and len(source["quantized_layers"]) == 574
+    # The routed experts run as W4A16 with FP32 router-weight combine, as the checkpoint's card states.
+    assert selected["environment"]["VLLM_B12X_MOE_FP4_FORCE_A16"] == "1"
+    assert selected["environment"]["B12X_W4A16_FP32_TOPK_WEIGHTS"] == "1"
+    assert "B12X_W4A16_FP32_TOPK_WEIGHTS" not in profile["environment"]
+    assert (selected["served_directory"], selected["model_index"]) == ("metadata", "metadata/model.safetensors.index.json")
+    # Every rank mounts the checkpoint at the root the overrides name, and serves its metadata.
+    spec = adapter.container_spec(profile, rank=0, master="192.0.2.10", host_ip="192.0.2.10", interface="eth0",
+                                  image="sha256:" + "a" * 64, model="/srv/model", cache="/srv/cache", remote=True,
+                                  checkpoint="nvfp4-mxfp8-csf-qad")
+    assert spec.command[spec.command.index("serve") + 1] == "/models/target/metadata"
+    assert any(mount.target == "/models/target" for mount in spec.mounts)
+    # The served command fits one command-line argument.
+    assert len(args[args.index("--hf-overrides") + 1].encode()) < 128 * 1024
+    # The model-path check reads the index below the root.
+    model = tmp_path / "model"
+    (model / "metadata").mkdir(parents=True)
+    (tmp_path / "cache").mkdir()
+    (model / "config.json").write_bytes(b"{}")
+    (model / "metadata/model.safetensors.index.json").write_bytes(b"{}")
+    with pytest.raises(ValueError, match="config.json"):
+        adapter.verify_model_paths(selected, model, tmp_path / "cache")
+
+
+def test_a_served_entry_adds_no_variable_the_profile_sets():
+    profile = adapter.read(GLM_TP4)
+    changed = copy.deepcopy(profile)
+    changed["checkpoints"]["nvfp4-mxfp8-csf-qad"]["served"]["added_environment"] = {"VLLM_B12X_MOE_FP4_FORCE_A16": "1"}
+    with pytest.raises(ValueError, match="already sets"):
+        adapter.checkpoint_settings(changed, "nvfp4-mxfp8-csf-qad")
+    changed["checkpoints"]["nvfp4-mxfp8-csf-qad"]["served"] = {"directory": "../x", "quantization": "x.json"}
+    with pytest.raises(ValueError, match="served entry"):
+        adapter.checkpoint_settings(changed, "nvfp4-mxfp8-csf-qad")

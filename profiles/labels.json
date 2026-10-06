@@ -67,6 +67,11 @@
           "status": "implemented",
           "purpose": "NVIDIA's NVFP4 weights",
           "evidence": "performance/records/images/dev-20260928-plainstatus-glm53-flash-nvfp4-spark-tp4-nvidia-nvfp4-20261001.md"
+        },
+        "nvfp4-mxfp8-csf-qad": {
+          "status": "research-only",
+          "purpose": "Local Inference Lab's QAD checkpoint with MXFP8 attention and compressed scales, research-only",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
         }
       }
     },

@@ -45,6 +45,29 @@
         "--quantization": "modelopt_fp4",
         "--load-format": "safetensors"
       }
+    },
+    "nvfp4-mxfp8-csf-qad": {
+      "model": {
+        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+        "revision": "fd660d51d1fc3caae26a4bf31b7451475bbb9bdc",
+        "config_sha256": "2a1e99b6f6b3b3800bec1e7baa55dfe07c8816f9a0fd6ac7f88f92537be38ed1",
+        "index_sha256": "9f4007c34096dfbf729852f6f75a2b71b8660137897217e7d2eae5114d1d5135"
+      },
+      "served_model_name": "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD-TP4",
+      "arguments": {
+        "--quantization": "nvfp4_csf",
+        "--load-format": "nvfp4_csf"
+      },
+      "environment": {
+        "VLLM_B12X_MOE_FP4_FORCE_A16": "1"
+      },
+      "served": {
+        "directory": "metadata",
+        "quantization": "profiles/glm53-flash-nvfp4-spark-tp4/nvfp4-mxfp8-csf-qad.quantization.json",
+        "added_environment": {
+          "B12X_W4A16_FP32_TOPK_WEIGHTS": "1"
+        }
+      }
     }
   },
   "topology": "direct-cycle-4",

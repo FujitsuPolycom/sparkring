@@ -69,7 +69,10 @@ def node_count(profile):
     return int(profile["vllm_args"][profile["vllm_args"].index("--nnodes") + 1])
 
 
-CHECKPOINT_KEYS = {"model", "served_model_name", "arguments", "environment", "speculative", "derived"}
+CHECKPOINT_KEYS = {"model", "served_model_name", "arguments", "environment", "speculative", "derived", "served"}
+# Where every rank's container mounts the checkpoint directory.
+CHECKPOINT_ROOT = "/models/target"
+SERVED_KEYS = {"directory", "quantization", "added_environment"}
 MODEL_KEYS = {"repository", "revision", "config_sha256", "index_sha256"}
 
 
@@ -154,7 +157,18 @@ def checkpoint_settings(profile, name):
       An added variable is refused: a variable that nothing reads changes
       nothing and raises no error, so a misspelled name would go unnoticed;
     - ``speculative``: change or add keys of ``--speculative-config``. vLLM
-      refuses an unknown key when the engine starts.
+      refuses an unknown key when the engine starts;
+    - ``served``: serve a container checkpoint whose runtime reads the
+      weights from the checkpoint root, such as an NVFP4-CSF checkpoint
+      (vLLM ``--quantization nvfp4_csf``). ``directory`` is the subdirectory
+      vLLM serves, which holds the configuration, tokenizer and weight index;
+      ``quantization`` is a repository JSON file holding the checkpoint's own
+      quantization configuration, which the command passes with
+      ``--hf-overrides`` inside a ``quantization_config`` that names the
+      entry's ``--quantization`` method and the checkpoint root; and
+      ``added_environment`` adds variables the profile does not set, named
+      apart from ``environment`` so that a misspelled change of an existing
+      variable is still refused.
     """
     default, names = checkpoint_names(profile)
     name = checkpoint_name(profile, name)
@@ -196,6 +210,30 @@ def checkpoint_settings(profile, name):
         spec = json.loads(args[index])
         spec.update(speculative)
         args[index] = json.dumps(spec, separators=(",", ":"))
+    served = entry.get("served")
+    if served is not None:
+        directory, source = (served.get(key) if isinstance(served, dict) else None for key in ("directory", "quantization"))
+        added = served.get("added_environment", {}) if isinstance(served, dict) else None
+        if (not isinstance(served, dict) or not set(served) <= SERVED_KEYS
+                or not isinstance(directory, str) or not re.fullmatch(r"[a-z][a-z0-9_-]{0,31}", directory)
+                or not isinstance(source, str) or not re.fullmatch(r"profiles/[A-Za-z0-9._/-]+\.json", source)
+                or ".." in source.split("/") or not isinstance(added, dict)
+                or any(not re.fullmatch(r"[A-Z][A-Z0-9_]{0,63}", name) or not isinstance(value, str)
+                       for name, value in added.items())):
+            raise ValueError(f"Checkpoint {name} served entry needs a directory, a profiles/ quantization JSON file "
+                             "and optional added_environment of NAME: text")
+        if set(added) & set(result["environment"]):
+            raise ValueError(f"Checkpoint {name} added_environment names variables the profile already sets")
+        if "--quantization" not in args or "--hf-overrides" in args:
+            raise ValueError(f"Checkpoint {name} serves a container checkpoint from a profile with --quantization "
+                             "and without --hf-overrides")
+        overrides = {"quantization_config": {"quant_method": args[args.index("--quantization") + 1],
+                                             "format_version": 1, "checkpoint_root": CHECKPOINT_ROOT,
+                                             "source_quantization_config": read(ROOT / source)}}
+        args += ["--hf-overrides", json.dumps(overrides, separators=(",", ":"), sort_keys=True)]
+        result["environment"].update(added)
+        result["served_directory"] = directory
+        result["model_index"] = directory + "/model.safetensors.index.json"
     return result
 
 
@@ -431,7 +469,7 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     args = [
         entrypoint,
         "serve",
-        "/models/target",
+        CHECKPOINT_ROOT + (f"/{profile['served_directory']}" if profile.get("served_directory") else ""),
         "--served-model-name",
         profile["served_model_name"],
         "--node-rank",
@@ -455,7 +493,7 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     return ContainerSpec(
         name=name,
         image_id=image, entrypoint=(python,), command=tuple(args),
-        environment=env, mounts=(Bind(str(model), "/models/target", True), Bind(str(cache), "/cache")),
+        environment=env, mounts=(Bind(str(model), CHECKPOINT_ROOT, True), Bind(str(cache), "/cache")),
         health_command=health,
     )
 
@@ -477,7 +515,7 @@ def verify_model_paths(profile, model, cache):
     flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
     for filename, key in [
         ("config.json", "config_sha256"),
-        ("model.safetensors.index.json", "index_sha256"),
+        (profile.get("model_index", "model.safetensors.index.json"), "index_sha256"),
     ]:
         try:
             descriptor = os.open(model / filename, flags | getattr(os, "O_NOATIME", 0))

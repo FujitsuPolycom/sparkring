@@ -420,7 +420,13 @@ def pinned_differences(profile, files, revision=None):
 def _check_pins(card, files, required=None):
     """Refuse hashes that differ from the profile's checkpoint contract, its SHA256SUMS or the pins."""
     model = installer.checkpoint_contract(card)
-    for filename, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
+    # A container checkpoint (an NVFP4-CSF checkpoint) keeps its weight index
+    # below the root; its pin manifest names where.
+    try:
+        index = installer.checkpoint_pins(card)["index"]
+    except ValueError:
+        index = "model.safetensors.index.json"
+    for filename, key in (("config.json", "config_sha256"), (index, "index_sha256")):
         if files.get(filename) != model[key]:
             raise ValueError("Checkpoint metadata differs from the selected profile: " + filename)
     sums = checksum_manifest(card["profile"], card["model_revision"])

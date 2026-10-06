@@ -11,6 +11,12 @@ of one Hugging Face model revision and lives at
 - ``index`` names the weight index, ``model.safetensors.index.json``.
 - ``weights`` is the sorted set of the index's ``weight_map`` values, so
   consumers never need the index itself to know which files are weights.
+
+An NVFP4-CSF container (``manifest.json`` with schema
+``lil-nvfp4-csf-checkpoint/1``) keeps its index under ``metadata/`` and its
+weight files under ``tensors/``; its ``index`` is
+``metadata/model.safetensors.index.json`` and its ``weights`` are the index's
+files under ``tensors/``.
 - ``optional`` lists the documentation and repository metadata that no serving
   component reads. The required files are ``files`` minus ``optional``.
 
@@ -54,6 +60,11 @@ from runtime.common import profiles  # noqa: E402
 
 SCHEMA = "sparkring-checkpoint-pins/v1"
 INDEX = "model.safetensors.index.json"
+# An NVFP4-CSF container: the served metadata, with its weight index, and the
+# weight files the runtime reads from the container root (vLLM nvfp4_csf).
+CSF_SCHEMA = "lil-nvfp4-csf-checkpoint/1"
+CSF_INDEX = "metadata/" + INDEX
+CSF_WEIGHTS = "tensors/"
 ENDPOINT = "https://huggingface.co"
 USER_AGENT = "sparkring-pin-checkpoint"
 # Bounds every download. Configuration, tokenizer and index files are far
@@ -203,23 +214,31 @@ def manifest(hub, repository, revision):
             entry = {"size": size, "sha256": hashlib.sha256(data).hexdigest(), "git_blob": blob}
             contents[name] = data
         files[name] = entry
-    if INDEX not in files:
+    index_name, weight_prefix = INDEX, ""
+    if INDEX not in files and "manifest.json" in contents:
+        try:
+            container = json.loads(contents["manifest.json"]).get("schema")
+        except ValueError:
+            container = None
+        if container == CSF_SCHEMA:
+            index_name, weight_prefix = CSF_INDEX, CSF_WEIGHTS
+    if index_name not in files:
         raise ValueError(f"{repository}@{revision} has no {INDEX}")
-    index = contents.get(INDEX)
+    index = contents.get(index_name)
     if index is None:
-        index = fetch(hub, repository, revision, INDEX, files[INDEX]["size"])
-        if hashlib.sha256(index).hexdigest() != files[INDEX]["sha256"]:
-            raise ValueError(f"{INDEX}: downloaded bytes differ from its LFS SHA-256")
+        index = fetch(hub, repository, revision, index_name, files[index_name]["size"])
+        if hashlib.sha256(index).hexdigest() != files[index_name]["sha256"]:
+            raise ValueError(f"{index_name}: downloaded bytes differ from its LFS SHA-256")
     weight_map = json.loads(index).get("weight_map")
     if not isinstance(weight_map, dict) or not weight_map or not all(isinstance(v, str) for v in weight_map.values()):
-        raise ValueError(f"{INDEX}: expected a nonempty weight_map of file names")
-    weights = sorted(set(weight_map.values()))
+        raise ValueError(f"{index_name}: expected a nonempty weight_map of file names")
+    weights = sorted({weight_prefix + name for name in weight_map.values()})
     documentation = sorted(name for name in files if optional(name))
     required = set(files) - set(documentation)
-    missing = [name for name in [INDEX, "config.json", *weights] if name not in required]
+    missing = [name for name in [index_name, "config.json", *weights] if name not in required]
     if missing:
         raise ValueError(f"Required files are absent or classified as documentation: {', '.join(missing)}")
-    return {"schema": SCHEMA, "repository": repository, "revision": revision, "index": INDEX,
+    return {"schema": SCHEMA, "repository": repository, "revision": revision, "index": index_name,
             "weights": weights, "optional": documentation, "files": {name: files[name] for name in sorted(files)}}
 
 
