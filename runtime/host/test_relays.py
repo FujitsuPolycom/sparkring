@@ -399,6 +399,23 @@ def test_configure_enables_the_marker_unit_only_with_markers(tmp_path):
         node.configure(changed, root=tmp_path, collect=lambda r: facts, run=run)
 
 
+def test_configure_refuses_relay_markers_beside_a_running_mesh_service(tmp_path):
+    plan, document, relay_plan = prepared("cycle", 4)
+    node.save(tmp_path, "/etc/sparkring/node.json", {"schema": "sparkring-node/v1",
+                                                     "node_id": plan["spec"]["hosts"][0]["node_id"]})
+
+    def run(argv, **kwargs):
+        listed = "sparkring-mesh.service loaded active running Mesh\n" if "list-units" in argv else ""
+        return SimpleNamespace(returncode=0, stdout=listed, stderr="")
+
+    from runtime.host.test_fabric_layouts import configured
+    facts = configured(plan)[0]["facts"]
+    with pytest.raises(ValueError, match=r"mesh service runs on this Spark \(sparkring-mesh.service\)"):
+        node.configure(topology.persistent_config(plan, 0, relays=relays.section(relay_plan, 0)), root=tmp_path,
+                       collect=lambda r: facts, run=run)
+    assert not (tmp_path / "etc/sparkring/fabric.json").exists()
+
+
 def test_relay_markers_entry_runs_the_records_markers(tmp_path):
     plan, document, relay_plan = prepared("cycle", 4)
     config = topology.persistent_config(plan, 3, relays=relays.section(relay_plan, 3))

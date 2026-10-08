@@ -549,7 +549,8 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
     A recorded configuration that differs is refused, except in the fields
     a setup of the same Sparks refreshes (``REFRESHED_FIELDS``: the layout
     name and the relay table). A record with relay markers enables and
-    restarts ``sparkring-relay-marker.service``; one without disables it.
+    restarts ``sparkring-relay-marker.service``; one without disables it. A
+    record with relay markers is refused while a mesh service runs here.
     """
     validate(config)
     if config["node_id"] != read(root, "/etc/sparkring/node.json")["node_id"]:
@@ -557,6 +558,14 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
     path = location(root, "/etc/sparkring/fabric.json")
     if path.exists() and _comparable(read(root, "/etc/sparkring/fabric.json")) != _comparable(config):
         raise ValueError("Node already has another approved configuration; inspect before replacing it")
+    if (config.get("relays") or {}).get("markers"):
+        listing = call(["systemctl", "list-units", "--type=service", "--state=active", "--no-legend", "--plain",
+                        *MESH_UNIT_PATTERNS], run=run).stdout
+        running = sorted({line.split()[0] for line in listing.splitlines() if line.split()})
+        if running:
+            raise ValueError("A four-Spark mesh service runs on this Spark (" + ", ".join(running) + "); its markers "
+                             "and the relay table's would claim the same RDMA packets. Stop its model with sudo "
+                             "sparkring down --execute on Node A, then run setup again")
     observe(config, collect=collect)
     save(root, "/etc/sparkring/fabric.json", config)
     call(["systemctl", "enable", "sparkring-fabric.service"], run=run)
