@@ -27,7 +27,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
 | [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
-| [`fabric`](#fabric) | Node A | `verify` and `tune` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it |
+| [`fabric`](#fabric) | Node A | `verify`, `tune` and `spread-check` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it; time a spread along the cables |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
@@ -298,6 +298,30 @@ Report: /var/lib/sparkring/controller/fabric-reports/fabric-verify-20261008T1005
 
 It exits with 0 when every check passes, 1 when one fails, and 2 when it
 could not run.
+
+`sudo sparkring fabric spread-check [flags]` spreads test files from Node A
+to every Spark along the cables, as an install spreads the serving image and
+the checkpoint ([Spreading along the cables](install-reference.md#spreading-along-the-cables)).
+It writes the files on Node A, places each on every other Spark only after its
+SHA-256 matches, prints when each Spark finished and how long after the Spark
+before it, and removes the files once every Spark holds them. It works on any
+recorded layout, including those no installer profile serves yet. A Spark that
+stops answering stops it with the message an install prints; repeating the
+command resumes. It changes files below `/var/lib/sparkring/spread/check` on
+every Spark and sends traffic on every cable. One line per pass and direction
+lists each Spark's position, when it finished after the start and how long
+after the Spark before it; the report is saved as
+`fabric-reports/spread-check-<time>.json` (`sparkring-spread-check/v1`) in
+Node A's controller directory.
+
+| Flag | Meaning |
+|---|---|
+| `--files N` | Number of test files; default 16 |
+| `--size MIB` | Size of each test file in MiB; default 1024 |
+| `--while-serving` | Run while a model serves |
+
+It exits with 0 when every Spark holds every file, 1 when the spread stopped
+or is incomplete, and 2 when it could not run.
 
 ### fabric tune
 

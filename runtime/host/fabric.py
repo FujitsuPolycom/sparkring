@@ -722,11 +722,12 @@ def _boot_id():
 
 
 def main(argv=None):
-    """``sparkring fabric show|verify|tune``; ``tune`` is ``runtime/host/fabric_tune.py``."""
+    """``sparkring fabric show|verify|tune|spread-check``; ``tune`` is ``runtime/host/fabric_tune.py``."""
     from runtime.host import fabric_tune
     parser = argparse.ArgumentParser(prog="sparkring fabric", description=(
         "Show, verify or tune this cluster's fabric: the Sparks' positions, ports and cables, the relay table, the "
-        "boot units that restore it, and SIRCL's tuning table measured on it. Run on Node A."))
+        "boot units that restore it, and SIRCL's tuning table measured on it, or time a spread of test files along "
+        "its cables. Run on Node A."))
     commands = parser.add_subparsers(dest="command", required=True)
     shown = commands.add_parser("show", help="print the recorded fabric document and its port map; changes nothing")
     shown.add_argument("--json", action="store_true", help="print the document and the last verification as JSON")
@@ -740,6 +741,12 @@ def main(argv=None):
     tuned = commands.add_parser("tune", help="measure SIRCL's tuning table on this fabric with SIRCL's ring harness; "
                                              "prints the plan unless --execute")
     fabric_tune.add_arguments(tuned)
+    spreading = commands.add_parser("spread-check", help=(
+        "spread test files from Node A to every Spark along the cables, as an install spreads the image and the "
+        "checkpoint; prints when each Spark finished and removes the files once all hold them"))
+    spreading.add_argument("--files", type=int, default=16, help="number of test files (default 16)")
+    spreading.add_argument("--size", type=int, default=1024, help="size of each test file in MiB (default 1024)")
+    spreading.add_argument("--while-serving", action="store_true", help="run while a model serves")
     args = parser.parse_args(argv)
     try:
         if args.command == "show":
@@ -748,6 +755,11 @@ def main(argv=None):
             raise ValueError(f"Run sudo sparkring fabric {args.command}: it reads root-only state on every Spark")
         if args.command == "tune":
             return fabric_tune.command(args)
+        if args.command == "spread-check":
+            from runtime.host import spread_check
+            if args.files < 1 or args.size < 1:
+                raise ValueError("--files and --size must be at least 1")
+            return spread_check.main(args, STATE)
         return verify(traffic=args.traffic, allow_serving=args.while_serving, json_output=args.json)
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         print("SparkRing: " + str(error), file=sys.stderr)

@@ -37,10 +37,14 @@ Plan document keys: ``repository``, ``revision``, ``pins_sha256``,
 ``sudo sparkring install`` command that repeats this request, which messages
 suggest), ``required`` (``files``, ``bytes``, ``sizes``), ``hub_files``,
 ``hub_bytes``, ``distribution`` (``donor``, ``pool``, ``hub``, ``receive``),
-``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``. The plan of a
-derived checkpoint (``runtime/common/derived_checkpoint.py``) is its base's,
-with a ``derivation`` section (``runtime.host.derivation.section``) whose
-writes each Spark's free-space need includes.
+``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``; a plan made
+for a known fabric layout of the deployment's Sparks also holds ``layout``
+(``{"shape", "size"}``), along whose cables files move, a plan of Sparks that
+form a line, whose ends share no cable, holds ``"line": true``, and the
+install adds its spread plan as ``spread`` (``runtime/host/spread.py``). The
+plan of a derived checkpoint (``runtime/common/derived_checkpoint.py``) is its
+base's, with a ``derivation`` section (``runtime.host.derivation.section``)
+whose writes each Spark's free-space need includes.
 Each node holds ``rank``, ``host``, ``hostname``, ``mode`` (``owned`` or
 ``in-place``), ``path``, ``files`` (name to action entry with ``action``,
 ``size`` and, by action, ``source``, ``identity``, ``evidence``, ``candidate``,
@@ -60,7 +64,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shlex
 
-from runtime.common import serving
+from runtime.common import fabric_layout, serving
 from runtime.host import fabric_stream, install_space
 
 SCHEMA = "sparkring-checkpoint-plan/v1"
@@ -678,25 +682,42 @@ def _changed_in_place(node, path, found, required, command=COMMAND):
 
 # Several Sparks
 
-def _distance(count, rank, line=False):
-    """Cables between Node 0 and Node ``rank``: around the ring, or along the line with ``line``."""
-    if line:
-        return rank
+def _distance(count, rank, layout=None):
+    """Cables between Node 0 and Node ``rank``: along ``layout``, or round a pair or ring without one."""
+    if layout is not None:
+        return fabric_layout.hops(layout, 0, rank)
     return 1 if count <= 2 else min(rank, count - rank)
 
 
-def _ring_order(count, line=False):
-    return sorted(range(1, count), key=lambda rank: (_distance(count, rank, line), rank))
+def _ring_order(count, layout=None):
+    return sorted(range(1, count), key=lambda rank: (_distance(count, rank, layout), rank))
 
 
-def _distribute(count, holdings, sizes, line=False):
-    """Donor, pooling, downloads and ring receives, given the names each Spark holds (``holdings``).
+def line_layout(count):
+    """The layout of ``count`` consecutive Sparks of a line, whose ends share no cable: a pair, else a path."""
+    return fabric_layout.layout(fabric_layout.PAIR if count == 2 else fabric_layout.PATH, count)
+
+
+def plan_layout(plan):
+    """The layout a plan was made for: its ``layout``; for a plan that records only ``"line": true``, the
+    path of its Sparks (``line_layout``); else None, a pair or ring."""
+    plan = plan or {}
+    value = plan.get("layout")
+    if value is not None:
+        return fabric_layout.checked(value)
+    if plan.get("line"):
+        return line_layout(len(plan["nodes"]))
+    return None
+
+
+def _distribute(count, holdings, sizes, layout=None):
+    """Donor, pooling, downloads and cable receives, given the names each Spark holds (``holdings``).
 
     The lowest-numbered complete Spark is the donor. Without one, Node A pools
-    each name it lacks from one other Spark, nearest in cable order first, and
-    downloads the names no Spark holds; it is then the donor. The other Sparks
-    receive their missing names along ``fabric_stream.tree``. The deployment's
-    Sparks form a ring, or with ``line`` a line whose ends share no cable.
+    each name it lacks from one other Spark, nearest along the cables first,
+    and downloads the names no Spark holds; it is then the donor. The other
+    Sparks receive their missing names along ``fabric_stream.tree`` of
+    ``layout`` (default: a pair or a ring).
     """
     names = set(sizes)
     held = [set(h) & names for h in holdings]
@@ -707,13 +728,13 @@ def _distribute(count, holdings, sizes, line=False):
     else:
         donor = 0
         for name in sorted(names - held[0]):
-            source = next((rank for rank in _ring_order(count, line) if name in held[rank]), None)
+            source = next((rank for rank in _ring_order(count, layout) if name in held[rank]), None)
             if source is None:
                 hub.append(name)
             else:
                 pool.setdefault(source, []).append(name)
     receive = []
-    for level, edges in enumerate(fabric_stream.tree(count, donor, line=line)):
+    for level, edges in enumerate(fabric_stream.tree(count, donor, layout)):
         for source, target in edges:
             need = sorted(names - held[target])
             if need:
@@ -721,8 +742,8 @@ def _distribute(count, holdings, sizes, line=False):
                                 "transport": "fabric"})
     return {"donor": donor, "complete": complete, "hub": hub, "receive": receive,
             "pool": [{"source": rank, "names": pool[rank],
-                      "transport": "fabric" if _distance(count, rank, line) == 1 else "rsync"}
-                     for rank in _ring_order(count, line) if rank in pool]}
+                      "transport": "fabric" if _distance(count, rank, layout) == 1 else "rsync"}
+                     for rank in _ring_order(count, layout) if rank in pool]}
 
 
 def _writes(count, distribution, sizes):
@@ -747,7 +768,7 @@ def _retained(value):
 
 def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", images=None, caches=None,
          relay_device=None, retained=None, locked=False, policy=None, now=None, request=None, derivation=None,
-         line=False):
+         layout=None, line=False):
     """Plan the checkpoint for every Spark of one deployment.
 
     ``surveys`` holds one survey document per rank, or the failure (an exception,
@@ -770,10 +791,13 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     messages suggest (``install_command``). ``derivation`` is the
     ``derivation.section`` of a derived checkpoint, whose files each Spark
     writes on the base directory's filesystem. A ``request`` that names
-    ``api_address`` keeps it, so the command repeats it. ``line`` says that
-    the deployment's Sparks form a line, whose ends share no cable, rather
-    than a ring; such a plan records ``"line": true``, which ``redistribute``
-    reads.
+    ``api_address`` keeps it, so the command repeats it. ``layout`` is the
+    fabric layout of the ranks (``spread.deployment_layout``); files move
+    along its cables, and without it along a pair or a ring. ``line`` says
+    that the deployment's Sparks form a line, whose ends share no cable,
+    rather than a ring; such a plan records ``"line": true``, and without a
+    ``layout`` its files move along the path of its Sparks (``line_layout``).
+    ``redistribute`` reads both.
     """
     sizes = required_files(pins)
     count = len(rows)
@@ -845,7 +869,12 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
                     "on a rotational or USB-attached disk; this Spark receives those files over the fabric")}
                     for path in dropped if path not in {s["path"] for s in node["sources"]}]
 
-    distribution = _distribute(count, [held(node) for node in nodes], sizes, line)
+    if layout is not None and fabric_layout.checked(layout)["size"] != count:
+        raise ValueError("The checkpoint plan's layout names another number of Sparks than its rows")
+    if line and layout is not None and fabric_layout.checked(layout)["shape"] == fabric_layout.CYCLE:
+        raise ValueError("A checkpoint plan of a line takes the layout of a pair or a path, not a cycle")
+    moves = layout if layout is not None else line_layout(count) if line else None
+    distribution = _distribute(count, [held(node) for node in nodes], sizes, moves)
     for item in distribution["pool"]:
         for name in item["names"]:
             nodes[0]["files"][name] = {"action": "pool", "size": sizes[name], "from": item["source"],
@@ -931,6 +960,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
                 break
     created = now or datetime.datetime.now(datetime.timezone.utc)
     extra = {"derivation": derivation} if derivation is not None else {}
+    if layout is not None:
+        extra["layout"] = fabric_layout.checked(layout)
     if line:
         extra["line"] = True
     return {**extra, "schema": SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
@@ -1089,7 +1120,8 @@ def envelope(reviewed, fresh):
     of the reviewed downloads, each Spark writes at most 1 GiB more, each Spark
     keeps its mode, and each Spark's source paths are a subset of the reviewed
     ones. Growth on Node A that its extra downloads explain is reported once, as
-    the download.
+    the download. When both plans carry a spread plan, the spread must also
+    stay within the reviewed one (``spread.envelope``).
     """
     same = (reviewed.get("repository"), reviewed.get("revision"), reviewed.get("pins_sha256"),
             [n["host"] for n in reviewed["nodes"]]) == (fresh.get("repository"), fresh.get("revision"),
@@ -1137,6 +1169,9 @@ def envelope(reviewed, fresh):
     if reviewed.get("derivation") or fresh.get("derivation"):
         from runtime.host import derivation
         items.extend(derivation.envelope(reviewed.get("derivation"), fresh.get("derivation")))
+    if reviewed.get("spread") and fresh.get("spread"):
+        from runtime.host import spread
+        items.extend(spread.envelope(reviewed["spread"], fresh["spread"]))
     return items
 
 
@@ -1175,7 +1210,7 @@ def redistribute(plan, results):
         else:
             holdings.append(set(result.get("verified") or ()) & set(sizes))
             adopted.append(int(result.get("bytes_written") or 0))
-    distribution = _distribute(count, holdings, sizes, bool(plan.get("line")))
+    distribution = _distribute(count, holdings, sizes, plan_layout(plan))
     transfers = _writes(count, distribution, sizes)
     return {**distribution, "adopted": adopted, "transfers": transfers,
             "writes": [a + t for a, t in zip(adopted, transfers)]}

@@ -1,4 +1,12 @@
-"""Prepare head/worker packages, cached images and the pinned checkpoint through verified fabric paths."""
+"""Prepare head/worker packages, cached images and the pinned checkpoint through verified fabric paths.
+
+On a cluster with a recorded fabric document (``sparkring-fabric/v1``), the
+serving image reaches each Spark that holds none of its layers, and the
+checkpoint each Spark that lacks files, as pipelines along the cables
+(``runtime/host/spread.py``): each Spark forwards every chunk to the next while
+it writes. Without a document, Sparks pull the image through Node A's registry
+relay and checkpoint files move cable by cable, level by level.
+"""
 import concurrent.futures
 import contextlib
 import inspect
@@ -17,7 +25,8 @@ import threading
 import time
 
 from runtime.common import distribution, installer
-from runtime.host import checkpoint_plan, fabric_stream, install_space, node, packages, progress, registry_relay
+from runtime.host import (checkpoint_plan, fabric_stream, install_space, node, packages, progress, registry_relay,
+                          spread)
 from runtime.host.install_errors import NeedsInput
 
 DOCKER = ["docker", "--context", "default"]
@@ -132,15 +141,20 @@ class Assets:
     """Asset preparation for one installation.
 
     ``download_limit`` caps checkpoint downloads from huggingface.co in bytes
-    per second; None downloads at full speed.
+    per second; None downloads at full speed. ``pipeline`` holds settings of
+    the spread's hop and source programs (``fabric_stream.HOP_OPTIONS``); the
+    installer uses their defaults.
     """
 
-    def __init__(self, transport, directory, *, run=subprocess.run, popen=subprocess.Popen, download_limit=None):
+    def __init__(self, transport, directory, *, run=subprocess.run, popen=subprocess.Popen, download_limit=None,
+                 pipeline=None):
         self.transport = transport
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.run, self.popen = run, popen
         self.download_limit = download_limit
+        self.pipeline = dict(pipeline or {})
+        self.spread_result = None
 
     def local(self, rank):
         """Whether transport rank ``rank`` is Node A, which runs its commands itself without sudo.
@@ -164,9 +178,76 @@ class Assets:
                           capture_output=True, text=True, timeout=7200, check=True)
         return json.loads(result.stdout)
 
+    def fabric(self):
+        """``(document, positions)`` when the transport carries the recorded fabric document, else None.
+
+        ``positions`` gives the fabric position of each transport rank.
+        """
+        document = getattr(self.transport, "document", None)
+        if document is None:
+            return None
+        return document, list(getattr(self.transport, "positions", range(len(self.transport.hosts))))
+
+    def launch(self, rank, program):
+        """Start pipeline ``program`` on ``rank`` (``fabric_stream.BOOT``); its stdin stays open for the token."""
+        errors = tempfile.TemporaryFile()
+        process = self.popen(self.command(rank, list(fabric_stream.BOOT)), stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=errors)
+        process.errors = errors
+        process.stdin.write(fabric_stream.boot_input(program))
+        process.stdin.flush()
+        return process
+
+    def finish_program(self, rank, program, data):
+        """Run pipeline ``program`` on ``rank`` with ``data`` after it on stdin; returns its ``result`` line."""
+        done = self.run(self.command(rank, list(fabric_stream.BOOT)), input=fabric_stream.boot_input(program) + data,
+                        capture_output=True, timeout=7200)
+        if done.returncode:
+            raise ValueError(f"Node {rank}: " + done.stderr.decode(errors="replace").strip()[-1000:])
+        return json.loads(done.stdout.decode().strip().splitlines()[-1])["result"]
+
+    def alive(self, rank):
+        """Whether ``rank`` answers a command over the administration network."""
+        try:
+            return self.run(self.command(rank, ["true"]), capture_output=True, timeout=30).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def spreader(self, rank_of, *, start, send):
+        """A ``spread.Spread`` on this transport's fabric whose callbacks receive ranks instead of positions."""
+        document, _ = self.fabric()
+        return spread.Spread(
+            document, say=progress.say, alive=lambda position: self.alive(rank_of[position]),
+            start=lambda position, *args: start(rank_of[position], *args),
+            send=lambda position, *args: send(rank_of[position], *args))
+
     def sync_packages(self):
+        """Install Node A's SparkRing package on every worker that runs another revision.
+
+        With a fabric document, workers are read and updated in bootstrap order
+        (``spread.bootstrap_order``); one that does not answer stops the
+        install with ``needs_input`` naming it and the cable that leads to it.
+        """
         current = distribution.identity(node.ROOT)
-        outdated = [rank for rank in range(1, len(self.transport.hosts)) if self.remote(rank, worker_revision) != current]
+        order = list(range(1, len(self.transport.hosts)))
+        fabric = self.fabric()
+        if fabric is not None:
+            document, positions = fabric
+            rank_of = {position: rank for rank, position in enumerate(positions)}
+            order = [rank_of[row["position"]] for row in spread.bootstrap_order(document)
+                     if rank_of.get(row["position"], 0) != 0]
+        outdated = []
+        for index, rank in enumerate(order):
+            try:
+                revision = self.remote(rank, worker_revision)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                if fabric is None:
+                    raise
+                done = [positions[0], *(positions[other] for other in order[:index])]
+                raise NeedsInput(spread.unreached_message(document, positions[rank], done), field="spark",
+                                 details={"position": positions[rank]}) from error
+            if revision != current:
+                outdated.append(rank)
         if not outdated:
             return {"updated": [], "revision": current}
         # Existing enrolled access is retained; this bundle does not invoke seed.
@@ -203,6 +284,12 @@ class Assets:
         leading layers loads only the others, any other node pulls the whole
         image, and Node A also keeps the relay's copy of every layer that some
         node lacks.
+
+        With a fabric document, each worker that holds none of the layers
+        receives them over the fabric instead (``spread_image``): it needs room
+        for the blobs and for loading them, and Node A's relay holds every
+        layer. A worker that a down cable keeps from the fabric pulls through
+        the relay.
         """
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
         try:
@@ -216,8 +303,18 @@ class Assets:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(missing)) as pool:
                 held = dict(zip(missing, pool.map(
                     lambda rank: self.remote(rank, layer_prefix, diffs) if layout else 0, missing)))
+            spreading = ([rank for rank in missing if not self.local(rank) and held[rank] == 0]
+                         if layout and self.fabric() is not None else [])
+            pulls = [rank for rank in missing if rank not in spreading]
             allowance = checkpoint_plan.storage_policy(node.ROOT)["image_bytes"]
-            required = install_space.relay_check(card, missing, held, layout[1] if layout else None, allowance)
+            required = install_space.relay_check(card, pulls, held, layout[1] if layout else None, allowance)
+            if spreading:
+                blobs = len(layout[0]) + sum(size for _, _, size in layout[1])
+                relayed = (sum(size for _, _, size in layout[1][min(held.get(rank, 0) for rank in pulls):])
+                           if pulls else 0)
+                # Node A's relay then holds every layer; each such worker holds the blobs and loads them.
+                required[0] = required.get(0, 0) + max(0, blobs - relayed)
+                required.update({rank: blobs + install_space.load_bytes(blobs) for rank in spreading})
             for rank in sorted(required):
                 free = observations[rank]["free_bytes"]
                 if free < required[rank]:
@@ -266,18 +363,112 @@ class Assets:
 
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(missing)) as pool:
-                return list(pool.map(pull_on, missing))
+                pulled = [pool.submit(pull_on, rank) for rank in pulls]
+                spread_out = pool.submit(self.spread_image, card, relay, layout, spreading) if spreading else None
+                done = [future.result() for future in pulled]
+                if spread_out is not None:
+                    _, cut_off = spread_out.result()
+                    # Workers that a down cable keeps from the fabric pull through the relay instead.
+                    done += list(pool.map(pull_on, cut_off))
+            return done
         finally:
             relay.close()
+
+    def tag(self, card, relay):
+        """The local tag ``docker load`` gives the image: the relay's reference with the release name."""
+        release = card.get("release", "")
+        return (f"127.0.0.1:{registry_relay.PORT}/{relay.repository}:{release}"
+                if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", release) else None)
+
+    def spread_image(self, card, relay, layout, ranks):
+        """Bring the image's registry blobs to ``ranks`` along the cables, then import them on each.
+
+        Node A downloads every blob once into the relay, which is the source;
+        each Spark of a chain writes the blobs to its ``spread.image_root``
+        directory while it forwards them, and Sparks that hold the image
+        forward without writing. A Spark imports the image with ``docker
+        load`` only once every blob is present and its SHA-256 verified
+        (``spread.load_staged_image``); a blob that fails that check is sent
+        again. The blob directories are removed once every Spark holds the
+        image. Returns ``(ranks that loaded the image, ranks a down cable keeps
+        from the fabric)``; a Spark that stopped answering ends the install
+        with ``needs_input``.
+        """
+        document, positions = self.fabric()
+        rank_of = {position: rank for rank, position in enumerate(positions)}
+        config, layers = layout
+        files = spread.image_files(card["image_id"], config, layers)
+        root = spread.image_root(card["image_id"])
+        with progress.step("Node 0: Download the image's layers once for the cluster"):
+            for _, digest, _ in layers:
+                relay.blob(digest)
+
+        def start(rank, listen, peers, names, want):
+            return self.launch(rank, fabric_stream.hop_source("directory", {"root": root}, listen, peers, names, want,
+                                                              self.pipeline))
+
+        def send(rank, sources, addresses, ports, groups, token):
+            program = fabric_stream.push_source(str(relay.directory) if self.local(rank) else root, sources, addresses,
+                                                ports, groups, self.pipeline)
+            return self.finish_program(rank, program, token)
+
+        executor = self.spreader(rank_of, start=start, send=send)
+        targets = {positions[rank] for rank in ranks}
+        needs = {position: set(files) for position in targets}
+        reserve = install_space.load_bytes(sum(size for _, _, size in layers))
+        layer_rows = [list(layer) for layer in layers]
+        loaded, outcomes, cut = [], [], set()
+        for _ in range(2):
+            with progress.step(f"Spread the image to {spread.positions_text(needs)} along the cables"):
+                outcome = executor.run("image", files, positions[0], needs, members=positions)
+            outcomes.append(outcome)
+            spread.raise_stopped(document, "image", outcome, positions, len(files))
+            cut |= {position for group in outcome["fallbacks"].values() for position in group}
+            failed = {position: text for position, text in outcome["failures"].items()
+                      if position in outcome["remaining"]}
+            stuck = sorted(set(outcome["remaining"]) - cut - set(failed))
+            if failed or stuck:
+                position = min(failed or stuck)
+                raise ValueError(f"Node {rank_of[position]}: the image's layers did not arrive over the fabric"
+                                 + (f" ({failed[position]})" if position in failed else ""))
+            ready = [position for position in sorted(targets - cut) if rank_of[position] not in loaded]
+
+            def load(position):
+                rank = rank_of[position]
+                with progress.step(f"Node {rank}: Load the image from its verified layers"):
+                    return position, self.remote(rank, spread.load_staged_image, root, card["image_id"], layer_rows,
+                                                 self.tag(card, relay), reserve)
+            needs = {}
+            with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(ready))) as pool:
+                for position, result in pool.map(load, ready):
+                    if not result.get("loaded"):
+                        # A blob that changed after it was verified is sent again before Docker sees it.
+                        needs[position] = set(result.get("differs") or files)
+                    elif not self.remote(rank_of[position], image_probe, card["image_id"])["present"]:
+                        raise ValueError(f"Node {rank_of[position]}: the loaded image differs from the selected one")
+                    else:
+                        loaded.append(rank_of[position])
+            if not needs:
+                break
+        if needs:
+            raise ValueError("The image's layers kept failing verification on "
+                             + ", ".join(f"Node {rank_of[position]}" for position in sorted(needs)))
+        for rank in loaded:
+            try:
+                self.remote(rank, spread.discard_staged, root)
+            except (OSError, ValueError, subprocess.SubprocessError) as error:
+                progress.record(f"Node {rank}: {root} was not removed: {error}")
+        self.spread_result = {"image_ranks": sorted(loaded), "admin_ranks": sorted(rank_of[p] for p in cut),
+                              "rounds": sum(outcome["rounds"] for outcome in outcomes),
+                              "received": [row for outcome in outcomes for row in outcome["received"]]}
+        return sorted(loaded), sorted(rank_of[position] for position in cut)
 
     def load_layers(self, rank, relay, card, layout, present):
         """Stream the image configuration and the layers after ``present`` into one node's ``docker load``."""
         config, layers = layout
         # Loaded blobs, their unpacked layers and the loader's extracted copy coexist.
         reserve = install_space.load_bytes(sum(size for _, _, size in layers[present:]))
-        release = card.get("release", "")
-        tag = (f"127.0.0.1:{registry_relay.PORT}/{relay.repository}:{release}"
-               if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", release) else None)
+        tag = self.tag(card, relay)
         with tempfile.TemporaryFile() as errors:
             child = self.popen(self.command(rank, ["python3", "-I", "-c", self.code(receive_image, card["image_id"], reserve)]),
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=errors)
@@ -306,6 +497,8 @@ class Assets:
                 pulled = self.relay(card, missing, observations)
                 result = {"image_id": card["image_id"], "relayed_ranks": pulled,
                           "reused_ranks": [r for r in range(count) if r not in missing]}
+                if self.spread_result is not None:
+                    result.update(spread_ranks=self.spread_result["image_ranks"], spread=self.spread_result)
                 node.save(self.directory, "images.json", result, mode=0o600)
                 return result
             except NeedsInput:
@@ -472,13 +665,18 @@ class Assets:
         return self.copy(runner, rows, manifest, item["source"], 0, item["names"]), "rsync"
 
     def distribute(self, runner, rows, manifest, donor, receives, complete):
-        """Send each receive of ``receives`` along the cables, level by level, then rsync what remains.
+        """Send each receive of ``receives`` along the cables, then rsync what remains.
 
-        Streams of one level run in parallel. After a failed stream the fabric
-        is not used again; the remaining Sparks are copied with rsync through
-        Node A, which first receives from ``donor`` when it lacks files.
-        ``complete`` gains every Spark that completes. Returns what was sent.
+        With a fabric document the receives travel as pipelines
+        (``spread_checkpoint``). Without one they go level by level: streams of
+        one level run in parallel, and after a failed stream the fabric is not
+        used again. The remaining Sparks are copied with rsync through Node A,
+        which first receives from ``donor`` when it lacks files. ``complete``
+        gains every Spark that completes. Returns what was sent.
         """
+        if receives and self.fabric() is not None:
+            return self.spread_checkpoint(runner, rows, manifest, donor, receives, complete)
+
         def stream(item):
             try:
                 return self.stream_checkpoint(runner, rows, manifest, item["source"], item["target"], item["names"])
@@ -504,8 +702,16 @@ class Assets:
             if failure is not None:
                 progress.say(f"Direct fabric checkpoint copy unavailable ({failure}); copying over {self.transport.mode}.")
                 break
-        # The head is the relay for the opposite side of the ring, never the PC.
-        for item in sorted(pending, key=lambda item: (item["target"] != 0, item["level"], item["target"])):
+        return sent + self.copy_through_head(runner, rows, manifest, donor, pending, complete)
+
+    def copy_through_head(self, runner, rows, manifest, donor, items, complete):
+        """rsync each receive of ``items`` over the administration path; Node A first, then the others from it.
+
+        The head is the relay for Sparks the fabric does not reach, never the
+        PC. ``complete`` gains every Spark that completes; returns the copies.
+        """
+        sent = []
+        for item in sorted(items, key=lambda item: (item["target"] != 0, item.get("level", 0), item["target"])):
             source = donor if item["target"] == 0 else 0
             if source not in complete:
                 raise ValueError(f"Node {source} holds no complete checkpoint to copy to Node {item['target']}")
@@ -513,6 +719,72 @@ class Assets:
             finished(outcome, item["target"], f"receiving from Node {source}")
             complete.add(item["target"])
             sent.append({**item, "source": source, "transport": "rsync"})
+        return sent
+
+    def spread_checkpoint(self, runner, rows, manifest, donor, receives, complete):
+        """Send ``receives`` from ``donor`` as pipelines along the cables (``spread.Spread``).
+
+        Before each pass a Spark of a chain runs ``model-transfer-prepare``
+        with the names the pass carries, which claims its checkpoint directory
+        and checks its free space; its hop program then places what it lacks
+        (``fabric_stream.hop_checkpoint``) while forwarding everything to the
+        next Spark. A Spark that holds its whole checkpoint may start a chain;
+        one serving a named copy in place starts chains but does not forward.
+        Every Spark that received everything runs ``model-transfer-complete``.
+        Sparks that a down cable keeps from the fabric are copied with rsync
+        through Node A (``copy_through_head``). A Spark that stopped answering
+        ends the install with ``needs_input``; files placed before stay, so the
+        same command resumes. ``complete`` gains every Spark that completes;
+        returns the receives, one row per Spark and pass.
+        """
+        document, positions = self.fabric()
+        rank_of = {position: rank for rank, position in enumerate(positions)}
+        wanted = {positions[item["target"]]: set(item["names"]) for item in receives if item["names"]}
+        names = sorted(set().union(*wanted.values()))
+        carried = transfer_manifest(manifest, names)
+        files = {name: [carried["sizes"][name], carried["files"][name]] for name in names}
+
+        def data(rank):
+            # The transfer manifest of the names this Spark receives; a Spark that only forwards holds them all.
+            return json.dumps(transfer_manifest(manifest, sorted(wanted.get(positions[rank], names)))).encode()
+
+        def start(rank, listen, peers, pass_files, want):
+            operation(runner, rank, "model-transfer-prepare", data(rank))
+            place = {"root": rows[rank]["model"], "repository": carried["repository"], "revision": carried["revision"]}
+            return self.launch(rank, fabric_stream.hop_source("checkpoint", place, listen, peers, pass_files, want,
+                                                              self.pipeline))
+
+        def send(rank, sources, addresses, ports, groups, token):
+            program = fabric_stream.push_source(rows[rank]["model"], sources, addresses, ports, groups, self.pipeline)
+            return self.finish_program(rank, program, token)
+
+        executor = self.spreader(rank_of, start=start, send=send)
+        with progress.step(f"Spread the checkpoint from Node {donor} to {spread.positions_text(wanted)} along the "
+                           "cables"):
+            outcome = executor.run("checkpoint", files, positions[donor], wanted, members=positions,
+                                   holders={positions[rank] for rank in complete},
+                                   relays={positions[rank] for rank, row in enumerate(rows)
+                                           if not row.get("reuse_verified_model")})
+        sent = [{"source": rank_of[row["source"]], "target": rank_of[row["target"]], "names": row["names"],
+                 "level": row["hop"] - 1, "transport": "fabric",
+                 "pipeline": {"start": rank_of[row["start"]], "direction": row["direction"], "round": row["round"]}}
+                for row in outcome["received"]]
+        for position in sorted(set(wanted) - set(outcome["remaining"])):
+            rank = rank_of[position]
+            result = operation(runner, rank, "model-transfer-complete", data(rank))
+            finished(result, rank, "receiving it along the cables")
+            complete.add(rank)
+        cut = [position for group in outcome["fallbacks"].values() for position in group]
+        sent += self.copy_through_head(runner, rows, manifest, donor, [
+            {"source": donor, "target": rank_of[position], "names": sorted(outcome["remaining"][position]), "level": 0}
+            for position in cut], complete)
+        spread.raise_stopped(document, "checkpoint", outcome, positions, len(manifest["files"]))
+        stuck = sorted(set(outcome["remaining"]) - set(cut))
+        if stuck:
+            position = stuck[0]
+            reason = outcome["failures"].get(position)
+            raise ValueError(f"Node {rank_of[position]}: the checkpoint did not arrive over the fabric"
+                             + (f" ({reason})" if reason else "") + "; repeat sudo sparkring install to resume")
         return sent
 
     def models(self, lock, runner, previous=None, plan=None, receipts=None):
@@ -664,7 +936,7 @@ class Assets:
         with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
             results = list(pool.map(link, range(count)))
         holdings = [set(result.get("verified") or ()) & set(recipe) for result in results]
-        after = checkpoint_plan._distribute(count, holdings, recipe, bool((plan or {}).get("line")))
+        after = checkpoint_plan._distribute(count, holdings, recipe, checkpoint_plan.plan_layout(plan))
         derive = bool(after["hub"])
         writes = [0] * count
         if derive:

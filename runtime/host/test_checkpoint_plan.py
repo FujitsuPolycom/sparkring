@@ -238,6 +238,14 @@ def test_the_sparks_of_a_line_pool_and_receive_only_from_cable_neighbors():
     # The executed distribution follows the approved plan's shape.
     assert [(r["source"], r["target"]) for r in cp.redistribute(line, [None] * 4)["receive"]] == [
         (0, 1), (1, 2), (2, 3)]
+    # A line is the path of its Sparks: the plan that the install makes with both the flag and the
+    # deployment's layout distributes the same way, and a plan that records only the flag reads as that path.
+    path = {"shape": "path", "size": 4}
+    both = make(surveys, line=True, layout=path)
+    assert both["line"] is True and both["layout"] == path and both["distribution"] == line["distribution"]
+    assert cp.plan_layout(line) == path and cp.plan_layout(ring) is None
+    with pytest.raises(ValueError, match="not a cycle"):
+        make(surveys, line=True, layout={"shape": "cycle", "size": 4})
 
 
 def test_a_complete_worker_is_the_donor_and_nothing_is_downloaded():

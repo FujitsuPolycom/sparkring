@@ -12,8 +12,18 @@ import tempfile
 from runtime.common import fabric_layout
 
 # The most cable hops between Node A and a Spark it reaches: the far end of an
-# eight-Spark line.
+# eight-Spark line. A fabric of ``size`` Sparks needs at most ``size - 1``
+# (``hop_limit``).
 MAX_HOPS = fabric_layout.MAX_SPARKS - 1
+
+
+def hop_limit(size=None):
+    """The longest SSH route through the cables to any of ``size`` Sparks: ``size - 1``, or ``MAX_HOPS``."""
+    if size is None:
+        return MAX_HOPS
+    if not fabric_layout.MIN_SPARKS <= size <= fabric_layout.MAX_SPARKS:
+        raise ValueError(f"SparkRing sets up {fabric_layout.MIN_SPARKS} to {fabric_layout.MAX_SPARKS} Sparks")
+    return size - 1
 
 
 def fabric_identity(guids, machine_id):
@@ -253,8 +263,11 @@ class SSH:
                          capture_output=True, text=True, timeout=30)
 
 
-def discover(transport, *, user="root", port=22, select=lambda peer: True):
+def discover(transport, *, user="root", port=22, select=lambda peer: True, hops=MAX_HOPS):
     """Authenticate the Sparks reachable over fabric link-local addresses.
+
+    A neighbor is followed only on routes of at most ``hops`` cables
+    (``hop_limit`` of the expected number of Sparks).
 
     Returns the head's identity, every authenticated Spark's inventory, the
     cables between them, the SSH route to each, and warnings: Sparks that
@@ -315,7 +328,7 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
             # An unrecognized function can still lead to an already enrolled
             # machine; authenticate before assigning either identity or rank.
             route = [*routes[ident], {"user": user, "address": str(address), "interface": interface["netdev"], "port": port}]
-            if len(route) > MAX_HOPS or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
+            if len(route) > min(hops, MAX_HOPS) or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
                 continue
             try:
                 transport.login(route)

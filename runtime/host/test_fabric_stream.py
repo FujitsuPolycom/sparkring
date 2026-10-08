@@ -46,6 +46,12 @@ def test_copies_follow_cables_outward_from_the_donor():
     # On a line, such as four Sparks of a larger ring, the ends share no cable.
     assert fabric_stream.tree(4, 0, line=True) == [[(0, 1)], [(1, 2)], [(2, 3)]]
     assert fabric_stream.tree(5, 2, line=True) == [[(2, 3), (2, 1)], [(3, 4), (1, 0)]]
+    # A line copies as the path layout of its Sparks does.
+    for count, donor in ((4, 0), (5, 2), (8, 3)):
+        assert fabric_stream.tree(count, donor, line=True) == fabric_stream.tree(
+            count, donor, {"shape": "path", "size": count})
+    with pytest.raises(ValueError, match="not both"):
+        fabric_stream.tree(4, 0, {"shape": "path", "size": 4}, line=True)
 
 
 @pytest.mark.parametrize("size", [2, 4])
