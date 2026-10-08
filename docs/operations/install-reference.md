@@ -774,11 +774,71 @@ the held layers, checks each loaded layer against the configuration and tags
 the image `127.0.0.1:5255/<repository>:<image-lock name>`. A node holding
 none pulls.
 
+On a cluster with a recorded [fabric document](#the-fabric-document), a worker
+that holds none of the image's layers receives them along the cables instead
+([Spreading along the cables](#spreading-along-the-cables)); the relay then
+serves only nodes that hold leading layers and Node A itself.
+
 Image distribution starts first, overlapping the prerequisite and source
 checks. Checkpoint preparation waits until every node holds the image,
 because downloads run the image's own Hugging Face client and every
 checkpoint write is checked against free space after the image is in place;
 image admission follows.
+
+### Spreading along the cables
+
+Status: implemented and tested offline with simulated Sparks
+(`runtime/host/test_spread.py`); not yet qualified on Spark hardware.
+
+On a cluster whose Node A holds the fabric document, `sparkring install`
+spreads the serving image and the checkpoint from one source Spark to the
+others as pipelines along the cables (`runtime/host/spread.py`):
+
+- **Order.** Node A reaches the Sparks by the fewest cables, both ways round a
+  cycle and the only way along a path, each through the Spark before it; no
+  route is longer than the number of Sparks minus one. Workers that run
+  another SparkRing revision receive Node A's package in this order.
+- **Directions.** An asset leaves its source through both of its ports. On a
+  cycle each Spark is reached the shorter way; on a cycle of eight from Node A,
+  `0 → 1 → 2 → 3 → 4` and `0 → 7 → 6 → 5`. On a path it runs to the end.
+- **Pipelining.** Each Spark of a chain receives every file in chunks over
+  both functions of the cable from the Spark before it, writes and hashes each
+  chunk, and sends it to the next Spark before the next chunk arrives. The
+  farthest Spark therefore finishes about one chunk later per cable than the
+  first, not one whole copy later. A Spark that already holds a file, or holds
+  the image in Docker, forwards without writing. A disk that stops taking
+  chunks for 60 seconds loses that file, which is sent again, while the chain
+  runs on; each Spark buffers at most 16 chunks of 8 MiB per stream.
+- **Image.** Node A downloads each registry layer once and is the source; each
+  worker without layers writes the layers to
+  `/var/lib/sparkring/spread/images/<image digest>/`, hashes every one again
+  once all are present and only then imports them with `docker load`. The
+  directory is removed after the import. A worker that holds leading layers
+  loads the rest through the registry relay.
+- **Checkpoint.** The checkpoint plan's donor is the source; every file is
+  placed in SparkRing's checkpoint directory only after its SHA-256 matches the
+  pin.
+- **Repairs.** A file that arrives with another SHA-256 is sent again from the
+  Spark before, which verified its copy. Sparks after a Spark that stopped
+  answering are reached from the other direction of a cycle.
+
+The install plan prints the spread before the checkpoint plan: the order, each
+pipeline and the bytes each Spark writes. It is saved in
+`checkpoint-plan.json` as `spread` (`sparkring-spread-plan/v1`) and is bounded
+with it by a reviewed plan ([Plan approval](#plan-approval)).
+
+| Event | Result |
+|---|---|
+| A Spark stops answering mid-spread | The install stops with `needs_input` (field `spark`), for example `spark-e (position 4) stopped answering during the checkpoint spread; positions 0-3 and 5-7 hold the complete checkpoint, position 4 holds 23 of 53 files. Power it on and repeat the same command; the spread resumes.` On a path the Sparks after it wait. Placed files stay; repeating the command sends only what is missing |
+| A cable is down | On a cycle the spread goes round it. On a path the Sparks beyond it receive over the administration network (slower): `cable 3 (spark-d port 0 ↔ spark-e port 1) is down; positions 4-7 receive over the admin network instead of the fabric (slower). Reseat the cable and run sudo sparkring fabric verify.` A cable recorded as `failed` in the fabric document is planned that way from the start |
+| Node A cannot reach a Spark | `needs_input` (field `spark`): `positions 0-5 are set up; spark-g (position 6) was not reached over cable 5; check the cable and repeat the same command.` |
+
+A cluster set up before the fabric document existed keeps the relay for the
+image and copies checkpoint files cable by cable, level by level.
+
+`sudo sparkring fabric spread-check` runs the same spread with test files on
+any recorded layout and prints each Spark's finish time
+([fabric](commands.md#fabric)).
 
 ### Without a reachable registry
 
@@ -2347,10 +2407,11 @@ using it.
 **SparkRing never writes, moves or deletes files it did not create.**
 
 Copies between Sparks travel over the fabric cables outward from a Spark that
-holds the checkpoint. The receiver binds only its fabric addresses and
-accepts only the sender's address and a one-time token sent over
-administration SSH. If a direct copy fails, rsync over administration SSH
-fills in: it sends only files the receiver lacks, into an empty staging
+holds the checkpoint; with a fabric document they run as pipelines
+([Spreading along the cables](#spreading-along-the-cables)). Each receiver
+binds only its fabric addresses and accepts only the sending Spark's address
+and a one-time token sent over administration SSH. Where the fabric cannot
+carry a copy, rsync over administration SSH fills in: it sends only files the receiver lacks, into an empty staging
 directory beside SparkRing's directory, reading them without changing their
 access times (`--open-noatime`, which needs rsync 3.2.3 or later on both ends;
 Ubuntu 24.04 ships 3.2.7). Each received file is placed only after its
@@ -2390,7 +2451,10 @@ bound, so repeating `--yes` stops again: review the changed plan with
   `--cache-path` and `--image-lock` options, which identify the deployment.
 - With `--json`, the result carries a plan summary as `checkpoint`; the full
   plan, with each file's action, is `checkpoint-plan.json` in the result's
-  `deployment` directory.
+  `deployment` directory. The result also carries the spread plan as `spread`.
+- The spread plan stays within the reviewed one while the fabric is the same,
+  no Spark writes more than 1 GiB beyond it and no Spark receives over the
+  administration network what the reviewed plan sent over the cables.
 
 ### Options
 
