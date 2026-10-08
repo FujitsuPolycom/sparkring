@@ -957,7 +957,7 @@ def transport_view(directory, lock):
     value = lock.get("transport")
     if not value:
         return {"backend": "prepared"}
-    if value["backend"] == "nccl":
+    if value.get("backend") == "nccl":
         return {"backend": "nccl", "group": value["group"]["name"], "positions": value["group"]["positions"],
                 "fabric": value["fabric"]["id"]}
     from runtime.host import transport_receipts
