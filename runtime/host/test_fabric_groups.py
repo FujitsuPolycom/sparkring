@@ -24,7 +24,7 @@ QWEN_TP2 = "qwen38-flash-next-tp2"
 GLM_TP2 = "glm53-flash-nvfp4-spark-tp2"
 QWEN_TP4 = "qwen38-flash-next-qad-tp4"
 DEEPSEEK_TP4 = "deepseek-v41-flash-tp4"
-GLM_TP8 = "glm53-flash-nvfp4-spark-tp8"
+GLM_TP8 = "glm53-flash-csf-tp8"
 GLM_FULL = "glm53-nvfp4-tp8"
 MARKER = {"binary": relays.MARKER_BINARY, "sha256": "ab" * 32}
 CSF_BUILD = "sparkring-kraken-beta-20261007-bc9ea774"
@@ -48,8 +48,9 @@ def label(path):
     return lock["selection"]["profile"] + ("@" + "-".join(map(str, where)) if where else "")
 
 
-def image_lock_file(tmp_path, *, pins=("lil-image-aba309e4610c",)):
-    """A v3 lock listing every installer profile, the eight-Spark ones included."""
+def image_lock_file(tmp_path, *, pins=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774")):
+    """A v3 lock listing every installer profile, the eight-Spark ones included; its image's vLLM matches the
+    pinned builds ``pins``, by default the image's and the build that reads the CSF checkpoint."""
     profiles = sorted({*installer_image.default_lock()["profiles"], *installer_image.SIRCL_ONLY})
     path = tmp_path / ("sircl-image-" + "-".join(pins) + ".json")
     path.write_text(json.dumps(sircl_lock(profiles=profiles, sircl=dict(sircl_block(), vllm_pins=sorted(pins)))))
@@ -254,18 +255,18 @@ def test_glm53_at_tp8_gives_each_decode_context_parallel_group_its_own_session(r
 
 
 def test_the_csf_checkpoint_needs_an_image_whose_vllm_reads_it(ring8, capsys, tmp_path):
-    assert install(ring8, "--profile", GLM_TP8, "--checkpoint", "csf") == 3
+    plain = image_lock_file(tmp_path, pins=("lil-image-aba309e4610c",))
+    assert install(ring8, "--profile", GLM_TP8, lock=plain) == 3
     refused = result(capsys)
-    assert refused["field"] == "checkpoint_name" and CSF_BUILD in refused["message"]
+    assert CSF_BUILD in refused["message"]
     assert ops(ring8) == []
-    csf = image_lock_file(tmp_path, pins=(CSF_BUILD, "lil-image-aba309e4610c"))
-    assert install(ring8, "--profile", GLM_TP8, "--checkpoint", "csf", lock=csf) == 0
+    assert install(ring8, "--profile", GLM_TP8) == 0
     lock = lock_of(result(capsys))
     assert lock["selection"]["model_repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"
     command = list(installer.specifications(lock, only_rank=0)[0].command)
     assert command[command.index("--quantization") + 1] == "nvfp4_csf"
     assert command[command.index("--load-format") + 1] == "nvfp4_csf"
-    assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD-TP8"
+    assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-CSF-TP8"
 
 
 def test_an_arc_whose_relaying_spark_lacks_the_hairpin_setting_is_refused(ring8, capsys, monkeypatch):

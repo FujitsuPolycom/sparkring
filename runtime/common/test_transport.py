@@ -193,7 +193,7 @@ def test_a_measured_table_carries_default_rows_and_drops_a_default_table_it_repl
                                        fabric=document("cycle", 4)["id"], image_value=image, measured_at="2026-10-09",
                                        binding=binding, root=tmp_path / "repository")
     assert [entry["sha256"] for entry in kept["tables"]] == [other_digest, digest]
-    assert kept["layouts"]["pair"]["source"] == "default:measured" and kept["layouts"]["cycle-4"]["source"] == "measured"
+    assert kept["layouts"]["pair"]["source"] == "default:design" and kept["layouts"]["cycle-4"]["source"] == "measured"
     replaced = transport.measured_document(defaults, {"pair": {}}, {digest: json.loads(data)},
                                            fabric=document("pair", 2)["id"], image_value=image,
                                            measured_at="2026-10-09", binding=binding, root=tmp_path / "repository")
@@ -401,6 +401,10 @@ def test_a_pair_tuning_row_sets_its_session_settings():
     lock, section = sircl_deployment(TP2, "pair", 2, [0, 1])
     environment = installer.specifications(lock)[0].environment
     assert section["tuning"]["settings"] == {"large_blocks": 32, "oneshot_max": 131072, "ring_min": 2097152}
+    # The pair row holds the SIRCL install design's settings, which no measurement confirmed.
+    assert section["tuning"]["row_source"] == "design"
+    assert transport.plan_lines(section)[0] == ("Transport: sircl on every collective, NCCL off (default table, pair: "
+                                                "the design's settings, not measured)")
     assert (environment["SIRCL_LARGE_BLOCKS"], environment["SIRCL_ONESHOT_MAX_BYTES"],
             environment["SIRCL_RING_MIN_BYTES"]) == ("32", "131072", "2097152")
 
@@ -782,7 +786,7 @@ def test_a_path_fabric_runs_sircl_on_its_path_and_keeps_nccl_off_across_relays()
 
 
 @pytest.mark.parametrize("edit, message", [
-    (lambda table: table["layouts"]["pair"].update(source="guessed"), "measured, rules or inherited"),
+    (lambda table: table["layouts"]["pair"].update(source="guessed"), "measured, design, rules or inherited"),
     (lambda table: table["tables"].append({"path": "../outside.json", "sha256": "0" * 64}), "repository path"),
     (lambda table: table.update(sircl={"version": "0.2.0"}), "SIRCL version and ABI"),
 ])
@@ -881,7 +885,7 @@ def test_decode_context_parallel_groups_get_sessions_inside_the_tensor_parallel_
 def test_a_profile_that_only_sircl_runs_needs_its_transport_section_and_its_positions():
     image = eight_spark_image()
     with pytest.raises(ValueError, match="runs only on SIRCL ring sessions; its deployment needs a transport section"):
-        installer.make_lock("glm53-flash-nvfp4-spark-tp8", install_site(8), "1" * 40, "2" * 64,
+        installer.make_lock("glm53-flash-csf-tp8", install_site(8), "1" * 40, "2" * 64,
                             image_runtime=image_lock.v2_view(image))
     section = transport.section(image, document("cycle", 8), [4, 5, 6, 7], nccl="never",
                                 tuning=transport.load_tuning())

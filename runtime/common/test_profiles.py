@@ -533,3 +533,23 @@ def test_identity_view_drops_only_descriptive_fields():
     catalog = profiles.read_json(profiles.ROOT / "profiles/catalog.json")
     assert profiles.identity_view(catalog) is catalog
     assert profiles.identity_view({"schema": ["sparkring-deployment/v1"], "title": "x"})["title"] == "x"
+
+
+def test_research_profiles_are_discovered_from_their_own_catalog_and_are_research_only(tmp_path, monkeypatch):
+    main = profiles.read_json(profiles.ROOT / profiles.CATALOG)
+    research = profiles.research_catalog()
+    assert research and not {row["id"] for row in main["profiles"]} & set(research)
+    assert set(profiles.catalog()) == {row["id"] for row in main["profiles"]} | set(research)
+    assert all(profiles.load(profile_id)[0]["status"] == "research-only" for profile_id in research)
+    # A research catalog row whose profile is not research-only belongs in the main catalog.
+    copy_ = tmp_path / "research-catalog.json"
+    rows = [*profiles.read_json(profiles.ROOT / profiles.RESEARCH_CATALOG)["profiles"],
+            {"id": "qwen38-flash-next-tp2-copy", "path": "profiles/qwen38-flash-next-tp2/profile.json"}]
+    copy_.write_text(json.dumps({"schema": profiles.CATALOG_SCHEMA, "profiles": rows}), encoding="utf-8")
+    monkeypatch.setattr(profiles, "RESEARCH_CATALOG", str(copy_))
+    with pytest.raises(ValueError, match="qwen38-flash-next-tp2-copy is not research-only"):
+        profiles.research_catalog()
+    rows[-1] = {"id": "qwen38-flash-next-tp2", "path": "profiles/glm53-nvfp4-tp8/profile.json"}
+    copy_.write_text(json.dumps({"schema": profiles.CATALOG_SCHEMA, "profiles": rows}), encoding="utf-8")
+    with pytest.raises(ValueError, match="qwen38-flash-next-tp2 appear in both"):
+        profiles.catalog()

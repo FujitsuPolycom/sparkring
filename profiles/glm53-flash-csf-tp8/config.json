@@ -2,45 +2,14 @@
   "schema": "sparkring-serving-profile/v1",
   "status": "research-only",
   "model": {
-    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
-    "revision": "a608241037e4c2565356bff7ca293f2133888f88",
-    "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
-    "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544"
-  },
-  "checkpoint": "nvfp4-spark",
-  "checkpoints": {
-    "nvfp4-spark": {
-      "model": {
-        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
-        "revision": "a608241037e4c2565356bff7ca293f2133888f88",
-        "config_sha256": "e1c0246a44ebefb5fd6383fb57aebbf7ac69ff6e7b23e989c0571b279a0eca23",
-        "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544"
-      }
-    },
-    "csf": {
-      "model": {
-        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
-        "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
-        "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
-        "index_sha256": "568c770e4a083ab53c3d74deab348d541724f23ec9637d83513ecb8fa4a7ef73"
-      },
-      "served_model_name": "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD-TP8",
-      "arguments": {
-        "--quantization": "nvfp4_csf",
-        "--load-format": "nvfp4_csf",
-        "--kv-cache-memory-bytes": "39728447488"
-      },
-      "environment": {
-        "VLLM_B12X_MOE_FP4_FORCE_A16": "1"
-      },
-      "speculative": {
-        "moe_backend": "marlin"
-      }
-    }
+    "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+    "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
+    "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
+    "index_sha256": "568c770e4a083ab53c3d74deab348d541724f23ec9637d83513ecb8fa4a7ef73"
   },
   "topology": "direct-cycle-8",
-  "served_model_name": "GLM-5.3-Flash-NVFP4-Spark-TP8",
-  "cache_namespace": "glm53-flash-nvfp4-spark",
+  "served_model_name": "GLM-5.3-Flash-CSF-TP8",
+  "cache_namespace": "glm53-flash-csf",
   "image_extension": "toolchain",
   "smoke": {
     "chat_template_kwargs": {
@@ -99,7 +68,7 @@
     "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1",
     "VLLM_B12X_MLA_CKV_GATHER": "0",
     "B12X_FUSED_INDEXER": "1",
-    "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
+    "VLLM_B12X_MOE_FP4_FORCE_A16": "1",
     "VLLM_ALLREDUCE_USE_FLASHINFER": "0",
     "VLLM_ALLREDUCE_USE_SYMM_MEM": "0",
     "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0"
@@ -124,7 +93,7 @@
     "--gpu-memory-utilization",
     "0.80",
     "--kv-cache-memory-bytes",
-    "42949672960",
+    "39728447488",
     "--mamba-block-size",
     "1024",
     "--limit-mm-per-prompt",
@@ -136,7 +105,7 @@
     "--mm-processor-cache-gb",
     "0",
     "--speculative-config",
-    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"attention_backend\":\"B12X\",\"draft_tensor_parallel_size\":8,\"kv_cache_dtype\":\"auto\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\"}",
+    "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"attention_backend\":\"B12X\",\"draft_tensor_parallel_size\":8,\"kv_cache_dtype\":\"auto\",\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"standard\",\"moe_backend\":\"marlin\"}",
     "--compilation-config",
     "{\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"all\"],\"pass_config\":{\"fuse_allreduce_rms\":false}}",
     "--max-cudagraph-capture-size",
@@ -164,7 +133,7 @@
     "--kv-cache-dtype",
     "fp8",
     "--quantization",
-    "modelopt_mixed",
+    "nvfp4_csf",
     "--attention-backend",
     "B12X",
     "--block-size",
@@ -177,7 +146,7 @@
     "b12x",
     "--no-enable-flashinfer-autotune",
     "--load-format",
-    "b12x",
+    "nvfp4_csf",
     "--enable-auto-tool-choice",
     "--tool-call-parser",
     "glm47",

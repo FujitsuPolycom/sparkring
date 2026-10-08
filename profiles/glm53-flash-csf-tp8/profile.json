@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-csf-tp8",
+  "title": "GLM-5.3-Flash CSF on eight Sparks",
+  "recommendation": "recommended",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-flash-csf-tp8/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-flash-csf-tp8/README.md",
+  "evidence_scope": "The settings of the four-Spark profile glm53-flash-nvfp4-spark-tp4 at tensor-parallel size 8 (MTP3 with native prefix caching and a 1,048,576-token context window), serving local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD with the quantization, loader, 37 GiB of KV cache per Spark, W4A16 decode and draft MoE backend that checkpoint needs. Runs only on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring; no image lock in this package lists it, so it installs only with a development image lock (v3) whose image carries the SIRCL layer, lists the profile and lists SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. No installation of this profile has run on hardware. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-flash-csf-tp8/config.json"
+    ]
+  }
+}

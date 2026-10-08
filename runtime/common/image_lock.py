@@ -150,7 +150,8 @@ def checkpoint_problem(value, card):
     pins = list((sircl(value) or {}).get("vllm_pins") or ())
     if set(builds) & set(pins):
         return None
-    return (f"Checkpoint {card['target_variant']} ({card['model_repository']} at {card['model_revision'][:12]}) "
+    named = f" (--checkpoint {card['target_variant']})" if card.get("target_variant") else ""
+    return (f"Checkpoint {card['model_repository']} at {card['model_revision'][:12]}{named} "
             f"needs an image whose vLLM is the pinned build {' or '.join(builds)}; image {value.get('name')} "
             + (f"matches {', '.join(pins)}" if pins else "records no pinned vLLM build"))
 

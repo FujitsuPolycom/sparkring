@@ -134,7 +134,9 @@ INTEGER_SETTINGS = ("capacity", "dispatch", "gather", "oneshot_max", "large_bloc
 SCHEDULE_SETTINGS = ("large_schedule", "gather_schedule", "scatter_schedule")
 SECONDS_SETTINGS = ("startup_wait", "serving_wait")
 SETTINGS = (*INTEGER_SETTINGS, *SCHEDULE_SETTINGS, *SECONDS_SETTINGS, "large_allreduce")
-ROW_SOURCES = re.compile(r"measured|rules|inherited:[a-z0-9-]+")
+# A row's evidence: measured on a fabric; design, settings the SIRCL install design sets that no measurement
+# confirmed; rules, SIRCL's own derivation; inherited:<row>, another row's settings.
+ROW_SOURCES = re.compile(r"measured|design|rules|inherited:[a-z0-9-]+")
 # A measured table's rows for group shapes it did not measure: the default table's row and its evidence.
 CARRIED = "default:"
 GROUP_NAME = re.compile(r"pair|(?:path|cycle)(?:-[2-9]|-1[0-6])?")
@@ -262,7 +264,7 @@ def validate_tuning(document, *, root=ROOT, host_root="/"):
         own = source.removeprefix(CARRIED) if isinstance(source, str) and measured else source
         _require(isinstance(row, dict) and set(row) == {"source", "settings"} and isinstance(own, str)
                  and ROW_SOURCES.fullmatch(own) and isinstance(row["settings"], dict),
-                 f"tuning row {name}: source (measured, rules or inherited:<row>; in a measured table also "
+                 f"tuning row {name}: source (measured, design, rules or inherited:<row>; in a measured table also "
                  "default:<source>) and settings")
         for key, value in row["settings"].items():
             _require(key in SETTINGS and _setting(key, value), f"tuning row {name}: {key}={value!r} is not a "
@@ -953,6 +955,8 @@ def plan_lines(value, notes=()):
         evidence = f"default table, {row}"
     elif source == "rules":
         evidence = f"default table, {value['group']['name']}: not measured, SIRCL's own rules apply"
+    elif source == "design":
+        evidence = f"default table, {row}: the design's settings, not measured"
     else:
         evidence = f"default table, {value['group']['name']}: {source.replace(':', ' from ')}"
     if value["nccl"] == "never":

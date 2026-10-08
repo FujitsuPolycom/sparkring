@@ -37,11 +37,6 @@ TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4",
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4",
     "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"))
-# Serving profiles of eight Sparks for the shared toolchain image, which only SIRCL ring sessions run
-# (installer_image.SIRCL_ONLY); they keep the envelope above. A source snapshot that omits them
-# renders the other profiles.
-FABRIC_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
-    "deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8"))
 # Topology of each node count a serving profile runs on.
 TOPOLOGIES = {2: "direct-pair-2", 4: "direct-cycle-4", 8: "direct-cycle-8"}
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
@@ -62,8 +57,16 @@ def publication():
     return read(ROOT / "runtime/images/compositions/lil-r37-glm-spark/publication.json")
 
 
+def fabric_configs():
+    """Serving configurations of the research profiles that only SIRCL ring sessions run, on the shared
+    toolchain image (profiles.relayed_research; installer_image.SIRCL_ONLY); they keep the envelope above.
+    A source tree without profiles.RESEARCH_CATALOG renders the other profiles."""
+    from runtime.common import profiles
+    return tuple(profiles.relayed_research().values())
+
+
 def canonical(profile):
-    fabric = profile in [read(path) for path in FABRIC_CONFIGS if path.is_file()]
+    fabric = profile in [read(path) for path in fabric_configs()]
     if (profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES]
             and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]
             and profile not in [read(path) for path in TOOLCHAIN_CONFIGS] and not fabric):

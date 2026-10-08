@@ -22,7 +22,7 @@
         "oneshot_max": 131072,
         "ring_min": 2097152
       },
-      "source": "measured"
+      "source": "design"
     },
     "path": {
       "settings": {},

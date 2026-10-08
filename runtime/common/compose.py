@@ -30,13 +30,13 @@ TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp2", "swift15-
 TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
 # Every supported profile has generated public examples under profiles/*/compose.
 SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
-# Installer profiles of eight Sparks on the shared toolchain image of an image lock that carries
-# SIRCL (installer_image.SIRCL_ONLY, runtime/common/image_lock.py). Only SIRCL ring sessions run
-# them, because their ranks reach each other through relays: `sparkring install` renders them,
-# and each host's row carries the fabric document reference of the relay table. A Compose
-# deployment runs the prepared transport, so they have no Compose exports.
-FABRIC_PROFILES = ("deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8",
-                   "qwen38-flash-next-qad-tp8")
+# Installer profiles on the shared toolchain image of an image lock that carries SIRCL
+# (installer_image.SIRCL_ONLY, runtime/common/image_lock.py): the research-only profiles whose
+# ranks reach each other through relays (profiles.relayed_research). Only SIRCL ring sessions run
+# them: `sparkring install` renders them, and each host's row carries the fabric document
+# reference of the relay table. A Compose deployment runs the prepared transport, so they have no
+# Compose exports. They are read from profiles.RESEARCH_CATALOG, which no Compose label hashes.
+FABRIC_PROFILES = tuple(profiles.relayed_research())
 # Node counts of the sites the adapter renders.
 NODE_COUNTS = (2, 4, 8)
 LABEL = "io.sparkring.deployment"

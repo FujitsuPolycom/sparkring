@@ -20,6 +20,19 @@ COMMON = {"decode_context_parallel_size": 1, "pipeline_parallel_size": 1}
 TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "direct-cycle-8", "sparkring-rocenante-mesh",
               "tp2-rocenante-adaptive", "switched"}
 DIRECT = {"direct-pair-2": ("pair", 2), "direct-cycle-4": ("cycle", 4), "direct-cycle-8": ("cycle", 8)}
+# Topologies whose ranks reach each other through relays, so that only SIRCL ring sessions run them.
+RELAYED = frozenset({"direct-cycle-8"})
+# Discovery reads two catalogs with the same rows (``{"id", "path"}``). CATALOG
+# lists the profiles that the Compose deployment identity covers: every
+# Compose export's label hashes this file (compose.source_inventory).
+# RESEARCH_CATALOG lists research-only profiles, which install and resolve like
+# any other but stay outside that identity, so adding, changing or removing one
+# changes no export. A profile moves from RESEARCH_CATALOG to CATALOG when it
+# graduates from research-only (status implemented or qualified); that move
+# changes every Compose label once. An absent RESEARCH_CATALOG lists nothing.
+CATALOG = "profiles/catalog.json"
+RESEARCH_CATALOG = "profiles/research-catalog.json"
+CATALOG_SCHEMA = "sparkring-catalog/v1"
 # Top-level fields that describe a profile to people, by document schema: a
 # profile definition's title, recommendation, evidence status and scope, and
 # guide, and a serving configuration's evidence status and qualification notes.
@@ -84,16 +97,53 @@ def local_path(value, root=ROOT):
     return path
 
 
-def catalog(root=ROOT):
-    data = read_json(root / "profiles/catalog.json")
-    if set(data) != {"schema", "profiles"} or data["schema"] != "sparkring-catalog/v1":
-        raise ValueError("profiles/catalog.json: expected sparkring-catalog/v1")
+def _catalog_file(root, name):
+    """``{id: profile path}`` of one catalog file (CATALOG or RESEARCH_CATALOG)."""
+    data = read_json(root / name)
+    if set(data) != {"schema", "profiles"} or data["schema"] != CATALOG_SCHEMA:
+        raise ValueError(f"{name}: expected {CATALOG_SCHEMA}")
     result = {}
     for row in data["profiles"]:
         if set(row) != {"id", "path"} or row["id"] in result:
             raise ValueError("Catalog entries require unique id and path")
         result[row["id"]] = local_path(row["path"], root)
     return result
+
+
+def research_catalog(root=ROOT):
+    """``{id: profile path}`` of RESEARCH_CATALOG, whose every profile is research-only; empty without the file."""
+    if not (Path(root) / RESEARCH_CATALOG).is_file():
+        return {}
+    result = _catalog_file(root, RESEARCH_CATALOG)
+    for profile_id, path in result.items():
+        if read_json(path).get("status") != "research-only":
+            raise ValueError(f"{RESEARCH_CATALOG}: {profile_id} is not research-only; a profile that graduates "
+                             f"moves to {CATALOG}")
+    return result
+
+
+def catalog(root=ROOT):
+    """``{id: profile path}`` of every discoverable profile: CATALOG and RESEARCH_CATALOG."""
+    result = _catalog_file(root, CATALOG)
+    research = research_catalog(root)
+    both = sorted(set(result) & set(research))
+    if both:
+        raise ValueError(f"{', '.join(both)} appear in both {CATALOG} and {RESEARCH_CATALOG}")
+    return {**result, **research}
+
+
+def relayed_research(root=ROOT):
+    """``{id: serving configuration path}`` of the research profiles whose serving configuration's topology is
+    RELAYED, sorted by ID: the installer profiles that only SIRCL ring sessions run."""
+    found = {}
+    for profile_id, path in sorted(research_catalog(root).items()):
+        source = read_json(path).get("configuration") or {}
+        if source.get("format") != "serving-profile":
+            continue
+        configuration = local_path(source["path"], root)
+        if read_json(configuration).get("topology") in RELAYED:
+            found[profile_id] = configuration
+    return found
 
 
 def load(profile_id, root=ROOT):

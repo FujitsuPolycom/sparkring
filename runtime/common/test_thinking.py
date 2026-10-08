@@ -172,3 +172,20 @@ def test_an_invalid_catalog_is_refused(tmp_path, change, message):
     write(tmp_path, data)
     with pytest.raises(ValueError, match=message):
         thinking.catalog(tmp_path)
+
+
+def test_research_records_join_the_catalog_and_a_name_in_both_files_is_refused(tmp_path):
+    main = profiles.read_json(profiles.ROOT / thinking.CATALOG)
+    research = profiles.read_json(profiles.ROOT / thinking.RESEARCH)
+    merged = thinking.catalog()
+    assert set(merged["checkpoints"]) == set(main["checkpoints"]) | set(research["checkpoints"])
+    # A research checkpoint may name a behaviour of the main file: the CSF checkpoint uses GLM-5.3-Flash's template.
+    assert merged["checkpoints"]["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@"
+                                 "dec48abd33efa73c3bb7c95b74eee10cad34f9be"] == "glm53-flash-template"
+    assert not set(research["checkpoints"]) & set(main["checkpoints"])
+    write(tmp_path, main)
+    (tmp_path / thinking.RESEARCH).write_text(json.dumps(dict(research, behaviours={
+        **research["behaviours"], "glm53-flash-template": main["behaviours"]["glm53-flash-template"]})),
+        encoding="utf-8")
+    with pytest.raises(ValueError, match="glm53-flash-template appear in both"):
+        thinking.catalog(tmp_path)

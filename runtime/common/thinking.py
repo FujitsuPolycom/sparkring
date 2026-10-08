@@ -35,6 +35,14 @@ recorded behaviour.
 Records apply to profiles on the shared installer image (configuration
 ``image_extension`` ``toolchain``), whose vLLM was read for the merge above
 and for the DeepSeek encoder. Other profiles have no record.
+
+profiles/research-thinking.json holds, in the same form, the behaviours and
+checkpoints that only research-only profiles (profiles.RESEARCH_CATALOG)
+serve. Every Compose export's label hashes profiles/thinking.json and not
+this file, so a research profile's records change no export. ``catalog``
+reads both; a name in both is refused, and a research checkpoint may name a
+behaviour of either file. A record moves to profiles/thinking.json when a
+profile of the main catalog serves its checkpoint.
 """
 import re
 
@@ -42,6 +50,7 @@ from runtime.common import profiles
 
 ROOT = profiles.ROOT
 CATALOG = "profiles/thinking.json"
+RESEARCH = "profiles/research-thinking.json"
 DEFAULTS = ("on", "off", "always")
 FIELDS = frozenset({"default", "level", "levels", "effort", "off", "source"})
 CHECKPOINT = re.compile(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}")
@@ -77,11 +86,24 @@ def _behaviour(name, value):
         raise ValueError(f"Thinking behaviour {name}: source lists the chat templates read and what they do")
 
 
-def catalog(root=ROOT):
-    """profiles/thinking.json, validated."""
-    data = profiles.read_json(root / CATALOG)
+def _file(path, name):
+    data = profiles.read_json(path)
     if set(data) != {"schema", "behaviours", "checkpoints"} or data["schema"] != "sparkring-thinking/v1":
-        raise ValueError(CATALOG + ": expected sparkring-thinking/v1 with behaviours and checkpoints")
+        raise ValueError(name + ": expected sparkring-thinking/v1 with behaviours and checkpoints")
+    return data
+
+
+def catalog(root=ROOT):
+    """profiles/thinking.json with profiles/research-thinking.json merged in, validated."""
+    data = _file(root / CATALOG, CATALOG)
+    if (root / RESEARCH).is_file():
+        research = _file(root / RESEARCH, RESEARCH)
+        for part in ("behaviours", "checkpoints"):
+            both = sorted(set(data[part]) & set(research[part]))
+            if both:
+                raise ValueError(f"{', '.join(both)} appear in both {CATALOG} and {RESEARCH}")
+        data = {**data, "behaviours": {**data["behaviours"], **research["behaviours"]},
+                "checkpoints": {**data["checkpoints"], **research["checkpoints"]}}
     for name, value in data["behaviours"].items():
         _behaviour(name, value)
     for key, name in data["checkpoints"].items():

@@ -449,3 +449,46 @@ def test_cli_help_has_compose_command():
         and "check" in result.stdout
         and "start" in result.stdout
     )
+
+
+# Research-only profiles and the deployment label.
+
+def rendered_examples():
+    return {path: text for path, text in generate_compose_examples.examples()}
+
+
+def test_research_profiles_are_outside_every_compose_label():
+    research = {profiles.RESEARCH_CATALOG, "profiles/research-thinking.json"}
+    for profile_id in profiles.research_catalog():
+        research.add(f"profiles/{profile_id}/profile.json")
+    for profile_id in compose.SUPPORTED:
+        assert not research & set(compose.source_inventory(profile_id)), profile_id
+
+
+def test_adding_a_research_profile_changes_no_export(tmp_path, monkeypatch):
+    from runtime.common import thinking
+    before = rendered_examples()
+    assert all(path.read_text(encoding="utf-8") == text for path, text in before.items())
+    # A further research profile: a catalog row and its thinking record, in copies of both research files.
+    research = profiles.read_json(profiles.ROOT / profiles.RESEARCH_CATALOG)
+    research["profiles"].append({"id": "example-research-tp8", "path": "profiles/glm53-nvfp4-tp8/profile.json"})
+    catalog_copy = tmp_path / "research-catalog.json"
+    catalog_copy.write_text(json.dumps(research), encoding="utf-8")
+    records = profiles.read_json(profiles.ROOT / thinking.RESEARCH)
+    records["behaviours"]["example-template"] = dict(records["behaviours"]["glm53-template"])
+    records["checkpoints"]["example-owner/Example-Model@" + "0" * 40] = "example-template"
+    thinking_copy = tmp_path / "research-thinking.json"
+    thinking_copy.write_text(json.dumps(records), encoding="utf-8")
+    monkeypatch.setattr(profiles, "RESEARCH_CATALOG", str(catalog_copy))
+    monkeypatch.setattr(thinking, "RESEARCH", str(thinking_copy))
+    # Discovery and the SIRCL-only rule see it; no export changes.
+    assert "example-research-tp8" in profiles.catalog() and "example-research-tp8" in profiles.relayed_research()
+    assert thinking.catalog()["checkpoints"]["example-owner/Example-Model@" + "0" * 40] == "example-template"
+    assert rendered_examples() == before
+    # A row in the main catalog, which the labels hash, changes every Compose label.
+    original = compose.source_bytes
+    monkeypatch.setattr(compose, "source_bytes", lambda name: original(name) + (
+        b" " if name == profiles.CATALOG else b""))
+    changed = rendered_examples()
+    ranks = [path for path in before if "/compose/compose.rank" in path.as_posix()]
+    assert ranks and all(changed[path] != before[path] for path in ranks)

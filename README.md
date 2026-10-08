@@ -50,7 +50,7 @@ with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-
 \* The two-Spark GLM profile serves 8 requests at a time.
 
 Four Experimental profiles serve on all eight Sparks of an eight-Spark ring
-(`glm53-flash-nvfp4-spark-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,
+(`glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,
 `qwen38-flash-next-qad-tp8`). They need an image lock whose image carries
 SIRCL ring sessions, which this package does not ship, and have no
 installation measurements ([profile catalog](profiles/README.md)).

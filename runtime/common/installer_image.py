@@ -56,10 +56,16 @@ QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-fl
 SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
              "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
 # Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
-# runtime/common/image_lock.py): their eight ranks reach each other through relays. A lock's profile
-# list may name them beside SUPPORTED; only image_lock admits a lock that does.
-SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8")
-QWEN4_EXP = (*QWEN4_EXP_PREPARED, "qwen38-flash-next-qad-tp8")
+# runtime/common/image_lock.py): the research-only profiles whose ranks reach each other through
+# relays (profiles.relayed_research). A lock's profile list may name them beside SUPPORTED; only
+# image_lock admits a lock that does. They are read from profiles.RESEARCH_CATALOG, which no
+# Compose label hashes, so adding one changes no Compose export.
+_RELAYED = profiles.relayed_research()
+SIRCL_ONLY = tuple(_RELAYED)
+# A relayed research profile runs the Qwen3.8-Flash-Next architecture when its configuration selects
+# the Qwen HC prefill mode, which ``adapt`` and admission configure as for QWEN4_EXP_PREPARED.
+QWEN4_EXP = (*QWEN4_EXP_PREPARED, *(profile for profile, path in _RELAYED.items()
+                                    if "VLLM_QWEN3_8_HC_PREFILL_MODE" in profiles.read_json(path)["environment"]))
 # A v2 lock may also list IDs in profiles.REPLACED, so that the locks of other
 # releases in runtime/releases keep validating; ``for_profile`` refuses those IDs
 # and names the catalog profile that replaces each.

@@ -60,7 +60,8 @@ def test_an_image_with_sircl_and_a_recorded_fabric_install_on_sircl_with_nccl_of
     assert recorded["fabric"]["id"] == document["id"] and recorded["group"]["name"] == "pair"
     assert result["transport"]["backend"] == "sircl" and result["transport"]["verdict"] == "as-expected"
     assert events.index("candidate:up") < events.index("candidate:transport")
-    assert "Transport: sircl on every collective, NCCL off (default table, pair)" in out.err
+    assert ("Transport: sircl on every collective, NCCL off (default table, pair: the design's settings, "
+            "not measured)") in out.err
     assert "  Transport:   sircl, NCCL: absent" in out.err
     # The result stays with the deployment for sparkring check --report.
     saved = json.loads((Path(result["deployment"]) / flow.RESULT_FILE).read_text())

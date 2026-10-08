@@ -144,9 +144,9 @@ def test_the_v3_schema_is_documented_with_every_field():
 
 # Profiles that only SIRCL ring sessions run.
 
-TP8 = "glm53-flash-nvfp4-spark-tp8"
+TP8 = "glm53-flash-csf-tp8"
 CSF = {"model_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
-       "model_revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be", "target_variant": "csf"}
+       "model_revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be", "target_variant": None}
 
 
 def with_eight_spark_profiles(**changes):
@@ -174,8 +174,8 @@ def test_the_csf_checkpoint_needs_an_image_whose_vllm_is_its_pinned_build():
     assert image_lock.checkpoint_problem(sircl_lock(), {"model_repository": "other/model", "model_revision": "0" * 40,
                                                         "target_variant": None}) is None
     problem = image_lock.checkpoint_problem(sircl_lock(), CSF)
-    assert problem.startswith("Checkpoint csf (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
-                              "dec48abd33ef) needs an image whose vLLM is the pinned build "
+    assert problem.startswith("Checkpoint local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
+                              "dec48abd33ef needs an image whose vLLM is the pinned build "
                               "sparkring-kraken-beta-20261007-bc9ea774")
     assert "matches lil-image-aba309e4610c" in problem
     assert "records no pinned vLLM build" in image_lock.checkpoint_problem(installer_image.default_lock(), CSF)

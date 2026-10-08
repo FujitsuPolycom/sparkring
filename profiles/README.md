@@ -141,6 +141,15 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
+<summary>GLM-5.3-Flash · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-flash-csf-tp8 (default)](../profiles/glm53-flash-csf-tp8/README.md) |
+
+</details>
+
+<details>
 <summary>GLM-5.3-Flash · 2 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
@@ -162,15 +171,6 @@ record links preserve configuration evidence when the guide selects a different 
 | DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1](../profiles/glm53-flash-spark-tp4-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1/profile.json) |
 | DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1-nocache](../profiles/glm53-flash-spark-tp4-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json) |
 | DCP1 | switched | Off | Experimental | [glm53-flash-spark-tp4-switched](../profiles/glm53-flash-spark-tp4-switched/README.md) |
-
-</details>
-
-<details>
-<summary>GLM-5.3-Flash · 8 Sparks · vLLM</summary>
-
-| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
-|---|---|---|---|---|
-| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-flash-nvfp4-spark-tp8 (default)](../profiles/glm53-flash-nvfp4-spark-tp8/README.md) |
 
 </details>
 

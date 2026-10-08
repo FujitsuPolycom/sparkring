@@ -140,22 +140,6 @@
     {
       "id": "swift15-qwen38-flash-next-tp4",
       "path": "profiles/swift15-qwen38-flash-next-tp4/profile.json"
-    },
-    {
-      "id": "glm53-flash-nvfp4-spark-tp8",
-      "path": "profiles/glm53-flash-nvfp4-spark-tp8/profile.json"
-    },
-    {
-      "id": "glm53-nvfp4-tp8",
-      "path": "profiles/glm53-nvfp4-tp8/profile.json"
-    },
-    {
-      "id": "deepseek-v41-flash-tp8",
-      "path": "profiles/deepseek-v41-flash-tp8/profile.json"
-    },
-    {
-      "id": "qwen38-flash-next-qad-tp8",
-      "path": "profiles/qwen38-flash-next-qad-tp8/profile.json"
     }
   ]
 }

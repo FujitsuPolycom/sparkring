@@ -1,0 +1,20 @@
+{
+  "schema": "sparkring-thinking/v1",
+  "behaviours": {
+    "glm53-template": {
+      "default": "always",
+      "level": "max",
+      "levels": ["low", "high", "max"],
+      "effort": "reasoning_effort",
+      "off": null,
+      "source": {
+        "chat_templates": ["3740abcea51c45830cb3ca562084ad5fb2ef53589376f73332e9886f93ade41c"],
+        "reading": "GLM-5.3's chat_template.jinja lines 2-3: reasoning_effort low or high selects that level, and any other value, or none, selects max; the level is written as a system line such as 'Reasoning Effort: Max'. Line 4: clear_thinking defaults to false, which keeps earlier turns' reasoning in the prompt. Lines 253-254: the generation prompt always opens a <think> block, and no variable closes it."
+      }
+    }
+  },
+  "checkpoints": {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be": "glm53-flash-template",
+    "local-inference-lab/GLM-5.3-NVFP4@b472e4ee53f6a9862da5486c56c6ca21be3dab70": "glm53-template"
+  }
+}
