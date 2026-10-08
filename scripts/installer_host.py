@@ -1992,6 +1992,10 @@ def perform(operation, lock, number):
     model_receipt = state / "model.json"
     if operation in MODEL_OPERATIONS:
         return model_operation(operation, lock, number, row, state)
+    if operation in ("ring-stop", "ring-stopped", "ring-serve", "ring-check") and lock.get("transport")             and "fabric" in row:
+        # A SIRCL group's ranks check the fabric's relay table at their own fabric positions.
+        from runtime.host import native_mesh
+        return native_mesh.group_operation(operation, lock, number)
     if operation in ("ring-stop", "ring-stopped", "ring-serve"):
         from runtime.host import native_mesh
         step = {"ring-stop": native_mesh.stop_ring, "ring-stopped": native_mesh.ring_stopped,
@@ -2006,7 +2010,7 @@ def perform(operation, lock, number):
         return (roce_gid.serve if operation == "gid-serve" else roce_gid.check)(row["hcas"], row["gid"])
     if operation in ("ring-park", "ring-parked"):
         if not lock["site"].get("placement"):
-            raise ValueError("Only a deployment on half of a four-Spark ring parks the ring's mesh")
+            raise ValueError("Only a deployment on part of the fabric parks a four-Spark ring's mesh")
         from runtime.host import native_mesh
         return native_mesh.park_local() if operation == "ring-park" else native_mesh.parked_local()
     if operation.startswith("mesh-"):
@@ -2129,7 +2133,10 @@ def perform(operation, lock, number):
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
                 profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
                 qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
-            if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
+            if lock.get("transport") and "fabric" in row:
+                from runtime.host import native_mesh
+                native_mesh.group_operation("ring-check", lock, number)
+            elif card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
                 from runtime.host import native_mesh
                 native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
             if not (info and info["State"].get("Running")):

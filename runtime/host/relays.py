@@ -579,6 +579,81 @@ def persistent_reference(state_dir, cluster):
             "plan_sha256": relays["plan_sha256"]}
 
 
+def group_reference(state_dir, cluster):
+    """The ``fabric`` reference of a SIRCL group whose ranks reach each other through relays.
+
+    It has the form of ``persistent_reference`` (the path of each Spark's
+    copy of the fabric document, that copy's SHA-256 and the relay plan's
+    SHA-256) for any layout whose fabric document, Node A's
+    ``state_dir/fabric.json``, describes this cluster, lists the ``sircl``
+    transport and records a relay table that boot units restore. Each rank's
+    relay check (``check_position``) compares its own copies with it. Raises
+    ValueError when the document is missing, unreadable, describes other
+    Sparks or records no such table.
+    """
+    path = Path(state_dir) / "fabric.json"
+    try:
+        text = path.read_text(encoding="utf-8")
+        document = fabric_document.validate(json.loads(text))
+    except FileNotFoundError:
+        raise ValueError("This cluster has no fabric document; sudo sparkring setup records one") from None
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path} cannot be used: {error}") from None
+    relays = document.get("relays") or {}
+    nodes = [host.get("node_id") for host in cluster["plan"]["spec"]["hosts"]]
+    if [row["node_id"] for row in document["positions"]] != nodes:
+        raise ValueError("The recorded fabric document describes other Sparks than the cluster; run sudo sparkring "
+                         "setup")
+    if "sircl" not in document["transports"] or not relays.get("persistent") or not relays.get("plan_sha256"):
+        raise ValueError("The fabric's relay table is not installed and restored at boot; sudo sparkring setup "
+                         "installs it")
+    return {"site_path": fabric_document.HOST_PATH, "site_sha256": hashlib.sha256(text.encode()).hexdigest(),
+            "plan_sha256": relays["plan_sha256"]}
+
+
+def check_position(reference, position, gid, host_ip, *, root="/", call=None):
+    """The read-only relay check of one rank of a SIRCL group at fabric ``position``.
+
+    This Spark's copy of the fabric document must have the referenced digest,
+    its fabric record the referenced relay plan and the position; RoCE GID
+    index 3; ``host_ip`` this position's management address, over which the
+    group's ranks bootstrap. Then every route, neighbor and filter of the
+    record's relay table and every marker must be in place. Raises ValueError
+    naming the first difference; returns the rows.
+    """
+    from runtime.host import node
+    call = call or node.call
+    path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
+    text = path.read_text(encoding="utf-8")
+    if hashlib.sha256(text.encode()).hexdigest() != reference["site_sha256"]:
+        raise ValueError("This Spark's fabric document differs from the deployment's; run sudo sparkring setup")
+    document = fabric_document.validate(json.loads(text))
+    record = _fabric_record(root)
+    value = record.get("relays") or {}
+    if value.get("plan_sha256") != reference["plan_sha256"] or record.get("rank") != position:
+        raise ValueError("This Spark's relay table differs from the deployment's; run sudo sparkring setup")
+    if gid != 3:
+        raise ValueError("The group's GID index differs from the fabric's index 3")
+    if host_ip != document["positions"][position]["management"].get("address"):
+        raise ValueError("Rank bootstrap address differs from the fabric document's management address")
+    rows = observe(value, call=call, root=root) + check_markers(value, root=root)
+    absent = missing(rows)
+    if absent:
+        first = absent[0]
+        what = first.get("dst") or first.get("addr") or first.get("rdma") or f"{first.get('dev')} pref {first.get('pref')}"
+        raise ValueError(f"Relay table incomplete on this Spark: {first['kind']} {what} is {first['state']}"
+                         + ("" if len(absent) == 1 else f" ({len(absent)} objects)")
+                         + "; sudo sparkring fabric verify names each")
+    return rows
+
+
+def position_devices(position, *, root="/"):
+    """The RDMA devices of this Spark's cabled functions, in role order, as its copy of the fabric document names them."""
+    path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
+    document = fabric_document.validate(json.loads(path.read_text(encoding="utf-8")))
+    return [rdma for rdma, row in fabric_document.devices(document, position).items() if row["address"] is not None]
+
+
 def is_reference(reference):
     """Whether a deployment's ``fabric`` reference names the fabric document rather than a mesh site."""
     return isinstance(reference, dict) and reference.get("site_path") == fabric_document.HOST_PATH

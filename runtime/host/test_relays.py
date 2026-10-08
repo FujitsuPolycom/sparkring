@@ -351,6 +351,57 @@ def test_the_ring_check_over_the_table_checks_devices_addresses_and_every_object
                                call=kernel)
 
 
+def test_a_sircl_group_refers_to_the_fabric_document_on_any_layout_with_a_persistent_table(tmp_path):
+    for shape, size in (("cycle", 8), ("path", 5), ("cycle", 4)):
+        plan, document, relay_plan = prepared(shape, size)
+        cluster = {"name": "test", "plan": plan}
+        (tmp_path / "fabric.json").write_text(fabric_document.encoded(document), encoding="utf-8", newline="\n")
+        assert relays.group_reference(tmp_path, cluster) == {
+            "site_path": fabric_document.HOST_PATH,
+            "site_sha256": hashlib.sha256(fabric_document.encoded(document).encode()).hexdigest(),
+            "plan_sha256": relay_plan["sha256"]}
+    # On a four-Spark cycle it is the prepared transport's reference too.
+    assert relays.group_reference(tmp_path, cluster) == relays.persistent_reference(tmp_path, cluster)
+    # The recorded document of four Sparks does not describe a cluster of eight.
+    other_plan, _, _ = prepared("cycle", 8)
+    with pytest.raises(ValueError, match="describes other Sparks"):
+        relays.group_reference(tmp_path, {"name": "test", "plan": other_plan})
+    plan = plan_of(fabric_layout.layout("cycle", 8))
+    without, _ = fabric.prepare(plan, cluster="test", marker=None)
+    (tmp_path / "fabric.json").write_text(fabric_document.encoded(without), encoding="utf-8", newline="\n")
+    with pytest.raises(ValueError, match="relay table is not installed"):
+        relays.group_reference(tmp_path, {"name": "test", "plan": plan})
+    (tmp_path / "fabric.json").unlink()
+    with pytest.raises(ValueError, match="no fabric document"):
+        relays.group_reference(tmp_path, cluster)
+
+
+def test_a_sircl_rank_checks_the_relay_table_at_its_own_fabric_position(tmp_path):
+    plan, document, relay_plan = prepared("cycle", 8)
+    position = 5
+    config = topology.persistent_config(plan, position, relays=relays.section(relay_plan, position))
+    write_state(tmp_path, document, config)
+    section = config["relays"]
+    netdevs = sorted({r["dev"] for r in section["routes"]} | {f["dev"] for f in section["filters"]})
+    kernel = Kernel(tmp_path, netdevs)
+    for pid, row in enumerate(section["markers"], 200):
+        proc(tmp_path, pid, relays.marker_argv(section, row))
+    reference = {"site_path": fabric_document.HOST_PATH,
+                 "site_sha256": hashlib.sha256(fabric_document.encoded(document).encode()).hexdigest(),
+                 "plan_sha256": relay_plan["sha256"]}
+    host_ip = document["positions"][position]["management"]["address"]
+    relays.restore(section, call=kernel, root=tmp_path)
+    rows = relays.check_position(reference, position, 3, host_ip, root=tmp_path, call=kernel)
+    assert {row["state"] for row in rows} == {"present"}
+    # The position, not the deployment rank, names the Spark's record: rank 1 of a group on 4-7 is position 5.
+    with pytest.raises(ValueError, match="relay table differs"):
+        relays.check_position(reference, 1, 3, host_ip, root=tmp_path, call=kernel)
+    with pytest.raises(ValueError, match="bootstrap address"):
+        relays.check_position(reference, position, 3, "192.0.2.99", root=tmp_path, call=kernel)
+    assert relays.position_devices(position, root=tmp_path) == ["rocep1s0f0", "roceP2p1s0f0", "rocep1s0f1",
+                                                                  "roceP2p1s0f1"]
+
+
 def test_restore_at_boot_installs_the_table_after_routes_and_settings(tmp_path):
     plan, document, relay_plan = prepared("path", 4)
     config = topology.persistent_config(plan, 1, relays=relays.section(relay_plan, 1))

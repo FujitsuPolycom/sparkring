@@ -929,6 +929,55 @@ def serve_relays(reference, rank, hcas, gid, host_ip, *, call=node.call, check=r
             "restored": sum(row["state"] == "restored" for row in rows)}
 
 
+def group_position(lock, rank):
+    """The fabric position of a deployment's rank: its arc's ``rank``-th Spark, or ``rank`` on every Spark."""
+    placement = lock["site"].get("placement")
+    return placement[rank] if placement else rank
+
+
+def serve_group(reference, position, gid, host_ip, *, call=node.call, check=relays.check_position,
+                sleep=time.sleep, clock=time.monotonic, root="/"):
+    """Prepare this Spark's relay table for a SIRCL group and wait until its relay check passes.
+
+    The SIRCL counterpart of ``serve_relays``: the ports of this position's
+    cabled functions whose RoCE GID index 3 lost the IPv4 address get it
+    again, the record's missing relay objects are added (``relays.restore``),
+    and ``relays.check_position`` must pass within RING_READY_SECONDS.
+    """
+    repaired = roce_gid.serve(relays.position_devices(position, root=root), gid, call=call)
+    table = node.read(root, "/etc/sparkring/fabric.json").get("relays") or {}
+    rows = relays.restore(table, call=call, root=root)
+    deadline = clock() + RING_READY_SECONDS
+    while True:
+        try:
+            check(reference, position, gid, host_ip, root=root)
+            break
+        except CHECK_FAILURES as error:
+            if clock() >= deadline:
+                raise ValueError(f"The relay table's check still fails after {RING_READY_SECONDS} s: {error}") \
+                    from None
+            sleep(3)
+    return {"ok": True, "unit": None, "action": "checked", "relays": "fabric", "position": position,
+            "repaired": repaired.get("repaired", []) if isinstance(repaired, dict) else [],
+            "restored": sum(row["state"] == "restored" for row in rows)}
+
+
+def group_operation(operation, lock, rank):
+    """``ring-stop``, ``ring-stopped``, ``ring-serve`` or ``ring-check`` of a SIRCL deployment's rank.
+
+    A SIRCL group's relays are the fabric's own table, which no deployment
+    stops; serving checks it and restores what a restarted neighbor removed.
+    """
+    row = lock["site"]["ranks"][rank]
+    position = group_position(lock, rank)
+    if operation in ("ring-stop", "ring-stopped"):
+        return {"ok": True, "unit": None, "action": "none", "relays": "fabric", "repaired": []}
+    if operation == "ring-serve":
+        return serve_group(row["fabric"], position, row["gid"], row["host_ip"])
+    relays.check_position(row["fabric"], position, row["gid"], row["host_ip"])
+    return {"ok": True}
+
+
 def operate_local(lock, rank, operation):
     value = validate(lock["site_input"]["native_mesh"], lock["site_input"])
     selected = managed_deployment.layout(value["name"])
