@@ -8,6 +8,11 @@ run this workflow. Jobs use read-only repository permissions.
 - `tests` runs GPU-free contracts, including serving configuration and
   measurement-receipt checks. README tests check navigation rather than
   requiring a particular prose or table layout.
+- `SIRCL ring sessions` runs the CPU tests of the
+  [SIRCL ring-session package](../spark_transport/sircl/README.md) from the
+  repository layout, with its own pytest settings. Its native tests compile
+  the progress-thread source with GCC against an in-memory verbs stand-in;
+  none needs a GPU or an RDMA device.
 - `pinned LIL bridge` builds the source-pinned
   [LIL deployment companion](../integrations/lil/README.md) and exercises
   its SparkRing integration.

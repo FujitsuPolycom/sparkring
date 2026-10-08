@@ -26,6 +26,11 @@ For changes to Compose generation or the [Install Builder](../operations/compose
 also run `python -m pytest scripts/compose_builder -q` with Node.js installed;
 without Node.js the engine comparison is skipped.
 
+For changes to the SIRCL ring sessions in `spark_transport/sircl`, run
+`python -m pytest spark_transport/sircl -q` from the repository root. Its
+native simulator and binding tests need GCC on a POSIX host and skip
+elsewhere; its vLLM adapter tests need the CPU torch build.
+
 For implementation changes, run tests beside the affected component. The
 [CI workflow](../../.github/workflows/ci.yml) lists the broader suite and pinned
 CPU torch dependency. Some tests require POSIX modes,
