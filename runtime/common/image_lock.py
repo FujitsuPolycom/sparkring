@@ -235,6 +235,9 @@ def for_profile(profile, explicit=None):
     if replaced:
         raise ValueError(replaced)
     value = explicit if explicit is not None else default()
+    if schema(value) != SCHEMA_V3:
+        # v1 and v2 locks keep installer_image's selection, refusals and messages.
+        return installer_image.for_profile(profile, explicit)
     try:
         return validate(value, profile)
     except ValueError as error:
