@@ -21,7 +21,9 @@ so library kernels used for the first time cannot stall a waiting group
 either. Separate processes, as in serving, need none of this.
 
 ``python -m sparkring_sircl.testing.gpu_emulation [--layout path:0-3] [--lanes 2]``
-runs :func:`run_checks` and prints one line per check. Requirements: CUDA,
+runs :func:`run_checks` and prints one line per check; with ``--tune`` it runs
+:func:`tune_checks` instead (the ring harness's tune command on the emulated
+group, and sessions that take its table). Requirements: CUDA,
 torch with CUDA, CUDA Python, the CuTe DSL, and a GCC-compatible compiler for
 the simulator library.
 """
@@ -1606,6 +1608,217 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
     return checks
 
 
+TUNE_SIZES = (4096, 16384, 65536, 262144, 1 << 20)
+TUNE_PIECES = (65536, 131072)
+TUNE_LINK_SLOTS = 12
+
+
+def _harness_tune(group: EmulatedGroup, options: dict) -> list[dict]:
+    """Every rank's ``ring.worker.Harness._run_tune`` with ``options`` on the emulated group, eager (CUDA graph
+    capture is per process, and these ranks share one), its ``torch.distributed`` calls among the threads;
+    each rank's result as the ring harness writes it (runs, families, the session's stats fields)."""
+    from ..ring import worker
+
+    torch = group.torch
+    local = threading.local()
+
+    class Dist:
+        def __init__(self) -> None:
+            self.gate = threading.Barrier(group.world)
+            self.slots: list[Any] = [None] * group.world
+
+        def barrier(self, group=None) -> None:
+            self.gate.wait(timeout=600)
+
+        def all_gather_object(self, values, obj, group=None) -> None:
+            self.slots[local.rank] = obj
+            self.gate.wait(timeout=600)
+            values[:] = list(self.slots)
+            self.gate.wait(timeout=600)
+
+    dist = Dist()
+    harnesses = []
+    for rank, session in enumerate(group.sessions):
+        harness = worker.Harness.__new__(worker.Harness)
+        harness.__dict__.update(
+            session=session, world=group.world, rank=rank, global_rank=rank, group_index=0, tp_session=None,
+            tp_world=group.world, devices=[], dist=dist, process_group=None, nccl=None, swing_through=None,
+            scatter_through=None, torch=torch, device=session.device, options=options, result={"runs": []},
+            _adapter=None, _adapter_times=[], mismatches=0)
+        harnesses.append(harness)
+
+    def tune(rank: int) -> None:
+        local.rank = rank
+        harnesses[rank]._run_tune()
+
+    group._threads(tune, timeout=3000.0)
+    fields = ("max_size", "large_piece_bytes", "chain_slot_bytes", "link_slots", "link_slot_bytes", "chain_order")
+    results = []
+    for harness, session in zip(harnesses, group.sessions):
+        stats = session.stats()
+        results.append({"runs": harness.result["runs"], "group": 0, "exit_code": 0, "error": None,
+                        "tune_families": harness.result.get("tune_families"),
+                        "session": {field: stats.get(field) for field in fields}})
+    return results
+
+
+def tune_checks(layout_text: str = "ring:8", lanes: int = 2, *, library: str | os.PathLike | None = None,
+                max_size: int = 256 << 10, max_gather_bytes: int = 64 << 10,
+                report: Callable[[tuple[str, bool, str]], None] | None = None) -> list[tuple[str, bool, str]]:
+    """The ring harness's tune command end to end on the emulated group, then sessions that take its table.
+
+    1. Every rank runs ``Harness._run_tune`` (eager; the all-reduce and the all-gather at :data:`TUNE_SIZES`
+       per rank, link pieces and chain chunks of :data:`TUNE_PIECES`, staggers 0 and 1, the tune session's
+       :data:`TUNE_LINK_SLOTS` link slots); the rank results are merged as the harness merges them
+       (``ring.summary.merge``) and the table built from them (``ring.summary.tuning_tables``). Every case
+       is exact, a schedule decides the all-reduce above the capacity, and the table records the link
+       slots of the tune session when it chooses a link schedule.
+    2. A group whose sessions take that table with no link variable set: each session applies the table's
+       settings (``stats()["tuning"]["settings"]``), every op the table decides runs its choice with none
+       counted unusable, and every output is exact.
+    3. Sessions built (not run) with a table whose settings differ from every default and with
+       ``SIRCL_LINK_SLOTS`` set: the environment's link slots, the table's link slot, chain slot and
+       large-message piece, each reported beside the table's value.
+    """
+    import dataclasses
+    import json
+    import tempfile
+
+    import torch
+
+    from .. import tuning as tuning_mod
+    from ..protocol import default_link_slots
+    from ..ring import plan as plan_mod
+    from ..ring import summary
+
+    if library is None:
+        build = Path(os.environ.get("SIRCL_TEST_BUILD_DIR", Path.cwd() / ".build" / "sim"))
+        library = native_build.build_shared_library(build)
+    checks = _Checks(report)
+    saved_environment = dict(os.environ)
+    bf16 = torch.bfloat16
+    base = {"SIRCL_SERVING_WAIT_S": "60", "SIRCL_STARTUP_WAIT_S": "120"}
+
+    def restore() -> None:
+        os.environ.clear()
+        os.environ.update(saved_environment)
+
+    scratch = Path(tempfile.mkdtemp(prefix="sircl-tune-"))
+    group = EmulatedGroup(layout_text, lanes, max_size=max_size, max_gather_bytes=max_gather_bytes, library=library,
+                          environment={**base, "SIRCL_LINK_SLOTS": str(TUNE_LINK_SLOTS)})
+    world = group.world
+    options = dataclasses.asdict(plan_mod.Options(
+        tune=True, tune_collectives=("all_reduce", "all_gather"), tune_modes=("eager",), tune_sizes=TUNE_SIZES,
+        tune_grids=(), tune_pieces=TUNE_PIECES, tune_staggers=(0, 1), tune_large_from=65536,
+        tune_prune_from=1 << 20, correctness_iterations=1, eager_iterations=5, graph_iterations=5,
+        large_iterations=3, warmup_iterations=1, post_barrier_warmup=0))
+    try:
+        started = time.perf_counter()
+        for rank, session in enumerate(group.sessions):
+            with torch.cuda.stream(group.streams[rank]):
+                session.prepare((bf16,), padded_gather=True, links=True)
+        group.load_modules([bf16])
+        checks.append(("prepare (tune sessions)", True, f"{time.perf_counter() - started:.1f} s"))
+        started = time.perf_counter()
+        results = _harness_tune(group, options)
+        elapsed = time.perf_counter() - started
+    finally:
+        group.close()
+        restore()
+    layout = routes_mod.Layout.parse(layout_text)
+    plan = {"configuration": "emulation", "run_id": "emulation", "image": "", "options": options,
+            "groups": [{"index": 0, "positions": list(layout.positions), "global_ranks": list(range(world)),
+                        "layout": layout_text, "lanes": lanes,
+                        "max_relays": routes_mod.derive_routes(layout, lanes).max_relays(), "relay_load": {},
+                        "route_texts": [], "warnings": []}],
+            "ranks": [{"host": f"emulated-{rank}"} for rank in range(world)]}
+    merged = summary.merge(plan, results)
+    cases = [case for case in merged["cases"] if case.get("tune")]
+    inexact = [f"{case['bytes']} B {case['tune']['choice']}" for case in cases if not case["correct"]]
+    document = summary.tuning_tables(plan, merged).get(0)
+    table = tuning_mod.Table(document) if document else None
+    problems = list(inexact)
+    if table is None:
+        problems.append("no table")
+    else:
+        above = table.decide("all_reduce", 1 << 20, "eager")
+        if above is None or above.schedule is None:
+            problems.append(f"the all-reduce of 1 MiB (above the capacity) is decided by {above}")
+        links = any(choice.schedule == "ring" or (choice.schedule == "chain" and collective != "all_reduce")
+                    for collective, _, choice in table.decided())
+        if links and table.settings.get("SIRCL_LINK_SLOTS") != TUNE_LINK_SLOTS:
+            problems.append(f"settings {table.settings}")
+    checks.append((f"tune command on the emulated group ({len(cases)} cases in {elapsed:.1f} s), merged and made a "
+                   "table", not problems, "; ".join(problems[:4]) if problems else
+                   f"settings {table.settings}; " + "; ".join(
+                       f"{entry['collective']} from {entry['intervals'][0]['from']} B: "
+                       + ", ".join(tuning_mod.Choice.from_json(item["choice"]).label() for item in entry["intervals"])
+                       for entry in document["decisions"])))
+    if table is None:
+        return checks
+    path = scratch / "table.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    group = EmulatedGroup(layout_text, lanes, max_size=max_size, max_gather_bytes=max_gather_bytes, library=library,
+                          environment={**base, "SIRCL_TUNING_TABLE": str(path)})
+    try:
+        session0 = group.sessions[0]
+        settings = session0.stats()["tuning"]["settings"]
+        applied = (all(values["session"] == values["table"] for values in settings.values())
+                   and session0.link_slots == table.settings.get("SIRCL_LINK_SLOTS", default_link_slots(world))
+                   and set(settings) == set(table.settings))
+        checks.append(("a session that takes the table applies its settings", applied,
+                       ", ".join(f"{name} {values['session']}" for name, values in settings.items())
+                       + f"; link slots {session0.link_slots}, link slot {session0.link_slot_bytes} B"))
+        for rank, session in enumerate(group.sessions):
+            with torch.cuda.stream(group.streams[rank]):
+                session.prepare((bf16,), padded_gather=True, links=True)
+        group.load_modules([bf16])
+        order = session0.chain_order
+        seed = 2100
+        for nbytes in (384 << 10, 1 << 20):
+            seed += 1
+            inputs = _inputs(torch, world, (nbytes // 2,), bf16, seed)
+            plan_pieces = session0.large_reduce_plan(nbytes, mode="eager")
+            checks.append(_collective(group, f"all_reduce_large of {nbytes} B under the table's "
+                                      f"{table.decide('all_reduce', nbytes, 'eager').label()}", inputs,
+                                      lambda session, x: session.all_reduce_large(x),
+                                      references.large_all_reduce(torch, inputs, plan_pieces, order)))
+        for rows in (16, 128):
+            seed += 1
+            inputs = _inputs(torch, world, (rows, 1024), bf16, seed)
+            checks.append(_collective(group, f"all_gather_large of {rows * 2048} B shards under the table's "
+                                      f"{table.decide('all_gather', rows * 2048, 'eager').label()}", inputs,
+                                      lambda session, x: session.all_gather_large(x, dim=0),
+                                      torch.cat(inputs, dim=0)))
+        info = session0.stats()["tuning"]
+        checks.append(("the table's choices ran, none unusable", bool(info["decisions"]) and not info["unusable"],
+                       f"decisions {info['decisions']}, unusable {info['unusable']}"))
+    finally:
+        group.close()
+        restore()
+    differing = dict(document, settings={"SIRCL_LINK_SLOTS": 12, "SIRCL_LINK_SLOT_BYTES": 768 << 10,
+                                         "SIRCL_CHAIN_SLOT_BYTES": 1536 << 10, "SIRCL_LARGE_PIECE_BYTES": 512 << 10})
+    path = scratch / "settings.json"
+    path.write_text(json.dumps(differing), encoding="utf-8")
+    group = EmulatedGroup(layout_text, lanes, max_size=max_size, max_gather_bytes=max_gather_bytes, library=library,
+                          environment={**base, "SIRCL_TUNING_TABLE": str(path), "SIRCL_LINK_SLOTS": "10"})
+    try:
+        session0 = group.sessions[0]
+        settings = session0.stats()["tuning"]["settings"]
+        wanted = {"SIRCL_LINK_SLOTS": {"table": 12, "session": 10},
+                  "SIRCL_LINK_SLOT_BYTES": {"table": 768 << 10, "session": 768 << 10},
+                  "SIRCL_CHAIN_SLOT_BYTES": {"table": 1536 << 10, "session": 1536 << 10},
+                  "SIRCL_LARGE_PIECE_BYTES": {"table": 512 << 10, "session": 512 << 10}}
+        same = all(session.stats()["tuning"]["settings"] == wanted for session in group.sessions)
+        checks.append(("the environment's link slots beside a table's other settings", same,
+                       ", ".join(f"{name} {values['session']} (table {values['table']})"
+                                 for name, values in settings.items())))
+    finally:
+        group.close()
+        restore()
+    return checks
+
+
 def _path_latency(text: str) -> tuple[int, int, int, int] | None:
     """``BASE_NS,RELAY_NS[,BYTES_PER_US[,ACK_DELAY_NS]]`` of ``--path-latency``, or None when empty."""
     if not text:
@@ -1635,14 +1848,21 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--column-gather-only", action="store_true",
                         help="after preparing, run only the column-gather checks (the vLLM adapter's staged "
                              "dimension-0 link all-gather against all_gather_large along the column dimension)")
+    parser.add_argument("--tune", action="store_true",
+                        help="run tune_checks (the ring harness's tune command and sessions that take its table) "
+                             "instead of run_checks")
     args = parser.parse_args(argv)
     def show(check: tuple[str, bool, str]) -> None:
         name, ok, detail = check
         print(f"{'PASS' if ok else 'FAIL'} {name}{': ' + detail if detail else ''}", flush=True)
 
-    checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
-                        dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,
-                        path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only)
+    if args.tune:
+        checks = tune_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
+                             report=show)
+    else:
+        checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
+                            dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,
+                            path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only)
     failed = sum(1 for _, ok, _ in checks if not ok)
     print(f"{len(checks)} checks, {failed} failed")
     sys.stdout.flush()

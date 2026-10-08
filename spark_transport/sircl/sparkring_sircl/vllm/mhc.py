@@ -35,9 +35,11 @@ follow the same rank-invariant plans as every other collective of the group:
 a reduce-scatter is the session's reduce-scatter where the session has one,
 otherwise an all-reduce (the rank-ordered float32 sum rounded once) and this
 rank's rows; an all-gather copies bytes. The slot is restored
-before ``maybe_create`` returns. Groups whose PyNccl runs (a pair of Sparks
-with ``SIRCL_NCCL=auto``) keep vLLM's own path, and nothing in the forward reaches NCCL on a group NCCL
-may not run.
+before ``maybe_create`` returns. With NCCL off (``SIRCL_NCCL=never``, the
+default) every group runs this path, a pair of Sparks among them; only a group
+whose PyNccl runs (a pair under ``SIRCL_NCCL=topology`` or ``auto``) keeps
+vLLM's own path, and nothing in the forward reaches NCCL on a group NCCL may
+not run.
 """
 
 from __future__ import annotations

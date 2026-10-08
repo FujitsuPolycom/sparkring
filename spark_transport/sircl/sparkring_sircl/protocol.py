@@ -377,6 +377,9 @@ def chain_chunks(packs: int, chunk_packs: int) -> int:
 # closes the chain.
 LINKS = 4
 LINK_MAX_SLOTS = 32
+# The fewest link slots a session takes when neither SIRCL_LINK_SLOTS nor its tuning table sets them
+# (default_link_slots).
+MIN_DEFAULT_LINK_SLOTS = 8
 # A ring link through relays posts each lane's stripe in chunks of this many bytes (the native
 # ROCE_LINK_WINDOW_CHUNK); its window is a whole number of them.
 LINK_WINDOW_CHUNK = 32768
@@ -569,6 +572,15 @@ def link_rounds(op: int, world: int, index: int, link: int) -> LinkRounds:
 RING_STAGGER_SHIFT = 8
 RING_GATHER_STAGGER_SHIFT = 16
 MAX_RING_STAGGER = 4
+
+
+def default_link_slots(world: int) -> int:
+    """Link slots of a session of ``world`` ranks when neither ``SIRCL_LINK_SLOTS`` nor its tuning table sets
+    them: two rounds of a ring link's items in flight, ``2 W``, at least :data:`MIN_DEFAULT_LINK_SLOTS` and at
+    most :data:`LINK_MAX_SLOTS` (16 on the cycle of eight, 8 on a path of four or a pair). On the cycle of
+    eight, ring all-gathers in slots of 512 KiB took 788 and 1,399 us at 2 and 4 MiB shards with 12 slots,
+    696 and 1,305 us with 16 and 693 and 1,302 us with 24 (ring harness, eager p50, staggers 1)."""
+    return min(LINK_MAX_SLOTS, max(MIN_DEFAULT_LINK_SLOTS, 2 * int(world)))
 
 
 def ring_stagger_slots(world: int, stagger: int) -> int:

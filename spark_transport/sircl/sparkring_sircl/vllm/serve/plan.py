@@ -104,7 +104,8 @@ from ... import tuning as tuning_mod
 from ... import routes as routes_mod
 from ...ring.site import Site
 from ...routes import Layout as SessionLayout
-from .. import fabric, guard
+from .. import fabric, guard, pins
+from .. import settings as adapter_settings
 from ..fabric import NcclPolicy
 from . import profile as profile_mod
 from .profile import HEADLESS, ServingProfile
@@ -166,20 +167,24 @@ DEFAULT_STARTUP_WAIT_S = 600.0
 DEFAULT_SERVING_WAIT_S = 20.0
 MAX_WAIT_S = 0xFFFFFFFF / 1e6
 DEFAULT_API_PORT = 8017
-# SIRCL_NCCL: never keeps NCCL off every group, so SIRCL carries every collective; auto lets NCCL run where
-# the cabling allows it (every collective on a pair, NCCL's ring algorithm on a whole ring, nothing on a
-# path); topology is another name for auto. serve and bundle share one default, never: NCCL runs only
-# when the operator opts in.
-NCCL_MODES = ("never", "auto", "topology")
+# One default for serve and bundle: never, so NCCL carries no collective of a multi-rank group. --nccl auto, the
+# explicit opt-in, lets NCCL run where the cabling allows it (every collective on a pair, NCCL's ring algorithm on
+# a whole ring, nothing on a path) as the adapter's rules decide; --nccl topology is another name for auto. In
+# every mode a tuning table chooses only among SIRCL's options: its NCCL marks are measurements and route no call.
+NCCL_MODES = adapter_settings.NCCL_MODES
+NCCL_RULE = adapter_settings.NCCL_RULE
 DEFAULT_NCCL_MODE = "never"
-NCCL_MODE_HELP = ("SIRCL_NCCL: never (default) makes SIRCL carry every collective; auto lets NCCL run where "
-                  "the cabling allows it: every collective on a pair, NCCL's ring algorithm on a whole "
-                  "ring, nothing on a path; topology is another name for auto")
+NCCL_MODE_HELP = ("SIRCL_NCCL: never (default) makes SIRCL carry every collective; auto, the opt-in, lets NCCL "
+                  "run where the cabling allows it: every collective on a pair, NCCL's ring algorithm on a whole "
+                  "ring, nothing on a path; topology is another name for auto. A tuning table never sends a call "
+                  "to NCCL")
 
 
 def nccl_mode_value(text: str) -> str:
-    """An ``--nccl`` value with ``topology`` spelled ``auto``."""
-    return "auto" if text == "topology" else text
+    """An ``--nccl`` value as the mode it names: ``topology`` is ``auto`` (``settings.nccl_mode_name``)."""
+    return adapter_settings.nccl_mode_name(text)
+
+
 LARGE_MODES = ("auto", "sircl", "nccl")
 MHC_MODES = ("profile", "off")
 # Session schedules of all_reduce_large, all_gather_large and reduce_scatter; unset keeps the session's
@@ -217,7 +222,8 @@ DEFAULT_LINK_SLOT_BYTES = 512 << 10
 DEFAULT_LINK_CHUNK_BYTES = 512 << 10
 MAX_AUTO_LINK_SLOT_BYTES = 1 << 20
 LINK_SLOT_ALIGNMENT = 4096
-# Receive and own slots per link (DEFAULT_LINK_SLOTS of oneshot/runtime.py; 2 to protocol.LINK_MAX_SLOTS), and
+# Receive and own slots per link (protocol.default_link_slots of the session's ranks, at least
+# DEFAULT_LINK_SLOTS as in oneshot/runtime.py; 2 to protocol.LINK_MAX_SLOTS), and
 # the staggers of the ring reduce-scatter and of the ring all-gather (also the all-gather part of the ring
 # all-reduce) the session chooses when its slots hold them (DEFAULT_RING_STAGGER and
 # DEFAULT_RING_GATHER_STAGGER there; otherwise 0). A stagger of s rounds needs s x (ranks - 1) + 2 link
@@ -389,6 +395,7 @@ class Options:
     serving_wait: float = DEFAULT_SERVING_WAIT_S   # SIRCL_SERVING_WAIT_S
     gid_index: int | None = None             # None: the site's, else the profile's NCCL_IB_GID_INDEX
     nccl_mode: str = DEFAULT_NCCL_MODE       # SIRCL_NCCL
+    dcp_size: int = 1                        # --dcp-size: vLLM's decode-context parallelism, a session per DCP group
     large_allreduce: str = "auto"            # SIRCL_LARGE_ALLREDUCE
     mhc_prefill_shard: str = "profile"       # VLLM_GLM53_MHC_PREFILL_SHARD: the profile's value, or off
     large_schedule: str | None = None        # SIRCL_LARGE_SCHEDULE; None: the session's default
@@ -565,6 +572,7 @@ class ServePlan:
     b12x_cache_dir: str | None = None        # --b12x-cache-dir; None: the profile's B12X_COMPILE_CACHE_DIR
     nccl_debug: bool = False                 # NCCL logs its communicators (--nccl-debug, --require-no-nccl)
     require_no_nccl: bool = False            # --require-no-nccl
+    dcp_size: int = 1                        # --dcp-size: decode-context parallelism, a SIRCL session per group
 
     @property
     def nccl_allowed(self) -> bool:
@@ -577,16 +585,26 @@ class ServePlan:
         return derived_oneshot_max(self.group, self.capacity)
 
     def sessions(self) -> list["SessionSettings"]:
-        """The instance's SIRCL sessions (the tensor-parallel group's) as they will run."""
-        return [session_settings(self.group, name="tp", groups=f"one group of ranks 0-{len(self.ranks) - 1}",
+        """The instance's SIRCL sessions as they will run: the tensor-parallel group's and, with ``--dcp-size``
+        above 1, one per decode-context-parallel group (with the session defaults, as SIRCL's adapter builds
+        them)."""
+        rows = [session_settings(self.group, name="tp", groups=f"one group of ranks 0-{len(self.ranks) - 1}",
                                  scoped=True, schedules=self.schedules, link_sizes=self.link_sizes,
                                  link_slots=self.link_slots, chain_min=self.chain_min, ring_min=self.ring_min,
-                                 ring_gather_stagger=self.ring_gather_stagger)]
+                                 ring_gather_stagger=self.ring_gather_stagger,
+                                 table_settings=self.tuning.settings_of("tp"))]
+        if self.dcp_size > 1:
+            subgroups = dcp_groups(self.group.layout, self.positions, self.dcp_size)
+            rows.append(session_settings(subgroups[0], name="dcp", scoped=False,
+                                         groups=dcp_groups_text(len(self.positions), self.dcp_size),
+                                         table_settings=self.tuning.settings_of("dcp")))
+        return rows
 
     def carriers(self) -> tuple[list[GroupCarrier], list[tuple[str, str]]]:
         groups = group_carriers(self.group.layout, self.positions, nccl_mode=self.nccl_mode,
                                 environment=self.profile.ranks[0].environment,
-                                dcp=recipe_dcp(self.recipe_arguments))
+                                dcp=recipe_dcp(self.recipe_arguments),
+                                session_groups=SESSION_GROUPS_DCP if self.dcp_size > 1 else ("tp",))
         collectives = collective_carriers(nccl_allowed=self.nccl_allowed, large=self.large_allreduce,
                                           dispatch=self.dispatch, gather=self.gather)
         return groups, collectives
@@ -622,10 +640,12 @@ class ServePlan:
 
     @property
     def required_shims(self) -> tuple[str, ...]:
-        """The pinned shims serving needs on this group: prefill row ownership on a group without NCCL."""
+        """The pinned shims serving needs on this group: the decode-context-parallel output combine and its B12X
+        transport with ``--dcp-size`` above 1, and prefill row ownership on a group without NCCL."""
+        dcp = ("dcp_all_to_all", "dcp_b12x_transport") if self.dcp_size > 1 else ()
         if self.nccl_policy.allows("all_reduce"):
-            return ()
-        return ((("mhc_prefill_shard",) if self.mhc_prefill_shard else ())
+            return dcp
+        return (dcp + (("mhc_prefill_shard",) if self.mhc_prefill_shard else ())
                 + (("qwen_hc_prefill_shard",) if self.hc_prefill_mode == "shard" else ()))
 
     @property
@@ -701,6 +721,7 @@ class ServePlan:
             "run_id": self.run_id,
             "profile": self.profile.id,
             "profile_topology": self.profile.topology,
+            "dcp_size": self.dcp_size,
             "release": self.profile.release,
             "image_id": self.profile.image_id,
             "image_reference": self.profile.image_reference,
@@ -737,6 +758,7 @@ class ServePlan:
             "nccl": self.nccl_policy.value,
             "nccl_reason": self.nccl_reason,
             "nccl_mode": self.nccl_mode,
+            "nccl_rule": NCCL_RULE,
             "large_allreduce": self.large_allreduce,
             "mhc_prefill_shard": self.mhc_prefill_shard,
             "serving": {
@@ -965,8 +987,8 @@ def add_link_arguments(command: object) -> None:
         command.add_argument(size.flag, dest=size.attribute, type=int, metavar="BYTES",
                              help=f"{size.variable}: {size.meaning} (default: the session's, {size.default})")
     command.add_argument("--link-slots", dest="link_slots", type=int, metavar="N",
-                         help=f"{LINK_SLOTS_VARIABLE}: {LINK_SLOTS_MEANING} (default: the session's, "
-                              f"{DEFAULT_LINK_SLOTS})")
+                         help=f"{LINK_SLOTS_VARIABLE}: {LINK_SLOTS_MEANING} (default: the session's, twice its "
+                              f"ranks and at least {DEFAULT_LINK_SLOTS}: 16 on the ring of eight)")
     command.add_argument("--ring-gather-stagger", dest="ring_gather_stagger", type=int, metavar="N",
                          help=f"{RING_GATHER_STAGGER_VARIABLE}: {RING_GATHER_STAGGER_MEANING} (default: the "
                               f"session's, {DEFAULT_RING_GATHER_STAGGER} when the link slots hold it, else 0)")
@@ -1716,6 +1738,99 @@ class GroupCarrier:
 ONE_RANK = "one rank per group: vLLM builds no device communicator and the group issues no collective"
 
 
+# Decode-context parallelism in profile serving (--dcp-size N): vLLM's DCP groups of N consecutive ranks of
+# the tensor-parallel group, each with a SIRCL session (SIRCL_GROUPS tp,dcp, as the bundle builds them), whose
+# output combine SIRCL's communicator carries through the dcp_all_to_all shim (and dcp_b12x_transport under
+# B12X). DCP_MODELS are the checkpoints whose attention the served images run with decode-context parallelism
+# (GLM-5.3-Flash's multi-head latent attention with DeepSeek-V3.2's sparse indexer), DCP_ATTENTION_BACKENDS the
+# attention backends that run it for them.
+DCP_FLAG = "--decode-context-parallel-size"
+DCP_MODELS = {"local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "GLM-5.3-Flash",
+              "local-inference-lab/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash",
+              "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD": "GLM-5.3-Flash",
+              "nvidia/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash"}
+DCP_ATTENTION_BACKENDS = ("B12X",)
+SESSION_GROUPS_DCP = ("tp", "dcp")
+# vLLM interleaves the KV cache over the DCP ranks in blocks of --cp-kv-cache-interleave-size tokens.
+# GLM-5.3-Flash's attention under decode-context parallelism needs that size divisible by 4 (its model code
+# refuses other values at startup); --dcp-size sets DCP_INTERLEAVE of the model where the recipe leaves the
+# flag unset and refuses a value that is not a multiple of it.
+INTERLEAVE_FLAG = "--cp-kv-cache-interleave-size"
+DCP_INTERLEAVE = {"GLM-5.3-Flash": 4}
+
+
+def attention_backend(arguments: Sequence[str], environment: Mapping[str, str]) -> str | None:
+    """The attention backend the recipe names (``--attention-backend``, else ``VLLM_ATTENTION_BACKEND``), or
+    None: vLLM's choice."""
+    return _recipe_value(arguments, "--attention-backend") or (environment.get("VLLM_ATTENTION_BACKEND") or None)
+
+
+def dcp_problem(dcp: object, tensor_parallel: int, checkpoint: str, arguments: Sequence[str],
+                environment: Mapping[str, str]) -> str | None:
+    """Why profile serving cannot run decode-context parallelism ``dcp`` (``--dcp-size``) for the served
+    ``checkpoint`` (``repository@revision``) with the recipe's ``arguments`` and ``environment``, or None."""
+    if not isinstance(dcp, int) or isinstance(dcp, bool) or dcp < 1 or tensor_parallel % dcp:
+        return f"--dcp-size {dcp} must be a positive divisor of the profile's tensor parallelism {tensor_parallel}"
+    if dcp == 1:
+        return None
+    repository = checkpoint.split("@")[0]
+    if repository not in DCP_MODELS:
+        return (f"--dcp-size {dcp}: the served checkpoint {repository} is not one whose attention the served "
+                f"images run with decode-context parallelism ({', '.join(sorted(set(DCP_MODELS.values())))}: "
+                f"{', '.join(DCP_MODELS)})")
+    backend = attention_backend(arguments, environment)
+    if backend not in DCP_ATTENTION_BACKENDS:
+        return (f"--dcp-size {dcp}: the recipe's attention backend {backend or '(unset: vLLM chooses)'} does not "
+                f"run {DCP_MODELS[repository]}'s attention with decode-context parallelism; "
+                f"{' or '.join(DCP_ATTENTION_BACKENDS)} does (--vllm-arg --attention-backend=B12X)")
+    return None
+
+
+def dcp_interleave(dcp: int, checkpoint: str, arguments: Sequence[str]) -> str | None:
+    """The ``--cp-kv-cache-interleave-size`` value ``--dcp-size`` adds for the served ``checkpoint`` where the
+    recipe's ``arguments`` leave it unset, or None. Raises :class:`ServePlanError` for a given value that is
+    not a multiple of the model's (:data:`DCP_INTERLEAVE`)."""
+    model = DCP_MODELS.get(checkpoint.split("@")[0], "")
+    multiple = DCP_INTERLEAVE.get(model)
+    if dcp <= 1 or multiple is None:
+        return None
+    given = _recipe_value(arguments, INTERLEAVE_FLAG)
+    if given is None:
+        return str(multiple)
+    if not given.isdigit() or int(given) % multiple:
+        raise ServePlanError(f"--dcp-size {dcp}: {model}'s attention under decode-context parallelism needs "
+                             f"{INTERLEAVE_FLAG} divisible by {multiple}; the recipe gives {given} "
+                             f"(--vllm-arg {INTERLEAVE_FLAG}={multiple})")
+    return None
+
+
+def mhc_dcp_problem(tensor: int, dcp: int, mhc: bool) -> str | None:
+    """Why mHC prefill row ownership cannot start at tensor parallelism ``tensor`` with decode-context
+    parallelism ``dcp`` in any pinned vLLM build (:func:`pins.mhc_builds`), or None."""
+    if not mhc or dcp <= 1 or pins.mhc_builds(tensor, dcp):
+        return None
+    sizes = sorted({pair for build in pins.SUPPORTED for pair in pins.mhc_admits(build.name)})
+    return (f"--dcp-size {dcp}: GLM-5.3-Flash's mHC prefill row ownership ({MHC_SHARD}=1, the profile's) starts "
+            "only at " + ", ".join(f"TP{t}/DCP{d}" for t, d in sizes) + " in the pinned vLLM builds, and the "
+            f"model refuses TP{tensor} with DCP {dcp} at startup; serve it with --mhc-prefill-shard off")
+
+
+def dcp_groups_text(world: int, dcp: int) -> str:
+    """Plan text of vLLM's decode-context-parallel groups of ``dcp`` consecutive ranks among ``world``."""
+    return f"{world // dcp} groups of {dcp} consecutive ranks" if world > dcp else f"one group of ranks 0-{dcp - 1}"
+
+
+def dcp_groups(layout: fabric.Layout, positions: Sequence[int], dcp: int) -> list[fabric.GroupTopology]:
+    """vLLM's decode-context-parallel groups of ``dcp`` consecutive ranks over ``positions``, as SIRCL's adapter
+    places them (inside the tensor-parallel group)."""
+    positions = tuple(positions)
+    try:
+        return [fabric.describe_group(layout, list(positions[start:start + dcp]), parent=list(positions))
+                for start in range(0, len(positions), dcp)]
+    except fabric.FabricError as error:
+        raise ServePlanError(f"--dcp-size {dcp}: {error}") from None
+
+
 def recipe_dcp(arguments: Sequence[str]) -> int:
     """vLLM's decode-context parallelism in the recipe's arguments (1 when not given or not a number)."""
     for flag in ("--decode-context-parallel-size", "-dcp"):
@@ -1800,7 +1915,7 @@ def group_carriers(layout: fabric.Layout, positions: Sequence[int], *, nccl_mode
                        "(SIRCL_GROUPS tp,dcp)")
         else:
             carrier = "NCCL: the groups have no SIRCL session (SIRCL_GROUPS tp), so NCCL carries their collectives"
-        rows.append(GroupCarrier("dcp", f"{world // dcp} groups of {dcp} consecutive ranks", value, reason,
+        rows.append(GroupCarrier("dcp", dcp_groups_text(world, dcp), value, reason,
                                  carrier))
     else:
         rows.append(GroupCarrier("dcp", "decode-context parallelism 1", "-", "one rank", ONE_RANK))
@@ -1845,6 +1960,14 @@ def carrier_lines(groups: Sequence[GroupCarrier], collectives: Sequence[tuple[st
     return lines
 
 
+def nccl_rule_text(nccl_mode: str) -> str:
+    """Plan text: the NCCL rule (:data:`NCCL_RULE`) and what the launch's ``--nccl`` mode lets NCCL carry."""
+    if nccl_mode == "never":
+        return f"  {NCCL_RULE}; this launch: --nccl never, so NCCL carries no collective of a multi-rank group"
+    return (f"  {NCCL_RULE}; this launch: --nccl {nccl_mode}, so NCCL may carry, where the cabling allows it, "
+            "what SIRCL does not carry and what vLLM's own code sends through PyNccl")
+
+
 def nccl_free_text(*, required: bool, debug: bool, nccl_allowed: bool) -> str:
     if required:
         return ("  NCCL-free (--require-no-nccl): no group lets NCCL run, settings that create NCCL communicators "
@@ -1885,6 +2008,9 @@ class SessionSettings:
     chain_min: int | None
     ring_min: int | None
     problems: tuple[str, ...]         # settings the session refuses at setup
+    # The settings of the tuning table the session takes (tuning.SETTINGS), which it applies where the
+    # launcher leaves them unset
+    table_settings: Mapping[str, int] = dataclasses.field(default_factory=dict)
 
     @property
     def covers_fabric(self) -> bool:
@@ -1898,13 +2024,15 @@ class SessionSettings:
                 "chain_area": self.chain_area, "link_area": self.link_area, "ring": self.ring,
                 "link_slots": self.link_slots, "link_slot": link_slot(self.link_sizes),
                 "ring_stagger": self.ring_stagger, "ring_gather_stagger": self.ring_gather_stagger,
-                "link_sizes": dict(self.link_sizes), "chain_min": self.chain_min, "ring_min": self.ring_min}
+                "link_sizes": dict(self.link_sizes), "chain_min": self.chain_min, "ring_min": self.ring_min,
+                "table_settings": dict(self.table_settings)}
 
 
 def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, scoped: bool,
                      schedules: Mapping[str, str] | None = None, link_sizes: Mapping[str, int] | None = None,
                      link_slots: int | None = None, chain_min: int | None = None,
-                     ring_min: int | None = None, ring_gather_stagger: int | None = None) -> SessionSettings:
+                     ring_min: int | None = None, ring_gather_stagger: int | None = None,
+                     table_settings: Mapping[str, int] | None = None) -> SessionSettings:
     """The schedules and link collectives of ``group``'s session, and the settings it would refuse.
 
     The rules of oneshot/runtime.py for a session built with the layout the adapter passes
@@ -1914,8 +2042,10 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
     twice (``routes.ring_window``); the link geometry must be valid (``protocol.LinkLayout``) whether or not
     the session reserves a link area, and a ring stagger the launcher sets needs ``stagger x (ranks - 1) +
     2`` link slots (``protocol.ring_stagger_slots``); unset, each stagger is its default where the slots
-    hold it, else 0.
+    hold it, else 0. ``table_settings`` are those of the tuning table the session takes
+    (``tuning.SETTINGS``): the session applies each one the launcher leaves unset.
     """
+    table = dict(table_settings or {})
     given = {key: value for key, value in (schedules or {}).items() if value is not None}
     effective = {key: given.get(key, default) for key, default in DEFAULT_SCHEDULES.items()}
     sizes = dict(link_sizes or {})
@@ -1926,7 +2056,10 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
     order = routes_mod.chain_order(layout, maps) if covers else None
     large, gather, scatter = (effective[key] for key in DEFAULT_SCHEDULES)
     chain_area = covers and large != "pieces"
-    link_area = covers and (gather != "pieces" or scatter != "pieces" or large == "ring")
+    # A tuning table that chooses a link schedule gives the session a link area; a table the tune command
+    # built records the link slots exactly when it chooses one (tuning.table_settings).
+    link_area = covers and (gather != "pieces" or scatter != "pieces" or large == "ring"
+                            or LINK_SLOTS_VARIABLE in table)
     problems = []
     flags = {key: "--" + key.replace("_", "-") for key in DEFAULT_SCHEDULES}
     ring_problems: list[str] = []
@@ -1946,8 +2079,9 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
                             "neighbors joined by direct lanes")
         elif value == "ring" and ring_problems:
             problems.append(f"{flags[key]} ring: the {name} session's ring cannot run: " + "; ".join(ring_problems))
-    slots = DEFAULT_LINK_SLOTS if link_slots is None else link_slots
-    slot = link_slot(sizes)
+    slots = (table.get(LINK_SLOTS_VARIABLE, protocol.default_link_slots(len(group.members))) if link_slots is None
+             else link_slots)
+    slot = link_slot(sizes) if "link_slot" in sizes else max(link_slot(sizes), table.get("SIRCL_LINK_SLOT_BYTES", 0))
     try:
         protocol.LinkLayout(group.lane_count, slots, slot)
     except protocol.ProtocolError as error:
@@ -1980,7 +2114,8 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
                            link_area=link_area, ring=ring, link_slots=slots, link_slots_given=link_slots is not None,
                            ring_stagger=ring_stagger, ring_gather_stagger=gather_stagger,
                            ring_gather_stagger_given=ring_gather_stagger is not None,
-                           link_sizes=sizes, chain_min=chain_min, ring_min=ring_min, problems=tuple(problems))
+                           link_sizes=sizes, chain_min=chain_min, ring_min=ring_min, problems=tuple(problems),
+                           table_settings=table)
 
 
 def session_lines(sessions: Sequence[SessionSettings]) -> list[str]:
@@ -2006,7 +2141,8 @@ def session_lines(sessions: Sequence[SessionSettings]) -> list[str]:
             text += (f"chain order {order}; chain area {'yes' if session.chain_area else 'no'}, link area "
                      f"{'yes' if session.link_area else 'no'}; ring: {session.ring}; "
                      + link_size_text(session.link_sizes) + f", link slots {session.link_slots} ("
-                     + ("--link-slots" if session.link_slots_given else "the session's default") + "); "
+                     + ("--link-slots" if session.link_slots_given else "the tuning table's"
+                        if LINK_SLOTS_VARIABLE in session.table_settings else "the session's default") + "); "
                      + f"ring staggers: reduce-scatter {session.ring_stagger} (the session's default), all-gather "
                      + f"{session.ring_gather_stagger} (" + ("--ring-gather-stagger" if session.ring_gather_stagger_given
                                                           else "the session's default") + "); "
@@ -2050,6 +2186,9 @@ class StagedTable:
     sessions: tuple[str, ...]         # the sessions of the launch whose facts it matches
     data: bytes = dataclasses.field(repr=False, compare=False, default=b"")
     decisions: tuple[Mapping[str, Any], ...] = dataclasses.field(repr=False, compare=False, default=())
+    # The table's settings (tuning.SETTINGS), which every session that takes it applies where its
+    # environment leaves them unset
+    settings: Mapping[str, int] = dataclasses.field(compare=False, default_factory=dict)
 
     @property
     def file_name(self) -> str:
@@ -2065,19 +2204,19 @@ class StagedTable:
     def to_json(self, run_dir: str) -> dict[str, Any]:
         return {"source": self.source, "hash": self.hash, "sha256": self.sha256, "key": dict(self.key),
                 "sessions": list(self.sessions), "host_path": self.host_path(run_dir),
-                "container_path": self.container_path}
+                "container_path": self.container_path, "settings": dict(self.settings)}
 
 
 @dataclasses.dataclass(frozen=True)
 class SessionTable:
     """The tuning table one kind of session of the launch takes (None: its rules choose) and what the table
-    sends to NCCL on its group."""
+    decides about NCCL on its group: nothing, since a table chooses among SIRCL's options only."""
 
     name: str                         # tp or dcp
     facts: Mapping[str, Any]          # tuning.facts_for_layout of the session's layout and lanes
     table: StagedTable | None
     mismatches: Mapping[str, tuple[str, ...]]   # table hash -> key fields that differ (tables it does not take)
-    nccl: str                         # plan text: the sizes and modes the table sends to NCCL
+    nccl: str                         # plan text: the table's NCCL marks route no call (tuned_nccl_text)
 
     def to_json(self) -> dict[str, Any]:
         return {"name": self.name, "facts": dict(self.facts), "table": self.table.hash if self.table else None,
@@ -2097,6 +2236,28 @@ class TuningPlan:
             return {}
         return {TUNING_VARIABLE: ",".join(table.container_path for table in self.tables)}
 
+    def settings_of(self, name: str) -> dict[str, int]:
+        """The settings of the table session ``name`` takes (directly or through the session it shares);
+        empty when it takes none."""
+        owner = self.shared.get(name, name)
+        row = next((row for row in self.sessions if row.name == owner), None)
+        return dict(row.table.settings) if row is not None and row.table is not None else {}
+
+    def conflicts(self, environment: Mapping[str, str]) -> list[str]:
+        """The launcher's settings of the tensor-parallel session (``environment``, the variables it sets on
+        every rank; its link options reach that session alone) below the settings of the table that session
+        takes: those would leave the table's choices that need more unable to run."""
+        conflicts = tuning_mod.settings_conflicts(self.settings_of("tp"), environment)
+        if not conflicts:
+            return []
+        flags = {name: flag for flag, name in (("--link-slots", LINK_SLOTS_VARIABLE),
+                                               ("--link-slot", "SIRCL_LINK_SLOT_BYTES"))}
+        named = [f"{item} ({flags.get(item.split('=')[0], 'set by the launcher')})" for item in conflicts]
+        table = next(row.table for row in self.sessions if row.name == "tp")
+        return [f"--tuning-table {table.source} (table {table.hash}): the tensor-parallel session takes it, and "
+                f"its choices need more than " + ", ".join(named) + "; drop those options so the session applies "
+                "the table's settings, or name a table tuned under them"]
+
     def expected(self) -> dict[str, str | None]:
         """Group kind -> the hash of the table its session takes (None: the rules), as check compares it."""
         tables = {row.name: (row.table.hash if row.table else None) for row in self.sessions}
@@ -2113,6 +2274,9 @@ class TuningPlan:
                          f"{key.get('lanes')} lanes, {key.get('max_relays')} relays, native {key.get('native')}, "
                          f"kernels {key.get('kernels')}, sircl {key.get('sircl')}; taken by the "
                          + " and the ".join(SESSION_TITLES.get(name, name) for name in table.sessions))
+            if table.settings:
+                lines.append("      settings its sessions apply where the launcher leaves them unset: "
+                             + ", ".join(f"{name}={value:,}" for name, value in table.settings.items()))
         for row in self.sessions:
             title = SESSION_TITLES.get(row.name, row.name)
             if row.table is None:
@@ -2124,7 +2288,8 @@ class TuningPlan:
                 intervals = "; ".join(
                     f"from {int(item['from']):,} B {tuning_mod.Choice.from_json(item['choice']).label()}"
                     + (" (NCCL faster)" if item.get("nccl") else "") for item in entry["intervals"])
-                lines.append(f"      {entry['collective']} {entry['mode']}: {intervals}")
+                until = f"; nothing above {int(entry['until']):,} B" if "until" in entry else ""
+                lines.append(f"      {entry['collective']} {entry['mode']}: {intervals}{until}")
         for kind, owner in self.shared.items():
             lines.append(f"    {kind}: shares the {SESSION_TITLES.get(owner, owner)} and its table")
         return lines
@@ -2143,35 +2308,18 @@ def add_tuning_argument(command: object) -> None:
                               "table per group shape)")
 
 
-def tuned_nccl_text(decisions: Sequence[Mapping[str, Any]], policy: NcclPolicy, large: str) -> str:
-    """Plan text: which eager sizes the table sends to NCCL on a group of ``policy`` under ``large``
-    (``SIRCL_LARGE_ALLREDUCE``), as ``planner.Policy.prefers_nccl`` decides them."""
+def tuned_nccl_text(policy: NcclPolicy) -> str:
+    """Plan text: what a session's tuning table decides about NCCL on a group of ``policy``. A table chooses
+    among SIRCL's options only, under every ``SIRCL_NCCL`` mode and ``SIRCL_LARGE_ALLREDUCE`` value: the
+    planner takes no table input, so the table's NCCL marks route no call."""
     if policy is NcclPolicy.NONE:
         return "SIRCL carries every size: NCCL may not run on this group"
-    if large == "sircl":
-        return "SIRCL carries every size (--large-allreduce sircl); the table's NCCL intervals are not used"
-    if large == "nccl":
-        return ("the table chooses SIRCL's settings only: --large-allreduce nccl sends eager calls above the "
-                "single-op limits to NCCL")
-    spans = []
-    for entry in decisions:
-        if entry["mode"] != "eager" or not policy.allows(entry["collective"]):
-            continue
-        intervals = list(entry["intervals"])
-        for index, item in enumerate(intervals):
-            if not item.get("nccl"):
-                continue
-            end = (f" to {int(intervals[index + 1]['from']) - 1:,} B" if index + 1 < len(intervals) else " upward")
-            spans.append(f"{entry['collective']} from {int(item['from']):,} B{end}")
-    if not spans:
-        return ("eager calls the table decides stay on SIRCL (it measured SIRCL faster at every size); captured "
-                "calls stay on SIRCL; sizes below its smallest decision follow the rules")
-    return ("eager calls go to NCCL where the table measured it faster: " + "; ".join(spans)
-            + "; captured calls stay on SIRCL; sizes below its smallest decision follow the rules")
+    return ("the table chooses among SIRCL options only: its NCCL marks are measurements and route no call; the "
+            "rules decide what NCCL carries here")
 
 
 def tuning_plan(paths: Sequence[str], sessions: Sequence[tuple[str, fabric.GroupTopology, NcclPolicy]], *,
-                large: str, shared: Mapping[str, str] | None = None) -> TuningPlan:
+                shared: Mapping[str, str] | None = None) -> TuningPlan:
     """Load ``paths`` (``--tuning-table``) and match every table against the launch's sessions (name, group,
     effective NCCL policy): each session takes the table whose key equals its facts
     (``tuning.facts_for_layout`` of its layout and lanes, with this tree's native and kernel hashes and
@@ -2205,7 +2353,7 @@ def tuning_plan(paths: Sequence[str], sessions: Sequence[tuple[str, fabric.Group
                                  f"the {SESSION_TITLES.get(name, name)}; name one table per group shape and build")
     tables = tuple(StagedTable(source=path, hash=digest, sha256=hashlib.sha256(data).hexdigest(),
                                key=dict(table.key), sessions=takers[digest], data=data,
-                               decisions=tuple(table.document.get("decisions", ())))
+                               decisions=tuple(table.document.get("decisions", ())), settings=dict(table.settings))
                    for digest, (path, data, table) in loaded.items())
     rows = []
     for name, _, policy in sessions:
@@ -2214,7 +2362,7 @@ def tuning_plan(paths: Sequence[str], sessions: Sequence[tuple[str, fabric.Group
             name=name, facts=facts[name], table=taken,
             mismatches={digest: fields for digest, by_session in mismatches.items()
                         for session, fields in by_session.items() if session == name and fields},
-            nccl=tuned_nccl_text(taken.decisions, policy, large) if taken is not None else ""))
+            nccl=tuned_nccl_text(policy) if taken is not None else ""))
     return TuningPlan(tables=tables, sessions=tuple(rows), shared=dict(shared or {}))
 
 
@@ -2273,6 +2421,7 @@ def parse_env(values: Sequence[str]) -> dict[str, str]:
 
 def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options, *, staged_digest: str,
                library: str) -> ServePlan:
+    options = dataclasses.replace(options, nccl_mode=nccl_mode_value(options.nccl_mode))   # topology: auto
     serve_site = site if isinstance(site, ServeSite) else ServeSite.of(site)
     ring = serve_site.site
     positions = tuple(options.positions)
@@ -2317,6 +2466,23 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
     thinking, thinking_source = served_thinking(profile.repository, checkpoint, recorded, options.thinking_behaviour)
     chat_defaults = reasoning_kwargs(thinking, options.reasoning_effort, checkpoint)
     recipe, argument_changes = edit_arguments(profile.recipe_arguments, options.vllm_edits)
+    dcp = options.dcp_size
+    problem = dcp_problem(dcp, tp, checkpoint, recipe, {**profile.ranks[0].environment, **options.extra_env})
+    if problem:
+        raise ServePlanError(problem)
+    if dcp > 1:
+        before = _recipe_value(recipe, DCP_FLAG)
+        try:
+            _replace_flag(recipe, DCP_FLAG, str(dcp))
+        except ServePlanError:
+            raise ServePlanError(f"--dcp-size {dcp}: the profile's recipe must give {DCP_FLAG} once with a "
+                                 "value") from None
+        argument_changes.append(ArgumentChange(DCP_FLAG, (before,) if before is not None else None, (str(dcp),),
+                                               "--dcp-size"))
+    interleave = dcp_interleave(dcp, checkpoint, recipe)
+    if interleave is not None:
+        recipe += [INTERLEAVE_FLAG, interleave]
+        argument_changes.append(ArgumentChange(INTERLEAVE_FLAG, None, (interleave,), "--dcp-size"))
     b12x_cache = check_b12x_cache_dir(options.b12x_cache_dir)
     overlays = overlay_paths(positions, options.overlay, options.overlays)
     if options.spin_limit is not None and not 1 <= options.spin_limit < 1 << 32:
@@ -2375,7 +2541,7 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         "SIRCL_MODE": "custom",
         "SIRCL_FABRIC": layout.describe(),
         "SIRCL_RANK_POSITIONS": ",".join(str(p) for p in positions),
-        "SIRCL_GROUPS": "tp",
+        "SIRCL_GROUPS": ",".join(SESSION_GROUPS_DCP) if dcp > 1 else "tp",
         "SIRCL_NCCL": options.nccl_mode,
         "SIRCL_LARGE_ALLREDUCE": options.large_allreduce,
         "SIRCL_SESSION_MODULE": SESSION_MODULE,
@@ -2401,8 +2567,22 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
     if b12x_cache is not None:
         common[B12X_CACHE_VARIABLE] = b12x_cache
     common.update(nccl_logging)
-    tuning = tuning_plan(options.tuning_tables, [("tp", group, policy)], large=options.large_allreduce,
-                         shared={"ep": "tp"} if policy is NcclPolicy.NONE else {})
+    sessions = [("tp", group, policy)]
+    if dcp > 1:
+        first = dcp_groups(layout, positions, dcp)[0]
+        dcp_policy, dcp_reason = guard.effective_policy(first.nccl_policy, first.nccl_reason,
+                                                        nccl_mode=options.nccl_mode,
+                                                        environ=profile.ranks[0].environment)
+        sessions.append(("dcp", first, dcp_policy))
+        if dcp_policy is NcclPolicy.NONE and policy is not NcclPolicy.NONE:
+            conflicts = relay_conflicts(recipe, {**profile.ranks[0].environment, **options.extra_env})
+            if conflicts:
+                raise ServePlanError(f"SIRCL's communicator refuses this profile's decode-context-parallel groups, "
+                                     f"where NCCL may not run ({dcp_reason}): " + "; ".join(conflicts))
+    tuning = tuning_plan(options.tuning_tables, sessions, shared={"ep": "tp"} if policy is NcclPolicy.NONE else {})
+    conflicts = tuning.conflicts(common)
+    if conflicts:
+        raise ServePlanError("; ".join(conflicts))
     common.update(tuning.environment())
     reasons = {**REASONS, **({"PYTHONPATH": OVERLAY_PYTHONPATH_REASON} if overlays else {})}
     launches: list[RankLaunch] = []
@@ -2438,6 +2618,10 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         _replace_flag(command, "--master-addr", master)
         _replace_flag(command, "--port", str(options.api_port))
         _replace_flag(command, "--master-port", str(master_port))
+        if dcp > 1:
+            _replace_flag(command, DCP_FLAG, str(dcp))
+        if interleave is not None:
+            command += [INTERLEAVE_FLAG, interleave]
         if rank == 0 and chat_defaults is not None:
             with_chat_template_kwargs(command, chat_defaults)
         if (HEADLESS in command) != bool(rank):
@@ -2471,13 +2655,20 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
     shards = {launch.environment.get(MHC_SHARD, "0").strip() not in ("", "0") for launch in launches}
     if len(shards) != 1:
         raise ServePlanError(f"the profile's ranks disagree on {MHC_SHARD}")
+    problem = mhc_dcp_problem(tp, dcp, next(iter(shards)))
+    if problem:
+        raise ServePlanError(problem)
     if len({launch.environment.get(HC_PREFILL) for launch in launches}) != 1:
         raise ServePlanError(f"the profile's ranks disagree on {HC_PREFILL}")
     given_schedules = {attribute: getattr(options, attribute) for attribute, _ in SCHEDULE_VARIABLES
                        if getattr(options, attribute) is not None}
-    session_problems([session_settings(group, name="tp", groups="", scoped=True, schedules=given_schedules,
-                                       link_sizes=options.link_sizes, link_slots=options.link_slots,
-                                       ring_gather_stagger=options.ring_gather_stagger)])
+    rows = [session_settings(group, name="tp", groups="", scoped=True, schedules=given_schedules,
+                             link_sizes=options.link_sizes, link_slots=options.link_slots,
+                             ring_gather_stagger=options.ring_gather_stagger, table_settings=tuning.settings_of("tp"))]
+    if dcp > 1:
+        rows.append(session_settings(dcp_groups(layout, positions, dcp)[0], name="dcp", groups="", scoped=False,
+                                     table_settings=tuning.settings_of("dcp")))
+    session_problems(rows)
     return ServePlan(
         run_id=run_id, profile=profile, site=ring, positions=positions, group=group,
         staged_digest=staged_digest, library=library, api_port=options.api_port, master_port=master_port,
@@ -2493,6 +2684,7 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         chain_min=options.chain_min, large_blocks=options.large_blocks, reasoning_effort=options.reasoning_effort,
         chat_template_defaults=chat_defaults, nccl_debug=bool(nccl_logging), require_no_nccl=options.require_no_nccl,
         argument_changes=tuple(argument_changes), vllm_arguments=tuple(recipe) if argument_changes else (),
+        dcp_size=dcp,
         overlay=overlays, checkpoint_id=options.checkpoint_id if checkpoint != profile_checkpoint else None,
         thinking=thinking, thinking_source=thinking_source, b12x_cache_dir=b12x_cache,
     )
@@ -3030,6 +3222,7 @@ def render_text(plan: ServePlan) -> str:
         f"all-gathers run in the session's large-message ops, "
         f"whose sizes the session chooses (receipts: large_piece, gather_piece); " + POST_ORDER_TEXT,
         *session_lines(plan.sessions()),
+        nccl_rule_text(plan.nccl_mode),
         *plan.tuning.lines(),
         f"  SIRCL flag waits: startup regime up to {plan.startup_wait:g} s (setup, warm-up, graph capture, "
         f"profiling, sleep and wake-up), serving regime up to {plan.serving_wait:g} s from the first step after "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -620,6 +621,70 @@ def test_summary_reports_each_groups_tuning_decisions(tmp_path):
     merged = summary.merge(built, results)
     assert merged["status"] == "failed"
     assert any(problem.startswith("group 1: the plan names tuning table") for problem in merged["problems"])
+
+
+def test_tune_tables_record_the_session_settings_and_runs_take_them(tmp_path, capsys):
+    """A tune run's table records the settings of its sessions that the chosen candidates need; tune-table
+    names each collective's cases, the inexact ones and where the table decides nothing; a run with the
+    table refuses --session-env values below its settings, and its plan and summary name them."""
+    from sparkring_sircl import tuning
+
+    built = plan.build_plan(_site(), "ring8", "run1", digest="d" * 16).to_json()
+    base = {"dim": 0, "correct": True, "mismatched_calls": 0, "checked": 1, "counters": {}, "mode": "eager"}
+    ring = {"schedule": "ring", "piece": 2097152, "stagger": 1, "gather_stagger": 1}
+    runs = [{**base, "collective": "all_reduce_twoshot", "shape": [131072], "bytes": 262144, "times_us": [60.0],
+             "tune": {"collective": "all_reduce", "choice": {"algorithm": "twoshot", "grid": 8}}}]
+    for size, ring_us, pieces_us in ((4 << 20, 900.0, 1200.0), (16 << 20, 3000.0, 4800.0)):
+        for choice, micros in ((ring, ring_us), ({"schedule": "pieces", "grid": 8}, pieces_us)):
+            runs.append({**base, "collective": "all_reduce_large", "shape": [size // 2], "bytes": size,
+                         "times_us": [micros], "tune": {"collective": "all_reduce", "choice": choice}})
+    gather = {**base, "collective": "all_gather_large", "shape": [131072], "bytes": 262144, "times_us": [80.0],
+              "tune": {"collective": "all_gather", "choice": {"schedule": "chain", "piece": 524288}}}
+    session = {"link_slots": 12, "link_slot_bytes": 2097152, "chain_slot_bytes": 1048576,
+               "large_piece_bytes": 4194304}
+    folder = tmp_path / "run1" / "ring8"
+    folder.mkdir(parents=True)
+    (folder / "plan.json").write_text(json.dumps(built))
+    for rank in range(8):
+        inexact = {"correct": rank != 3, "mismatched_calls": int(rank == 3)}
+        result = _rank_result(rank, 0, f"spark{rank}", [*runs, {**gather, **inexact}])
+        result["session"] = dict(session)
+        (folder / f"rank-{rank}.json").write_text(json.dumps(result))
+    assert cli.main(["tune-table", "--results", str(tmp_path / "run1")]) == 0
+    out = capsys.readouterr().out
+    path = folder / "tuning-group0.json"
+    table = tuning.Table.load(path)
+    # The ring all-reduce in 2 MiB pieces with staggers of 1 needs the 12 link slots of 2 MiB; nothing chose
+    # two-shot pieces or a chain all-reduce.
+    assert table.settings == {"SIRCL_LINK_SLOTS": 12, "SIRCL_LINK_SLOT_BYTES": 2097152}
+    assert table.decide("all_reduce", 64 << 20, "eager").schedule == "ring"
+    assert "SIRCL_LINK_SLOTS=12" in out
+    assert "tune cases, group 0 all_reduce eager: 5 measured, 5 exact\n" in out
+    assert ("tune cases, group 0 all_gather eager: 1 measured, 0 exact; inexact: 262144 B chain piece 524288; no "
+            "decision: the session's rules choose every size") in out
+    options = plan.Options(tuning_tables=(str(path),), session_env=(("SIRCL_LINK_SLOTS", "8"),))
+    with pytest.raises(plan.PlanError, match=re.escape("need more than --session-env SIRCL_LINK_SLOTS=8 (the "
+                                                       "table's 12)")):
+        plan.build_plan(_site(), "ring8", "run2", digest="d" * 16, options=options)
+    taken = plan.build_plan(_site(), "ring8", "run2", digest="d" * 16,
+                            options=plan.Options(tuning_tables=(str(path),),
+                                                 session_env=(("SIRCL_LINK_SLOTS", "16"),)))
+    assert taken.groups[0].tuning_settings == (("SIRCL_LINK_SLOTS", 12), ("SIRCL_LINK_SLOT_BYTES", 2097152))
+    assert (f"tuning table {table.hash}; its sessions take SIRCL_LINK_SLOTS=12, SIRCL_LINK_SLOT_BYTES=2097152 where "
+            "--session-env leaves them unset") in plan.render_text(taken)
+    # A run's summary names the settings each group's sessions ran under, and where they differ from the table's.
+    run = {"collective": "all_reduce", "mode": "eager", "shape": [4096], "dim": 0, "bytes": 8192, "correct": True,
+           "mismatched_calls": 0, "checked": 4, "p50_us": 10.0, "counters": {}, "times_us": [10.0]}
+    results = []
+    for rank in range(8):
+        result = _rank_result(rank, 0, f"spark{rank}", [run])
+        result["tuning"] = {"table": table.hash, "decisions": {}, "unusable": {"all_reduce/eager/ring x": 1},
+                            "settings": {"SIRCL_LINK_SLOTS": {"table": 12, "session": 16},
+                                         "SIRCL_LINK_SLOT_BYTES": {"table": 2097152, "session": 2097152}}}
+        results.append(result)
+    text = summary.table(summary.merge(taken.to_json(), results))
+    assert (f"tuning, group 0: table {table.hash}; settings SIRCL_LINK_SLOTS 16 (the table's 12), "
+            "SIRCL_LINK_SLOT_BYTES 2097152; rank 0's decisions: none; not runnable here") in text
 
 
 def test_link_case_options_need_cases_to_apply_to(tmp_path, capsys):

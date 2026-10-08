@@ -167,9 +167,6 @@ TUNE_QUICK_SIZES = tuple(4096 << shift for shift in range(0, 16, 2))
 LARGE_BLOCKS_SWEEP_LIMIT = 32
 # Largest link piece or chain chunk the tune command sweeps; the worker sizes the link slots to hold it.
 TUNE_MAX_PIECE = 2 << 20
-# Link slots of a tune session at least: every swept stagger fits, and the ring links keep several items in
-# flight on the cycle of eight.
-TUNE_LINK_SLOTS = 12
 # The tune command prunes no candidate below this size: there large-message families still amortize their
 # fixed costs, and every candidate is cheap to measure.
 TUNE_PRUNE_FROM = 4 << 20
@@ -325,6 +322,9 @@ class GroupPlan:
     warnings: tuple[str, ...]
     ring: str = ""          # the ring that closes the group's chain: its relayed lanes, or why it cannot run
     tuning_table: str = ""  # hash of the tuning table whose key matches the group (--tuning-table), else empty
+    # (name, value) of that table's settings (tuning.SETTINGS), which its sessions take where --session-env
+    # leaves them unset
+    tuning_settings: tuple[tuple[str, int], ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -798,6 +798,15 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
     if options.tuning_tables:
         group_plans, tables, world_table = assign_tuning_tables(options.tuning_tables, group_plans, layouts,
                                                                 world_facts)
+        from .. import tuning as tuning_mod
+
+        given = dict(options.session_env)
+        for group in group_plans:
+            conflicts = tuning_mod.settings_conflicts(dict(group.tuning_settings), given)
+            if conflicts:
+                raise PlanError(f"configuration {name}: group {group.index}'s sessions take tuning table "
+                                f"{group.tuning_table}, whose choices need more than --session-env "
+                                f"{', '.join(conflicts)}; drop those settings, or name a table tuned under them")
     leader = rank_plans[0].lan_address
     built = ConfigurationPlan(name, run_id, digest or source_digest(), site.image, site.lan_interface,
                               leader, site.control_port,
@@ -842,7 +851,9 @@ def assign_tuning_tables(paths: Sequence[str], groups: Sequence[GroupPlan], layo
     assigned = []
     for group, layout in zip(groups, layouts):
         own = tuning_mod.facts(layout.identity(), layout.world, group.lanes, group.max_relays)
-        assigned.append(dataclasses.replace(group, tuning_table=matching(f"group {group.index}", own)))
+        digest = matching(f"group {group.index}", own)
+        settings = tuple(sorted(tables[digest].settings.items())) if digest else ()
+        assigned.append(dataclasses.replace(group, tuning_table=digest, tuning_settings=settings))
     world_table = ""
     if world is not None:
         layout, relays = world
@@ -886,7 +897,10 @@ def render_text(plan: ConfigurationPlan) -> str:
                      f"relay(s), busiest relay queue {group.relay_lanes} lanes (load factor {group.relay_load:g})")
         lines.append(f"    fabric {group.layout}")
         if plan.tuning_tables:
-            lines.append(f"    tuning table {group.tuning_table}" if group.tuning_table
+            settings = ", ".join(f"{setting}={value}" for setting, value in group.tuning_settings)
+            lines.append((f"    tuning table {group.tuning_table}"
+                          + (f"; its sessions take {settings} where --session-env leaves them unset"
+                             if settings else "")) if group.tuning_table
                          else "    no tuning table matches this group: the rules choose")
         for rank, text in enumerate(group.route_texts):
             lines.append(f"    rank {rank}: SIRCL_PEER_ROUTES={text}")

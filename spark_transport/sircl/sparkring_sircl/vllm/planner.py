@@ -18,19 +18,22 @@ the group shares:
 It never looks at pointer values or timing, so all ranks of a group take the
 same plan for the same call and never mix backends within one collective.
 
+It does not read a session's tuning table either. A table chooses among
+SIRCL's own algorithms, schedules, pieces and grids inside the session; its
+marks of where NCCL measured faster are measurements, and no ``SIRCL_NCCL``
+mode lets them route a call (``settings.NCCL_RULE``).
+
 Rules, in order:
 
 1. A collective NCCL may not run on this group (:meth:`.fabric.NcclPolicy.allows`)
    never gets an NCCL plan; if SIRCL cannot carry it either the plan is
    ``refuse`` and the adapter raises instead of falling back.
 2. Messages within the session's single-op limits are one session op.
-3. Larger messages go to NCCL only when the group's cabling allows that
-   collective, the call is eager (captured calls stay on SIRCL, so a graph
-   replays the transport it was captured with) and ``SIRCL_LARGE_ALLREDUCE``
-   is ``auto`` or ``nccl``. Under ``auto``, a session with a tuning table
-   decides every eager call the table covers instead (``Policy.tuned``):
-   NCCL where the table measured NCCL faster than every SIRCL candidate,
-   SIRCL elsewhere, at any size. Otherwise a session with the large-message
+3. Larger messages go to NCCL only under the opt-in ``SIRCL_NCCL=auto``,
+   when the group's cabling allows that collective, the call is eager
+   (captured calls stay on SIRCL, so a graph replays the transport it was
+   captured with) and ``SIRCL_LARGE_ALLREDUCE`` is ``auto`` or ``nccl``.
+   Otherwise a session with the large-message
    operations (``all_reduce_large``, ``all_gather_large``) carries them in ops
    it chooses itself (method ``large``: pieces of ``large_piece_bytes`` and
    ``gather_piece_bytes``, recorded in ``SessionLimits.large_piece`` and
@@ -203,7 +206,7 @@ class Policy:
     """The group-level inputs of every plan."""
 
     topology: GroupTopology | None   # None: a single-rank group
-    nccl_mode: str = "auto"            # auto (topology is another name for it) or never
+    nccl_mode: str = "auto"            # never or auto (settings.NCCL_MODES)
     large: str = "auto"                # auto, sircl or nccl
     # Eager calls above these bytes prefer NCCL where the cabling allows it
     # (all_reduce: whole message, all_gather: one shard, reduce_scatter and
@@ -216,9 +219,6 @@ class Policy:
     reason: str = ""
     # Whether two group ranks share a cable (point-to-point admission).
     cabled: Callable[[int, int], bool] | None = dataclasses.field(default=None, compare=False)
-    # The session's tuning table for eager calls (sessionapi.tuned_backend): nccl, sircl, or None where the
-    # table decides nothing. Consulted under large == "auto" where NCCL may run the collective.
-    tuned: Callable[[str, int], str | None] | None = dataclasses.field(default=None, compare=False)
 
     def nccl_allows(self, operation: str) -> bool:
         if self.topology is None and self.policy_override is None:
@@ -238,10 +238,6 @@ class Policy:
         """Eager call above its threshold, on a group whose cabling carries the NCCL collective."""
         if capturing or self.large == "sircl" or not self.nccl_allows(collective):
             return False
-        if self.tuned is not None and self.large == "auto":
-            verdict = self.tuned(collective, nbytes)
-            if verdict is not None:
-                return verdict == "nccl"
         threshold = dict(self.nccl_above).get(collective)
         if threshold is None:
             return nbytes > single_op_limit

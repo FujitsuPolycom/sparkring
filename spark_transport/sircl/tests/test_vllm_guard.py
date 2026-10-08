@@ -146,12 +146,18 @@ def test_pynccl_suppression_is_scoped_and_refused_after_the_env_cache(monkeypatc
 def test_eager_nccl_connections_at_creation_are_refused():
     assert guard.environment_problems({}) == []
     assert guard.environment_problems({"NCCL_RUNTIME_CONNECT": "0"}) == []
-    problems = guard.environment_problems({"SIRCL_NCCL": "auto", "VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1",
+    problems = guard.environment_problems({"SIRCL_NCCL": "topology", "VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1",
                                            "NCCL_RUNTIME_CONNECT": "0"})
     assert len(problems) == 1 and "NCCL_RUNTIME_CONNECT" in problems[0]
-    # SIRCL_NCCL unset is never: the split group alone already creates NCCL communicators.
-    unset = guard.environment_problems({"VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1"})
-    assert len(unset) == 1 and "SIRCL_NCCL=never" in unset[0]
+
+
+def test_split_group_initialization_is_refused_when_sircl_nccl_is_unset():
+    """Unset SIRCL_NCCL is never, so vLLM's split-group initialization, which creates NCCL communicators over
+    every rank at startup, is refused as under an explicit never."""
+    problems = guard.environment_problems({"VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1"})
+    assert len(problems) == 1 and "SIRCL_NCCL=never (the default when it is unset)" in problems[0]
+    assert guard.environment_problems({"VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1", "SIRCL_NCCL": " "}) == problems
+    assert guard.environment_problems({"VLLM_DISTRIBUTED_USE_SPLIT_GROUP": "1", "SIRCL_NCCL": "auto"}) == []
 
 
 def test_ring_algorithm_detection():

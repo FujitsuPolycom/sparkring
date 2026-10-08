@@ -234,13 +234,16 @@ caller's stream.
 
 A session with a measured tuning table (`SIRCL_TUNING_TABLE`,
 [`../tuning.py`](../tuning.py)) chooses its own algorithm, schedule and
-piece per op. Where NCCL may run a collective and
-`SIRCL_LARGE_ALLREDUCE=auto`, the table also picks the backend of an eager
-call (`sessionapi.tuned_backend`): NCCL where it measured NCCL faster than
-every SIRCL candidate at that size, SIRCL elsewhere. Captured calls never go
-to NCCL. Composed plans give every rank the same bits; a chained large
-all-reduce may differ from the rank-ordered sum in the last place, the same
-on every rank.
+piece per op, and applies the session settings the table records (link
+slots, link slot, chain slot, large-message piece) where its environment
+leaves them unset. A table chooses only among SIRCL's settings: its marks of
+where NCCL measured faster are measurements, and the adapter routes no call
+to NCCL by them in any `SIRCL_NCCL` mode or `SIRCL_LARGE_ALLREDUCE` value: the
+planner takes no table input (`sessionapi.tuned_backend` reads a mark; no plan
+uses it). Where the opt-in `SIRCL_NCCL=auto` lets NCCL run, the rules above
+decide what it carries.
+Composed plans give every rank the same bits; a chained large all-reduce may
+differ from the rank-ordered sum in the last place, the same on every rank.
 
 ## Column gathers
 
@@ -413,8 +416,10 @@ p2p=... wait=startup:600s vllm=... state=ready
 
 With `SIRCL_RECEIPT_DIR`, the same record is written as
 `rank<global>-<group>.json` (schema `sircl-vllm-receipt/v1`,
-[`receipt.py`](receipt.py)). The JSON adds the plan counters (calls per
-collective, backend and method), `fused_norm_detail`, the directories the
+[`receipt.py`](receipt.py)). The JSON adds `nccl_mode` (the mode the adapter
+resolved, `never` or `auto`; `topology` is read as `auto`) and `nccl_rule`
+(`NCCL: opt-in only (auto); tables choose among SIRCL options`), the plan
+counters (calls per collective, backend and method), `fused_norm_detail`, the directories the
 process imported `vllm` and `b12x` from (which show whether a source overlay
 serves), the session's `stats()`, and `p2p_detail` (channels, relayed peers,
 and pairs without a channel with the reason). The worker's post-step check

@@ -223,6 +223,7 @@ class BundlePlan:
                  f"  tensor-parallel session: {plan_mod.oneshot_text(self.options.oneshot_max, self.derived_oneshot_max)}"
                  f"; {plan_mod.POST_ORDER_TEXT}",
                  *plan_mod.session_lines(self.sessions()),
+                 plan_mod.nccl_rule_text(self.options.nccl_mode),
                  *self.tuning.lines(),
                  *plan_mod.carrier_lines(*self.carriers()),
                  plan_mod.nccl_free_text(required=self.options.require_no_nccl,
@@ -235,7 +236,7 @@ class BundlePlan:
     def sessions(self) -> list[plan_mod.SessionSettings]:
         """The tensor-parallel session over every bundle rank and, with --session-groups tp,dcp and --dcp-size
         above 1, the decode-context-parallel sessions, as they will run."""
-        return bundle_sessions(self.group, self.positions, self.options)
+        return bundle_sessions(self.group, self.positions, self.options, self.tuning)
 
     @property
     def derived_oneshot_max(self) -> int:
@@ -260,6 +261,7 @@ class BundlePlan:
             "nccl": self.nccl_policy.value,
             "nccl_reason": self.nccl_reason,
             "nccl_mode": self.options.nccl_mode,
+            "nccl_rule": plan_mod.NCCL_RULE,
             "session_groups": self.options.session_groups,
             "session_defaults": {"oneshot_max": self.options.oneshot_max,
                                  "oneshot_max_derived": self.derived_oneshot_max,
@@ -335,26 +337,30 @@ def default_run_id(positions: Sequence[int]) -> str:
     return f"bundle-{positions[0]}-{positions[-1]}"
 
 
-def bundle_sessions(group: fabric.GroupTopology, positions: Sequence[int],
-                    options: BundleOptions) -> list[plan_mod.SessionSettings]:
+def bundle_sessions(group: fabric.GroupTopology, positions: Sequence[int], options: BundleOptions,
+                    tuning: plan_mod.TuningPlan | None = None) -> list[plan_mod.SessionSettings]:
     """The sessions of a launch with tensor parallelism over every bundle rank: the tensor-parallel session
     with the bundle's schedule and link options, and with ``tp,dcp`` session groups and a DCP size above 1 one
     session per decode-context-parallel group with the session defaults (SIRCL's adapter builds those without
-    the tensor-parallel session's variables, ``settings.TP_SESSION_VARIABLES``)."""
+    the tensor-parallel session's variables, ``settings.TP_SESSION_VARIABLES``); each with the settings of
+    the tuning table it takes (``tuning``)."""
     schedules = {attribute: getattr(options, attribute) for attribute, _ in plan_mod.SCHEDULE_VARIABLES
                  if getattr(options, attribute) is not None}
+    tables = tuning or plan_mod.TuningPlan()
     rows = [plan_mod.session_settings(group, name="tp", groups=f"one group of ranks 0-{len(positions) - 1}",
                                       scoped=True, schedules=schedules, link_sizes=options.link_sizes,
                                       link_slots=options.link_slots, chain_min=options.chain_min,
                                       ring_min=options.ring_min,
-                                      ring_gather_stagger=options.ring_gather_stagger)]
+                                      ring_gather_stagger=options.ring_gather_stagger,
+                                      table_settings=tables.settings_of("tp"))]
     size = options.dcp_size
     if "dcp" in options.session_groups.split(",") and size > 1 and len(positions) % size == 0:
         layout = group.layout
         subgroups = [fabric.describe_group(layout, list(positions[start:start + size]), parent=list(positions))
                      for start in range(0, len(positions), size)]
         rows.append(plan_mod.session_settings(subgroups[0], name="dcp", scoped=False,
-                                              groups=f"{len(subgroups)} groups of {size} consecutive ranks"))
+                                              groups=plan_mod.dcp_groups_text(len(positions), size),
+                                              table_settings=tables.settings_of("dcp")))
     return rows
 
 
@@ -375,6 +381,7 @@ def bundle_tuning_sessions(group: fabric.GroupTopology, positions: Sequence[int]
 def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_digest: str,
                  library: str) -> BundlePlan:
     """Every rank's additions for the group of Sparks ``options.positions``, in rank order."""
+    options = dataclasses.replace(options, nccl_mode=plan_mod.nccl_mode_value(options.nccl_mode))   # topology: auto
     serve_site = site if isinstance(site, ServeSite) else ServeSite.of(site)
     ring = serve_site.site
     positions = tuple(int(p) for p in options.positions)
@@ -436,7 +443,6 @@ def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_diges
         raise ServePlanError(f"--dcp-size {options.dcp_size}: decode-context-parallel groups need a SIRCL session, "
                              "and SIRCL's communicator refuses them at startup without one; use --session-groups "
                              "tp,dcp")
-    plan_mod.session_problems(bundle_sessions(group, positions, options))
     nccl_logging = plan_mod.nccl_debug_environment(options.nccl_debug or options.require_no_nccl, options.extra_env)
     nccl_free = plan_mod.nccl_free_problems(options.extra_env, nccl_mode=options.nccl_mode,
                                             required=options.require_no_nccl)
@@ -481,8 +487,11 @@ def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_diges
     common.update(ring_settings)
     common.update(nccl_logging)
     tuning = plan_mod.tuning_plan(options.tuning_tables, bundle_tuning_sessions(group, positions, options, policy),
-                                  large=options.large_allreduce,
                                   shared={"ep": "tp"} if policy is NcclPolicy.NONE else {})
+    conflicts = tuning.conflicts(common)
+    if conflicts:
+        raise ServePlanError("; ".join(conflicts))
+    plan_mod.session_problems(bundle_sessions(group, positions, options, tuning))
     common.update(tuning.environment())
     if b12x_cache is not None:
         common[plan_mod.B12X_CACHE_VARIABLE] = b12x_cache

@@ -7,6 +7,8 @@ all ranks take the same plan and never mix backends within one collective.
 
 from __future__ import annotations
 
+import dataclasses
+
 import pytest
 torch = pytest.importorskip("torch")
 
@@ -204,31 +206,23 @@ def test_every_refusal_states_its_reason():
     assert planner.SUMMED_DTYPES == ("float16", "bfloat16", "float32")
 
 
-def test_a_tuning_table_chooses_the_backend_of_eager_calls_where_nccl_may_run():
+def test_no_tuning_table_routes_a_call_and_the_rules_decide_what_nccl_carries():
+    """The planner takes no table input, so a table's NCCL marks route no call in any SIRCL_NCCL mode. On a pair
+    under the opt-in auto the rules send eager calls above the dispatch ceiling to NCCL; under never nothing."""
     from sparkring_sircl.vllm import sessionapi
 
-    def tuned(collective, nbytes):
-        if nbytes < 4096:
-            return None                          # below the table's smallest decision: the rules
-        return "nccl" if nbytes < (1 << 20) else "sircl"
-
-    pair = Policy(PAIR, policy_override=NcclPolicy.ALL, tuned=tuned)
-    small = plan_all_reduce(bf16(8, 4096), LIMITS2, pair, capturing=False)          # 64 KiB, NCCL measured faster
-    assert small.backend == NCCL
-    assert plan_all_reduce(bf16(8, 4096), LIMITS2, pair, capturing=True).backend == SIRCL     # captured: SIRCL
-    large = plan_all_reduce(bf16(8192, 4096), LIMITS2, pair, capturing=False)       # above the ceiling, SIRCL faster
-    assert (large.backend, large.method) == (SIRCL, "chunked")
-    assert plan_all_reduce(bf16(1, 512), LIMITS2, pair, capturing=False).backend == SIRCL     # rules: within D
-    for policy in (Policy(PAIR, large="sircl", policy_override=NcclPolicy.ALL, tuned=tuned),
-                   Policy(PAIR, nccl_mode="never", policy_override=NcclPolicy.ALL, tuned=tuned),
-                   Policy(PATH4, policy_override=NcclPolicy.NONE, tuned=tuned)):
-        limits = LIMITS4 if policy.topology is PATH4 else LIMITS2
-        assert plan_all_reduce(bf16(8, 4096), limits, policy, capturing=False).backend == SIRCL
-    # --large-allreduce nccl keeps its own rule: NCCL above the single-op limit whatever the table says.
-    forced = Policy(PAIR, large="nccl", policy_override=NcclPolicy.ALL, tuned=tuned)
-    assert plan_all_reduce(bf16(8, 4096), LIMITS2, forced, capturing=False).backend == SIRCL
-    assert plan_all_reduce(bf16(8192, 4096), LIMITS2, forced, capturing=False).backend == NCCL
-    # The session's side: a table's hash from its statistics, and a decision only where the table has one.
+    assert "tuned" not in {field.name for field in dataclasses.fields(Policy)}
+    for mode, above in (("auto", NCCL), ("never", SIRCL)):
+        pair = Policy(PAIR, nccl_mode=mode, policy_override=NcclPolicy.ALL)
+        assert plan_all_reduce(bf16(8, 4096), LIMITS2, pair, capturing=False).backend == SIRCL, mode   # within D
+        assert plan_all_reduce(bf16(8192, 4096), LIMITS2, pair, capturing=False).backend == above, mode
+        assert plan_all_reduce(bf16(8192, 4096), LIMITS2, pair, capturing=True).backend == SIRCL, mode
+    # --large-allreduce sircl keeps every all-reduce on SIRCL; on a path NCCL runs nothing.
+    for policy, limits in ((Policy(PAIR, large="sircl", policy_override=NcclPolicy.ALL), LIMITS2),
+                           (Policy(PATH4, policy_override=NcclPolicy.NONE), LIMITS4)):
+        assert plan_all_reduce(bf16(8192, 4096), limits, policy, capturing=False).backend == SIRCL
+    # The session's side: a table's hash from its statistics, and its NCCL mark where the table decides, a
+    # measurement that no plan reads.
 
     class Session:
         def __init__(self, table):

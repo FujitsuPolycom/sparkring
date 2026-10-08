@@ -51,9 +51,9 @@ def stub(tmp_path, monkeypatch):
                  "VLLM_SPARK_TP4_VOCAB_MODE", "SIRCL_PEER_ROUTES", "NCCL_ALGO", "SIRCL_VLLM_SHIMS",
                  "SIRCL_RANK_POSITIONS", "SIRCL_TOPOLOGY", "SIRCL_LAYOUT"):
         environ.pop(name, None)
-    # The cases below exercise NCCL where the cabling allows it, the opt-in (SIRCL_NCCL=auto); the
-    # default, never, is tested on its own.
-    environ.update({"SIRCL_MODE": "custom", "SIRCL_FABRIC": "ring:8", "SIRCL_NCCL": "auto",
+    # NCCL where the cabling allows it (SIRCL_NCCL=topology, which the adapter reads as auto); the tests of
+    # SIRCL_NCCL=never and auto set their own, and the adapter's default (never) has a test of its own.
+    environ.update({"SIRCL_MODE": "custom", "SIRCL_FABRIC": "ring:8", "SIRCL_NCCL": "topology",
                     "SIRCL_SESSION_MODULE": "sircl_emulated_registration",
                     "SIRCL_ALLREDUCE_CAPACITY_BYTES": str(1 << 20),
                     "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES": str(64 << 10),
@@ -1185,8 +1185,13 @@ def test_dcp_sessions_are_built_without_the_tensor_parallel_sessions_schedule_an
             512 << 10, 512 << 10, 8 << 20)
 
 
-def test_a_pairs_communicator_takes_its_sessions_tuning_table_for_eager_calls(stub, monkeypatch):
-    """TP2 on a cabled pair: the receipt names the table, and eager calls go where the table measured faster."""
+@pytest.mark.parametrize("mode", ["never", "auto", "topology"])
+def test_a_tuning_tables_nccl_marks_route_no_call_in_any_nccl_mode(stub, monkeypatch, mode):
+    """TP2 on a cabled pair whose session's table marks NCCL faster at every size it decides. The receipt names
+    the table, the mode the adapter resolved (topology is auto) and the NCCL rule. Every eager all-reduce within
+    the dispatch ceiling stays on SIRCL under never, auto and topology, whatever the table measured; above the
+    ceiling only the opt-in's rules (SIRCL_LARGE_ALLREDUCE=auto) send an eager all-reduce to NCCL."""
+    from sparkring_sircl.vllm import settings
     from sparkring_sircl.vllm.planner import NCCL, SIRCL, TensorMeta, plan_all_reduce
 
     table = "b" * 16
@@ -1194,22 +1199,48 @@ def test_a_pairs_communicator_takes_its_sessions_tuning_table_for_eager_calls(st
     stats = session_class.stats
     monkeypatch.setattr(session_class, "stats", lambda self: {**stats(self), "tuning": {"table": table}})
     monkeypatch.setattr(session_class, "tuned_choice",
-                        lambda self, collective, nbytes, mode=None: object() if nbytes >= 4096 else None, raising=False)
-    monkeypatch.setattr(session_class, "tuned_backend",
-                        lambda self, collective, nbytes, mode=None: "nccl" if nbytes < 65536 else "sircl",
+                        lambda self, collective, nbytes, mode=None: object() if nbytes >= 16 else None, raising=False)
+    monkeypatch.setattr(session_class, "tuned_backend", lambda self, collective, nbytes, mode=None: "nccl",
                         raising=False)
+    stub.environ["SIRCL_NCCL"] = mode
     plugin.register()
-    comms = _communicators("tp:0", [0, 1])                  # a pair: NCCL may run
+    comms = _communicators("tp:0", [0, 1])                  # a pair: NCCL may run under the opt-in
     adapter = comms[0].sircl
-    assert adapter.record["tuning"] == table and "tuning=" + table in receipt_line(adapter.record)
-    eager = plan_all_reduce(TensorMeta((4096,), "bfloat16", 2), adapter.limits, adapter.policy, capturing=False)
-    assert eager.backend == NCCL                            # 8 KiB: the table measured NCCL faster
-    larger = plan_all_reduce(TensorMeta((65536,), "bfloat16", 2), adapter.limits, adapter.policy, capturing=False)
-    assert larger.backend == SIRCL
-    assert plan_all_reduce(TensorMeta((4096,), "bfloat16", 2), adapter.limits, adapter.policy,
-                           capturing=True).backend == SIRCL
-    path = _communicators("tp:0", [0, 1, 2, 3])             # a path: NCCL may not run, the table is not consulted
-    assert path[0].sircl.policy.tuned is None and path[0].sircl.record["tuning"] == table
+    resolved = "never" if mode == "never" else "auto"
+    record = adapter.report()
+    assert record["tuning"] == table and "tuning=" + table in receipt_line(adapter.record)
+    assert (record["nccl_mode"], record["nccl_rule"]) == (resolved, settings.NCCL_RULE)
+    assert record["nccl_rule"] == "NCCL: opt-in only (auto); tables choose among SIRCL options"
+    assert record["nccl"] == ("none" if mode == "never" else "all")
+    assert not hasattr(adapter.policy, "tuned") and adapter.config.nccl_mode == resolved
+    for elements in (8, 4096, 32768):                       # 16 B, 8 KiB and 64 KiB, the dispatch ceiling
+        meta = TensorMeta((elements,), "bfloat16", 2)
+        assert plan_all_reduce(meta, adapter.limits, adapter.policy, capturing=False).backend == SIRCL, elements
+    above = plan_all_reduce(TensorMeta((65536,), "bfloat16", 2), adapter.limits, adapter.policy, capturing=False)
+    assert above.backend == (SIRCL if mode == "never" else NCCL)
+    inputs = [torch.full((4096,), float(rank + 1)).to(torch.bfloat16) for rank in range(2)]
+    for result in run_ranks(2, lambda rank: comms[rank].all_reduce(inputs[rank])):
+        assert torch.equal(result, reference_sum(inputs))
+    rows = {(row["collective"], row["backend"]) for row in adapter.report()["decisions"]}
+    assert ("all_reduce", "sircl") in rows and not [row for row in rows if row[1] == "nccl"]
+    assert not [event for event in _events() if event[0].startswith("stock")]
+
+
+def test_the_adapter_keeps_nccl_off_unless_told_otherwise():
+    from sparkring_sircl.vllm import settings
+
+    assert settings.nccl_mode({}) == "never" and settings.NCCL_MODES == ("never", "auto")
+    assert settings.nccl_mode({"SIRCL_NCCL": "auto"}) == "auto"
+    assert settings.nccl_mode({"SIRCL_NCCL": "topology"}) == "auto"          # another name for auto
+    assert settings.nccl_mode({"SIRCL_NCCL": " Topology "}) == "auto"
+    with pytest.raises(settings.SettingError, match="SIRCL_NCCL must be one of never, auto, topology"):
+        settings.nccl_mode({"SIRCL_NCCL": "sometimes"})
+    assert settings.NCCL_RULE == "NCCL: opt-in only (auto); tables choose among SIRCL options"
+    environ = {"SIRCL_FABRIC": "ring:8", "SIRCL_NCCL": "topology"}
+    assert adapter_module.AdapterConfig.from_env(2, environ).nccl_mode == "auto"
+    direct = adapter_module.AdapterConfig(adapter_module.Layout.ring(8), (0, 1), ("tp",), "topology", "auto",
+                                          None, None)
+    assert direct.nccl_mode == "auto"
 
 
 def receipt_line(record):

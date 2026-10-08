@@ -24,9 +24,16 @@ issues: [`SURVEY.md`](SURVEY.md). Serving procedure: [`RUNBOOK.md`](RUNBOOK.md).
   sampling and all-to-all backends other than `naive` and
   `allgather_reducescatter`; with NCCL off, `--load-format instanttensor`,
   `--enable-eplb` and `VLLM_DISTRIBUTED_USE_SPLIT_GROUP=1`.
-- **Launch shapes.** The serve launcher serves tensor parallelism only, from
-  `serving-profile` profiles. Pipeline parallelism runs only through `bundle`
-  (research-only); every group map assumes tensor parallelism over all ranks.
+- **Launch shapes.** The serve launcher serves tensor parallelism from
+  `serving-profile` profiles, and decode-context parallelism (`--dcp-size`)
+  for the GLM-5.3-Flash checkpoints with B12X attention, a KV-cache
+  interleave that is a multiple of 4, and mHC prefill sharding only at the
+  sizes a pinned vLLM build admits (`pins.MHC_ADMITS`). Pipeline parallelism
+  runs only through `bundle` (research-only); every group map assumes tensor
+  parallelism over all ranks.
+- **Tuning tables** choose only among SIRCL's settings; their NCCL marks
+  route no call. A launcher setting below a table's recorded session setting
+  is refused.
 - **Fused all-reduce + RMSNorm** (research-only) needs vLLM's RMSNorm on the
   `vllm_c` provider; its bit-identity is checked in GPU emulation, not on GB10.
 - **`SIRCL_*` variables** set outside the launcher or the bundle reach the

@@ -11,9 +11,15 @@ SIRCL version (``sircl``); ``image`` names the serving image it was measured in.
   message size in bytes (the all-reduce's message, the all-gather's shard, the reduce-scatter's input,
   the all-to-all's input, per rank) and mode (``eager`` or ``graph``, CUDA graph replay);
 - ``decisions``: per collective and mode, size intervals, each with the fastest SIRCL candidate
-  (``choice``) and whether NCCL was faster there (``nccl``). An interval starts at ``from`` bytes and
+  (``choice``) and whether NCCL was faster there (``nccl``, a measurement: no ``SIRCL_NCCL`` mode routes a
+  call by it). An interval starts at ``from`` bytes and
   runs to the next one; the last runs on without end, and sizes below the first have no decision (the
-  session's rules apply).
+  session's rules apply). An all-reduce decision whose choice names an algorithm (one-shot, two-shot,
+  Swing) holds only up to the largest message it was measured at (``until``): those algorithms run a
+  message in one op within the session's capacity, so a larger message has no decision there;
+- ``settings``: the session variables of :data:`SETTINGS` that the chosen candidates ran under and need,
+  as :func:`table_settings` derives them from the tune session. A session that takes the table applies
+  each one its environment leaves unset, so every choice runs as it was measured.
 
 A candidate (:class:`Choice`) names its backend (``sircl`` or ``nccl``) and, for SIRCL, the algorithm of
 an all-reduce within the capacity (``oneshot``, ``twoshot``, ``swing``), or the schedule of a larger
@@ -50,6 +56,22 @@ SCHEDULES = ("pieces", "chain", "ring")
 # Key fields a session checks against its own facts; ``image`` is recorded but cannot be checked inside a
 # session.
 KEY_FIELDS = ("shape", "world", "lanes", "max_relays", "native", "kernels", "sircl")
+# Session variables a table records (``settings``) and a session that takes it applies where its environment
+# leaves them unset: the link slots, whose count holds the chosen staggers and keeps as many link items in
+# flight as the measurements had; the link slot, which holds the chosen link pieces; the chain slot, which
+# holds the chosen chain chunks; and the large-message piece of chosen two-shot pieces.
+SETTINGS = ("SIRCL_LINK_SLOTS", "SIRCL_LINK_SLOT_BYTES", "SIRCL_CHAIN_SLOT_BYTES", "SIRCL_LARGE_PIECE_BYTES")
+# The settings below whose table value a chosen candidate cannot run (a piece above the slot, a stagger the
+# slots cannot hold); a launcher refuses a smaller value it would set itself.
+MINIMUM_SETTINGS = ("SIRCL_LINK_SLOTS", "SIRCL_LINK_SLOT_BYTES", "SIRCL_CHAIN_SLOT_BYTES")
+# The fields of a session's stats() that hold those settings' values.
+SETTING_STATS = {"SIRCL_LINK_SLOTS": "link_slots", "SIRCL_LINK_SLOT_BYTES": "link_slot_bytes",
+                 "SIRCL_CHAIN_SLOT_BYTES": "chain_slot_bytes", "SIRCL_LARGE_PIECE_BYTES": "large_piece_bytes"}
+# A recorded slot is a multiple of this and at least the session's default slot (oneshot.runtime's
+# DEFAULT_LINK_SLOT_BYTES and DEFAULT_CHAIN_SLOT_BYTES), so a table never shrinks a slot below its default.
+SLOT_ALIGNMENT = 4096
+DEFAULT_LINK_SLOT_BYTES = 512 << 10
+DEFAULT_CHAIN_SLOT_BYTES = 1 << 20
 KERNEL_SOURCES = ("oneshot/_oneshot_cute.py", "oneshot/_twoshot_cute.py", "oneshot/_allgather_cute.py",
                   "oneshot/_links_cute.py", "oneshot/_chain_cute.py", "oneshot/_scatter_cute.py",
                   "oneshot/_swing_cute.py", "oneshot/_cute_intrinsics.py", "oneshot/_timed_wait.py")
@@ -250,7 +272,14 @@ class Table:
         self.key = dict(self.document["key"])
         self.source = source
         self.hash = document_hash(self.document)
+        settings = self.document.get("settings", {})
+        if (not isinstance(settings, Mapping) or any(name not in SETTINGS for name in settings)
+                or any(not isinstance(value, int) or isinstance(value, bool) or value < 1
+                       for value in settings.values())):
+            raise TuningError(f"tuning table settings are positive integers of {', '.join(SETTINGS)}")
+        self.settings: dict[str, int] = dict(settings)
         self._intervals: dict[tuple[str, str], list[Interval]] = {}
+        self._until: dict[tuple[str, str], int] = {}
         for entry in self.document.get("decisions", ()):
             collective, mode = str(entry["collective"]), str(entry["mode"])
             if collective not in COLLECTIVES or mode not in MODES:
@@ -265,6 +294,12 @@ class Table:
                 raise TuningError(f"decisions for {collective} in mode {mode}: an interval's choice is SIRCL's")
             if (collective, mode) in self._intervals:
                 raise TuningError(f"decisions for {collective} in mode {mode} appear twice")
+            if "until" in entry:
+                until = entry["until"]
+                if not isinstance(until, int) or isinstance(until, bool) or until < starts[-1]:
+                    raise TuningError(f"decisions for {collective} in mode {mode}: until must be a size from the "
+                                      "last interval's start on")
+                self._until[(collective, mode)] = until
             self._intervals[(collective, mode)] = intervals
 
     @classmethod
@@ -282,7 +317,7 @@ class Table:
 
     def _interval(self, collective: str, nbytes: int, mode: str) -> Optional[Interval]:
         intervals = self._intervals.get((collective, mode))
-        if not intervals or nbytes < intervals[0].start:
+        if not intervals or nbytes < intervals[0].start or nbytes > self._until.get((collective, mode), nbytes):
             return None
         low, high = 0, len(intervals) - 1
         while low < high:
@@ -302,8 +337,14 @@ class Table:
         """Every SIRCL choice of the decisions (a session prepares their launchers)."""
         return [interval.choice for intervals in self._intervals.values() for interval in intervals]
 
+    def decided(self) -> list[tuple[str, str, Choice]]:
+        """``(collective, mode, choice)`` of every interval of the decisions."""
+        return [(collective, mode, interval.choice) for (collective, mode), intervals in self._intervals.items()
+                for interval in intervals]
+
     def backend(self, collective: str, nbytes: int, mode: str) -> str:
-        """``nccl`` where NCCL measured faster than the fastest SIRCL candidate, else ``sircl``."""
+        """``nccl`` where NCCL measured faster than the fastest SIRCL candidate, else ``sircl``. A measurement:
+        SIRCL routes no call by it."""
         interval = self._interval(collective, int(nbytes), mode)
         return "nccl" if interval is not None and interval.nccl else "sircl"
 
@@ -423,7 +464,8 @@ def _points(sizes: Sequence[int]) -> list[int]:
 
 def decide_intervals(collective: str, rows: Sequence[Mapping[str, Any]], world: int) -> list[dict[str, Any]]:
     """The decision intervals of one collective and mode from its measurement rows
-    (``{"bytes", "choice", "p50_us"}``)."""
+    (``{"bytes", "choice", "p50_us"}``). Between measured sizes a size no SIRCL candidate's measurements
+    span keeps the previous interval's choice."""
     candidates: dict[Choice, _Candidate] = {}
     for row in rows:
         choice = Choice.from_json(row["choice"])
@@ -450,9 +492,80 @@ def decide_intervals(collective: str, rows: Sequence[Mapping[str, Any]], world: 
     return intervals
 
 
+def single_op_limit(collective: str, rows: Sequence[Mapping[str, Any]], intervals: Sequence[Mapping[str, Any]]
+                    ) -> Optional[int]:
+    """``until`` of an all-reduce's decisions whose last interval names an algorithm (one-shot, two-shot,
+    Swing): the largest message that algorithm was measured at. Those algorithms run a message in one op
+    within the session's capacity; above it only a schedule (two-shot pieces, chain, ring) decides, and a
+    table without one there leaves larger messages to the session's rules. None otherwise."""
+    if collective != "all_reduce" or not intervals:
+        return None
+    last = Choice.from_json(intervals[-1]["choice"])
+    if last.algorithm is None:
+        return None
+    measured = [int(row["bytes"]) for row in rows if Choice.from_json(row["choice"]).algorithm is not None
+                and Choice.from_json(row["choice"]).backend == "sircl"]
+    return max(measured) if measured else None
+
+
+def settings_conflicts(settings: Mapping[str, int], given: Mapping[str, str]) -> list[str]:
+    """``NAME=value`` of every :data:`MINIMUM_SETTINGS` entry that ``given`` (variable -> text) sets below
+    the table's ``settings``: a session given it cannot run the table's choices that need more."""
+    conflicts = []
+    for name in MINIMUM_SETTINGS:
+        text = str(given.get(name, "")).strip()
+        if name in settings and text.isdigit() and int(text) < settings[name]:
+            conflicts.append(f"{name}={text} (the table's {settings[name]})")
+    return conflicts
+
+
+def table_settings(decisions: Sequence[Mapping[str, Any]], session: Mapping[str, Any]) -> dict[str, int]:
+    """The :data:`SETTINGS` a table records for ``decisions`` measured in a session whose ``stats()`` fields
+    are ``session`` (``link_slots``, ``link_slot_bytes``, ``chain_slot_bytes``, ``large_piece_bytes``).
+
+    With a link schedule among the choices (ring, or a chain all-gather or reduce-scatter): the tune
+    session's link slot count, and a link slot holding the largest chosen link piece (rounded up to
+    :data:`SLOT_ALIGNMENT`, at least the default slot). With a chain all-reduce: a
+    chain slot holding the largest chosen chain chunk (at least the default). With two-shot pieces of an
+    all-reduce: the tune session's large-message piece. A setting the session did not report is left out."""
+    link_pieces: list[int] = []
+    chain_pieces: list[int] = []
+    links = chain = pieces = False
+    for entry in decisions:
+        collective = str(entry["collective"])
+        for item in entry["intervals"]:
+            choice = Choice.from_json(item["choice"])
+            if choice.schedule == "ring" or (choice.schedule == "chain" and collective != "all_reduce"):
+                links = True
+                link_pieces += [choice.piece] if choice.piece else []
+            elif choice.schedule == "chain":
+                chain = True
+                chain_pieces += [choice.piece] if choice.piece else []
+            elif choice.schedule == "pieces" and collective == "all_reduce":
+                pieces = True
+
+    def slot(largest: int, default: int) -> int:
+        return max(default, -(-largest // SLOT_ALIGNMENT) * SLOT_ALIGNMENT)
+
+    found: dict[str, int] = {}
+    if links and session.get("link_slots"):
+        found["SIRCL_LINK_SLOTS"] = int(session["link_slots"])
+    if links and session.get("link_slot_bytes"):
+        found["SIRCL_LINK_SLOT_BYTES"] = min(int(session["link_slot_bytes"]),
+                                             slot(max(link_pieces, default=0), DEFAULT_LINK_SLOT_BYTES))
+    if chain and session.get("chain_slot_bytes"):
+        found["SIRCL_CHAIN_SLOT_BYTES"] = min(int(session["chain_slot_bytes"]),
+                                              slot(max(chain_pieces, default=0), DEFAULT_CHAIN_SLOT_BYTES))
+    if pieces and session.get("large_piece_bytes"):
+        found["SIRCL_LARGE_PIECE_BYTES"] = int(session["large_piece_bytes"])
+    return found
+
+
 def build_document(key: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *, run_id: str = "",
-                   created: str = "") -> dict[str, Any]:
-    """A tuning table from measurement rows ``{"collective", "mode", "bytes", "choice", "p50_us"}``."""
+                   created: str = "", session: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+    """A tuning table from measurement rows ``{"collective", "mode", "bytes", "choice", "p50_us"}`` taken in a
+    session whose ``stats()`` fields are ``session`` (the table's ``settings``, :func:`table_settings`;
+    none without it)."""
     world = int(key["world"])
     measurements = sorted(({"collective": str(row["collective"]), "mode": str(row["mode"]),
                             "bytes": int(row["bytes"]), "choice": Choice.from_json(row["choice"]).to_json(),
@@ -466,9 +579,16 @@ def build_document(key: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *,
             if subset:
                 intervals = decide_intervals(collective, subset, world)
                 if intervals:
-                    decisions.append({"collective": collective, "mode": mode, "intervals": intervals})
+                    entry: dict[str, Any] = {"collective": collective, "mode": mode, "intervals": intervals}
+                    until = single_op_limit(collective, subset, intervals)
+                    if until is not None:
+                        entry["until"] = until
+                    decisions.append(entry)
     document = {"schema": SCHEMA, "key": dict(key), "run_id": run_id, "created": created,
                 "measurements": measurements, "decisions": decisions}
+    settings = table_settings(decisions, session or {})
+    if settings:
+        document["settings"] = settings
     Table(document)
     return document
 
@@ -478,10 +598,15 @@ def render(document: Mapping[str, Any]) -> str:
     key = document["key"]
     lines = [f"tuning table {document_hash(document)}: {key['shape']}, {key['world']} ranks, {key['lanes']} lanes, "
              f"{key['max_relays']} relays, native {key['native']}, kernels {key['kernels']}, {key['sircl']}"]
+    settings = document.get("settings") or {}
+    if settings:
+        lines.append("  settings, applied by a session that takes the table where its environment leaves them "
+                     "unset: " + ", ".join(f"{name}={value}" for name, value in settings.items()))
     for entry in document["decisions"]:
         for index, interval in enumerate(entry["intervals"]):
             following = entry["intervals"][index + 1]["from"] if index + 1 < len(entry["intervals"]) else None
-            span = f"{interval['from']}-{following - 1}" if following else f"{interval['from']}+"
+            span = (f"{interval['from']}-{following - 1}" if following else
+                    f"{interval['from']}-{entry['until']}" if "until" in entry else f"{interval['from']}+")
             choice = Choice.from_json(interval["choice"])
             lines.append(f"  {entry['collective']:<14} {entry['mode']:<5} {span:>22} bytes: {choice.label()}"
                          f"  [{choice.order(entry['collective'])} order]"
@@ -496,6 +621,7 @@ def render(document: Mapping[str, Any]) -> str:
 
 
 __all__ = ["ALGORITHMS", "BACKENDS", "COLLECTIVES", "Choice", "KEY_FIELDS", "MODES", "SCHEDULES", "SCHEMA",
-           "Table", "TuningError", "build_document", "decide_intervals", "document_hash", "facts",
-           "facts_for_layout", "fit", "kernels_hash", "native_hash", "render", "select_table", "shape_of",
-           "sircl_version", "table_paths"]
+           "MINIMUM_SETTINGS", "SETTINGS", "SETTING_STATS", "Table", "TuningError", "build_document",
+           "decide_intervals", "document_hash", "facts", "facts_for_layout", "fit", "kernels_hash", "native_hash",
+           "render", "select_table", "settings_conflicts", "shape_of", "single_op_limit", "sircl_version",
+           "table_paths", "table_settings"]
