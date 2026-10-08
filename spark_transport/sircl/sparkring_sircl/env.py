@@ -54,6 +54,9 @@ VARIABLES = (
     Variable("SIRCL_CALL_PROFILE_FILE", "path prefix: the call profile's summary goes to <prefix>.rank<rank>.json "
              "every SIRCL_CALL_PROFILE calls and at close", ""),
     Variable("SIRCL_CALL_PROFILE_GPU", "1: also time each profiled launch on the device (CUDA events)", "0"),
+    Variable("SIRCL_BUILTIN_PLAN", "1: a group shape with a built-in plan (tuning.BUILTIN_PLANS; a cabled pair) "
+             "decides its large collectives from it when no tuning table matches, for every collective whose "
+             "schedule variable is unset; 0: the rules decide", "1"),
     Variable("SIRCL_TUNING_TABLE", "tuning tables (python -m sparkring_sircl.ring tune), comma-separated paths; a "
              "session uses the one whose key matches its group shape and build, and takes the table's settings "
              "(SIRCL_LINK_SLOTS, SIRCL_LINK_SLOT_BYTES, SIRCL_CHAIN_SLOT_BYTES, SIRCL_LARGE_PIECE_BYTES) where they "
@@ -109,7 +112,15 @@ VARIABLES = (
              "524288, or the largest configured link piece up to 1048576, or the tuning table's slot when larger"),
     Variable("SIRCL_LINK_SLOTS", "slots per chain link ring (2-32)",
              "the tuning table's, else twice the session's ranks and at least 8 (16 on the cycle of eight)"),
-    Variable("SIRCL_LINK_BLOCKS", "blocks per role of the link kernels (chain and ring collectives)", "4"),
+    Variable("SIRCL_LINK_BLOCKS", "blocks per role of the link kernels (chain and ring collectives) of every "
+             "link collective without a value of its own",
+             "by group shape and kernel: 1 for the ring all-reduce, all-gather and reduce-scatter on a pair and "
+             "for the ring all-reduce and all-gather on a path of four, 4 elsewhere"),
+    Variable("SIRCL_GATHER_LINK_BLOCKS", "blocks per role of the chain and ring all-gathers (1-64)",
+             "SIRCL_LINK_BLOCKS"),
+    Variable("SIRCL_SCATTER_LINK_BLOCKS", "blocks per role of the chain and ring reduce-scatters (1-64)",
+             "SIRCL_LINK_BLOCKS"),
+    Variable("SIRCL_REDUCE_LINK_BLOCKS", "blocks per role of the ring all-reduce (1-64)", "SIRCL_LINK_BLOCKS"),
     Variable("SIRCL_LINK_UNROLL", "16-byte packs each thread of a link kernel moves per pass (1-8)", "4"),
     Variable("SIRCL_FORWARD_WINDOW_BYTES", "largest unacknowledged bytes of a lane through relays; 0 off",
              "131072"),

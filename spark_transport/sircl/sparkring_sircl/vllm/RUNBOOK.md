@@ -482,15 +482,34 @@ matches its shape, as `bundle --session-groups tp,dcp --dcp-size N` does.
 
 - `plan` lists the DCP sessions and groups and their NCCL policy. It refuses
   an N that does not divide the tensor parallelism, a checkpoint outside
-  `plan.DCP_MODELS` (the GLM-5.3-Flash checkpoints: multi-head latent
-  attention with DeepSeek-V3.2's sparse indexer) and an attention backend
-  other than B12X (`--vllm-arg --attention-backend=B12X` names it where the
-  recipe does not).
+  `plan.DCP_MODELS` (below) and an attention backend other than B12X
+  (`--vllm-arg --attention-backend=B12X` names it where the recipe does not).
 - `stage` requires the image's vLLM to match the pinned builds of the
   `dcp_all_to_all` and `dcp_b12x_transport` shims; `check` requires every
   rank's decode-context-parallel receipt with a session. With NCCL off, the
   default, the DCP collectives run on the DCP sessions, and
   `--require-no-nccl` proves that no NCCL communicator exists.
+
+The checkpoints of `plan.DCP_MODELS` use multi-head latent attention with
+DeepSeek-V3.2's sparse indexer; every other checkpoint is refused with
+`--dcp-size` above 1:
+
+| Model | Checkpoints | Conditions beyond a divisor of the tensor parallelism, a session per DCP group and B12X attention |
+|---|---|---|
+| GLM-5.3-Flash | `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`, `local-inference-lab/GLM-5.3-Flash-NVFP4`, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD`, `nvidia/GLM-5.3-Flash-NVFP4` | the KV-cache interleave and mHC sizes below |
+| GLM-5.3 | `local-inference-lab/GLM-5.3-NVFP4` | none; the recipe's KV-cache interleave stays as it is |
+
+GLM-5.3 at TP8 with DCP 4 plans on Sparks 0-7 with the decode-context-parallel
+sessions of `bundle --positions 0-7 --session-groups tp,dcp --dcp-size 4`:
+ranks 0-3 and 4-7, two paths of four that NCCL may not use (CPU tests on a
+synthetic profile; not run on the ring through this launcher). The
+repository's catalog lists no GLM-5.3 profile; its research profile
+`glm53-nvfp4-tp8` (`profiles/research-catalog.json`) sets decode-context
+parallelism 4 in its recipe, which this launcher's profile reader refuses
+(the launcher sets it with `--dcp-size`). In image `aba309e4610c`'s vLLM,
+GLM-5.3's B12X attention needs a source change, which a deployment's own
+vLLM plugins must supply ([`SURVEY.md`](SURVEY.md), section 5); the plan
+cannot check it, and a vLLM without it stops at startup.
 
 GLM-5.3-Flash adds two startup conditions under decode-context parallelism,
 which the launcher checks:
@@ -650,7 +669,7 @@ B12X kernel first. Throughput: [package status](../../STATUS.md#measured-perform
 ## Limitations
 
 The launcher serves tensor parallelism, with decode-context parallelism
-through `--dcp-size` for the GLM-5.3-Flash checkpoints, one rank and one
+through `--dcp-size` for the GLM-5.3-Flash checkpoints and GLM-5.3, one rank and one
 instance per Spark; it never downloads weights, configures networking or restores relay
 plans after a Spark reboots. The adapter's limitations are in
 [`STATUS.md`](STATUS.md).

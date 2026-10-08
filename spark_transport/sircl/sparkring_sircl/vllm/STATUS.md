@@ -26,9 +26,11 @@ issues: [`SURVEY.md`](SURVEY.md). Serving procedure: [`RUNBOOK.md`](RUNBOOK.md).
   `--enable-eplb` and `VLLM_DISTRIBUTED_USE_SPLIT_GROUP=1`.
 - **Launch shapes.** The serve launcher serves tensor parallelism from
   `serving-profile` profiles, and decode-context parallelism (`--dcp-size`)
-  for the GLM-5.3-Flash checkpoints with B12X attention, a KV-cache
-  interleave that is a multiple of 4, and mHC prefill sharding only at the
-  sizes a pinned vLLM build admits (`pins.MHC_ADMITS`). Pipeline parallelism
+  with B12X attention for the GLM-5.3-Flash checkpoints, with a KV-cache
+  interleave that is a multiple of 4 and mHC prefill sharding only at the
+  sizes a pinned vLLM build admits (`pins.MHC_ADMITS`), and for GLM-5.3,
+  whose B12X attention in image `aba309e4610c`'s vLLM needs a source change
+  that the deployment's own vLLM plugins supply. Pipeline parallelism
   runs only through `bundle` (research-only); every group map assumes tensor
   parallelism over all ranks.
 - **Tuning tables** choose only among SIRCL's settings; their NCCL marks

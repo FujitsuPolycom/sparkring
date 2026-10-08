@@ -387,9 +387,10 @@ LINK_WINDOW_CHUNK = 32768
 
 class TraceEvent(enum.IntEnum):
     """Events of the event trace (``SIRCL_EVENT_TRACE``). The native progress thread records
-    1-7 (``_roce_proxy.c``), the chain kernel 16-18; a record's stream is a chain stream
-    (0-3, :class:`ChainStream`) or ``TRACE_LINK_STREAM + link``, its value a chunk or item tag
-    (index on its stream plus one), a credit, or an op sequence."""
+    1-7 (``_roce_proxy.c``), the chain kernel 16-18, the ring kernels 16-21; a record's stream is a
+    chain stream (0-3, :class:`ChainStream`) or ``TRACE_LINK_STREAM + link``, its value a chunk or
+    item tag (index on its stream plus one), a credit, an op sequence, or (``KERNEL_START``) a block
+    index."""
 
     OP = 1              # an op taken from its doorbell (stream 0: chain op, TRACE_LINK_STREAM: link op)
     READY = 2           # the progress thread first saw an outbound chunk or item ready
@@ -402,6 +403,8 @@ class TraceEvent(enum.IntEnum):
     KERNEL_READY = 17   # the kernel published an outbound chunk ready (staged)
     KERNEL_CONSUMED = 18  # the kernel published an inbound chunk consumed
     KERNEL_SLOT = 19    # a ring kernel block had its outbound item's own slot free and began staging it
+    KERNEL_START = 20   # a ring kernel block began (stream TRACE_LINK_STREAM, value: the block's index)
+    KERNEL_BELL = 21    # the ring kernel's block 0 rang the link doorbell (stream TRACE_LINK_STREAM, value: op)
 
 
 TRACE_LINK_STREAM = 4
@@ -581,6 +584,46 @@ def default_link_slots(world: int) -> int:
     eight, ring all-gathers in slots of 512 KiB took 788 and 1,399 us at 2 and 4 MiB shards with 12 slots,
     696 and 1,305 us with 16 and 693 and 1,302 us with 24 (ring harness, eager p50, staggers 1)."""
     return min(LINK_MAX_SLOTS, max(MIN_DEFAULT_LINK_SLOTS, 2 * int(world)))
+
+
+# The link kernels, each running one collective under one schedule, and that collective (gather, scatter,
+# reduce). The chain all-reduce is the chain kernel (SIRCL_CHAIN_BLOCKS), not a link kernel.
+LINK_BLOCK_KERNELS: dict[str, str] = {"ring_reduce": "reduce", "ring_gather": "gather", "ring_scatter": "scatter",
+                                      "chain_gather": "gather", "chain_scatter": "scatter"}
+DEFAULT_LINK_BLOCKS = 4
+# Blocks per role by group shape (tuning.shape_of) and link kernel, where measured: a role's blocks share the
+# GPU's path to pinned host memory, so fewer blocks finish each item sooner without lowering the op's rate,
+# and the launch's block 0, which rings the link doorbell, starts its own items sooner. Ring harness, eager
+# periods at 4 / 2 / 1 blocks per role:
+# - pair (two DGX Sparks cabled port to port): the ring all-reduce in 256 KiB pieces 245.8 / 221.3 / 212.0 us
+#   at 4 MiB, 419.4 / 399.4 / 387.8 us at 8 MiB and 2,857.5 / 2,823.9 / 2,812.5 us at 64 MiB; the ring
+#   all-gather of 16 MiB shards in 512 KiB pieces 801.8 / 771.8 / 814.1 us with two kernel passes per own
+#   piece, 757.7 us at 1 block with one; the ring reduce-scatter in 256 KiB pieces within 2-4 % of each other
+#   at 4 / 2 / 1 blocks (8-64 MiB inputs);
+# - path:4 (Sparks 0-3, the ring closed through two relays), 512 KiB pieces: the ring all-reduce 395.1 /
+#   375.9 / 366.8 us at 4 MiB, 1,379.4 / 1,356.3 / 1,339.9 us at 16 MiB and 5,163.5 / 5,185.1 / 5,184.0 us
+#   at 64 MiB; the ring all-gather 231.0 / 214.2 / 205.1 us for 1 MiB shards and 2,622.5 / 2,597.3 /
+#   2,586.9 us for 16 MiB shards.
+# Not measured, so DEFAULT_LINK_BLOCKS: the chain all-gather and reduce-scatter on a pair, the ring
+# reduce-scatter and the chain all-gather and reduce-scatter on a path of four, every kernel on other paths,
+# cycles and strided groups.
+LINK_BLOCKS_BY_SHAPE: dict[str, dict[str, int]] = {"pair": {"ring_reduce": 1, "ring_gather": 1, "ring_scatter": 1},
+                                                   "path:4": {"ring_reduce": 1, "ring_gather": 1}}
+
+
+def link_blocks(shape: str | None, world: int, overall: int = 0, own: Mapping[str, int] | None = None) -> dict[str, int]:
+    """Blocks per role of each link kernel (:data:`LINK_BLOCK_KERNELS`): its collective's own value in ``own``
+    (``gather``, ``scatter``, ``reduce`` from ``SIRCL_GATHER_LINK_BLOCKS``, ``SIRCL_SCATTER_LINK_BLOCKS``,
+    ``SIRCL_REDUCE_LINK_BLOCKS``), else ``overall`` (``SIRCL_LINK_BLOCKS``), else :data:`LINK_BLOCKS_BY_SHAPE`
+    for the group shape ``shape`` (``tuning.shape_of``; without one, a world of two is a pair), else
+    :data:`DEFAULT_LINK_BLOCKS`. 0 leaves a value unset; every value set is 1 to 64."""
+    measured = LINK_BLOCKS_BY_SHAPE.get(shape or ("pair" if int(world) == 2 else ""), {})
+    own = dict(own or {})
+    for name, value in (("SIRCL_LINK_BLOCKS", overall), *((f"blocks of {c}", v) for c, v in own.items())):
+        if value and not 1 <= int(value) <= 64:
+            raise ValueError(f"{name} must be 1 to 64, got {value}")
+    return {kernel: int(own.get(collective) or overall or measured.get(kernel, DEFAULT_LINK_BLOCKS))
+            for kernel, collective in LINK_BLOCK_KERNELS.items()}
 
 
 def ring_stagger_slots(world: int, stagger: int) -> int:

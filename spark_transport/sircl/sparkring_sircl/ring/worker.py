@@ -129,10 +129,14 @@ def bandwidths(collective: str, nbytes: int, world: int, p50_us: float | None) -
     bus factor ``2 (W - 1) / W``. All-gather: the gathered bytes (``W``
     shards), bus factor ``(W - 1) / W``. Reduce-scatter and all-to-all: the
     input bytes, bus factor ``(W - 1) / W``. Transport ops (one payload to
-    every peer): the payload bytes, bus factor ``W - 1``.
+    every peer): the payload bytes, bus factor ``W - 1``. NCCL's baseline
+    rows (``nccl_all_reduce``, ``nccl_all_gather``) follow the collective
+    they measure.
     """
     if not p50_us or world < 2:
         return {}
+    if collective.startswith("nccl_"):
+        collective = collective[len("nccl_"):]
     if collective.startswith("all_reduce") or collective == "tp_all_reduce":
         moved, factor = nbytes, 2 * (world - 1) / world
     elif collective in ("reduce_scatter", "all_to_all"):
@@ -404,6 +408,11 @@ class Harness:
             once()
         torch.cuda.synchronize()
         self.dist.barrier(group=self.process_group)
+        # The untimed calls after the barrier that SIRCL's cases run too, so both start their timed calls
+        # from the same state.
+        for _ in range(self.options.get("post_barrier_warmup", 0)):
+            once()
+        torch.cuda.synchronize()
         if large:
             count_calls = self.options.get("large_iterations", 20)
         else:
@@ -742,9 +751,15 @@ class Harness:
             if saved_gather_stagger is not None:
                 session.set_ring_gather_stagger(saved_gather_stagger)
 
-    def _link_piece(self, collective: str) -> int | None:
-        """The link piece the session uses for ``collective``'s link ops."""
+    def _link_piece(self, collective: str, nbytes: int | None = None, mode: str | None = None) -> int | None:
+        """The link piece ``collective``'s link op of ``nbytes`` per rank runs with in ``mode``: the session's
+        decision for the op (``tuned_link_chunk``: a tuning table's or built-in plan's piece) where the session
+        offers it, else the session's piece for the collective."""
         kind = link_collective(collective)
+        tuned = getattr(self.session, "tuned_link_chunk", None)
+        table = {"reduce": "all_reduce", "gather": "all_gather", "scatter": "reduce_scatter"}.get(kind or "")
+        if callable(tuned) and nbytes is not None and table is not None:
+            return tuned(table, int(nbytes), mode=mode)
         pick = getattr(self.session, "link_chunk_for", None)
         if callable(pick) and kind is not None:
             return pick(kind)
@@ -791,7 +806,7 @@ class Harness:
             chain = any(piece.chain for piece in plan)
             ring = any(getattr(piece, "ring", False) for piece in plan)
             record["schedule"] = self.session.large_schedule
-            record["algorithm"] = (f"ring, pieces of {self._link_piece(collective)}" if ring
+            record["algorithm"] = (f"ring, pieces of {self._link_piece(collective, nbytes, mode)}" if ring
                                    else f"chain, chunks of {self.session.chain_chunk_bytes}" if chain
                                    else f"pieces of {self.session.large_piece_bytes}")
             record["traffic"] = "ring" if ring else "chain" if chain else "twoshot"
@@ -800,10 +815,10 @@ class Harness:
             uses_chain = getattr(self.session, "gather_uses_chain", None)
             uses_ring = getattr(self.session, "gather_uses_ring", None)
             if callable(uses_ring) and uses_ring(probe, dim, mode=mode):
-                record["algorithm"] = f"ring, pieces of {self._link_piece(collective)}"
+                record["algorithm"] = f"ring, pieces of {self._link_piece(collective, nbytes, mode)}"
                 record["traffic"] = "ring"
             elif callable(uses_chain) and uses_chain(probe, dim, mode=mode):
-                record["algorithm"] = f"chain, pieces of {self._link_piece(collective)}"
+                record["algorithm"] = f"chain, pieces of {self._link_piece(collective, nbytes, mode)}"
                 record["traffic"] = "chain"
             else:
                 record["algorithm"] = f"pieces of {self.session.gather_piece_bytes}"
@@ -822,10 +837,10 @@ class Harness:
                                                          and uses_chain(probe, mode=mode)))
             if ring_scatter:
                 chained_scatter = "ring"
-                record["algorithm"] = f"ring, pieces of {self._link_piece(collective)}"
+                record["algorithm"] = f"ring, pieces of {self._link_piece(collective, nbytes, mode)}"
                 record["traffic"] = "ring"
             elif chained_scatter:
-                record["algorithm"] = f"chain, pieces of {self._link_piece(collective)}"
+                record["algorithm"] = f"chain, pieces of {self._link_piece(collective, nbytes, mode)}"
                 record["traffic"] = "chain"
             else:
                 record["algorithm"] = (f"scatter ops of {_scatter_ops.piece_bytes(self.session, chunk)} bytes per "
@@ -989,15 +1004,19 @@ class Harness:
         return record
 
     def _traced_call(self, session, once) -> dict:
-        """The event trace of one more call of the case (every rank of the group runs it)."""
+        """The event trace of ``TRACE_CALLS`` more calls of the case, run back to back after a barrier of the
+        group like the timed calls (every rank of the group runs them), so the trace shows the calls of ranks
+        in step rather than one call that a rank starts while its peers still collect their traces."""
         torch = self.torch
         session.event_trace_records()
-        once()
+        self.dist.barrier(group=self.process_group)
+        for _ in range(TRACE_CALLS):
+            once()
         torch.cuda.synchronize()
         session.check_health()
         trace = session.event_trace_records()
         return {"offset_ns": trace.get("offset_ns"), "offset_error_ns": trace.get("offset_error_ns"),
-                "lost": trace["lost"], "records": [list(record) for record in trace["records"]]}
+                "lost": trace["lost"], "calls": TRACE_CALLS, "records": [list(record) for record in trace["records"]]}
 
     def cases(self, collective: str) -> list[tuple[tuple[int, ...], int]]:
         if collective == "all_reduce":
@@ -1358,6 +1377,8 @@ class Harness:
 
 # The collectives whose eager rows the call profile and the adapter path cover.
 PROFILED = ("all_reduce", "all_gather", "all_reduce_large", "all_gather_large")
+# Calls of a traced case (SIRCL_EVENT_TRACE) run back to back after a barrier, after its timed calls.
+TRACE_CALLS = 6
 
 
 def forced(variant: dict | None) -> bool:

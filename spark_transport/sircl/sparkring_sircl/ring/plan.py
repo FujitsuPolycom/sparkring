@@ -84,11 +84,23 @@ belongs to at most one group. Built-in configurations on a ring of ``N``:
   follow a path). A session without ``set_post_order`` builds ``farthest`` as
   every rank's explicit peer list (``posting.resolve`` on the plan's layout).
 
+On a site cabled as a path or with explicit cables (``site.cabling`` other
+than ``ring``), ``path`` is every Spark of a site whose cables form a path (a
+line, or a pair); ``pairs``, ``path4`` (four Sparks or more) and ``two-tp4``
+take the same positions as on a ring, and the configurations of a whole ring
+(``ring`` and its ``-large``, ``-swing`` and ``-latency`` forms, ``dcp4``)
+need a site whose cables close a cycle. ``all`` is ``pairs`` and ``path``
+there (with ``path4`` and ``two-tp4`` on eight Sparks or more; ``path`` alone
+on two).
+
 A group is either the whole ring or consecutive Sparks along it (a path that
-owns only the cables between its members). With the ``world_session`` option
-every rank also holds a session over the whole ring, as the tensor-parallel
-group of a deployment whose DCP groups are the configuration's groups; global
-rank ``i`` then sits on Spark ``i``. Route maps follow
+owns only the cables between its members). On a site cabled otherwise, a
+group is the whole cycle its cables close, or Sparks of which each is joined
+to the next by a cable of the site, the group owning those cables
+(:func:`group_layout` with the site's fabric). With the ``world_session``
+option every rank also holds a session over the whole ring, as the
+tensor-parallel group of a deployment whose DCP groups are the configuration's
+groups; global rank ``i`` then sits on Spark ``i``. Route maps follow
 :mod:`sparkring_sircl.routes`; the plan lists every rank's map, its relays,
 the relay load factor of each group, the forward windows of its relayed lanes
 and the sizes that would exceed the relay queue rule without them.
@@ -211,7 +223,13 @@ HAIRPIN_QUEUE_BYTES = routes_mod.DEFAULT_HAIRPIN_QUEUE
 RELAY_QUEUE_SHARE = routes_mod.RELAY_QUEUE_SHARE
 CPU_POLICIES = ("performance", "none")
 CONFIGURATIONS = ("pairs", "path4", "two-tp4", "ring", "path4-large", "two-tp4-large", "ring-large", "dcp4",
-                  "ring-swing", "ring-latency", "path4-latency", "path4-crossover")
+                  "ring-swing", "ring-latency", "path4-latency", "path4-crossover", "path")
+# The rank watchdog's default (Options.worker_timeout_s, --worker-timeout), the run's default wait for its
+# containers (--timeout) and the margin by which an unset --timeout outlasts a longer watchdog, so a hung rank
+# is ended and records its error before the run gives up on it.
+DEFAULT_WORKER_TIMEOUT_S = 1500
+RUN_TIMEOUT_S = 1800
+RUN_TIMEOUT_MARGIN_S = 300
 CONTAINER_PREFIX = "sircl-ring"
 PACKAGE = Path(__file__).resolve().parents[1]
 
@@ -220,10 +238,27 @@ class PlanError(ValueError):
     """A configuration cannot run on the described ring."""
 
 
-def builtin_groups(name: str, ring_size: int) -> tuple[tuple[int, ...], ...]:
+def builtin_groups(name: str, ring_size: int, kind: str = "cycle") -> tuple[tuple[int, ...], ...]:
+    """The groups of configuration ``name`` on ``ring_size`` Sparks whose site cables form a ``kind``: ``cycle``
+    on a ring site, ``path`` on a site cabled as a path or a pair."""
     if name == "pairs":
         return tuple((i, i + 1) for i in range(0, ring_size - 1, 2))
+    if name == "path":
+        if kind == "cycle":
+            raise PlanError("path is every Spark of a site whose cables form a path; on a ring name path4 or "
+                            "--groups")
+        return (tuple(range(ring_size)),)
+    whole_ring = (name in ("dcp4", "ring", "ring-large", "ring-latency", "ring-swing")
+                  or name in (f"ring{ring_size}", f"ring{ring_size}-large", f"ring{ring_size}-latency",
+                              f"ring{ring_size}-swing"))
+    if whole_ring and kind != "cycle":
+        raise PlanError(f"{name} runs on every Spark of a ring; this site's cables form a path: name the whole "
+                        f"path with --config path or --groups 0-{ring_size - 1}")
     if name in ("path4", "path4-large", "path4-latency", "path4-crossover"):
+        if kind != "cycle":
+            if ring_size < 4:
+                raise PlanError("path4 needs a path of at least four Sparks")
+            return ((0, 1, 2, 3),)
         if ring_size < 5:
             raise PlanError("path4 needs a ring of at least five Sparks (four consecutive, not the whole ring)")
         return ((0, 1, 2, 3),)
@@ -267,13 +302,20 @@ def parse_groups(text: str) -> tuple[tuple[int, ...], ...]:
     return tuple(groups)
 
 
-def group_layout(ring_size: int, members: Sequence[int]) -> routes_mod.Layout:
-    """The group's fabric: the whole ring, or the cables between consecutive members."""
+def group_layout(ring_size: int, members: Sequence[int],
+                 fabric: routes_mod.Fabric | None = None) -> routes_mod.Layout:
+    """The group's fabric: the whole ring, or the cables between consecutive members.
+
+    With ``fabric`` (the cables of a site not cabled as a ring, ``Site.fabric``): the whole fabric when it is a
+    cycle and the group holds every Spark, else the cables of ``fabric`` that join each member to the next.
+    """
     members = tuple(members)
     if len(members) < 2 or len(set(members)) != len(members):
         raise PlanError(f"group {members} needs at least two distinct Sparks")
     if any(not 0 <= member < ring_size for member in members):
         raise PlanError(f"group {members} names a Spark outside the ring of {ring_size}")
+    if fabric is not None:
+        return _cabled_group_layout(fabric, members)
     if len(members) == ring_size:
         if sorted(members) != list(range(ring_size)):
             raise PlanError("a whole-ring group lists every Spark once")
@@ -283,6 +325,27 @@ def group_layout(ring_size: int, members: Sequence[int]) -> routes_mod.Layout:
             raise PlanError(f"group {members} is neither the whole ring nor consecutive Sparks along it")
     fabric = routes_mod.Fabric(tuple(routes_mod.Cable(a, 0, b, 1) for a, b in zip(members, members[1:])))
     return routes_mod.Layout(fabric, members)
+
+
+def _cabled_group_layout(fabric: routes_mod.Fabric, members: tuple[int, ...]) -> routes_mod.Layout:
+    """A group on a site's own cables: the whole cycle, or each member joined to the next by a cable."""
+    if fabric.kind == "cycle" and len(members) == len(fabric.positions):
+        if sorted(members) != list(fabric.positions):
+            raise PlanError("a whole-cycle group lists every Spark once")
+        return routes_mod.Layout(fabric, members)
+    cables = []
+    for a, b in zip(members, members[1:]):
+        joining = [cable for cable in fabric.cables if {cable.a, cable.b} == {a, b}]
+        if not joining:
+            raise PlanError(f"group {members} is not consecutive Sparks along the site's cables: Sparks {a} and "
+                            f"{b} share no cable ({', '.join(cable.text for cable in fabric.cables)})")
+        cables.append(joining[0])
+    return routes_mod.Layout(routes_mod.Fabric(tuple(cables)), members)
+
+
+def site_layout(site: Site, members: Sequence[int]) -> routes_mod.Layout:
+    """The fabric of a group of ``site``'s Sparks: :func:`group_layout` on the site's cabling."""
+    return group_layout(site.size, members, None if site.cabling == "ring" else site.fabric())
 
 
 def ring_text(layout: routes_mod.Layout, maps) -> str:
@@ -350,7 +413,7 @@ class Options:
     warmup_iterations: int = 20
     spin_limit: int = 5_000_000
     lane_check_ms: int = 2000
-    worker_timeout_s: int = 1500
+    worker_timeout_s: int = DEFAULT_WORKER_TIMEOUT_S   # the rank watchdog in seconds (--worker-timeout)
     seed: int = 20261006
     transport_only: bool = False
     allreduce_sizes: tuple[int, ...] = ALLREDUCE_SIZES
@@ -420,6 +483,9 @@ class Options:
     def __post_init__(self) -> None:
         if self.cpu_policy not in CPU_POLICIES:
             raise PlanError(f"CPU policy must be one of {', '.join(CPU_POLICIES)}, got {self.cpu_policy!r}")
+        if isinstance(self.worker_timeout_s, bool) or not isinstance(self.worker_timeout_s, int) \
+                or self.worker_timeout_s < 1:
+            raise PlanError("the rank watchdog is a positive whole number of seconds")
         if self.large_capacity < 4096 or self.large_capacity % 4096:
             raise PlanError("the large-message capacity must be a positive multiple of 4096 bytes")
         sizes = (*self.large_allreduce_sizes, *self.large_allgather_sizes)
@@ -722,11 +788,12 @@ def package_files() -> list[Path]:
 def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[int]] | None = None,
                options: Options = Options(), digest: str | None = None) -> ConfigurationPlan:
     """The launch plan of one configuration (``groups`` overrides the built-in ones)."""
-    chosen = tuple(tuple(g) for g in groups) if groups is not None else builtin_groups(name, site.size)
+    chosen = (tuple(tuple(g) for g in groups) if groups is not None
+              else builtin_groups(name, site.size, site.fabric().kind))
     used = [p for group in chosen for p in group]
     if len(used) != len(set(used)):
         raise PlanError(f"configuration {name}: a Spark belongs to two groups")
-    layouts = [group_layout(site.size, members) for members in chosen]
+    layouts = [site_layout(site, members) for members in chosen]
     derived = [routes_mod.derive_routes(layout, 2) for layout in layouts]
     problems = routes_mod.isolation_problems(derived)
     if problems:
@@ -784,7 +851,7 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
         if [rank.position for rank in rank_plans] != list(range(site.size)):
             raise PlanError(f"configuration {name}: the world session needs every Spark of the ring, global rank "
                             "i on Spark i")
-        world = group_layout(site.size, tuple(range(site.size)))
+        world = site_layout(site, tuple(range(site.size)))
         world_routes = routes_mod.derive_routes(world, 2)
         if world_routes.max_relays() > routes_mod.DEFAULT_MAX_RELAYS:
             raise PlanError(f"configuration {name}: the world session needs {world_routes.max_relays()} relays; "
@@ -940,6 +1007,9 @@ def render_text(plan: ConfigurationPlan) -> str:
     lines.append(f"  flag-wait limits: {options.startup_wait_s:g} s during setup and warm-up, "
                  f"{options.serving_wait_s:g} s for the timed cases; large-message pieces "
                  + (f"{options.large_piece_bytes} bytes" if options.large_piece_bytes else "at the session default"))
+    if options.worker_timeout_s != DEFAULT_WORKER_TIMEOUT_S:
+        lines.append(f"  rank watchdog: a rank that has not finished after {options.worker_timeout_s} s records its "
+                     f"error and ends (--worker-timeout; default {DEFAULT_WORKER_TIMEOUT_S} s)")
     for size, target, stretch in options.targets:
         lines.append(f"  target: {size} bytes all-reduced in at most {target:g} ms (stretch {stretch:g} ms); "
                      f"NCCL on a four-Spark cycle: {NCCL_CYCLE_BUSBW_GBPS[0]:g}-{NCCL_CYCLE_BUSBW_GBPS[1]:g} GB/s "

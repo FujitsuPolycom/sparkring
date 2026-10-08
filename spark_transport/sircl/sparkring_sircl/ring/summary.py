@@ -5,9 +5,24 @@ whether every rank's output matched the reference bit for bit; the latency
 percentiles of the slowest rank (the per-call maximum over the group's ranks,
 then the percentile); the algorithm and bus bandwidth at the slowest median
 (all-reduce: message bytes per second, bus factor ``2 (W - 1) / W``;
-all-gather: gathered bytes per second, bus factor ``(W - 1) / W``); each
-rank's own median and CPU placement; and every error-counter increase of any
-Spark of the group. A configuration passes when every rank finished with exit
+all-gather: gathered bytes per second, bus factor ``(W - 1) / W``); the
+group's period of back-to-back calls and the bus bandwidth at it
+(:func:`period`); each rank's own median, period and CPU placement; and every
+error-counter increase of any Spark of the group.
+
+The period and the slowest median measure different things. The timed calls
+of a case run back to back, each between two CUDA events. When the ranks of a
+group alternate which one starts a call late, a rank whose peers' data had
+already landed finishes in a short time and the rank that waited for them in
+a long one, and the roles swap in the next call. The per-call maximum is then
+the long time in every call, while each rank's mean over two consecutive
+calls is the time between completions. That is close to, but not the same
+statistic as, nccl-tests' per-iteration time (its loop time over the
+iterations, averaged over ranks): adjacent calls are not independent, and the
+group's period is its slowest rank's. The period ranks settings within a run;
+a claim against NCCL rests on nccl-tests with repeated, counterbalanced runs.
+Rows of 1 MiB and more print the period beside the percentiles, and a tune
+run's tables rank candidates by it. A configuration passes when every rank finished with exit
 code 0, every output matched and no error counter moved.
 
 Rows that name a posting order (the ``ring-latency`` cases) also carry the
@@ -84,6 +99,26 @@ def _latency(plan: Mapping, group: Mapping, runs: Sequence[Mapping]) -> dict:
     return {"latency_model_us": round(estimate.us, 3), "latency_model": estimate.to_json(),
             "posting_measured": all(value is not None for value in measured),
             "posting_us_per_lane": [round(value, 4) for value in post_us]}
+
+
+# Rows of at least this many bytes print their period in the table.
+PERIOD_NOTE_BYTES = 1 << 20
+
+
+def period(times: Sequence[Sequence[float]]) -> tuple[float | None, list[float | None]]:
+    """The group's period of back-to-back calls and each rank's, in microseconds: per rank the median over
+    consecutive calls of their mean time (a single call: its time), robust to one slow call and equal to the
+    time between completions when the rank's calls alternate between a short and a long time; the group's
+    is the slowest rank's (None when a rank has no times)."""
+    ranks: list[float | None] = []
+    for values in times:
+        if not values:
+            ranks.append(None)
+            continue
+        pairs = [(a + b) / 2.0 for a, b in zip(values, values[1:])] or list(values)
+        ranks.append(round(percentile(pairs, 0.5), 2))
+    known = [value for value in ranks if value is not None]
+    return (max(known) if known and len(known) == len(ranks) else None), ranks
 
 
 def crossovers(cases: Sequence[Mapping]) -> list[dict]:
@@ -167,6 +202,7 @@ def merge(plan: Mapping, results: Sequence[Mapping | None]) -> dict:
             times = [run.get("times_us", []) for run in runs]
             length = min((len(t) for t in times), default=0)
             slowest = [max(t[i] for t in times) for i in range(length)]
+            group_period, rank_periods = period(times)
             counters: dict[str, int] = {}
             for member, run in zip(members, runs):
                 for key, value in run.get("counters", {}).items():
@@ -181,6 +217,8 @@ def merge(plan: Mapping, results: Sequence[Mapping | None]) -> dict:
                 "slowest_p90_us": round(percentile(slowest, 0.9), 2) if slowest else None,
                 "slowest_p99_us": round(percentile(slowest, 0.99), 2) if slowest else None,
                 "rank_p50_us": [run.get("p50_us") for run in runs],
+                "period_us": group_period,
+                "rank_period_us": rank_periods,
                 "rank_placement": [run.get("placement") for run in runs],
                 "algorithm": first.get("algorithm"),
                 "counters": counters,
@@ -213,6 +251,11 @@ def merge(plan: Mapping, results: Sequence[Mapping | None]) -> dict:
                 # A world-session case records its own world; group cases span the group.
                 record.update(bandwidths(first["collective"], first["bytes"], first.get("world", len(members)),
                                          record["slowest_p50_us"]))
+            if group_period:
+                rates = bandwidths(first["collective"], first["bytes"], first.get("world", len(members)),
+                                   group_period)
+                if rates:
+                    record["period_busbw_gbps"] = rates["busbw_gbps"]
             record.update(_bound(plan, group, first))
             if record.get("bound_ms") and record["slowest_p50_us"]:
                 record["of_bound"] = round(record["bound_ms"] * 1e3 / record["slowest_p50_us"], 4)
@@ -329,14 +372,15 @@ def tune_coverage(plan: Mapping, results: Sequence[Mapping | None], cases: Seque
 
 def tuning_rows(result: Mapping) -> dict[int, list[dict]]:
     """The tune command's measurements of a merged result, by group: every exact candidate's collective,
-    mode, bytes, choice and slowest-rank median."""
+    mode, bytes, choice and time, the group's period of back-to-back calls (:func:`period`; the
+    slowest-rank median for a case without one)."""
     rows: dict[int, list[dict]] = {}
     for case in result["cases"]:
         tune = case.get("tune")
         if tune and case.get("correct") and case.get("slowest_p50_us"):
             rows.setdefault(int(case["group"]), []).append({
                 "collective": tune["collective"], "mode": case["mode"], "bytes": case["bytes"],
-                "choice": tune["choice"], "p50_us": case["slowest_p50_us"]})
+                "choice": tune["choice"], "p50_us": case.get("period_us") or case["slowest_p50_us"]})
     return rows
 
 
@@ -416,7 +460,8 @@ def _family(collective: str) -> str | None:
 
 def _pair_with_nccl(cases: list[dict]) -> None:
     """Every SIRCL all-reduce and all-gather row with an NCCL row of its group, family, mode and bytes gets
-    ``nccl_p50_us`` and ``vs_nccl`` (NCCL's median over SIRCL's: above 1, SIRCL is faster)."""
+    ``nccl_p50_us`` and ``vs_nccl`` (NCCL's median over SIRCL's: above 1, SIRCL is faster), and with both
+    periods ``nccl_period_us`` and ``vs_nccl_period`` (NCCL's period over SIRCL's)."""
     nccl = {(case["group"], _family(case["collective"]), case["mode"], case["bytes"]): case
             for case in cases if case["collective"].startswith("nccl_") and case.get("slowest_p50_us")}
     for case in cases:
@@ -428,6 +473,9 @@ def _pair_with_nccl(cases: list[dict]) -> None:
         if match is not None:
             case["nccl_p50_us"] = match["slowest_p50_us"]
             case["vs_nccl"] = round(match["slowest_p50_us"] / case["slowest_p50_us"], 3)
+            if match.get("period_us") and case.get("period_us"):
+                case["nccl_period_us"] = match["period_us"]
+                case["vs_nccl_period"] = round(match["period_us"] / case["period_us"], 3)
 
 
 def _target_note(case: Mapping) -> str:
@@ -456,6 +504,18 @@ def _target_note(case: Mapping) -> str:
     return f"{note}  [target {case['target_ms']:g} ms, stretch {case['stretch_ms']:g} ms: {verdict}]"
 
 
+def _period_note(case: Mapping) -> str:
+    """``[period ... us, busbw ... GB/s, NCCL ...x by period]`` for rows of ``PERIOD_NOTE_BYTES`` or more."""
+    if not case.get("period_us") or case.get("bytes", 0) < PERIOD_NOTE_BYTES:
+        return ""
+    note = f"  [period {case['period_us']:.1f} us"
+    if case.get("period_busbw_gbps"):
+        note += f", busbw {case['period_busbw_gbps']:.2f} GB/s"
+    if case.get("vs_nccl_period"):
+        note += f", NCCL {case['vs_nccl_period']:.2f}x by period"
+    return note + "]"
+
+
 def table(result: Mapping) -> str:
     lines = [f"configuration {result['configuration']} (run {result['run_id']}): {result['status'].upper()}"]
     # With NCCL rows, a column of NCCL's median over SIRCL's for every row that has an NCCL counterpart.
@@ -473,7 +533,8 @@ def table(result: Mapping) -> str:
         lines.append(f"{case['group']:>5} {case['collective']:<10} {case['mode']:<5} {case['bytes']:>7} "
                      f"{shape:<12} {'yes' if case['correct'] else 'NO':<5} {case['slowest_p50_us'] or 0:>8.2f} "
                      f"{case['slowest_p90_us'] or 0:>8.2f} {case['slowest_p99_us'] or 0:>8.2f} "
-                     f"{case.get('busbw_gbps') or 0:>10.2f}{ratio}  {moved}{_target_note(case)}")
+                     f"{case.get('busbw_gbps') or 0:>10.2f}{ratio}  {moved}{_target_note(case)}"
+                     f"{_period_note(case)}")
     for found in result.get("crossover", ()):
         order = f", posting order {found['post_order']}" if found.get("post_order") is not None else ""
         if found.get("large_blocks") is not None:

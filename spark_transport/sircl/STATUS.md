@@ -27,14 +27,19 @@ conditions), **research-only** (runs, but its evidence is light or partial),
 | Two-shot all-reduce; `all_reduce_large` in pieces; `all_gather_large` in tiles | implemented | GPU emulation (one RTX 5090, ranks as threads over the verbs stand-in) on `path:0-3`, `ring:8`, `path:0-1`, `ring:3`: every output bit-exact, eager and in graph replay; ring harness large-message cases on a path of four and the cycle of eight, every case exact |
 | Chain schedule (`chain`): all-reduce, all-gather and reduce-scatter as pipelined ops between cable neighbours | implemented | proxy simulator; GPU emulation as above; ring harness on a path of four and the cycle of eight, every case exact |
 | Ring schedule (`ring`): all-reduce, reduce-scatter and all-gather over the chain closed by its end ranks, with staggered relays (`SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER`) | implemented | CPU link simulator (`tests/test_ring_links.py`); GPU emulation; ring harness on a path of four (closing lanes through relays) and the cycle of eight, every case exact |
+| Ring kernels' own finished pieces in one pass: a ring rank writes its own finished piece (the all-reduce's own result, the all-gather's own piece) to the link's own slot and to the output in one kernel pass and publishes it after that pass; every stored byte, the link-op words, the native ABI (9) and the launch arguments are unchanged | implemented | GPU emulation on a DGX Spark's GB10 (ranks as threads of one process over the verbs stand-in): 138 checks on `path:0-1` with two lanes, 136 on each of `path:0-3` with two lanes and `ring:3` with one lane, every case exact; in the event trace on `path:0-1`, the kernel pass per own result took 19.7-20.5 us against 28.5-41.2 us with two passes (8 MiB ring all-reduce, 512 KiB pieces). Ring harness on a cabled pair, eager periods at 1 block per role: the ring all-gather of 16 MiB shards in 512 KiB pieces 757.7 us against 814.1 us with two passes |
+| Link blocks per role by group shape and link kernel (`protocol.link_blocks`, `stats()["link_blocks"]`): 1 for the ring all-reduce, all-gather and reduce-scatter on a cabled pair and for the ring all-reduce and all-gather on a path of four, 4 for every other kernel and shape; `SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS` and `SIRCL_REDUCE_LINK_BLOCKS` set one collective's, `SIRCL_LINK_BLOCKS` every other collective's | implemented | CPU tests (`tests/test_link_blocks.py`); ring harness eager periods at 4 / 2 / 1 blocks per role: on a cabled pair the ring all-reduce in 256 KiB pieces 245.8 / 221.3 / 212.0 us at 4 MiB and 2,857.5 / 2,823.9 / 2,812.5 us at 64 MiB, the ring reduce-scatter within 2-4 %; on a path of four the ring all-reduce in 512 KiB pieces 395.1 / 375.9 / 366.8 us at 4 MiB and 5,163.5 / 5,185.1 / 5,184.0 us at 64 MiB, the ring all-gather of 16 MiB shards 2,622.5 / 2,597.3 / 2,586.9 us; not measured on cycles |
+| Built-in pair plan (`tuning.BUILTIN_PLANS`, `SIRCL_BUILTIN_PLAN`): without a matching tuning table a cabled pair runs the ring all-reduce from 3 MiB messages, the ring all-gather from 2 MiB shards and the ring reduce-scatter from 8 MiB inputs, in 256 KiB pieces (512 KiB from 16 MiB shards and from 64 MiB inputs), for every collective whose schedule variable is unset; no result bit changes on two ranks | implemented | CPU tests (`tests/test_builtin_plan.py`); GPU emulation on a GB10, the plan's checks among the 138 on `path:0-1` with two lanes; ring harness on cabled pairs ([Large messages on a cabled pair](#large-messages-on-a-cabled-pair)) |
 | Scatter collectives: `reduce_scatter` in scatter ops, `all_to_all` | implemented | proxy simulator; ring harness on a path of four and on both DCP 4 groups of the cycle of eight at once (configuration `dcp4`), every case exact |
 | Swing all-reduce (`oneshot/_swing_ops.py`, `oneshot/_swing_cute.py`) | research-only | runs from the ring harness configuration `ring-swing` only; sessions report it unavailable and refuse `SIRCL_ALLREDUCE_ALGORITHM=swing` |
 | Flag waits: limits in seconds of the GPU clock, a startup regime (600 s) and a serving regime (20 s, after `enter_serving()`); `SIRCL_SPIN_LIMIT` bounds only waits without a time limit | implemented | GPU emulation (a late peer waited out at startup, the group poisoned under the serving limit); proxy simulator case `wait-regimes` |
-| Tuning tables (`tuning.py`, `SIRCL_TUNING_TABLE`; ring harness `tune` and `tune-table`): a measured choice of algorithm, schedule, piece, stagger and grid per collective, size and mode, with the session settings those choices need (link slots, link slot, chain slot, large-message piece), applied where the environment leaves them unset; a table chooses only among SIRCL's settings and its NCCL marks route no call | implemented | CPU tests of the tables, their settings and the harness; GPU emulation on `path:0-3`, `ring:8` and `path:0-1` (every op under the table's choice bit-exact) and the tune round trip on `ring:8` (the harness's `tune` on the emulated group, a table that records its settings, sessions that apply them, every output exact). No table ships with the package; without one, the rules of [Dispatch settings](README.md#dispatch-settings) choose every op |
+| Tuning tables (`tuning.py`, `SIRCL_TUNING_TABLE`; ring harness `tune` and `tune-table`): a measured choice of algorithm, schedule, piece, stagger and grid per collective, size and mode, the fastest by the group's period of back-to-back calls, with the session settings those choices need (link slots, link slot, chain slot, large-message piece), applied where the environment leaves them unset; a table chooses only among SIRCL's settings and its NCCL marks route no call | implemented | CPU tests of the tables, their settings and the harness; GPU emulation on `path:0-3`, `ring:8` and `path:0-1` (every op under the table's choice bit-exact) and the tune round trip on `ring:8` (the harness's `tune` on the emulated group, a table that records its settings, sessions that apply them, every output exact). No table ships with the package; without one, a cabled pair takes the built-in pair plan and the rules of [Dispatch settings](README.md#dispatch-settings) choose every other op |
 | Point-to-point channels (`p2p/`, native ABI 1): send, receive, batched send and receive between any two ranks of a group | implemented | point-to-point simulator (30 cases), binding tests (12), GPU emulation on `path:0-1`, `path:0-3` and `ring:8` (19 of 19 checks each); not run on a ring |
 | Event trace (`SIRCL_EVENT_TRACE`; `python -m sparkring_sircl.ring trace`) | implemented | GPU emulation; ring harness on the cycle of eight (64 MiB ring all-reduce, no events lost) |
 | CPU placement of launching and progress threads (`cpus.py`) | implemented | CPU tests |
 | NCCL baseline of the ring harness (`--baseline nccl`) | implemented | CPU tests; ring harness on a pair and the cycle of eight |
+| Period of back-to-back calls in the ring harness summary (`period_us`: per rank the median over consecutive calls of their mean time, the group's the slowest rank's; `period_busbw_gbps`; with the NCCL baseline `nccl_period_us` and `vs_nccl_period`), by which `tune` ranks candidates; NCCL rows take the bus factor of the collective they measure and the same untimed calls after the barrier as SIRCL's | implemented | CPU tests (`tests/test_ring_period.py`, among them a SIRCL and an NCCL row of the same size and time giving the same bus bandwidth); recomputed from the rank results of six pair groups: the 8 MiB ring all-reduce's slowest-rank median 519-535 us against periods of 434-446 us, the ranks alternating which one starts a call late |
+| Ring harness on sites cabled as a path or by a list of cables (`sircl-ring-site/v1` `cabling`): a pair cabled port 0 to port 0, the whole of a path (configuration `path`), groups on the site's own cables, a preflight that requires active RDMA functions only on the ports the site cables, the rank watchdog (`--worker-timeout`) and the chain slot (`--chain-slot-bytes`) on the command line; the relay plan installer, the serve launcher and the point-to-point harness refuse a site not cabled as a ring | implemented | CPU tests (the cablings and their refusals, a pair's lanes over port 0, a path's groups equal to the same groups inside a ring, preflight of a path's end Sparks and of a pair, the watchdog and the run's wait derived from it, the chain slot); not run on Sparks |
 | Relay plan installer (`fabric/`, `sircl-fabric`): origin routes, marker rules and relay filters per layout, ownership marks, group isolation | implemented | CPU tests against a host-command simulator; the `ring8` plan reproduces the universal relay table object for object (`tests/fabric_reference.py`); the installer has not run on a ring. Restoring a plan after a reboot: unsupported |
 | Fused all-reduce + residual add + RMSNorm (`fused_norm/`; adapter `SIRCL_FUSED_NORM=1`) | research-only | CPU tests of geometry and reference arithmetic; bit-identity with the unfused path in GPU emulation on an RTX 5090, not on GB10; GLM-5.3 at TP8 with DCP 4 served with it on the cycle of eight (light test, one run) |
 | Direct mlx5 posting (`SIRCL_POST_MODE=direct`), phase tracing (`SIRCL_TRACE`) | unsupported | refused at setup naming the setting |
@@ -44,7 +49,7 @@ conditions), **research-only** (runs, but its evidence is light or partial),
 | vLLM adapter: column gathers on the session's ring or chain (`executor.ColumnGather`, `SIRCL_COLUMN_GATHER`, default on): an all-gather along a dimension with rows in front of it, carried as a dimension-0 gather into staging plus one local copy | implemented | CPU tests (`tests/test_vllm_column_gather.py`); GPU emulation on `ring:8` with two lanes, 17 of 17 checks (shards of 4 to 8 MiB along the last, a middle and dimension 1; odd rows, FP32 and FP16, transposed and misaligned inputs; ring, chain and pieces schedules; one CUDA graph per rank replayed twice): staged and tiled outputs bit-identical to each other and to the concatenation on every rank; not run on a ring |
 | Serving without NCCL (`--nccl never`, the default; `--require-no-nccl`, `--nccl-debug`, receipt and log checks in `check` and `bundle-check`) | implemented | CPU tests; GLM-5.3 at TP8 with DCP 4 on the cycle of eight: every rank's receipts `nccl=none pynccl=skipped`, no NCCL line in any rank's log with `NCCL_DEBUG=INFO` |
 | Serve launcher and bundle (`sparkring_sircl/vllm/serve/`) | implemented | CPU tests on a synthetic SparkRing checkout and simulated Sparks, and against the repository's profile catalog; the serving runs above |
-| Decode-context parallelism in profile serving (`serve --dcp-size N`), with GLM-5.3-Flash's startup conditions (KV-cache interleave of 4, mHC sizes admitted by `pins.MHC_ADMITS`) | implemented | CPU tests on the synthetic checkout (TP2 with DCP 2 on a pair, TP4 with DCP 2 on a path, `--nccl never`; the refusals) and against the repository's `glm53-flash-nvfp4-spark-tp2` profile; not run on a ring |
+| Decode-context parallelism in profile serving (`serve --dcp-size N`) for the GLM-5.3-Flash checkpoints, with their startup conditions (KV-cache interleave of 4, mHC sizes admitted by `pins.MHC_ADMITS`), and for GLM-5.3 | implemented | CPU tests on the synthetic checkout (GLM-5.3-Flash at TP2 with DCP 2 on a pair and at TP4 with DCP 2 on a path, GLM-5.3 at TP8 with DCP 4 on eight Sparks, `--nccl never`; the refusals) and against the repository's `glm53-flash-nvfp4-spark-tp2` profile; not run on a ring |
 
 ## Supported layouts
 
@@ -120,6 +125,53 @@ Serving through the vLLM adapter (research-only; light tests, one run each):
 | GLM-5.3-Flash NVFP4, TP4 on a path of four | ring schedules from 2 MiB, mHC prefill sharding on the session reduce-scatter | 3,641 / 3,542 tok/s at 16K / 64K tokens | 25.3 / 53.1 / 70.4 / 100.7 steps/s at 1 / 4 / 8 / 16 users |
 | GLM-5.3, TP8 with DCP 4 on the cycle of eight, no NCCL | fused all-reduce + RMSNorm, 1 MiB capacity and dispatch ceiling, 28 KiB one-shot limit | 1,327 tok/s at 16K tokens | 20.4 / 30.0 / 40.8 / 56.7 steps/s at 1 / 2 / 4 / 8 streams |
 
+### Large messages on a cabled pair
+
+Conditions: DGX Spark pairs cabled port to port (both lanes on the one
+cable), the serving image above, BF16, the ring harness's large cases, eager,
+timed as periods of back-to-back calls (`period_us`) with buffers reused
+between calls; NVIDIA NCCL 2.32.3 timed the same way in the same runs
+(`--baseline nccl`); 1 block per role for the ring kernels.
+
+| All-reduce | Two-shot (one op to 4 MiB, pieces above) | Ring | NCCL |
+|---|---|---|---|
+| 1 MiB | 77-78 us | | 101-102 us |
+| 2 MiB | 129-130 us | 129.2-129.3 us (128 KiB pieces) | 122-125 us |
+| 3 MiB | 183-184 us | 171.3 us (256 KiB) | 169-170 us |
+| 4 MiB | | 211.0-212.1 us (256 KiB) | 218-221 us |
+| 8 MiB | | 385.6-387 us (256 KiB) | 408-413 us |
+| 64 MiB | 4,935 us (pieces of 4 MiB) | 2,806 us (256 KiB; 23.9 GB/s) | 3,105 us |
+
+| All-gather, shard | Tiles | Ring | NCCL |
+|---|---|---|---|
+| 1 MiB | 80-81 us | 81-82 us (128 KiB) | 82-83 us |
+| 2 MiB | | 132.2 us (256 KiB) | 138-143 us |
+| 4 MiB | | 223.2-227.0 us (256 KiB) | 249-252 us |
+| 16 MiB | | 757.7 us (512 KiB) | 938.1 us |
+
+| Reduce-scatter, input | Scatter ops | Ring, 256 KiB | Ring, 512 KiB |
+|---|---|---|---|
+| 4 MiB | 157 us | 161 us | |
+| 8 MiB | 266 us | 248 us | 268 us |
+| 32 MiB | 1,321 us | 802 us | 811 us |
+| 64 MiB | 2,637 us | 1,561 us | 1,497 us |
+
+Results: the two-shot op leads to 2 MiB and ties the ring there; the ring
+leads from 3 MiB for the all-reduce, from 2 MiB shards for the all-gather and
+from 8 MiB inputs for the reduce-scatter, and its period is below NCCL's in
+the same runs from 4 MiB (the all-gather's from 2 MiB shards). Two blocks per
+role are 1-6 % slower than one at every all-reduce size. Buffers reused
+between calls favour the two-shot op, so the 1-4 MiB crossovers under freshly
+written buffers are not established. These are harness periods, which rank
+settings within a run; a comparison with NCCL rests on nccl-tests with
+repeated, counterbalanced runs.
+
+Conclusion: a cabled pair takes the built-in pair plan (the ring all-reduce
+from 3 MiB, all-gather from 2 MiB shards, reduce-scatter from 8 MiB inputs, 1
+block per role); a pair's tuning table, measured with `tune`, replaces it. A
+pair of Sparks inside a larger cycle, such as a DCP group of the ring of
+eight, has no ring of its own and keeps the rules.
+
 ## Limitations
 
 - Serving through the vLLM adapter is research-only: each configuration has
@@ -139,4 +191,5 @@ Serving through the vLLM adapter (research-only; light tests, one run each):
   shared cable cannot use fabric addresses; setup exchanges run over the
   serving engine's CPU process group or, in the ring harness, gloo over the
   LAN.
-- No tuning table ships with the package.
+- No tuning table ships with the package; a cabled pair without one takes
+  the built-in pair plan, every other group shape SIRCL's rules.

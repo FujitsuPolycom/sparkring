@@ -79,6 +79,20 @@ def load(path: str | os.PathLike | None = None) -> ctypes.CDLL:
         return lib
 
 
+def stand_in_library(path: str | os.PathLike | None = None) -> bool:
+    """Whether the native library ``path`` (default ``SIRCL_NATIVE_LIBRARY``) is built against the verbs
+    stand-in of the CPU simulator and the GPU emulation (``testing/fake_verbs``, which exports
+    ``fv_add_device``). Its devices are the stand-in's, which the host's ``/sys/class/infiniband`` does not
+    list; a library without a path (the cached build) is the real one."""
+    chosen = path if path is not None else os.environ.get("SIRCL_NATIVE_LIBRARY", "")
+    if not chosen:
+        return False
+    try:
+        return hasattr(ctypes.CDLL(str(Path(chosen).resolve())), "fv_add_device")
+    except OSError:
+        return False
+
+
 def traffic_class() -> int:
     """``SIRCL_TRAFFIC_CLASS``, else ``NCCL_IB_TC``, else 0 (the IP DSCP/ECN byte)."""
     for name in ("SIRCL_TRAFFIC_CLASS", "NCCL_IB_TC"):
@@ -339,4 +353,5 @@ class Proxy:
             self.close()
 
 
-__all__ = ["ABI_VERSION", "Layout", "Proxy", "chain_layout", "link_layout", "load", "traffic_class"]
+__all__ = ["ABI_VERSION", "Layout", "Proxy", "chain_layout", "link_layout", "load", "stand_in_library",
+           "traffic_class"]

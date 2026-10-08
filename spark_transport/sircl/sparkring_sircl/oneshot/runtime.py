@@ -116,6 +116,7 @@ from . import _allgather_cute, _chain_cute, _links_cute, _oneshot_cute, _scatter
 from ._proxy import ABI_VERSION, Layout, Proxy
 from ._proxy import chain_layout as _proxy_chain_layout
 from ._proxy import link_layout as _proxy_link_layout
+from ._proxy import stand_in_library as _stand_in_library
 
 logger = logging.getLogger("sircl")
 
@@ -169,6 +170,14 @@ DEFAULT_LINK_CHUNK_BYTES = 512 << 10
 # link piece, SIRCL_LINK_CHUNK_BYTES).
 LINK_COLLECTIVES = {"gather": "SIRCL_GATHER_LINK_CHUNK_BYTES", "scatter": "SIRCL_SCATTER_LINK_CHUNK_BYTES",
                     "reduce": "SIRCL_REDUCE_LINK_CHUNK_BYTES"}
+# The collectives a built-in plan (tuning.BUILTIN_PLANS) decides, with the variable that configures each
+# one's schedule (set: the plan leaves the collective to it) and the variables that configure its link piece
+# (set: the plan's choices keep the configured piece).
+BUILTIN_SCHEDULE_VARIABLES = {"all_reduce": "SIRCL_LARGE_SCHEDULE", "all_gather": "SIRCL_GATHER_SCHEDULE",
+                              "reduce_scatter": "SIRCL_SCATTER_SCHEDULE"}
+BUILTIN_PIECE_VARIABLES = {"all_reduce": ("SIRCL_LINK_CHUNK_BYTES", "SIRCL_REDUCE_LINK_CHUNK_BYTES"),
+                           "all_gather": ("SIRCL_LINK_CHUNK_BYTES", "SIRCL_GATHER_LINK_CHUNK_BYTES"),
+                           "reduce_scatter": ("SIRCL_LINK_CHUNK_BYTES", "SIRCL_SCATTER_LINK_CHUNK_BYTES")}
 # Without SIRCL_LINK_SLOT_BYTES the link slot grows to the largest configured piece up to this size (link
 # area: 4 links x slots x slot bytes, twice).
 MAX_AUTO_LINK_SLOT_BYTES = 1 << 20
@@ -176,7 +185,10 @@ MAX_AUTO_LINK_SLOT_BYTES = 1 << 20
 # SIRCL_RING_GATHER_STAGGER: 1 when the link slots hold it.
 DEFAULT_RING_STAGGER = 1
 DEFAULT_RING_GATHER_STAGGER = 1
-DEFAULT_LINK_BLOCKS = 4
+# A link collective's own blocks per role, under both its schedules (protocol.link_blocks); SIRCL_LINK_BLOCKS
+# sets every collective without one.
+LINK_BLOCK_VARIABLES = {"gather": "SIRCL_GATHER_LINK_BLOCKS", "scatter": "SIRCL_SCATTER_LINK_BLOCKS",
+                        "reduce": "SIRCL_REDUCE_LINK_BLOCKS"}
 DEFAULT_LINK_UNROLL = 4
 DEFAULT_STARTUP_WAIT_S = 600.0
 DEFAULT_SERVING_WAIT_S = 20.0
@@ -419,6 +431,9 @@ class RoceOneshotAllReduce:
         self._closed = False
         self._lock = threading.Lock()
         self._proxy: Optional[Proxy] = None
+        # close() reads these; a setup that fails before _configure sets them reports its own error.
+        self._profile: Optional[callprofile_mod.CallProfile] = None
+        self._profiled: Optional[callprofile_mod.Call] = None
         self._launchers: dict[tuple, Callable[..., None]] = {}
         self._gather_launcher: Optional[Callable[..., None]] = None
         self._gather_buffers: Optional[tuple[torch.Tensor, torch.Tensor]] = None
@@ -597,7 +612,8 @@ class RoceOneshotAllReduce:
             peer_routes = routes_mod.parse_peer_routes(text)
         routes = {int(peer): tuple(devices) for peer, devices in peer_routes.items()}
         max_relays = _env_int("SIRCL_MAX_RELAYS", default=routes_mod.DEFAULT_MAX_RELAYS)
-        active = _active_devices()
+        # The verbs stand-in's devices are not the host's: route maps on it are checked without them.
+        active = () if _stand_in_library() else _active_devices()
         self.lane_count = routes_mod.validate_route_map(
             self.rank, self.world_size, routes, layout=layout, max_relays=max_relays,
             available_devices=active or None,
@@ -642,6 +658,23 @@ class RoceOneshotAllReduce:
             if layout is None:
                 raise ValueError("SIRCL_TUNING_TABLE needs the session's layout (pass layout= or set SIRCL_LAYOUT)")
             self._tuning, self._tuning_unmatched = tuning_mod.select_table(table_paths, self.tuning_facts())
+        # Without a matching table, a group that is its whole fabric (its ring and chain can run) and whose
+        # shape has a built-in plan (tuning.BUILTIN_PLANS) takes it for every collective whose schedule
+        # variable is unset, keeping configured link pieces; it joins the setup agreement through the table
+        # hash like a table. A pair inside a larger cycle has no ring or chain of its own and takes no plan.
+        # SIRCL_BUILTIN_PLAN=0 leaves every size to the rules.
+        builtin_plan = _env_int("SIRCL_BUILTIN_PLAN", default=1)
+        if builtin_plan not in (0, 1):
+            raise ValueError(f"SIRCL_BUILTIN_PLAN must be 0 or 1, got {builtin_plan}")
+        own_fabric = layout is not None and sorted(layout.positions) == list(layout.fabric.positions)
+        if self._tuning is None and own_fabric and builtin_plan:
+            plan = tuning_mod.builtin_document(
+                self.tuning_facts(),
+                [c for c, name in BUILTIN_SCHEDULE_VARIABLES.items() if not os.environ.get(name, "").strip()],
+                [c for c, names in BUILTIN_PIECE_VARIABLES.items()
+                 if any(os.environ.get(name, "").strip() for name in names)])
+            if plan is not None:
+                self._tuning = tuning_mod.Table(plan, f"builtin:{plan['key']['shape']}", builtin=True)
         # The settings the table's choices ran under and need (tuning.SETTINGS): each one the environment
         # leaves unset takes the table's value, so the choices run as measured. They size the arena below
         # and join the setup agreement like any other setting.
@@ -758,12 +791,17 @@ class RoceOneshotAllReduce:
         auto_slot = wanted if DEFAULT_LINK_SLOT_BYTES < wanted <= MAX_AUTO_LINK_SLOT_BYTES else DEFAULT_LINK_SLOT_BYTES
         auto_slot = max(auto_slot, self._table_settings.get("SIRCL_LINK_SLOT_BYTES", 0))
         self.link_slot_bytes = _env_int("SIRCL_LINK_SLOT_BYTES", default=auto_slot)
-        self.link_blocks = _env_int("SIRCL_LINK_BLOCKS", default=DEFAULT_LINK_BLOCKS)
+        shape = (tuning_mod.shape_of(self._layout_identity_object.identity())
+                 if self._layout_identity_object is not None else None)
+        # Fixed for the session: a link kernel's tail counter counts the arrivals of one grid.
+        self.link_blocks = proto.link_blocks(
+            shape, self.world_size, _env_int("SIRCL_LINK_BLOCKS", default=0),
+            {collective: _env_int(name, default=0) for collective, name in LINK_BLOCK_VARIABLES.items()})
         self.link_unroll = _env_int("SIRCL_LINK_UNROLL", default=DEFAULT_LINK_UNROLL)
         link_chunk = configured["SIRCL_LINK_CHUNK_BYTES"] or min(DEFAULT_LINK_CHUNK_BYTES, self.link_slot_bytes)
         proto.LinkLayout(self.lane_count, self.link_slots, self.link_slot_bytes)   # validates the geometry
-        if not 1 <= self.link_blocks <= 64 or not 1 <= self.link_unroll <= 8:
-            raise ValueError("SIRCL_LINK_BLOCKS must be 1 to 64 and SIRCL_LINK_UNROLL 1 to 8")
+        if not 1 <= self.link_unroll <= 8:
+            raise ValueError("SIRCL_LINK_UNROLL must be 1 to 8")
         self._check_link_chunk(link_chunk, "SIRCL_LINK_CHUNK_BYTES")
         self.link_chunk_bytes = link_chunk
         self.ring_stagger = self._stagger_setting("SIRCL_RING_STAGGER", DEFAULT_RING_STAGGER)
@@ -776,6 +814,10 @@ class RoceOneshotAllReduce:
         self.scatter_schedule = _env_text("SIRCL_SCATTER_SCHEDULE", default="pieces")
         if self.scatter_schedule not in SCATTER_SCHEDULES:
             raise ValueError(f"SIRCL_SCATTER_SCHEDULE {self.scatter_schedule!r} is not one of {SCATTER_SCHEDULES}")
+        # The schedules the session was configured with: a built-in plan decides a collective's ops only
+        # while it keeps this schedule, so a schedule a caller sets at run time wins over the plan.
+        self._configured_schedules = {"all_reduce": self.large_schedule, "all_gather": self.gather_schedule,
+                                      "reduce_scatter": self.scatter_schedule}
         gather_links = self.gather_schedule != "pieces" and self.max_gather_bytes > 0
         scatter_links = self.scatter_schedule != "pieces"
         reduce_links = self.large_schedule == "ring"
@@ -896,6 +938,16 @@ class RoceOneshotAllReduce:
         for name in MIN_COLLECTIVES if collective is None else (self._min_collective(collective),):
             minimums[name] = defaults[name] if nbytes is None else int(nbytes)
 
+    def link_blocks_for(self, collective: str, schedule: str) -> int:
+        """Blocks per role of the link kernel that runs ``collective`` (``gather``, ``scatter``, ``reduce``)
+        under ``schedule`` (``chain``, ``ring``); see ``protocol.link_blocks``. The chain all-reduce is the
+        chain kernel (``chain_blocks``), not a link kernel."""
+        kernel = f"{schedule}_{collective}"
+        if kernel not in self.link_blocks:
+            raise ValueError(f"no link kernel runs the {schedule} {collective}; link kernels are "
+                             f"{', '.join(self.link_blocks)}")
+        return self.link_blocks[kernel]
+
     def link_chunk_for(self, collective: str) -> int:
         """The link piece of ``collective``: ``gather`` (chain and ring all-gathers), ``scatter`` (chain and
         ring reduce-scatters) or ``reduce`` (ring all-reduces); without a piece of its own, the session's
@@ -946,9 +998,26 @@ class RoceOneshotAllReduce:
         """The tuning table's SIRCL choice for ``collective`` (``all_reduce``, ``all_gather``,
         ``reduce_scatter``, ``all_to_all``) of ``nbytes`` per rank in ``mode`` (the current one when None),
         or None without a table or below its smallest measured size."""
-        if self._tuning is None:
+        if self._tuning is None or not self._plan_applies(collective):
             return None
         return self._tuning.decide(collective, int(nbytes), mode or self._mode())
+
+    def _plan_applies(self, collective: str) -> bool:
+        """Whether the session's table may decide ``collective``: always for a measured table; for a
+        built-in plan only while the collective keeps the schedule the session was configured with."""
+        if self._tuning is None or not self._tuning.builtin:
+            return True
+        current = {"all_reduce": self.large_schedule, "all_gather": self.gather_schedule,
+                   "reduce_scatter": self.scatter_schedule}.get(collective)
+        return current is not None and current == getattr(self, "_configured_schedules", {}).get(collective)
+
+    def tuned_link_chunk(self, collective: str, nbytes: int, *, mode: Optional[str] = None) -> int:
+        """The link piece an op of ``collective`` (``all_reduce``, ``all_gather``, ``reduce_scatter``) of
+        ``nbytes`` per rank runs with: the table's choice applied as the op applies it, else the session's
+        piece for that collective (``link_chunk_for``)."""
+        kind = {"all_reduce": "reduce", "all_gather": "gather", "reduce_scatter": "scatter"}[collective]
+        with self._tuned_op(collective, int(nbytes), mode=mode, count=False):
+            return self.link_chunk_for(kind)
 
     def tuned_backend(self, collective: str, nbytes: int, mode: Optional[str] = None) -> str:
         """``nccl`` where the tuning table measured NCCL faster than every SIRCL candidate, else ``sircl``
@@ -1019,7 +1088,7 @@ class RoceOneshotAllReduce:
         one when None) applied, the session's settings restored after it; counts the op under its choice
         (or as unusable when the choice cannot run here) unless ``count`` is False. Without a table, inside
         :meth:`untuned` or without a decision, nothing changes. Nested uses apply the same choice again."""
-        if self._tuning is None or self._tuning_suspended:
+        if self._tuning is None or self._tuning_suspended or not self._plan_applies(collective):
             yield None
             return
         mode = mode or self._mode()
@@ -1226,7 +1295,7 @@ class RoceOneshotAllReduce:
             "link_chunks": {collective: self.link_chunk_for(collective) for collective in LINK_COLLECTIVES},
             "ring_stagger": self.ring_stagger,
             "ring_gather_stagger": self.ring_gather_stagger,
-            "link_blocks": self.link_blocks,
+            "link_blocks": dict(self.link_blocks),
             "link_unroll": self.link_unroll,
             "post_mode": self.post_mode,
             "traffic_class": self._proxy.traffic_class if self._proxy is not None else None,
@@ -1600,7 +1669,8 @@ class RoceOneshotAllReduce:
                 raise RuntimeError("SIRCL chain all-gather was not prepared before CUDA graph capture; call prepare()")
             launcher = _links_cute.get_gather_launcher(
                 self.world_size, self.chain_index, self._chain_prev, self._chain_next, self.rank, self.chain_order,
-                self._threads, self.lane_count, self.link_slots, self.link_slot_bytes, self.link_blocks,
+                self._threads, self.lane_count, self.link_slots, self.link_slot_bytes,
+                self.link_blocks_for("gather", "chain"),
                 self.link_unroll, self.device.index,
             )
             self._launchers[key] = launcher
@@ -1618,7 +1688,7 @@ class RoceOneshotAllReduce:
             launcher = _links_cute.get_scatter_launcher(
                 _DTYPE_NAMES[dtype], self.world_size, self.chain_index, self._chain_prev, self._chain_next,
                 self.rank, self.chain_order, self._threads, self.lane_count, self.link_slots, self.link_slot_bytes,
-                self.link_blocks, self.link_unroll, self.device.index,
+                self.link_blocks_for("scatter", "chain"), self.link_unroll, self.device.index,
             )
             self._launchers[key] = launcher
         return launcher
@@ -1633,7 +1703,8 @@ class RoceOneshotAllReduce:
                                    "call prepare(..., links=True)")
             launcher = _links_cute.get_ring_launcher(
                 mode, name, self.world_size, self.chain_index, self.rank, self.chain_order, self._threads,
-                self.lane_count, self.link_slots, self.link_slot_bytes, self.link_blocks, self.link_unroll,
+                self.lane_count, self.link_slots, self.link_slot_bytes, self.link_blocks_for(mode, "ring"),
+                self.link_unroll,
                 self.device.index, self.event_trace,
             )
             self._launchers[key] = launcher
@@ -2511,7 +2582,7 @@ class RoceOneshotAllReduce:
             "link_chunks": {collective: self.link_chunk_for(collective) for collective in LINK_COLLECTIVES},
             "ring_stagger": self.ring_stagger,
             "ring_gather_stagger": self.ring_gather_stagger,
-            "link_blocks": self.link_blocks,
+            "link_blocks": dict(self.link_blocks),
             "link_unroll": self.link_unroll,
             "tuning": self._tuning_stats(),
         }

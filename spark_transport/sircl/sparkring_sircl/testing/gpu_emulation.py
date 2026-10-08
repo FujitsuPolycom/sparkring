@@ -20,6 +20,30 @@ load every module when the context is created (``CUDA_MODULE_LOADING=EAGER``),
 so library kernels used for the first time cannot stall a waiting group
 either. Separate processes, as in serving, need none of this.
 
+Two resources of the one GPU are shared by every rank here and by one rank
+on a Spark, and :class:`EmulatedGroup` sizes both for a multi-rank group
+(:attr:`EmulatedGroup.notes` records what it set):
+
+- hardware queues. CUDA runs the process's streams on
+  ``CUDA_DEVICE_MAX_CONNECTIONS`` queues (8 unless set), read when the CUDA
+  context is created; with more streams than queues, a kernel waiting for a
+  peer holds back the commands queued behind it on its queue, whichever rank
+  issued them. The group sets the variable to 32, the most CUDA offers,
+  unless it is set or the process already created its CUDA context, which
+  the group then reports in a warning;
+- resident blocks. Every block of a collective spins until every rank has
+  staged its data, so every rank's grid must be resident at once; a rank
+  whose blocks wait for a free multiprocessor never stages, and the resident
+  ranks wait for it until their wait limit. The group caps the large-message
+  grid (``SIRCL_LARGE_BLOCKS``, unless the environment or ``environment``
+  sets it) at :func:`.kernel_gpu_checks.emulation_large_blocks`, one block
+  per multiprocessor for every rank's grid: on an RTX 5090 (170
+  multiprocessors) 16 blocks per rank for eight ranks, where the default 32
+  lets eight scatter ops of 64 KiB per peer or more launch 256 blocks of a
+  kernel that holds one 512-thread block per multiprocessor (98 registers per
+  thread at eight ranks) and stall. On the ring every rank has its own GPU and keeps the
+  default.
+
 ``python -m sparkring_sircl.testing.gpu_emulation [--layout path:0-3] [--lanes 2]``
 runs :func:`run_checks` and prints one line per check; with ``--tune`` it runs
 :func:`tune_checks` instead (the ring harness's tune command on the emulated
@@ -38,6 +62,7 @@ import sys
 import threading
 import time
 import traceback
+import warnings
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
@@ -104,6 +129,44 @@ def emulated_device_roles(world: int):
             routes_mod._BY_DEVICE.pop(name, None)
 
 
+EMULATION_MAX_CONNECTIONS = 32
+
+
+def share_hardware_queues(world: int) -> str | None:
+    """Ask CUDA for :data:`EMULATION_MAX_CONNECTIONS` hardware queues before the CUDA context exists (a
+    multi-rank group); returns what was done, or None for one rank or a value already set before the context."""
+    import torch
+
+    if world < 2:
+        return None
+    given = os.environ.get("CUDA_DEVICE_MAX_CONNECTIONS")
+    if not torch.cuda.is_initialized():
+        if given is None:
+            os.environ["CUDA_DEVICE_MAX_CONNECTIONS"] = str(EMULATION_MAX_CONNECTIONS)
+            return f"CUDA_DEVICE_MAX_CONNECTIONS={EMULATION_MAX_CONNECTIONS} (set by the emulation)"
+        return None if given.strip().isdigit() and int(given) >= EMULATION_MAX_CONNECTIONS else (
+            f"CUDA_DEVICE_MAX_CONNECTIONS={given} (set by the caller, below {EMULATION_MAX_CONNECTIONS})")
+    if given is not None and given.strip().isdigit() and int(given) >= EMULATION_MAX_CONNECTIONS:
+        return None
+    text = (f"the CUDA context existed before the emulated group of {world} ranks, with CUDA_DEVICE_MAX_CONNECTIONS "
+            f"{given or 'unset (8)'}: the ranks' streams may share hardware queues; set it to "
+            f"{EMULATION_MAX_CONNECTIONS} before the first CUDA call")
+    warnings.warn(text, RuntimeWarning, stacklevel=3)
+    return text
+
+
+def resident_grid_cap(world: int, multiprocessors: int, default: int) -> int | None:
+    """The large-message grid cap (``SIRCL_LARGE_BLOCKS``) that keeps the grids of ``world`` ranks resident on
+    one GPU of ``multiprocessors`` at one block each, or None when the environment sets the cap or the
+    session default ``default`` fits (:func:`.kernel_gpu_checks.emulation_large_blocks`)."""
+    if "SIRCL_LARGE_BLOCKS" in os.environ:
+        return None
+    from .kernel_gpu_checks import emulation_large_blocks
+
+    cap = emulation_large_blocks(world, multiprocessors, default)
+    return cap if cap < default else None
+
+
 def wait_stream(stream, timeout: float = 120.0) -> None:
     """Wait for ``stream``'s work by polling an event (the interpreter lock stays free)."""
     import torch
@@ -132,6 +195,11 @@ class EmulatedGroup:
         self.layout_text = layout_text
         self.layout = routes_mod.Layout.parse(layout_text)
         self.world = self.layout.world
+        # What the group set for the shared GPU (module docstring), one line each.
+        self.notes: list[str] = []
+        queues = share_hardware_queues(self.world)
+        if queues:
+            self.notes.append(queues)
         derived = routes_mod.derive_routes(self.layout, lanes)
         os.environ["SIRCL_NATIVE_LIBRARY"] = str(library)
         for name, value in (environment or {}).items():
@@ -178,10 +246,22 @@ class EmulatedGroup:
         self._roles.__enter__()
         saved = runtime.dist
         runtime.dist = ThreadDist
+        # The large-message grid cap that keeps every rank's grid resident, for these sessions only (they read
+        # it at construction), unless the caller set one.
+        multiprocessors = torch.cuda.get_device_properties(0).multi_processor_count
+        cap = resident_grid_cap(self.world, multiprocessors, runtime.DEFAULT_LARGE_BLOCKS)
+        capped = None if cap is None else str(cap)
+        if capped is not None:
+            os.environ["SIRCL_LARGE_BLOCKS"] = capped
+            self.notes.append(f"SIRCL_LARGE_BLOCKS={cap} (set by the emulation: {self.world} grids of "
+                              f"{runtime.DEFAULT_LARGE_BLOCKS} blocks exceed the {multiprocessors} multiprocessors "
+                              "at one block each)")
         try:
             self._threads(construct)
         finally:
             runtime.dist = saved
+            if capped is not None and os.environ.get("SIRCL_LARGE_BLOCKS") == capped:
+                del os.environ["SIRCL_LARGE_BLOCKS"]
 
     def _threads(self, body: Callable[[int], Any], timeout: float = 900.0) -> list[Any]:
         torch = self.torch
@@ -304,15 +384,22 @@ def _same_bits(torch, got, want) -> bool:
     return bool(torch.equal(got.contiguous().view(view), want.contiguous().view(view)))
 
 
+def _on_device(group: EmulatedGroup, inputs) -> list:
+    """``inputs`` (one host tensor per rank) on each rank's device, copied from the calling thread and
+    complete before any rank thread starts. A rank thread that copies from pageable host memory while
+    collectives wait for deliveries can stall the verbs stand-in's delivery thread, a Python thread of this
+    process (testing/dcp_gpu_checks.py, "Host copies"), so no check copies inside its rank threads."""
+    placed = [tensor.to(session.device) for tensor, session in zip(inputs, group.sessions)]
+    group.torch.cuda.synchronize()
+    return placed
+
+
 def _collective(group: EmulatedGroup, name: str, inputs, call: Callable, reference) -> tuple[str, bool, str]:
     torch = group.torch
 
-    def operation(rank: int, session):
-        x = inputs[rank].to(session.device)
-        return call(session, x)
-
     try:
-        outputs = group.each(operation)
+        placed = _on_device(group, inputs)
+        outputs = group.each(lambda rank, session: call(session, placed[rank]))
         outputs = [output.cpu() for output in outputs]
     except Exception as error:  # noqa: BLE001 - reported as a failed check
         return name, False, f"{type(error).__name__}: {error}"
@@ -340,9 +427,10 @@ def _graph_check(group: EmulatedGroup, name: str, shape, dtype, call: Callable, 
             state[rank].update(x=x, y=y, graph=graph)
         for seed in seeds:
             inputs = _inputs(torch, group.world, shape, dtype, seed)
+            placed = _on_device(group, inputs)
 
             def replay(rank: int, session):
-                state[rank]["x"].copy_(inputs[rank].to(session.device))
+                state[rank]["x"].copy_(placed[rank])
                 state[rank]["graph"].replay()
                 return None
 
@@ -427,8 +515,9 @@ def _trace_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     inputs = _inputs(torch, group.world, (nbytes // 2,), torch.bfloat16, 1601)
     try:
         group.each(lambda rank, session: session.event_trace_records())
+        placed = _on_device(group, inputs)
         outputs = [output.cpu() for output in group.each(
-            lambda rank, session: session.all_reduce_large(inputs[rank].to(session.device)))]
+            lambda rank, session: session.all_reduce_large(placed[rank]))]
         traces = group.each(lambda rank, session: session.event_trace_records())
     except Exception as error:  # noqa: BLE001
         _set_all(group, large_schedule=saved[0], chain_chunk_bytes=saved[1])
@@ -528,8 +617,10 @@ def _late_link_sequence(group: EmulatedGroup, label: str, steps,
             session0.large_schedule = saved[0]
             expected.append([references.large_all_reduce(torch, step_inputs, plan, order)] * world)
 
+    placed = [_on_device(group, step_inputs) for step_inputs in inputs]
+
     def operation(rank: int, session):
-        on_device = [step_inputs[rank].to(session.device) for step_inputs in inputs]
+        on_device = [step[rank] for step in placed]
         outputs = []
         for (kind, schedule, piece), x in zip(steps, on_device):
             session.set_link_chunk_bytes(piece)
@@ -686,8 +777,10 @@ def _ring_min_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     results = [("ring minimum: the schedule each size runs", picked == wanted,
                 "" if picked == wanted else f"ring ops {picked}, the sizes give {wanted}")]
 
+    placed = [_on_device(group, step_inputs) for step_inputs in inputs]
+
     def operation(rank: int, session):
-        on_device = [step_inputs[rank].to(session.device) for step_inputs in inputs]
+        on_device = [step[rank] for step in placed]
         outputs = []
         for (kind, _), x in zip(steps, on_device):
             if kind == "reduce":
@@ -790,8 +883,10 @@ def _stagger_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
                 rounds = proto.link_rounds(ops[kind], world, order.index(rank), link)
                 expected_items[rank] += proto.ring_rounds(pieces, world, d) * rounds.out
 
+    placed = [_on_device(group, step_inputs) for step_inputs in inputs]
+
     def operation(rank: int, session):
-        on_device = [step_inputs[rank].to(session.device) for step_inputs in inputs]
+        on_device = [step[rank] for step in placed]
         outputs = []
         for (kind, stagger, gather_stagger, piece, _), x in zip(steps, on_device):
             session.set_ring_stagger(stagger)
@@ -843,8 +938,9 @@ def _stagger_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
 
 def _minimum_default_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     """The per-collective default minimums (``DEFAULT_CHAIN_MINS``, ``DEFAULT_RING_MINS``) as the
-    session's decisions apply them, just below and at each minimum, under ``auto`` and ``ring``; no
-    collective runs. Every session returns to the emulation's minimums afterwards."""
+    session's rules apply them, just below and at each minimum, under ``auto`` and ``ring``, with any table
+    or built-in plan suspended (``untuned``); no collective runs. Every session returns to the emulation's
+    minimums afterwards."""
     from ..oneshot import runtime as session_module
 
     torch = group.torch
@@ -857,6 +953,8 @@ def _minimum_default_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]
              for session in group.sessions]
     schedules = (session0.large_schedule, session0.gather_schedule, session0.scatter_schedule)
     wrong = []
+    suspended = session0.untuned()
+    suspended.__enter__()
     try:
         session0.set_chain_min_bytes(None)
         session0.set_ring_min_bytes(None)
@@ -887,12 +985,61 @@ def _minimum_default_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]
                     if taken != (nbytes >= minimum):
                         wrong.append(f"{kind} of {nbytes} B under {schedule}: {name} {taken}")
     finally:
+        suspended.__exit__(None, None, None)
         session0.large_schedule, session0.gather_schedule, session0.scatter_schedule = schedules
         for session, (chain_mins, ring_mins) in zip(group.sessions, saved):
             for kind in session_module.MIN_COLLECTIVES:
                 session.set_chain_min_bytes(chain_mins[kind], collective=kind)
                 session.set_ring_min_bytes(ring_mins[kind], collective=kind)
     return [("default minimums: chain and ring from each collective's own size", not wrong, "; ".join(wrong[:4]))]
+
+
+def _builtin_plan_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
+    """The built-in pair plan (``tuning.BUILTIN_PLANS``) on a pair whose sessions took it: its decisions at
+    and below each interval, a schedule set at run time taking the collective back from the plan, and a
+    3 MiB all-reduce and an all-gather of 2 MiB shards under the plan, bit for bit against the rank-ordered
+    float32 sum rounded once (what the two-shot op gives on two ranks) and the shards' concatenation."""
+    torch = group.torch
+    session0 = group.sessions[0]
+    table = session0._tuning
+    if group.world != 2 or table is None or not table.builtin or not session0.ring_available:
+        return [("built-in pair plan", True, "no built-in plan here")]
+    wrong = []
+    expected = [("all_reduce", (3 << 20) - 16, None), ("all_reduce", 3 << 20, (256 << 10)),
+                ("all_gather", (2 << 20) - 16, None), ("all_gather", 2 << 20, (256 << 10)),
+                ("all_gather", 16 << 20, (512 << 10)), ("reduce_scatter", (8 << 20) - 16, None),
+                ("reduce_scatter", 8 << 20, (256 << 10)), ("reduce_scatter", 64 << 20, (512 << 10))]
+    for collective, nbytes, piece in expected:
+        choice = session0.tuned_choice(collective, nbytes, mode="eager")
+        got = None if choice is None else (choice.schedule, choice.piece)
+        if got != (None if piece is None else ("ring", piece)):
+            wrong.append(f"{collective} of {nbytes} B decides {got}")
+    saved = session0.large_schedule
+    session0.large_schedule = "chain" if saved != "chain" else "pieces"
+    try:
+        if session0.tuned_choice("all_reduce", 3 << 20, mode="eager") is not None:
+            wrong.append(f"all_reduce under a schedule set at run time ({session0.large_schedule}) still decided "
+                         "by the plan")
+    finally:
+        session0.large_schedule = saved
+    results = [("built-in pair plan: decisions", not wrong, "; ".join(wrong[:4]))]
+    inputs = _inputs(torch, 2, ((3 << 20) // 2,), torch.bfloat16, 2900)
+    plan = session0.large_reduce_plan(3 << 20)
+    ring = any(getattr(piece, "ring", False) for piece in plan)
+    results.append(_collective(group, f"built-in pair plan: all_reduce_large 3 MiB ({'ring' if ring else 'no ring'}) "
+                               "equals the rank-ordered sum", inputs, lambda session, x: session.all_reduce_large(x),
+                               _sum(torch, inputs)))
+    if not ring:
+        results.append(("built-in pair plan: 3 MiB all-reduce runs as a ring op", False, f"plan {plan}"))
+    shards = _inputs(torch, 2, (1024, 1024), torch.bfloat16, 2901)
+    probe = torch.empty((1024, 1024), dtype=torch.bfloat16, device="meta")
+    if session0.gather_uses_ring(probe, 0):
+        results.append(_collective(group, "built-in pair plan: all_gather_large of 2 MiB shards (ring)", shards,
+                                   lambda session, x: session.all_gather_large(x, dim=0), torch.cat(shards, dim=0)))
+    elif session0.max_gather_bytes > 0:
+        results.append(("built-in pair plan: all-gather of 2 MiB shards runs as a ring op", False,
+                        "gather_uses_ring is False"))
+    return results
 
 
 def _tuning_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
@@ -933,13 +1080,15 @@ def _tuning_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
         sizes = [nbytes for nbytes in (1024, 8192, 131072, 262144) if nbytes <= session0.max_size]
         for index, nbytes in enumerate(sizes):
             inputs = _inputs(torch, world, (nbytes // 2,), bf16, 300 + index)
-            outs = group.each(lambda rank, session, inputs=inputs: session.all_reduce(inputs[rank].to(session.device)))
+            placed = _on_device(group, inputs)
+            outs = group.each(lambda rank, session, placed=placed: session.all_reduce(placed[rank]))
             torch.cuda.synchronize()
             expected = _sum(torch, inputs).to(bf16)
             wrong += [f"all-reduce of {nbytes} B, rank {rank}" for rank, out in enumerate(outs)
                       if not torch.equal(out.cpu(), expected)]
         gather_inputs = _inputs(torch, world, (64, 256), bf16, 310)
-        outs = group.each(lambda rank, session: session.all_gather_large(gather_inputs[rank].to(session.device), dim=0))
+        placed = _on_device(group, gather_inputs)
+        outs = group.each(lambda rank, session: session.all_gather_large(placed[rank], dim=0))
         torch.cuda.synchronize()
         wrong += [f"all-gather, rank {rank}" for rank, out in enumerate(outs)
                   if not torch.equal(out.cpu(), torch.cat(gather_inputs, dim=0))]
@@ -1083,10 +1232,13 @@ def _tuning_forced_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
         expected = [reference(kind, shape, settings, inputs[index]) for index, (kind, shape, settings)
                     in enumerate(steps)]
 
+        # Every step's input reaches the device before the rank threads start (_on_device).
+        placed = [_on_device(group, step_inputs) for step_inputs in inputs]
+
         def operation(rank: int, session):
+            on_device = [step[rank] for step in placed]
             outputs = []
-            for (kind, shape, settings), step_inputs in zip(steps, inputs):
-                x = step_inputs[rank].to(session.device)
+            for (kind, shape, settings), x in zip(steps, on_device):
                 pair = []
                 for _ in range(2):
                     with Forced(session, settings):
@@ -1185,9 +1337,10 @@ def _per_rank(group: EmulatedGroup, name: str, inputs, call: Callable, expected:
     torch = group.torch
 
     def operation(rank: int, session):
-        return call(session, inputs[rank].to(session.device))
+        return call(session, placed[rank])
 
     try:
+        placed = _on_device(group, inputs)
         outputs = [output.cpu() for output in group.each(operation)]
     except Exception as error:  # noqa: BLE001 - reported as a failed check
         return name, False, f"{type(error).__name__}: {error}"
@@ -1209,11 +1362,13 @@ def _repeat_check(group: EmulatedGroup, name: str, inputs, call: Callable, seeds
     torch = group.torch
     first = None
     try:
+        # One placement serves every fabric order.
+        placed = _on_device(group, inputs)
         for seed in seeds:
             group.fabric.lib.fv_progress(0, seed)
 
             def operation(rank: int, session):
-                return call(session, inputs[rank].to(session.device))
+                return call(session, placed[rank])
 
             outputs = [output.cpu() for output in group.each(operation)]
             if first is None:
@@ -1512,7 +1667,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         stats = group.sessions[0].stats()
         checks.append(("settings", True, f"algorithms {stats['algorithms_available']}, large pieces "
                        f"{stats['large_piece_bytes']}, gather pieces {stats['gather_piece_bytes']}, "
-                       f"windows {stats['forward_windows']}"))
+                       f"windows {stats['forward_windows']}"
+                       + (f"; emulation: {'; '.join(group.notes)}" if group.notes else "")))
         if column_gather_only:
             from .column_gather_checks import column_gather_checks
 
@@ -1569,6 +1725,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         for check in _ring_min_checks(group):
             checks.append(check)
         for check in _minimum_default_checks(group):
+            checks.append(check)
+        for check in _builtin_plan_checks(group):
             checks.append(check)
         for check in _stagger_checks(group):
             checks.append(check)

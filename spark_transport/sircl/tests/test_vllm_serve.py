@@ -2,7 +2,8 @@
 
 A synthetic SparkRing checkout stands in for the repository: a four-rank and a
 two-rank profile with the same file layout and Compose rendering rules as the
-repository's ``glm53-flash-nvfp4-spark-tp4`` and ``glm53-flash-nvfp4-spark-tp2``.
+repository's ``glm53-flash-nvfp4-spark-tp4`` and ``glm53-flash-nvfp4-spark-tp2``,
+and, in the tests that add it, an eight-rank GLM-5.3 profile.
 A fake SSH runner stands in for the Sparks and records every command, so the
 tests prove what each operator command would run without contacting anything.
 Three tests also plan the real profiles of the SparkRing checkout that
@@ -111,6 +112,18 @@ TP2 = Spec("example-tp2", "Example-Model-TP2", 2, 8000, 29500, "direct-pair-2",
            ("--gpu-memory-utilization", "0.87",
             "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}',
             "--compilation-config", '{"mode":0,"cudagraph_mode":"FULL_AND_PIECEWISE"}'))
+# An eight-rank GLM-5.3 profile (model type glm_moe_dsa on vLLM's DeepSeek-V3.2 code, on all eight Sparks) in the
+# form of the repository's research profile glm53-nvfp4-tp8 (profiles/research-catalog.json): B12X attention and
+# that profile's KV-cache interleave of 1, decode-context parallelism 1 in the recipe for --dcp-size to change,
+# and no GLM-5.3-Flash mHC variable. Tests that need it add it to the synthetic checkout (add_profile).
+GLM53_REPOSITORY = "local-inference-lab/GLM-5.3-NVFP4"
+GLM53_REVISION = "b472e4ee53f6a9862da5486c56c6ca21be3dab70"
+GLM53_CONFIG = b'{"model_type": "glm_moe_dsa"}\n'
+TP8_GLM53 = Spec("example-glm53-tp8", "Example-GLM-5.3-TP8", 8, 8015, 29775, "direct-cycle-8",
+                 {key: value for key, value in COMMON_ENV.items() if key != "VLLM_GLM53_MHC_PREFILL_SHARD"},
+                 ("--cp-kv-cache-interleave-size", "1", "--kv-cache-dtype", "fp8_ds_mla",
+                  "--attention-backend", "B12X"))
+GLM53_MODEL = {"repository": GLM53_REPOSITORY, "revision": GLM53_REVISION, "config": GLM53_CONFIG}
 PROFILE, SERVED, RECIPE = TP4.id, TP4.served, TP4.recipe
 PEER_MAPS = {4: ("1=0/2,2=0/3,3=1/3", "0=1/3,2=0/2,3=0/3", "0=1/2,1=1/3,3=0/2", "0=0/2,1=1/2,2=1/3"),
              2: ("1=0/1", "0=0/1")}
@@ -125,7 +138,9 @@ def compose_service(spec: Spec, rank: int) -> dict:
                "--master-addr", "192.0.2.10", *spec.recipe] + (["--headless"] if rank else [])
     environment = {**spec.environment, "VLLM_PLUGINS": "b12x_loader,sparkring_status", "VLLM_SPARK_TP4_VOCAB_MODE": "",
                    "VLLM_HOST_IP": f"192.0.2.{10 + rank}", "GLOO_SOCKET_IFNAME": "eth0",
-                   "NCCL_SOCKET_IFNAME": "eth0", "B12X_ROCE_PEER_HCA_MAP": PEER_MAPS[spec.tp][rank]}
+                   "NCCL_SOCKET_IFNAME": "eth0",
+                   # Only the sizes PEER_MAPS lists carry a peer device map; the launcher passes it through.
+                   **({"B12X_ROCE_PEER_HCA_MAP": PEER_MAPS[spec.tp][rank]} if spec.tp in PEER_MAPS else {})}
     service = {
         "container_name": f"sr-example-r{rank}", "image": IMAGE_REFERENCE, "platform": "linux/arm64",
         "pull_policy": "never", "restart": "no", "init": True,
@@ -152,36 +167,52 @@ def compose_service(spec: Spec, rank: int) -> dict:
     return {"name": f"sr-example-r{rank}", "services": {"model": service}}
 
 
-def write_repository(root: Path) -> Path:
-    def put(relative: str, data: bytes | str) -> None:
-        path = root / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(data.encode() if isinstance(data, str) else data)
+def _put(root: Path, relative: str, data: bytes | str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data.encode() if isinstance(data, str) else data)
 
+
+def write_profile(root: Path, spec: Spec, *, repository: str = REPOSITORY, revision: str = REVISION,
+                  config: bytes = CONFIG_JSON) -> None:
+    """One profile's deployment record, serving configuration, SHA256SUMS, per-rank Compose files and its
+    checkpoint's manifest, rendered as the repository renders them."""
     weights = {f"model-0000{i}-of-00002.safetensors": bytes([i]) * (1000 + i) for i in (1, 2)}
-    files = {"config.json": CONFIG_JSON, "model.safetensors.index.json": INDEX_JSON, **weights}
-    for spec in (TP4, TP2):
-        put(f"profiles/{spec.id}/profile.json", json.dumps({
-            "schema": "sparkring-deployment/v1", "id": spec.id, "release": RELEASE,
-            "configuration": {"format": "serving-profile", "path": f"profiles/{spec.id}/config.json"}}))
-        put(f"profiles/{spec.id}/config.json", json.dumps({
-            "schema": "sparkring-serving-profile/v1", "status": "implemented",
-            "model": {"repository": REPOSITORY, "revision": REVISION, "config_sha256": sha(CONFIG_JSON),
-                      "index_sha256": sha(INDEX_JSON)},
-            "topology": spec.topology, "served_model_name": spec.served,
-            "smoke": {"chat_template_kwargs": {"reasoning_effort": "low"}},
-            "environment": spec.environment, "vllm_args": spec.recipe}))
-        put(f"profiles/{spec.id}/SHA256SUMS", "".join(f"{sha(data)}  {name}\n" for name, data in files.items()))
-        for rank in range(spec.tp):
-            put(f"profiles/{spec.id}/compose/compose.rank{rank}.yaml", yaml.safe_dump(compose_service(spec, rank)))
-    put(f"profiles/checkpoints/{SLUG}/{REVISION}.json", json.dumps(
+    files = {"config.json": config, "model.safetensors.index.json": INDEX_JSON, **weights}
+    _put(root, f"profiles/{spec.id}/profile.json", json.dumps({
+        "schema": "sparkring-deployment/v1", "id": spec.id, "release": RELEASE,
+        "configuration": {"format": "serving-profile", "path": f"profiles/{spec.id}/config.json"}}))
+    _put(root, f"profiles/{spec.id}/config.json", json.dumps({
+        "schema": "sparkring-serving-profile/v1", "status": "implemented",
+        "model": {"repository": repository, "revision": revision, "config_sha256": sha(config),
+                  "index_sha256": sha(INDEX_JSON)},
+        "topology": spec.topology, "served_model_name": spec.served,
+        "smoke": {"chat_template_kwargs": {"reasoning_effort": "low"}},
+        "environment": spec.environment, "vllm_args": spec.recipe}))
+    _put(root, f"profiles/{spec.id}/SHA256SUMS", "".join(f"{sha(data)}  {name}\n" for name, data in files.items()))
+    for rank in range(spec.tp):
+        _put(root, f"profiles/{spec.id}/compose/compose.rank{rank}.yaml", yaml.safe_dump(compose_service(spec, rank)))
+    _put(root, f"profiles/checkpoints/{repository.replace('/', '--')}/{revision}.json", json.dumps(
         {"files": {name: {"sha256": sha(data), "size": len(data)} for name, data in files.items()}}))
-    put("runtime/releases/example-release/installer-image.json", json.dumps(
+
+
+def write_repository(root: Path) -> Path:
+    for spec in (TP4, TP2):
+        write_profile(root, spec)
+    _put(root, "runtime/releases/example-release/installer-image.json", json.dumps(
         {"name": "example-release", "image_reference": IMAGE_REFERENCE, "image_id": IMAGE_ID,
          "profiles": [TP4.id, TP2.id]}))
-    put(profile_mod.SECCOMP_RELATIVE, SECCOMP)
-    put(profile_mod.THINKING_RELATIVE, json.dumps(THINKING))
+    _put(root, profile_mod.SECCOMP_RELATIVE, SECCOMP)
+    _put(root, profile_mod.THINKING_RELATIVE, json.dumps(THINKING))
     return root
+
+
+def add_profile(root: Path, spec: Spec, **model) -> None:
+    """Write one more profile into a synthetic checkout and list it in the release's installer image lock."""
+    write_profile(root, spec, **model)
+    path = root / "runtime/releases/example-release/installer-image.json"
+    lock = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**lock, "profiles": [*lock["profiles"], spec.id]}), encoding="utf-8")
 
 
 # The stand-in checkpoint behaves like GLM-5.3-Flash's chat template (the repository's profiles/thinking.json).
@@ -315,9 +346,6 @@ def test_a_checkpoint_pin_that_differs_from_sha256sums_is_drift(repository):
     path.write_text(json.dumps(config))
     with pytest.raises(ProfileError, match="model.safetensors.index.json"):
         profile_mod.load(repository, PROFILE)
-
-
-# -- site file --------------------------------------------------------------------------------------
 
 
 def test_the_site_file_adds_per_spark_model_paths_and_host_sudo_prefixes():
@@ -3158,6 +3186,65 @@ def test_profile_serving_runs_decode_context_parallelism_with_a_session_per_grou
     assert checks.evaluate_receipts({0: [tp], 1: [tp]}, 2)[0] == []
 
 
+def test_profile_serving_runs_glm53_at_tp8_with_decode_context_parallelism_4_as_the_bundle_does(repository):
+    """GLM-5.3 (plan.DCP_MODELS) on the whole ring of eight with --dcp-size 4: the decode-context-parallel
+    groups of ranks 0-3 and 4-7, paths of four that NCCL may not use, each on a SIRCL session of its own, under
+    the conditions the bundle enforces for that launch (a size that divides the tensor parallelism, a session
+    per DCP group) and with B12X attention. GLM-5.3-Flash's own conditions do not apply: the recipe's KV-cache
+    interleave of 1 stays and none is added. Refused: another attention backend, a size that does not divide 8,
+    and a GLM-5.3 checkpoint that DCP_MODELS does not list."""
+    add_profile(repository, TP8_GLM53, **GLM53_MODEL)
+    profile = profile_mod.load(repository, TP8_GLM53.id)
+
+    def plan(**options):
+        values = {"positions": tuple(range(8)), "model_path": MODEL, "nccl_mode": "never", "dcp_size": 4, **options}
+        return plan_mod.build_plan(ServeSite.from_json(SITE), profile, Options(**values),
+                                   staged_digest=staging.staged_tree().digest, library=staging.library_name())
+
+    dcp4 = plan()
+    assert dcp4.group.fabric.describe() == "cycle:0-1-2-3-4-5-6-7" and dcp4.dcp_size == 4
+    assert [launch.position for launch in dcp4.ranks] == list(range(8))
+    for launch in dcp4.ranks:
+        command = list(launch.command)
+        assert command[command.index("--decode-context-parallel-size") + 1] == "4"
+        assert command.count("--cp-kv-cache-interleave-size") == 1
+        assert command[command.index("--cp-kv-cache-interleave-size") + 1] == "1"
+        assert launch.environment["SIRCL_GROUPS"] == "tp,dcp" and launch.environment["SIRCL_NCCL"] == "never"
+    assert [(change.flag, change.before, change.after) for change in dcp4.argument_changes] == [
+        ("--decode-context-parallel-size", ("1",), ("4",))]
+    rows = {row.name: row for row in dcp4.carriers()[0]}
+    assert rows["dcp"].groups == "2 groups of 4 consecutive ranks" and rows["dcp"].nccl == "none"
+    assert rows["dcp"].carrier.startswith("SIRCL's communicator and a session of its own per group")
+    assert [session.name for session in dcp4.sessions()] == ["tp", "dcp"]
+    assert dcp4.required_shims == ("dcp_all_to_all", "dcp_b12x_transport") and not dcp4.mhc_prefill_shard
+    # The bundle of the same launch (positions 0-7, --session-groups tp,dcp --dcp-size 4) builds the same
+    # decode-context-parallel sessions.
+    bundled = make_bundle(session_groups="tp,dcp", dcp_size=4, nccl_mode="never")
+    assert dcp4.sessions()[1].to_json() == bundled.sessions()[1].to_json()
+    # Decode-context parallelism 1, the default, keeps the tensor-parallel session over the cycle alone.
+    whole = plan(dcp_size=1)
+    assert whole.ranks[0].environment["SIRCL_GROUPS"] == "tp" and [s.name for s in whole.sessions()] == ["tp"]
+    assert plan_mod.dcp_problem(4, 8, f"{GLM53_REPOSITORY}@{GLM53_REVISION}", ["--attention-backend", "B12X"],
+                                {}) is None
+    for options, message in (
+            ({"dcp_size": 3}, "--dcp-size 3 must be a positive divisor of the profile's tensor parallelism 8"),
+            ({"vllm_edits": plan_mod.vllm_edits(drop_values=["--attention-backend"])},
+             "the recipe's attention backend (unset: vLLM chooses) does not run GLM-5.3's attention with "
+             "decode-context parallelism; B12X does"),
+            ({"vllm_edits": plan_mod.vllm_edits(["--attention-backend=FLASHINFER"])},
+             "the recipe's attention backend FLASHINFER does not run GLM-5.3's attention"),
+            ({"checkpoint_id": f"zai-org/GLM-5.3@{GLM53_REVISION}"},
+             "the served checkpoint zai-org/GLM-5.3 is not one whose attention the served images run with "
+             "decode-context parallelism (GLM-5.3, GLM-5.3-Flash: ")):
+        with pytest.raises(ServePlanError, match=re.escape(message)):
+            plan(**options)
+    # The KV-cache interleave condition is GLM-5.3-Flash's alone.
+    assert plan_mod.dcp_interleave(4, f"{GLM53_REPOSITORY}@{GLM53_REVISION}", [plan_mod.INTERLEAVE_FLAG, "1"]) is None
+    assert plan_mod.dcp_interleave(4, f"{GLM53_REPOSITORY}@{GLM53_REVISION}", []) is None
+    with pytest.raises(ServePlanError, match=re.escape("needs --cp-kv-cache-interleave-size divisible by 4")):
+        plan_mod.dcp_interleave(4, f"{REPOSITORY}@{REVISION}", [plan_mod.INTERLEAVE_FLAG, "1"])
+
+
 def test_serve_and_bundle_share_one_nccl_default_and_state_every_groups_policy(repository):
     from sparkring_sircl.vllm import fabric
 
@@ -3380,7 +3467,8 @@ def test_the_tensor_parallel_session_variables_are_every_schedule_and_link_varia
              and isinstance(node.value, str) and re.fullmatch(r"SIRCL_[A-Z_]+", node.value)}
     constants = _module_constants(runtime)
     scoped = {name for name in names if re.fullmatch(r"SIRCL_(LARGE|GATHER|SCATTER)_SCHEDULE|SIRCL_(CHAIN|LINK|RING)_\w+",
-                                                     name)} | set(constants["LINK_COLLECTIVES"].values())
+                                                     name)} | set(constants["LINK_COLLECTIVES"].values()) \
+        | set(constants["LINK_BLOCK_VARIABLES"].values())
     assert scoped == set(adapter_settings.TP_SESSION_VARIABLES)
     assert len(adapter_settings.TP_SESSION_VARIABLES) == len(set(adapter_settings.TP_SESSION_VARIABLES))
     # The plan's copies of the session's defaults and rules.

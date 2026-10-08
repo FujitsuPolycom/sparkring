@@ -41,7 +41,10 @@ chain all-reduce's rows and from the one-shot rows in the last place
 
 Copies and sums move ``unroll`` packs per thread per pass, with the loads of
 a pass issued together (``_cute_batch.ld_v4_u32_batch``), so a pass over
-pinned host memory pays one memory latency.
+pinned host memory pays one memory latency. A ring rank stores its link-3 own
+item (the all-gather's own piece, the all-reduce's own result) to the link's
+own slot and to the output in the same pass and publishes the item after that
+pass, so the item leaves one pass after its sources were read.
 """
 
 # Annotations stay evaluated (no postponed evaluation): the CuTe DSL reads each
@@ -472,6 +475,34 @@ class LinkScatter(_LinkKernel):
                                      packed[3])
             base = base + Int32(self._unroll * self._threads)
 
+    @cute.jit
+    def _pass_two(self, s0: Int64, s1: Int64, y0: cutlass.Constexpr[bool], y1: cutlass.Constexpr[bool],
+                  count: cutlass.Constexpr[int], dst: Int64, dst2: Int64, packs: Int32, zero: Uint32) -> None:
+        """``_pass`` of the first ``count`` (1 or 2) sources with every result pack stored at ``dst`` and at
+        ``dst2``: one read of the sources serves both destinations."""
+        tidx, _, _ = cute.arch.thread_idx()
+        thread = Int32(tidx)
+        sources = ((s0, y0), (s1, y1))[:count]
+        last = packs - Int32(1)
+        base = Int32(0)
+        while base < packs:
+            addrs = []
+            flags = []
+            for u in cutlass.range_constexpr(self._unroll):
+                index = min_s32(base + Int32(u * self._threads) + thread, last)
+                for source, system in sources:
+                    addrs.append(source + Int64(index) * Int64(PACK_BYTES))
+                    flags.append(system)
+            words = ld_v4_u32_batch(addrs, flags, zero)
+            for u in cutlass.range_constexpr(self._unroll):
+                index = base + Int32(u * self._threads) + thread
+                if index < packs:
+                    packed = self._sum(words[u * count:(u + 1) * count])
+                    offset = Int64(index) * Int64(PACK_BYTES)
+                    st_global_v4_u32(dst + offset, packed[0], packed[1], packed[2], packed[3])
+                    st_global_v4_u32(dst2 + offset, packed[0], packed[1], packed[2], packed[3])
+            base = base + Int32(self._unroll * self._threads)
+
     # -- roles --------------------------------------------------------------------------------
 
     @cute.jit
@@ -776,6 +807,7 @@ class LinkRing(_LinkKernel):
 
     _sum = LinkScatter._sum
     _pass = LinkScatter._pass
+    _pass_two = LinkScatter._pass_two
 
     def _position(self, offset: int) -> int:
         """The output place (rank) of the owner at ring index ``i + offset``."""
@@ -902,12 +934,11 @@ class LinkRing(_LinkKernel):
                     if last:
                         own_values = input_base + (Int64(own_place) * Int64(stride_packs) + Int64(first)) * Int64(PACK_BYTES)
                         if cutlass.const_expr(reduce):
-                            # The result goes to its place in the message and, as link 3's own item, around.
+                            # The result goes to its place in the message and, as link 3's own item, around:
+                            # one pass stores both, and the item is published right after it.
                             result = output_base + (Int64(own_place) * Int64(stride_packs) + Int64(first)) * Int64(PACK_BYTES)
                             staged = self._slot(link_base, self._layout.own_off, 3, (own3 + Uint32(p)) % Uint32(self._slots))
-                            self._pass(slot, own_values, Int64(0), True, False, False, 2, staged, count, zero)
-                            cute.arch.sync_threads()
-                            self._pass(staged, Int64(0), Int64(0), True, False, False, 1, result, count, zero)
+                            self._pass_two(slot, own_values, True, False, 2, staged, result, count, zero)
                             cute.arch.sync_threads()
                             self._publish(3, self._layout.ready_off, own3 + Uint32(p), link_base)
                             self._trace(trace_base, int(TraceEvent.KERNEL_READY), 3, tag3)
@@ -950,9 +981,7 @@ class LinkRing(_LinkKernel):
                 src = input_base + Int64(first) * Int64(PACK_BYTES)
                 staged = self._slot(link_base, self._layout.own_off, 3, item % Uint32(self._slots))
                 out = output_base + (Int64(own_place) * Int64(chunk_packs) + Int64(first)) * Int64(PACK_BYTES)
-                self._pass(src, Int64(0), Int64(0), False, False, False, 1, staged, count, zero)
-                cute.arch.sync_threads()
-                self._pass(src, Int64(0), Int64(0), False, False, False, 1, out, count, zero)
+                self._pass_two(src, Int64(0), False, False, 1, staged, out, count, zero)
                 cute.arch.sync_threads()
                 self._publish(3, self._layout.ready_off, item, link_base)
                 self._trace(trace_base, int(TraceEvent.KERNEL_READY), 3, tag3)
@@ -1054,6 +1083,7 @@ class LinkRing(_LinkKernel):
             own3 = ld_relaxed_gpu_u32(counters + Int64(40))
             in3 = ld_relaxed_gpu_u32(counters + Int64(44))
             seq = ld_relaxed_gpu_u32(counters + Int64(16)) + Uint32(1)
+            self._trace(trace_base, int(TraceEvent.KERNEL_START), 0, Uint32(bidx))
             if Int32(bidx) == Int32(0):
                 if Int32(tidx) == Int32(0):
                     params = link_base + Int64(self._layout.ctrl_off + 4) + Int64(seq & Uint32(1)) * Int64(16)
@@ -1069,6 +1099,7 @@ class LinkRing(_LinkKernel):
                     st_relaxed_sys_u32(params + Int64(8), Uint32(piece_packs * Int32(PACK_BYTES)))
                     fence_sc_sys()
                     st_relaxed_sys_u32(link_base + Int64(self._layout.ctrl_off), seq)
+                    self._trace(trace_base, int(TraceEvent.KERNEL_BELL), 0, seq)
             limit_us = ld_relaxed_sys_u32(ctrl_base + Int64(_WAIT_LIMIT))
             for index, name in enumerate(self._roles):
                 if role == Int32(index):

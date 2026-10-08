@@ -982,3 +982,202 @@ def test_crossover_configuration_and_ring_rows_without_the_ring_minimum():
     harness.run_case("reduce_scatter", "eager", (32, 4096), 0, 3, large=True, variant={"scatter_schedule": "ring"})
     zero = {"reduce": 0, "gather": 0, "scatter": 0}
     assert seen == [zero, defaults, zero] and harness.session.ring_mins == defaults
+
+
+# -- sites cabled as a path or with explicit cables; the rank watchdog; the chain slot ----------------------
+
+
+def _cabled_document(size: int, cabling) -> dict:
+    return {**_site_document(size), "cabling": cabling}
+
+
+def _cabled_site(size: int, cabling) -> Site:
+    return Site.from_json(_cabled_document(size, cabling), cablings=("ring", "path", "cables"))
+
+
+def test_a_site_states_its_cabling_and_other_readers_keep_ring_cabling(tmp_path, capsys):
+    ring = _site()
+    assert ring.cabling == "ring" and ring.fabric() == routes.Fabric.ring(8)
+    assert all(ring.cabled_ports(position) == (0, 1) for position in range(8))
+    assert Site.from_json(_cabled_document(8, "ring")) == ring
+    path = _cabled_site(4, "path")
+    assert path.fabric().kind == "path" and [c.text for c in path.fabric().cables] == [
+        "0.port0-1.port1", "1.port0-2.port1", "2.port0-3.port1"]
+    assert [path.cabled_ports(p) for p in range(4)] == [(0,), (0, 1), (0, 1), (1,)]
+    pair = _cabled_site(2, ["0.port0-1.port0"])
+    assert pair.cabling == "cables" and pair.cables == ("0.port0-1.port0",)
+    assert pair.cabled_ports(0) == pair.cabled_ports(1) == (0,) and pair.fabric().kind == "path"
+    double = _cabled_site(2, ["0.port0-1.port0", "0.port1-1.port1"])
+    assert double.fabric().kind == "cycle" and double.cabled_ports(1) == (0, 1)
+    # A reader that models ring cabling only (the default) refuses the other cablings.
+    for cabling in ("path", ["0.port0-1.port0"]):
+        with pytest.raises(SiteError, match="plans cabling 'ring' only"):
+            Site.from_json(_cabled_document(2, cabling))
+    # The serve launcher and the relay plan installer are such readers.
+    from sparkring_sircl.fabric import cli as fabric_cli
+    from sparkring_sircl.vllm.serve.sitefile import ServeSite
+
+    with pytest.raises(SiteError, match="plans cabling 'ring' only"):
+        ServeSite.from_json(_cabled_document(4, "path"))
+    site_file = tmp_path / "path.json"
+    site_file.write_text(json.dumps(_cabled_document(4, "path")))
+    assert fabric_cli.main(["plan", "--site", str(site_file)]) == 2
+    assert "plans cabling 'ring' only" in capsys.readouterr().err
+    for cabling, problem in (("star", "cabling must be"), ([], "cabling must be"),
+                             (["0.port0-1.port2"], "not written"), (["0.port0-5.port1"], "positions \\[5\\]"),
+                             (["0.port0-1.port1"], "positions \\[2\\] without a cable"),
+                             (["0.port0-1.port0", "0.port0-2.port1"], "two cables"),
+                             (["0.port0-1.port0", "2.port0-3.port0"], "not reached from position 0")):
+        size = 4 if "3.port" in str(cabling) else 3
+        with pytest.raises(SiteError, match=problem):
+            _cabled_site(size, cabling)
+
+
+def test_a_pair_cabled_port0_to_port0_plans_its_lanes_over_port_0():
+    site = _cabled_site(2, ["0.port0-1.port0"])
+    for name, groups in (("path", None), ("pairs", None), ("custom", [(0, 1)])):
+        built = plan.build_plan(site, name, "run1", groups=groups, digest="d" * 16)
+        (group,) = built.groups
+        assert group.positions == (0, 1) and group.layout == "cables=0.port0-1.port0;positions=0,1"
+        assert group.max_relays == 0 and group.route_texts == ("1=rocep1s0f0/roceP2p1s0f0", "0=rocep1s0f0/roceP2p1s0f0")
+        lanes = {(d["rank"], d["lane"]): (d["local"], d["remote"]) for d in group.lanes_detail}
+        assert lanes[(0, 1)] == ("roceP2p1s0f0", "roceP2p1s0f0") and lanes[(1, 0)] == ("rocep1s0f0", "rocep1s0f0")
+    with pytest.raises(plan.PlanError, match="runs on every Spark of a ring"):
+        plan.build_plan(site, "ring", "run1", digest="d" * 16)
+    with pytest.raises(plan.PlanError, match="path of at least four"):
+        plan.build_plan(site, "path4", "run1", digest="d" * 16)
+
+
+def test_the_whole_of_a_path_plans_as_the_same_group_inside_a_ring():
+    site = _cabled_site(4, "path")
+    whole = plan.build_plan(site, "path", "run1", digest="d" * 16)
+    inside = plan.build_plan(_site(), "path4", "run1", digest="d" * 16)
+    (group,), (reference,) = whole.groups, inside.groups
+    assert group.positions == (0, 1, 2, 3) and group.layout == reference.layout
+    assert group.route_texts == reference.route_texts and group.max_relays == 2 == reference.max_relays
+    assert plan.build_plan(site, "path4", "run1", digest="d" * 16).groups[0].layout == reference.layout
+    reversed_group = plan.build_plan(site, "custom", "run1", groups=[(3, 2, 1, 0)], digest="d" * 16).groups[0]
+    assert reversed_group.layout == "cables=2.port0-3.port1,1.port0-2.port1,0.port0-1.port1;positions=3,2,1,0"
+    with pytest.raises(plan.PlanError, match="consecutive Sparks along the site's cables: Sparks 0 and 2"):
+        plan.build_plan(site, "custom", "run1", groups=[(0, 2)], digest="d" * 16)
+    for name in ("ring", "ring4-large", "ring-latency", "dcp4"):
+        with pytest.raises(plan.PlanError, match="--config path or --groups 0-3"):
+            plan.build_plan(site, name, "run1", digest="d" * 16)
+    # The configurations of a ring site are unchanged, and a ring site has no path configuration.
+    with pytest.raises(plan.PlanError, match="on a ring name path4"):
+        plan.build_plan(_site(), "path", "run1", digest="d" * 16)
+    eight = _cabled_site(8, "path")
+    two = plan.build_plan(eight, "two-tp4", "run1", digest="d" * 16)
+    assert [g.layout for g in two.groups] == [g.layout for g in plan.build_plan(_site(), "two-tp4", "run1",
+                                                                                digest="d" * 16).groups]
+    with pytest.raises(plan.PlanError, match="relays"):
+        plan.build_plan(eight, "path", "run1", digest="d" * 16)
+
+
+def test_all_on_a_path_site_names_its_pairs_and_the_whole_path(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(remote, "ssh", lambda *a, **k: (_ for _ in ()).throw(AssertionError("contacted a host")))
+    for size, cabling, wanted in ((4, "path", ["pairs", "path"]), (2, ["0.port0-1.port0"], ["path"]),
+                                  (8, "path", ["pairs", "path4", "two-tp4", "path"]), (8, "ring",
+                                                                                      ["pairs", "path4", "two-tp4",
+                                                                                       "ring"])):
+        site_file = tmp_path / f"site-{size}.json"
+        site_file.write_text(json.dumps(_cabled_document(size, cabling)))
+        site = Site.load(site_file, cablings=("ring", "path", "cables"))
+        args = type("Args", (), {"groups": None, "config": "all", "name": None})()
+        assert [name for name, _ in cli._configurations(args, site)] == wanted
+    site_file = tmp_path / "site-4.json"
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path"]) == 0
+    assert "configuration path (run" in capsys.readouterr().out
+    assert cli.main(["plan", "--site", str(site_file), "--config", "ring"]) == 2
+    assert "runs on every Spark of a ring" in capsys.readouterr().err
+
+
+def _end_spark_preflight(position: int, down: set[str]) -> str:
+    lines = ["docker\t27.3.1", "image\tsha256:abc", "gpu\t0, NVIDIA GB10", f"lan\t192.0.2.{10 + position}/24"]
+    for role in routes.ROLES:
+        lines.append(f"device:{role.device}\t{'1: DOWN' if role.device in down else '4: ACTIVE'} {role.netdev}")
+    return "\n".join(lines) + "\n"
+
+
+def _device_blockers(site: Site, plans, down: dict[int, set[str]]) -> tuple[list[str], list[str]]:
+    positions = {host.ssh: index for index, host in enumerate(site.ring)}
+
+    def fake_ssh(target, command, *, timeout=60, input_bytes=None, binary="ssh"):
+        if "info --format" in command:
+            return remote.Result(0, _end_spark_preflight(positions[target], down.get(positions[target], set())), "")
+        return remote.Result(0, "", "")
+
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(remote, "ssh", fake_ssh)
+        _, lines = cli.preflight(site, plans, force=False)
+    return [line for line in lines if "RDMA device" in line], [line for line in lines if "holds no cable" in line]
+
+
+def test_preflight_requires_active_functions_only_on_the_ports_the_site_cables():
+    port0 = {role.device for role in routes.ROLES if role.port == 0}
+    port1 = {role.device for role in routes.ROLES if role.port == 1}
+    path = _cabled_site(4, "path")
+    plans = [plan.build_plan(path, "path", "r1", digest="d" * 16)]
+    # The ends of the path have one free port each: Spark 0 its port 1, Spark 3 its port 0.
+    blockers, notes = _device_blockers(path, plans, {0: port1, 3: port0})
+    assert blockers == []
+    assert notes[0].startswith("spark0: port 1 holds no cable of the site") and "rocep1s0f1 1: DOWN" in notes[0]
+    assert notes[1].startswith("spark3: port 0 holds no cable of the site") and len(notes) == 2
+    # A cabled port's function that is down still blocks, at an end and in the middle.
+    blockers, _ = _device_blockers(path, plans, {0: port0, 1: {"rocep1s0f1"}})
+    assert sorted(blockers) == ["BLOCKER: spark0: RDMA device roceP2p1s0f0 is 1: DOWN enP2p1s0f0np0",
+                                "BLOCKER: spark0: RDMA device rocep1s0f0 is 1: DOWN enp1s0f0np0",
+                                "BLOCKER: spark1: RDMA device rocep1s0f1 is 1: DOWN enp1s0f1np1"]
+    pair = _cabled_site(2, ["0.port0-1.port0"])
+    blockers, notes = _device_blockers(pair, [plan.build_plan(pair, "path", "r1", digest="d" * 16)],
+                                       {0: port1, 1: port1})
+    assert blockers == [] and len(notes) == 2 and all("port 1 holds no cable" in note for note in notes)
+    # On a ring every port is cabled: every function must be active, as before.
+    ring = _site(8)
+    blockers, notes = _device_blockers(ring, [plan.build_plan(ring, "path4", "r1", digest="d" * 16)], {0: port1})
+    assert len(blockers) == 2 and notes == []
+
+
+def test_the_rank_watchdog_is_a_command_line_option(tmp_path, monkeypatch, capsys):
+    assert plan.Options().worker_timeout_s == plan.DEFAULT_WORKER_TIMEOUT_S == 1500
+    for value in (0, -5, 2.5, True):
+        with pytest.raises(plan.PlanError, match="rank watchdog"):
+            plan.Options(worker_timeout_s=value)
+    assert cli.run_timeout(plan.Options()) == 1800.0
+    assert cli.run_timeout(plan.Options(worker_timeout_s=3600)) == 3900.0
+    monkeypatch.setattr(remote, "ssh", lambda *a, **k: (_ for _ in ()).throw(AssertionError("contacted a host")))
+    site_file = tmp_path / "site.json"
+    site_file.write_text(json.dumps(_site_document()))
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path4", "--json", "--worker-timeout", "3600"]) == 0
+    assert json.loads(capsys.readouterr().out)["options"]["worker_timeout_s"] == 3600
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path4", "--worker-timeout", "3600"]) == 0
+    assert "rank watchdog: a rank that has not finished after 3600 s" in capsys.readouterr().out
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path4"]) == 0
+    assert "rank watchdog" not in capsys.readouterr().out
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path4", "--worker-timeout", "300"]) == 2
+    assert "must exceed the setup wait limit (300 s" in capsys.readouterr().err
+    waits = []
+    monkeypatch.setattr(cli, "run_configuration", lambda site, built, output, *, force, timeout: waits.append(
+        (built.options.worker_timeout_s, timeout)) or True)
+    for extra in ([], ["--worker-timeout", "3600"], ["--worker-timeout", "3600", "--timeout", "100"]):
+        assert cli.main(["run", "--site", str(site_file), "--config", "path4", "--output", str(tmp_path), *extra]) == 0
+    assert waits == [(1500, 1800.0), (3600, 3900.0), (3600, 100.0)]
+
+
+def test_the_chain_slot_is_a_command_line_option(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(remote, "ssh", lambda *a, **k: (_ for _ in ()).throw(AssertionError("contacted a host")))
+    site_file = tmp_path / "site.json"
+    site_file.write_text(json.dumps(_site_document()))
+    line = ["plan", "--site", str(site_file), "--config", "ring8-large", "--json"]
+    assert cli.main([*line, "--chain-slot-bytes", "2097152", "--chain-chunks", "2097152"]) == 0
+    options = json.loads(capsys.readouterr().out)["options"]
+    assert options["session_env"] == [["SIRCL_CHAIN_SLOT_BYTES", "2097152"]] and options["chain_chunks"] == [2097152]
+    # Without it the chain slot stays the session's 1 MiB, and a 2 MiB chain chunk is refused.
+    assert cli.main([*line, "--chain-chunks", "2097152"]) == 2
+    assert "up to the chain slot of 1048576 bytes" in capsys.readouterr().err
+    assert cli.main([*line, "--chain-slot-bytes", "5000"]) == 2
+    assert "positive multiple of 4096" in capsys.readouterr().err
+    assert cli.main([*line, "--chain-slot-bytes", "2097152", "--session-env", "SIRCL_CHAIN_SLOT_BYTES=2097152"]) == 2
+    assert "give one" in capsys.readouterr().err
+    assert cli.main(["plan", "--site", str(site_file), "--config", "path4", "--chain-slot-bytes", "1572864"]) == 0
+    assert "session variables on every rank: SIRCL_CHAIN_SLOT_BYTES=1572864" in capsys.readouterr().out

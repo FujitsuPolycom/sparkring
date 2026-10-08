@@ -22,8 +22,10 @@ Status: the [component status table](../../STATUS.md#component-status), rows
 per model and phase and where the adapter carries each one.
 [`RUNBOOK.md`](RUNBOOK.md) serves SparkRing profiles on groups of a ring with
 the serve launcher (`python -m sparkring_sircl.vllm.serve`,
-[`serve/`](serve/cli.py)) and adds SIRCL to containers another launcher
-starts (`bundle`). [`STATUS.md`](STATUS.md) lists the adapter's limitations
+[`serve/`](serve/cli.py)), with decode-context parallelism (`--dcp-size`) for
+the GLM-5.3-Flash checkpoints and GLM-5.3 ([`RUNBOOK.md`](RUNBOOK.md),
+"Decode-context parallelism in profile serving"), and adds SIRCL to
+containers another launcher starts (`bundle`). [`STATUS.md`](STATUS.md) lists the adapter's limitations
 and the checks before relying on a layout.
 
 ## Enable it

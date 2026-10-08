@@ -14,6 +14,15 @@ Commands and their safety classes (RUNBOOK.md has the procedure):
 - ``summarize`` (OFFLINE): merge collected results and print the table.
 
 ``run --print`` prints the plan and contacts nothing.
+
+The site file may describe a ring, a path of Sparks or explicit cables such as
+a pair cabled port 0 to port 0 (``cabling``, :mod:`.site`). Preflight requires
+an active RDMA function only on the ports the site cables, so the end Sparks
+of a path, each with one free port, pass with two functions down.
+``--worker-timeout`` sets the rank watchdog (default 1,500 s) and, without
+``--timeout``, the run waits for its containers at least 300 s longer than
+the watchdog (default 1,800 s). ``--chain-slot-bytes`` sets every session's
+chain slot (``SIRCL_CHAIN_SLOT_BYTES``), the largest chain chunk.
 """
 
 from __future__ import annotations
@@ -33,7 +42,7 @@ from .. import routes as routes_mod
 from . import plan as plan_mod
 from . import remote, summary
 from . import trace as trace_mod
-from .site import Site, SiteError
+from .site import CABLINGS, Site, SiteError
 
 
 def _configurations(args, site: Site) -> list[tuple[str, tuple[tuple[int, ...], ...] | None]]:
@@ -41,13 +50,40 @@ def _configurations(args, site: Site) -> list[tuple[str, tuple[tuple[int, ...], 
         return [(args.name or "custom", plan_mod.parse_groups(args.groups))]
     names = [name.strip() for name in args.config.split(",") if name.strip()]
     if names == ["all"]:
-        names = ["pairs", "path4", "two-tp4", "ring"] if site.size >= 8 else ["pairs", "ring"]
+        if site.fabric().kind == "cycle":
+            names = ["pairs", "path4", "two-tp4", "ring"] if site.size >= 8 else ["pairs", "ring"]
+        else:
+            names = (["pairs", "path4", "two-tp4", "path"] if site.size >= 8 else ["pairs", "path"] if site.size > 2
+                     else ["path"])
     return [(name, None) for name in names]
 
 
 def _options(args) -> plan_mod.Options:
     base = plan_mod.Options()
-    return dataclasses.replace(_base_options(args, base), **_tune_options(args, base))
+    options = dataclasses.replace(_base_options(args, base), **_tune_options(args, base))
+    if getattr(args, "worker_timeout", None) is not None and options.worker_timeout_s <= options.startup_wait_s:
+        raise plan_mod.PlanError(f"--worker-timeout {options.worker_timeout_s} s must exceed the setup wait limit "
+                                 f"({options.startup_wait_s:g} s, --startup-wait): a rank still waiting at setup "
+                                 "would be ended before its own wait names the peer it waits for")
+    return options
+
+
+CHAIN_SLOT_ALIGNMENT = 4096
+CHAIN_SLOT_LIMIT = 1 << 31
+
+
+def _chain_slot_env(args) -> list[tuple[str, str]]:
+    """``--chain-slot-bytes`` as the session variable SIRCL_CHAIN_SLOT_BYTES of every rank (none when unset)."""
+    value = getattr(args, "chain_slot_bytes", None)
+    if value is None:
+        return []
+    if value <= 0 or value % CHAIN_SLOT_ALIGNMENT or value > CHAIN_SLOT_LIMIT:
+        raise plan_mod.PlanError(f"--chain-slot-bytes {value} must be a positive multiple of {CHAIN_SLOT_ALIGNMENT} "
+                                 f"up to {CHAIN_SLOT_LIMIT}")
+    if any(item.partition("=")[0].strip() == "SIRCL_CHAIN_SLOT_BYTES" for item in args.session_env or ()):
+        raise plan_mod.PlanError("--chain-slot-bytes and --session-env SIRCL_CHAIN_SLOT_BYTES both set the chain "
+                                 "slot; give one")
+    return [("SIRCL_CHAIN_SLOT_BYTES", str(value))]
 
 
 def _base_options(args, base: plan_mod.Options) -> plan_mod.Options:
@@ -56,6 +92,8 @@ def _base_options(args, base: plan_mod.Options) -> plan_mod.Options:
         eager_iterations=args.eager_iterations or base.eager_iterations,
         graph_iterations=args.graph_iterations or base.graph_iterations,
         spin_limit=args.spin_limit or base.spin_limit,
+        worker_timeout_s=(base.worker_timeout_s if getattr(args, "worker_timeout", None) is None
+                          else args.worker_timeout),
         transport_only=bool(args.transport_only),
         cpu_policy=args.cpu_policy,
         large=bool(args.large),
@@ -76,7 +114,7 @@ def _base_options(args, base: plan_mod.Options) -> plan_mod.Options:
         latency_relay_us=base.latency_relay_us if args.relay_us is None else args.relay_us,
         latency_post_us=base.latency_post_us if args.post_us is None else args.post_us,
         latency_write_us=base.latency_write_us if args.write_us is None else args.write_us,
-        session_env=tuple(_session_env(args.session_env or ())),
+        session_env=tuple(_session_env(args.session_env or ()) + _chain_slot_env(args)),
         tuning_tables=tuple(str(path) for path in (getattr(args, "tuning_table", None) or ())),
         eager_profile=bool(getattr(args, "eager_profile", False)),
         eager_path=getattr(args, "eager_path", None) or "session",
@@ -292,10 +330,21 @@ def preflight(site: Site, plans: list[plan_mod.ConfigurationPlan], *, force: boo
         if lan.split("/")[0] != host.lan_address:
             blockers.append(f"{host.name}: {site.lan_interface} has {lan or 'no IPv4 address'}, the site lists "
                             f"{host.lan_address}")
+        # Only the functions of the ports the site cables must be active: an end Spark of a path, or a Spark of
+        # a pair cabled port 0 to port 0, has a port without a cable, whose two functions are down.
+        cabled = site.cabled_ports(position)
+        free = []
         for role in routes_mod.ROLES:
             state = values.get(f"device:{role.device}", "missing")
+            if role.port not in cabled:
+                free.append(f"{role.device} {state or 'missing'}")
+                continue
             if "ACTIVE" not in state:
                 blockers.append(f"{host.name}: RDMA device {role.device} is {state or 'missing'}")
+        if free:
+            ports = ", ".join(str(port) for port in (0, 1) if port not in cabled)
+            report.append(f"{host.name}: port {ports} holds no cable of the site; its RDMA functions are not "
+                          f"required ({'; '.join(free)})")
         fabric = fabric_netdevs(values)
         for key, value in values.items():
             interface = key[len("address:"):]
@@ -511,6 +560,12 @@ def write_tuning_tables(folder: Path) -> int:
 # -- entry point -------------------------------------------------------------------------
 
 
+def run_timeout(options: plan_mod.Options) -> float:
+    """The run's wait for a configuration's containers when --timeout is unset: the default, or the rank
+    watchdog plus a margin when that is longer, so a hung rank's watchdog fires first."""
+    return float(max(plan_mod.RUN_TIMEOUT_S, options.worker_timeout_s + plan_mod.RUN_TIMEOUT_MARGIN_S))
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m sparkring_sircl.ring", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -521,7 +576,8 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--config", default="all",
                          help="pairs, path4, two-tp4, ring (or ring8), path4-large, two-tp4-large, ring-large "
                               "(or ring8-large), dcp4, ring-swing (or ring8-swing), ring-latency (or "
-                              "ring8-latency), path4-latency, path4-crossover, or all")
+                              "ring8-latency), path4-latency, path4-crossover, path (every Spark of a site cabled "
+                              "as a path or a pair), or all")
         sub.add_argument("--groups", help="custom groups instead of --config, e.g. '0-3;4-7'")
         sub.add_argument("--name", help="name of the custom configuration")
         sub.add_argument("--run-id", default=f"{time.strftime('%Y%m%d-%H%M%S')}-{os.getpid()}",
@@ -531,6 +587,13 @@ def main(argv: list[str] | None = None) -> int:
         sub.add_argument("--eager-iterations", type=int)
         sub.add_argument("--graph-iterations", type=int)
         sub.add_argument("--spin-limit", type=int)
+        sub.add_argument("--worker-timeout", type=int, metavar="SECONDS",
+                         help=f"the rank watchdog: a rank that has not finished after this many seconds records its "
+                              f"error and ends (default {plan_mod.DEFAULT_WORKER_TIMEOUT_S}; above --startup-wait)")
+        sub.add_argument("--chain-slot-bytes", type=int, metavar="BYTES",
+                         help="SIRCL_CHAIN_SLOT_BYTES of every session: the chain slot, the largest chain chunk "
+                              "(multiple of 4096; default the session's, 1048576); chain chunks and tune pieces "
+                              "above it run no chain case")
         sub.add_argument("--transport-only", action="store_true",
                          help="CPU-staged ops through the native layer only (no CUDA kernels)")
         sub.add_argument("--cpu-policy", choices=plan_mod.CPU_POLICIES, default="performance",
@@ -661,7 +724,10 @@ def main(argv: list[str] | None = None) -> int:
         if name in ("run", "tune"):
             sub.add_argument("--print", action="store_true", help="print the launch plan and contact nothing")
             sub.add_argument("--output", type=Path, default=Path("sircl-ring-results"))
-            sub.add_argument("--timeout", type=float, default=1800)
+            sub.add_argument("--timeout", type=float,
+                             help=f"seconds the run waits for a configuration's containers (default "
+                                  f"{plan_mod.RUN_TIMEOUT_S}, or the rank watchdog plus "
+                                  f"{plan_mod.RUN_TIMEOUT_MARGIN_S} when that is longer)")
         if name == "plan":
             sub.add_argument("--json", action="store_true")
     summarize = commands.add_parser("summarize")
@@ -700,7 +766,7 @@ def main(argv: list[str] | None = None) -> int:
             status = status or (0 if merged["status"] == "passed" else 1)
         return status
     try:
-        site = Site.load(args.site)
+        site = Site.load(args.site, cablings=CABLINGS)
         plans = _plans(args, site)
     except (SiteError, plan_mod.PlanError, routes_mod.RouteError, OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
@@ -735,7 +801,8 @@ def main(argv: list[str] | None = None) -> int:
     output = args.output / args.run_id
     results = []
     for plan in plans:
-        results.append(run_configuration(site, plan, output, force=args.force, timeout=args.timeout))
+        timeout = args.timeout if args.timeout is not None else run_timeout(plan.options)
+        results.append(run_configuration(site, plan, output, force=args.force, timeout=timeout))
         if args.command == "tune":
             write_tuning_tables(output / plan.name)
         if not results[-1]:

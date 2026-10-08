@@ -53,7 +53,8 @@ placeholder and keep the copy out of version control.
 | `lan_interface` | wired-LAN interface on every Spark; the control exchange (setup records, verdicts, barriers) runs over it, never over fabric addresses |
 | `control_port` | free TCP port (1024 to 65000) on the first Spark of each configuration, reachable over the wired LAN |
 | `remote_dir` | absolute working directory on every Spark (default `/tmp/sircl-ring`) |
-| `ring` | 2 to 16 Sparks in cabling order: entry `i`'s port 0 is cabled to entry `i + 1`'s port 1, wrapping around. Each entry: `name` (the Spark's host name, for example `spark-a`), `ssh` (`user@address`, for example `operator@192.0.2.10`), `lan_address` (wired-LAN IPv4 address) and an optional `docker` |
+| `ring` | 2 to 16 Sparks in cabling order (entry `i` is fabric position `i`). Each entry: `name` (the Spark's host name, for example `spark-a`), `ssh` (`user@address`, for example `operator@192.0.2.10`), `lan_address` (wired-LAN IPv4 address) and an optional `docker` |
+| `cabling` | optional: how those Sparks are cabled. `"ring"` (default): entry `i`'s port 0 is cabled to entry `i + 1`'s port 1, wrapping around. `"path"`: the same cables without the one that closes the ring, so the first entry's port 1 and the last entry's port 0 are free (a line of Sparks). A list of cables `"<position>.port<p>-<position>.port<q>"` describes any other path or cycle, for example `["0.port0-1.port0"]` for two Sparks cabled port 0 to port 0; the cables must join every listed Spark, each port holding at most one. Only the ring harness plans a site cabled other than as a ring; the relay plan installer, the serve launcher and the point-to-point harness refuse such a site |
 | `gid_index` | optional RoCE GID index for every device; without it every rank resolves each device's RoCE v2 IPv4 entry |
 | `docker` | optional command that runs Docker on the Sparks (default `docker`); a ring entry's `docker` overrides it. 1 to 8 words of letters, digits and `_.@:/+=-`, the last one `docker` or a path ending in `/docker`, for example `sudo -n docker` for an SSH user outside the docker group with passwordless sudo |
 
@@ -71,7 +72,8 @@ placeholder and keep the copy out of version control.
   headers; `stage` builds the native library with them.
 - Every Spark has GPU 0 and the four ConnectX-7 RDMA devices under their DGX
   OS names (`rocep1s0f0`, `roceP2p1s0f0`, `rocep1s0f1`, `roceP2p1s0f1`), port
-  state ACTIVE. The preflight and the NCCL baseline name exactly these.
+  state ACTIVE on every port the site cables. The preflight and the NCCL
+  baseline name exactly these.
 
 ### Measurement prerequisites
 
@@ -123,6 +125,19 @@ or the whole ring.
 | `ring-latency` (`ring8-latency`) | every Spark | one-shot and two-shot all-reduce of 4 to 64 KiB, 96 and 128 KiB, once per posting order (`rank`, `ring-farthest`) | the one-shot to two-shot crossover (`SIRCL_ONESHOT_MAX_BYTES`) and the posting order, beside the latency model |
 | `path4-latency` | 0-3 | the `ring-latency` cases with the orders `rank` and `farthest` | the same on a path of four |
 | `path4-crossover` | 0-3 | all-reduce, all-gather and reduce-scatter of 256 KiB to 4 MiB, each as ring, chain and pieces | the sizes from which chain and ring are faster (`SIRCL_CHAIN_MIN_BYTES`, `SIRCL_RING_MIN_BYTES`) |
+| `path` | every Spark of a site cabled as a path or a pair (refused on a ring site) | small cases | lanes along the site's own cables |
+
+On a site whose `cabling` is `"path"` or a cable list, `path` is every Spark
+of the site (the whole line, or a pair), `pairs`, `path4` (from four Sparks)
+and `two-tp4` (from eight) take the positions of the table above, and the
+whole-ring configurations (`ring`, `ring-large`, `ring-swing`,
+`ring-latency`, `dcp4`) are refused unless the cables close a cycle. A custom
+group lists Sparks of which each is cabled to the next, in either direction.
+`all` runs `pairs` and `path` there (`path` alone on two Sparks; with `path4`
+and `two-tp4` on eight). A pair cabled port 0 to port 0 routes both lanes
+over port 0's functions (`1=rocep1s0f0/roceP2p1s0f0` on both ranks), and a
+group's layout names its cables (`cables=0.port0-1.port0;positions=0,1`), so
+its tuning table matches that cabling only.
 
 **Small cases.** BF16 all-reduces and all-gather shards of 16 B to 128 KiB
 in powers of two plus sizes at and 16 bytes either side of size limits, and
@@ -155,6 +170,7 @@ same inputs; a bit that differs between the calls counts as a mismatch.
 | `--baseline nccl`, `--nccl-library`, `--nccl-env NAME=VALUE` | NCCL's rows beside SIRCL's ([NCCL baseline](#nccl-baseline)) |
 | `--tuning-table PATH` | sessions decide from a measured table ([Tuning tables](#tuning-tables)) |
 | `--session-env NAME=VALUE` | any documented `SIRCL_*` variable on every rank (`python -m sparkring_sircl.env` lists them); variables the harness sets from its own options are refused |
+| `--chain-slot-bytes BYTES` | the chain slot (`SIRCL_CHAIN_SLOT_BYTES`, a multiple of 4,096; the session's default is 1 MiB) on every rank, refused beside `--session-env SIRCL_CHAIN_SLOT_BYTES`; chain chunks (`--chain-chunks`) are checked against it, and `tune` measures chain candidates only for pieces up to it, so `--chain-slot-bytes 2097152` lets a tune with 2 MiB pieces measure 2 MiB chain chunks and record that slot in its table |
 | `--session-env SIRCL_EVENT_TRACE=<records>`, `--eager-profile`, `--eager-path adapter` | event trace and eager call profile ([Diagnostics](#diagnostics)) |
 | `--cpu-policy`, `--forward-window BYTES` | `performance` (default) or `none`; `SIRCL_FORWARD_WINDOW_BYTES` of every session (`0`: no forward windows) |
 | `--startup-wait`, `--serving-wait` | flag-wait limits in seconds during setup and warm-up (300) and during the timed cases (20); a stopped rank ends its peers within the serving limit |
@@ -162,13 +178,17 @@ same inputs; a bit that differs between the calls counts as a mismatch.
 | `--relay-us`, `--post-us`, `--write-us` | latency model: one-way latency per relay (0.75 us), posting time per lane where the session does not measure it (0.3 us), direct write (0, excluded) |
 | `--host-send-gbps`, `--host-recv-gbps`, `--host-cap-gbps`, `--cable-gbps` | rates of the bound printed beside each large row: host interface send (24 GB/s) and receive (26.8 GB/s), one rate for both, cable direction (24 GB/s) |
 | `--correctness-iterations`, `--eager-iterations`, `--graph-iterations`, `--spin-limit` | call counts per size and the spin limit |
-| `--run-id`, `--output`, `--timeout`, `--force`, `--print` | run name (default the start time and the launching process's id), result folder (`sircl-ring-results`), wait limit (1,800 s), run beside other containers, print the plan only |
+| `--worker-timeout SECONDS` | each rank's watchdog (default 1,500 s, above `--startup-wait`); the plan prints a watchdog that differs from the default |
+| `--run-id`, `--output`, `--timeout`, `--force`, `--print` | run name (default the start time and the launching process's id), result folder (`sircl-ring-results`), wait for a configuration's containers (unset: 1,800 s or the watchdog plus 300 s, whichever is longer, so a hung rank's watchdog fires first), run beside other containers, print the plan only |
 
 ### NCCL baseline
 
 `--baseline nccl` adds NCCL's all-reduce and all-gather (dimension 0) of
-every case's size and mode, timed the same way, and a `vs NCCL` column
-(NCCL's median over SIRCL's; above 1, SIRCL is faster). NCCL runs on pairs
+every case's size and mode, timed the same way (the same untimed calls before
+and after the barrier) and with the bus bandwidth of the collective it
+measures, and a `vs NCCL` column (NCCL's median over SIRCL's; above 1, SIRCL
+is faster). Rows of 1 MiB and more also compare the periods (`NCCL ...x by
+period` in their period note, [Results](#results)). NCCL runs on pairs
 and whole cycles only. Each container starts with NCCL's environment for this
 fabric (`ring/nccl.py`: the image's NCCL preloaded from
 `/opt/sparkring/toolchain/nccl/lib/libnccl.so.2`, InfiniBand transport on all
@@ -200,7 +220,10 @@ python -m sparkring_sircl.ring summarize --results sircl-ring-results/<run id>  
    every relayed lane with the Sparks it crosses and its forward window, the
    relay load factor, the containers with each Spark's Docker command, sizes.
 2. **Preflight.** Per used Spark: SSH reachable; Docker reachable; image
-   present; a GPU listed; four RDMA devices ACTIVE; the wired-LAN address
+   present; a GPU listed; the RDMA devices of every port the site cables
+   ACTIVE (all four on a ring; on an end Spark of a path, or a Spark of a pair
+   cabled port 0 to port 0, the two of its cabled port, while the other
+   port's functions are reported without a blocker); the wired-LAN address
    equal to the site file's and outside every fabric subnet; no container
    running; and `ip route get` sends every lane's destination over the lane's
    own device. Expected: `preflight passed`, else every blocker and exit 1.
@@ -220,7 +243,10 @@ python -m sparkring_sircl.ring summarize --results sircl-ring-results/<run id>  
 
 **Fail-stop.** A failing rank writes its error and exits; the launcher waits
 up to 60 s for the other ranks, then removes every container. A hanging rank
-is ended by its watchdog after 1,500 s. A run that prints
+is ended by its watchdog, which writes the rank's error first: 1,500 s by
+default, `--worker-timeout` sets it. The run waits for a configuration's
+containers for `--timeout` seconds; unset, 1,800 s or the watchdog plus
+300 s, whichever is longer. A run that prints
 `harness containers may remain` needs `cleanup`.
 
 **Exit codes.** `run` and `tune` exit 0 when every rank of every
@@ -248,7 +274,18 @@ every error counter that moved: each RDMA device's sysfs `hw_counters` and
 `counters` and its interface's Ethernet statistics (`rx_out_of_buffer`,
 hairpin drops). Bracketed notes give the algorithm or schedule, posting
 order, bound and fraction of it reached (`sparkring_sircl.bounds`), latency
-model, grid cap and forward-window waits. Lines after the table: `crossover`
+model, grid cap and forward-window waits. Rows of 1 MiB and more end with
+`[period ... us, busbw ... GB/s]`: the period of back-to-back calls (per rank
+the median over consecutive calls of their mean time, the slowest rank's;
+`period_us` in `result.json`), the time between completions. It is close to,
+but not the same statistic as, nccl-tests' per-iteration time (its loop time
+over the iterations, averaged over ranks): adjacent calls are not
+independent, and the group's period is its slowest rank's. Use it to rank
+settings; a claim against NCCL rests on nccl-tests with repeated,
+counterbalanced runs. The period and the slowest median differ when the
+ranks alternate which one starts a call late: the late rank finds its peers'
+data landed and finishes early, the other waits, and the per-call maximum
+over ranks is the long time in every call. Lines after the table: `crossover`
 (the `SIRCL_ONESHOT_MAX_BYTES` below the first size at which two-shot is
 faster), `posting orders`, `tuning, group G`, eager profiles, `warning:` and
 `problem:`.
@@ -275,8 +312,10 @@ python -m sparkring_sircl.ring run --site "$SITE" --config ring8 --large \
   (`--tune-grids`); from 256 KiB, pieces, tiles and scatter ops, the chain at
   each piece (`--tune-pieces`), the ring at each piece and stagger
   (`--tune-staggers`); Swing where the session offers it; NCCL with
-  `--baseline nccl`. From 4 MiB, a candidate 1.5 times slower than the
-  fastest at two sizes in a row stops (`--tune-prune-from`, `--tune-prune`).
+  `--baseline nccl`. Candidates are ranked by the period of back-to-back
+  calls ([Results](#results)). From 4 MiB, a candidate 1.5 times slower than
+  the fastest at two sizes in a row stops (`--tune-prune-from`,
+  `--tune-prune`).
 - `tune` sessions take link slots that hold the largest piece swept, as many
   as the session's default (`2 W`, at least 8: 16 on the cycle of eight) or as
   every stagger swept needs, whichever is more, unless `--session-env` sets
@@ -312,8 +351,10 @@ python -m sparkring_sircl.ring trace --results sircl-ring-results/<run id>/path4
 python -m sparkring_sircl.ring run --site "$SITE" --groups 0-1 --name pair --eager-profile --eager-path adapter
 ```
 
-- **Event trace.** Each rank runs one extra call of every large chain or ring
-  case with the event trace; `trace` prints per case, rank and stream the
+- **Event trace.** After the timed calls of every large chain or ring case
+  and a barrier of the group, each rank runs six more calls back to back with
+  the event trace and stores their records in the case (`event_trace`);
+  `trace` prints per case, rank and stream the
   median and 90th percentile of the stages `kernel`, `notice`, `credit`,
   `wire` and `gap`. Traced timings do not compare with untraced ones: the
   traced chain kernel is compiled separately and the clock is read per event.

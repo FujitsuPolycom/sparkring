@@ -5,6 +5,7 @@
   "control_port": 29650,
   "remote_dir": "/tmp/sircl-ring",
   "docker": "docker",
+  "cabling": "ring",
   "ring": [
     {"name": "spark0", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_0", "lan_address": "REPLACE_LAN_ADDRESS_0"},
     {"name": "spark1", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_1", "lan_address": "REPLACE_LAN_ADDRESS_1"},

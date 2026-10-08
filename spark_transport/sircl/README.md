@@ -326,8 +326,11 @@ holds the ring harness's measurements of every candidate on one group shape
 and build, and the decisions derived from them: per collective (`all_reduce`, `all_gather`,
 `reduce_scatter`, `all_to_all`) and mode (`eager`, `graph`), size intervals,
 each with the fastest SIRCL choice (algorithm or schedule, grid cap, piece,
-staggers) and whether NCCL measured faster there. Between measured sizes,
-each candidate's cost model `a + b * bytes + c * items`, fitted to its own
+staggers) and whether NCCL measured faster there. At a measured size the
+fastest candidate is the one with the shortest period of back-to-back calls
+(the ring harness's `period_us`: per rank the median over consecutive calls
+of their mean time, the slowest rank's); between measured sizes, each
+candidate's cost model `a + b * bytes + c * items`, fitted to its own
 measurements, decides. No table ships with the package.
 
 - Key: the group shape (`pair`, `path:<n>`, `cycle:<n>`, or
@@ -359,6 +362,22 @@ measurements, decides. No table ships with the package.
   where NCCL measured faster; these marks are measurements, and the vLLM
   adapter routes no call to NCCL by them in any `SIRCL_NCCL` mode. Sessions
   never call NCCL.
+- Built-in plans: a group shape with a built-in plan (`tuning.BUILTIN_PLANS`)
+  has decisions without a table. A session that names no matching table takes
+  the plan, written as a table whose key is the session's own
+  (`tuning.builtin_document`; `stats()["tuning"]["path"]` is
+  `builtin:<shape>`), for every collective whose schedule variable is unset.
+  A configured link piece keeps its value, a schedule a caller sets at run
+  time takes the collective back from the plan, and `SIRCL_BUILTIN_PLAN=0`
+  turns the plan off. The cabled pair's plan, measured with the ring harness
+  at 1 block per role ([STATUS.md](STATUS.md#large-messages-on-a-cabled-pair)):
+  the ring all-reduce in 256 KiB pieces from 3 MiB messages, the ring
+  all-gather in 256 KiB pieces from 2 MiB shards and in 512 KiB pieces from
+  16 MiB, the ring reduce-scatter in 256 KiB pieces from 8 MiB inputs and in
+  512 KiB pieces from 64 MiB; below those sizes the rules decide. On two ranks
+  the ring adds the same two values as the two-shot op and scatter ops,
+  rounded once, so the plan changes no result bit. A pair session with the
+  plan has a link area and compiles the ring launchers in `prepare()`.
 - Eager and graph modes may choose differently at one size, so an eager and
   a captured all-reduce of the same input can differ in the last place.
 - `python -m sparkring_sircl.ring tune` measures tables and `tune-table`
@@ -447,7 +466,9 @@ operation, path and size the median microseconds of each stage
 (`SIRCL_CALL_PROFILE_GPU=1` adds device time, `SIRCL_CALL_PROFILE_FILE=<prefix>`
 writes `<prefix>.rank<rank>.json`). `SIRCL_EVENT_TRACE=<records>` records
 every chunk and item of chain and link ops in the progress thread and the
-kernels; `event_trace_records()` returns them on the host clock, and
+kernels, and in a ring kernel when each block began (`KERNEL_START`) and when
+block 0 rang the link doorbell (`KERNEL_BELL`); `event_trace_records()`
+returns them on the host clock, and
 `python -m sparkring_sircl.ring trace` turns a run's records into stage times.
 
 ## Dispatch settings
@@ -476,12 +497,29 @@ algorithm, schedule, piece, stagger, grid cap and minimums to that op.
 | chain minimums (`SIRCL_CHAIN_MIN_BYTES`) | all-reduce 8 MiB, all-gather output 8 MiB, reduce-scatter input 4 MiB | `auto` runs chain ops from them; the variable sets one size for all three |
 | ring minimums (`SIRCL_RING_MIN_BYTES`) | all-reduce 4 MiB, all-gather output 8 MiB, reduce-scatter input 4 MiB | `ring` runs ring ops from them; the variable sets one size for all three |
 | chain geometry (`SIRCL_CHAIN_CHUNK_BYTES`, `SIRCL_CHAIN_SLOT_BYTES`, `SIRCL_CHAIN_SLOTS`, `SIRCL_CHAIN_BLOCKS`, `SIRCL_CHAIN_UNROLL`) | 512 KiB, 1 MiB, 4, 4, 4 | chunk a multiple of 16 up to the slot; slot a multiple of 4,096; 2 to 32 slots; unroll 1 to 8 packs per thread per pass; the chain area (4 streams × slots × slot bytes, twice) adds 32 MiB of pinned memory to a session on a chain |
-| link geometry (`SIRCL_LINK_CHUNK_BYTES`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_SLOTS`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`) | 512 KiB, 512 KiB, `2 W` slots and at least 8 (16 on the cycle of eight, 8 on a path of four; `protocol.default_link_slots`), 4, 4 | a tuning table's slot count and slot apply where these are unset; without `SIRCL_LINK_SLOT_BYTES` the slot holds the largest configured piece rounded up to 4 KiB, up to 1 MiB, or the table's slot when larger; the link area (4 links × slots × slot bytes, twice) adds 32 MiB to a session with 8 slots of 512 KiB, 64 MiB with 16 |
+| link geometry (`SIRCL_LINK_CHUNK_BYTES`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_SLOTS`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`) | 512 KiB, 512 KiB, `2 W` slots and at least 8 (16 on the cycle of eight, 8 on a path of four; `protocol.default_link_slots`), by group shape and link kernel ([link blocks](#link-blocks)), 4 | a tuning table's slot count and slot apply where these are unset; without `SIRCL_LINK_SLOT_BYTES` the slot holds the largest configured piece rounded up to 4 KiB, up to 1 MiB, or the table's slot when larger; the link area (4 links × slots × slot bytes, twice) adds 32 MiB to a session with 8 slots of 512 KiB, 64 MiB with 16 |
+| link blocks per collective (`SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS`, `SIRCL_REDUCE_LINK_BLOCKS`) | by group shape and link kernel: 1 for the ring all-reduce, all-gather and reduce-scatter on a cabled pair and for the ring all-reduce and all-gather on a path of four, 4 for every other kernel and shape (`protocol.LINK_BLOCKS_BY_SHAPE`) | blocks per role of one collective's link kernels under both its schedules, 1 to 64; `SIRCL_LINK_BLOCKS` sets every collective's without one; `stats()["link_blocks"]` names each kernel's |
 | link piece per collective (`SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`) | the link piece | chain and ring all-gathers, chain and ring reduce-scatters, ring all-reduces; multiples of 16 up to the link slot |
 | ring staggers (`SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER`) | `auto`: 1 when the link slots hold it, else 0 | 0 to 4 rounds; a stagger `D` needs `D (W - 1) + 2` link slots: 5 on a path of four, 9 on a ring of eight, so `auto` gives 1 on both with their default slots (8 and 16) |
 | event trace (`SIRCL_EVENT_TRACE`) | 0 (off) | records kept on each side, native and kernel; traced kernels compile apart from untraced ones |
 | tuning tables (`SIRCL_TUNING_TABLE`) | none | [Tuning tables](#tuning-tables); the same table on every rank |
+| built-in plan (`SIRCL_BUILTIN_PLAN`) | 1 | 0 turns off the built-in plan of a group shape that has one (a cabled pair; [Tuning tables](#tuning-tables)) |
 | flag-wait limits (`SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`) | 600 s, 20 s | GPU-clock seconds, up to 4,294. `SIRCL_SPIN_LIMIT` (20,000,000 polls) bounds a wait only when no time limit is set |
+
+### Link blocks
+
+A link kernel runs one collective under one schedule: the ring all-reduce,
+all-gather and reduce-scatter (`ring_reduce`, `ring_gather`,
+`ring_scatter`) and the chain all-gather and reduce-scatter
+(`chain_gather`, `chain_scatter`); the chain all-reduce runs on the chain
+kernel (`SIRCL_CHAIN_BLOCKS`). Each of a link kernel's roles runs on
+`link_blocks_for(collective, schedule)` blocks, which take the role's items
+in turn. A role's blocks share the GPU's path to pinned host memory, so more
+blocks split the same bandwidth into slower passes and lengthen every item's
+time from arrival to departure; the defaults are 1 block where the ring
+harness measured that faster and 4 elsewhere (table above). A session's
+blocks are fixed, because a link kernel's tail counter counts the arrivals of
+one grid, and join the setup agreement.
 
 ## Environment
 
@@ -553,6 +591,22 @@ and a GPU that addresses pinned host memory at its host pointer.
 checks (`sparkring_sircl/testing/column_gather_checks.py`): the vLLM adapter's
 staged dimension-0 gather against `all_gather_large` along the column
 dimension, bit for bit, eager and captured.
+
+Every rank of an emulated group shares the one GPU, so a group of several
+ranks (`testing.gpu_emulation.EmulatedGroup`, also when another tool builds
+it) sizes two of the GPU's resources unless the caller set them, and the
+`settings` check names what it set: `CUDA_DEVICE_MAX_CONNECTIONS=32` before
+the CUDA context exists, so a kernel waiting for a peer does not hold back
+commands queued behind it on a shared hardware queue (a context created
+before the group is reported in a warning); and the large-message grid cap
+`SIRCL_LARGE_BLOCKS` at one block per multiprocessor for every rank's grid
+(`testing.kernel_gpu_checks.emulation_large_blocks`), because every block of
+a collective spins until every rank has staged, so every rank's grid must be
+resident at once. On an RTX 5090 (170 multiprocessors) eight ranks get 16
+blocks each. Every check places its inputs on the device from the calling
+thread before the rank threads start, since a rank thread blocked in a copy
+from pageable host memory can stall the verbs stand-in's delivery thread. On
+Sparks every rank has its own GPU and keeps the defaults.
 `--path-latency BASE_NS,RELAY_NS[,BYTES_PER_US[,ACK_DELAY_NS]]` delays each
 write by a base time plus a time per relay, limits each queue pair's rate and
 delays completions, so relayed lanes wait on their forward windows.

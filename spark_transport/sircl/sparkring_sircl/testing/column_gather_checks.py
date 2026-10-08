@@ -76,7 +76,9 @@ def column_gather_checks(group: Any) -> Iterator[tuple[str, bool, str]]:
     ring_route = "ring" if session0.ring_available else "chain"
     # (schedule, shard shape, dim, dtype, layout, expected route). 4 to 8 MiB shards gathered along a
     # dimension with rows in front of it; [8192, 328] BF16 is GLM-5.3's column-split projection at an
-    # 8,192-token prefill chunk (5,373,952 bytes per rank).
+    # 8,192-token prefill chunk (5,373,952 bytes per rank). Under ``auto`` the expected route is the session's
+    # own answer for a dimension-0 gather of the shard's bytes, asked as the executor asks it ("session"):
+    # the ring of a cabled pair's built-in plan, the chain from the chain minimum on paths and cycles.
     cases = [
         ("ring", (8192, 256), -1, bf16, "contiguous", ring_route),
         ("ring", (8192, 328), -1, bf16, "contiguous", ring_route),
@@ -87,8 +89,8 @@ def column_gather_checks(group: Any) -> Iterator[tuple[str, bool, str]]:
         ("ring", (2048, 520), -1, fp32, "contiguous", ring_route),
         ("ring", (8192, 328), -1, bf16, "transposed", ring_route),
         ("ring", (8192, 328), -1, bf16, "offset", ring_route),
-        ("auto", (8192, 328), -1, bf16, "contiguous", "chain"),
-        ("auto", (2048, 1024), -1, fp16, "contiguous", "chain"),
+        ("auto", (8192, 328), -1, bf16, "contiguous", "session"),
+        ("auto", (2048, 1024), -1, fp16, "contiguous", "session"),
         ("pieces", (8192, 328), -1, bf16, "contiguous", None),
     ]
     saved = session0.gather_schedule
@@ -102,6 +104,10 @@ def column_gather_checks(group: Any) -> Iterator[tuple[str, bool, str]]:
             inputs = _inputs(torch, world, shape, dtype, seed)
             reference = torch.cat(inputs, dim=dim)
             nbytes = inputs[0].numel() * inputs[0].element_size()
+            if expected_route == "session":
+                probe = torch.empty((nbytes,), dtype=torch.uint8, device="meta")
+                expected_route = ("ring" if session0.gather_uses_ring(probe, 0) else
+                                  "chain" if session0.gather_uses_chain(probe, 0) else None)
             label = (f"column gather {list(shape)} {str(dtype).replace('torch.', '')} dim {dim} ({layout}), "
                      f"{nbytes} B per rank, schedule {schedule}")
             if _poisoned(group):

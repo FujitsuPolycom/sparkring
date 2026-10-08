@@ -1741,14 +1741,20 @@ ONE_RANK = "one rank per group: vLLM builds no device communicator and the group
 # Decode-context parallelism in profile serving (--dcp-size N): vLLM's DCP groups of N consecutive ranks of
 # the tensor-parallel group, each with a SIRCL session (SIRCL_GROUPS tp,dcp, as the bundle builds them), whose
 # output combine SIRCL's communicator carries through the dcp_all_to_all shim (and dcp_b12x_transport under
-# B12X). DCP_MODELS are the checkpoints whose attention the served images run with decode-context parallelism
-# (GLM-5.3-Flash's multi-head latent attention with DeepSeek-V3.2's sparse indexer), DCP_ATTENTION_BACKENDS the
-# attention backends that run it for them.
+# B12X). DCP_MODELS are the checkpoints whose attention the served images run with decode-context parallelism,
+# multi-head latent attention with DeepSeek-V3.2's sparse indexer: GLM-5.3-Flash's (model type glm5_next) and
+# GLM-5.3's (glm_moe_dsa, vLLM's DeepSeek-V3.2 code). DCP_ATTENTION_BACKENDS are the attention backends that run
+# it for them. Every model's DCP needs a size that divides the tensor parallelism and a SIRCL session per DCP
+# group: the conditions bundle.build_bundle enforces, which GLM-5.3 at TP8 with DCP 4 on the ring of eight meets.
+# The further conditions are GLM-5.3-Flash's own (DCP_INTERLEAVE; mHC row ownership, mhc_dcp_problem) and do
+# not apply to GLM-5.3. In image aba309e4610c's vLLM the B12X attention class rejects an argument GLM-5.3's model
+# passes, which a deployment's own vLLM plugins must supply (SURVEY.md, section 5); a plan cannot check it.
 DCP_FLAG = "--decode-context-parallel-size"
 DCP_MODELS = {"local-inference-lab/GLM-5.3-Flash-NVFP4-Spark": "GLM-5.3-Flash",
               "local-inference-lab/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash",
               "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD": "GLM-5.3-Flash",
-              "nvidia/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash"}
+              "nvidia/GLM-5.3-Flash-NVFP4": "GLM-5.3-Flash",
+              "local-inference-lab/GLM-5.3-NVFP4": "GLM-5.3"}
 DCP_ATTENTION_BACKENDS = ("B12X",)
 SESSION_GROUPS_DCP = ("tp", "dcp")
 # vLLM interleaves the KV cache over the DCP ranks in blocks of --cp-kv-cache-interleave-size tokens.

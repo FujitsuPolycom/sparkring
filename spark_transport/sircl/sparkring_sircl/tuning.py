@@ -6,8 +6,9 @@ group that spans part of a larger fabric), the group's size, lane count and most
 the hash of the native layer's source (``native``), the hash of the kernel sources (``kernels``) and the
 SIRCL version (``sircl``); ``image`` names the serving image it was measured in. It holds:
 
-- ``measurements``: the median time of the slowest rank of every candidate the ring harness's ``tune``
-  command ran, per collective (``all_reduce``, ``all_gather``, ``reduce_scatter``, ``all_to_all``),
+- ``measurements``: the time of every candidate the ring harness's ``tune`` command ran (the group's
+  period of back-to-back calls, the harness summary's ``period_us``: per rank the median over consecutive
+  calls of their mean time, the slowest rank's), per collective (``all_reduce``, ``all_gather``, ``reduce_scatter``, ``all_to_all``),
   message size in bytes (the all-reduce's message, the all-gather's shard, the reduce-scatter's input,
   the all-to-all's input, per rank) and mode (``eager`` or ``graph``, CUDA graph replay);
 - ``decisions``: per collective and mode, size intervals, each with the fastest SIRCL candidate
@@ -35,6 +36,11 @@ volume, and a time per link item, chain chunk or two-shot piece; ``b`` and ``c``
 so that it passes through the candidate's measured times. The decisions depend only on the document,
 so every rank that loads the same table makes the same choice for the same collective, size and mode;
 sessions record the table's hash in their setup agreement.
+
+A group shape with a built-in plan (:data:`BUILTIN_PLANS`, measured with the ring harness) has decisions
+without a table: :func:`builtin_document` writes the plan as a table whose key is the session's own facts,
+and a session that names no matching table takes it (``Table(..., builtin=True)``) for every collective
+whose schedule it was not configured with; see ``oneshot/runtime.py``.
 """
 
 from __future__ import annotations
@@ -262,7 +268,7 @@ class Interval:
 class Table:
     """A loaded, validated tuning table."""
 
-    def __init__(self, document: Mapping[str, Any], source: str = "") -> None:
+    def __init__(self, document: Mapping[str, Any], source: str = "", *, builtin: bool = False) -> None:
         if document.get("schema") != SCHEMA:
             raise TuningError(f"tuning table schema must be {SCHEMA}, got {document.get('schema')!r}")
         key = document.get("key")
@@ -272,6 +278,9 @@ class Table:
         self.key = dict(self.document["key"])
         self.source = source
         self.hash = document_hash(self.document)
+        # A built-in plan (builtin_document) rather than a measured table: a session applies its decisions
+        # only while a collective keeps the schedule the session was configured with.
+        self.builtin = bool(builtin)
         settings = self.document.get("settings", {})
         if (not isinstance(settings, Mapping) or any(name not in SETTINGS for name in settings)
                 or any(not isinstance(value, int) or isinstance(value, bool) or value < 1
@@ -371,6 +380,59 @@ def select_table(paths: Sequence[str | Path], own: Mapping[str, Any]) -> tuple[O
         raise TuningError("several different tuning tables match this group shape and build: "
                           + ", ".join(table.source for table in matching))
     return (matching[0] if matching else None), unmatched
+
+
+# -- built-in plans ------------------------------------------------------------------------------------
+
+# Decisions of a group shape without a tuning table, per collective: (from bytes, choice) intervals in a
+# table's terms (bytes per rank: the all-reduce's message, the all-gather's shard, the reduce-scatter's
+# input), the same in both modes; below the first the session's rules apply. Pair (two DGX Sparks cabled
+# port to port; ring harness, eager periods at 1 block per role with buffers reused between calls):
+# - all-reduce: the ring in 256 KiB pieces from 3 MiB, 171.3 us against 183-184 us for the two-shot op at
+#   3 MiB, 212.1 us at 4 MiB, 299-301 us at 6 MiB and 386-387 us at 8 MiB; at 2 MiB the two-shot op
+#   (129-130 us) and the ring in 128 KiB pieces (129.2-129.3 us) tie and the rules keep two-shot;
+# - all-gather: the ring in 256 KiB pieces from 2 MiB shards (132.2 us), in 512 KiB pieces from 16 MiB
+#   shards; at 1 MiB shards the ring in 128 KiB pieces (81-82 us) and tiles (80-81 us) tie;
+# - reduce-scatter: the ring from 8 MiB inputs (248 us against 266 us for scatter ops) in 256 KiB pieces to
+#   32 MiB (802 us against 1,321 us), in 512 KiB pieces from 64 MiB (1,497 us against 1,561 us in 256 KiB
+#   pieces); at 4 MiB scatter ops win (157 us against 161 us).
+# On two ranks every element of a ring all-reduce or reduce-scatter is the sum of the same two values that
+# the two-shot op and scatter ops add, rounded once, so the plan changes no result bit.
+BUILTIN_PLANS: dict[str, dict[str, tuple[tuple[int, dict[str, Any]], ...]]] = {
+    "pair": {
+        "all_reduce": ((3 << 20, {"schedule": "ring", "piece": 256 << 10}),),
+        "all_gather": ((2 << 20, {"schedule": "ring", "piece": 256 << 10}),
+                       (16 << 20, {"schedule": "ring", "piece": 512 << 10})),
+        "reduce_scatter": ((8 << 20, {"schedule": "ring", "piece": 256 << 10}),
+                           (64 << 20, {"schedule": "ring", "piece": 512 << 10})),
+    },
+}
+BUILTIN_RUN_ID = "builtin"
+
+
+def builtin_document(facts: Mapping[str, Any], collectives: Iterable[str] = COLLECTIVES,
+                     configured_pieces: Iterable[str] = ()) -> Optional[dict[str, Any]]:
+    """The built-in plan (:data:`BUILTIN_PLANS`) of the group shape of ``facts`` (:func:`facts`) as a table
+    document whose key is ``facts``, for ``collectives`` only; the choices of a collective in
+    ``configured_pieces`` name no piece (the session keeps its configured one), and equal neighbours then
+    merge. None when the shape has no plan or no collective remains."""
+    plan = BUILTIN_PLANS.get(str(facts["shape"]), {})
+    wanted, unpieced = set(collectives), set(configured_pieces)
+    decisions = []
+    for collective, steps in plan.items():
+        if collective not in wanted:
+            continue
+        intervals: list[dict[str, Any]] = []
+        for start, choice in steps:
+            kept = {key: value for key, value in choice.items() if not (key == "piece" and collective in unpieced)}
+            interval = {"from": int(start), "choice": Choice.from_json(kept).to_json(), "nccl": False}
+            if not intervals or intervals[-1]["choice"] != interval["choice"]:
+                intervals.append(interval)
+        decisions += [{"collective": collective, "mode": mode, "intervals": intervals} for mode in MODES]
+    if not decisions:
+        return None
+    return {"schema": SCHEMA, "key": {**dict(facts), "image": ""}, "run_id": BUILTIN_RUN_ID, "created": "",
+            "measurements": [], "decisions": decisions}
 
 
 # -- building tables -----------------------------------------------------------------------------------
@@ -620,7 +682,8 @@ def render(document: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["ALGORITHMS", "BACKENDS", "COLLECTIVES", "Choice", "KEY_FIELDS", "MODES", "SCHEDULES", "SCHEMA",
+__all__ = ["ALGORITHMS", "BACKENDS", "BUILTIN_PLANS", "COLLECTIVES", "Choice", "KEY_FIELDS", "MODES", "SCHEDULES",
+           "SCHEMA", "builtin_document",
            "MINIMUM_SETTINGS", "SETTINGS", "SETTING_STATS", "Table", "TuningError", "build_document",
            "decide_intervals", "document_hash", "facts", "facts_for_layout", "fit", "kernels_hash", "native_hash",
            "render", "select_table", "settings_conflicts", "shape_of", "single_op_limit", "sircl_version",
