@@ -80,12 +80,12 @@ to graph replay medians of two runs (one per posting order) from 4 to 128 KiB,
 rows whose 90th percentile exceeds 1.3 times the median left out, then rows
 more than three median absolute deviations off the fitted curve:
 
-- :data:`RING8_GRAPH`: ``ring8-latency`` on the ring of eight, results
-  ``20261007-045043`` (rank order) and ``20261007-045155`` (``ring-farthest``).
+- :data:`RING8_GRAPH`: ``ring8-latency`` on the ring of eight, one run per
+  posting order (rank order and ``ring-farthest``).
   The two-shot all-reduce was faster from 32 KiB farthest first and from 48 KiB
   in rank order; the model gives limits of 28,672 and 36,864 bytes;
-- :data:`PATH4_GRAPH`: ``path4-latency`` on Sparks 0-3, results
-  ``20261007-064421`` (rank order) and ``20261007-064524`` (``farthest``). The
+- :data:`PATH4_GRAPH`: ``path4-latency`` on Sparks 0-3, one run per posting
+  order (rank order and ``farthest``). The
   one-shot all-reduce was faster at 64 KiB and the two-shot at 96 KiB in both
   orders; the model gives limits of 73,728 bytes farthest first and 81,920 in
   rank order.

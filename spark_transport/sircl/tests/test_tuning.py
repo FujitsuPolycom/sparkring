@@ -68,8 +68,12 @@ def test_measured_fastest_at_measured_sizes_and_models_between():
     assert table.decide("all_reduce", 4096, "graph") == tuning.Choice(algorithm="oneshot")
     assert table.decide("all_reduce", 16384, "graph") == tuning.Choice(algorithm="oneshot")
     assert table.decide("all_reduce", 65536, "graph") == tuning.Choice(algorithm="twoshot", grid=8)
-    assert table.decide("all_reduce", 1 << 30, "graph") == tuning.Choice(algorithm="twoshot", grid=8)
+    assert table.decide("all_reduce", 262144, "graph") == tuning.Choice(algorithm="twoshot", grid=8)
+    # One-shot and two-shot run a message in one op: their decisions end where they were measured.
+    assert document["decisions"][0]["until"] == 262144
+    assert table.decide("all_reduce", 262160, "graph") is None and table.decide("all_reduce", 1 << 30, "graph") is None
     assert table.decide("all_reduce", 4080, "graph") is None and table.decide("all_reduce", 4096, "eager") is None
+    assert "-262144 bytes: twoshot grid 8" in tuning.render(document)
     # The crossover falls between the measured 16 KiB and 64 KiB, where the models cross.
     starts = [interval["from"] for interval in document["decisions"][0]["intervals"]]
     assert len(starts) == 2 and 16384 < starts[1] <= 65536
@@ -159,3 +163,63 @@ def test_a_session_selects_the_table_of_its_own_shape(tmp_path):
 def test_an_unreadable_table_is_refused(tmp_path):
     with pytest.raises(tuning.TuningError, match="cannot read"):
         tuning.Table.load(tmp_path / "missing.json")
+
+
+def test_a_large_schedule_takes_over_above_the_single_op_measurements():
+    """With pieces, chain or ring measured above the capacity, those decide there and run on without end; the
+    measured limit applies only where an algorithm holds the last interval."""
+    rows = [_row("all_reduce", "eager", nbytes, {"algorithm": "twoshot", "grid": 8}, micros)
+            for nbytes, micros in ((262144, 60.0), (1 << 20, 150.0))]
+    rows += [_row("all_reduce", "eager", nbytes, {"schedule": "ring", "piece": 524288, "stagger": 1}, micros)
+             for nbytes, micros in ((1 << 20, 400.0), (4 << 20, 700.0), (16 << 20, 2000.0))]
+    document = tuning.build_document(_key(), rows)
+    table = tuning.Table(document)
+    assert "until" not in document["decisions"][0]
+    assert table.decide("all_reduce", 1 << 20, "eager").algorithm == "twoshot"
+    assert table.decide("all_reduce", 4 << 20, "eager").schedule == "ring"
+    assert table.decide("all_reduce", 128 << 20, "eager").schedule == "ring"
+    # Only algorithms measured: nothing decides above 1 MiB.
+    only = tuning.Table(tuning.build_document(_key(), rows[:2]))
+    assert only.decide("all_reduce", 1 << 20, "eager").algorithm == "twoshot"
+    assert only.decide("all_reduce", (1 << 20) + 16, "eager") is None and only.backend("all_reduce", 8 << 20,
+                                                                                      "eager") == "sircl"
+    damaged = json.loads(json.dumps(document))
+    damaged["decisions"][0]["until"] = 1024
+    with pytest.raises(tuning.TuningError, match="until"):
+        tuning.Table(damaged)
+
+
+def test_tables_record_the_settings_their_choices_ran_under():
+    session = {"link_slots": 12, "link_slot_bytes": 2 << 20, "chain_slot_bytes": 1 << 20,
+               "large_piece_bytes": 4 << 20}
+    rows = [_row("all_gather", "eager", 2 << 20, {"schedule": "ring", "piece": 524288, "gather_stagger": 1}, 800.0),
+            _row("all_gather", "eager", 2 << 20, {"schedule": "pieces", "grid": 8}, 1000.0),
+            _row("all_reduce", "eager", 8 << 20, {"schedule": "chain", "piece": 262144}, 900.0),
+            _row("all_reduce", "eager", 8 << 20, {"schedule": "pieces", "grid": 8}, 1200.0)]
+    document = tuning.build_document(_key(), rows, session=session)
+    # The ring all-gather in 512 KiB pieces needs the 12 link slots, not the 2 MiB slot; the chain all-reduce
+    # the default chain slot; no two-shot pieces were chosen.
+    assert document["settings"] == {"SIRCL_LINK_SLOTS": 12, "SIRCL_LINK_SLOT_BYTES": 524288,
+                                    "SIRCL_CHAIN_SLOT_BYTES": 1 << 20}
+    table = tuning.Table(document)
+    assert table.settings == document["settings"]
+    assert "settings, applied by a session" in tuning.render(document) and "SIRCL_LINK_SLOTS=12" in tuning.render(
+        document)
+    rows.append(_row("all_gather", "eager", 4 << 20, {"schedule": "ring", "piece": 1 << 21, "gather_stagger": 1},
+                     900.0))
+    rows.append(_row("all_reduce", "eager", 64 << 20, {"schedule": "pieces", "grid": 8}, 5000.0))
+    settings = tuning.build_document(_key(), rows, session=session)["settings"]
+    assert settings["SIRCL_LINK_SLOT_BYTES"] == 2 << 20 and settings["SIRCL_LARGE_PIECE_BYTES"] == 4 << 20
+    # Without the session's settings, and for a table of algorithms only, no settings.
+    assert "settings" not in tuning.build_document(_key(), rows)
+    assert tuning.table_settings([{"collective": "all_reduce", "intervals": [
+        {"from": 16, "choice": {"algorithm": "oneshot"}}]}], session) == {}
+    assert tuning.settings_conflicts(table.settings, {"SIRCL_LINK_SLOTS": "8", "SIRCL_LINK_SLOT_BYTES": "1048576"}) \
+        == ["SIRCL_LINK_SLOTS=8 (the table's 12)"]
+    assert tuning.settings_conflicts(table.settings, {"SIRCL_LINK_SLOTS": "16"}) == []
+    for bad in ({"SIRCL_LINK_BLOCKS": 8}, {"SIRCL_LINK_SLOTS": 0}, {"SIRCL_LINK_SLOTS": "12"}, ["SIRCL_LINK_SLOTS"]):
+        damaged = dict(document, settings=bad)
+        with pytest.raises(tuning.TuningError, match="settings"):
+            tuning.Table(damaged)
+    assert tuning.SETTING_STATS.keys() == set(tuning.SETTINGS)
+

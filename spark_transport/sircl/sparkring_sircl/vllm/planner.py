@@ -203,7 +203,7 @@ class Policy:
     """The group-level inputs of every plan."""
 
     topology: GroupTopology | None   # None: a single-rank group
-    nccl_mode: str = "auto"            # auto (topology is another name for it) or never
+    nccl_mode: str = "auto"            # never or auto (settings.NCCL_MODES; topology is read as auto)
     large: str = "auto"                # auto, sircl or nccl
     # Eager calls above these bytes prefer NCCL where the cabling allows it
     # (all_reduce: whole message, all_gather: one shard, reduce_scatter and
@@ -217,7 +217,8 @@ class Policy:
     # Whether two group ranks share a cable (point-to-point admission).
     cabled: Callable[[int, int], bool] | None = dataclasses.field(default=None, compare=False)
     # The session's tuning table for eager calls (sessionapi.tuned_backend): nccl, sircl, or None where the
-    # table decides nothing. Consulted under large == "auto" where NCCL may run the collective.
+    # table decides nothing. Consulted under large == "auto" where NCCL may run the collective; the adapter
+    # passes none, because a tuning table routes no call to NCCL in any SIRCL_NCCL mode.
     tuned: Callable[[str, int], str | None] | None = dataclasses.field(default=None, compare=False)
 
     def nccl_allows(self, operation: str) -> bool:

@@ -146,12 +146,17 @@ def collect(*, build: bool = False) -> dict[str, Any]:
 
 
 def evaluate(record: Mapping[str, Any], *, staged_root: str, library: str, overlay: str | None = None,
-             required_shims: Sequence[str] = ()) -> tuple[list[str], list[str]]:
+             required_shims: Sequence[str] = (), mhc_sizes: tuple[int, int] | None = None
+             ) -> tuple[list[str], list[str]]:
     """(blockers, notes) for one Spark's probe record.
 
     ``overlay`` is the container path of a source overlay that ``vllm`` and
     ``b12x`` must resolve to; ``required_shims`` are the pinned shims the
-    launch cannot serve without.
+    launch cannot serve without. ``mhc_sizes`` (tensor, decode-context
+    parallelism) is given for a launch with mHC prefill row ownership on and
+    decode-context parallelism above 1: the pinned build the vLLM's mHC files
+    match must start mHC prefill row ownership at those sizes
+    (``pins.mhc_admits``).
     """
     blockers, notes = [], []
     package = record.get("package") or ""
@@ -189,6 +194,17 @@ def evaluate(record: Mapping[str, Any], *, staged_root: str, library: str, overl
                             + ("; --mhc-prefill-shard off serves without it" if name == "mhc_prefill_shard" else
                                "; --env VLLM_QWEN3_8_HC_PREFILL_MODE=off serves without it"
                                if name == "qwen_hc_prefill_shard" else ""))
+    if mhc_sizes is not None and isinstance(shims, Mapping) and shims.get("mhc_prefill_shard"):
+        from .. import pins
+
+        build = shims["mhc_prefill_shard"]
+        if tuple(mhc_sizes) not in pins.mhc_admits(build):
+            tensor, dcp = mhc_sizes
+            blockers.append(f"the vLLM at {vllm.get('root')} is pinned build {build}, whose GLM-5.3-Flash model "
+                            "starts mHC prefill row ownership only at "
+                            + ", ".join(f"TP{t}/DCP{d}" for t, d in pins.mhc_admits(build))
+                            + f" and refuses TP{tensor} with DCP {dcp} at startup; --mhc-prefill-shard off "
+                            "serves without it")
     native = record.get("library") or {}
     if native.get("error"):
         blockers.append(f"the native library could not be built: {native['error']}")

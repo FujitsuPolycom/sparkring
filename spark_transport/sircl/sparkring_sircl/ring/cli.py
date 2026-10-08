@@ -500,6 +500,8 @@ def write_tuning_tables(folder: Path) -> int:
         path = folder / f"tuning-group{index}.json"
         path.write_text(json.dumps(document, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         print(tuning_mod.render(document))
+        for note in summary.tune_notes(merged, document, index):
+            print(note)
         print(f"tuning table of group {index}: {path} (hash {tuning_mod.document_hash(document)})")
     if not tables:
         print(f"{folder}: no exact tune measurements, no tuning table")

@@ -171,7 +171,8 @@ records eight rails on four GB10 ranks passing every check after a reboot.
   `--nccl auto`; the default is `never`). With the opt-in, the group's
   cabling bounds it: every collective on a pair, NCCL's ring algorithm alone
   (`NCCL_ALGO=Ring`, `NCCL_SKIP_TREE_CONNECT=1`) on a whole cycle, nothing on
-  a path or any group with relayed lanes.
+  a path or any group with relayed lanes. A tuning table chooses only among
+  SIRCL's settings and never sends a call to NCCL.
 - A collective a session declines goes to the caller's own path; on a group
   NCCL may not run, the vLLM adapter refuses it instead of letting NCCL
   connect Sparks that share no cable.

@@ -150,7 +150,7 @@ same inputs; a bit that differs between the calls counts as a mismatch.
 | `--large-sizes`, `--large-gather-sizes`, `--chain-gather-sizes`, `--reduce-scatter-sizes` | byte sizes in place of a configuration's large all-reduces, `all_gather_large` shards, link all-gathers and reduce-scatters |
 | `--large-schedules`, `--gather-schedules`, `--scatter-schedules` | schedules swept, from `auto`, `pieces`, `chain` and `ring` |
 | `--large-piece`, `--chain-chunks`, `--link-chunks`, `--gather-link-chunks`, `--scatter-link-chunks`, `--reduce-link-chunks` | op size of the two-shot pieces; chain chunks and link pieces swept (multiples of 16 bytes up to the slot; larger link pieces need `--session-env SIRCL_LINK_SLOT_BYTES=<bytes>`). A sweep option that applies to no case of a configuration fails the plan |
-| `--session-env SIRCL_RING_STAGGER=<s>`, `--session-env SIRCL_RING_GATHER_STAGGER=<s>` | ring stagger (0 to 4) of the partials and of the forwarded pieces; stagger `s` needs `s * (W - 1) + 2` link slots (`SIRCL_LINK_SLOTS`, default 8) |
+| `--session-env SIRCL_RING_STAGGER=<s>`, `--session-env SIRCL_RING_GATHER_STAGGER=<s>` | ring stagger (0 to 4) of the partials and of the forwarded pieces; stagger `s` needs `s * (W - 1) + 2` link slots (`SIRCL_LINK_SLOTS`, default `2 W` and at least 8: 16 on the cycle of eight) |
 | `--large-blocks 4,8,16,32` | every two-shot and large-message case once per launch grid cap |
 | `--baseline nccl`, `--nccl-library`, `--nccl-env NAME=VALUE` | NCCL's rows beside SIRCL's ([NCCL baseline](#nccl-baseline)) |
 | `--tuning-table PATH` | sessions decide from a measured table ([Tuning tables](#tuning-tables)) |
@@ -277,13 +277,24 @@ python -m sparkring_sircl.ring run --site "$SITE" --config ring8 --large \
   (`--tune-staggers`); Swing where the session offers it; NCCL with
   `--baseline nccl`. From 4 MiB, a candidate 1.5 times slower than the
   fastest at two sizes in a row stops (`--tune-prune-from`, `--tune-prune`).
+- `tune` sessions take link slots that hold the largest piece swept, as many
+  as the session's default (`2 W`, at least 8: 16 on the cycle of eight) or as
+  every stagger swept needs, whichever is more, unless `--session-env` sets
+  them.
 - Each group's table (exact cases only) is printed with its hash and written
   to `tuning-group<index>.json`; `tune-table` rebuilds them from a folder.
+  Each table records the session settings its choices ran under and need
+  ([README.md, Tuning tables](README.md#tuning-tables)); `tune-table` prints
+  them and, per collective and mode, the tune cases, the exact and inexact
+  ones, and where the table decides nothing.
 - `run --tuning-table PATH` (one per group shape) writes the tables beside
-  `plan.json` on every Spark and sets `SIRCL_TUNING_TABLE`; the plan refuses
-  a table no group matches, and rows that force a schedule, piece, stagger or
-  grid cap run with the table suspended. The serve launcher stages tables the
-  same way (`--tuning-table`).
+  `plan.json` on every Spark and sets `SIRCL_TUNING_TABLE`; each group's
+  sessions take the table's settings where `--session-env` leaves them unset.
+  The plan refuses a table no group matches and a `--session-env` value below
+  a setting of a group's table; rows that force a schedule, piece, stagger or
+  grid cap run with the table suspended. The summary names, per group, the
+  settings the sessions ran under beside the table's. The serve launcher
+  stages tables the same way (`--tuning-table`).
 - A table's key names the group shape, size, lanes, relays, native and
   kernel source hashes, package version and image: run `tune` again after a
   change to any of them.

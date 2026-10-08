@@ -340,10 +340,25 @@ measurements, decides. No table ships with the package.
   table's hash joins the setup agreement.
 - Each op applies the table's choice for its collective, per-rank size and
   mode, then restores the session's settings. A choice the session cannot run
-  is counted as unusable, and the rules decide. Ops inside `with
-  session.untuned():` follow the session's own settings.
-- `tuned_backend()` returns `nccl` where NCCL measured faster. Sessions never
-  call NCCL; whether NCCL runs on a group is the caller's policy.
+  (among them an all-reduce algorithm for a message above the capacity) is
+  counted as unusable, and the rules decide. An all-reduce algorithm's
+  decisions end at the largest message it was measured at; larger messages
+  follow the rules. Ops inside `with session.untuned():` follow the session's
+  own settings.
+- Settings: a table records the session settings its choices ran under and
+  need (`settings`, `tuning.SETTINGS`): the link slots
+  (`SIRCL_LINK_SLOTS`) and a link slot that holds the largest chosen link
+  piece (`SIRCL_LINK_SLOT_BYTES`) with a link schedule among its choices, a
+  chain slot (`SIRCL_CHAIN_SLOT_BYTES`) with a chain all-reduce, and the
+  large-message piece (`SIRCL_LARGE_PIECE_BYTES`) with two-shot pieces. A
+  session that takes the table applies each one its environment leaves
+  unset; a value the environment sets wins, and `stats()["tuning"]["settings"]`
+  names both. The ring harness and the serve launcher refuse settings of
+  their own below a table's (`tuning.settings_conflicts`).
+- A table chooses only among SIRCL's settings. `tuned_backend()` reports
+  where NCCL measured faster; these marks are measurements, and the vLLM
+  adapter routes no call to NCCL by them in any `SIRCL_NCCL` mode. Sessions
+  never call NCCL.
 - Eager and graph modes may choose differently at one size, so an eager and
   a captured all-reduce of the same input can differ in the last place.
 - `python -m sparkring_sircl.ring tune` measures tables and `tune-table`
@@ -456,14 +471,14 @@ algorithm, schedule, piece, stagger, grid cap and minimums to that op.
 | flag pollers (`SIRCL_FLAG_POLLERS`) | `one-block` | `one-block`: block 0 polls and hands arrival to the other blocks; `every-block`: every block polls |
 | forward window, chunk, hairpin queue (`SIRCL_FORWARD_WINDOW_BYTES`, `SIRCL_FORWARD_CHUNK_BYTES`, `SIRCL_HAIRPIN_QUEUE_BYTES`) | 131,072; 32,768; 524,288 | windows only on lanes through relays, from the layout; a window holds at most 60 chunks; window 0 turns windows off and shrinks pieces to the relay-safe size |
 | forward proof (`SIRCL_FORWARD_PROOF`) | 1 | 1: bytes the op order proves delivered leave the window at once; 0: only completions free it |
-| large piece (`SIRCL_LARGE_PIECE_BYTES`) | the larger of 4 MiB and `C` | op size of `all_reduce_large` pieces and scatter ops; the arena's slots hold it |
+| large piece (`SIRCL_LARGE_PIECE_BYTES`) | a tuning table's, else the larger of 4 MiB and `C` | op size of `all_reduce_large` pieces and scatter ops; the arena's slots hold it |
 | schedules (`SIRCL_LARGE_SCHEDULE`, `SIRCL_GATHER_SCHEDULE`, `SIRCL_SCATTER_SCHEDULE`) | `auto`, `auto`, `pieces` | `auto`, `chain`, `ring` or `pieces` ([Algorithms and schedules](#algorithms-and-schedules)); naming `chain` or `ring` where it cannot run fails setup |
 | chain minimums (`SIRCL_CHAIN_MIN_BYTES`) | all-reduce 8 MiB, all-gather output 8 MiB, reduce-scatter input 4 MiB | `auto` runs chain ops from them; the variable sets one size for all three |
 | ring minimums (`SIRCL_RING_MIN_BYTES`) | all-reduce 4 MiB, all-gather output 8 MiB, reduce-scatter input 4 MiB | `ring` runs ring ops from them; the variable sets one size for all three |
 | chain geometry (`SIRCL_CHAIN_CHUNK_BYTES`, `SIRCL_CHAIN_SLOT_BYTES`, `SIRCL_CHAIN_SLOTS`, `SIRCL_CHAIN_BLOCKS`, `SIRCL_CHAIN_UNROLL`) | 512 KiB, 1 MiB, 4, 4, 4 | chunk a multiple of 16 up to the slot; slot a multiple of 4,096; 2 to 32 slots; unroll 1 to 8 packs per thread per pass; the chain area (4 streams × slots × slot bytes, twice) adds 32 MiB of pinned memory to a session on a chain |
-| link geometry (`SIRCL_LINK_CHUNK_BYTES`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_SLOTS`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`) | 512 KiB, 512 KiB, 8, 4, 4 | without `SIRCL_LINK_SLOT_BYTES` the slot holds the largest configured piece rounded up to 4 KiB, up to 1 MiB; the link area (4 links × slots × slot bytes, twice) adds 32 MiB to a session on a chain, 64 MiB with 1 MiB slots |
+| link geometry (`SIRCL_LINK_CHUNK_BYTES`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_SLOTS`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`) | 512 KiB, 512 KiB, `2 W` slots and at least 8 (16 on the cycle of eight, 8 on a path of four; `protocol.default_link_slots`), 4, 4 | a tuning table's slot count and slot apply where these are unset; without `SIRCL_LINK_SLOT_BYTES` the slot holds the largest configured piece rounded up to 4 KiB, up to 1 MiB, or the table's slot when larger; the link area (4 links × slots × slot bytes, twice) adds 32 MiB to a session with 8 slots of 512 KiB, 64 MiB with 16 |
 | link piece per collective (`SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`) | the link piece | chain and ring all-gathers, chain and ring reduce-scatters, ring all-reduces; multiples of 16 up to the link slot |
-| ring staggers (`SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER`) | `auto`: 1 when the link slots hold it, else 0 | 0 to 4 rounds; a stagger `D` needs `D (W - 1) + 2` link slots: 5 on a path of four, 9 on a ring of eight, where `auto` gives 0 with the default 8 slots |
+| ring staggers (`SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER`) | `auto`: 1 when the link slots hold it, else 0 | 0 to 4 rounds; a stagger `D` needs `D (W - 1) + 2` link slots: 5 on a path of four, 9 on a ring of eight, so `auto` gives 1 on both with their default slots (8 and 16) |
 | event trace (`SIRCL_EVENT_TRACE`) | 0 (off) | records kept on each side, native and kernel; traced kernels compile apart from untraced ones |
 | tuning tables (`SIRCL_TUNING_TABLE`) | none | [Tuning tables](#tuning-tables); the same table on every rank |
 | flag-wait limits (`SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`) | 600 s, 20 s | GPU-clock seconds, up to 4,294. `SIRCL_SPIN_LIMIT` (20,000,000 polls) bounds a wait only when no time limit is set |

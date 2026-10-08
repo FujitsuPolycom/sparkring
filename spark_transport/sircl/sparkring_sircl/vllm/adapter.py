@@ -441,9 +441,9 @@ class GroupAdapter:
         self.policy = Policy(placement.topology, config.nccl_mode, config.large, nccl_above,
                              placement.policy, placement.reason,
                              lambda a, b: config.cabled(ranks[a], ranks[b]),
-                             tuned=(sessionapi.tuned_backend(self.session)
-                                    if self.session is not None and placement.policy is not NcclPolicy.NONE
-                                    else None))
+                             # A tuning table chooses SIRCL's settings alone: its NCCL marks are measurements
+                             # and route no call to NCCL in any SIRCL_NCCL mode.
+                             tuned=None)
         if self.session is not None:
             guard.register(device_group, placement.guard_entry(config, carried=True))
             guard.register_carrier(device_group, self.carry_torch)

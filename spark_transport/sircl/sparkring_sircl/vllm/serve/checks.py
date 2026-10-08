@@ -140,14 +140,19 @@ def _rows(record: Mapping[str, Any], backend: str) -> list[Mapping[str, Any]]:
     return [row for row in record.get("decisions") or [] if row.get("backend") == backend]
 
 
-def evaluate_receipts(receipts: Mapping[int, Sequence[Mapping[str, Any]]], world: int) -> tuple[list[str], list[str]]:
-    """(problems, summary lines) for the receipts of global ranks ``0..world-1``."""
+def evaluate_receipts(receipts: Mapping[int, Sequence[Mapping[str, Any]]], world: int, *,
+                      dcp: int = 1) -> tuple[list[str], list[str]]:
+    """(problems, summary lines) for the receipts of global ranks ``0..world-1``; with decode-context
+    parallelism ``dcp`` above 1 every rank also holds a decode-context-parallel receipt with a session."""
     problems, lines = [], []
     for rank in range(world):
         records = list(receipts.get(rank, ()))
         tensor_parallel = [record for record in records if str(record.get("group", "")).split(":")[0] == "tp"]
         if not tensor_parallel:
             problems.append(f"rank {rank}: no tensor-parallel receipt")
+        if dcp > 1 and not any(str(record.get("group", "")).split(":")[0] == "dcp" and record.get("session")
+                               for record in records):
+            problems.append(f"rank {rank}: no decode-context-parallel receipt with a SIRCL session (--dcp-size {dcp})")
         for record in records:
             group = record.get("group")
             where = f"rank {rank} group {group}"

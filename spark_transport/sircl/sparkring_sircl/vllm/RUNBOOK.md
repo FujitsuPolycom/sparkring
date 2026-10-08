@@ -360,11 +360,22 @@ four consecutive Sparks has the key of `path:4`. With `--tuning-table PATH`
 session no table matches uses its rules) and refuse a malformed table, a
 table no session takes and two tables matching one session. `start` and
 `bundle --stage` write the tables to `<run directory>/tuning/` on every Spark
-before any container starts. Where NCCL may run and `--large-allreduce` is
-`auto`, each eager call the table decides goes to the backend it measured
-fastest; captured calls stay on SIRCL. Receipts name the table
-(`tuning=<hash>`); `check` and `bundle-check` fail when it differs from the
-plan's match.
+before any container starts.
+
+- A table also records the session settings its choices ran under and need
+  (link slots, link slot, chain slot, large-message piece). Every session
+  that takes it applies the ones the launcher leaves unset, and the plan
+  lists them under the table. A launcher option below a setting of the table
+  the tensor-parallel session takes (`--link-slots`, `--link-slot`) is
+  refused; an equal or larger value is kept. The plan's session checks count
+  the table's link slots.
+- A table chooses only among SIRCL's algorithms, schedules, pieces, grids and
+  the settings they need. Its NCCL marks are measurements and route no call,
+  under every `--nccl` value; the plan says so (`the table chooses SIRCL's
+  settings only: its NCCL marks are measurements and route no call`).
+- Receipts name the table (`tuning=<hash>`); `check` and `bundle-check` fail
+  when it differs from the plan's match. The receipts also show the table's
+  settings beside the session's own values.
 
 ## Serving without NCCL
 
@@ -451,6 +462,59 @@ carries them as for mHC (receipts: `mhc=sircl`); on a pair under `--nccl
 auto`, vLLM's own PyNccl path runs. The shim is pinned to both vLLM files of
 the image's build; on another build the group's setup fails and names `--env
 VLLM_QWEN3_8_HC_PREFILL_MODE=off`, which keeps full rows.
+
+## Decode-context parallelism in profile serving
+
+`--dcp-size N` (every serve command; default 1) serves a profile with vLLM's
+decode-context parallelism N, where N divides the profile's tensor
+parallelism. The launcher sets `--decode-context-parallel-size N` on every
+rank (`--vllm-arg` may not set it) and `SIRCL_GROUPS=tp,dcp`, so SIRCL's
+communicator builds a session for every decode-context-parallel group of N
+consecutive ranks, with the session defaults and the tuning table that
+matches its shape, as `bundle --session-groups tp,dcp --dcp-size N` does.
+
+- `plan` lists the DCP sessions and groups and their NCCL policy. It refuses
+  an N that does not divide the tensor parallelism, a checkpoint outside
+  `plan.DCP_MODELS` (the GLM-5.3-Flash checkpoints: multi-head latent
+  attention with DeepSeek-V3.2's sparse indexer) and an attention backend
+  other than B12X (`--vllm-arg --attention-backend=B12X` names it where the
+  recipe does not).
+- `stage` requires the image's vLLM to match the pinned builds of the
+  `dcp_all_to_all` and `dcp_b12x_transport` shims; `check` requires every
+  rank's decode-context-parallel receipt with a session. With NCCL off, the
+  default, the DCP collectives run on the DCP sessions, and
+  `--require-no-nccl` proves that no NCCL communicator exists.
+
+GLM-5.3-Flash adds two startup conditions under decode-context parallelism,
+which the launcher checks:
+
+- The KV cache is interleaved over the DCP ranks in blocks of
+  `--cp-kv-cache-interleave-size` tokens, a multiple of 4. The launcher sets 4
+  where the recipe leaves the flag unset (`plan.DCP_INTERLEAVE`) and refuses
+  a value that is not a multiple of 4.
+- mHC prefill row ownership (`VLLM_GLM53_MHC_PREFILL_SHARD=1`, the profiles'
+  value) starts only at the tensor and decode-context parallelism a pinned
+  vLLM build admits (`pins.MHC_ADMITS`; a build not listed there admits
+  TP2/DCP1, TP4/DCP1, TP4/DCP2 and TP4/DCP4). With mHC sharding on and DCP
+  above 1, `plan` refuses sizes no pinned build admits, and `stage` refuses a
+  Spark whose vLLM's mHC files match a build that does not admit them.
+  `--mhc-prefill-shard off` serves without row ownership.
+
+GLM-5.3-Flash at TP2 with DCP 2 on the cabled pair of Sparks 0-1, NCCL off
+and mHC prefill sharding off (`CKPT` and `GLM` as in
+[Installer profiles on the ring of eight](#installer-profiles-on-the-ring-of-eight)).
+Each Spark holds two sessions, the tensor-parallel one and the DCP one:
+
+```bash
+DCP="--site $SITE --repository $REPO --profile glm53-flash-nvfp4-spark-tp2 --positions 0-1 --model-path $CKPT/$GLM --dcp-size 2 --mhc-prefill-shard off --require-no-nccl"
+$SERVE plan $DCP && $SERVE preflight $DCP && $SERVE stage $DCP
+$SERVE start $DCP --wait --timeout 3600
+$SERVE check $DCP --long-prompt 16384
+$SERVE stop $DCP
+```
+
+Decode-context parallelism in profile serving is implemented and CPU-tested;
+it has not served on a ring.
 
 ## Adding SIRCL to another launcher
 
@@ -578,7 +642,8 @@ B12X kernel first. Throughput: [package status](../../STATUS.md#measured-perform
 
 ## Limitations
 
-The launcher serves tensor parallelism only, one rank and one instance per
-Spark; it never downloads weights, configures networking or restores relay
+The launcher serves tensor parallelism, with decode-context parallelism
+through `--dcp-size` for the GLM-5.3-Flash checkpoints, one rank and one
+instance per Spark; it never downloads weights, configures networking or restores relay
 plans after a Spark reboots. The adapter's limitations are in
 [`STATUS.md`](STATUS.md).

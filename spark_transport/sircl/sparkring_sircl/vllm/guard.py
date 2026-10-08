@@ -51,6 +51,7 @@ import threading
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from typing import Any
 
+from . import settings
 from .fabric import NcclPolicy
 
 
@@ -322,13 +323,18 @@ def environment_problems(environ: Mapping[str, str] | None = None) -> list[str]:
     problems = []
     split_group = env.get("VLLM_DISTRIBUTED_USE_SPLIT_GROUP", "0").strip() not in ("", "0")
     runtime_connect = env.get("NCCL_RUNTIME_CONNECT", "").strip()
-    # SIRCL_NCCL unset means never, the adapter's default (settings.nccl_mode).
-    if split_group and env.get("SIRCL_NCCL", "").strip().lower() in ("", "never"):
+    # The NCCL mode as the adapter resolves it: unset is never. A malformed value is the settings' own
+    # refusal, so it refuses nothing here.
+    try:
+        nccl_mode = settings.nccl_mode(env)
+    except settings.SettingError:
+        nccl_mode = ""
+    if split_group and nccl_mode == "never":
         problems.append(
             "VLLM_DISTRIBUTED_USE_SPLIT_GROUP=1 binds the default process group to the GPU "
             "(torch.distributed.init_process_group with device_id), which creates an NCCL communicator over "
-            "every rank at startup and one per group through split_group, and SIRCL_NCCL=never keeps NCCL off "
-            "every group; leave VLLM_DISTRIBUTED_USE_SPLIT_GROUP unset or 0"
+            "every rank at startup and one per group through split_group, and SIRCL_NCCL=never (the default "
+            "when it is unset) keeps NCCL off every group; leave VLLM_DISTRIBUTED_USE_SPLIT_GROUP unset or 0"
         )
     elif split_group and runtime_connect == "0":
         problems.append(

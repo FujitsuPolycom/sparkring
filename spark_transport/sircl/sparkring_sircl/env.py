@@ -55,25 +55,28 @@ VARIABLES = (
              "every SIRCL_CALL_PROFILE calls and at close", ""),
     Variable("SIRCL_CALL_PROFILE_GPU", "1: also time each profiled launch on the device (CUDA events)", "0"),
     Variable("SIRCL_TUNING_TABLE", "tuning tables (python -m sparkring_sircl.ring tune), comma-separated paths; a "
-             "session uses the one whose key matches its group shape and build; none: the rules choose", ""),
+             "session uses the one whose key matches its group shape and build, and takes the table's settings "
+             "(SIRCL_LINK_SLOTS, SIRCL_LINK_SLOT_BYTES, SIRCL_CHAIN_SLOT_BYTES, SIRCL_LARGE_PIECE_BYTES) where they "
+             "are unset; none: the rules choose", ""),
     Variable("SIRCL_FLAG_POLLERS", "who polls the peers' flags in the one-shot, two-shot and all-gather "
              "kernels: one-block (block 0, which hands arrival to the other blocks in device memory) or "
              "every-block", "one-block"),
     Variable("SIRCL_LARGE_PIECE_BYTES", "op size of all_reduce_large (multiple of 16); the arena's slots hold it",
-             "the larger of 4 MiB and the capacity"),
+             "the tuning table's, else the larger of 4 MiB and the capacity"),
     Variable("SIRCL_LARGE_SCHEDULE", "all_reduce_large: auto (chain ops on chains of cable neighbors from "
              "SIRCL_CHAIN_MIN_BYTES), chain (always), ring (ring ops over the chain closed by its last rank's "
              "lanes to its first) or pieces (two-shot pieces)", "auto"),
     Variable("SIRCL_CHAIN_MIN_BYTES", "smallest collective auto runs as a chain op (all-reduce message, "
              "all-gather output, reduce-scatter input bytes), one size for all three",
-             "all-reduce 8388608, all-gather 8388608, reduce-scatter 4194304 (Sparks 0-3, ring harness runs "
-             "20261007-082738 and 20261007-082927)"),
+             "all-reduce 8388608, all-gather 8388608, reduce-scatter 4194304 (the crossover the ring "
+             "harness measured on a path of four)"),
     Variable("SIRCL_RING_MIN_BYTES", "smallest collective a ring schedule runs as a ring op (sizes as "
              "SIRCL_CHAIN_MIN_BYTES), one size for all three; below it the schedule runs as auto",
              "all-reduce 4194304, all-gather 8388608, reduce-scatter 4194304 (the same runs)"),
     Variable("SIRCL_CHAIN_CHUNK_BYTES", "chunk of a chain op (multiple of 16, at most the chain slot); "
              "set_chain_chunk_bytes changes it", "524288"),
-    Variable("SIRCL_CHAIN_SLOT_BYTES", "chain ring slot (multiple of 4096): the largest chain chunk", "1048576"),
+    Variable("SIRCL_CHAIN_SLOT_BYTES", "chain ring slot (multiple of 4096): the largest chain chunk; unset, the "
+             "tuning table's where it records one", "1048576"),
     Variable("SIRCL_CHAIN_SLOTS", "slots per chain stream ring (2-32)", "4"),
     Variable("SIRCL_CHAIN_BLOCKS", "blocks per role of the chain kernel", "4"),
     Variable("SIRCL_CHAIN_UNROLL", "16-byte packs each thread of the chain kernel moves per pass (1-8)", "4"),
@@ -103,8 +106,9 @@ VARIABLES = (
              "after the piece it passes on arrived (0 to 4; needs stagger x (W - 1) + 2 link slots)",
              "auto: 1 when the link slots hold it, else 0"),
     Variable("SIRCL_LINK_SLOT_BYTES", "chain link slot (multiple of 4096): the largest link piece",
-             "524288, or the largest configured link piece up to 1048576"),
-    Variable("SIRCL_LINK_SLOTS", "slots per chain link ring (2-32)", "8"),
+             "524288, or the largest configured link piece up to 1048576, or the tuning table's slot when larger"),
+    Variable("SIRCL_LINK_SLOTS", "slots per chain link ring (2-32)",
+             "the tuning table's, else twice the session's ranks and at least 8 (16 on the cycle of eight)"),
     Variable("SIRCL_LINK_BLOCKS", "blocks per role of the link kernels (chain and ring collectives)", "4"),
     Variable("SIRCL_LINK_UNROLL", "16-byte packs each thread of a link kernel moves per pass (1-8)", "4"),
     Variable("SIRCL_FORWARD_WINDOW_BYTES", "largest unacknowledged bytes of a lane through relays; 0 off",

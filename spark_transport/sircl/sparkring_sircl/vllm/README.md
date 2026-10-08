@@ -234,13 +234,14 @@ caller's stream.
 
 A session with a measured tuning table (`SIRCL_TUNING_TABLE`,
 [`../tuning.py`](../tuning.py)) chooses its own algorithm, schedule and
-piece per op. Where NCCL may run a collective and
-`SIRCL_LARGE_ALLREDUCE=auto`, the table also picks the backend of an eager
-call (`sessionapi.tuned_backend`): NCCL where it measured NCCL faster than
-every SIRCL candidate at that size, SIRCL elsewhere. Captured calls never go
-to NCCL. Composed plans give every rank the same bits; a chained large
-all-reduce may differ from the rank-ordered sum in the last place, the same
-on every rank.
+piece per op, and applies the session settings the table records (link
+slots, link slot, chain slot, large-message piece) where its environment
+leaves them unset. A table chooses only among SIRCL's settings: its marks of
+where NCCL measured faster are measurements, and the adapter routes no call
+to NCCL by them in any `SIRCL_NCCL` mode (it passes no tuned backend to the
+planner's `Policy`). Where NCCL may run, the rules above alone decide.
+Composed plans give every rank the same bits; a chained large all-reduce may
+differ from the rank-ordered sum in the last place, the same on every rank.
 
 ## Column gathers
 

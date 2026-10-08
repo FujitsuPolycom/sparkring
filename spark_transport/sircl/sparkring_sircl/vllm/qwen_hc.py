@@ -52,8 +52,9 @@ whole message where the session has one (otherwise an all-reduce and this
 rank's rows), and the session's large-message all-gather above the gather op
 size. The slot is restored before ``create`` returns; ``model.py`` calls
 ``hc_prefill.create`` through its module, so no other binding needs the
-wrapper. Groups whose PyNccl runs (a pair of Sparks with ``SIRCL_NCCL=auto``)
-keep vLLM's own path.
+wrapper. With NCCL off (``SIRCL_NCCL=never``, the default) every group runs
+this path, a pair of Sparks among them; only a group whose PyNccl runs (a pair
+under ``SIRCL_NCCL=topology`` or ``auto``) keeps vLLM's own path.
 """
 
 from __future__ import annotations

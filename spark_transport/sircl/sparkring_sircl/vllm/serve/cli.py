@@ -365,7 +365,9 @@ def stage(instances: Instances) -> int:
                 continue
             blockers, notes = probe.evaluate(record, staged_root=plan_mod.SOURCE_TARGET, library=plan.library,
                                              overlay=plan_mod.OVERLAY_TARGET if plan.overlay else None,
-                                             required_shims=plan.required_shims)
+                                             required_shims=plan.required_shims,
+                                             mhc_sizes=((len(plan.ranks), plan.dcp_size)
+                                                        if plan.mhc_prefill_shard and plan.dcp_size > 1 else None))
             modules = record.get("modules") or {}
             ctx.out(f"{where}: package tree {plan.staged_digest} {unpacked.stdout.strip()}, seccomp policy "
                     f"{policy.stdout.strip()}, library {plan.library} built, sparkring_sircl from "
@@ -728,7 +730,7 @@ def _check_one(ctx: Context, *, long_prompt: int, request_timeout: float) -> int
             ctx.out(_long_prompt_line(plan, tokens, result.seconds, _tensor_parallel_stats(records)))
     problems = receipt_lines(ctx)
     records, bad = read_receipts(ctx)
-    found, lines = checks.evaluate_receipts(records, len(plan.ranks))
+    found, lines = checks.evaluate_receipts(records, len(plan.ranks), dcp=plan.dcp_size)
     imports, wrong = checks.import_findings(records, plan_mod.OVERLAY_TARGET if plan.overlay else None)
     grids, unequal = checks.large_blocks_findings(records, plan.large_blocks)
     tuned, untuned = checks.tuning_findings(records, plan.tuning.expected())
@@ -846,7 +848,7 @@ def contexts_from_args(args: argparse.Namespace, *, run: Runner = default_runner
         large_blocks=args.large_blocks, nccl_debug=args.nccl_debug, require_no_nccl=args.require_no_nccl,
         gather=args.gather or defaults.gather,
         spin_limit=args.spin_limit, startup_wait=args.startup_wait, serving_wait=args.serving_wait,
-        gid_index=args.gid_index, nccl_mode=args.nccl, large_allreduce=args.large_allreduce,
+        gid_index=args.gid_index, nccl_mode=args.nccl, large_allreduce=args.large_allreduce, dcp_size=args.dcp_size,
         mhc_prefill_shard=args.mhc_prefill_shard, extra_env=plan_mod.parse_env(args.env or []),
         large_schedule=args.large_schedule, gather_schedule=args.gather_schedule,
         scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
@@ -915,6 +917,11 @@ def parser() -> argparse.ArgumentParser:
                              help="SIRCL_LARGE_ALLREDUCE: all-reduces above the dispatch ceiling")
         command.add_argument("--mhc-prefill-shard", choices=plan_mod.MHC_MODES, default="profile",
                              help="GLM-5.3-Flash mHC prefill sharding: the profile's setting, or off")
+        command.add_argument("--dcp-size", dest="dcp_size", type=int, default=1, metavar="N",
+                             help="vLLM's decode-context parallelism: N divides the profile's tensor parallelism; "
+                                  "above 1 the launcher sets --decode-context-parallel-size N and a SIRCL session per "
+                                  "decode-context-parallel group (SIRCL_GROUPS tp,dcp); refused where the checkpoint "
+                                  "or its attention backend does not run DCP (default 1)")
         plan_mod.add_schedule_arguments(command)
         plan_mod.add_reasoning_argument(command)
         plan_mod.add_minimum_arguments(command)

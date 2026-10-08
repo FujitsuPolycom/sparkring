@@ -98,7 +98,6 @@ import traceback
 from pathlib import Path
 
 from .. import cpus
-from .plan import TUNE_LINK_SLOTS
 from . import counters
 
 CANONICAL_DEVICES = ("rocep1s0f0", "roceP2p1s0f0", "rocep1s0f1", "roceP2p1s0f1")
@@ -206,7 +205,8 @@ class Harness:
         self._adapter = None
         self._adapter_times: list[tuple[int, int, str]] = []
         if self.options.get("tune"):
-            # The link slots hold the largest swept piece and every swept stagger, unless the plan sets them.
+            # The link slots hold the largest swept piece, and every swept stagger beside the session's default
+            # slot count, unless the plan sets them.
             given = {str(name) for name, _ in self.options.get("session_env", ())}
             from .. import protocol
 
@@ -217,7 +217,7 @@ class Harness:
             if "SIRCL_LINK_SLOTS" not in given:
                 world = len(self.group["global_ranks"])
                 needed = max([protocol.ring_stagger_slots(world, d) for d in self.options.get("tune_staggers") or (0,)]
-                             + [TUNE_LINK_SLOTS])
+                             + [protocol.default_link_slots(world)])
                 os.environ["SIRCL_LINK_SLOTS"] = str(needed)
         os.environ["SIRCL_STARTUP_WAIT_S"] = str(self.options.get("startup_wait_s", 300.0))
         os.environ["SIRCL_SERVING_WAIT_S"] = str(self.options.get("serving_wait_s", 20.0))
@@ -262,7 +262,7 @@ class Harness:
             "large_piece_bytes", "gather_piece_bytes", "relay_safe_bytes", "forward_windows",
             "forward_chunk_bytes", "large_blocks", "startup_wait_s", "serving_wait_s", "poll_rate_per_s",
             "spin_limit_s", "chain_order", "link_available", "link_chunk_bytes", "gather_schedule",
-            "scatter_schedule",
+            "scatter_schedule", "link_slots", "link_slot_bytes", "chain_slot_bytes",
         ) if key in stats}
         self.world = self.session.world_size
         self.rank = self.session.rank

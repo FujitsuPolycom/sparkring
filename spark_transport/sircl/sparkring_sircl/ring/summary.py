@@ -250,7 +250,8 @@ def merge(plan: Mapping, results: Sequence[Mapping | None]) -> dict:
         if not planned and not info:
             continue
         tuning.append({"group": group["index"], "planned": planned, "table": info.get("table"),
-                       "decisions": info.get("decisions", {}), "unusable": info.get("unusable", {})})
+                       "decisions": info.get("decisions", {}), "unusable": info.get("unusable", {}),
+                       **({"settings": info["settings"]} if info.get("settings") else {})})
         used = {(member.get("tuning") or {}).get("table") or "" for member in reported}
         if reported and used != {planned}:
             problems.append(f"group {group['index']}: the plan names tuning table {planned or 'none'}, the "
@@ -339,9 +340,57 @@ def tuning_rows(result: Mapping) -> dict[int, list[dict]]:
     return rows
 
 
+def tune_session(plan: Mapping, result: Mapping, index: int) -> dict:
+    """The session settings of group ``index``'s tune sessions (``tuning.SETTING_STATS`` fields of the rank
+    results' ``session``), the same on every rank of the group; fields the ranks disagree on or did not
+    report are left out."""
+    from .. import tuning as tuning_mod
+
+    group = next(g for g in plan["groups"] if g["index"] == index)
+    members = [rank.get("session") or {} for rank in result.get("ranks", ())
+               if rank.get("global_rank") in group["global_ranks"]]
+    found = {}
+    for field in tuning_mod.SETTING_STATS.values():
+        values = {member.get(field) for member in members}
+        if len(values) == 1 and None not in values:
+            found[field] = values.pop()
+    return found
+
+
+def tune_notes(result: Mapping, document: Mapping, index: int) -> list[str]:
+    """Per collective and mode the tune command measured for group ``index``: its tune cases, the exact ones
+    (only those count), the inexact ones, and where the table ``document`` decides nothing: no exact case,
+    or all-reduce decisions that end at the largest one-op message because no two-shot pieces, chain or
+    ring case above it was exact."""
+    from .. import tuning as tuning_mod
+
+    measured: dict[tuple[str, str], list[Mapping]] = {}
+    for case in result["cases"]:
+        if case["group"] == index and case.get("tune"):
+            measured.setdefault((case["tune"]["collective"], case["mode"]), []).append(case)
+    decided = {(entry["collective"], entry["mode"]): entry for entry in document.get("decisions", ())}
+    notes = []
+    for (collective, mode), cases in sorted(measured.items()):
+        exact = [case for case in cases if case.get("correct") and case.get("slowest_p50_us")]
+        inexact = [f"{case['bytes']} B {tuning_mod.Choice.from_json(case['tune']['choice']).label()}"
+                   for case in cases if not case.get("correct")]
+        text = f"tune cases, group {index} {collective} {mode}: {len(cases)} measured, {len(exact)} exact"
+        if inexact:
+            text += f"; inexact: {', '.join(inexact[:6])}" + (f" and {len(inexact) - 6} more" if len(inexact) > 6 else "")
+        entry = decided.get((collective, mode))
+        if entry is None:
+            text += "; no decision: the session's rules choose every size"
+        elif "until" in entry:
+            text += (f"; decisions end at {entry['until']} bytes, the largest one-op all-reduce measured: no exact "
+                     "two-shot pieces, chain or ring case above it, so larger messages keep the session's rules")
+        notes.append(text)
+    return notes
+
+
 def tuning_tables(plan: Mapping, result: Mapping, *, created: str = "") -> dict[int, dict]:
     """A tuning table per group of a tune run (``tuning.build_document``), keyed by the group's shape,
-    size, lanes and relays, the plan's image and this package's hashes and version."""
+    size, lanes and relays, the plan's image and this package's hashes and version, with the settings its
+    choices ran under (:func:`tune_session`)."""
     from .. import tuning as tuning_mod
 
     tables = {}
@@ -350,7 +399,8 @@ def tuning_tables(plan: Mapping, result: Mapping, *, created: str = "") -> dict[
         layout = routes_mod.Layout.parse(group["layout"])
         key = tuning_mod.facts(layout.identity(), layout.world, int(group.get("lanes", 2)), int(group["max_relays"]))
         key["image"] = plan.get("image", "")
-        tables[index] = tuning_mod.build_document(key, rows, run_id=str(plan.get("run_id", "")), created=created)
+        tables[index] = tuning_mod.build_document(key, rows, run_id=str(plan.get("run_id", "")), created=created,
+                                                  session=tune_session(plan, result, index))
     return tables
 
 
@@ -446,7 +496,11 @@ def table(result: Mapping) -> str:
     for entry in result.get("tuning", ()):
         counted = "; ".join(f"{label} x{count}" for label, count in entry["decisions"].items()) or "none"
         unusable = "; ".join(f"{label} x{count}" for label, count in entry["unusable"].items())
-        lines.append(f"tuning, group {entry['group']}: table {entry['table'] or 'none'}; rank 0's decisions: "
+        settings = ", ".join(f"{name} {values['session']}" + (f" (the table's {values['table']})"
+                                                              if values["session"] != values["table"] else "")
+                             for name, values in entry.get("settings", {}).items())
+        lines.append(f"tuning, group {entry['group']}: table {entry['table'] or 'none'}"
+                     + (f"; settings {settings}" if settings else "") + f"; rank 0's decisions: "
                      f"{counted}" + (f"; not runnable here: {unusable}" if unusable else ""))
     lines.extend(profile_lines(result))
     for warning in result.get("warnings", ()):

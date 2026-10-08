@@ -151,8 +151,8 @@ CLOCK_PROBE_ROUNDS = 16
 # the all-reduce's message, the all-gather's output, the reduce-scatter's input.
 MIN_COLLECTIVES = ("reduce", "gather", "scatter")
 # Smallest collective auto runs as a chain op, and a ring schedule as a ring op: the sizes from which the
-# chain and the ring beat two-shot pieces, tiles and scatter ops on Sparks 0-3 (ring harness runs
-# 20261007-082738, path4-crossover, and 20261007-082927, path4-large). SIRCL_CHAIN_MIN_BYTES and
+# chain and the ring beat two-shot pieces, tiles and scatter ops on Sparks 0-3 (ring harness
+# configurations path4-crossover and path4-large). SIRCL_CHAIN_MIN_BYTES and
 # SIRCL_RING_MIN_BYTES set one size for all three.
 DEFAULT_CHAIN_MINS = {"reduce": 8 << 20, "gather": 8 << 20, "scatter": 4 << 20}
 DEFAULT_RING_MINS = {"reduce": 4 << 20, "gather": 8 << 20, "scatter": 4 << 20}
@@ -160,6 +160,8 @@ DEFAULT_RING_MINS = {"reduce": 4 << 20, "gather": 8 << 20, "scatter": 4 << 20}
 # ring geometry.
 GATHER_SCHEDULES = ("auto", "chain", "ring", "pieces")
 SCATTER_SCHEDULES = ("auto", "chain", "ring", "pieces")
+# The fewest link slots of a session without SIRCL_LINK_SLOTS or a tuning table's; a session of W ranks
+# takes protocol.default_link_slots(W) (2 W, at least this).
 DEFAULT_LINK_SLOTS = 8
 DEFAULT_LINK_SLOT_BYTES = 512 << 10
 DEFAULT_LINK_CHUNK_BYTES = 512 << 10
@@ -640,6 +642,10 @@ class RoceOneshotAllReduce:
             if layout is None:
                 raise ValueError("SIRCL_TUNING_TABLE needs the session's layout (pass layout= or set SIRCL_LAYOUT)")
             self._tuning, self._tuning_unmatched = tuning_mod.select_table(table_paths, self.tuning_facts())
+        # The settings the table's choices ran under and need (tuning.SETTINGS): each one the environment
+        # leaves unset takes the table's value, so the choices run as measured. They size the arena below
+        # and join the setup agreement like any other setting.
+        self._table_settings: dict[str, int] = dict(self._tuning.settings) if self._tuning is not None else {}
         self._lane_devices = tuple(tuple(self.hca_names.index(d) for d in self.peer_routes[peer])
                                    for peer in range(self.world_size))
         explicit = gid_index if gid_index is not None else _explicit_gid_index()
@@ -652,7 +658,8 @@ class RoceOneshotAllReduce:
         # The large-message op size sizes the slots too, so all_reduce_large runs
         # ops of at least DEFAULT_LARGE_PIECE_BYTES whatever the capacity.
         capacity_piece = self.max_size // PACK_BYTES * PACK_BYTES
-        piece = _env_int("SIRCL_LARGE_PIECE_BYTES", default=max(DEFAULT_LARGE_PIECE_BYTES, capacity_piece))
+        piece = _env_int("SIRCL_LARGE_PIECE_BYTES", default=self._table_settings.get(
+            "SIRCL_LARGE_PIECE_BYTES", max(DEFAULT_LARGE_PIECE_BYTES, capacity_piece)))
         if piece < PACK_BYTES or piece % PACK_BYTES or piece > proto.OP_BYTES_MASK:
             raise ValueError(f"SIRCL_LARGE_PIECE_BYTES {piece} must be a positive multiple of 16 below 2^30")
         self._configured_large_piece = piece
@@ -711,7 +718,8 @@ class RoceOneshotAllReduce:
         if self.large_schedule not in LARGE_SCHEDULES:
             raise ValueError(f"SIRCL_LARGE_SCHEDULE {self.large_schedule!r} is not one of {LARGE_SCHEDULES}")
         self.chain_slots = _env_int("SIRCL_CHAIN_SLOTS", default=DEFAULT_CHAIN_SLOTS)
-        self.chain_slot_bytes = _env_int("SIRCL_CHAIN_SLOT_BYTES", default=DEFAULT_CHAIN_SLOT_BYTES)
+        self.chain_slot_bytes = _env_int("SIRCL_CHAIN_SLOT_BYTES", default=self._table_settings.get(
+            "SIRCL_CHAIN_SLOT_BYTES", DEFAULT_CHAIN_SLOT_BYTES))
         self.chain_blocks = _env_int("SIRCL_CHAIN_BLOCKS", default=DEFAULT_CHAIN_BLOCKS)
         self.chain_unroll = _env_int("SIRCL_CHAIN_UNROLL", default=DEFAULT_CHAIN_UNROLL)
         self._chain_mins = _env_minimums("SIRCL_CHAIN_MIN_BYTES", DEFAULT_CHAIN_MINS)
@@ -739,13 +747,16 @@ class RoceOneshotAllReduce:
         self.gather_schedule = _env_text("SIRCL_GATHER_SCHEDULE", default="auto")
         if self.gather_schedule not in GATHER_SCHEDULES:
             raise ValueError(f"SIRCL_GATHER_SCHEDULE {self.gather_schedule!r} is not one of {GATHER_SCHEDULES}")
-        self.link_slots = _env_int("SIRCL_LINK_SLOTS", default=DEFAULT_LINK_SLOTS)
+        self.link_slots = _env_int("SIRCL_LINK_SLOTS", default=self._table_settings.get(
+            "SIRCL_LINK_SLOTS", proto.default_link_slots(self.world_size)))
         configured = {name: _env_int(name, default=0)
                       for name in ("SIRCL_LINK_CHUNK_BYTES", *LINK_COLLECTIVES.values())}
         # The slot holds the largest configured piece: rounded up to 4096 bytes, at least the default and,
-        # unless SIRCL_LINK_SLOT_BYTES sets it, at most MAX_AUTO_LINK_SLOT_BYTES.
+        # unless SIRCL_LINK_SLOT_BYTES sets it, at most MAX_AUTO_LINK_SLOT_BYTES; and the tuning table's slot,
+        # which holds its chosen pieces.
         wanted = -(-max(configured.values()) // 4096) * 4096
         auto_slot = wanted if DEFAULT_LINK_SLOT_BYTES < wanted <= MAX_AUTO_LINK_SLOT_BYTES else DEFAULT_LINK_SLOT_BYTES
+        auto_slot = max(auto_slot, self._table_settings.get("SIRCL_LINK_SLOT_BYTES", 0))
         self.link_slot_bytes = _env_int("SIRCL_LINK_SLOT_BYTES", default=auto_slot)
         self.link_blocks = _env_int("SIRCL_LINK_BLOCKS", default=DEFAULT_LINK_BLOCKS)
         self.link_unroll = _env_int("SIRCL_LINK_UNROLL", default=DEFAULT_LINK_UNROLL)
@@ -768,7 +779,13 @@ class RoceOneshotAllReduce:
         gather_links = self.gather_schedule != "pieces" and self.max_gather_bytes > 0
         scatter_links = self.scatter_schedule != "pieces"
         reduce_links = self.large_schedule == "ring"
-        self._link_region = fabric_full and chain_threads and (gather_links or scatter_links or reduce_links)
+        # A tuning table that chooses a link schedule (a ring schedule, a chain all-gather or reduce-scatter)
+        # needs the link area whatever the configured schedules.
+        table_links = self._tuning is not None and any(
+            choice.schedule == "ring" or (choice.schedule == "chain" and collective != "all_reduce")
+            for collective, _, choice in self._tuning.decided())
+        self._link_region = fabric_full and chain_threads and (gather_links or scatter_links or reduce_links
+                                                               or table_links)
         for name, schedule in (("SIRCL_LARGE_SCHEDULE", self.large_schedule),
                                ("SIRCL_GATHER_SCHEDULE", self.gather_schedule),
                                ("SIRCL_SCATTER_SCHEDULE", self.scatter_schedule)):
@@ -940,12 +957,15 @@ class RoceOneshotAllReduce:
             return "sircl"
         return self._tuning.backend(collective, int(nbytes), mode or self._mode())
 
-    def _apply_choice(self, collective: str, choice: tuning_mod.Choice) -> bool:
-        """Set the session's settings to ``choice`` for one op; False, changing nothing, when this session
-        cannot run it (a schedule it lacks, a piece above its slots, a stagger its slots cannot hold, a grid
-        above its counters). Every rank has the same settings, so every rank decides alike."""
+    def _apply_choice(self, collective: str, choice: tuning_mod.Choice, nbytes: int) -> bool:
+        """Set the session's settings to ``choice`` for one op of ``nbytes``; False, changing nothing, when
+        this session cannot run it (a schedule it lacks, a piece above its slots, a stagger its slots cannot
+        hold, a grid above its counters, an all-reduce algorithm for a message above the capacity, which
+        those algorithms run in one op). Every rank has the same settings, so every rank decides alike."""
         kind = {"all_reduce": "reduce", "all_gather": "gather", "reduce_scatter": "scatter"}.get(collective)
         if choice.grid is not None and choice.grid > self._counter_layout.blocks:
+            return False
+        if collective == "all_reduce" and choice.algorithm is not None and nbytes > self.max_size:
             return False
         if choice.schedule is not None:
             if kind is None:
@@ -1011,7 +1031,7 @@ class RoceOneshotAllReduce:
             saved = (self._large_blocks, self._blocks, self.large_schedule, self.gather_schedule,
                      self.scatter_schedule, dict(self._ring_mins), dict(self._chain_mins), dict(self._link_chunks),
                      self.chain_chunk_bytes, self.ring_stagger, self.ring_gather_stagger)
-            applied = self._apply_choice(collective, choice)
+            applied = self._apply_choice(collective, choice, int(nbytes))
             if count:
                 label = f"{collective}/{mode}/{choice.label()}"
                 counts = self._tuning_counts if applied else self._tuning_unusable
@@ -1044,14 +1064,21 @@ class RoceOneshotAllReduce:
 
     def _tuning_stats(self) -> Optional[dict[str, Any]]:
         """The table this session decides from (None without one), its decisions so far by
-        ``collective/mode/choice``, the choices it could not run, and the named tables that did not match."""
+        ``collective/mode/choice``, the choices it could not run, the table's settings with the session's own
+        value of each (``settings``: name -> {"table", "session"}; they differ where the environment set
+        another value), and the named tables that did not match."""
         if self._tuning is None and not self._tuning_unmatched:
             return None
         info: dict[str, Any] = {"table": None, "unmatched": dict(self._tuning_unmatched)}
         if self._tuning is not None:
+            own = {"SIRCL_LINK_SLOTS": self.link_slots, "SIRCL_LINK_SLOT_BYTES": self.link_slot_bytes,
+                   "SIRCL_CHAIN_SLOT_BYTES": self.chain_slot_bytes,
+                   "SIRCL_LARGE_PIECE_BYTES": self._configured_large_piece}
             info.update(table=self._tuning.hash, path=self._tuning.source, key=dict(self._tuning.key),
                         decisions=dict(sorted(self._tuning_counts.items())),
-                        unusable=dict(sorted(self._tuning_unusable.items())))
+                        unusable=dict(sorted(self._tuning_unusable.items())),
+                        settings={name: {"table": value, "session": own[name]}
+                                  for name, value in sorted(self._table_settings.items())})
         return info
 
     def launch_grid(self, kind: str, packs: int) -> int:

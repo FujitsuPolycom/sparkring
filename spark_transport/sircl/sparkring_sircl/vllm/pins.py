@@ -13,7 +13,10 @@ Adding a vLLM version:
 2. re-read the hook table (:mod:`.hooks` and the adapter's ``README.md``) against that version's sources
    (the listed files and line ranges) and confirm or update each hook;
 3. add a :class:`VllmBuild` entry with the printed hashes, run the adapter's
-   CPU tests and the ring checks in ``STATUS.md``.
+   CPU tests and the ring checks in ``STATUS.md``;
+4. for a build with GLM-5.3-Flash's mHC files (``MHC_FILES``) whose model code
+   starts mHC prefill row ownership at other parallel sizes than
+   ``MHC_ADMITS_DEFAULT``, list its sizes in ``MHC_ADMITS``.
 
 The checks read files only; they do not import vLLM.
 """
@@ -186,6 +189,27 @@ SUPPORTED: tuple[VllmBuild, ...] = (
         },
     ),
 )
+
+# GLM-5.3-Flash's mHC prefill row ownership (VLLM_GLM53_MHC_PREFILL_SHARD=1) starts only at the (tensor
+# parallelism, decode-context parallelism) pairs its model code admits; at another pair with decode-context
+# parallelism above 1 the model refuses at startup (TP2 with DCP 2 on sparkring-kraken-beta-20261007-bc9ea774).
+# MHC_ADMITS lists the pairs of a pinned build with the mHC files by its name; a build it does not name admits
+# MHC_ADMITS_DEFAULT.
+MHC_ADMITS_DEFAULT: tuple[tuple[int, int], ...] = ((2, 1), (4, 1), (4, 2), (4, 4))
+MHC_ADMITS: dict[str, tuple[tuple[int, int], ...]] = {}
+
+
+def mhc_admits(build: str) -> tuple[tuple[int, int], ...]:
+    """The (tensor parallelism, decode-context parallelism) pairs at which the pinned build named ``build``
+    starts mHC prefill row ownership."""
+    return MHC_ADMITS.get(build, MHC_ADMITS_DEFAULT)
+
+
+def mhc_builds(tensor: int, dcp: int) -> list[str]:
+    """The pinned builds with the mHC files whose model code starts mHC prefill row ownership at tensor
+    parallelism ``tensor`` and decode-context parallelism ``dcp``."""
+    return [build.name for build in SUPPORTED
+            if all(build.files.get(name) is not None for name in MHC_FILES) and (tensor, dcp) in mhc_admits(build.name)]
 
 
 def file_hash(path: Path) -> str:

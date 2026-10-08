@@ -29,8 +29,9 @@ import os
 from collections.abc import Mapping
 
 MODES = ("custom", "disabled")
-# never: NCCL carries no collective of a multi-rank group (the default); auto: NCCL may run where the
-# group's cabling allows it; topology: another name for auto.
+# never (the default): SIRCL carries every collective of every multi-rank group. auto, the opt-in: NCCL may
+# carry a collective where the group's cabling allows it, as the adapter's rules decide. topology: another
+# name for auto. In every mode a tuning table chooses only among SIRCL's settings.
 NCCL_MODES = ("never", "auto", "topology")
 LARGE_ALLREDUCE_MODES = ("auto", "sircl", "nccl")
 DEFAULT_GROUPS = ("tp", "dcp")
@@ -78,8 +79,8 @@ VARIABLES: tuple[Variable, ...] = (
     Variable("SIRCL_GROUPS", "vLLM group kinds that get a SIRCL session (tp, dcp)",
              ",".join(DEFAULT_GROUPS)),
     Variable("SIRCL_NCCL", "never forbids NCCL collectives on every multi-rank group; auto lets NCCL "
-             "carry collectives only where the group's cabling allows it (topology is another name for "
-             "auto)", "never"),
+             "carry collectives only where the group's cabling allows it, as the adapter's rules decide "
+             "(topology is another name for auto); a tuning table never sends a call to NCCL", "never"),
     Variable("SIRCL_LARGE_ALLREDUCE", "all-reduces above the session's dispatch ceiling: auto "
              "(NCCL where the cabling allows it and no graph is captured, else chunked on "
              "SIRCL), sircl (always chunked on SIRCL) or nccl (NCCL; refused where the cabling "

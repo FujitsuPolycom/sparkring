@@ -51,9 +51,9 @@ def stub(tmp_path, monkeypatch):
                  "VLLM_SPARK_TP4_VOCAB_MODE", "SIRCL_PEER_ROUTES", "NCCL_ALGO", "SIRCL_VLLM_SHIMS",
                  "SIRCL_RANK_POSITIONS", "SIRCL_TOPOLOGY", "SIRCL_LAYOUT"):
         environ.pop(name, None)
-    # The cases below exercise NCCL where the cabling allows it, the opt-in (SIRCL_NCCL=auto); the
-    # default, never, is tested on its own.
-    environ.update({"SIRCL_MODE": "custom", "SIRCL_FABRIC": "ring:8", "SIRCL_NCCL": "auto",
+    # NCCL where the cabling allows it (SIRCL_NCCL=topology); the tests of SIRCL_NCCL=never and auto set
+    # their own, and the adapter's default (never) has a test of its own.
+    environ.update({"SIRCL_MODE": "custom", "SIRCL_FABRIC": "ring:8", "SIRCL_NCCL": "topology",
                     "SIRCL_SESSION_MODULE": "sircl_emulated_registration",
                     "SIRCL_ALLREDUCE_CAPACITY_BYTES": str(1 << 20),
                     "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES": str(64 << 10),
@@ -1185,9 +1185,11 @@ def test_dcp_sessions_are_built_without_the_tensor_parallel_sessions_schedule_an
             512 << 10, 512 << 10, 8 << 20)
 
 
-def test_a_pairs_communicator_takes_its_sessions_tuning_table_for_eager_calls(stub, monkeypatch):
-    """TP2 on a cabled pair: the receipt names the table, and eager calls go where the table measured faster."""
-    from sparkring_sircl.vllm.planner import NCCL, SIRCL, TensorMeta, plan_all_reduce
+@pytest.mark.parametrize("mode", ["topology", "auto"])
+def test_a_pairs_communicator_takes_its_sessions_tuning_table_for_eager_calls(stub, monkeypatch, mode):
+    """TP2 on a cabled pair: the receipt names the table. Under SIRCL_NCCL=auto and its other name topology
+    the table chooses SIRCL's settings only and the rules route eager calls: its NCCL marks route no call."""
+    from sparkring_sircl.vllm.planner import SIRCL, TensorMeta, plan_all_reduce
 
     table = "b" * 16
     session_class = stub.sessions.AllReduce
@@ -1198,18 +1200,26 @@ def test_a_pairs_communicator_takes_its_sessions_tuning_table_for_eager_calls(st
     monkeypatch.setattr(session_class, "tuned_backend",
                         lambda self, collective, nbytes, mode=None: "nccl" if nbytes < 65536 else "sircl",
                         raising=False)
+    stub.environ["SIRCL_NCCL"] = mode
     plugin.register()
     comms = _communicators("tp:0", [0, 1])                  # a pair: NCCL may run
     adapter = comms[0].sircl
     assert adapter.record["tuning"] == table and "tuning=" + table in receipt_line(adapter.record)
     eager = plan_all_reduce(TensorMeta((4096,), "bfloat16", 2), adapter.limits, adapter.policy, capturing=False)
-    assert eager.backend == NCCL                            # 8 KiB: the table measured NCCL faster
-    larger = plan_all_reduce(TensorMeta((65536,), "bfloat16", 2), adapter.limits, adapter.policy, capturing=False)
-    assert larger.backend == SIRCL
-    assert plan_all_reduce(TensorMeta((4096,), "bfloat16", 2), adapter.limits, adapter.policy,
-                           capturing=True).backend == SIRCL
+    # 8 KiB lies within the dispatch ceiling: SIRCL by the rules, whatever the table measured.
+    assert adapter.policy.tuned is None and eager.backend == SIRCL
     path = _communicators("tp:0", [0, 1, 2, 3])             # a path: NCCL may not run, the table is not consulted
     assert path[0].sircl.policy.tuned is None and path[0].sircl.record["tuning"] == table
+
+
+def test_the_adapter_keeps_nccl_off_unless_told_otherwise():
+    from sparkring_sircl.vllm import settings
+
+    assert settings.nccl_mode({}) == "never" and settings.NCCL_MODES == ("never", "auto", "topology")
+    assert settings.nccl_mode({"SIRCL_NCCL": "auto"}) == "auto"
+    assert settings.nccl_mode({"SIRCL_NCCL": "topology"}) == "auto"          # another name for auto
+    with pytest.raises(settings.SettingError, match="SIRCL_NCCL"):
+        settings.nccl_mode({"SIRCL_NCCL": "sometimes"})
 
 
 def receipt_line(record):

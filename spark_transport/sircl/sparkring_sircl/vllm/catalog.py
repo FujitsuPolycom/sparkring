@@ -152,8 +152,9 @@ ENTRIES: tuple[Entry, ...] = (
                "--mhc-prefill-shard profile)",
         disable="serve --mhc-prefill-shard off (VLLM_GLM53_MHC_PREFILL_SHARD=0)",
         without="with the setting on, setup fails on every rank and names VLLM_GLM53_MHC_PREFILL_SHARD=0; with "
-                "it off, every rank mixes the mHC streams of every prefill row. On a pair with NCCL allowed "
-                "(SIRCL_NCCL=auto), where PyNccl works, vLLM's own path runs and the shim is not needed",
+                "it off, every rank mixes the mHC streams of every prefill row. With NCCL off (SIRCL_NCCL=never, "
+                "the default) the shim serves a pair as well; only where SIRCL_NCCL=topology or auto lets NCCL "
+                "run, on a pair, does vLLM's own PyNccl path run without it",
         needs=("the tensor-parallel session's reduce-scatter (scatter_available) and all-gather; without the "
                "session's reduce-scatter the adapter carries each reduce-scatter as an all-reduce and keeps this "
                "rank's rows",),
@@ -173,9 +174,9 @@ ENTRIES: tuple[Entry, ...] = (
                "session, while VLLM_QWEN3_8_HC_PREFILL_MODE=shard (the profile's value)",
         disable="--env VLLM_QWEN3_8_HC_PREFILL_MODE=off",
         without="with the mode shard, setup fails on every rank and names --env "
-                "VLLM_QWEN3_8_HC_PREFILL_MODE=off; with it off, every rank processes every prefill row. On a "
-                "pair with NCCL allowed (SIRCL_NCCL=auto), where PyNccl works, vLLM's own path runs and the "
-                "shim is not needed",
+                "VLLM_QWEN3_8_HC_PREFILL_MODE=off; with it off, every rank processes every prefill row. With "
+                "NCCL off (SIRCL_NCCL=never, the default) the shim serves a pair as well; only where "
+                "SIRCL_NCCL=topology or auto lets NCCL run, on a pair, does vLLM's own PyNccl path run without it",
         needs=("the tensor-parallel session's reduce-scatter (scatter_available) and all-gather; without the "
                "session's reduce-scatter the adapter carries each reduce-scatter as an all-reduce and keeps this "
                "rank's rows",),
