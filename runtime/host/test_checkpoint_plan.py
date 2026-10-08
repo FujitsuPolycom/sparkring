@@ -220,6 +220,26 @@ def test_node_a_pools_from_peers_before_downloading_what_no_spark_holds():
     assert text[-1].startswith("Downloads ") and text[-1].endswith(" from huggingface.co on Node 0.")
 
 
+def test_the_sparks_of_a_line_pool_and_receive_only_from_cable_neighbors():
+    """Four Sparks of a larger ring form a line: Node 3 is three cables from Node 0, not one."""
+    first, last = set(WEIGHTS[:10]) | set(SMALL), set(WEIGHTS[10:20])
+    hosts = HOSTNAMES[4]
+    surveys = [survey(hosts[0], 4),
+               survey(hosts[1], 4, candidates=[candidate("/data/one", sorted(first))]),
+               survey(hosts[2], 4),
+               survey(hosts[3], 4, candidates=[candidate("/data/three", sorted(last))])]
+    ring = make(surveys)
+    line = make(surveys, line=True)
+    assert "line" not in ring and line["line"] is True
+    assert [item["transport"] for item in ring["distribution"]["pool"]] == ["fabric", "fabric"]
+    assert line["distribution"]["pool"] == [{"source": 1, "names": sorted(first), "transport": "fabric"},
+                                            {"source": 3, "names": sorted(last), "transport": "rsync"}]
+    assert [(r["source"], r["target"]) for r in line["distribution"]["receive"]] == [(0, 1), (1, 2), (2, 3)]
+    # The executed distribution follows the approved plan's shape.
+    assert [(r["source"], r["target"]) for r in cp.redistribute(line, [None] * 4)["receive"]] == [
+        (0, 1), (1, 2), (2, 3)]
+
+
 def test_a_complete_worker_is_the_donor_and_nothing_is_downloaded():
     hosts = HOSTNAMES[4]
     half = sorted(set(WEIGHTS[:18]) | set(SMALL))

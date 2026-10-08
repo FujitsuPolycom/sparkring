@@ -45,9 +45,18 @@ def links(hosts, source, target):
     return pairs
 
 
-def tree(count, donor):
-    """Cable-adjacent copy order from ``donor``: a list of levels of (source, target)."""
-    neighbors = {rank: ([1 - rank] if count == 2 else [(rank + 1) % count, (rank - 1) % count]) for rank in range(count)}
+def tree(count, donor, *, line=False):
+    """Cable-adjacent copy order from ``donor``: a list of levels of (source, target).
+
+    The ranks are consecutive Sparks of a ring, in which the last rank's
+    cable also reaches rank 0, or with ``line`` of a line, whose ends share
+    no cable.
+    """
+    if line:
+        neighbors = {rank: [other for other in (rank + 1, rank - 1) if 0 <= other < count] for rank in range(count)}
+    else:
+        neighbors = {rank: ([1 - rank] if count == 2 else [(rank + 1) % count, (rank - 1) % count])
+                     for rank in range(count)}
     reached, levels, frontier = {donor}, [], [donor]
     while frontier:
         level = []

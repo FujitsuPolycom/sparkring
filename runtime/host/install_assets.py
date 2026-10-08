@@ -664,7 +664,7 @@ class Assets:
         with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
             results = list(pool.map(link, range(count)))
         holdings = [set(result.get("verified") or ()) & set(recipe) for result in results]
-        after = checkpoint_plan._distribute(count, holdings, recipe)
+        after = checkpoint_plan._distribute(count, holdings, recipe, bool((plan or {}).get("line")))
         derive = bool(after["hub"])
         writes = [0] * count
         if derive:

@@ -43,6 +43,9 @@ def test_copies_follow_cables_outward_from_the_donor():
     assert fabric_stream.tree(2, 1) == [[(1, 0)]]
     assert fabric_stream.tree(4, 0) == [[(0, 1), (0, 3)], [(1, 2)]]
     assert fabric_stream.tree(4, 2) == [[(2, 3), (2, 1)], [(3, 0)]]
+    # On a line, such as four Sparks of a larger ring, the ends share no cable.
+    assert fabric_stream.tree(4, 0, line=True) == [[(0, 1)], [(1, 2)], [(2, 3)]]
+    assert fabric_stream.tree(5, 2, line=True) == [[(2, 3), (2, 1)], [(3, 4), (1, 0)]]
 
 
 @pytest.mark.parametrize("size", [2, 4])
