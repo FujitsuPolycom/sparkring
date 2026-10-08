@@ -68,6 +68,16 @@ GROUPS = {
         ('NCCL protocol override', 'NCCL_PROTO', None),
         ('NCCL minimum channels', 'NCCL_MIN_NCHANNELS', None),
         ('NCCL maximum channels', 'NCCL_MAX_NCHANNELS', None),
+        ('SIRCL ring sessions', 'SIRCL_MODE', None),
+        ('SIRCL NCCL setting', 'SIRCL_NCCL', None),
+        ('SIRCL fabric', 'SIRCL_FABRIC', None),
+        ('SIRCL fabric positions', 'SIRCL_RANK_POSITIONS', None),
+        ('SIRCL session (TP)', None, 'tp_sircl_session'),
+        ('SIRCL session state (TP)', None, 'tp_sircl_state'),
+        ('SIRCL NCCL policy (TP)', None, 'tp_sircl_nccl'),
+        ('SIRCL PyNccl (TP)', None, 'tp_sircl_pynccl'),
+        ('SIRCL relays on a lane (TP)', None, 'tp_sircl_relays'),
+        ('SIRCL receipt age (TP)', None, 'tp_sircl_receipt_age_s'),
     ],
     "Cache and loader": [
         ("KV transfer", None, "kv_transfer_enabled"),
@@ -127,7 +137,8 @@ ENV_RESOLVED = {
     'VLLM_LM_HEAD_A16': 'target_head_a16',
     'VLLM_MTP_NVFP4_LM_HEAD': 'draft_head_nvfp4',
 }
-LOCAL_FIELDS = {'tp_roce_hcas', 'tp_roce_gid_index', 'tp_roce_pci_domains', 'tp_nccl_library_path'}
+LOCAL_FIELDS = {'tp_roce_hcas', 'tp_roce_gid_index', 'tp_roce_pci_domains', 'tp_nccl_library_path',
+                'tp_sircl_session', 'tp_sircl_receipt_age_s'}
 AUTO_FIELDS = {'model_dtype', 'quantization', 'attention_backend', 'draft_tensor_parallel_size',
                'draft_kv_cache_dtype', 'draft_sample_method', 'rejection_sample_method',
                'cudagraph_mode', 'gdn_prefill_backend', 'max_cudagraph_capture_size',

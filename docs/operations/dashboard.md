@@ -29,7 +29,7 @@ benchmark and changes no setting.
 | Draft acceptance | MTP draft tokens accepted since the last refresh and since start, overall and per draft position |
 | Memory and disk | Used and available memory on each Spark (CPU and GPU share it) and free disk space |
 | Versions | NVIDIA driver, CUDA, NCCL, library and package versions on each Spark |
-| Transport | Whether RoCEnante and NCCL are available, the NICs in use, link rates and RDMA traffic |
+| Transport | Whether RoCEnante and NCCL are available, the NICs in use, link rates and RDMA traffic; with runtime-status 0.3.5 on SIRCL ring sessions, each worker's SIRCL settings, session, NCCL policy, relays and receipt age |
 | Settings | Each serving setting as configured and as the model resolved it, and whether all Sparks agree |
 | Workers | Draft tokens, KV transfer and kernel setup on each worker |
 | Build information | Image, packages and source commits |

@@ -66,8 +66,13 @@ config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
 
-The package version is 0.3.4. It provides passive transport, resource, library
-and acceptance views, and the settings tables described below. Deploy its wheel
+The package version is 0.3.5. It provides passive transport, resource, library
+and acceptance views, and the settings tables described below. Its Transport
+table also shows each worker's SIRCL ring-session facts: the `SIRCL_MODE`,
+`SIRCL_NCCL`, `SIRCL_FABRIC` and `SIRCL_RANK_POSITIONS` settings and, from the
+worker's tensor-parallel SIRCL receipt in `SIRCL_RECEIPT_DIR`, the session
+identity and state, the NCCL policy, whether PyNccl was built, the most relays
+on a lane and the receipt's age. Deploy its wheel
 through a new source-recorded image composition and restart the server when a
 deployment window is available. Published image receipts and running
 installations are not changed by building this package.
@@ -404,7 +409,7 @@ Python 3.12, setuptools 78.1.0 and pip 24.0:
 ```bash
 COMMIT=$(git rev-parse HEAD)
 EPOCH=$(git log -1 --format=%ct "$COMMIT")
-VERSION=0.3.4
+VERSION=0.3.5
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
 git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \

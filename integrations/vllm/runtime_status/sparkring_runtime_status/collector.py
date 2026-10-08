@@ -131,6 +131,9 @@ ENUM_ENV = {
     "SPARKRING_TRANSPORT_PROFILE": {"tp2-rocenante-adaptive", "tp2-rocenante-adaptive-prepared"},
     "QWEN_DISPATCH_MODE": {"both", "reduce", "nccl"},
     "VLLM_B12X_MOE_FP4_LAYER_MAX_INPUT_SCALE": {"0", "1", "all", "w13", "w2"},
+    # SIRCL ring sessions (spark_transport/sircl/sparkring_sircl/vllm/settings.py).
+    "SIRCL_MODE": {"custom", "disabled"},
+    "SIRCL_NCCL": {"never", "auto", "topology"},
 }
 INTEGER_ENV = (
     "QWEN_DISPATCH_AR_BYTES", "VLLM_ROCE_ALLREDUCE_MAX_SIZE",
@@ -143,6 +146,8 @@ TEXT_ENV = {
     "B12X_ROCE_HCA": r"[A-Za-z0-9_.:,/-]{1,512}",
     "NCCL_IB_HCA": r"[A-Za-z0-9_.:,/\^=-]{1,512}",
     "NCCL_SOCKET_IFNAME": r"[A-Za-z0-9_.:,/\^=-]{1,512}",
+    "SIRCL_FABRIC": r"(?:ring|path):[0-9]{1,2}|pair(?::[12])?",
+    "SIRCL_RANK_POSITIONS": r"[0-9]{1,2}(?:,[0-9]{1,2}){0,15}",
 }
 # Durations in seconds, read as vLLM reads them: float(value).
 # SPARKRING_SHM_BUSY_LOOP_S is how long vLLM's shared-memory readers poll after
