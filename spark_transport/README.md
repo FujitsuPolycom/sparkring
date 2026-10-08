@@ -20,14 +20,16 @@ Hardware-forwarded mesh composition and six-node model profiles remain
 
 | Component | Purpose | Implementation and contract |
 |---|---|---|
-| **SIRCL — Switchless Inference RDMA Collective Layer** | Native four-rank collectives with persistent RDMA sessions, CUDA-graph submission, and eager prefill paths. | [SIRCL overview](../docs/SIRCL.md), [C/C++ interfaces](include/spark_transport/), and [native source](src/) |
+| **SIRCL — Switchless Inference RDMA Collective Layer: four-rank native sessions** | Collectives for exactly four ranks on a four-Spark cycle, with persistent RDMA sessions, CUDA-graph submission, and eager prefill paths; kept for retained images and profiles. | [SIRCL overview](../docs/SIRCL.md), [C/C++ interfaces](include/spark_transport/), and [native source](src/) |
+| **SIRCL ring sessions** | SIRCL's default session generation: collectives for groups of 2 to 8 Sparks on pairs, paths and cycles, independent groups on one fabric and DCP subgroups, with NIC relays for members that share no cable; a vLLM adapter, a serve launcher and a standalone ring harness. Status per component: [status table](sircl/STATUS.md#component-status). | [Ring sessions](sircl/README.md) and their [design section](../docs/architecture/sircl.md#ring-sessions) |
 | **RoCEnante integration** | Selected all-reduces over direct and hardware-forwarded opposite-peer paths in the four-rank mesh composition. | [Runtime overlay](../integrations/vllm/rocenante/README.md) and [adapted Local Inference Lab source and attribution](../third_party/b12x_roce/README.md) |
 | **Patched NVIDIA NCCL** | Pair/cycle communication and fallback for collectives outside custom transport admission. Some model profiles use NCCL for all their collectives. | [Library patches, topology-specific environments, and invariants](nccl/README.md) |
 | **Runtime adapters** | Select a collective implementation by process group, tensor geometry, execution mode, and enabled profile capabilities. | [vLLM adapter contract](../integrations/vllm/README.md) and [mesh composition](../runtime/glm53-spark-mtp3-mesh/README.md) |
 
 SIRCL's native library is `libspark_transport_capi.so`. It provides BF16
 all-reduce and specialized vocabulary all-gather interfaces. Its native
-sessions require four participating ranks. The versioned all-reduce API
+sessions serve exactly four ranks; groups of other sizes use the ring
+sessions in [`sircl/`](sircl/README.md). The versioned all-reduce API
 accepts tensor geometry, while fused prefill and vocabulary gathering retain
 their own narrower shape contracts. Adapter admission can be narrower than
 the native API.
@@ -40,7 +42,7 @@ The profile's bundle configuration determines the exact dispatch rules.
 
 Patched NCCL has separate configurations for two-rank pairs and four- or
 six-rank direct-cable cycles. That scope does not extend SIRCL's four-rank
-native interfaces to other rank counts. Model support and six-rank research
+native interfaces to other rank counts; SIRCL ring sessions cover 2 to 8 ranks. Model support and six-rank research
 limits are recorded by the deployment profiles.
 
 ## Physical links and hardware forwarding
@@ -82,6 +84,7 @@ instructions belong to the selected [profile quickstart](../docs/profiles/README
 | Path | Contents |
 |---|---|
 | [`include/spark_transport/`](include/spark_transport/) | Public C/C++ interfaces and protocol contracts |
+| [`sircl/`](sircl/) | SIRCL ring sessions: Python package `sparkring_sircl`, its native progress thread, CPU simulator and ring harness (`pyproject.toml`, `RUNBOOK.md`) |
 | [`src/`](src/) | Sessions, verbs endpoints, CUDA operations, command rings, and topology checks |
 | [`../integrations/vllm/`](../integrations/vllm/) | Maintained vLLM tensor admission, dispatch, and native-session checks; `spark_transport/integrations/vllm/` contains compatibility exports |
 | [`nccl/`](nccl/) | Patched NCCL configuration and compatibility requirements |

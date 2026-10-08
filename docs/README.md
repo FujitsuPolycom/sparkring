@@ -46,7 +46,9 @@ Find the page for what you want to do.
 
 - [Architecture](architecture/overview.md): topology, serving container and
   collective path.
-- [SIRCL](architecture/sircl.md): the native four-rank collective transport.
+- [SIRCL](architecture/sircl.md): SparkRing's collective transport for 2 to 8
+  Sparks, with ring sessions and the four-rank native sessions of retained
+  images.
 - [What is a SparkRing image?](operations/images.md)
 - [Profile catalog](../profiles/README.md): every saved deployment
   configuration and its guide.
