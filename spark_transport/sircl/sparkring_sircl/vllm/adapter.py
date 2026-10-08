@@ -132,6 +132,10 @@ class AdapterConfig:
     p2p_groups: tuple[str, ...] = settings.DEFAULT_P2P_GROUPS
     p2p_module: str = settings.DEFAULT_P2P_MODULE
 
+    def __post_init__(self) -> None:
+        # topology is another name for auto (settings.NCCL_MODE_ALIASES); policies and receipts name the mode.
+        object.__setattr__(self, "nccl_mode", settings.nccl_mode_name(self.nccl_mode))
+
     @classmethod
     def from_env(cls, world: int, environ=None) -> "AdapterConfig":
         layout = Layout.parse(settings.fabric_text(environ))
@@ -438,12 +442,11 @@ class GroupAdapter:
             self.close()
             raise
         ranks = placement.global_ranks
+        # The plans take no tuning-table input: a session's table chooses among SIRCL's options inside the
+        # session, and its NCCL marks route no call in any SIRCL_NCCL mode (settings.NCCL_RULE).
         self.policy = Policy(placement.topology, config.nccl_mode, config.large, nccl_above,
                              placement.policy, placement.reason,
-                             lambda a, b: config.cabled(ranks[a], ranks[b]),
-                             # A tuning table chooses SIRCL's settings alone: its NCCL marks are measurements
-                             # and route no call to NCCL in any SIRCL_NCCL mode.
-                             tuned=None)
+                             lambda a, b: config.cabled(ranks[a], ranks[b]))
         if self.session is not None:
             guard.register(device_group, placement.guard_entry(config, carried=True))
             guard.register_carrier(device_group, self.carry_torch)
@@ -1132,6 +1135,8 @@ class GroupAdapter:
             "positions": list(placement.positions),
             "nccl": placement.policy.value,
             "nccl_reason": placement.reason,
+            "nccl_mode": self.config.nccl_mode,
+            "nccl_rule": settings.NCCL_RULE,
             "pynccl": "skipped" if placement.suppress_pynccl else "built",
             "session": ("none" if session is None else
                         f"shared:{self.shared_from}" if self.shared_from else "ring"),

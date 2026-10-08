@@ -911,8 +911,7 @@ def parser() -> argparse.ArgumentParser:
                              "after warm-up (default %(default)g)")
         command.add_argument("--gid-index", type=int, help="RoCE GID index (default: site, else profile)")
         command.add_argument("--nccl", choices=plan_mod.NCCL_MODES, default=plan_mod.DEFAULT_NCCL_MODE,
-                             type=plan_mod.nccl_mode_value,
-                             help=plan_mod.NCCL_MODE_HELP)
+                             type=plan_mod.nccl_mode_value, help=plan_mod.NCCL_MODE_HELP)
         command.add_argument("--large-allreduce", choices=plan_mod.LARGE_MODES, default="auto",
                              help="SIRCL_LARGE_ALLREDUCE: all-reduces above the dispatch ceiling")
         command.add_argument("--mhc-prefill-shard", choices=plan_mod.MHC_MODES, default="profile",

@@ -11,7 +11,8 @@ SIRCL version (``sircl``); ``image`` names the serving image it was measured in.
   message size in bytes (the all-reduce's message, the all-gather's shard, the reduce-scatter's input,
   the all-to-all's input, per rank) and mode (``eager`` or ``graph``, CUDA graph replay);
 - ``decisions``: per collective and mode, size intervals, each with the fastest SIRCL candidate
-  (``choice``) and whether NCCL was faster there (``nccl``). An interval starts at ``from`` bytes and
+  (``choice``) and whether NCCL was faster there (``nccl``, a measurement: no ``SIRCL_NCCL`` mode routes a
+  call by it). An interval starts at ``from`` bytes and
   runs to the next one; the last runs on without end, and sizes below the first have no decision (the
   session's rules apply). An all-reduce decision whose choice names an algorithm (one-shot, two-shot,
   Swing) holds only up to the largest message it was measured at (``until``): those algorithms run a
@@ -342,7 +343,8 @@ class Table:
                 for interval in intervals]
 
     def backend(self, collective: str, nbytes: int, mode: str) -> str:
-        """``nccl`` where NCCL measured faster than the fastest SIRCL candidate, else ``sircl``."""
+        """``nccl`` where NCCL measured faster than the fastest SIRCL candidate, else ``sircl``. A measurement:
+        SIRCL routes no call by it."""
         interval = self._interval(collective, int(nbytes), mode)
         return "nccl" if interval is not None and interval.nccl else "sircl"
 

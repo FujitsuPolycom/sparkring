@@ -295,6 +295,11 @@ python -m sparkring_sircl.ring run --site "$SITE" --config ring8 --large \
   grid cap run with the table suspended. The summary names, per group, the
   settings the sessions ran under beside the table's. The serve launcher
   stages tables the same way (`--tuning-table`).
+- A table's NCCL marks (with `--baseline nccl`, the intervals where NCCL
+  measured faster than the fastest SIRCL candidate, which `tune-table`
+  prints) are measurements. A table chooses only among SIRCL's own
+  algorithms, schedules, pieces, grids and session settings; neither the
+  session nor SIRCL's vLLM adapter routes a call to NCCL by its marks.
 - A table's key names the group shape, size, lanes, relays, native and
   kernel source hashes, package version and image: run `tune` again after a
   change to any of them.

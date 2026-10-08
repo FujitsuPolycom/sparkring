@@ -371,16 +371,23 @@ before any container starts.
   the table's link slots.
 - A table chooses only among SIRCL's algorithms, schedules, pieces, grids and
   the settings they need. Its NCCL marks are measurements and route no call,
-  under every `--nccl` value; the plan says so (`the table chooses SIRCL's
-  settings only: its NCCL marks are measurements and route no call`).
+  under every `--nccl` value. The plan lists them in the table's decisions
+  (`(NCCL faster)`) and says so per session: `the table chooses among SIRCL
+  options only: its NCCL marks are measurements and route no call; the rules
+  decide what NCCL carries here` where the group's policy lets NCCL run, and
+  `SIRCL carries every size: NCCL may not run on this group` under
+  `--nccl never` or on a path.
 - Receipts name the table (`tuning=<hash>`); `check` and `bundle-check` fail
   when it differs from the plan's match. The receipts also show the table's
   settings beside the session's own values.
 
 ## Serving without NCCL
 
-`serve`, `bundle` and `bundle-check` share one rule (`--nccl`); NCCL runs only
-when the operator opts in:
+`serve`, `bundle` and `bundle-check` share one rule (`--nccl`),
+`NCCL: opt-in only (auto); tables choose among SIRCL options`. The plan text
+(and `bundle --text`) states it with the launch's mode; the plan and bundle
+JSON hold it as `nccl_rule` beside `nccl_mode`, and every receipt holds both.
+NCCL runs only when the operator opts in:
 
 | Mode | Pair | Path | Whole ring (bundle) |
 |---|---|---|---|

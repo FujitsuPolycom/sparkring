@@ -220,19 +220,19 @@ def site_file(tmp_path) -> Path:
     return path
 
 
-# The plans and bundles of these tests let NCCL run where the cabling allows it (--nccl topology) unless a
-# test names another mode; the launcher's own default is never
+# The plans and bundles of these tests let NCCL run where the cabling allows it (--nccl auto, the opt-in) unless
+# a test names another mode; the launcher's own default is never
 # (test_serve_and_bundle_share_one_nccl_default_and_state_every_groups_policy).
 def make_plan(repository, *, spec=TP4, site=SITE, **options):
     profile = profile_mod.load(repository, spec.id)
-    values = {"positions": tuple(range(spec.tp)), "model_path": MODEL, "nccl_mode": "topology", **options}
+    values = {"positions": tuple(range(spec.tp)), "model_path": MODEL, "nccl_mode": "auto", **options}
     return plan_mod.build_plan(ServeSite.from_json(site), profile, Options(**values),
                                staged_digest=staging.staged_tree().digest, library=staging.library_name())
 
 
 def make_plans(repository, groups, *, spec=TP2, site=SITE, **options):
     profile = profile_mod.load(repository, spec.id)
-    values = {"positions": groups[0], "model_path": MODEL, "nccl_mode": "topology", **options}
+    values = {"positions": groups[0], "model_path": MODEL, "nccl_mode": "auto", **options}
     return plan_mod.build_plans(ServeSite.from_json(site), profile, groups, Options(**values),
                                 staged_digest=staging.staged_tree().digest, library=staging.library_name())
 
@@ -365,7 +365,7 @@ def test_every_rank_runs_the_profile_with_sircl_in_front_of_every_collective(ser
         env = launch.environment
         assert env["SIRCL_MODE"] == "custom" and env["SIRCL_FABRIC"] == "ring:8"
         assert env["SIRCL_RANK_POSITIONS"] == "0,1,2,3" and env["SIRCL_GROUPS"] == "tp"
-        assert env["SIRCL_NCCL"] == "topology" and env["SIRCL_LARGE_ALLREDUCE"] == "auto"
+        assert env["SIRCL_NCCL"] == "auto" and env["SIRCL_LARGE_ALLREDUCE"] == "auto"
         assert env["SIRCL_SESSION_MODULE"] == "sparkring_sircl.oneshot"
         assert env["SIRCL_NATIVE_LIBRARY"] == f"/sircl/build-cache/{serve_plan.library}"
         assert env["SIRCL_ALLREDUCE_CAPACITY_BYTES"] == env["SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES"] == "131072"
@@ -1182,7 +1182,8 @@ def test_the_repositorys_glm53_flash_profiles_plan_on_the_ring():
                               staged_digest=tree.digest, library=staging.library_name())
     assert off.prefill().oneshot_ops == 96256 and 8.8 < off.prefill().bound_seconds[0] < 9.0
     pair_profile = profile_mod.load(root, "glm53-flash-nvfp4-spark-tp2")
-    plans = plan_mod.build_plans(site, pair_profile, ((0, 1), (2, 3), (4, 5), (6, 7)), Options((0, 1), nccl_mode="auto"),
+    plans = plan_mod.build_plans(site, pair_profile, ((0, 1), (2, 3), (4, 5), (6, 7)),
+                                 Options((0, 1), nccl_mode="auto"),
                                  staged_digest=tree.digest, library=staging.library_name())
     assert [plan.api_port for plan in plans] == [8017, 8018, 8019, 8020]
     assert plans[0].ranks[1].environment["NCCL_IB_HCA"] == "=rocep1s0f1,roceP2p1s0f1"
@@ -1234,9 +1235,9 @@ def test_every_catalog_profile_plans_on_the_ring_or_names_what_blocks_it():
             continue
         outcomes[entry["id"]] = "planned"
         # By default (--nccl never) SIRCL carries every group, prefill row ownership among them; with --nccl
-        # topology a pair keeps vLLM's PyNccl for it.
+        # auto a pair keeps vLLM's PyNccl for it.
         assert not plan.nccl_policy.allows("all_reduce"), entry["id"]
-        ruled = plan_mod.build_plan(site, profile, Options(positions, nccl_mode="topology"),
+        ruled = plan_mod.build_plan(site, profile, Options(positions, nccl_mode="auto"),
                                     staged_digest=tree.digest, library=staging.library_name())
         carried = ruled.hc_prefill_mode == "shard" and not ruled.nccl_policy.allows("all_reduce")
         assert carried == (entry["id"] in ROW_OWNERSHIP_ON_SIRCL), entry["id"]
@@ -1909,7 +1910,7 @@ def test_env_pass_through_reaches_every_rank_and_refuses_launcher_keys(repositor
 
 
 def make_bundle(**options):
-    values = {"positions": tuple(range(8)), "nccl_mode": "topology", **options}
+    values = {"positions": tuple(range(8)), "nccl_mode": "auto", **options}
     return bundle.build_bundle(ServeSite.from_json(SITE), bundle.BundleOptions(**values),
                                staged_digest=staging.staged_tree().digest, library=staging.library_name())
 
@@ -3160,7 +3161,7 @@ def test_profile_serving_runs_decode_context_parallelism_with_a_session_per_grou
 def test_serve_and_bundle_share_one_nccl_default_and_state_every_groups_policy(repository):
     from sparkring_sircl.vllm import fabric
 
-    assert plan_mod.DEFAULT_NCCL_MODE == "never" and plan_mod.NCCL_MODES == ("never", "auto", "topology")
+    assert plan_mod.DEFAULT_NCCL_MODE == "never" and plan_mod.NCCL_MODES == ("never", "auto")
     assert Options(positions=(0,)).nccl_mode == bundle.BundleOptions(positions=(0,)).nccl_mode == (
         plan_mod.DEFAULT_NCCL_MODE)
     for command in (["plan", "--site", "s", "--repository", "r"],
@@ -3169,15 +3170,31 @@ def test_serve_and_bundle_share_one_nccl_default_and_state_every_groups_policy(r
         assert cli.parser().parse_args(command).nccl == "never", command[0]
         assert cli.parser().parse_args([*command, "--nccl", "auto"]).nccl == "auto", command[0]
         assert cli.parser().parse_args([*command, "--nccl", "topology"]).nccl == "auto", command[0]
+        with pytest.raises(SystemExit):
+            cli.parser().parse_args([*command, "--nccl", "sometimes"])
     # By default no group of the ring of eight lets NCCL run.
     default = make_bundle(nccl_mode=plan_mod.DEFAULT_NCCL_MODE, session_groups="tp,dcp", dcp_size=4)
     assert default.nccl_policy.value == "none" and default.to_json()["nccl_mode"] == "never"
-    # TP8 on the ring of eight with --nccl topology: NCCL's ring on tp and ep, the decode-context-parallel paths
-    # on SIRCL.
+    # TP8 on the ring of eight with --nccl auto (and its other name topology): NCCL's ring on tp and ep, the
+    # decode-context-parallel paths on SIRCL.
     ring = make_bundle(session_groups="tp,dcp", dcp_size=4)
     assert ring.nccl_policy.value == "ring" and ring.ranks[0].environment["NCCL_ALGO"] == "Ring"
-    assert ring.to_json()["nccl_mode"] == "topology"
-    assert "--nccl topology --container" in ring.check_command()
+    assert ring.to_json()["nccl_mode"] == "auto"
+    assert "--nccl auto --container" in ring.check_command()
+    named = make_bundle(nccl_mode="topology", session_groups="tp,dcp", dcp_size=4)
+    assert named.to_json() == ring.to_json() and named.ranks[0].environment["SIRCL_NCCL"] == "auto"
+    # Plan text and JSON state the NCCL rule and the launch's mode, in profile serving and in a bundle.
+    rule = "  NCCL: opt-in only (auto); tables choose among SIRCL options; this launch: --nccl "
+    for mode, resolved in (("never", "never"), ("auto", "auto"), ("topology", "auto")):
+        served = make_plans(repository, ((0, 1),), nccl_mode=mode)[0]
+        bundled = make_bundle(nccl_mode=mode)
+        views = ((plan_mod.render_text(served), served.to_json(), served.ranks[0].environment),
+                 (bundled.render_text(), bundled.to_json(), bundled.ranks[0].environment))
+        for text, record, environment in views:
+            assert rule + resolved + ", so NCCL " in text, mode
+            assert (record["nccl_mode"], record["nccl_rule"]) == (resolved, plan_mod.NCCL_RULE), mode
+            assert environment["SIRCL_NCCL"] == resolved, mode
+    assert plan_mod.NCCL_RULE == "NCCL: opt-in only (auto); tables choose among SIRCL options"
     groups = {row.name: row for row in ring.carriers()[0]}
     assert {name: row.nccl for name, row in groups.items()} == {
         "world": "ring", "tp": "ring", "ep": "ring", "dcp": "none", "pp": "-", "dp": "-", "pcp": "-"}
@@ -3207,7 +3224,7 @@ def test_serve_and_bundle_share_one_nccl_default_and_state_every_groups_policy(r
     pairs = {row.name: row for row in plan_mod.group_carriers(layout, range(4), nccl_mode="topology", dcp=2)}
     assert (pairs["dcp"].nccl, pairs["dcp"].nccl_reason) == ("all", "every pair of ranks shares a cable")
     assert pairs["dcp"].carrier.startswith("NCCL: the groups have no SIRCL session")
-    # The serve plan: with --nccl topology a pair lets NCCL run every collective; the recipe gives
+    # The serve plan: with --nccl auto a pair lets NCCL run every collective; the recipe gives
     # decode-context parallelism.
     pair = make_plans(repository, ((0, 1),))[0]
     rows = {row.name: row for row in pair.carriers()[0]}
@@ -3470,20 +3487,29 @@ def test_tuning_tables_are_matched_to_each_session_staged_and_named_in_the_plan(
         make_plan(repository))
     assert "SIRCL_TUNING_TABLE" not in make_plan(repository).ranks[0].environment
     assert len(make_plan(repository, tuning_tables=(str(path4), str(path4))).tuning.tables) == 1
-    # A pair with --nccl auto, or its other name topology: NCCL may run by the rules, and the table chooses
-    # SIRCL's settings only; its NCCL marks route no call.
+    # A pair under --nccl auto and its other name topology, where NCCL may run by the rules: the table's NCCL
+    # marks (NCCL measured faster at 4 KiB) are listed as measurements and route no call.
     pair_table, pair_hash, document = _tuning_table(tmp_path, "pair", (0, 1), rows=PAIR_ROWS)
+    eager = next(entry for entry in document["decisions"]
+                 if entry["collective"] == "all_reduce" and entry["mode"] == "eager")["intervals"]
+    assert eager[0]["nccl"] and eager[0]["from"] == 4096
     for mode in ("auto", "topology"):
         pair = make_plans(repository, ((0, 1),), tuning_tables=(str(pair_table),), nccl_mode=mode)[0]
-        assert (f"    tensor-parallel session (tp): table {pair_hash}; the table chooses SIRCL's settings only: "
-                "its NCCL marks are measurements and route no call") in plan_mod.render_text(pair)
+        text = plan_mod.render_text(pair)
+        assert (f"    tensor-parallel session (tp): table {pair_hash}; the table chooses among SIRCL options only: "
+                "its NCCL marks are measurements and route no call; the rules decide what NCCL carries here") in text
+        assert "      all_reduce eager: from 4,096 B oneshot (NCCL faster)" in text
+        assert "  NCCL: opt-in only (auto); tables choose among SIRCL options; this launch: --nccl auto" in text
+        assert "eager calls go to NCCL where the table" not in text and "the table decides stay" not in text
         assert pair.tuning.expected() == {"tp": pair_hash}                    # a pair's EP group runs on NCCL
-    assert any(item["nccl"] for entry in document["decisions"] for item in entry["intervals"])
+        assert json.loads(json.dumps(pair.to_json()))["tuning"]["sessions"][0]["nccl"] == (
+            "the table chooses among SIRCL options only: its NCCL marks are measurements and route no call; the "
+            "rules decide what NCCL carries here")
     never = make_plans(repository, ((0, 1),), tuning_tables=(str(pair_table),), nccl_mode="never")[0]
     assert "SIRCL carries every size: NCCL may not run on this group" in plan_mod.render_text(never)
     kept = make_plans(repository, ((0, 1),), tuning_tables=(str(pair_table),), large_allreduce="sircl",
                       nccl_mode="auto")[0]
-    assert "the table chooses SIRCL's settings only" in plan_mod.render_text(kept)
+    assert "the table chooses among SIRCL options only" in plan_mod.render_text(kept)
     # Every serve command takes the option; --env may not set the variable.
     for name in cli.COMMANDS:
         args = cli.parser().parse_args([name, "--site", "s", "--repository", "r", "--tuning-table", "a.json",
@@ -3575,14 +3601,15 @@ def test_a_bundle_matches_the_tp_and_dcp_sessions_and_stage_writes_every_table(t
     # A table measured on a TP4 path has the key of a DCP 4 group of the ring of eight: path:4, 4 ranks, 2 relays.
     same, same_hash, _ = _tuning_table(tmp_path, "tp4", range(4))
     assert same_hash == dcp_hash
-    # Without DCP sessions the DCP table matches nothing; with the ring's TP topology the TP table's NCCL text.
+    # Without DCP sessions the DCP table matches nothing; where --nccl auto (or topology) lets NCCL's ring run on
+    # the whole ring, the TP table still chooses among SIRCL options only.
     with pytest.raises(ServePlanError, match="matches no session of this launch"):
         make_bundle(tuning_tables=(str(ring), str(dcp)))
-    topology = make_bundle(tuning_tables=(str(ring),))
-    assert topology.tuning.expected() == {"tp": ring_hash}
-    assert "the table chooses SIRCL's settings only" in topology.render_text()
-    assert "its NCCL marks are measurements and route no call" in make_bundle(tuning_tables=(str(ring),),
-                                                                        nccl_mode="auto").render_text()
+    for mode in ("auto", "topology"):
+        ringed = make_bundle(tuning_tables=(str(ring),), nccl_mode=mode)
+        assert ringed.tuning.expected() == {"tp": ring_hash} and ringed.nccl_policy.value == "ring"
+        assert (f"    tensor-parallel session (tp): table {ring_hash}; the table chooses among SIRCL options only: "
+                "its NCCL marks are measurements and route no call") in ringed.render_text()
     fake = BundleSparks(plan)
     lines: list[str] = []
     assert bundle.stage(plan, staging.staged_tree(), fake, lines.append) == 0

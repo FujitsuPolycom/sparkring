@@ -223,6 +223,7 @@ class BundlePlan:
                  f"  tensor-parallel session: {plan_mod.oneshot_text(self.options.oneshot_max, self.derived_oneshot_max)}"
                  f"; {plan_mod.POST_ORDER_TEXT}",
                  *plan_mod.session_lines(self.sessions()),
+                 plan_mod.nccl_rule_text(self.options.nccl_mode),
                  *self.tuning.lines(),
                  *plan_mod.carrier_lines(*self.carriers()),
                  plan_mod.nccl_free_text(required=self.options.require_no_nccl,
@@ -260,6 +261,7 @@ class BundlePlan:
             "nccl": self.nccl_policy.value,
             "nccl_reason": self.nccl_reason,
             "nccl_mode": self.options.nccl_mode,
+            "nccl_rule": plan_mod.NCCL_RULE,
             "session_groups": self.options.session_groups,
             "session_defaults": {"oneshot_max": self.options.oneshot_max,
                                  "oneshot_max_derived": self.derived_oneshot_max,
@@ -379,6 +381,7 @@ def bundle_tuning_sessions(group: fabric.GroupTopology, positions: Sequence[int]
 def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_digest: str,
                  library: str) -> BundlePlan:
     """Every rank's additions for the group of Sparks ``options.positions``, in rank order."""
+    options = dataclasses.replace(options, nccl_mode=plan_mod.nccl_mode_value(options.nccl_mode))   # topology: auto
     serve_site = site if isinstance(site, ServeSite) else ServeSite.of(site)
     ring = serve_site.site
     positions = tuple(int(p) for p in options.positions)
@@ -484,9 +487,7 @@ def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_diges
     common.update(ring_settings)
     common.update(nccl_logging)
     tuning = plan_mod.tuning_plan(options.tuning_tables, bundle_tuning_sessions(group, positions, options, policy),
-                                  large=options.large_allreduce,
-                                  shared={"ep": "tp"} if policy is NcclPolicy.NONE else {},
-                                  nccl_mode=options.nccl_mode)
+                                  shared={"ep": "tp"} if policy is NcclPolicy.NONE else {})
     conflicts = tuning.conflicts(common)
     if conflicts:
         raise ServePlanError("; ".join(conflicts))

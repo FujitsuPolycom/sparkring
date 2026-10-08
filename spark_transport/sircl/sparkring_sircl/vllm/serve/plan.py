@@ -105,6 +105,7 @@ from ... import routes as routes_mod
 from ...ring.site import Site
 from ...routes import Layout as SessionLayout
 from .. import fabric, guard, pins
+from .. import settings as adapter_settings
 from ..fabric import NcclPolicy
 from . import profile as profile_mod
 from .profile import HEADLESS, ServingProfile
@@ -166,20 +167,24 @@ DEFAULT_STARTUP_WAIT_S = 600.0
 DEFAULT_SERVING_WAIT_S = 20.0
 MAX_WAIT_S = 0xFFFFFFFF / 1e6
 DEFAULT_API_PORT = 8017
-# One default for serve and bundle: never, so NCCL carries no collective of a multi-rank group. --nccl auto,
-# the opt-in, lets NCCL run where the cabling allows it (every collective on a pair, NCCL's ring algorithm on
-# a whole ring, nothing on a path) as the adapter's rules decide; topology is another name for auto. A tuning
-# table chooses only SIRCL's settings in every mode: its NCCL marks are measurements and route no call.
-NCCL_MODES = ("never", "auto", "topology")
+# One default for serve and bundle: never, so NCCL carries no collective of a multi-rank group. --nccl auto, the
+# explicit opt-in, lets NCCL run where the cabling allows it (every collective on a pair, NCCL's ring algorithm on
+# a whole ring, nothing on a path) as the adapter's rules decide; --nccl topology is another name for auto. In
+# every mode a tuning table chooses only among SIRCL's options: its NCCL marks are measurements and route no call.
+NCCL_MODES = adapter_settings.NCCL_MODES
+NCCL_RULE = adapter_settings.NCCL_RULE
 DEFAULT_NCCL_MODE = "never"
-NCCL_MODE_HELP = ("SIRCL_NCCL: never (default) makes SIRCL carry every collective; auto lets NCCL run where "
-                  "the cabling allows it: every collective on a pair, NCCL's ring algorithm on a whole "
-                  "ring, nothing on a path; topology is another name for auto")
+NCCL_MODE_HELP = ("SIRCL_NCCL: never (default) makes SIRCL carry every collective; auto, the opt-in, lets NCCL "
+                  "run where the cabling allows it: every collective on a pair, NCCL's ring algorithm on a whole "
+                  "ring, nothing on a path; topology is another name for auto. A tuning table never sends a call "
+                  "to NCCL")
 
 
 def nccl_mode_value(text: str) -> str:
-    """An ``--nccl`` value with ``topology`` spelled ``auto``."""
-    return "auto" if text == "topology" else text
+    """An ``--nccl`` value as the mode it names: ``topology`` is ``auto`` (``settings.nccl_mode_name``)."""
+    return adapter_settings.nccl_mode_name(text)
+
+
 LARGE_MODES = ("auto", "sircl", "nccl")
 MHC_MODES = ("profile", "off")
 # Session schedules of all_reduce_large, all_gather_large and reduce_scatter; unset keeps the session's
@@ -753,6 +758,7 @@ class ServePlan:
             "nccl": self.nccl_policy.value,
             "nccl_reason": self.nccl_reason,
             "nccl_mode": self.nccl_mode,
+            "nccl_rule": NCCL_RULE,
             "large_allreduce": self.large_allreduce,
             "mhc_prefill_shard": self.mhc_prefill_shard,
             "serving": {
@@ -1954,6 +1960,14 @@ def carrier_lines(groups: Sequence[GroupCarrier], collectives: Sequence[tuple[st
     return lines
 
 
+def nccl_rule_text(nccl_mode: str) -> str:
+    """Plan text: the NCCL rule (:data:`NCCL_RULE`) and what the launch's ``--nccl`` mode lets NCCL carry."""
+    if nccl_mode == "never":
+        return f"  {NCCL_RULE}; this launch: --nccl never, so NCCL carries no collective of a multi-rank group"
+    return (f"  {NCCL_RULE}; this launch: --nccl {nccl_mode}, so NCCL may carry, where the cabling allows it, "
+            "what SIRCL does not carry and what vLLM's own code sends through PyNccl")
+
+
 def nccl_free_text(*, required: bool, debug: bool, nccl_allowed: bool) -> str:
     if required:
         return ("  NCCL-free (--require-no-nccl): no group lets NCCL run, settings that create NCCL communicators "
@@ -2196,13 +2210,13 @@ class StagedTable:
 @dataclasses.dataclass(frozen=True)
 class SessionTable:
     """The tuning table one kind of session of the launch takes (None: its rules choose) and what the table
-    sends to NCCL on its group."""
+    decides about NCCL on its group: nothing, since a table chooses among SIRCL's options only."""
 
     name: str                         # tp or dcp
     facts: Mapping[str, Any]          # tuning.facts_for_layout of the session's layout and lanes
     table: StagedTable | None
     mismatches: Mapping[str, tuple[str, ...]]   # table hash -> key fields that differ (tables it does not take)
-    nccl: str                         # plan text: the sizes and modes the table sends to NCCL
+    nccl: str                         # plan text: the table's NCCL marks route no call (tuned_nccl_text)
 
     def to_json(self) -> dict[str, Any]:
         return {"name": self.name, "facts": dict(self.facts), "table": self.table.hash if self.table else None,
@@ -2294,18 +2308,18 @@ def add_tuning_argument(command: object) -> None:
                               "table per group shape)")
 
 
-def tuned_nccl_text(decisions: Sequence[Mapping[str, Any]], policy: NcclPolicy, large: str,
-                    nccl_mode: str = "auto") -> str:
-    """Plan text: what the table decides about NCCL on a group of ``policy``. A table chooses SIRCL's
-    settings only, under every ``SIRCL_NCCL`` mode and ``large`` (``SIRCL_LARGE_ALLREDUCE``): the adapter
-    passes no tuned backend to ``planner.Policy``, so the table's NCCL marks route no call."""
+def tuned_nccl_text(policy: NcclPolicy) -> str:
+    """Plan text: what a session's tuning table decides about NCCL on a group of ``policy``. A table chooses
+    among SIRCL's options only, under every ``SIRCL_NCCL`` mode and ``SIRCL_LARGE_ALLREDUCE`` value: the
+    planner takes no table input, so the table's NCCL marks route no call."""
     if policy is NcclPolicy.NONE:
         return "SIRCL carries every size: NCCL may not run on this group"
-    return "the table chooses SIRCL's settings only: its NCCL marks are measurements and route no call"
+    return ("the table chooses among SIRCL options only: its NCCL marks are measurements and route no call; the "
+            "rules decide what NCCL carries here")
 
 
 def tuning_plan(paths: Sequence[str], sessions: Sequence[tuple[str, fabric.GroupTopology, NcclPolicy]], *,
-                large: str, shared: Mapping[str, str] | None = None, nccl_mode: str = DEFAULT_NCCL_MODE) -> TuningPlan:
+                shared: Mapping[str, str] | None = None) -> TuningPlan:
     """Load ``paths`` (``--tuning-table``) and match every table against the launch's sessions (name, group,
     effective NCCL policy): each session takes the table whose key equals its facts
     (``tuning.facts_for_layout`` of its layout and lanes, with this tree's native and kernel hashes and
@@ -2348,7 +2362,7 @@ def tuning_plan(paths: Sequence[str], sessions: Sequence[tuple[str, fabric.Group
             name=name, facts=facts[name], table=taken,
             mismatches={digest: fields for digest, by_session in mismatches.items()
                         for session, fields in by_session.items() if session == name and fields},
-            nccl=tuned_nccl_text(taken.decisions, policy, large, nccl_mode) if taken is not None else ""))
+            nccl=tuned_nccl_text(policy) if taken is not None else ""))
     return TuningPlan(tables=tables, sessions=tuple(rows), shared=dict(shared or {}))
 
 
@@ -2407,6 +2421,7 @@ def parse_env(values: Sequence[str]) -> dict[str, str]:
 
 def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options, *, staged_digest: str,
                library: str) -> ServePlan:
+    options = dataclasses.replace(options, nccl_mode=nccl_mode_value(options.nccl_mode))   # topology: auto
     serve_site = site if isinstance(site, ServeSite) else ServeSite.of(site)
     ring = serve_site.site
     positions = tuple(options.positions)
@@ -2564,8 +2579,7 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
             if conflicts:
                 raise ServePlanError(f"SIRCL's communicator refuses this profile's decode-context-parallel groups, "
                                      f"where NCCL may not run ({dcp_reason}): " + "; ".join(conflicts))
-    tuning = tuning_plan(options.tuning_tables, sessions, large=options.large_allreduce,
-                         shared={"ep": "tp"} if policy is NcclPolicy.NONE else {}, nccl_mode=options.nccl_mode)
+    tuning = tuning_plan(options.tuning_tables, sessions, shared={"ep": "tp"} if policy is NcclPolicy.NONE else {})
     conflicts = tuning.conflicts(common)
     if conflicts:
         raise ServePlanError("; ".join(conflicts))
@@ -3208,6 +3222,7 @@ def render_text(plan: ServePlan) -> str:
         f"all-gathers run in the session's large-message ops, "
         f"whose sizes the session chooses (receipts: large_piece, gather_piece); " + POST_ORDER_TEXT,
         *session_lines(plan.sessions()),
+        nccl_rule_text(plan.nccl_mode),
         *plan.tuning.lines(),
         f"  SIRCL flag waits: startup regime up to {plan.startup_wait:g} s (setup, warm-up, graph capture, "
         f"profiling, sleep and wake-up), serving regime up to {plan.serving_wait:g} s from the first step after "

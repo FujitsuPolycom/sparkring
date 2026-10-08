@@ -29,10 +29,15 @@ import os
 from collections.abc import Mapping
 
 MODES = ("custom", "disabled")
-# never (the default): SIRCL carries every collective of every multi-rank group. auto, the opt-in: NCCL may
-# carry a collective where the group's cabling allows it, as the adapter's rules decide. topology: another
-# name for auto. In every mode a tuning table chooses only among SIRCL's settings.
-NCCL_MODES = ("never", "auto", "topology")
+# never (the default): SIRCL carries every collective of every multi-rank group. auto, the explicit opt-in:
+# NCCL may carry what SIRCL does not carry where the group's cabling allows it, as the adapter's rules decide,
+# and what vLLM's own code sends through PyNccl there. topology is another name for auto. In every mode a
+# tuning table chooses only among SIRCL's own algorithms, schedules, pieces, grids and session settings: its
+# NCCL marks are measurements, and the planner takes no table input, so no table routes a call to NCCL.
+NCCL_MODES = ("never", "auto")
+NCCL_MODE_ALIASES = {"topology": "auto"}
+# The NCCL rule that plan text, bundles and receipts state.
+NCCL_RULE = "NCCL: opt-in only (auto); tables choose among SIRCL options"
 LARGE_ALLREDUCE_MODES = ("auto", "sircl", "nccl")
 DEFAULT_GROUPS = ("tp", "dcp")
 DEFAULT_SESSION_MODULES = ("sparkring_sircl.oneshot",)
@@ -78,8 +83,8 @@ VARIABLES: tuple[Variable, ...] = (
              "comma-separated in rank order", "0,1,...,world-1"),
     Variable("SIRCL_GROUPS", "vLLM group kinds that get a SIRCL session (tp, dcp)",
              ",".join(DEFAULT_GROUPS)),
-    Variable("SIRCL_NCCL", "never forbids NCCL collectives on every multi-rank group; auto lets NCCL "
-             "carry collectives only where the group's cabling allows it, as the adapter's rules decide "
+    Variable("SIRCL_NCCL", "never forbids NCCL collectives on every multi-rank group; auto, the opt-in, lets "
+             "NCCL carry collectives only where the group's cabling allows it, as the adapter's rules decide "
              "(topology is another name for auto); a tuning table never sends a call to NCCL", "never"),
     Variable("SIRCL_LARGE_ALLREDUCE", "all-reduces above the session's dispatch ceiling: auto "
              "(NCCL where the cabling allows it and no graph is captured, else chunked on "
@@ -135,10 +140,14 @@ def enabled(environ: Mapping[str, str] | None = None) -> bool:
     return mode(environ) == "custom"
 
 
+def nccl_mode_name(text: str) -> str:
+    """The mode a ``SIRCL_NCCL`` or ``--nccl`` value names: ``topology`` is ``auto``; other text unchanged."""
+    return NCCL_MODE_ALIASES.get(text, text)
+
+
 def nccl_mode(environ: Mapping[str, str] | None = None) -> str:
-    """``SIRCL_NCCL``: never (the default) or auto (``topology`` is read as auto)."""
-    mode = _choice("SIRCL_NCCL", NCCL_MODES, "never", environ)
-    return "auto" if mode == "topology" else mode
+    """``SIRCL_NCCL``: ``never`` (the default) or ``auto``, the opt-in; ``topology`` is read as ``auto``."""
+    return nccl_mode_name(_choice("SIRCL_NCCL", NCCL_MODES + tuple(NCCL_MODE_ALIASES), "never", environ))
 
 
 def large_allreduce(environ: Mapping[str, str] | None = None) -> str:
