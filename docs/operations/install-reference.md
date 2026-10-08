@@ -1086,16 +1086,25 @@ IPv4/MTU settings, so its administration path survives renumbering.
 - **Pair:** a cable between port 0 (p0) of both Sparks. Pair profiles use
   port 0 on both Sparks. A second cable between the two ports 1 only carries
   the [admin tunnel's](#admin-tunnel) fallback path.
-- **Four-Spark ring:** one loop in which every cable runs from port 0 of one
-  Spark to port 1 (p1) of the next. Node A is rank 0; the Spark on its port 0
-  is rank 1, and so on.
+- **Ring (cycle) of three to eight Sparks:** one loop in which every cable
+  runs from port 0 of one Spark to port 1 (p1) of the next. Node A is
+  position (rank) 0; the Spark on its port 0 is position 1, and so on.
+- **Line (path) of three to eight Sparks:** the same rule without the
+  closing cable, starting at Node A. Node A's port 1 and the last Spark's
+  port 0 stay free.
 
-The serving images rely on these ports, so setup never remaps them. When the
-cables differ, setup stops and names the change: a cable end to move, or a
-Spark whose two cables to swap, and the ring order afterwards.
-`sudo sparkring cabling` prints the same advice without setting anything up
-([command](commands.md#cabling)). For a loop it names the fewest swaps;
-when two choices tie, it leaves Node A's cables alone.
+Addresses, port roles and the serving images' four-Spark transport rely on
+these ports, so setup never remaps them. When the cables differ, setup stops
+and names the change: a cable end to move, a Spark whose two cables to swap,
+or, for a line that does not start at Node A, the cable that closes it into a
+ring and the end Sparks on which setup can run instead.
+`sudo sparkring cabling` prints the same advice and the port-to-Spark map
+without setting anything up ([command](commands.md#cabling)). For a loop it
+names the fewest swaps; when two choices tie, it leaves Node A's cables alone.
+
+The installer's profiles run on a pair or a four-Spark ring. Setup also forms
+and verifies the other layouts ([fabrics of up to eight
+Sparks](#fabrics-of-up-to-eight-sparks)); no installer profile serves them.
 
 ### Cable speed
 
@@ -1153,10 +1162,11 @@ for another setup of the Sparks counts as never measured.
 
 ## Re-form Sparks into another pair or ring
 
-Sparks that belonged to other SparkRing clusters can form another pair or ring:
+Sparks that belonged to other SparkRing clusters can form another pair, line
+or ring:
 
-1. Cable them as a [pair or ring](#cabling); `sudo sparkring cabling` names
-   any cable to move.
+1. Cable them as a [pair, line or ring](#cabling); `sudo sparkring cabling`
+   names any cable to move.
 2. Stop their models: on each Spark that was a Node A,
    `sudo sparkring down --execute`.
 3. On the Spark that becomes Node A, review, then set up:
@@ -1197,18 +1207,141 @@ Sparks up as on a first setup, with renumbered fabric addresses.
 - Each Spark keeps its own identity, `/etc/sparkring/node.json`.
 - Run setup again after an interruption; it skips finished steps.
 
+## Fabrics of up to eight Sparks
+
+Setup forms a pair, a ring of three to eight Sparks or a line of three to
+eight ([cabling](#cabling)), installs what lets every Spark reach every
+other, makes it survive a reboot, verifies it and records it.
+
+### Addresses on any layout
+
+Cable e runs from position e's port 0 to position e+1's port 1; a ring's
+last cable returns to position 0. It carries two `/24` subnets, the (2e)th
+and (2e+1)th of the fabric network, one per ConnectX function; the port-0
+end is `.1` and the other end `.2`. Setup keeps compatible addresses a Spark
+already has.
+
+- With up to four cables setup uses `198.18.0.0/21`, with more
+  `198.18.0.0/20`. Both start at the same subnet, so cables 0 to 3 keep their
+  addresses. `--fabric-cidr` names another network; setup refuses one that
+  is too small, such as a `/21` for more than four cables.
+- Each Spark routes to every cable it is not on through its neighbor: on a
+  ring the shorter way, on a line the only way. Each Spark between two cables
+  forwards between them ([fabric addresses and
+  routes](#fabric-addresses-and-routes)).
+- The admin network takes a `/29` for up to six Sparks. With seven or eight,
+  setup uses the `/28` that contains the default `/29`; a subnet named with
+  `--control-cidr` is used as it is.
+
+### The relay table
+
+Sparks two or more cables apart reach each other through the Sparks between
+them, whose ConnectX cards pass RDMA traffic on in hardware. Setup installs
+one relay table for the whole fabric. It serves every pair of Sparks at once,
+for every transport:
+
+- each Spark has a `/32` route and a permanent neighbor entry (protocol 82)
+  toward each Spark it shares no cable with;
+- each Spark between two cables has ConnectX ingress rules (`tc` flower,
+  `skip_sw`, preferences 11 to 17) that pass a packet on to the next Spark;
+- each Spark runs one relay marker process per fabric RDMA device
+  (`sparkring-relay-marker`). It tags RDMA packets to relayed Sparks with how
+  many relays remain (EtherType `0x88b4` plus that number).
+- On a four-Spark ring the markers also tag the four-Spark transport's
+  two-hop traffic (UDP source port 65535). Four-Spark models then need no
+  per-deployment [mesh service](#the-rings-mesh).
+
+The table comes from SIRCL's relay plan for the whole fabric, so it carries
+every lane SIRCL derives. Routes with more than three relays, on lines of
+five or more Sparks, are research-only. Every Spark between two cables needs
+the [ConnectX hairpin setting](#the-hairpin-setting).
+
+The relay marker is compiled into the SparkRing package when the Spark that
+builds it has `gcc` and `libibverbs-dev`. A package built without it installs
+no relay table: four-Spark models then use their mesh service, and setup's
+plan says so.
+
+### Boot and reboot
+
+At boot, in order:
+
+1. `sparkring-hairpin.service` applies the ConnectX hairpin setting.
+2. `sparkring-fabric.service` adds the routes, settings, forwarding rules and
+   the relay table.
+3. `sparkring-relay-marker.service` starts the markers, and starts them again
+   when one stops, as after a ConnectX driver restart.
+4. The admin network starts, and `sparkring-recover.timer` restarts the
+   active model ([automatic recovery](#automatic-recovery)).
+
+`sparkring-agent` adds back, every 30 seconds, routes and relay objects that
+a link change removed. After a reboot, `sudo sparkring fabric verify`
+confirms the fabric.
+
+### The fabric document
+
+Setup ends by recording the fabric document (`sparkring-fabric/v1`) in
+`/var/lib/sparkring/controller/fabric.json` on Node A and the same bytes in
+`/etc/sparkring/fabric/topology.json` on every Spark. It lists:
+
+- each Spark's position, node identity and management address;
+- both ports of each Spark, with the cable and the far end, and each
+  function's network interface, RDMA device, MAC, role and address;
+- the cables with their subnets and last measured health;
+- the hairpin requirement, the relay plan's digest and whether boot units
+  restore it;
+- the transports the fabric can carry: `sircl`, and `prepared` on a pair or a
+  four-Spark ring;
+- the verification setup ran before it recorded the document.
+
+Its `id` is a digest of the Sparks, ports and cables; addresses, names and
+health can change without changing it. The relay plan (`relay-plan.json`)
+lies beside it on Node A. `sparkring fabric show` prints both
+([command](commands.md#fabric)). SIRCL reads device names from the document
+that `SIRCL_FABRIC_DOCUMENT` names.
+
+### Verify the fabric
+
+`sudo sparkring fabric verify` checks every Spark:
+
+- links, addresses, MTU and [RoCE GID index 3](#roce-gid-index-3);
+- the approved routes and forwarding settings;
+- the hairpin setting where the Spark relays;
+- every relay route, neighbor entry, ingress rule and marker;
+- that the boot units are enabled and the Spark's copy of the document is
+  the recorded one;
+- that every other Spark's fabric addresses answer ICMP. Relayed addresses
+  answer through the kernel's forwarding, so this checks routes, not the
+  hardware relays.
+
+`--traffic light` adds one bidirectional RDMA write test per relayed lane,
+about 10 seconds each, which crosses the hardware relays. It is refused while
+a model serves unless `--while-serving` is given. Each run writes
+`fabric-verify-TIME.json` in `/var/lib/sparkring/controller/fabric-reports/`.
+Setup runs the same checks before it records the document.
+
+### Change the layout
+
+A cluster whose Sparks are now cabled as another layout, such as a ring that
+lost a cable, stops setup with both layouts named. Restore the cables, or
+run `sudo sparkring setup --re-form` to set the Sparks up again as they are
+cabled; it moves each Spark's setup aside first, as a
+[re-form](#re-form-sparks-into-another-pair-or-ring) does. Adding or removing
+a Spark re-forms the cluster without the flag.
+
 ## Four-Spark rings
 
-Four-Spark rings need the ConnectX hairpin setting on every Spark; pairs do
-not use it. SparkRing applies it itself; a first installation needs no flag or
-separate step.
+Rings of four or more Sparks need the ConnectX hairpin setting on every Spark,
+and lines of three or more on every Spark between two cables; pairs and
+three-Spark rings do not use it. SparkRing applies it itself; a first
+installation needs no flag or separate step.
 
 ### The hairpin setting
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
 `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp4`,
 `deepseek-v41-flash-tp4` and `swift15-qwen38-flash-next-tp4`) relays traffic
-between nonadjacent Sparks through ConnectX hardware forwarding. That needs,
+between nonadjacent Sparks through ConnectX hardware forwarding, as does the
+[relay table](#the-relay-table) on any layout. That needs,
 on each of a Spark's four ConnectX functions, a hairpin queue of 8192 packets
 (`hairpin_queue_size`), four hairpin queues (`hairpin_num_queues`) and
 hardware TC offload.
@@ -1297,14 +1430,15 @@ On a Spark:
 ### Fabric addresses and routes
 
 Each cable carries two `/24` subnets, one per ConnectX function of its
-ports. With the default fabric network (`--fabric-cidr 198.18.0.0/21`), the
-cable from port 0 of rank e to port 1 of rank e+1 (rank 0 after rank 3)
-uses `198.18.(2e).0/24` and `198.18.(2e+1).0/24`; compatible addresses that
-setup kept may differ. Each Spark reaches the two cables it is not on
-through a neighbor: one static route per subnet, over the shorter side of
-the ring, for example `198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on
-rank 0. Setup records these approved routes in `/etc/sparkring/fabric.json`;
-a pair has none.
+ports ([addresses on any layout](#addresses-on-any-layout)). On a four-Spark
+ring with the default fabric network, the cable from port 0 of rank e to
+port 1 of rank e+1 (rank 0 after rank 3) uses `198.18.(2e).0/24` and
+`198.18.(2e+1).0/24`; compatible addresses that setup kept may differ. Each
+Spark reaches the cables it is not on through a neighbor: one static route per
+subnet, over the shorter side of a ring, for example
+`198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on rank 0. Setup records these
+approved routes, and the Spark's part of the [relay table](#the-relay-table),
+in `/etc/sparkring/fabric.json`; a pair has no routes.
 
 - **At boot**, `sparkring-fabric.service` adds the routes, sets each fabric
   function's per-interface settings (`net.ipv4.conf.IFACE.forwarding=1` and
@@ -1337,6 +1471,15 @@ a pair has none.
   restores routes and settings this way without setup or a reboot.
 
 ### The ring's mesh
+
+On a ring whose fabric document records a relay table that boot units
+restore, four-Spark installer profiles use that table: each rank's deployment
+refers to the fabric document, no mesh service is installed, and the ring
+check before the model starts checks the table and its markers on every
+Spark. A deployment that still has a mesh service does not start beside the
+table's markers; install it again. The rest of this section describes the
+mesh service that carries the two-hop paths on rings set up without the
+relay table.
 
 Every four-Spark installer profile runs on a native mesh; the installer
 renders each rank's container from the profile's shared container

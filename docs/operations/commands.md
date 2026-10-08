@@ -26,12 +26,13 @@ sudo sparkring logs --follow                                 # follow progress
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
-| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
+| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
+| [`fabric`](#fabric) | Node A | `verify` only | Show or verify the recorded fabric: ports, cables, relay table, boot units |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
-| [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that four-Spark rings need |
+| [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
 | [`storage`](#storage) | Node A | yes | Report disk use; release caches and workspaces no deployment uses |
 | [`up`, `down`](#up-and-down) | Node A | yes | Start or stop a model deployment |
@@ -124,13 +125,17 @@ stops first or a plan from the extracted package ends without a result (stage
 
 ## setup
 
-`sudo sparkring setup [flags]` discovers the cabled Sparks and configures them,
-without a model. `sparkring install` runs it on first use. Sparks that belonged
-to other SparkRing clusters are
+`sudo sparkring setup [flags]` discovers the cabled Sparks (a pair, or a line
+or ring of up to eight) and configures them, without a model. `sparkring
+install` runs it on first use. Sparks that belonged to other SparkRing
+clusters are
 [re-formed](install-reference.md#re-form-sparks-into-another-pair-or-ring)
-into the pair or ring now cabled. Setup ends by measuring each cable's
-[speed](#cable-speed) when no model serves; a degraded cable is a warning
-with its repair steps, not a failure.
+into the layout now cabled. Its plan shows the layout, the port map, the
+[relay table](install-reference.md#the-relay-table) and the transports the
+fabric can carry. Setup measures each cable's [speed](#cable-speed) when no
+model serves (a degraded cable is a warning with its repair steps, not a
+failure), then verifies the fabric and records the
+[fabric document](install-reference.md#the-fabric-document) on every Spark.
 
 | Flag | Meaning |
 |---|---|
@@ -140,8 +145,9 @@ with its repair steps, not a failure.
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--ssh-user USER` | Worker account (default: the account that ran `sudo`; `root` with `--env` or port 2222) |
 | `--ssh-port 22\|2222` | Worker SSH port; 2222 reaches workers prepared with `--worker-bundle` |
-| `--control-cidr CIDR` | Administration network, an IPv4 `/29` (default `10.253.255.0/29`) |
-| `--fabric-cidr CIDR` | Fabric addresses, an IPv4 `/16` to `/21` (default `198.18.0.0/21`) |
+| `--control-cidr CIDR` | Administration network, an IPv4 `/29` or `/28` (default `10.253.255.0/29`; the `/28` containing it for seven or eight Sparks) |
+| `--fabric-cidr CIDR` | Fabric addresses, an IPv4 `/16` to `/21` with room for two `/24` per cable (default `198.18.0.0/21` up to four cables, `198.18.0.0/20` above) |
+| `--re-form` | Set the cabled Sparks up again as a new cluster, as after recabling them into another layout ([change the layout](install-reference.md#change-the-layout)) |
 | `--no-share-internet` | Do not route workers' downloads and DNS through Node A |
 | `--reset-links` | Replace incompatible fabric IPv4 settings, also without a terminal |
 | `--stop-workloads` | Stop (never remove) GPU containers that block fabric preparation |
@@ -173,9 +179,10 @@ Two setup actions run offline without sudo and accept `--variant`:
 ## cabling
 
 `sudo sparkring cabling [flags]` shows how the Sparks on this Spark's fabric
-cables are cabled, and what to move for a pair or a four-Spark ring. It
-changes nothing on any Spark. Setup stops with the same advice when the
-cables do not fit ([cabling rules](install-reference.md#cabling)).
+cables are cabled: the layout (`pair`, `path-N` or `cycle-N`, up to eight
+Sparks), the port-to-Spark map and free ports, or what to move. It changes
+nothing on any Spark. Setup stops with the same advice when the cables do not
+fit ([cabling rules](install-reference.md#cabling)).
 
 ```text
 Sparks read:
@@ -194,6 +201,22 @@ To fix:
 Ring order after the fix: spark-a → spark-b → spark-c → spark-d
 ```
 
+A layout cabled as SparkRing needs shows its port map:
+
+```text
+Cables:
+  spark-a port 0 ↔ spark-b port 1
+  spark-b port 0 ↔ spark-c port 1
+Three-Spark line (path-3) from Node A, cabled as SparkRing needs.
+Layout: path-3
+Ports:
+  position 0 spark-a: port 0 → position 1 spark-b port 1 (cable 0); port 1 free
+  position 1 spark-b: port 0 → position 2 spark-c port 1 (cable 1); port 1 → position 0 spark-a port 0 (cable 0)
+  position 2 spark-c: port 0 free; port 1 → position 1 spark-b port 0 (cable 1)
+Line order: spark-a → spark-b → spark-c
+Note: spark-c port 0 and spark-a port 1 are free; a cable from the first to the second makes a cycle-3.
+```
+
 It reads this Spark, the Sparks of its recorded cluster over the admin
 network, and the other Sparks on the cables. It signs in to those over the
 LAN or the cables as the account that ran `sudo`, with Node A's setup key
@@ -201,21 +224,22 @@ where they accept it; SSH asks for a password elsewhere.
 
 | Flag | Meaning |
 |---|---|
-| `--json` | One `sparkring-cabling/v1` document; with `--bandwidth`, one `sparkring-fabric-bandwidth/v1` document |
+| `--json` | One `sparkring-cabling/v2` document (the `v1` keys, plus `shape`, `layout_size`, `layout_name`, `positions`, `free` and each cable's index); with `--bandwidth`, one `sparkring-fabric-bandwidth/v1` document |
 | `--ssh-user USER` | Account for signing in to the other Sparks (default: the account that ran `sudo`) |
 | `--no-sign-in` | Read only this Spark and its recorded cluster's Sparks |
 | `--bandwidth` | Measure each cable's speed instead ([cable speed](#cable-speed)) |
 | `--while-serving` | With `--bandwidth`, also measure cables a serving model uses |
 
-It exits with 0 when the cables form a pair or ring as SparkRing needs, 1
-when a cable needs to move or not every cable could be seen, and 2 on
-failure.
+It exits with 0 when the cables form a pair, line or ring as SparkRing needs,
+1 when a cable needs to move or not every cable could be seen, and 2 on
+failure. It reads up to nine Sparks, up to seven cables away, so a Spark
+cabled beyond the eight that setup supports is named.
 
 ### Cable speed
 
-`sudo sparkring cabling --bandwidth` measures each cable of the pair or ring
-that setup recorded and saves the result for `sparkring status`. Setup runs
-it as its last step. It takes about 30 seconds per cable.
+`sudo sparkring cabling --bandwidth` measures each cable of the fabric that
+setup recorded and saves the result for `sparkring status`. Setup runs it
+before it records the fabric document. It takes about 30 seconds per cable.
 
 ```text
 Fabric bandwidth, both directions at once (190 Gb/s or more per link is healthy):
@@ -243,6 +267,33 @@ It exits with 0 when every cable is healthy, 1 when a cable is degraded,
 could not be measured or was skipped, and 2 when the check could not run,
 for example while a model serves on every cable.
 [Cable speed](install-reference.md#cable-speed) explains the test.
+
+## fabric
+
+`sparkring fabric show [--json]` prints the recorded
+[fabric document](install-reference.md#the-fabric-document): the layout, each
+Spark's ports and cables, cable health, the hairpin requirement, the relay
+table, the transports and the last verification. It reads only Node A.
+
+`sudo sparkring fabric verify [flags]` checks every Spark's links, addresses,
+routes, hairpin setting, relay table, markers and boot units, and the
+reachability of every other Spark's addresses
+([what it checks](install-reference.md#verify-the-fabric)). It changes
+nothing.
+
+```text
+Fabric verified: 8 cables on 8 Sparks (cycle-8), relays 96 rules and 96 routes, reboot-persistent.
+Report: /var/lib/sparkring/controller/fabric-reports/fabric-verify-20261008T100500Z.json
+```
+
+| Flag | Meaning |
+|---|---|
+| `--traffic none\|light` | `light` adds one bidirectional RDMA write test per relayed lane (about 10 seconds each); default `none` |
+| `--while-serving` | With `--traffic light`, test while a model serves |
+| `--json` | Print the `sparkring-fabric-verify/v1` report |
+
+It exits with 0 when every check passes, 1 when one fails, and 2 when it
+could not run.
 
 ## models
 
@@ -324,8 +375,9 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 ## hairpin
 
 `sudo sparkring hairpin [flags]` applies the ConnectX hairpin setting on every
-Spark of a four-Spark ring and at every boot. It first updates any Spark that
-runs a different SparkRing revision than Node A.
+Spark that relays between its cables (every Spark of a ring of four or more,
+every Spark but the ends of a line of three or more) and at every boot. It
+first updates any Spark that runs a different SparkRing revision than Node A.
 [More about the setting](install-reference.md#four-spark-rings).
 
 | Flag | Meaning |
@@ -511,6 +563,7 @@ most actions. Useful by hand:
 | `sparkring node hairpin status [--busy]` | Each ConnectX function's hairpin setting; `--busy` (needs sudo) adds what blocks a restart |
 | `sudo sparkring node hairpin apply --dry-run --boot` | The restarts the next boot performs |
 | `sudo sparkring node assets --profile PROFILE` | Where this Spark holds copies of the profile's checkpoint (read-only) |
+| `sudo sparkring node relay-markers` | Run this Spark's relay markers until stopped; `sparkring-relay-marker.service` runs it |
 
 ## init and export
 

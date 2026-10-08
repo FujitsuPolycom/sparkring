@@ -61,6 +61,14 @@ See the [hardware-forwarding contract](fabric/cx7_hairpin_diagonal/README.md)
 and [managed mesh operations](../runtime/glm53-spark-mtp3-mesh/MANAGED_MESH.md).
 Fabric provisioning and model lifecycle are separate from a collective call.
 
+Setup installs one relay table for the whole fabric of a pair, line or ring of
+up to eight Sparks, which carries these two-hop paths too
+([relay table](../docs/operations/install-reference.md#the-relay-table)). Its
+sender tags come from [`fabric/relay_marker.c`](fabric/relay_marker.c), which
+the SparkRing package compiles: per RDMA device it rewrites the EtherType of
+RDMA packets by destination address and, for the four-Spark transport above,
+by UDP source port 65535.
+
 ## Dispatch and failure handling
 
 - All ranks must agree on the selected library identity, protocol, group,

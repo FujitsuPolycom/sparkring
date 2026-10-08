@@ -1,7 +1,10 @@
 # Install SparkRing
 
 `sparkring install` sets up two or four cabled DGX Sparks and starts one model.
-Run it on Node A, the Spark connected to your network.
+Run it on Node A, the Spark connected to your network. `sparkring setup` also
+forms lines and rings of up to eight Sparks
+([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)); the
+installer's profiles run on a pair or a four-Spark ring.
 
 [All commands and flags](commands.md) · [Reference](install-reference.md)
 
@@ -11,10 +14,11 @@ Run it on Node A, the Spark connected to your network.
   NVIDIA drivers, Docker, NVIDIA Container Toolkit, NetworkManager and SSH.
   Setup does not install drivers or firmware.
 - Root or sudo on every Spark.
-- Cables: a pair connects port p0 to p0; a four-Spark ring connects each
-  Spark's p0 to the next Spark's p1. p0 is the QSFP port next to the 10GbE
-  (RJ45) port. `sudo sparkring cabling` checks them and names any cable to
-  move.
+- Cables: a pair connects port p0 to p0; a ring connects each Spark's p0 to
+  the next Spark's p1, and a line does the same from Node A without the last
+  cable. p0 is the QSFP port next to the 10GbE (RJ45) port.
+  `sudo sparkring cabling` checks them, prints which port leads to which
+  Spark and names any cable to move.
 - Node A on your network with outbound HTTPS to `github.com`,
   `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
   mirror. Workers need no network cable.
@@ -34,8 +38,9 @@ Run it on Node A, the Spark connected to your network.
 
 </details>
 
-Not supported: six-Spark rings, other port layouts, and Docker's containerd
-image store ([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
+Not supported: installer profiles on fabrics other than a pair or a
+four-Spark ring, other port layouts, and Docker's containerd image store
+([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
 
 ## Install
 
@@ -83,10 +88,12 @@ package.
 ## Four-Spark rings
 
 The installer applies a ConnectX driver setting (hairpin) on every Spark and
-repeats it at each boot, which adds about 30 seconds. After a reboot, start the
-model with the same install command. If `sudo sparkring status` shows
-`needs-attention`, run `sudo sparkring hairpin` on Node A.
-[More about the setting](install-reference.md#four-spark-rings).
+repeats it at each boot, which adds about 30 seconds. It also installs the
+fabric's [relay table](install-reference.md#the-relay-table), which the Sparks
+restore at every boot. After a reboot, `sudo sparkring fabric verify` checks
+the fabric; start the model with the same install command. If
+`sudo sparkring status` shows `needs-attention`, run `sudo sparkring hairpin`
+on Node A. [More about the setting](install-reference.md#four-spark-rings).
 
 A ring can also serve two two-Spark models, one on each half:
 `sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
