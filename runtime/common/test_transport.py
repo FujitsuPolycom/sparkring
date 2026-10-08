@@ -320,12 +320,16 @@ def launcher_plan(lock, nccl, **options):
     """
     plain = installer.specifications({key: value for key, value in lock.items() if key != "transport"})
     section = lock["transport"]
+    # The deployment adds the NCCL ring settings of the cycle contract where the profile leaves them unset
+    # (transport.added_ring_settings); the SIRCL launcher's bundle sets the same settings whenever it lets NCCL
+    # run on a cycle (serve.bundle.RING_SETTINGS), so the launcher plan reads the same environment.
+    ring = transport.added_ring_settings(section, plain[0].environment)
     ranks = []
     for number, spec in enumerate(plain):
         health = serve_profile.Health(spec.health_command, "10s", "5s", "0s", 3) if spec.health_command else None
         ranks.append(serve_profile.RankContainer(
             rank=number, image_reference=spec.image_id, entrypoint=spec.entrypoint, command=spec.command,
-            environment=dict(spec.environment),
+            environment={**spec.environment, **ring},
             mounts=tuple(serve_profile.Mount(m.source, m.target, m.read_only) for m in spec.mounts),
             devices=spec.devices, security_opt=spec.security_opt, memory=spec.memory, memory_swap=spec.memory_swap,
             memlock=spec.memlock, platform=spec.platform, pull_policy=spec.pull_policy, restart=spec.restart_policy,
@@ -417,6 +421,20 @@ def test_with_nccl_auto_on_a_pair_nccl_uses_the_devices_facing_the_partner():
                                                                    "=rocep1s0f1,roceP2p1s0f1"]
     assert all("NCCL_DEBUG_SUBSYS" not in spec.environment or spec.environment["NCCL_DEBUG_SUBSYS"] != "INIT"
                for spec in specs)
+
+
+def test_with_nccl_auto_on_a_whole_cycle_the_installer_arms_the_ring():
+    lock, section = sircl_deployment(TP4, "cycle", 4, [0, 1, 2, 3], nccl="auto")
+    assert section["group"]["cabling"] == "ring"
+    for spec in installer.specifications(lock):
+        # The cycle contract: NCCL's ring runs, and builds no tree connections between Sparks that share no cable.
+        assert spec.environment["NCCL_ALGO"] == "Ring" and spec.environment["NCCL_SKIP_TREE_CONNECT"] == "1"
+    assert ("  NCCL on this cycle: NCCL_ALGO=Ring, NCCL_SKIP_TREE_CONNECT=1; the installer adds what the profile "
+            "leaves unset, so NCCL's ring runs but builds no tree connections between Sparks that share no cable") \
+        in transport.plan_lines(section)
+    # A profile that names another value for a ring setting is refused: the contract needs exactly these.
+    with pytest.raises(transport.TransportError, match="the profile sets NCCL_SKIP_TREE_CONNECT='0'"):
+        transport.environment(section, {"NCCL_SKIP_TREE_CONNECT": "0"}, [])
 
 
 def package_image(**changes):
