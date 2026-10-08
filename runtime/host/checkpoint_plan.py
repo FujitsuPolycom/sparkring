@@ -37,7 +37,10 @@ Plan document keys: ``repository``, ``revision``, ``pins_sha256``,
 ``sudo sparkring install`` command that repeats this request, which messages
 suggest), ``required`` (``files``, ``bytes``, ``sizes``), ``hub_files``,
 ``hub_bytes``, ``distribution`` (``donor``, ``pool``, ``hub``, ``receive``),
-``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``. The plan of a
+``nodes``, ``retained``, ``refreshed_receipts`` and ``problems``; a plan made
+for a known fabric layout of the deployment's Sparks also holds ``layout``
+(``{"shape", "size"}``), along whose cables files move, and the install adds
+its spread plan as ``spread`` (``runtime/host/spread.py``). The plan of a
 derived checkpoint (``runtime/common/derived_checkpoint.py``) is its base's,
 with a ``derivation`` section (``runtime.host.derivation.section``) whose
 writes each Spark's free-space need includes.
@@ -60,7 +63,7 @@ import json
 from pathlib import Path, PurePosixPath
 import shlex
 
-from runtime.common import serving
+from runtime.common import fabric_layout, serving
 from runtime.host import fabric_stream, install_space
 
 SCHEMA = "sparkring-checkpoint-plan/v1"
@@ -669,21 +672,31 @@ def _changed_in_place(node, path, found, required, command=COMMAND):
 
 # Several Sparks
 
-def _distance(count, rank):
+def _distance(count, rank, layout=None):
+    """Cables between Node A and ``rank``: along ``layout``, or round a pair or ring without one."""
+    if layout is not None:
+        return fabric_layout.hops(layout, 0, rank)
     return 1 if count <= 2 else min(rank, count - rank)
 
 
-def _ring_order(count):
-    return sorted(range(1, count), key=lambda rank: (_distance(count, rank), rank))
+def _ring_order(count, layout=None):
+    return sorted(range(1, count), key=lambda rank: (_distance(count, rank, layout), rank))
 
 
-def _distribute(count, holdings, sizes):
-    """Donor, pooling, downloads and ring receives, given the names each Spark holds (``holdings``).
+def plan_layout(plan):
+    """The layout a plan was made for (``layout``), or None for a plan of a pair or ring that names none."""
+    value = (plan or {}).get("layout")
+    return fabric_layout.checked(value) if value is not None else None
+
+
+def _distribute(count, holdings, sizes, layout=None):
+    """Donor, pooling, downloads and cable receives, given the names each Spark holds (``holdings``).
 
     The lowest-numbered complete Spark is the donor. Without one, Node A pools
-    each name it lacks from one other Spark, nearest in ring order first, and
-    downloads the names no Spark holds; it is then the donor. The other Sparks
-    receive their missing names along ``fabric_stream.tree``.
+    each name it lacks from one other Spark, nearest along the cables first,
+    and downloads the names no Spark holds; it is then the donor. The other
+    Sparks receive their missing names along ``fabric_stream.tree`` of
+    ``layout`` (default: a pair or a ring).
     """
     names = set(sizes)
     held = [set(h) & names for h in holdings]
@@ -694,21 +707,22 @@ def _distribute(count, holdings, sizes):
     else:
         donor = 0
         for name in sorted(names - held[0]):
-            source = next((rank for rank in _ring_order(count) if name in held[rank]), None)
+            source = next((rank for rank in _ring_order(count, layout) if name in held[rank]), None)
             if source is None:
                 hub.append(name)
             else:
                 pool.setdefault(source, []).append(name)
     receive = []
-    for level, edges in enumerate(fabric_stream.tree(count, donor)):
+    for level, edges in enumerate(fabric_stream.tree(count, donor, layout)):
         for source, target in edges:
             need = sorted(names - held[target])
             if need:
                 receive.append({"source": source, "target": target, "names": need, "level": level,
                                 "transport": "fabric"})
     return {"donor": donor, "complete": complete, "hub": hub, "receive": receive,
-            "pool": [{"source": rank, "names": pool[rank], "transport": "fabric" if _distance(count, rank) == 1 else "rsync"}
-                     for rank in _ring_order(count) if rank in pool]}
+            "pool": [{"source": rank, "names": pool[rank],
+                      "transport": "fabric" if _distance(count, rank, layout) == 1 else "rsync"}
+                     for rank in _ring_order(count, layout) if rank in pool]}
 
 
 def _writes(count, distribution, sizes):
@@ -732,7 +746,8 @@ def _retained(value):
 
 
 def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", images=None, caches=None,
-         relay_device=None, retained=None, locked=False, policy=None, now=None, request=None, derivation=None):
+         relay_device=None, retained=None, locked=False, policy=None, now=None, request=None, derivation=None,
+         layout=None):
     """Plan the checkpoint for every Spark of one deployment.
 
     ``surveys`` holds one survey document per rank, or the failure (an exception,
@@ -755,7 +770,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     messages suggest (``install_command``). ``derivation`` is the
     ``derivation.section`` of a derived checkpoint, whose files each Spark
     writes on the base directory's filesystem. A ``request`` that names
-    ``api_address`` keeps it, so the command repeats it.
+    ``api_address`` keeps it, so the command repeats it. ``layout`` is the
+    fabric layout of the ranks (``spread.deployment_layout``); files move
+    along its cables, and without it along a pair or a ring.
     """
     sizes = required_files(pins)
     count = len(rows)
@@ -823,7 +840,9 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
                     "on a rotational or USB-attached disk; this Spark receives those files over the fabric")}
                     for path in dropped if path not in {s["path"] for s in node["sources"]}]
 
-    distribution = _distribute(count, [held(node) for node in nodes], sizes)
+    if layout is not None and fabric_layout.checked(layout)["size"] != count:
+        raise ValueError("The checkpoint plan's layout names another number of Sparks than its rows")
+    distribution = _distribute(count, [held(node) for node in nodes], sizes, layout)
     for item in distribution["pool"]:
         for name in item["names"]:
             nodes[0]["files"][name] = {"action": "pool", "size": sizes[name], "from": item["source"],
@@ -909,6 +928,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
                 break
     created = now or datetime.datetime.now(datetime.timezone.utc)
     extra = {"derivation": derivation} if derivation is not None else {}
+    if layout is not None:
+        extra["layout"] = fabric_layout.checked(layout)
     return {**extra, "schema": SCHEMA, "repository": pins["repository"], "revision": pins["revision"],
             "pins_sha256": pins_digest(pins), "created_at": created.isoformat(timespec="seconds"),
             "reviewed": False, "approval": None, "operator": operator, "named": entries,
@@ -1065,7 +1086,8 @@ def envelope(reviewed, fresh):
     of the reviewed downloads, each Spark writes at most 1 GiB more, each Spark
     keeps its mode, and each Spark's source paths are a subset of the reviewed
     ones. Growth on Node A that its extra downloads explain is reported once, as
-    the download.
+    the download. When both plans carry a spread plan, the spread must also
+    stay within the reviewed one (``spread.envelope``).
     """
     same = (reviewed.get("repository"), reviewed.get("revision"), reviewed.get("pins_sha256"),
             [n["host"] for n in reviewed["nodes"]]) == (fresh.get("repository"), fresh.get("revision"),
@@ -1113,6 +1135,9 @@ def envelope(reviewed, fresh):
     if reviewed.get("derivation") or fresh.get("derivation"):
         from runtime.host import derivation
         items.extend(derivation.envelope(reviewed.get("derivation"), fresh.get("derivation")))
+    if reviewed.get("spread") and fresh.get("spread"):
+        from runtime.host import spread
+        items.extend(spread.envelope(reviewed["spread"], fresh["spread"]))
     return items
 
 
@@ -1151,7 +1176,7 @@ def redistribute(plan, results):
         else:
             holdings.append(set(result.get("verified") or ()) & set(sizes))
             adopted.append(int(result.get("bytes_written") or 0))
-    distribution = _distribute(count, holdings, sizes)
+    distribution = _distribute(count, holdings, sizes, plan_layout(plan))
     transfers = _writes(count, distribution, sizes)
     return {**distribution, "adopted": adopted, "transfers": transfers,
             "writes": [a + t for a, t in zip(adopted, transfers)]}

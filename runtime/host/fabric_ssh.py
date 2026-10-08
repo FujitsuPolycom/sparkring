@@ -43,10 +43,18 @@ def routes(cluster):
 
 
 class Transport:
-    """Keep control credentials on the head; bulk bytes never traverse the caller's PC."""
-    def __init__(self, cluster, directory, *, root="/", run=subprocess.run):
+    """Keep control credentials on the head; bulk bytes never traverse the caller's PC.
+
+    ``document`` is the cluster's fabric document (``sparkring-fabric/v1``)
+    when one is recorded for these Sparks; transfers then spread along its
+    cables (``runtime/host/spread.py``). ``positions`` gives each rank's
+    fabric position, which equals the rank for the whole cluster.
+    """
+    def __init__(self, cluster, directory, *, root="/", run=subprocess.run, document=None):
         self.cluster, self.run = cluster, run
         self.hosts = cluster["plan"]["spec"]["hosts"]
+        self.document = document
+        self.positions = list(range(len(self.hosts)))
         self.routes = routes(cluster)
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -169,6 +177,9 @@ class View:
         self.transport, self.ranks = transport, list(ranks)
         self.hosts = [transport.hosts[rank] for rank in self.ranks]
         self.mode = transport.mode
+        self.document = getattr(transport, "document", None)
+        positions = getattr(transport, "positions", range(len(transport.hosts)))
+        self.positions = [positions[rank] for rank in self.ranks]
 
     def local(self, rank):
         return self.transport.local(self.ranks[rank])

@@ -12,6 +12,13 @@ beside it as ``checkpoint-plan.refused.json``. The approved plan bounds what
 the checkpoint preparation may download and write. A new deployment whose plan
 has problems is not recorded, so repeating the command plans it again.
 
+On a cluster with a recorded fabric document the plan also holds the spread
+plan (``runtime/host/spread.py``, ``sparkring-spread-plan/v1``): the order in
+which Node A reaches the Sparks, and the pipelines that carry the serving image
+and the checkpoint along the cables, each Spark forwarding while it writes. It
+is printed above the checkpoint plan, saved with it as ``spread`` and bounded
+with it by a reviewed plan.
+
 On an installed four-Spark ring the installation also applies the ConnectX
 hairpin setting (``runtime/host/hairpin_ring.py``) where a Spark lacks it or its
 boot record, after the one approval and before the model transaction.
@@ -55,7 +62,7 @@ from runtime.common import distribution, installer, installer_image, process_loc
 from runtime.common import serving as serving_settings
 from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, controller, derivation, discovery,
                           fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
-                          recovery, retained_source, retention, rollout, settings, topology)
+                          recovery, retained_source, retention, rollout, settings, spread, topology)
 from runtime.host import placement as placements
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
@@ -572,7 +579,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
                                          **({"placement": list(placement)} if placement is not None else {}),
                                          **({"serving": request["serving"]} if request.get("serving") else {})},
-                                derivation=derivation_section(selection, rows, surveys))
+                                derivation=derivation_section(selection, rows, surveys),
+                                layout=spread.deployment_layout(topology.layout_of(cluster["plan"]),
+                                                                placement if placement is not None else rows))
     if not locked:
         if plan["problems"]:
             return directory, None, plan
@@ -585,6 +594,17 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
         lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image, settings=requested)
     return directory, lock, plan
+
+
+def reach_problem(document, transport):
+    """``needs_input`` naming the first Spark in bootstrap order that does not answer over ``transport``, or None."""
+    def alive(position):
+        try:
+            return subprocess.run(transport.command(position, ["true"]), capture_output=True,
+                                  timeout=30).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return spread.first_unreached(document, alive)
 
 
 def saved_plan(directory):
@@ -992,6 +1012,13 @@ def execute(args):
             print("Configure and start the profile's supervised native fabric.")
         if limit and checkpoint["hub_files"]:
             print(f"Downloads from huggingface.co are limited to {progress.rate_text(limit)}.")
+        document = spread.recorded(state_root, cluster)
+        if document is not None and lock is not None:
+            positions = list(placement) if placement is not None else list(range(len(cluster["plan"]["spec"]["hosts"])))
+            checkpoint["spread"] = spread.plan(document, spread.assets(document, checkpoint, positions=positions,
+                                                                       card=lock["selection"]))
+            for line in spread.describe(checkpoint["spread"], document):
+                print(line)
         # The plan's last line says what is downloaded, so it stays directly
         # above any prompt.
         for line in checkpoint_plan.describe(checkpoint):
@@ -1030,6 +1057,8 @@ def execute(args):
         if limit:
             plan["download_limit_bps"] = limit * 8
         plan["checkpoint"] = checkpoint_plan.summary(checkpoint)
+        if checkpoint.get("spread"):
+            plan["spread"] = checkpoint["spread"]
         if args.plan:
             save_plan(directory, {**checkpoint, "reviewed": True})
             forget_refused(directory)
@@ -1083,7 +1112,16 @@ def execute(args):
         check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None,
                         others=displaced)
         transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
-        plan["transfer"] = transport.verify()
+        # With the recorded fabric document, images and checkpoints spread along its cables.
+        transport.document = document
+        try:
+            plan["transfer"] = transport.verify()
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            # With a fabric document, the first Spark in bootstrap order that does not answer is named.
+            problem = reach_problem(document, transport) if document is not None else None
+            if problem is None:
+                raise
+            raise problem from error
         # Packages and the serving image go to every Spark of the cluster; the
         # checkpoint moves between the deployment's own Sparks.
         assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
