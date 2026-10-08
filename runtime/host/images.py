@@ -2,20 +2,26 @@
 import argparse
 import json
 
-from runtime.common import installer_image, profiles
+from runtime.common import image_lock, installer_image, profiles
 
 
 def rows(profile=None):
-    """One row per installer image, the default first; with ``profile``, only images that run it."""
+    """One row per installer image, the install default first; with ``profile``, only images that run it.
+
+    Each row names the image's line and the collective transports it carries
+    (``runtime/common/image_lock.py``); ``archived`` marks an archived image,
+    which ``--image`` still selects.
+    """
     listed = []
-    for row in installer_image.catalog():
-        admitted = [name for name in installer_image.profiles_of(row["lock"]) if name not in profiles.REPLACED]
+    for row in image_lock.catalog():
+        admitted = [name for name in image_lock.profiles_of(row["lock"]) if name not in profiles.REPLACED]
         if profile is not None and profile not in admitted:
             continue
         listed.append({"name": row["name"], "tags": row["tags"], "default": row["default"],
                        "image_reference": row["lock"]["image_reference"],
                        "runtime_status": row["lock"]["status_version"],
-                       "download_bytes": row["lock"].get("download_bytes"), "profiles": admitted})
+                       "download_bytes": row["lock"].get("download_bytes"), "profiles": admitted,
+                       "line": row["line"], "transports": row["transports"], "archived": row["archived"]})
     return listed
 
 
@@ -33,7 +39,7 @@ def main(argv=None):
         print(json.dumps(listed, indent=2))
         return 0
     for row in listed:
-        marks = [*row["tags"], *(["default"] if row["default"] else [])]
+        marks = [*row["tags"], *(["default"] if row["default"] else []), *(["archived"] if row["archived"] else [])]
         print(row["name"] + (f"  ({', '.join(marks)})" if marks else ""))
         size = f"{row['download_bytes'] / 2**30:.1f} GiB download" if row["download_bytes"] else "download size not recorded"
         missing = [name for name in installer_image.SUPPORTED if name not in row["profiles"]]
@@ -43,6 +49,7 @@ def main(argv=None):
             runs = "every installer profile except " + ", ".join(missing)
         else:
             runs = ", ".join(row["profiles"])
-        print(f"  {size}; runs {runs}")
+        carries = ", ".join(row["transports"]) + (f"; {row['line']} line" if row["line"] else "")
+        print(f"  {size}; transports {carries}; runs {runs}")
     print("Install a profile on one of them: sudo sparkring install --profile PROFILE --image NAME")
     return 0

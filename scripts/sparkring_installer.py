@@ -74,8 +74,10 @@ def main(argv=None):
                 model = input("Model (glm53, mimo26 or qwen38): ").strip()
             profile = args.profile or installer.DEFAULTS[model, len(raw["hosts"])]
             output = args.output or Path(".sparkring/deployment")
-            from runtime.common import installer_image
-            image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+            from runtime.common import image_lock
+            # A deployment made here runs on the prepared transport; a v3 image contributes its v2 fields.
+            image_runtime = image_lock.v2_view(image_lock.for_profile(
+                profile, installer.read(args.image_lock) if args.image_lock else None))
             settings = serving.from_arguments(args)
             installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime, settings=settings)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")

@@ -66,6 +66,12 @@
       ]
     },
     {
+      "id": "installer-sircl-layer",
+      "path": "runtime/images/sircl_layer.py",
+      "kind": "python",
+      "reason": "Add SIRCL ring sessions to a kraken-line installer image: the reproducible sparkring_sircl wheel in site-packages and both native libraries compiled in a network-less container of the parent image, recorded in its external-base receipt; prepare does not invoke Docker, and record probes and admits the built image and writes its sparkring-installer-image/v3 lock."
+    },
+    {
       "id": "installer-transport-window",
       "path": "runtime/images/derive_transport_window.py",
       "kind": "python",

@@ -41,6 +41,30 @@ shared-memory reader window of `--save-cpu`, is listed in
 ([capabilities](../../runtime/images/installer-images.md#capabilities)); an
 image derived from a listed one needs no entry.
 
+An image that carries SIRCL ring sessions has a `sparkring-installer-image/v3`
+lock ([image_lock.py](../../runtime/common/image_lock.py)). It keeps every v2
+field and adds:
+
+| Field | Meaning |
+|---|---|
+| `line` | The image line: `kraken`, images built on Local Inference Lab's `karmic-kraken-beta` vLLM and B12X branches |
+| `transports` | The collective transports the image carries, sorted: `prepared` and `sircl`. This package admits v3 locks that list `prepared`, whose v2 fields keep their meaning |
+| `sircl` | The SIRCL layer: package version, native ABI, wheel name and SHA-256, the two prebuilt libraries (path, SHA-256, source digest), the layer receipt, the tuning key a measured table must match, and the pinned vLLM builds the image's vLLM matches |
+| `tuning_defaults_sha256` | The SHA-256 of [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json) at the image's build |
+| `archived` | `true` for an archived release, which `--image` still selects and which is never the default |
+
+v1 and v2 locks keep validating, and published releases keep their v2 lock
+bytes. Compose exports and the Install Builder use a v3 image through its v2
+fields, on the prepared transport. The
+[SIRCL layer builder](../../runtime/images/installer-images.md#sircl-layer)
+writes the v3 lock. `sparkring install` without `--image` uses the newest
+kraken-line v3 release that carries SIRCL, is not archived and is published in
+[installer-releases.json](../../runtime/releases/installer-releases.json); until
+one is, it uses the default v2 image on the prepared transport. Listing a v3
+release there therefore changes the default image and transport of every new
+installation; record the rollback image, normally the v2 release it derives
+from, in the release notes.
+
 A release's SparkRing package carries the relay marker compiled for arm64.
 Build the release package on an arm64 Linux host with `gcc` and
 `libibverbs-dev`:

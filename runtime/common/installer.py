@@ -309,7 +309,15 @@ def backend(card):
     return "glm-managed" if card["profile"] in (GLM_LEGACY[4], GLM_NO_CACHE[4]) else "compose"
 
 
-def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None):
+def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None,
+              transport=None):
+    """The deployment lock of one request.
+
+    ``transport`` is the ``transport`` section of a deployment on SIRCL ring
+    sessions (``runtime/common/transport.py``, ``section``); a lock without
+    one runs on the prepared transport of its image, as every lock made
+    before the section existed does.
+    """
     if profile not in SUPPORTED:
         raise ValueError(f"The installer does not deploy {profile}; 'sparkring models' marks the profiles it installs, "
                          "and other profiles use their own guides")
@@ -333,6 +341,11 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         value["image_runtime"] = image_runtime
     if settings:
         value["serving"] = settings
+    if transport is not None:
+        from runtime.common import transport as transports
+        if selected_backend != "compose":
+            raise ValueError("SIRCL ring sessions run Compose deployments; this profile's backend is " + selected_backend)
+        value["transport"] = transports.validate_section(transport, card, image_runtime)
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -340,7 +353,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
 def validate(lock):
     expected = make_lock(lock["selection"]["profile"], lock["site_input"], lock["source_revision"],
                          lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"),
-                         settings=lock.get("serving"))
+                         settings=lock.get("serving"), transport=lock.get("transport"))
     if expected != lock:
         raise ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
     return lock
@@ -354,13 +367,17 @@ def load(directory):
     return lock
 
 
-def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None):
+def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None, transport=None):
     directory = Path(directory).resolve()
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
     revision = distribution.identity(ROOT)
-    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings)
+    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings,
+                            transport=transport)
+    if transport is not None:
+        # Renders every rank with SIRCL, which refuses a profile setting its sessions cannot carry.
+        specifications(provisional)
     if settings:
         # Refuses a switch that the deployment's image cannot apply, and a
         # setting whose vLLM flag the profile does not set. A recorded
@@ -374,7 +391,7 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     bundle = directory / "source.bundle"
     distribution.bundle(ROOT, bundle)
     lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant,
-                     image_runtime=image_runtime, settings=settings)
+                     image_runtime=image_runtime, settings=settings, transport=transport)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
     if lock["backend"] == "compose":
@@ -414,6 +431,9 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
             specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row),
                                            source_root=row["repository"], profile=card["profile"])
                      for spec, row in zip(specs, site["ranks"], strict=True)]
+        if "transport" in lock:
+            from runtime.common import transport
+            specs = transport.adapt(specs, lock)
     else:
         specs = []
         for row in site["ranks"]:
@@ -733,7 +753,7 @@ def export(directory, output, *, share=False):
         settings = lock.get("serving") or {}
         portable = make_lock(lock["selection"]["profile"], example, lock["source_revision"],
                              lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=runtime,
-                             settings=settings)
+                             settings=settings, transport=lock.get("transport"))
         flags = "".join(" " + serving.label(name, value) for name, value in sorted(settings.items()))
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])

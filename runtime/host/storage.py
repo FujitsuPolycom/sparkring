@@ -1119,12 +1119,13 @@ def profile_references():
     "caches": {name: [...]}, "images": {image_id: [...]}, "locks": {image_id:
     [lock name, ...]}, "derived": {"<repository>@<revision>": {"name",
     "base", "donor"}}}``. A profile references the checkpoints it lists, derived
-    ones included, the image of the lock ``installer_image.for_profile``
-    selects and the caches those produce. ``locks`` names every installer
+    ones included, the images of the locks ``installer_image.for_profile``
+    (Compose exports) and ``image_lock.for_profile`` (``sparkring install``)
+    select and the caches those produce. ``locks`` names every installer
     image lock in ``runtime/releases``, including development locks that only
     ``--image-lock`` selects; ``derived`` describes each derived checkpoint.
     """
-    from runtime.common import derived_checkpoint, installer_image, profiles, qwen_flash_next
+    from runtime.common import derived_checkpoint, image_lock, installer_image, profiles, qwen_flash_next
     tables = {"checkpoints": {}, "caches": {}, "images": {}, "locks": {}}
 
     def note(table, key, value):
@@ -1138,7 +1139,7 @@ def profile_references():
             continue
     for profile in installer_image.SUPPORTED:
         try:
-            image = installer_image.for_profile(profile)["image_id"]
+            images = {installer_image.for_profile(profile)["image_id"], image_lock.for_profile(profile)["image_id"]}
             metadata, _ = profiles.load(profile)
             configuration = qwen_flash_next.read(profiles.ROOT / metadata["configuration"]["path"])
             _, names = qwen_flash_next.checkpoint_names(configuration)
@@ -1146,11 +1147,13 @@ def profile_references():
             toolchain = qwen_flash_next.image_policy(configuration)["kind"] == "toolchain"
         except (OSError, ValueError, KeyError, TypeError):
             continue
-        note("images", image, profile)
         for selection in selections:
             note("checkpoints", selection["model"]["repository"] + "@" + selection["model"]["revision"], profile)
-            for name in cache_names(selection, image, toolchain=toolchain):
-                note("caches", name, profile)
+        for image in sorted(images):
+            note("images", image, profile)
+            for selection in selections:
+                for name in cache_names(selection, image, toolchain=toolchain):
+                    note("caches", name, profile)
     result = {name: {key: sorted(values) for key, values in table.items()} for name, table in tables.items()}
     result["derived"] = {f"{repository}@{revision}": {key: item[key] for key in ("name", "base", "donor")}
                          for (repository, revision), item in derived_checkpoint.listed().items()}

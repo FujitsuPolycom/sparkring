@@ -279,6 +279,65 @@ The Qwen decode builder is a program of the
 which describes its inputs; it builds from the files that `qwen_decode_patch.py`
 writes and takes positional arguments.
 
+## SIRCL layer
+
+[sircl_layer.py](sircl_layer.py) (`installer-sircl-layer`) adds SIRCL ring
+sessions to a kraken-line image with a v2 lock and writes a
+`sparkring-installer-image/v3` lock
+([release procedure](../../docs/development/releases.md)). Its layer holds:
+
+- the package, installed in the serving interpreter's site-packages (the
+  directory where the parent receipt records `vllm/__init__.py`) from a
+  reproducible wheel `sparkring_sircl-<version>-py3-none-any.whl`: every
+  Python, C, header and JSON file of `spark_transport/sircl/sparkring_sircl`,
+  SparkRing's RoCE GID resolver as the top-level module `spark_roce_gid`, and a
+  dist-info directory whose entry points register the `sircl` platform and
+  general plugins. vLLM loads them only when a container's `VLLM_PLUGINS` names
+  `sircl`, so deployments on the prepared transport are unchanged;
+- `roce_proxy-<digest>.so` and `p2p_proxy-<digest>.so` in
+  `/opt/sparkring/sircl/lib`, where `<digest>` is the first 16 hexadecimal
+  digits of the SHA-256 of the C source. SIRCL's own build code compiles them
+  in a network-less container of the parent image, against that image's glibc
+  and `libibverbs.so.1`; no Spark compiles them;
+- `/opt/sparkring/receipts/sircl-layer.json` (`sparkring-sircl-layer/v1`): the
+  version, ABI, wheel, libraries, tuning key, compiler and every installed
+  file with its SHA-256.
+
+Every added file is recorded in the external-base receipt, so the image's
+`verify` checks its bytes, and `sparkring install` admits the layer by
+requiring that receipt to record the layer receipt and both libraries with the
+SHA-256 the lock names. The receipt's `capabilities.sircl` names the layer
+receipt.
+
+```bash
+python3 runtime/images/sircl_layer.py wheel --output WHEELS
+python3 runtime/images/sircl_layer.py natives --parent-lock PARENT_LOCK \
+  --wheel WHEELS/sparkring_sircl-0.2.0-py3-none-any.whl --output NATIVES
+python3 runtime/images/sircl_layer.py prepare --parent-lock PARENT_LOCK \
+  --wheel WHEELS/sparkring_sircl-0.2.0-py3-none-any.whl --natives NATIVES \
+  [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
+python3 runtime/images/sircl_layer.py build --context CONTEXT --tag sparkring:sircl \
+  --name RELEASE --output LOCK
+```
+
+`wheel` and `prepare` are offline and the wheel's bytes depend only on the
+checkout; `natives` needs the parent image on the build host. `record` (run by
+`build`) confirms that the parent has none of the added paths, runs SIRCL's
+probe in the built image (package and entry points found in site-packages,
+both libraries present), runs the installer's admission for every profile of
+the parent lock and writes the v3 lock with the pinned vLLM builds the probe
+reports. The lock's `image_reference` is the local configuration ID until
+publication replaces it. The deployment's SIRCL sessions read the layer's
+libraries through `SIRCL_NATIVE_LIBRARY` and `SIRCL_P2P_NATIVE_LIBRARY`
+([transport.py](../common/transport.py)).
+
+A parent that serves the GLM-5.3-Flash CSF checkpoint needs a software layer
+whose vLLM and B12X sources carry its loader; the SIRCL layer adds no model
+sources. Runtime-status 0.3.5, which adds SIRCL's facts to the dashboard's
+Transport table, enters an image through a
+[status descriptor layer](#replacing-the-runtime-status-package) below the
+SIRCL layer.
+
 ## Evidence
 
 Conditions: offline replay of `prepare` with copies of each parent's installed

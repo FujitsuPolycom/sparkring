@@ -43,7 +43,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, installer_image, profiles, qwen_flash_next
+from runtime.common import compose, image_lock, installer_image, profiles, qwen_flash_next
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -478,7 +478,8 @@ def image_data(name):
     option = _image_option(row, [row["name"] for row in catalog])
     runs = [profile_id for profile_id in profile_ids() if profile_id in installer_image.profiles_of(row["lock"])]
     return {"schema": SCHEMA, "image": name,
-            "profiles": [profile_data(profile_id, row["lock"], option) for profile_id in runs]}
+            # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
+            "profiles": [profile_data(profile_id, image_lock.v2_view(row["lock"]), option) for profile_id in runs]}
 
 
 def engine_source():

@@ -1,0 +1,36 @@
+{
+  "fabric": null,
+  "image_id": null,
+  "layouts": {
+    "cycle": {
+      "settings": {},
+      "source": "rules"
+    },
+    "cycle-8": {
+      "settings": {
+        "oneshot_max": 28672
+      },
+      "source": "measured"
+    },
+    "pair": {
+      "settings": {
+        "large_blocks": 32,
+        "oneshot_max": 131072,
+        "ring_min": 2097152
+      },
+      "source": "measured"
+    },
+    "path": {
+      "settings": {},
+      "source": "rules"
+    }
+  },
+  "measured_at": "2026-10-07",
+  "schema": "sparkring-sircl-tuning/v1",
+  "sircl": {
+    "abi_version": 9,
+    "version": "0.2.0"
+  },
+  "source": "defaults",
+  "tables": []
+}
