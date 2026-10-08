@@ -535,6 +535,12 @@ def lifecycle(argv):
             # The saved result of the last bandwidth check; status never measures.
             result["fabric_bandwidth"] = fabric_bandwidth.summary(STATE)
             result["fabric"] = fabric.summary(STATE, cluster)
+            from runtime.host import fabric_tune
+            # The tuning table installations use: the default one, or one measured on this fabric.
+            try:
+                result["sircl_tuning"] = fabric_tune.summary(STATE)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                result["sircl_tuning"] = {"state": "unreadable", "error": str(error)}
             result["nodes"] = []
             for host in cluster["plan"]["spec"]["hosts"]:
                 try:
@@ -607,6 +613,8 @@ def lifecycle(argv):
                     print(line)
             if "fabric" in result:
                 print(fabric.status_line(result["fabric"]))
+            if "sircl_tuning" in result:
+                print(fabric_tune.status_line(result["sircl_tuning"]))
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:

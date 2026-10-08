@@ -55,6 +55,11 @@ def main(argv=None):
                                              "(sparkring fabric verify); reads only, apart from ICMP echo requests")
     commands.add_parser("fabric-document", help="write the fabric document that Node A sends on stdin as this "
                                                 "Spark's copy")
+    facts = commands.add_parser("tuning-facts", help="print this Spark's GPU driver and kernel, which a measured "
+                                                     "SIRCL tuning table binds (sparkring fabric tune); reads only")
+    facts.add_argument("--interface", metavar="NAME", help="also print this interface's IPv4 address")
+    commands.add_parser("sircl-tuning", help="write the measured SIRCL tuning tables that Node A sends on stdin as "
+                                             "this Spark's copies (sparkring fabric tune)")
     status = commands.add_parser("status")
     status.add_argument("--refresh", action="store_true")
     hairpin = commands.add_parser("hairpin", help="ConnectX hairpin setting of a four-Spark ring member")
@@ -151,6 +156,12 @@ def main(argv=None):
                 result = fabric.check_local(json.loads(text))
             else:
                 result = fabric.install_document(text)
+        elif args.action in ("tuning-facts", "sircl-tuning"):
+            from runtime.host import fabric_tune
+            if args.action == "tuning-facts":
+                result = fabric_tune.local_facts(args.interface)
+            else:
+                result = fabric_tune.install_tables(sys.stdin.read())
         elif args.action == "hairpin":
             from runtime.host import hairpin
             if args.hairpin_action == "apply" and not args.dry_run:

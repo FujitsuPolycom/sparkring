@@ -102,7 +102,10 @@ address of every Spark that shares no cable with the sender.
 Ring sessions: `sparkring install` serves every installer profile on them
 on an image with the SIRCL layer; its transport adapter
 ([transport.py](../../runtime/common/transport.py)) sets what the serve
-launcher's plan sets for the same group. The serve launcher plans the
+launcher's plan sets for the same group. Its tuning table is the release's
+default or one that `sudo sparkring fabric tune` measured on the cluster's
+fabric with the ring harness
+([measure the tuning table](../operations/install-reference.md#measure-the-tuning-table)). The serve launcher plans the
 catalog's installer profiles on SIRCL groups; which profiles plan on
 Sparks 0-1 or 0-3 and what blocks the others is in the [serve
 runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#installer-profiles-on-the-ring-of-eight).

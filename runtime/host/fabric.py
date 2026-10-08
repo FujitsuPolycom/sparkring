@@ -722,10 +722,11 @@ def _boot_id():
 
 
 def main(argv=None):
-    """``sparkring fabric show|verify``."""
+    """``sparkring fabric show|verify|tune``; ``tune`` is ``runtime/host/fabric_tune.py``."""
+    from runtime.host import fabric_tune
     parser = argparse.ArgumentParser(prog="sparkring fabric", description=(
-        "Show or verify this cluster's fabric: the Sparks' positions, ports and cables, the relay table and the "
-        "boot units that restore it. Run on Node A."))
+        "Show, verify or tune this cluster's fabric: the Sparks' positions, ports and cables, the relay table, the "
+        "boot units that restore it, and SIRCL's tuning table measured on it. Run on Node A."))
     commands = parser.add_subparsers(dest="command", required=True)
     shown = commands.add_parser("show", help="print the recorded fabric document and its port map; changes nothing")
     shown.add_argument("--json", action="store_true", help="print the document and the last verification as JSON")
@@ -736,12 +737,17 @@ def main(argv=None):
                               "(about 10 seconds each)")
     checked.add_argument("--while-serving", action="store_true", help="with --traffic light, test while a model serves")
     checked.add_argument("--json", action="store_true", help="print the sparkring-fabric-verify/v1 report")
+    tuned = commands.add_parser("tune", help="measure SIRCL's tuning table on this fabric with SIRCL's ring harness; "
+                                             "prints the plan unless --execute")
+    fabric_tune.add_arguments(tuned)
     args = parser.parse_args(argv)
     try:
         if args.command == "show":
             return show(json_output=args.json)
         if not hasattr(os, "geteuid") or os.geteuid() != 0:
-            raise ValueError("Run sudo sparkring fabric verify: the checks read root-only state on every Spark")
+            raise ValueError(f"Run sudo sparkring fabric {args.command}: it reads root-only state on every Spark")
+        if args.command == "tune":
+            return fabric_tune.command(args)
         return verify(traffic=args.traffic, allow_serving=args.while_serving, json_output=args.json)
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         print("SparkRing: " + str(error), file=sys.stderr)

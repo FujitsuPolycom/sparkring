@@ -182,8 +182,8 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("cabling", help="show how the Sparks are cabled, the port-to-Spark map and what to change "
                                            "for a pair, line or ring, or with --bandwidth measure each cable's speed; "
                                            "changes nothing")
-    subcommands.add_parser("fabric", help="show or verify the recorded fabric: positions, ports, cables, relay table "
-                                          "and boot units (Node A)")
+    subcommands.add_parser("fabric", help="show, verify or tune the recorded fabric: positions, ports, cables, relay "
+                                          "table, boot units and SIRCL's measured tuning table (Node A)")
     subcommands.add_parser("check", help="check the running models: functional requests and, on SIRCL, which transport "
                                          "carried each collective; --report writes the tester bundle (Node A)")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")

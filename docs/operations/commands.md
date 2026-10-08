@@ -27,7 +27,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
 | [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
-| [`fabric`](#fabric) | Node A | `verify` only | Show or verify the recorded fabric: ports, cables, relay table, boot units |
+| [`fabric`](#fabric) | Node A | `verify` and `tune` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
@@ -299,6 +299,46 @@ Report: /var/lib/sparkring/controller/fabric-reports/fabric-verify-20261008T1005
 It exits with 0 when every check passes, 1 when one fails, and 2 when it
 could not run.
 
+### fabric tune
+
+`sudo sparkring fabric tune [flags]` measures SIRCL's tuning table on this
+fabric and prints the plan; `--execute` measures. Installations made
+afterwards use the measured table instead of the release's default while the
+fabric, the image and the Sparks' drivers stay the same
+([measure the tuning table](install-reference.md#measure-the-tuning-table)).
+
+```bash
+sudo sparkring fabric tune                     # the plan; contacts nothing
+sudo sparkring fabric tune --execute           # measure every group shape this fabric serves
+sudo sparkring fabric tune --execute --quick   # every fourth size, about a quarter of the time
+```
+
+```text
+  pair: measured, table HASH
+  path-3: measured, table HASH
+  cycle-4: measured, table HASH
+Measured tuning table: /var/lib/sparkring/controller/sircl-tuning.json (sha256 DIGEST, measured DATE; rows cycle-4, pair, path-3).
+```
+
+| Flag | Meaning |
+|---|---|
+| `--execute` | Measure; without it the plan is printed and nothing is contacted |
+| `--layouts NAMES` | Group shapes to measure, such as `pair,cycle-8`; default every shape the harness can measure here |
+| `--quick` | Every fourth size, 4 KiB to 64 MiB |
+| `--image NAME` | Measure with this installer image; default the one `sparkring install` uses |
+| `--stop-serving` | Stop the serving models first; without it the command refuses while a model serves |
+| `--max-hours H` | Start no group after H hours; the rest stay pending for the next run |
+| `--layout-timeout SECONDS` | The longest measurement of one group; default 1800 |
+| `--lan-interface NAME` | The interface of the measurement's control exchange; default the management interface |
+| `--control-port PORT` | Its TCP port on the first Spark of each group; default 29650 |
+| `--fresh` | Measure every named group again instead of keeping earlier results |
+| `--distribute` | Copy the recorded measured tables to every Spark again; measures nothing |
+| `--json` | Print the plan or the result as JSON |
+
+A repeated command keeps the groups already measured and measures the rest.
+It exits with 0 when every named group was measured (or the plan printed), 1
+when a group failed or stayed pending, and 2 when it could not run.
+
 ## models
 
 `sparkring models [--json]` lists every profile (exact model, version,
@@ -352,6 +392,11 @@ After the Spark lines, a `Fabric bandwidth:` line shows the last
 cables, measured 3 h ago`, or `never measured`. A degraded cable follows with
 its repair steps. Status does not measure.
 
+A `SIRCL tuning:` line names the tuning table installations use: `the default
+table`, `measured on this fabric DATE for ROWS with image IMAGE`, or why a
+measured table no longer applies, such as `the GPU driver of position 0
+changed from A to B` ([measure the tuning table](install-reference.md#measure-the-tuning-table)).
+
 `Transport` names the deployment's transport and, on SIRCL ring sessions,
 the last receipt verdict ([transport and receipts](install-reference.md#transport-and-receipts)):
 `Transport check failed: ...` names the first rank and collective that
@@ -370,7 +415,7 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
 | `--on 0,1` or `--on 2,3` | Only that half's model |
-| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth` |
+| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth`, `fabric` and `sircl_tuning` |
 
 ## check
 
@@ -599,6 +644,7 @@ most actions. Useful by hand:
 | `sudo sparkring node assets --profile PROFILE` | Where this Spark holds copies of the profile's checkpoint (read-only) |
 | `sudo sparkring node relay-markers` | Run this Spark's relay markers until stopped; `sparkring-relay-marker.service` runs it |
 | `sparkring node relay-marker-check` | Check the installed package's relay marker against the SHA-256 the package records; package installation runs it |
+| `sudo sparkring node tuning-facts [--interface NAME]` | This Spark's GPU driver and kernel, which a measured tuning table binds (read-only) |
 
 ## init and export
 

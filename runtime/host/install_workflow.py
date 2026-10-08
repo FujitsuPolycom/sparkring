@@ -492,8 +492,12 @@ def transport_choice(args, cluster, state_root, image, placement):
                     "explicit": requested_backend is not None}
         hosts = cluster["plan"]["spec"]["hosts"]
         positions = list(placement) if placement is not None else list(range(len(hosts)))
-        tuning, notes = transports.tuning_in_effect(state_root, document, image)
-        section = transports.section(image, document, positions, nccl=nccl, tuning=tuning)
+        from runtime.host import fabric_tune
+        # A measured table binds Node A's GPU driver and kernel among the Sparks' (sparkring fabric tune).
+        tuning, notes = transports.tuning_in_effect(state_root, document, image, host_root=fabric_tune.HOST_ROOT,
+                                                    drivers={0: fabric_tune.local_facts()})
+        section = transports.section(image, document, positions, nccl=nccl, tuning=tuning,
+                                     host_root=fabric_tune.HOST_ROOT)
     except transports.TransportError as error:
         raise NeedsInput(f"{error}. Nothing has been changed.", field="transport") from None
     return {"section": section, "backend": backend, "reason": None, "notes": notes,

@@ -133,3 +133,35 @@ def test_status_prints_the_last_receipt_verdict(tmp_path):
                           "fabric": {"id": value["fabric"]}}}
     (tmp_path / transport_receipts.LATEST).write_text(json.dumps(VERDICT))
     assert controller.transport_view(tmp_path, lock)["verdict"] == "as-expected"
+
+
+def test_an_installation_after_fabric_tune_runs_on_the_measured_table(sircl, monkeypatch, tmp_path, capsys):
+    from runtime.common import transport
+    from runtime.common.test_transport import measured_table, pair_table
+    from runtime.host import fabric_tune
+    _, lock, document = sircl
+    image = json.loads(lock.read_text())
+    host = tmp_path / "node-a"
+    monkeypatch.setattr(fabric_tune, "HOST_ROOT", str(host))
+    facts = {"gpu": "580.95.05", "kernel": "6.11.0-1016-nvidia"}
+    monkeypatch.setattr(fabric_tune, "local_facts", lambda interface=None: dict(facts))
+    digest, data = pair_table(image, document)
+    measured = measured_table(host, document, image, rows={"pair": {"link_slots": 12, "link_slot": 1048576}},
+                              tables={digest: data})
+    (controller.STATE / transport.MEASURED_TUNING).write_text(transport.encoded(measured))
+    assert install(lock) == 0
+    out = capsys.readouterr()
+    tuning = deployment(json.loads(out.out))["transport"]["tuning"]
+    assert (tuning["source"], tuning["row"], tuning["row_source"]) == ("measured", "pair", "measured")
+    assert tuning["sha256"] == transport.tuning_digest(measured) and tuning["measured_at"] == "2026-10-09"
+    assert tuning["tables"][0]["path"] == f"{transport.HOST_TABLES}/{digest}.json"
+    assert "Transport: sircl on every collective, NCCL off (measured on this fabric 2026-10-09, pair)" in out.err
+    assert "SIRCL settings: link_slot 1048576, link_slots 12" in out.err
+    # A driver update on Node A makes the measured table stale: the next installation says so and uses the
+    # default table, which is another deployment.
+    facts["gpu"] = "590.10.01"
+    assert install(lock) == 0
+    out = capsys.readouterr()
+    assert deployment(json.loads(out.out))["transport"]["tuning"]["source"] == "defaults"
+    assert ("Note: the measured tuning table no longer applies: the GPU driver of position 0 changed from 580.95.05 "
+            "to 590.10.01") in out.err
