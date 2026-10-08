@@ -16,6 +16,11 @@ build-local/
 # Tool caches
 .pytest_cache/
 .ruff_cache/
+# Native test builds and pytest scratch of spark_transport/sircl (its tests/conftest.py)
+/.build/
+/.pytest_tmp/
+# Default output directory of the SIRCL ring harness (python -m sparkring_sircl.ring)
+sircl-ring-results/
 
 # Model weights and large artifacts
 *.safetensors

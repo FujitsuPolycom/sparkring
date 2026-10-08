@@ -1,0 +1,18 @@
+{
+  "schema": "sircl-ring-site/v1",
+  "image": "REPLACE_SERVING_IMAGE_ID",
+  "lan_interface": "REPLACE_WIRED_LAN_INTERFACE",
+  "control_port": 29650,
+  "remote_dir": "/tmp/sircl-ring",
+  "docker": "docker",
+  "ring": [
+    {"name": "spark0", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_0", "lan_address": "REPLACE_LAN_ADDRESS_0"},
+    {"name": "spark1", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_1", "lan_address": "REPLACE_LAN_ADDRESS_1"},
+    {"name": "spark2", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_2", "lan_address": "REPLACE_LAN_ADDRESS_2"},
+    {"name": "spark3", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_3", "lan_address": "REPLACE_LAN_ADDRESS_3"},
+    {"name": "spark4", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_4", "lan_address": "REPLACE_LAN_ADDRESS_4"},
+    {"name": "spark5", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_5", "lan_address": "REPLACE_LAN_ADDRESS_5"},
+    {"name": "spark6", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_6", "lan_address": "REPLACE_LAN_ADDRESS_6"},
+    {"name": "spark7", "ssh": "REPLACE_USER@REPLACE_LAN_ADDRESS_7", "lan_address": "REPLACE_LAN_ADDRESS_7"}
+  ]
+}
