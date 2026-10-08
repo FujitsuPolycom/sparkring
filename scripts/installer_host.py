@@ -203,7 +203,7 @@ def admit_image(lock):
                 return saved["receipt"]
         receipt = installer_image.admit(lock["image_runtime"], run=run, profile=card["profile"], nodes=card["nodes"])
         loader_policy.check(card["image_id"], run=run)
-        if "transport" in lock:
+        if (lock.get("transport") or {}).get("backend") == "sircl":
             from runtime.common import transport
             receipt = {**receipt, "sircl": transport.admit_layer(lock, run=run)}
         try:
@@ -1992,7 +1992,8 @@ def perform(operation, lock, number):
     model_receipt = state / "model.json"
     if operation in MODEL_OPERATIONS:
         return model_operation(operation, lock, number, row, state)
-    if operation in ("ring-stop", "ring-stopped", "ring-serve", "ring-check") and lock.get("transport")             and "fabric" in row:
+    if (operation in ("ring-stop", "ring-stopped", "ring-serve", "ring-check")
+            and (lock.get("transport") or {}).get("backend") == "sircl" and "fabric" in row):
         # A SIRCL group's ranks check the fabric's relay table at their own fabric positions.
         from runtime.host import native_mesh
         return native_mesh.group_operation(operation, lock, number)
@@ -2133,7 +2134,7 @@ def perform(operation, lock, number):
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
                 profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
                 qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
-            if lock.get("transport") and "fabric" in row:
+            if (lock.get("transport") or {}).get("backend") == "sircl" and "fabric" in row:
                 from runtime.host import native_mesh
                 native_mesh.group_operation("ring-check", lock, number)
             elif card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
@@ -2163,7 +2164,7 @@ def perform(operation, lock, number):
                         binding = local_binding_path(lock, row)
                         if read_runtime_binding(binding) is None:
                             installer.write(binding, {})
-                    if "transport" in lock:
+                    if (lock.get("transport") or {}).get("backend") == "sircl":
                         # The container's SIRCL_RECEIPT_DIR; a bind mount needs its source to exist.
                         from runtime.common import transport
                         plain(Path(transport.receipt_directory(lock))).mkdir(parents=True, exist_ok=True)

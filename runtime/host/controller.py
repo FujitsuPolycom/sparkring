@@ -540,7 +540,9 @@ def lifecycle(argv):
                              "Node A can then use the model")
     from runtime.common import serving, transport as transports
     parser.add_argument("--transport", choices=transports.BACKENDS,
-                        help="for a new deployment: sircl (the default where the image and fabric carry it) or prepared")
+                        help="for a new deployment: sircl (the default where the image and fabric carry it), "
+                             "prepared, or nccl (vLLM's PyNccl alone; needs the fabric document and a group NCCL's "
+                             "cabling rule holds for)")
     parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
@@ -763,8 +765,9 @@ def lifecycle(argv):
                 image_runtime = image_lock.v2_view(image_lock.for_profile(args.profile, installer.read(args.image_lock)))
                 if existing.get("image_runtime") != image_runtime:
                     raise ValueError("Deployment uses another image lock; choose a distinct --instance")
-            if args.transport and args.transport != ("sircl" if existing.get("transport") else "prepared") or (
-                    args.nccl and args.nccl != (existing.get("transport") or {}).get("nccl")):
+            recorded = existing.get("transport") or {}
+            if args.transport and args.transport != recorded.get("backend", "prepared") or (
+                    args.nccl and args.nccl != recorded.get("nccl")):
                 raise ValueError("Deployment uses another transport; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
@@ -954,6 +957,9 @@ def transport_view(directory, lock):
     value = lock.get("transport")
     if not value:
         return {"backend": "prepared"}
+    if value["backend"] == "nccl":
+        return {"backend": "nccl", "group": value["group"]["name"], "positions": value["group"]["positions"],
+                "fabric": value["fabric"]["id"]}
     from runtime.host import transport_receipts
     verdict = transport_receipts.latest(directory)
     result = {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
@@ -966,6 +972,8 @@ def transport_view(directory, lock):
 
 def transport_status_line(value):
     """The ``Transport:`` line of ``sparkring status``."""
+    if value.get("backend") == "nccl":
+        return f"Transport: nccl on {value['group']} (SIRCL and the RoCEnante slot are off)"
     if value.get("backend") != "sircl":
         return "Transport: prepared"
     from runtime.host import transport_receipts

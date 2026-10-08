@@ -151,6 +151,9 @@ def host_report(lock, number, info, *, root="/", popen=subprocess.Popen):
     section = lock.get("transport")
     if not section:
         return {"schema": REPORT_SCHEMA, "rank": number, "backend": "prepared"}
+    if section.get("backend") == "nccl":
+        # An nccl deployment writes no SIRCL receipts; its report names the backend alone.
+        return {"schema": REPORT_SCHEMA, "rank": number, "backend": "nccl"}
     state = (info or {}).get("State") or {}
     started = state.get("StartedAt")
     directory = Path(root) / transport.receipt_directory(lock).lstrip("/")

@@ -71,9 +71,13 @@ def functional(lock, *, client=None, log=lambda line: None):
 
 
 def transport_check(directory, lock, *, cache):
-    """The SIRCL receipt verdict of a deployment, or ``{"backend": "prepared"}``."""
-    if not lock.get("transport"):
+    """The transport verdict of a deployment: ``{"backend": "prepared"}`` or ``{"backend": "nccl"}`` without
+    receipts, else the SIRCL receipt verdict."""
+    section = lock.get("transport")
+    if not section:
         return {"backend": "prepared"}
+    if section.get("backend") == "nccl":
+        return {"backend": "nccl"}
     try:
         return retained_source.apply(directory, "transport", cache=cache)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
@@ -231,7 +235,8 @@ def report(output, result, *, state=None, now=None):
                     value = {key: item for key, item in value.items() if key != "log"} | {
                         "nccl_lines": {key: (value.get("log") or {}).get(key) for key in ("init", "library")}}
                 documents[f"receipts/{directory.name}/{path.name}"] = value
-        if lock and row["deployment"] == first["deployment"] and lock.get("transport"):
+        if lock and row["deployment"] == first["deployment"] and (lock.get("transport") or {}).get("backend") == \
+                "sircl":
             try:
                 documents["tuning-table.json"] = transport.tuning_in_effect(
                     state, fabric.read_document(state), {"image_id": lock["selection"]["image_id"]})[0]

@@ -517,13 +517,15 @@ def recorded_fabric(state_root, cluster):
 def transport_choice(args, cluster, state_root, image, placement, profile=None):
     """``{"section", "backend", "reason", "notes"}``: the transport this request runs on (``transport.choose``).
 
-    ``section`` is the deployment lock's ``transport`` section of a SIRCL
-    deployment, else None; it is made for the decode-context parallelism of
-    ``profile`` (default ``args.profile``), whose sessions take their own
-    measured tables. An explicit ``--transport sircl`` that cannot run
-    here, and ``--nccl`` with the prepared transport, need input. So does a
+    ``section`` is the deployment lock's ``transport`` section of a SIRCL or
+    nccl deployment, else None; it is made for the decode-context parallelism
+    of ``profile`` (default ``args.profile``), whose sessions take their own
+    measured tables. An explicit ``--transport sircl`` that cannot run here,
+    and ``--nccl`` with the prepared or nccl transport, need input. So does a
     placement that only SIRCL runs (``placement.prepared_serves``) when the
-    deployment would use the prepared transport.
+    deployment would use the prepared transport, and a group or
+    decode-context-parallel group that NCCL's cabling rule does not hold for
+    when the deployment would use the nccl transport.
     """
     try:
         document = recorded_fabric(state_root, cluster)
@@ -546,6 +548,11 @@ def transport_choice(args, cluster, state_root, image, placement, profile=None):
                     "explicit": requested_backend is not None}
         hosts = cluster["plan"]["spec"]["hosts"]
         positions = list(placement) if placement is not None else list(range(len(hosts)))
+        if backend == "nccl":
+            section = transports.nccl_section(image, document, positions,
+                                              dcp=transports.profile_dcp(profile or args.profile))
+            return {"section": section, "backend": backend, "reason": None, "notes": [],
+                    "explicit": requested_backend is not None}
         from runtime.host import fabric_tune
         # A measured table binds Node A's GPU driver and kernel among the Sparks' (sparkring fabric tune).
         tuning, notes = transports.tuning_in_effect(state_root, document, image, host_root=fabric_tune.HOST_ROOT,
@@ -642,8 +649,12 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         request["checkpoint"] = checkpoint
     if choice["section"] is not None:
         section = choice["section"]
-        request["transport"] = {"backend": "sircl", "nccl": section["nccl"], "fabric": section["fabric"]["id"],
-                                "tuning": section["tuning"]["sha256"]}
+        if section["backend"] == "nccl":
+            request["transport"] = {"backend": "nccl", "fabric": section["fabric"]["id"],
+                                    "settings": section["nccl"]["settings"]}
+        else:
+            request["transport"] = {"backend": "sircl", "nccl": section["nccl"], "fabric": section["fabric"]["id"],
+                                    "tuning": section["tuning"]["sha256"]}
     # In a terminal without --yes, where the model's API listens is asked
     # unless the command line names the endpoint; the answers are serving
     # settings like --api-bind and --api-port.
@@ -918,7 +929,8 @@ def serving(directory, *, runner=None):
         return True
     ranks = lock["site"]["ranks"]
     checks = {2: "gid-check", 4: "ring-check"} if lock["backend"] == "compose" else {}
-    if lock["backend"] == "compose" and lock.get("transport") and all("fabric" in row for row in ranks):
+    if (lock["backend"] == "compose" and (lock.get("transport") or {}).get("backend") == "sircl"
+            and all("fabric" in row for row in ranks)):
         checks[len(ranks)] = "ring-check"
     operations = ["running"] + ([checks[len(ranks)]] if len(ranks) in checks else [])
     for row in ranks:
@@ -1053,6 +1065,10 @@ def transport_summary(lock, choice):
     if not value:
         choice = choice or {}
         return {"backend": "prepared", "reason": choice.get("reason")}
+    if value["backend"] == "nccl":
+        return {"backend": "nccl", "group": value["group"]["name"], "positions": value["group"]["positions"],
+                "fabric": value["fabric"]["id"], "settings": value["nccl"]["settings"],
+                "expected": transports.NCCL_EXPECTED}
     from runtime.host import transport_receipts
     return {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
             "positions": value["group"]["positions"], "fabric": value["fabric"]["id"],
@@ -1088,6 +1104,8 @@ def save_result(directory, result):
 def transport_card_line(result):
     """The summary card's Transport line from the result's ``transport`` field."""
     value = result.get("transport") or {}
+    if value.get("backend") == "nccl":
+        return "nccl"
     if value.get("backend") != "sircl":
         return "prepared" if value else None
     from runtime.host import transport_receipts
@@ -1426,7 +1444,7 @@ def execute(args):
             plan["checkpoint"]["derivation_result"] = installer.read(directory / "assets/derivation-result.json")
         except (OSError, ValueError):
             pass
-        if lock.get("transport"):
+        if (lock.get("transport") or {}).get("backend") == "sircl":
             # Judged after the smoke request; a differing verdict is reported and never stops the model.
             with progress.step("Check which transport carried each collective"):
                 plan["transport"].update(check_transport(directory, cache=cache))
@@ -1486,12 +1504,14 @@ def main(argv=None):
                              "the model")
     parser.add_argument("--transport", choices=transports.BACKENDS,
                         help="the collective transport: sircl (SIRCL ring sessions; the default on an image that "
-                             "carries them and a fabric recorded by sparkring setup) or prepared (the prepared "
-                             "transport with NCCL)")
+                             "carries them and a fabric recorded by sparkring setup), prepared (the prepared "
+                             "transport with NCCL), or nccl (vLLM's PyNccl alone; SIRCL and the RoCEnante slot "
+                             "off; needs the fabric document and a group NCCL's cabling rule holds for)")
     parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
                         help="NCCL on a SIRCL deployment: never (default) keeps NCCL off every collective; auto lets "
                              "NCCL carry what the cabling allows (every collective on a pair, the ring algorithm on "
-                             "a whole cycle, nothing across relays); topology is another name for auto")
+                             "a whole cycle, which the installer arms with NCCL_ALGO=Ring and "
+                             "NCCL_SKIP_TREE_CONNECT=1, nothing across relays); topology is another name for auto")
     serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
     if args.nccl is not None:
