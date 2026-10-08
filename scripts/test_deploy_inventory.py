@@ -272,6 +272,16 @@ def test_probe_arguments_are_literal_and_validated(key, value, message):
         collect_command(**args)
 
 
+def test_every_fabric_position_of_an_eight_spark_setup_is_a_valid_rank():
+    from runtime.common import fabric_layout
+    from scripts import deploy_inventory
+    assert deploy_inventory.MAX_RANKS == fabric_layout.MAX_SPARKS
+    last = fabric_layout.MAX_SPARKS - 1
+    assert _request(last, "node-h", "192.0.2.17", (), "192.0.2.10")["rank"] == last
+    with pytest.raises(ValueError, match=f"rank must be an integer from 0 to {last}"):
+        collect_command(rank=last + 1, ssh_target="node-i", management_address="192.0.2.18")
+
+
 def test_probe_is_a_complete_self_contained_python_command(monkeypatch):
     monkeypatch.setattr(
         subprocess,

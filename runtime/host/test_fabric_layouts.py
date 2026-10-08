@@ -203,6 +203,18 @@ def test_addresses_follow_the_cable_rule_and_the_supernet_grows_above_four_cable
     assert after["id"] == plan["id"]
 
 
+@pytest.mark.parametrize("layout", LAYOUTS, ids=fabric_layout.name)
+def test_setup_builds_the_executable_network_plan_for_every_position(layout):
+    """Each Spark's inventory request and guard name its position, up to the eighth Spark."""
+    from scripts import deploy_network_run
+    plan = plan_of(layout)
+    executable = deploy_network_run.build_network_plan({"spec": plan["spec"]}, plan["inventory"], defer_driver=True)
+    hosts = [h["host"] for h in plan["spec"]["hosts"]]
+    for phase in executable["phases"]:
+        assert [action["host"] for action in phase["actions"]] == hosts
+    assert {h["rank"] for h in executable["network"]["hosts"]} == set(range(layout["size"]))
+
+
 def test_a_narrow_supernet_is_refused_above_four_cables():
     found = sparks(fabric_layout.layout("cycle", 5))
     with pytest.raises(ValueError, match=r"198\.18\.0\.0/21 holds 4 cables, but this cycle-5 has 5; use "

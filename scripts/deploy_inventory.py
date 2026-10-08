@@ -11,6 +11,9 @@ from typing import Any, Sequence
 
 
 SCHEMA = "sparkring-deploy-host-inventory/v1"
+# A rank is a Spark's fabric position; setup accepts two to eight Sparks
+# (runtime/common/fabric_layout.MAX_SPARKS).
+MAX_RANKS = 8
 MANAGED_PATHS = (
     "/opt/sparkring/managed-mesh",
     "/etc/sparkring/managed-mesh",
@@ -52,8 +55,8 @@ def _request(
     paths: Sequence[str],
     controller_address: str | None,
 ) -> dict[str, Any]:
-    if type(rank) is not int or rank not in range(4):
-        raise ValueError("rank must be an integer from 0 to 3")
+    if type(rank) is not int or rank not in range(MAX_RANKS):
+        raise ValueError(f"rank must be an integer from 0 to {MAX_RANKS - 1}")
     if not isinstance(ssh_target, str) or not re.fullmatch(
         r"[A-Za-z0-9_][A-Za-z0-9_.@:-]{0,254}", ssh_target
     ):

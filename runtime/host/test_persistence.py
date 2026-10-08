@@ -475,7 +475,7 @@ def test_package_installs_the_mesh_check_generator_executable(tmp_path, monkeypa
 
     monkeypatch.setattr(build_deb.distribution, "identity", lambda root: "a" * 40)
     monkeypatch.setattr(build_deb, "subprocess", SimpleNamespace(run=run, check_output=lambda *a, **k: "1790000000\n"))
-    build_deb.build(tmp_path, tmp_path / "dist", version="1.0")
+    build_deb.build(tmp_path, tmp_path / "dist", version="1.0", marker="skip")
     mode, content = placed["usr/lib/systemd/system-generators/sparkring-hairpin-mesh-check"]
     assert mode == 0o755
     assert content == (PACKAGING / "sparkring-hairpin-mesh-check").read_bytes()

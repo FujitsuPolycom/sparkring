@@ -65,7 +65,9 @@ Setup installs one relay table for the whole fabric of a pair, line or ring of
 up to eight Sparks, which carries these two-hop paths too
 ([relay table](../docs/operations/install-reference.md#the-relay-table)). Its
 sender tags come from [`fabric/relay_marker.c`](fabric/relay_marker.c), which
-the SparkRing package compiles: per RDMA device it rewrites the EtherType of
+the SparkRing package ships prebuilt for arm64
+([`fabric/relay-marker-artifact.json`](fabric/relay-marker-artifact.json)
+names the published binary of the source): per RDMA device it rewrites the EtherType of
 RDMA packets by destination address and, for the four-Spark transport above,
 by UDP source port 65535.
 

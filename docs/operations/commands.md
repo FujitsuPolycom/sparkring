@@ -103,6 +103,7 @@ built version is installed.
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
 | `--ref BRANCH_TAG_OR_COMMIT`, `--repository URL` | Build another ref or repository ([Pin a commit](install-reference.md#pin-a-commit)) |
+| `--relay-marker-binary PATH` | Ship this copy of the published relay marker instead of downloading it ([Build from a full clone](install-reference.md#build-from-a-full-clone)) |
 
 `--plan` runs `sparkring install --plan` from the installed package if this
 Spark has the built version, otherwise from the built package extracted into
@@ -564,6 +565,7 @@ most actions. Useful by hand:
 | `sudo sparkring node hairpin apply --dry-run --boot` | The restarts the next boot performs |
 | `sudo sparkring node assets --profile PROFILE` | Where this Spark holds copies of the profile's checkpoint (read-only) |
 | `sudo sparkring node relay-markers` | Run this Spark's relay markers until stopped; `sparkring-relay-marker.service` runs it |
+| `sparkring node relay-marker-check` | Check the installed package's relay marker against the SHA-256 the package records; package installation runs it |
 
 ## init and export
 

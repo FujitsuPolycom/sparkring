@@ -68,6 +68,13 @@ python3 scripts/build_deb.py
 ```
 
 - To pin a commit, run `git checkout --detach COMMIT` before building.
+- The package ships the relay marker prebuilt
+  ([relay table](#the-relay-table)): the build downloads the binary that
+  [`relay-marker-artifact.json`](../../spark_transport/fabric/relay-marker-artifact.json)
+  publishes for the commit's marker source and checks its SHA-256. It
+  compiles nothing. Without Internet access, `--relay-marker-binary PATH`
+  ships a copy of that binary instead. When the record names no published
+  binary for the source, the build stops and says so.
 - The builder writes the package and a `.sha256` file to `.sparkring/dist/`
   (`--output DIR` for another directory), refuses to overwrite a package
   there, and prints the package path, its SHA-256, the source `revision` and
@@ -1256,10 +1263,16 @@ every lane SIRCL derives. Routes with more than three relays, on lines of
 five or more Sparks, are research-only. Every Spark between two cables needs
 the [ConnectX hairpin setting](#the-hairpin-setting).
 
-The relay marker is compiled into the SparkRing package when the Spark that
-builds it has `gcc` and `libibverbs-dev`. A package built without it installs
-no relay table: four-Spark models then use their mesh service, and setup's
-plan says so.
+The relay marker ships prebuilt in the SparkRing package, so no Spark
+compiles it and Sparks need neither `gcc` nor `libibverbs-dev`. The release
+build compiles it once for arm64; every other package build takes the
+published binary ([Build from a full clone](#build-from-a-full-clone)). The
+package records the binary's SHA-256 in `distribution.json` (`relay_marker`).
+Package installation fails when the installed binary is missing or differs
+from it, and each Spark checks the digest again before it starts a marker.
+A package built for package tests without the marker (`--relay-marker skip`)
+installs no relay table: four-Spark models then use their mesh service, and
+setup's plan says so.
 
 ### Boot and reboot
 

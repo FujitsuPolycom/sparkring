@@ -29,9 +29,10 @@ STUBS = {
             '  clone) for last; do :; done; mkdir -p "$last" ;;\n'
             '  -C) [ "$3" = rev-parse ] && echo ' + "a" * 40 + ' ;;\n'
             'esac\n'),
-    # Builds into WORK/dist and records WORK.
+    # Builds into WORK/dist and records WORK and the build's arguments.
     "python3": ('mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n'
-                'printf "%s\\n" "${3%/dist}" > "$STUB_WORK"\n'),
+                'printf "%s\\n" "${3%/dist}" > "$STUB_WORK"\n'
+                'printf "%s\\n" "$*" > "$STUB_WORK.build"\n'),
     "dpkg-deb": ('if [ "$1" = -x ]; then mkdir -p "$3" && cp -R "$STUB_PAYLOAD/." "$3/"; exit; fi\n'
                  'echo "$STUB_BUILT"\n'),
     "dpkg-query": '[ -n "${STUB_INSTALLED:-}" ] || exit 1\nprintf "ii %s" "$STUB_INSTALLED"\n',
@@ -176,6 +177,20 @@ def test_json_output_is_one_document_and_progress_goes_to_stderr(tmp_path):
     assert "Reading package lists..." in result.stderr and "Fetching SparkRing" in result.stderr
     assert calls == [f"apt-get install --yes --allow-downgrades {calls[0].split()[-1]}",
                      "sparkring install --profile qwen38-flash-next-tp2 --yes --json"]
+
+
+def test_the_package_build_compiles_nothing_and_takes_a_named_relay_marker(tmp_path):
+    """The build ships the published relay marker; --relay-marker-binary names a copy and stays out of install."""
+    assert "--relay-marker require" not in SCRIPT.read_text(encoding="utf-8")
+    result, calls = run_script(tmp_path, "--relay-marker-binary", "/srv/sparkring-relay-marker", "--profile",
+                               "qwen38-flash-next-tp2", "--yes", "--json")
+    assert result.returncode == 0, result.stderr
+    build = (tmp_path / "work.build").read_text().split()
+    assert build[1:] == ["--output", build[2], "--relay-marker-binary", "/srv/sparkring-relay-marker"]
+    assert calls[-1] == "sparkring install --profile qwen38-flash-next-tp2 --yes --json"
+    (tmp_path / "default").mkdir()
+    run_script(tmp_path / "default", "--profile", "qwen38-flash-next-tp2", "--yes")
+    assert "--relay-marker" not in (tmp_path / "default/work.build").read_text()
 
 
 def test_package_install_needs_approval_before_apt(tmp_path):
