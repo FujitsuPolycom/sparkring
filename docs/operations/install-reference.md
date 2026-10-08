@@ -505,7 +505,10 @@ algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
 `cycle-8`, and `path` and `cycle` for other sizes. A row is `measured` or
-`rules`, where SIRCL's sessions derive their own settings. A table that names
+`rules`, where SIRCL's sessions derive their own settings. The `cycle-8` row
+holds the settings with which GLM-5.3 served at TP8 with NCCL off on an
+eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
+one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
 for that group's sessions. A table at
 `/var/lib/sparkring/controller/sircl-tuning.json` that is bound to the

@@ -8,6 +8,10 @@
     },
     "cycle-8": {
       "settings": {
+        "capacity": 1048576,
+        "dispatch": 1048576,
+        "link_slot": 524288,
+        "link_slots": 16,
         "oneshot_max": 28672
       },
       "source": "measured"
