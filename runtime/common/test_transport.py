@@ -511,3 +511,56 @@ def test_a_layer_receipt_that_differs_from_the_lock_is_refused():
     with pytest.raises(transport.TransportError, match="layer receipt differs"):
         transport.admit_layer(lock, run=image)
 
+
+# Profiles of eight Sparks, which only SIRCL ring sessions run.
+
+def eight_spark_image():
+    profiles = sorted({*installer.installer_image.default_lock()["profiles"], *installer.installer_image.SIRCL_ONLY})
+    return sircl_lock(profiles=profiles)
+
+
+@pytest.mark.parametrize("profile", installer.installer_image.SIRCL_ONLY)
+def test_every_eight_spark_profile_renders_on_sircl_on_every_spark_of_an_eight_spark_ring(profile):
+    lock, section = sircl_deployment(profile, "cycle", 8, list(range(8)), image=eight_spark_image())
+    assert section["group"]["name"] == "cycle-8" and section["tuning"]["row"] == "cycle-8"
+    specs = installer.specifications(lock)
+    assert len(specs) == 8
+    groups = "tp,dcp" if profile == "glm53-nvfp4-tp8" else "tp"
+    for rank, spec in enumerate(specs):
+        environment = spec.environment
+        assert environment["SIRCL_GROUPS"] == groups and environment["SIRCL_NCCL"] == "never"
+        assert environment["VLLM_HOST_IP"] == f"192.0.2.{20 + rank}"
+        assert environment["B12X_ROCE_PEER_HCA_MAP"] == ""
+        command = list(spec.command)
+        assert command[command.index("--tensor-parallel-size") + 1] == "8"
+        assert command[command.index("--node-rank") + 1] == str(rank)
+        assert ("--headless" in command) == (rank > 0)
+
+
+def test_decode_context_parallel_groups_get_sessions_inside_the_tensor_parallel_group():
+    lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    arguments = list(installer.specifications(lock, only_rank=0)[0].command)
+    groups = transport.dcp_groups(section, arguments)
+    assert [list(group.members) for group in groups] == [[0, 1, 2, 3], [4, 5, 6, 7]]
+    assert all(group.subgroup for group in groups)
+    assert transport.dcp_groups(section, ["--decode-context-parallel-size", "1"]) == []
+    with pytest.raises(transport.TransportError, match="must divide the group's 8 ranks"):
+        transport.dcp_groups(section, ["--decode-context-parallel-size", "3"])
+
+
+def test_a_profile_that_only_sircl_runs_needs_its_transport_section_and_its_positions():
+    image = eight_spark_image()
+    with pytest.raises(ValueError, match="runs only on SIRCL ring sessions; its deployment needs a transport section"):
+        installer.make_lock("glm53-flash-nvfp4-spark-tp8", install_site(8), "1" * 40, "2" * 64,
+                            image_runtime=image_lock.v2_view(image))
+    section = transport.section(image, document("cycle", 8), [4, 5, 6, 7], nccl="never",
+                                tuning=transport.load_tuning())
+    with pytest.raises(ValueError, match=r"runs on positions \[4, 5, 6, 7\]; the site lists positions \[0, 1, 2, 3\]"):
+        installer.make_lock(TP4, install_site(4, placement=[0, 1, 2, 3]), "1" * 40, "2" * 64,
+                            image_runtime=image_lock.v2_view(image), transport=section)
+    lock = installer.make_lock(TP4, install_site(4, placement=[4, 5, 6, 7]), "1" * 40, "2" * 64,
+                               image_runtime=image_lock.v2_view(image), transport=section)
+    assert lock["site"]["placement"] == [4, 5, 6, 7]
+    with pytest.raises(ValueError, match="one half of a four-Spark ring.*on the prepared transport"):
+        installer.make_lock(TP4, install_site(4, placement=[4, 5, 6, 7]), "1" * 40, "2" * 64,
+                            image_runtime=image_lock.v2_view(image))

@@ -602,7 +602,7 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
     assert installer.checkpoint_directory("tp4-installer", cards[QWEN]) != qwen
     main = {**cards[QWEN], "model_revision": "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"}
     assert installer.checkpoint_directory("tp2", main) == qwen.rsplit("/", 1)[0] + "/" + main["model_revision"]
-    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 5
+    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 6
     # Deployment workspaces are named after profiles, so none is the checkpoints or cache directory.
     assert not {"checkpoints", "cache"} & set(installer.profiles.catalog())
     for profile, card in cards.items():
@@ -611,7 +611,7 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
                "hosts": [{"host": f"spark{n}", "management_ip": f"192.0.2.{20 + n}", "fabric_ip": f"198.18.20.{n + 1}",
                           "interface": "enp1s0f0np0", "model": model, "cache": "/srv/sparkring/tp2/cache"}
                          for n in range(card["nodes"])]}
-        if profile in compose.TP4_PROFILES:
+        if profile in compose.TP4_PROFILES or profile in compose.FABRIC_PROFILES:
             for row in raw["hosts"]:
                 row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
         for row in installer.site_document(raw, card, "1" * 40)["ranks"]:

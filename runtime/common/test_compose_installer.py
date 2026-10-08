@@ -51,7 +51,9 @@ def example_site(profile):
 
 
 def test_installer_profiles_are_compose_profiles_on_the_default_lock():
-    assert set(PROFILES) == set(installer.INSTALLABLE) <= set(compose.SUPPORTED)
+    # Profiles that only SIRCL ring sessions run are installer profiles without Compose exports.
+    assert set(PROFILES) | set(installer_image.SIRCL_ONLY) == set(installer.INSTALLABLE)
+    assert set(PROFILES) <= set(compose.SUPPORTED) and not set(installer_image.SIRCL_ONLY) & set(compose.SUPPORTED)
     for profile in compose.SUPPORTED:
         expected = installer_image.default_lock() if profile in PROFILES else None
         assert compose.installer_image_runtime(profile) == expected
@@ -159,3 +161,25 @@ def test_every_public_example_resolves_to_its_specification(profile, tmp_path):
     target = tmp_path / "deployment"
     manifest = compose.render(profile, example_site(profile), target)
     assert compose.check(target) == manifest
+
+
+@pytest.mark.parametrize("profile", installer_image.SIRCL_ONLY)
+def test_an_eight_spark_profile_renders_for_the_installer_and_has_no_compose_export(profile):
+    from runtime.common import qwen_flash_next
+    configuration = qwen_flash_next.read(compose.ROOT / "profiles" / profile / "config.json")
+    assert qwen_flash_next.canonical(configuration) is configuration
+    assert qwen_flash_next.node_count(configuration) == 8 and configuration["topology"] == "direct-cycle-8"
+    with pytest.raises(ValueError, match="Select an unchanged canonical serving configuration"):
+        qwen_flash_next.canonical(dict(configuration, topology="direct-cycle-4"))
+    site = {"schema": "sparkring-compose-site/v1", "name": "eight", "master": "192.0.2.20", "ranks": [
+        {"rank": rank, "host": f"spark{rank}", "host_ip": f"192.0.2.{20 + rank}", "interface": "enP7s7",
+         "hcas": ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"], "gid": 3,
+         "model": "/srv/sparkring/eight/checkpoints/model", "cache": "/srv/sparkring/eight/cache",
+         "repository": "/srv/sparkring/eight/source", "deployment_root": "/srv/sparkring/eight/containers",
+         "fabric": {"site_path": "/etc/sparkring/fabric/topology.json", "site_sha256": "1" * 64,
+                    "plan_sha256": "2" * 64}} for rank in range(8)]}
+    specs, _ = compose.specifications(profile, site)
+    assert [spec.environment["VLLM_HOST_IP"] for spec in specs] == [f"192.0.2.{20 + rank}" for rank in range(8)]
+    with pytest.raises(ValueError, match="runs only on SIRCL ring sessions, which a Compose deployment does not use"):
+        compose.build(profile, site)
+    assert not (compose.ROOT / "profiles" / profile / "compose").exists()

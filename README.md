@@ -49,6 +49,12 @@ with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-
 ([all results, 16K–128K](performance/records/images/dev-20261004-kraken-matrix-20261004.md)).
 \* The two-Spark GLM profile serves 8 requests at a time.
 
+Four Experimental profiles serve on all eight Sparks of an eight-Spark ring
+(`glm53-flash-nvfp4-spark-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,
+`qwen38-flash-next-qad-tp8`). They need an image lock whose image carries
+SIRCL ring sessions, which this package does not ship, and have no
+installation measurements ([profile catalog](profiles/README.md)).
+
 Thinking is the default for requests that don't set it: *on* (a request can
 turn it off) or *always*, and its effort. `--reasoning-effort LEVEL` and
 `--thinking off` change it per install ([details](docs/operations/install-reference.md#thinking)).

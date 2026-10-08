@@ -14,8 +14,12 @@ STATUS = {"implemented", "qualified", "research-only", "unsupported"}
 OVERRIDES = {"max_model_len", "max_num_seqs", "max_num_batched_tokens"}
 PROFILE_FIELDS = {"schema", "id", "title", "recommendation", "status", "configuration", "release", "guide", "evidence_scope", "overrides", "launcher"}
 COMMON = {"decode_context_parallel_size": 1, "pipeline_parallel_size": 1}
-TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "sparkring-rocenante-mesh",
+# A serving profile's group of Sparks: ``direct-<shape>-<size>`` names the fabric layout
+# (runtime/common/fabric_layout.py) of a group of that many ranks, one per Spark; the
+# other names are the switched and mesh topologies of profiles with their own guides.
+TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "direct-cycle-8", "sparkring-rocenante-mesh",
               "tp2-rocenante-adaptive", "switched"}
+DIRECT = {"direct-pair-2": ("pair", 2), "direct-cycle-4": ("cycle", 4), "direct-cycle-8": ("cycle", 8)}
 # Top-level fields that describe a profile to people, by document schema: a
 # profile definition's title, recommendation, evidence status and scope, and
 # guide, and a serving configuration's evidence status and qualification notes.
@@ -233,7 +237,7 @@ def resolve(profile_id, overrides=None, site=None, root=ROOT):
     values = {**COMMON, **defaults}
     if not isinstance(topology, str) or topology not in TOPOLOGIES:
         raise ValueError(f"Unsupported profile topology: {topology!r}")
-    topology_nodes = {"direct-pair-2": 2, "direct-cycle-4": 4,
+    topology_nodes = {**{name: size for name, (_, size) in DIRECT.items()},
                       "tp2-rocenante-adaptive": 2}.get(topology)
     if topology_nodes is not None and values.get("node_count") != topology_nodes:
         raise ValueError(f"topology {topology} requires {topology_nodes} nodes")

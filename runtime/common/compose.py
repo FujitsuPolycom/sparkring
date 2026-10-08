@@ -30,6 +30,15 @@ TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp2", "swift15-
 TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
 # Every supported profile has generated public examples under profiles/*/compose.
 SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
+# Installer profiles of eight Sparks on the shared toolchain image of an image lock that carries
+# SIRCL (installer_image.SIRCL_ONLY, runtime/common/image_lock.py). Only SIRCL ring sessions run
+# them, because their ranks reach each other through relays: `sparkring install` renders them,
+# and each host's row carries the fabric document reference of the relay table. A Compose
+# deployment runs the prepared transport, so they have no Compose exports.
+FABRIC_PROFILES = ("deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8",
+                   "qwen38-flash-next-qad-tp8")
+# Node counts of the sites the adapter renders.
+NODE_COUNTS = (2, 4, 8)
 LABEL = "io.sparkring.deployment"
 
 
@@ -92,7 +101,7 @@ def site_settings(site, *, nodes=2):
         raise ValueError(
             "Site name must be a lowercase deployment name, at most 40 characters"
         )
-    if nodes not in (2, 4) or not isinstance(site["ranks"], list) or len(site["ranks"]) != nodes:
+    if nodes not in NODE_COUNTS or not isinstance(site["ranks"], list) or len(site["ranks"]) != nodes:
         raise ValueError(f"This TP{nodes} profile requires exactly {nodes} hosts")
     hosts, addresses = set(), set()
     for number, rank in enumerate(site["ranks"]):
@@ -108,7 +117,7 @@ def site_settings(site, *, nodes=2):
             "repository",
             "deployment_root",
         }
-        if nodes == 4:
+        if nodes != 2:
             keys.add("fabric")
         if (
             not isinstance(rank, dict)
@@ -151,7 +160,7 @@ def site_settings(site, *, nodes=2):
             remote=True,
             nodes=nodes,
         )
-        if nodes == 4:
+        if nodes != 2:
             from runtime.common import qwen_mesh
             qwen_mesh.validate_site_reference(rank["fabric"])
     if site["master"] != site["ranks"][0]["host_ip"]:
@@ -325,7 +334,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     Without it, toolchain profiles return the canonical envelope that
     runtime/common/installer.py adapts itself.
     """
-    if profile_id not in SUPPORTED:
+    if profile_id not in SUPPORTED and profile_id not in FABRIC_PROFILES:
         raise ValueError(
             "Compose adapter unsupported for "
             + str(profile_id)
@@ -538,6 +547,9 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     profile ID, the site, the selection options and identity_inventory of the
     source inventory. The manifest's ``inputs`` keep every file's byte digest.
     """
+    if profile_id in FABRIC_PROFILES:
+        raise ValueError(f"{profile_id} runs only on SIRCL ring sessions, which a Compose deployment does not use; "
+                         "install it with sudo sparkring install")
     if image_runtime is None and profile_id in SUPPORTED:
         image_runtime = installer_image_runtime(profile_id)
     options = {key: value for key, value in {

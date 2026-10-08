@@ -37,6 +37,13 @@ TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4",
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4",
     "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"))
+# Serving profiles of eight Sparks for the shared toolchain image, which only SIRCL ring sessions run
+# (installer_image.SIRCL_ONLY); they keep the envelope above. A source snapshot that omits them
+# renders the other profiles.
+FABRIC_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
+    "deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8"))
+# Topology of each node count a serving profile runs on.
+TOPOLOGIES = {2: "direct-pair-2", 4: "direct-cycle-4", 8: "direct-cycle-8"}
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
 
 
@@ -56,11 +63,13 @@ def publication():
 
 
 def canonical(profile):
+    fabric = profile in [read(path) for path in FABRIC_CONFIGS if path.is_file()]
     if (profile not in [read(CONFIG_ROOT / name) for name in CONFIG_NAMES]
             and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]
-            and profile not in [read(path) for path in TOOLCHAIN_CONFIGS]):
+            and profile not in [read(path) for path in TOOLCHAIN_CONFIGS] and not fabric):
         raise ValueError("Select an unchanged canonical serving configuration")
-    if profile.get("schema") != "sparkring-serving-profile/v1" or profile.get("topology") not in ("direct-pair-2", "direct-cycle-4"):
+    topologies = ("direct-cycle-8",) if fabric else ("direct-pair-2", "direct-cycle-4")
+    if profile.get("schema") != "sparkring-serving-profile/v1" or profile.get("topology") not in topologies:
         raise ValueError("Invalid serving profile schema/topology")
     return profile
 
@@ -248,8 +257,9 @@ def image_verification_options(profile, *, local_source_extension=None):
 
 
 def site_inputs(rank, master, host_ip, interface, model, cache, *, remote=False, nodes=2):
-    if nodes not in (2, 4) or type(rank) is not int or rank not in range(nodes):
-        raise ValueError("Select rank0/1" if nodes == 2 else "Select rank0/1/2/3 for a four-node profile")
+    if nodes not in TOPOLOGIES or type(rank) is not int or rank not in range(nodes):
+        raise ValueError("Select rank0/1" if nodes == 2 else "Select rank0/1/2/3 for a four-node profile"
+                         if nodes == 4 else f"Select a rank from 0 to {nodes - 1} for a {nodes}-node profile")
     try:
         ipaddress.ip_address(host_ip)
     except ValueError as exc:
@@ -389,7 +399,9 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         VLLM_SPARK_TP4_MODE="", VLLM_SPARK_TP4_VOCAB_MODE="", SIRCL_ENABLED="0",
         NCCL_SOCKET_IFNAME=interface,
         GLOO_SOCKET_IFNAME=interface,
-        B12X_ROCE_PEER_HCA_MAP=(profile["transport"]["peer_hca_maps"][rank] if nodes == 4 else f"{1 - rank}=0/1"),
+        # The prepared transport's peer map; SIRCL, which alone runs eight ranks, blanks that transport.
+        B12X_ROCE_PEER_HCA_MAP=(profile["transport"]["peer_hca_maps"][rank] if nodes == 4 else
+                                f"{1 - rank}=0/1" if nodes == 2 else ""),
         SPARKRING_TRANSPORT_PROFILE="tp2-rocenante-adaptive",
         SPARKRING_TRANSPORT_MANIFEST_SHA256="eb03cfde826974811be3bfe5d88f36d9de105b73358f3eaa56b9ed44f19127c4",
         XDG_CACHE_HOME=f"/cache/{namespace}",
@@ -417,16 +429,18 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
         env["B12X_COMPILE_CACHE_DIR"] = f"/cache/{family}-cuda{installer_image.CUDA_VERSION}-{revision}/b12x"
         del env["B12X_ROCE_CACHE_DIR"]
     if hcas is not None:
-        if (not isinstance(hcas, list) or len(hcas) != nodes or len(set(hcas)) != nodes
+        # A pair's rank uses its two functions facing its partner; a larger group's rank all four.
+        functions = 2 if nodes == 2 else 4
+        if (not isinstance(hcas, list) or len(hcas) != functions or len(set(hcas)) != functions
                 or any(not re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca) for hca in hcas)):
             raise ValueError("Select the profile's distinct HCA functions in cable order")
         env["B12X_ROCE_HCA"] = ",".join(hcas)
-        env["NCCL_IB_HCA"] = "=" + ",".join(hca + (":1" if nodes == 4 else "") for hca in hcas)
+        env["NCCL_IB_HCA"] = "=" + ",".join(hca + (":1" if nodes != 2 else "") for hca in hcas)
     if gid is not None:
         if type(gid) is not int or not 0 <= gid <= 255:
             raise ValueError("GID index must be an integer from 0 to 255")
         env["NCCL_IB_GID_INDEX"] = str(gid)
-        if nodes == 4:
+        if nodes != 2:
             env["B12X_ROCE_GID_INDEX"] = str(gid)
     args = [
         entrypoint,

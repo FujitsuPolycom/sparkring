@@ -1,8 +1,10 @@
 # Contributing an installer profile
 
-An installer profile is a profile that `sparkring install` sets up end to end on a cabled pair or
-four-Spark ring: one pinned checkpoint and its serving settings, on the serving image that all installer
-profiles share. The default installer image lock, `runtime/releases/<release>/installer-image.json`
+An installer profile is a profile that `sparkring install` sets up end to end on its group of cabled
+Sparks: two, four or eight, on all Sparks of the fabric or on some of them
+([models on part of the fabric](../operations/install-reference.md#models-on-part-of-the-fabric)). It is
+one pinned checkpoint and its serving settings, on the shared serving image of an installer image lock.
+The default installer image lock, `runtime/releases/<release>/installer-image.json`
 (`installer_image.DEFAULT_LOCK`), pins that image and lists the admitted profiles;
 `python -c "from runtime.common.installer_image import DEFAULT_LOCK as L; print(L.parent.name)"` prints
 `<release>`. Examples: [`deepseek-v41-flash-tp4`](../../profiles/deepseek-v41-flash-tp4/profile.json)
@@ -37,14 +39,14 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 
 | File | Field | Value |
 |---|---|---|
-| `profile.json` | `id` | Directory name, ending `-tp2` or `-tp4`; test fixtures take the host count from the suffix |
+| `profile.json` | `id` | Directory name, ending `-tp2`, `-tp4` or `-tp8`; test fixtures take the host count from the suffix |
 | `profile.json` | `release` | `runtime/releases/<release>/release.json` |
 | `profile.json` | `launcher` | `path` `runtime/common/qwen_flash_next.py`, `actions` `["plan"]`, `fixed_args` `["--profile", "profiles/<id>/config.json"]` |
 | `profile.json` | `recommendation` | `recommended`; the generated summary then hides non-recommended rows with the same repository, topology, node count and engine |
 | `config.json` | `model` | `repository`, 40-hex `revision`, and `config_sha256` and `index_sha256` from the pin manifest |
-| `config.json` | `topology` | `direct-pair-2` or `direct-cycle-4`, matching `--tensor-parallel-size` and `--nnodes` |
+| `config.json` | `topology` | `direct-pair-2`, `direct-cycle-4` or `direct-cycle-8`, matching `--tensor-parallel-size` and `--nnodes` |
 | `config.json` | `image_extension` | `toolchain`: the image comes from the lock |
-| `config.json` | `served_model_name` | Ends `-TP2` or `-TP4` |
+| `config.json` | `served_model_name` | Ends `-TP2`, `-TP4` or `-TP8` |
 | `config.json` | `cache_namespace` | Model family; names the compile-cache directories (default `qwen-flash-next`) |
 | `config.json` | `vllm_args` | `--port` (API port; no test fixes it; existing profiles use 8000, 8015 or 8020) and `--enable-prefix-caching`; no `--kv-transfer-config` |
 | `config.json` | `environment` | `SPARKCACHE_ENABLED` `0`; `VLLM_QWEN3_8_*` and `QWEN_*` only for a Qwen3.8-Flash-Next-architecture checkpoint (`installer_image.QWEN4_EXP`); omit `SPARKRING_TOOL_CHOICE_CONTRACT`, which the installer sets to `1` ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)), unless the profile opts out with `0` |
@@ -157,6 +159,35 @@ another revision, manifest name and `model`. Register a derived entry in
 `DERIVED` in `scripts/test_pin_checkpoint.py`, cover it in
 `runtime/common/test_derived_checkpoint.py`, and list it with its storage
 figures in the install reference.
+
+## Profiles of eight Sparks
+
+A profile of eight Sparks (`-tp8`, `direct-cycle-8`) runs on every Spark of an eight-Spark ring. Its ranks
+reach each other through relays, so only SIRCL ring sessions run it, and it differs from the profiles
+above:
+
+- It has no `compose/` directory: a Compose deployment runs the prepared transport, and
+  `compose.build` refuses it. `config.json` has no `transport` key; the SIRCL adapter
+  (`runtime/common/transport.py`) owns the transport, and each rank's site row carries the fabric
+  document reference of the relay table (`relays.group_reference`).
+- It is admitted only by an image lock `sparkring-installer-image/v3` whose image carries the SIRCL
+  layer and lists it; a v1 or v2 lock that lists it is refused (`image_lock.sircl_only`).
+- A `--decode-context-parallel-size` above 1 gives each decode-context-parallel group a SIRCL session of
+  its own (`transport.dcp_groups`, `SIRCL_GROUPS=tp,dcp`).
+
+| Path | Symbol or field | If missing |
+|---|---|---|
+| `runtime/common/installer_image.py` | `SIRCL_ONLY` instead of `SUPPORTED`; also `QWEN4_EXP` for a Qwen3.8-Flash-Next-architecture checkpoint | `This profile uses its own guide` |
+| `runtime/common/compose.py` | `FABRIC_PROFILES` | `Compose adapter unsupported` |
+| `runtime/common/qwen_flash_next.py` | `FABRIC_CONFIGS` | `Select an unchanged canonical serving configuration` |
+
+`runtime/common/test_installer_image.py` (`SIRCL_ONLY`) holds the three lists equal, and
+`runtime/common/test_transport.py` renders every such profile on SIRCL on an eight-Spark ring.
+
+A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF checkpoint, is registered in
+`runtime/common/image_lock.py` `CHECKPOINT_BUILDS` with the pinned vLLM builds of
+`sparkring_sircl.vllm.pins` that read it; the installer refuses it on an image whose lock lists none of
+them in `sircl.vllm_pins`.
 
 ## Invariants the tests enforce
 

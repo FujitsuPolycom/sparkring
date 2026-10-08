@@ -18,8 +18,9 @@ from runtime.common import (compose, derived_checkpoint, distribution, fabric_la
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
-# Profiles offered by `sparkring install`, `sparkring models` and `init --model`.
-# Every one runs on the shared image selected by installer_image.DEFAULT_LOCK.
+# Profiles offered by `sparkring install`, `sparkring models` and `init --model`. Those of
+# installer_image.SUPPORTED run on the shared image selected by installer_image.DEFAULT_LOCK;
+# those of installer_image.SIRCL_ONLY run only on an image whose lock (v3) carries SIRCL.
 DEFAULTS = {
     ("glm53", 2): "glm53-flash-nvfp4-spark-tp2",
     ("glm53", 4): "glm53-flash-nvfp4-spark-tp4",
@@ -28,7 +29,7 @@ DEFAULTS = {
     ("qwen38", 2): "qwen38-flash-next-tp2",
     ("qwen38", 4): "qwen38-flash-next-qad-tp4",
 }
-INSTALLABLE = frozenset(installer_image.SUPPORTED)
+INSTALLABLE = frozenset((*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY))
 # Profiles on their published per-release images. Saved deployments of these
 # still validate and roll back, but new installations use INSTALLABLE only.
 GLM_LEGACY = {2: "glm53-flash-spark-tp2-dcp1-sparkcache", 4: "glm53-flash-spark-tp4-dcp1-sparkcache"}
@@ -299,6 +300,9 @@ def site_document(raw, card, revision, *, transport=None):
             item["fabric"] = row["fabric"]
         if card["profile"] in compose.TP4_PROFILES and "fabric" not in item:
             raise ValueError("This four-Spark profile needs the prepared mesh fabric reference in each host; import the existing site")
+        if card["profile"] in compose.FABRIC_PROFILES and "fabric" not in item:
+            raise ValueError("This profile's ranks reach each other through relays; each host needs the fabric "
+                             "document reference of the relay table (runtime/host/relays.py group_reference)")
         ranks.append(item)
     for field in ("host", "management_ip", "host_ip"):
         if len({r[field] for r in ranks}) != len(ranks):
@@ -365,6 +369,9 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         if transport["group"]["positions"] != positions:
             raise ValueError(f"The transport group runs on positions {transport['group']['positions']}; the site "
                              f"lists positions {positions}")
+    elif card["profile"] in compose.FABRIC_PROFILES:
+        raise ValueError(f"{card['profile']} runs only on SIRCL ring sessions; its deployment needs a transport "
+                         "section")
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -447,7 +454,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     card, site = lock["selection"], lock["site"]
     if lock["backend"] != "compose":
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
-    if card["profile"] in compose.SUPPORTED:
+    rendered_by_compose = card["profile"] in compose.SUPPORTED or card["profile"] in compose.FABRIC_PROFILES
+    if rendered_by_compose:
         specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"])
         if "image_runtime" in lock:
             from runtime.common import installer_image
@@ -475,7 +483,7 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
                               site_values={"VLLM_HOST_IP": row["host_ip"], "NCCL_SOCKET_IFNAME": row["interface"],
                                            "GLOO_SOCKET_IFNAME": row["interface"]}, **options)
             specs.append(tp2.container_spec(plan))
-    if only_rank is not None and card["profile"] in compose.SUPPORTED:
+    if only_rank is not None and rendered_by_compose:
         specs = [specs[only_rank]]
     settings = lock.get("serving") or {}
     ranks = [only_rank] if only_rank is not None else range(len(specs))

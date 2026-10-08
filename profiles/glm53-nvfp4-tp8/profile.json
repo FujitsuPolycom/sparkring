@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-nvfp4-tp8",
+  "title": "GLM-5.3 NVFP4 on eight Sparks",
+  "recommendation": "recommended",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-nvfp4-tp8/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-nvfp4-tp8/README.md",
+  "evidence_scope": "GLM-5.3 (744B, GlmMoeDsaForCausalLM) at tensor-parallel size 8 with decode-context parallelism 4, a 1,048,576-token context window, 43 GiB of fp8_ds_mla KV cache per Spark and no speculative decoding. Runs only on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring; no image lock in this package lists it, so it installs only with a development image lock (v3) whose image carries the SIRCL layer and lists the profile. No installation of this profile has run on hardware. A launcher outside this repository served this checkpoint at TP8 with decode-context parallelism 4 on SIRCL with NCCL off on one eight-Spark ring (one light run, 2026-10-07; no record of that run is in performance/records); this profile's model settings are pinned only where its guide says. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/qwen_flash_next.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-nvfp4-tp8/config.json"
+    ]
+  }
+}

@@ -385,6 +385,30 @@ def _options(settings):
     return options
 
 
+def dcp_groups(value, arguments):
+    """The decode-context-parallel groups of the profile's command, each placed inside the transport group.
+
+    vLLM forms ``tensor-parallel size / dcp`` groups of ``dcp`` consecutive
+    ranks (``--decode-context-parallel-size``). With ``dcp`` above 1 each
+    group needs a SIRCL session of its own (``SIRCL_GROUPS=tp,dcp``), which
+    routes over the tensor-parallel group's cables; an empty list for ``dcp``
+    1.
+    """
+    plan, _, fabric = _sircl()
+    size = plan.recipe_dcp(arguments)
+    if size <= 1:
+        return []
+    positions = list(value["group"]["positions"])
+    _require(len(positions) % size == 0, f"decode-context parallelism {size} must divide the group's "
+                                         f"{len(positions)} ranks")
+    try:
+        layout = fabric.Layout.parse(value["group"]["layout"])
+        return [fabric.describe_group(layout, positions[start:start + size], parent=positions)
+                for start in range(0, len(positions), size)]
+    except fabric.FabricError as error:
+        raise TransportError(str(error)) from None
+
+
 def environment(value, profile_environment, arguments):
     """The SIRCL variables every rank's container gets, and the checks the SIRCL launcher applies.
 
@@ -426,15 +450,22 @@ def environment(value, profile_environment, arguments):
                                                "reduce_link_chunk") if name in settings}
     schedules = {name: settings[name] for name in SCHEDULE_SETTINGS if name in settings}
     try:
-        plan.session_problems([plan.session_settings(topology, name="tp", groups="", scoped=True, schedules=schedules,
-                                                     link_sizes=links, link_slots=settings.get("link_slots"),
-                                                     ring_gather_stagger=settings.get("ring_gather_stagger"))])
+        sessions = [plan.session_settings(topology, name="tp", groups="", scoped=True, schedules=schedules,
+                                          link_sizes=links, link_slots=settings.get("link_slots"),
+                                          ring_gather_stagger=settings.get("ring_gather_stagger"))]
+        dcp = dcp_groups(value, arguments)
+        if dcp:
+            # Each decode-context-parallel group gets a session of its own with the session defaults: the
+            # tuning row's schedules and link sizes apply to the tensor-parallel session only.
+            sessions.append(plan.session_settings(dcp[0], name="dcp", scoped=False,
+                                                  groups=f"{len(dcp)} groups of {len(dcp[0].members)} ranks"))
+        plan.session_problems(sessions)
         gid = int(profile_environment.get("NCCL_IB_GID_INDEX", "3"))
         common = {
             "SIRCL_MODE": "custom",
             "SIRCL_FABRIC": value["group"]["layout"],
             "SIRCL_RANK_POSITIONS": ",".join(str(position) for position in value["group"]["positions"]),
-            "SIRCL_GROUPS": "tp",
+            "SIRCL_GROUPS": "tp,dcp" if dcp else "tp",
             "SIRCL_NCCL": value["nccl"],
             "SIRCL_LARGE_ALLREDUCE": large,
             "SIRCL_SESSION_MODULE": plan.SESSION_MODULE,

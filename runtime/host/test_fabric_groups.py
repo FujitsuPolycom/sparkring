@@ -24,7 +24,10 @@ QWEN_TP2 = "qwen38-flash-next-tp2"
 GLM_TP2 = "glm53-flash-nvfp4-spark-tp2"
 QWEN_TP4 = "qwen38-flash-next-qad-tp4"
 DEEPSEEK_TP4 = "deepseek-v41-flash-tp4"
+GLM_TP8 = "glm53-flash-nvfp4-spark-tp8"
+GLM_FULL = "glm53-nvfp4-tp8"
 MARKER = {"binary": relays.MARKER_BINARY, "sha256": "ab" * 32}
+CSF_BUILD = "sparkring-kraken-beta-20261007-bc9ea774"
 
 
 def ring_cluster(size=8):
@@ -46,8 +49,8 @@ def label(path):
 
 
 def image_lock_file(tmp_path, *, pins=("lil-image-aba309e4610c",)):
-    """A v3 lock listing every installer profile."""
-    profiles = sorted(installer_image.default_lock()["profiles"])
+    """A v3 lock listing every installer profile, the eight-Spark ones included."""
+    profiles = sorted({*installer_image.default_lock()["profiles"], *installer_image.SIRCL_ONLY})
     path = tmp_path / ("sircl-image-" + "-".join(pins) + ".json")
     path.write_text(json.dumps(sircl_lock(profiles=profiles, sircl=dict(sircl_block(), vllm_pins=sorted(pins)))))
     return path
@@ -218,6 +221,53 @@ def test_a_four_spark_profile_without_on_takes_the_one_free_half_of_the_ring(rin
             in out.err)
 
 
+def test_a_model_on_every_spark_stops_every_group_and_runs_tensor_parallel_eight(ring8, capsys):
+    assert install(ring8, "--profile", QWEN_TP4, "--on", "0-3") == 0
+    assert install(ring8, "--profile", DEEPSEEK_TP4, "--on", "4-7") == 0
+    capsys.readouterr()
+    ops(ring8)
+    assert install(ring8, "--profile", GLM_TP8) == 0
+    whole = result(capsys)
+    assert "placement" not in whole and whole["group"] == {"shape": "cycle-8", "positions": list(range(8)),
+                                                          "api_position": 0}
+    assert sorted(row["profile"] for row in whole["stops"]) == [DEEPSEEK_TP4, QWEN_TP4]
+    assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:down", f"{DEEPSEEK_TP4}@4-5-6-7:down", f"{GLM_TP8}:up",
+                          f"{GLM_TP8}:verify"]
+    assert recorded() == {None: GLM_TP8}
+    lock = lock_of(whole)
+    assert lock["transport"]["group"]["name"] == "cycle-8" and lock["transport"]["nccl"] == "never"
+    specs = installer.specifications(lock)
+    assert len(specs) == 8 and {spec.environment["SIRCL_GROUPS"] for spec in specs} == {"tp"}
+    assert all(spec.environment["SIRCL_RANK_POSITIONS"] == "0,1,2,3,4,5,6,7" for spec in specs)
+    command = list(specs[0].command)
+    assert command[command.index("--tensor-parallel-size") + 1] == "8"
+
+
+def test_glm53_at_tp8_gives_each_decode_context_parallel_group_its_own_session(ring8, capsys):
+    assert install(ring8, "--profile", GLM_FULL) == 0
+    lock = lock_of(result(capsys))
+    specs = installer.specifications(lock)
+    assert {spec.environment["SIRCL_GROUPS"] for spec in specs} == {"tp,dcp"}
+    command = list(specs[0].command)
+    assert command[command.index("--decode-context-parallel-size") + 1] == "4"
+    assert command[command.index("--quantization") + 1] == "modelopt_fp4"
+
+
+def test_the_csf_checkpoint_needs_an_image_whose_vllm_reads_it(ring8, capsys, tmp_path):
+    assert install(ring8, "--profile", GLM_TP8, "--checkpoint", "csf") == 3
+    refused = result(capsys)
+    assert refused["field"] == "checkpoint_name" and CSF_BUILD in refused["message"]
+    assert ops(ring8) == []
+    csf = image_lock_file(tmp_path, pins=(CSF_BUILD, "lil-image-aba309e4610c"))
+    assert install(ring8, "--profile", GLM_TP8, "--checkpoint", "csf", lock=csf) == 0
+    lock = lock_of(result(capsys))
+    assert lock["selection"]["model_repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"
+    command = list(installer.specifications(lock, only_rank=0)[0].command)
+    assert command[command.index("--quantization") + 1] == "nvfp4_csf"
+    assert command[command.index("--load-format") + 1] == "nvfp4_csf"
+    assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD-TP8"
+
+
 def test_an_arc_whose_relaying_spark_lacks_the_hairpin_setting_is_refused(ring8, capsys, monkeypatch):
     value = installer.read(controller.STATE / "cluster.json")
     plan = value["plan"]
@@ -253,6 +303,16 @@ def test_without_sircl_an_arc_of_a_larger_ring_is_refused(ring8, capsys):
     assert refused["message"].startswith("The prepared transport runs a pair, a four-Spark ring and the ring's halves; "
                                          "Sparks 4-7 of this cycle-8 need SIRCL ring sessions")
     assert "carries no SIRCL layer" in refused["message"]
+
+
+def test_a_profile_of_more_sparks_than_the_fabric_names_the_profiles_that_fit(machine, capsys):  # noqa: F811
+    assert sparkring.main(["install", "--yes", "--json", "--profile", GLM_TP8]) == 3
+    refused = result(capsys)
+    assert refused["field"] == "placement"
+    assert refused["message"].startswith(f"{GLM_TP8} serves eight Sparks and this pair has two. Installer profiles "
+                                         "that fit it: ")
+    fit = refused["message"].split("that fit it: ", 1)[1]
+    assert QWEN_TP2 in fit and QWEN_TP4 not in fit and GLM_TP8 not in fit
 
 
 # sparkring up, status and down of groups on the ring, each deployment's real

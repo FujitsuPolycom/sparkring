@@ -140,3 +140,48 @@ def test_the_v3_schema_is_documented_with_every_field():
     for field in sorted(image_lock.V3_FIELDS - installer_image.FIELDS[installer_image.SCHEMA]):
         assert f"`{field}`" in text, field
     assert json.dumps(image_lock.SCHEMA_V3).strip('"') in text
+
+
+# Profiles that only SIRCL ring sessions run.
+
+TP8 = "glm53-flash-nvfp4-spark-tp8"
+CSF = {"model_repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+       "model_revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be", "target_variant": "csf"}
+
+
+def with_eight_spark_profiles(**changes):
+    profiles = sorted({*installer_image.default_lock()["profiles"], *installer_image.SIRCL_ONLY})
+    return sircl_lock(profiles=profiles, **changes)
+
+
+def test_only_a_v3_lock_whose_image_carries_sircl_lists_eight_spark_profiles():
+    value = with_eight_spark_profiles()
+    assert image_lock.validate(value, TP8) is value and image_lock.for_profile(TP8, value) is value
+    assert image_lock.sircl_only(value) == sorted(installer_image.SIRCL_ONLY)
+    # The other profiles of the same lock keep validating through the v2 view.
+    assert image_lock.validate(value, "qwen38-flash-next-tp2") is value
+    with pytest.raises(ValueError, match="only when its image carries the SIRCL layer"):
+        image_lock.validate(with_eight_spark_profiles(transports=["prepared"], sircl=None), TP8)
+    v2 = dict(installer_image.default_lock(), profiles=sorted({*installer_image.default_lock()["profiles"], TP8}))
+    with pytest.raises(ValueError, match="run only on SIRCL ring sessions"):
+        image_lock.validate(v2, "qwen38-flash-next-tp2")
+    with pytest.raises(ValueError, match=f"{TP8} runs only on SIRCL ring sessions, and image .* carries no SIRCL "
+                                         "layer; images that run it: none in this package"):
+        image_lock.for_profile(TP8)
+
+
+def test_the_csf_checkpoint_needs_an_image_whose_vllm_is_its_pinned_build():
+    assert image_lock.checkpoint_problem(sircl_lock(), {"model_repository": "other/model", "model_revision": "0" * 40,
+                                                        "target_variant": None}) is None
+    problem = image_lock.checkpoint_problem(sircl_lock(), CSF)
+    assert problem.startswith("Checkpoint csf (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
+                              "dec48abd33ef) needs an image whose vLLM is the pinned build "
+                              "sparkring-kraken-beta-20261007-bc9ea774")
+    assert "matches lil-image-aba309e4610c" in problem
+    assert "records no pinned vLLM build" in image_lock.checkpoint_problem(installer_image.default_lock(), CSF)
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    assert image_lock.checkpoint_problem(pinned, CSF) is None
+    from spark_transport.sircl.sparkring_sircl.vllm import pins
+    assert {build for builds in image_lock.CHECKPOINT_BUILDS.values() for build in builds} <= {
+        build.name for build in pins.SUPPORTED}

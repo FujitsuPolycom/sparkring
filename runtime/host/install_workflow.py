@@ -607,6 +607,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         card = installer.setup.selection(profile, args.checkpoint)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
+    # A checkpoint that only some vLLM builds read needs an image whose vLLM is one of them.
+    unreadable = image_lock.checkpoint_problem(image, card)
+    if unreadable:
+        raise NeedsInput(f"{unreadable}. Nothing has been changed.", field="checkpoint_name")
     # A checkpoint is requested by its listed name: an alias requests the same
     # deployment as that name, and the profile's default the same as no flag.
     checkpoint = (card["target_variant"] if args.checkpoint is not None

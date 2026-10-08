@@ -132,6 +132,15 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
+<summary>DeepSeek-V4.1-Flash · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-8 | Off | Experimental | [deepseek-v41-flash-tp8 (default)](../profiles/deepseek-v41-flash-tp8/README.md) |
+
+</details>
+
+<details>
 <summary>GLM-5.3-Flash · 2 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
@@ -157,6 +166,24 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
+<summary>GLM-5.3-Flash · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-flash-nvfp4-spark-tp8 (default)](../profiles/glm53-flash-nvfp4-spark-tp8/README.md) |
+
+</details>
+
+<details>
+<summary>GLM-5.3 · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP4 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |
+
+</details>
+
+<details>
 <summary>Qwen3.8-Flash-Next · 2 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
@@ -173,6 +200,15 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | direct-cycle-4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
 | DCP1 | direct-cycle-4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+
+</details>
+
+<details>
+<summary>Qwen3.8-Flash-Next · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | direct-cycle-8 | Off | Experimental | [qwen38-flash-next-qad-tp8 (default)](../profiles/qwen38-flash-next-qad-tp8/README.md) |
 
 </details>
 

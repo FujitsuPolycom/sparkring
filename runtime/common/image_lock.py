@@ -122,16 +122,51 @@ def validate_v3(value, profile):
         validate_sircl(value["sircl"])
     else:
         _require(value["sircl"] is None, "A v3 image lock without the sircl transport records no SIRCL layer")
+        _require(not sircl_only(value), f"{', '.join(sircl_only(value))} run only on SIRCL ring sessions; a v3 "
+                                        "image lock lists them only when its image carries the SIRCL layer")
     _digest(value["tuning_defaults_sha256"], "the default tuning table")
     _require(type(value["archived"]) is bool, "A v3 image lock says whether it is archived")
     installer_image.validate(v2_view(value), profile)
     return value
 
 
+# Checkpoints whose files only some vLLM builds read, by ``repository@revision``, with the pinned
+# vLLM builds (``sparkring_sircl.vllm.pins``) one of which the image's vLLM must match; the lock's
+# ``sircl.vllm_pins`` lists the builds an image matches. The CSF checkpoint of GLM-5.3-Flash stores
+# its routed experts' block scales compressed, which the nvfp4_csf quantization and loader of the
+# kraken-beta build of 2026-10-07 read.
+CHECKPOINT_BUILDS = {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
+        ("sparkring-kraken-beta-20261007-bc9ea774",),
+}
+
+
+def checkpoint_problem(value, card):
+    """Why the image of lock ``value`` cannot read the checkpoint of ``card``, or None."""
+    key = f"{card['model_repository']}@{card['model_revision']}"
+    builds = CHECKPOINT_BUILDS.get(key)
+    if not builds:
+        return None
+    pins = list((sircl(value) or {}).get("vllm_pins") or ())
+    if set(builds) & set(pins):
+        return None
+    return (f"Checkpoint {card['target_variant']} ({card['model_repository']} at {card['model_revision'][:12]}) "
+            f"needs an image whose vLLM is the pinned build {' or '.join(builds)}; image {value.get('name')} "
+            + (f"matches {', '.join(pins)}" if pins else "records no pinned vLLM build"))
+
+
+def sircl_only(value):
+    """The profiles a lock lists that only SIRCL ring sessions run (``installer_image.SIRCL_ONLY``)."""
+    listed = value.get("profiles") if isinstance(value, dict) else None
+    return [name for name in listed if name in installer_image.SIRCL_ONLY] if isinstance(listed, list) else []
+
+
 def validate(value, profile):
-    """Any lock schema; v1 and v2 through ``installer_image.validate``."""
+    """Any lock schema; v1 and v2 through ``installer_image.validate``, which may not list SIRCL-only profiles."""
     if schema(value) == SCHEMA_V3:
         return validate_v3(value, profile)
+    _require(not sircl_only(value), f"{', '.join(sircl_only(value))} run only on SIRCL ring sessions; only an "
+                                    f"image lock {SCHEMA_V3} whose image carries the SIRCL layer lists them")
     return installer_image.validate(value, profile)
 
 
@@ -236,6 +271,13 @@ def for_profile(profile, explicit=None):
         raise ValueError(replaced)
     value = explicit if explicit is not None else default()
     if schema(value) != SCHEMA_V3:
+        if profile in installer_image.SIRCL_ONLY:
+            others = [row["name"] for row in catalog() if profile in profiles_of(row["lock"])]
+            raise ValueError(f"{profile} runs only on SIRCL ring sessions, and image {value.get('name')} carries no "
+                             f"SIRCL layer; images that run it: {', '.join(others) or 'none in this package'}. A "
+                             "development image lock that lists it is selected with --image-lock")
+        _require(not sircl_only(value), f"{', '.join(sircl_only(value))} run only on SIRCL ring sessions; only an "
+                                        f"image lock {SCHEMA_V3} whose image carries the SIRCL layer lists them")
         # v1 and v2 locks keep installer_image's selection, refusals and messages.
         return installer_image.for_profile(profile, explicit)
     try:

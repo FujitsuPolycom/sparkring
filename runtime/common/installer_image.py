@@ -52,9 +52,14 @@ QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,
 # including derivatives of other publishers. They run the image's Qwen collective
 # features and HC modes, which admission requires and ``adapt`` configures.
-QWEN4_EXP = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
-SUPPORTED = (*QWEN4_EXP, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-             "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
+SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
+             "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+# Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
+# runtime/common/image_lock.py): their eight ranks reach each other through relays. A lock's profile
+# list may name them beside SUPPORTED; only image_lock admits a lock that does.
+SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8")
+QWEN4_EXP = (*QWEN4_EXP_PREPARED, "qwen38-flash-next-qad-tp8")
 # A v2 lock may also list IDs in profiles.REPLACED, so that the locks of other
 # releases in runtime/releases keep validating; ``for_profile`` refuses those IDs
 # and names the catalog profile that replaces each.
@@ -91,7 +96,7 @@ def validate(value, profile):
     else:
         listed = value["profiles"]
         if (not isinstance(listed, list) or not listed or listed != sorted(set(listed))
-                or not set(listed) <= set(SUPPORTED) | set(profiles.REPLACED)):
+                or not set(listed) <= set(SUPPORTED) | set(SIRCL_ONLY) | set(profiles.REPLACED)):
             raise ValueError("A v2 image lock lists sorted, distinct, supported installer profiles")
         if profile not in listed:
             raise ValueError(f"{profile} is not admitted on image lock {value['name']}")
@@ -331,7 +336,7 @@ def admit(value, *, run, profile=None, nodes=None, environment=None):
     """
     profile = profile if profile is not None else profiles_of(value)[0]
     validate(value, profile)
-    nodes = nodes if nodes is not None else (4 if profile.endswith("tp4") else 2)
+    nodes = nodes if nodes is not None else (8 if profile.endswith("tp8") else 4 if profile.endswith("tp4") else 2)
     image = json.loads(run(["docker", "image", "inspect", value["image_id"]]).stdout)[0]
     if (image.get("Id") != value["image_id"] or image.get("Os") != "linux" or image.get("Architecture") != "arm64"
             or image.get("Config", {}).get("Entrypoint") != list(ENTRYPOINT)):

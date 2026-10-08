@@ -24,8 +24,8 @@ ring sessions runs models on lines and rings of up to eight Sparks
   `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
   mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
-  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift or
-  547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
+  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift,
+  505 GiB for GLM-5.3 or 547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
   of an earlier `sparkring install` needs about 47 GiB less.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)

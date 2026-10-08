@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from runtime.common import installer, installer_image, profiles, setup
+from runtime.common import compose, installer, installer_image, profiles, qwen_flash_next, setup
 from runtime.common.test_installer import site
 from runtime.host import controller, models
 
@@ -330,12 +330,16 @@ SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-
           "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2",
           "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SWIFT = ("swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
+# Installer profiles that only SIRCL ring sessions run; no v2 lock lists them.
+SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-nvfp4-spark-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8")
 
 
 def test_release_lock_lists_every_installer_profile_on_one_image():
     lock = installer_image.default_lock()
     assert lock["schema"] == installer_image.SCHEMA and tuple(lock["profiles"]) == SHARED
-    assert installer.INSTALLABLE == frozenset(SHARED)
+    assert installer.INSTALLABLE == frozenset(SHARED) | frozenset(SIRCL_ONLY)
+    assert installer_image.SIRCL_ONLY == SIRCL_ONLY == compose.FABRIC_PROFILES
+    assert tuple(path.parent.name for path in qwen_flash_next.FABRIC_CONFIGS) == SIRCL_ONLY
     assert lock["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
     for profile in SHARED:
         assert installer_image.for_profile(profile) == lock

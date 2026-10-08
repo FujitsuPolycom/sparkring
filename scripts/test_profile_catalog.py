@@ -71,7 +71,10 @@ def test_dcp4_profiles_are_listed_only_as_retired_configurations():
     summary, variants = table.split('## Configuration variants', 1)
     active, retired = variants.split('### Retired profiles', 1)
     assert '[GLM-5.2](' not in summary
-    assert '| DCP4 |' not in active
+    # Decode-context parallelism 4 on four Sparks is listed only as retired; GLM-5.3's eight-Spark
+    # profile runs four decode-context-parallel groups of four inside tensor parallelism 8.
+    assert [line for line in active.splitlines() if line.startswith('| DCP4 |')] == [
+        '| DCP4 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |']
     for profile_id in dcp4_profiles:
         assert load(profile_id)[0]['recommendation'] == 'retired'
         assert resolve(profile_id)['serving']['decode_context_parallel_size'] == 4
@@ -79,8 +82,9 @@ def test_dcp4_profiles_are_listed_only_as_retired_configurations():
         assert f'[{profile_id}](../profiles/{profile_id}/README.md)' in retired
     for profile_id in catalog():
         profile, _ = load(profile_id)
-        if profile['recommendation'] != 'retired':
-            assert resolve(profile_id)['serving'].get('decode_context_parallel_size') != 4
+        serving = resolve(profile_id)['serving']
+        if profile['recommendation'] != 'retired' and serving['node_count'] == 4:
+            assert serving.get('decode_context_parallel_size') != 4
 
 
 def test_catalog_keeps_separate_deepseek_engines_and_variant_validation():
