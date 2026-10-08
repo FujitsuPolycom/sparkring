@@ -25,12 +25,12 @@ checks (``sparkring_sircl.vllm.serve.checks``):
   an NCCL communicator;
 - with ``--nccl auto``: no group whose policy is ``none`` built PyNccl or
   sent a collective to NCCL;
-- with decode-context parallelism above 1 in the profile's command, every
+- with decode-context parallelism above 1 (the section's ``group.dcp``), every
   rank also holds a decode-context-parallel receipt with a SIRCL session;
-- each session decided from the measured tuning table the deployment's
-  transport section matched (none: SIRCL's rules; a decode-context-parallel
-  session takes none), and with a ``large_blocks`` tuning setting its
-  sessions report that grid cap;
+- each tensor-parallel and decode-context-parallel session decided from the
+  measured tuning table the deployment's transport section matched for its
+  kind of session (none: SIRCL's rules), and with a ``large_blocks`` tuning
+  setting its sessions report that grid cap;
 - every tensor-parallel session reports the link slots, link slot, chain slot
   and large-message piece that the tuning row sets or, where the row leaves
   them unset, the matched SIRCL table records
@@ -241,18 +241,6 @@ def nccl_mode_findings(receipts, mode):
     return lines, problems
 
 
-def decode_context_parallel(lock):
-    """``(size, reason)``: the decode-context parallelism of the deployment's command (1 without it), and why
-    it could not be read (None when it could)."""
-    from runtime.common import installer
-    from spark_transport.sircl.sparkring_sircl.vllm.serve import plan
-    try:
-        command = installer.specifications(lock, only_rank=0)[0].command
-    except (OSError, ValueError, KeyError) as error:
-        return 1, str(error)
-    return plan.recipe_dcp(command), None
-
-
 def evaluate(lock, reports, *, now=time.time):
     """The ``sparkring-transport-verdict/v1`` document of a SIRCL deployment's reports."""
     from spark_transport.sircl.sparkring_sircl.vllm.serve import checks
@@ -272,10 +260,7 @@ def evaluate(lock, reports, *, now=time.time):
         logs[rank] = list(log.get("init") or []) + list(log.get("library") or [])
         if log and not log.get("complete", True):
             lines.append(f"rank {rank}: the log was read for {LOG_SECONDS} s and not to its end")
-    dcp, unread = decode_context_parallel(lock)
-    if unread:
-        lines.append(f"decode-context-parallel receipts: the deployment's command could not be rendered ({unread}); "
-                     "not judged")
+    dcp = section["group"]["dcp"]
     found, summary = checks.evaluate_receipts(receipts, world, dcp=dcp)
     problems += found
     lines += summary
@@ -287,8 +272,10 @@ def evaluate(lock, reports, *, now=time.time):
         log_lines, log_problems = checks.nccl_log_findings(logs, debug=True)
         lines += free_lines + log_lines
         problems += free_problems + log_problems
-    tables = section["tuning"]["tables"]
-    expected = {"tp": tables[0]["hash"] if tables else None, **({"dcp": None} if dcp > 1 else {})}
+    # The table each kind of session takes (None: its rules choose), as the SIRCL launcher's check compares it.
+    expected = {kind: (entry["hash"] if entry is not None else None)
+                for kind, entry in (("tp", transport.session_table(section)),
+                                    *((("dcp", transport.session_table(section, "dcp")),) if dcp > 1 else ()))}
     tuning_lines, tuning_problems = checks.tuning_findings(receipts, expected)
     lines += tuning_lines
     problems += tuning_problems

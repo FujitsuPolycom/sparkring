@@ -156,7 +156,10 @@ def test_an_installation_after_fabric_tune_runs_on_the_measured_table(sircl, mon
     assert tuning["sha256"] == transport.tuning_digest(measured) and tuning["measured_at"] == "2026-10-09"
     assert tuning["tables"][0]["path"] == f"{transport.HOST_TABLES}/{digest}.json"
     assert "Transport: sircl on every collective, NCCL off (measured on this fabric 2026-10-09, pair)" in out.err
-    assert "SIRCL settings: link_slot 1048576, link_slots 12" in out.err
+    # The measured row keeps the default pair row's settings beside the measurement's own.
+    assert ("SIRCL settings: large_blocks 32, link_slot 1048576, link_slots 12, oneshot_max 131072, ring_min 2097152"
+            in out.err)
+    assert f"Measured row pair: {transport.MEASURED_ROW_RULE}" in out.err
     # A driver update on Node A makes the measured table stale: the next installation says so and uses the
     # default table, which is another deployment.
     facts["gpu"] = "590.10.01"

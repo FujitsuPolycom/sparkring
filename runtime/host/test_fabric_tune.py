@@ -350,8 +350,11 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
         tuning = section["tuning"]
         assert (tuning["source"], tuning["row"], tuning["row_source"]) == ("measured", name, "measured")
         assert tuning["sha256"] == transport.tuning_digest(measured) and tuning["measured_at"] == "2026-10-09"
-        # The measured row sets nothing; the table records the tune session's settings its choices need.
-        assert tuning["settings"] == {}
+        # The measured row keeps the default table's settings for its shape (the pair row's; SIRCL's rules for
+        # cycles and paths of other sizes); the table records the tune session's settings its choices need.
+        defaults = transport.load_tuning()
+        assert tuning["settings"] == transport.tuning_row(defaults, *transport.row_group(name))[1]["settings"]
+        assert tuning["settings"] == (defaults["layouts"]["pair"]["settings"] if name == "pair" else {})
         (entry,) = tuning["tables"]
         stored = json.loads((cycle4["fleet"].host(0) / entry["path"].lstrip("/")).read_bytes())
         assert entry["settings"] == stored["settings"] == SETTINGS
@@ -364,10 +367,59 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
         assert chosen is not None and chosen.hash == entry["hash"]
         lines = transport.plan_lines(section)
         assert lines[0] == f"Transport: sircl on every collective, NCCL off (measured on this fabric 2026-10-09, {name})"
-        assert any(f"SIRCL tuning table {entry['hash']}" in line for line in lines)
-        assert not any(line.startswith("  SIRCL settings:") for line in lines)
-        assert any(line.startswith(f"  SIRCL tuning table {entry['hash']}:") and line.endswith(
-            f"its session applies {APPLIED} where the row leaves them unset") for line in lines)
+        assert f"  Measured row {name}: {transport.MEASURED_ROW_RULE}" in lines
+        assert any(line.startswith("  SIRCL settings:") for line in lines) == (name == "pair")
+        assert any(line.startswith(f"  SIRCL tuning table {entry['hash']} for the tensor-parallel session:")
+                   and line.endswith(f"its sessions apply {APPLIED} where the row leaves them unset") for line in lines)
+
+
+def test_on_an_eight_spark_ring_the_measured_cycle_8_row_keeps_the_default_settings_and_dcp_sessions_take_path_4(
+        tmp_path, monkeypatch):
+    cluster, document, relay_plan = recorded("cycle", 8)
+    state = tmp_path / "controller"
+    state.mkdir()
+    (state / "cluster.json").write_text(json.dumps(cluster))
+    (state / "fabric.json").write_text(fabric_document.encoded(document))
+    profiles = sorted({*installer.installer_image.default_lock()["profiles"], *installer.installer_image.SIRCL_ONLY})
+    image_value = dict(image(), profiles=profiles)
+    monkeypatch.setattr(fabric_tune, "chosen_image", lambda name=None: image_value)
+    sparks = Sparks(cluster, document, relay_plan)
+    fleet = Fleet(tmp_path / "hosts", 8)
+    setup = {"state": state, "fleet": fleet, "harness": Harness(sparks, monkeypatch)}
+    assert tune(setup, "--layouts", "path-4,cycle-8") == 0
+    host = fleet.host(0)
+    measured = transport.load_tuning(state / transport.MEASURED_TUNING, host_root=host)
+    defaults = transport.load_tuning()
+    # The measured cycle-8 row keeps the default row's capacity, dispatch ceiling and one-shot limit; the link
+    # slots and link slot its SIRCL table records replace the row's.
+    row = measured["layouts"]["cycle-8"]
+    assert row["source"] == "measured"
+    assert row["settings"] == {key: value for key, value in defaults["layouts"]["cycle-8"]["settings"].items()
+                               if key not in ("link_slots", "link_slot")}
+    assert {"capacity", "dispatch", "oneshot_max"} <= set(row["settings"])
+    section = transport.section(image_value, document, list(range(8)), nccl="never", tuning=measured,
+                                dcp=transport.profile_dcp("glm53-nvfp4-tp8"), host_root=host)
+    tables = {entry["path"]: entry for entry in measured["tables"]}
+    (tensor,), (decode,) = ([entry for entry in section["tuning"]["tables"] if entry["sessions"] == [kind]]
+                            for kind in ("tp", "dcp"))
+    assert {tensor["path"], decode["path"]} <= set(tables)
+    keys = {entry["sessions"][0]: json.loads((host / entry["path"].lstrip("/")).read_bytes())["key"]
+            for entry in (tensor, decode)}
+    assert (keys["tp"]["shape"], keys["dcp"]["shape"]) == ("cycle:8", "path:4")
+    # The tensor-parallel session's environment sets no link setting; its table's apply.
+    lock = installer.make_lock("glm53-nvfp4-tp8", install_site(8), "1" * 40, "2" * 64,
+                               image_runtime=image_lock.v2_view(image_value), transport=section)
+    spec = installer.specifications(lock)[0]
+    assert spec.environment["SIRCL_ALLREDUCE_CAPACITY_BYTES"] == str(row["settings"]["capacity"])
+    assert not {"SIRCL_LINK_SLOTS", "SIRCL_LINK_SLOT_BYTES"} & set(spec.environment)
+    assert spec.environment["SIRCL_TUNING_TABLE"] == ",".join(
+        f"{transport.TABLE_TARGET}/{entry['hash']}.json" for entry in section["tuning"]["tables"])
+    assert transport.expected_session_settings(section) == {
+        sircl_tuning.SETTING_STATS[name]: value for name, value in tensor["settings"].items()}
+    lines = transport.plan_lines(section)
+    assert f"  Measured row cycle-8: {transport.MEASURED_ROW_RULE}" in lines
+    assert any(line.startswith(f"  SIRCL tuning table {decode['hash']} for the decode-context-parallel sessions:")
+               for line in lines)
 
 
 def test_a_deployment_on_the_measured_table_mounts_it_and_its_receipts_are_checked_against_it(cycle4):

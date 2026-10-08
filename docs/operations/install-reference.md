@@ -512,11 +512,14 @@ eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
 one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
 for that group's sessions, and each session's setup agreement carries its
-hash, so every rank decides from the same table. A SIRCL table records the
+hash, so every rank decides from the same table. With decode-context
+parallelism, the sessions of the decode-context-parallel groups take the
+table measured for groups of their size, such as `path-4` for the groups of
+four in an eight-Spark ring. A SIRCL table records the
 session settings its choices ran under (link slots, link slot, chain slot and
 large-message piece); the session applies those the row leaves unset, and a
 row that sets fewer link slots or a smaller link slot than the table's is
-refused. A table's marks of where NCCL measured faster never route a call to
+refused. The row's settings reach the tensor-parallel session only. A table's marks of where NCCL measured faster never route a call to
 NCCL. Without a table or a row setting, a session takes twice its ranks in link
 slots, at least 8.
 
@@ -1517,12 +1520,18 @@ each named by its SHA-256. The table records:
 | `fabric` | The fabric document's identity: another cabling, Spark or port invalidates it |
 | `image_id`, `binding.image`, `binding.tuning_key` | The installer image and its SIRCL build: another image, SIRCL version or SIRCL source invalidates it |
 | `binding.drivers` | Each Spark's GPU driver and kernel: a change on Node A invalidates it; the measurement refuses Sparks whose drivers differ |
-| `layouts` | `measured` rows, which set no session settings; `default:<source>` rows carried from the default table |
+| `layouts` | `measured` rows: the default table's settings for that group shape, except the link slots and link slot that the row's measured SIRCL table records, which replace them; `default:<source>` rows carried from the default table |
 | `tables` | The measured SIRCL tables, each with the session settings its choices ran under (link slots, link slot, chain slot, large-message piece) |
 
-A deployment records the table's digest in its lock, mounts the SIRCL table
-of its group read-only in every rank's container and checks each Spark's copy
-before a container starts. Its receipts must show that every session decided
+A measured `cycle-8` row therefore keeps the default row's 1 MiB capacity and
+dispatch ceiling and 28 KiB one-shot limit, and its sessions take the link
+slots and link slot measured on this fabric. The installation plan states the
+rule on a `Measured row` line.
+
+A deployment records the table's digest in its lock, mounts the SIRCL tables
+of its tensor-parallel group and its decode-context-parallel groups read-only
+in every rank's container and checks each Spark's copy before a container
+starts. Its receipts must show that every session decided
 from that table and uses the table's settings. A deployment made before the
 measurement keeps its own table; `sudo sparkring install` makes another one on
 the measured table. `sudo sparkring status` prints which table installations

@@ -192,7 +192,7 @@ def test_the_rows_and_its_tables_session_settings_are_checked_against_every_sess
     lock["transport"]["tuning"]["settings"] = {"link_slot": 1048576}
     lock["transport"]["tuning"]["tables"] = [{"path": "runtime/tables/pair.json", "sha256": "0" * 64, "hash": "1" * 16,
                                               "settings": {"SIRCL_LINK_SLOTS": 16, "SIRCL_LINK_SLOT_BYTES": 524288,
-                                                           "SIRCL_CHAIN_SLOT_BYTES": 2097152}}]
+                                                           "SIRCL_CHAIN_SLOT_BYTES": 2097152}, "sessions": ["tp"]}]
     reports = pair_reports(tuning="1" * 16)
     for item in reports:
         item["receipts"][0]["session_stats"] = {"link_slots": 16, "link_slot_bytes": 1048576,
@@ -229,8 +229,8 @@ def test_each_receipt_names_the_deployments_nccl_mode_and_the_verdict_states_the
 
 def test_with_decode_context_parallelism_every_rank_needs_its_decode_context_parallel_receipt():
     from runtime.common.test_transport import eight_spark_image
-    lock, _ = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
-    assert receipts.decode_context_parallel(lock) == (4, None)
+    lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    assert section["group"]["dcp"] == 4
     tensor = [report(rank, [dict(receipt(rank), world=8)]) for rank in range(8)]
     verdict = receipts.evaluate(lock, tensor, now=lambda: 0)
     assert verdict["verdict"] == "differs"
@@ -239,8 +239,18 @@ def test_with_decode_context_parallelism_every_rank_needs_its_decode_context_par
             for rank in range(8)]
     verdict = receipts.evaluate(lock, both, now=lambda: 0)
     assert verdict["verdict"] == "as-expected", verdict["problems"]
-    # A decode-context-parallel session takes no table: the section mounts only the tensor-parallel group's.
+    # The section matched no table for the decode-context-parallel sessions, so their rules choose.
     both[2]["receipts"][1]["tuning"] = "2" * 16
     verdict = receipts.evaluate(lock, both, now=lambda: 0)
-    assert any(problem.startswith("rank 2 group dcp:0: tuning table 2222222222222222") for problem in
-               verdict["problems"]), verdict["problems"]
+    assert any(problem.startswith("rank 2 group dcp:0: tuning table 2222222222222222, the plan matched none")
+               for problem in verdict["problems"]), verdict["problems"]
+    # With a table for them, each decode-context-parallel session must decide from it.
+    lock["transport"]["tuning"]["tables"] = [{"path": "runtime/tables/dcp4.json", "sha256": "0" * 64,
+                                              "hash": "2" * 16, "settings": {}, "sessions": ["dcp"]}]
+    verdict = receipts.evaluate(lock, both, now=lambda: 0)
+    assert any(problem.startswith("rank 0 group dcp:0: tuning table none (the rules choose), the plan matched "
+                                  "2222222222222222") for problem in verdict["problems"]), verdict["problems"]
+    for rank in range(8):
+        both[rank]["receipts"][1]["tuning"] = "2" * 16
+    verdict = receipts.evaluate(lock, both, now=lambda: 0)
+    assert verdict["verdict"] == "as-expected", verdict["problems"]

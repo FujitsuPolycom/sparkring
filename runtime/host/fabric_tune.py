@@ -64,13 +64,17 @@ fabric document's identity, the image and its SIRCL build, and each Spark's
 GPU driver and kernel; ``transport.tuning_in_effect`` uses it only while they
 hold, and ``summary`` tells ``sparkring status`` when they no longer do.
 
-Measured rows set no session settings of their own. Each measured SIRCL
-table records the settings its choices ran under and need (``settings``: the
-tune session's link slots, link slot, chain slot and large-message piece,
-``sparkring_sircl.tuning.table_settings``); the deployment's transport section
-records them, every session that takes the table applies those its
-environment leaves unset, and the receipt check compares the sessions'
-statistics with them.
+Each measured SIRCL table records the settings its choices ran under and need
+(``settings``: the tune session's link slots, link slot, chain slot and
+large-message piece, ``sparkring_sircl.tuning.table_settings``); the
+deployment's transport section records them, every session that takes the
+table applies those its environment leaves unset, and the receipt check
+compares the sessions' statistics with them. A measured row therefore adds no
+setting of its own: it holds the default table's settings for its group shape,
+such as the capacity and one-shot limit, except the link slots and link slot
+its SIRCL table records (``transport.measured_row``, ``MEASURED_ROW_RULE``).
+Decode-context-parallel sessions take the table measured for groups of their
+size, as the SIRCL launcher matches them.
 """
 import argparse
 import concurrent.futures

@@ -41,7 +41,11 @@ choices ran under and need: link slots, link slot, chain slot and
 large-message piece); each session takes the one whose key matches its group
 and the image's SIRCL build, applies the table's settings that its
 environment leaves unset, and its hash joins the session's setup agreement.
-The section records the matched table's settings; a tuning row that sets a
+The tensor-parallel session and, with decode-context parallelism, the
+sessions of the decode-context-parallel groups each take their own table, as
+the SIRCL launcher matches them (``serve.plan.tuning_plan``). The section
+records each matched table, the sessions that take it and its settings; a
+tuning row, whose settings reach the tensor-parallel session only, that sets a
 link slot count or link slot below the table's is refused, as the SIRCL
 launcher refuses it, because the table's choices could not run. A table's
 marks of where NCCL measured faster route no call. Two tables exist:
@@ -54,8 +58,11 @@ marks of where NCCL measured faster route no call. Two tables exist:
   (``runtime/host/fabric_tune.py``) writes from ring-harness measurements on
   the cluster's own fabric. It is bound to the fabric document's identity,
   the image and its SIRCL build, and each Spark's GPU driver and kernel
-  (``binding``); its measured rows are ``measured``, and the default rows it
-  carries for shapes it did not measure are ``default:<their source>``. Its
+  (``binding``); its measured rows are ``measured`` and hold the default
+  table's settings for their group shape except the link settings their
+  SIRCL table records (``MEASURED_ROW_RULE``, ``measured_row``), and the
+  default rows it carries for shapes it did not measure are
+  ``default:<their source>``. Its
   ``tables`` are absolute paths under ``HOST_TABLES``, where every Spark holds
   the same bytes. ``tuning_in_effect`` uses it only while every binding
   holds (``measured_problems``) and otherwise falls back to the default table
@@ -109,6 +116,11 @@ BACKENDS = ("sircl", "prepared")
 NCCL_MODES = ("never", "auto")
 NCCL_ALIASES = {"topology": "auto"}
 DEFAULT_NCCL = "never"
+# The sessions that take a SIRCL tuning table, as the SIRCL launcher names them (serve.plan.SESSION_TITLES).
+SESSION_TITLES = {"tp": "tensor-parallel session", "dcp": "decode-context-parallel sessions"}
+# The tuning-row settings that set a variable of tuning.SETTINGS, which the session then takes instead of the
+# table's: the row's link slot count and link slot.
+ROW_TABLE_SETTINGS = {"link_slots": "SIRCL_LINK_SLOTS", "link_slot": "SIRCL_LINK_SLOT_BYTES"}
 # Container paths of the receipts and of measured tuning tables; the fabric
 # document keeps its host path.
 RECEIPT_TARGET = "/run/sparkring/sircl/receipts"
@@ -343,6 +355,49 @@ def tuning_in_effect(state, document, image_value, *, root=ROOT, host_root="/", 
     return load_tuning(root=root), notes
 
 
+# How a measured row's settings are made (measured_row); the plan text and the install reference state it.
+MEASURED_ROW_RULE = ("the default table's settings for this group shape, except the link slots and link slot "
+                     "that the measured SIRCL table records, which replace them")
+_ROW_GROUP = re.compile(r"(path|cycle)-([2-9]|1[0-6])")
+
+
+def row_group(name):
+    """``(shape, size)`` of the groups tuning row ``name`` serves: ``pair``, ``path-<n>`` or ``cycle-<n>``."""
+    if name == "pair":
+        return "pair", 2
+    found = _ROW_GROUP.fullmatch(name)
+    _require(found is not None, f"tuning row {name!r} names no group size: pair, path-<n> or cycle-<n>")
+    return found.group(1), int(found.group(2))
+
+
+def row_identity(name):
+    """``(shape, world)`` of the SIRCL table key that serves the groups of tuning row ``name``."""
+    shape, size = row_group(name)
+    return ("pair" if shape == "pair" else f"{shape}:{size}"), size
+
+
+def measured_row(defaults, name, settings, table=None):
+    """The settings of measured row ``name`` (``MEASURED_ROW_RULE``).
+
+    The default table's row for the row's groups (``tuning_row``: the row of
+    that size, else of the shape) holds settings the measurement does not set,
+    such as the capacity, dispatch ceiling and one-shot limit; those stay. The
+    row settings whose variable the measured SIRCL table ``table`` records
+    (``ROW_TABLE_SETTINGS``: link slots, link slot) are dropped, so the
+    session applies the table's values. The measurement's own ``settings``
+    replace any setting they name.
+    """
+    shape, size = row_group(name)
+    try:
+        _, row = tuning_row(defaults, shape, size)
+        base = dict(row["settings"])
+    except TransportError:
+        base = {}
+    recorded = set(((table or {}).get("settings") or {}))
+    kept = {key: value for key, value in base.items() if ROW_TABLE_SETTINGS.get(key) not in recorded}
+    return {**kept, **settings}
+
+
 def table_identity(table_document):
     """``(shape, world, lanes, max_relays)`` of a ``sircl-tuning-table/v1`` key: the groups it can serve."""
     key = table_document["key"]
@@ -353,8 +408,10 @@ def measured_document(defaults, rows, tables, *, fabric, image_value, measured_a
     """A measured ``sparkring-sircl-tuning/v1`` table over the default table ``defaults``.
 
     ``rows`` maps measured group names to their settings and ``tables`` the
-    SHA-256 of each measured SIRCL table to its parsed document. Every row of
-    ``defaults`` the measurement did not replace is carried as
+    SHA-256 of each measured SIRCL table to its parsed document. A measured
+    row's settings follow ``measured_row`` with the measured table of its
+    groups (``row_identity``). Every row of ``defaults`` the measurement did not
+    replace is carried as
     ``default:<source>``; a repository table of ``defaults`` is carried unless a
     measured table serves the same groups. ``binding`` holds every field of
     ``BINDING_FIELDS`` but ``defaults_sha256``, which is ``defaults``' digest.
@@ -364,7 +421,10 @@ def measured_document(defaults, rows, tables, *, fabric, image_value, measured_a
                for name, row in defaults["layouts"].items()}
     for name, settings in rows.items():
         _require(GROUP_NAME.fullmatch(name), f"measured row {name!r} is not a group shape")
-        layouts[name] = {"source": "measured", "settings": dict(settings)}
+        own = [table for table in tables.values() if table_identity(table)[:2] == row_identity(name)]
+        _require(len(own) <= 1, f"several measured SIRCL tables serve the {name} groups")
+        layouts[name] = {"source": "measured",
+                         "settings": measured_row(defaults, name, dict(settings), own[0] if own else None)}
     served = {table_identity(table) for table in tables.values()}
     entries = [{"path": f"{HOST_TABLES}/{digest}.json", "sha256": digest} for digest in sorted(tables)]
     for entry in defaults["tables"]:
@@ -464,13 +524,16 @@ def table_file(entry, *, root=ROOT, host_root="/"):
     return Path(root) / entry["path"]
 
 
-def section(image_value, document, positions, *, nccl, tuning, root=ROOT, host_root="/"):
+def section(image_value, document, positions, *, nccl, tuning, dcp=1, root=ROOT, host_root="/"):
     """The deployment lock's ``transport`` section of a SIRCL deployment on ``positions`` of ``document``.
 
-    ``tuning`` is the table in effect (``tuning_in_effect``); the section
-    records its digest, the group's row and the one table of ``tuning`` whose
-    key matches the group and the image's SIRCL build, if any, with the
-    session settings that table records.
+    ``tuning`` is the table in effect (``tuning_in_effect``) and ``dcp`` the
+    profile's decode-context parallelism (``profile_dcp``). The section records
+    the table's digest and the group's row, and each SIRCL table of ``tuning``
+    whose key matches a session of the deployment and the image's SIRCL build:
+    the tensor-parallel session's group or, with ``dcp`` above 1, the first
+    decode-context-parallel group, as the SIRCL launcher matches them. Each
+    entry names the sessions that take it and the settings it records.
     """
     _require(unavailable(image_value, document) is None, "SIRCL cannot run: " + str(unavailable(image_value, document)))
     nccl = nccl_mode(nccl) or DEFAULT_NCCL
@@ -480,24 +543,32 @@ def section(image_value, document, positions, *, nccl, tuning, root=ROOT, host_r
     name, row = tuning_row(tuning, shape, size)
     sircl = image_lock.sircl(image_value)
     applies = tuning["sircl"] == {"version": sircl["version"], "abi_version": sircl["abi_version"]}
+    sessions = {"tp": topology}
+    if dcp > 1:
+        sessions["dcp"] = dcp_topologies(layout, positions, dcp)[0]
+    elif dcp != 1:
+        dcp_topologies(layout, positions, dcp)
     tables = []
     if applies and tuning["tables"]:
         from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
-        # The group's own facts with the image's SIRCL build in place of this checkout's.
-        facts = {**sircl_tuning.facts_for_layout(topology.session_layout(), topology.lane_count),
-                 **sircl["tuning_key"]}
+        # Each session's own facts with the image's SIRCL build in place of this checkout's.
+        facts = {kind: {**sircl_tuning.facts_for_layout(group.session_layout(), group.lane_count),
+                        **sircl["tuning_key"]} for kind, group in sessions.items()}
         for entry in tuning["tables"]:
             path = table_file(entry, root=root, host_root=host_root)
             table = sircl_tuning.Table(json.loads(path.read_text(encoding="utf-8")), entry["path"])
-            if not table.mismatches(facts):
-                tables.append({**entry, "hash": table.hash, "settings": dict(table.settings)})
-        _require(len(tables) <= 1, "several measured tuning tables match this group and image")
+            takers = [kind for kind, own in facts.items() if not table.mismatches(own)]
+            if takers:
+                tables.append({**entry, "hash": table.hash, "settings": dict(table.settings), "sessions": takers})
+        for kind in sessions:
+            _require(sum(kind in entry["sessions"] for entry in tables) <= 1,
+                     f"several measured tuning tables match the {SESSION_TITLES[kind]} of this group and image")
     return {
         "schema": SECTION_SCHEMA, "backend": "sircl", "nccl": nccl, "image": image_value["name"],
         "fabric": {"id": document["id"], "shape": document["shape"], "size": document["size"]},
         "group": {"layout": layout, "positions": [int(position) for position in positions], "shape": shape,
                   "size": size, "name": group_name(shape, size), "max_relays": topology.max_relays(),
-                  "lanes": topology.lane_count, "cabling": topology.nccl_policy.value},
+                  "lanes": topology.lane_count, "cabling": topology.nccl_policy.value, "dcp": dcp},
         "devices": [rank_devices(document, topology, rank) for rank in range(size)],
         "tuning": {"source": tuning["source"], "sha256": tuning_digest(tuning), "row": name,
                    "row_source": row["source"] if applies else "rules",
@@ -527,8 +598,11 @@ def validate_section(value, card, image_runtime):
         raise TransportError(str(error)) from None
     group = value["group"]
     _require(isinstance(group, dict) and set(group) == {"layout", "positions", "shape", "size", "name", "max_relays",
-                                                       "lanes", "cabling"},
-             "The transport section's group has layout, positions, shape, size, name, max_relays, lanes and cabling")
+                                                       "lanes", "cabling", "dcp"},
+             "The transport section's group has layout, positions, shape, size, name, max_relays, lanes, cabling and "
+             "dcp")
+    _require(type(group["dcp"]) is int and group["dcp"] >= 1 and group["size"] % group["dcp"] == 0,
+             "The transport group's decode-context parallelism divides its ranks")
     _require(group["size"] == len(group["positions"]) == card["nodes"],
              f"The transport group has {card['nodes']} positions, one per rank")
     topology = group_topology(group["layout"], group["positions"])
@@ -550,18 +624,26 @@ def validate_section(value, card, image_runtime):
              "The transport section dates a measured tuning table and only a measured one")
     from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
     for entry in tuning["tables"]:
-        _require(isinstance(entry, dict) and set(entry) == {"path", "sha256", "hash", "settings"}
+        _require(isinstance(entry, dict) and set(entry) == {"path", "sha256", "hash", "settings", "sessions"}
                  and isinstance(entry["sha256"], str) and _SHA256.fullmatch(entry["sha256"])
                  and isinstance(entry["hash"], str) and _SHORT.fullmatch(entry["hash"])
                  and isinstance(entry["path"], str)
                  and (not PurePosixPath(entry["path"]).is_absolute()
                       or _HOST_TABLE.fullmatch(entry["path"]) is not None),
-                 "The transport section names each SIRCL tuning table by path, SHA-256, hash and settings")
+                 "The transport section names each SIRCL tuning table by path, SHA-256, hash, settings and the "
+                 "sessions that take it")
+        kinds = ("tp", "dcp") if group["dcp"] > 1 else ("tp",)
+        _require(isinstance(entry["sessions"], list) and entry["sessions"]
+                 and all(kind in kinds for kind in entry["sessions"]),
+                 "A SIRCL tuning table is taken by the tensor-parallel session or, with decode-context parallelism, "
+                 "by the decode-context-parallel sessions")
         _require(isinstance(entry["settings"], dict)
                  and all(name in sircl_tuning.SETTINGS and type(number) is int and number >= 1
                          for name, number in entry["settings"].items()),
                  "A SIRCL tuning table's settings are positive integers of " + ", ".join(sircl_tuning.SETTINGS))
-    _require(len(tuning["tables"]) <= 1, "The transport section names at most one SIRCL tuning table")
+    for kind in ("tp", "dcp"):
+        _require(sum(kind in entry["sessions"] for entry in tuning["tables"]) <= 1,
+                 f"The transport section names at most one SIRCL tuning table for the {SESSION_TITLES[kind]}")
     for key, setting in tuning["settings"].items():
         _require(key in SETTINGS and _setting(key, setting), f"Tuning setting {key}={setting!r} is not passed")
     image_lock.validate_sircl(value["sircl"])
@@ -593,6 +675,30 @@ def _options(settings):
     return options
 
 
+def profile_dcp(profile):
+    """The decode-context parallelism of installer profile ``profile`` (its ``decode_context_parallel_size``)."""
+    from runtime.common import profiles
+    try:
+        return int(profiles.resolve(profile)["serving"].get("decode_context_parallel_size") or 1)
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        raise TransportError(f"the decode-context parallelism of profile {profile} cannot be read: {error}") from None
+
+
+def dcp_topologies(layout_text, positions, size):
+    """vLLM's decode-context-parallel groups of ``size`` consecutive ranks over ``positions``, each placed
+    inside the tensor-parallel group, as SIRCL's adapter places them (``serve.plan.dcp_groups``)."""
+    _, _, fabric = _sircl()
+    positions = list(positions)
+    _require(type(size) is int and size >= 1 and len(positions) % size == 0,
+             f"decode-context parallelism {size} must divide the group's {len(positions)} ranks")
+    try:
+        layout = fabric.Layout.parse(layout_text)
+        return [fabric.describe_group(layout, positions[start:start + size], parent=positions)
+                for start in range(0, len(positions), size)]
+    except fabric.FabricError as error:
+        raise TransportError(str(error)) from None
+
+
 def dcp_groups(value, arguments):
     """The decode-context-parallel groups of the profile's command, each placed inside the transport group.
 
@@ -600,33 +706,29 @@ def dcp_groups(value, arguments):
     ranks (``--decode-context-parallel-size``). With ``dcp`` above 1 each
     group needs a SIRCL session of its own (``SIRCL_GROUPS=tp,dcp``), which
     routes over the tensor-parallel group's cables; an empty list for ``dcp``
-    1.
+    1. The command's size must be the one the section was made for
+    (``group.dcp``), whose tables the sessions take.
     """
-    plan, _, fabric = _sircl()
+    plan, _, _ = _sircl()
     size = plan.recipe_dcp(arguments)
+    _require(size == value["group"]["dcp"], f"the profile's command sets decode-context parallelism {size}; its "
+                                            f"transport section was made for {value['group']['dcp']}")
     if size <= 1:
         return []
-    positions = list(value["group"]["positions"])
-    _require(len(positions) % size == 0, f"decode-context parallelism {size} must divide the group's "
-                                         f"{len(positions)} ranks")
-    try:
-        layout = fabric.Layout.parse(value["group"]["layout"])
-        return [fabric.describe_group(layout, positions[start:start + size], parent=positions)
-                for start in range(0, len(positions), size)]
-    except fabric.FabricError as error:
-        raise TransportError(str(error)) from None
+    return dcp_topologies(value["group"]["layout"], value["group"]["positions"], size)
 
 
-def table_settings(value):
-    """The session settings (``tuning.SETTINGS``) of the SIRCL tuning table the tensor-parallel session of the
-    transport section ``value`` takes; empty when it takes none and its rules choose."""
-    tables = value["tuning"]["tables"]
-    return dict(tables[0]["settings"]) if tables else {}
+def session_table(value, kind="tp"):
+    """The entry of the SIRCL tuning table that the ``kind`` sessions (``tp`` or ``dcp``) of the transport
+    section ``value`` take, or None when they take none and their rules choose."""
+    return next((entry for entry in value["tuning"]["tables"] if kind in entry["sessions"]), None)
 
 
-# The tuning-row settings that set a variable of tuning.SETTINGS, which the session then takes instead of the
-# table's: the row's link slot count and link slot.
-ROW_TABLE_SETTINGS = {"link_slots": "SIRCL_LINK_SLOTS", "link_slot": "SIRCL_LINK_SLOT_BYTES"}
+def table_settings(value, kind="tp"):
+    """The session settings (``tuning.SETTINGS``) of the SIRCL tuning table the ``kind`` sessions of the
+    transport section ``value`` take; empty when they take none."""
+    entry = session_table(value, kind)
+    return dict(entry["settings"]) if entry is not None else {}
 
 
 def expected_session_settings(value):
@@ -717,12 +819,13 @@ def environment(value, profile_environment, arguments):
                                           table_settings=taken)]
         dcp = dcp_groups(value, arguments)
         if dcp:
-            # Each decode-context-parallel group gets a session of its own with the session defaults: the
-            # tuning row's schedules and link sizes apply to the tensor-parallel session only, and the section
-            # mounts no table whose key matches a decode-context-parallel group, so its rules choose.
+            # Each decode-context-parallel group gets a session of its own with the session defaults and the
+            # settings of the table it takes: the tuning row's schedules and link sizes apply to the
+            # tensor-parallel session only.
             sessions.append(plan.session_settings(dcp[0], name="dcp", scoped=False,
                                                   groups=plan.dcp_groups_text(len(topology.members),
-                                                                              len(dcp[0].members))))
+                                                                              len(dcp[0].members)),
+                                                  table_settings=table_settings(value, "dcp")))
             dcp_problems(value, dcp, profile_environment, arguments, effective)
         plan.session_problems(sessions)
         gid = int(profile_environment.get("NCCL_IB_GID_INDEX", "3"))
@@ -764,12 +867,15 @@ def environment(value, profile_environment, arguments):
         raise TransportError(str(error)) from None
     tables = value["tuning"]["tables"]
     if tables:
+        # Every session picks the listed table whose key matches its own facts.
         common[plan.TUNING_VARIABLE] = ",".join(f"{TABLE_TARGET}/{entry['hash']}.json" for entry in tables)
+    if taken:
         # As the SIRCL launcher refuses it (serve.plan.TuningPlan.conflicts): a row setting below the table's
-        # would leave the table's choices that need more unable to run.
+        # would leave the table's choices that need more unable to run. The row reaches the tensor-parallel
+        # session alone.
         conflicts = sircl_tuning.settings_conflicts(taken, common)
-        _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {tables[0]['hash']}, whose "
-                                f"choices need more than the tuning row {value['tuning']['row']} sets: "
+        _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {session_table(value)['hash']}, "
+                                f"whose choices need more than the tuning row {value['tuning']['row']} sets: "
                                 + ", ".join(conflicts))
     return common, effective
 
@@ -862,14 +968,18 @@ def plan_lines(value, notes=()):
                  + (f"at most {relays} relay{'s' if relays != 1 else ''} on a lane" if relays else "no relays"))
     # SIRCL's plans, bundles and receipts state the same rule.
     lines.append(f"  {nccl_rule()}")
+    if tuning["source"] == "measured" and tuning["row_source"] == "measured":
+        lines.append(f"  Measured row {row}: {MEASURED_ROW_RULE}")
     if tuning["settings"]:
         lines.append("  SIRCL settings: " + ", ".join(f"{key} {setting}" for key, setting in
                                                        sorted(tuning["settings"].items())))
     for entry in tuning["tables"]:
         applied = ", ".join(f"{name}={number}" for name, number in sorted(entry["settings"].items()))
-        lines.append(f"  SIRCL tuning table {entry['hash']}: the measured algorithm, schedule, piece and launch grid "
-                     "per collective and size" + (f"; its session applies {applied} where the row leaves them unset"
-                                                  if applied else ""))
+        takers = " and the ".join(SESSION_TITLES[kind] for kind in entry["sessions"])
+        where = " where the row leaves them unset" if "tp" in entry["sessions"] else ""
+        lines.append(f"  SIRCL tuning table {entry['hash']} for the {takers}: the measured algorithm, schedule, piece "
+                     "and launch grid per collective and size" + (f"; its sessions apply {applied}{where}"
+                                                                  if applied else ""))
     for note in notes:
         lines.append("  Note: " + note)
     return lines

@@ -722,7 +722,7 @@ def lifecycle(argv):
             placements.check(requested, layout=layout, profile_nodes=nodes, profile=profile)
             chosen = image_lock.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
             # The same transport sparkring install would choose: SIRCL where the image and the fabric carry it.
-            choice = install_workflow.transport_choice(args, cluster, STATE, chosen, requested)
+            choice = install_workflow.transport_choice(args, cluster, STATE, chosen, requested, profile)
             image_runtime = image_lock.v2_view(chosen)
             for line in install_workflow.transport_lines(None, choice):
                 print(line)

@@ -514,11 +514,13 @@ def recorded_fabric(state_root, cluster):
     return document
 
 
-def transport_choice(args, cluster, state_root, image, placement):
+def transport_choice(args, cluster, state_root, image, placement, profile=None):
     """``{"section", "backend", "reason", "notes"}``: the transport this request runs on (``transport.choose``).
 
     ``section`` is the deployment lock's ``transport`` section of a SIRCL
-    deployment, else None. An explicit ``--transport sircl`` that cannot run
+    deployment, else None; it is made for the decode-context parallelism of
+    ``profile`` (default ``args.profile``), whose sessions take their own
+    measured tables. An explicit ``--transport sircl`` that cannot run
     here, and ``--nccl`` with the prepared transport, need input. So does a
     placement that only SIRCL runs (``placement.prepared_serves``) when the
     deployment would use the prepared transport.
@@ -549,6 +551,7 @@ def transport_choice(args, cluster, state_root, image, placement):
         tuning, notes = transports.tuning_in_effect(state_root, document, image, host_root=fabric_tune.HOST_ROOT,
                                                     drivers={0: fabric_tune.local_facts()})
         section = transports.section(image, document, positions, nccl=nccl, tuning=tuning,
+                                     dcp=transports.profile_dcp(profile or args.profile),
                                      host_root=fabric_tune.HOST_ROOT)
     except transports.TransportError as error:
         raise NeedsInput(f"{error}. Nothing has been changed.", field="transport") from None
@@ -609,7 +612,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     # A switch the image cannot apply, such as --save-cpu without the shared-memory
     # reader window, is refused before anything is asked or surveyed.
     serving_settings.check_image(serving_settings.from_arguments(args), view["name"], installer_image.capabilities(view["name"]))
-    choice = transport_choice(args, cluster, state_root, image, placement)
+    choice = transport_choice(args, cluster, state_root, image, placement, profile)
     try:
         named = checkpoint_plan.named_paths(args.model_path, count)
     except ValueError as error:
