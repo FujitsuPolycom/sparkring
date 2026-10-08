@@ -622,7 +622,7 @@ def test_a_deployment_from_an_earlier_package_is_planned_and_run_by_its_own_sour
     for name in ("load", "apply", "status"):
         monkeypatch.setattr(installer, name, lambda *a, **k: (_ for _ in ()).throw(changed))
     monkeypatch.setattr(installer_image, "for_profile", lambda profile, explicit=None: explicit or {"name": "newer-image"})
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     active = _deployment(tmp_path, UP_PROFILE, image="older-image")
     installer.write(tmp_path / "active.json", {"path": str(active)})
     assert controller.lifecycle(["down", "--execute"]) == 0
@@ -736,7 +736,7 @@ def test_down_of_a_named_deployment_keeps_an_installation_that_completed_meanwhi
 def test_up_or_down_of_the_active_deployment_refuses_when_an_installation_replaced_it(
         operation, tmp_path, lifecycle_calls, monkeypatch):
     from runtime.common import installer
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     active = _deployment(tmp_path, UP_PROFILE)
     installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
     installer.write(tmp_path / "active.json", {"path": str(active)})
@@ -752,7 +752,7 @@ def test_up_of_a_named_deployment_refuses_while_an_installation_that_completed_m
         tmp_path, lifecycle_calls, monkeypatch):
     from runtime.common import installer
     from runtime.host import retained_source
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     _deployment(tmp_path, UP_PROFILE + "-candidate")
     installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
 

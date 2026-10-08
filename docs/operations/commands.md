@@ -16,7 +16,7 @@ sudo sparkring install --profile PROFILE --plan              # print the plan, c
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # reuse a copy
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
 sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
-sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
+sudo sparkring install --profile PROFILE --on 4-7            # a model on positions 4 to 7 of a larger ring
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -59,7 +59,7 @@ serves, it releases what older deployments hold on the Sparks
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
-| `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
+| `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)); default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The published images' prepared transport runs only a four-Spark ring's halves, `0,1` and `2,3` |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
@@ -322,9 +322,10 @@ part of a name that only one image has selects that image in
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
 attention, the saved model (the active deployment, or the one named) and
-automatic recovery. On a ring that serves
-[two models](install-reference.md#two-models-on-one-ring) it prints each
-half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
+automatic recovery. On a fabric that serves
+[several models](install-reference.md#models-on-part-of-the-fabric) it prints
+each group's model under its Sparks, such as `Sparks 0-3:` and `Sparks 4-7:`,
+with a `Group:` line naming its shape, positions and API Spark:
 
 ```text
 Saved model operation: PROFILE | up complete
@@ -369,8 +370,8 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 | Flag | Meaning |
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
-| `--on 0,1` or `--on 2,3` | Only that half's model |
-| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth` |
+| `--on ARC` | Only the model on those Sparks |
+| `--json` | Print the full observation as JSON; a fabric with models on part of it adds `slots`, one entry per group with its `placement` and `group`, and a recorded cluster adds `fabric_bandwidth` |
 
 ## check
 
@@ -385,7 +386,7 @@ run.
 
 | Flag | Meaning |
 |---|---|
-| `--on 0,1` or `--on 2,3` | Only that half's model |
+| `--on ARC` | Only the model on those Sparks |
 | `--json` | Print `sparkring-check/v1` |
 | `--report DIR` | Also write `DIR/sparkring-report-<time>/` (`sparkring-test-report/v1`): the last installation's result, `fabric show` and the last `fabric verify` report, the status, this check, the receipts with the tuning table, the last 200 lines of the installation's details log and of each rank's model log, and Node A's package, image, DGX OS, driver, Docker, container toolkit and ConnectX firmware |
 
@@ -542,12 +543,12 @@ with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
 `/var/lib/sparkring/controller/deployments/`.
 
-On a ring that serves [two models](install-reference.md#two-models-on-one-ring),
-each half has its own active deployment: `sudo sparkring down --on 2,3
---execute` stops the model on Sparks 2 and 3. Without a profile or `--on`,
+On a fabric that serves [several models](install-reference.md#models-on-part-of-the-fabric),
+each group of Sparks has its own active deployment: `sudo sparkring down --on
+4-7 --execute` stops the model on Sparks 4 to 7. Without a profile or `--on`,
 `up` and `down` act on the one recorded model and ask for `--on` when there
-are several. `up` refuses to start a four-Spark model while a half's model
-runs, or a half's model while the four-Spark model runs.
+are several. `up` refuses to start a model while a model on one of its Sparks
+runs, and names the `down` command that frees them.
 
 | Flag | Meaning |
 |---|---|
@@ -556,7 +557,7 @@ runs, or a half's model while the four-Spark model runs.
 | `--json` | Print the result as JSON |
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
-| `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
+| `--on ARC` | Without PROFILE: the model on those Sparks. With `up PROFILE`: the profile on those Sparks, as instance `on-` and the positions (`on-2-3`, `on-4-5-6-7`) unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N`, `--reasoning-effort LEVEL` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values, or the model's thinking default, for a new deployment; an existing deployment keeps its own |
 | `--allow-loopback-bind` | `up PROFILE` only: accept a loopback `--api-bind` for a new deployment |

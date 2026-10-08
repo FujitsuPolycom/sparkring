@@ -13,8 +13,8 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import (compose, derived_checkpoint, distribution, installer_image, process_lock, profiles, serving,
-                            setup, tp2)
+from runtime.common import (compose, derived_checkpoint, distribution, fabric_layout, installer_image, process_lock,
+                            profiles, serving, setup, tp2)
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
@@ -200,20 +200,31 @@ def managed_workspace(name):
     return "/srv/sparkring/" + name + "-managed"
 
 
-# The ring halves a two-rank deployment may occupy on a four-Spark ring (runtime/host/placement.py).
+# The ring halves a two-rank deployment on the prepared transport may occupy on a four-Spark ring
+# (runtime/host/placement.py).
 HALVES = ((0, 1), (2, 3))
 # The RDMA devices of a pair's rank: the primary and secondary functions of ConnectX port 0.
 PAIR_HCAS = ["rocep1s0f0", "roceP2p1s0f0"]
+# The RDMA devices of a larger group's rank: port 0's then port 1's primary, then the secondaries.
+RING_HCAS = ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"]
 
 
-def site_document(raw, card, revision):
+def site_document(raw, card, revision, *, transport=None):
     """The normalized site of a deployment lock from its raw site input.
 
-    ``placement``, on a two-rank card only, names the half of a four-Spark
-    ring (``[0, 1]`` or ``[2, 3]``) whose two Sparks the rows list in rank
-    order. A row's ``hcas``, on a two-rank card only, names the rank's
-    primary and secondary RDMA devices facing its partner; a row without
-    ``hcas`` uses port 0's functions (``PAIR_HCAS``), as on a pair.
+    ``placement`` names the arc of the fabric whose Sparks the rows list in
+    rank order (``runtime/host/placement.py``): one position per rank,
+    distinct. On the prepared transport it names a half of a four-Spark ring
+    (``[0, 1]`` or ``[2, 3]``) for a two-Spark profile; a SIRCL deployment
+    (``transport``, the lock's ``transport`` section) may name any arc, which
+    ``make_lock`` checks against the section's group. A row's ``hcas``, on a
+    two-rank card only, names the rank's primary and secondary RDMA devices
+    facing its partner; a row without ``hcas`` uses port 0's functions
+    (``PAIR_HCAS``), as on a pair. A row's ``fabric`` refers to the rank's mesh
+    or relay table; a rank with one may bootstrap over its management
+    address. A SIRCL rank with ``fabric`` may list its cabled functions as
+    ``hcas``, as a Spark at the end of a line has only one port cabled;
+    otherwise a larger group's rank uses all four (``RING_HCAS``).
     """
     if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address",
                                                 "api_address", "native_mesh", "placement"}:
@@ -233,11 +244,14 @@ def site_document(raw, card, revision):
     cache_default = managed_workspace(name) + "/cache" if backend(card) == "glm-managed" else workspace + "/cache"
     if "placement" in raw:
         placement = raw["placement"]
-        if card["nodes"] != 2 or not (isinstance(placement, list) and len(placement) == 2
-                                      and all(type(item) is int for item in placement)
-                                      and tuple(placement) in HALVES):
+        listed = (isinstance(placement, list) and len(placement) == card["nodes"]
+                  and all(type(item) is int and 0 <= item < fabric_layout.MAX_SPARKS for item in placement)
+                  and len(set(placement)) == len(placement))
+        if transport is None and (card["nodes"] != 2 or not listed or tuple(placement) not in HALVES):
             raise ValueError("A placement names one half of a four-Spark ring, [0, 1] or [2, 3], for a two-Spark "
-                             "profile")
+                             "profile on the prepared transport; other placements need SIRCL ring sessions")
+        if not listed:
+            raise ValueError(f"A placement lists one distinct fabric position per rank: {card['nodes']} positions")
     for number, row in enumerate(rows):
         allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model",
                    "fabric", "node_id", "hcas"}
@@ -249,18 +263,19 @@ def site_document(raw, card, revision):
         reuse = row.get("reuse_verified_model", False)
         if type(reuse) is not bool:
             raise ValueError("reuse_verified_model must be a boolean operator declaration")
-        hcas = row.get("hcas", PAIR_HCAS)
-        if "hcas" in row and (card["nodes"] != 2 or not isinstance(hcas, list) or len(hcas) != 2
-                              or len(set(hcas)) != 2
-                              or not all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
-                                         for hca in hcas)):
+        relayed = transport is not None and card["nodes"] != 2 and "fabric" in row
+        hcas = row.get("hcas", PAIR_HCAS if card["nodes"] == 2 else RING_HCAS)
+        named = isinstance(hcas, list) and all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
+                                               for hca in hcas) and len(set(hcas)) == len(hcas)
+        if "hcas" in row and relayed and not (named and 1 <= len(hcas) <= 4):
+            raise ValueError("A SIRCL rank's hcas name its distinct cabled RDMA devices, at most four")
+        if "hcas" in row and not relayed and (card["nodes"] != 2 or not named or len(hcas) != 2):
             raise ValueError("A two-Spark rank's hcas name its two distinct RDMA devices that face its partner")
         item = {
             "rank": number, "host": host(row["host"]),
             "management_ip": address(row["management_ip"]), "host_ip": address(row["fabric_ip"]),
             "interface": interface, "gid": 3,
-            "hcas": list(hcas) if card["nodes"] == 2 else
-                    ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"],
+            "hcas": list(hcas) if card["nodes"] == 2 or relayed else list(RING_HCAS),
             "model": str(compose.linux_path(row.get("model", workspace + "/models/" + card["model_revision"]))),
             "cache": str(compose.linux_path(row.get("cache", cache_default))),
             "repository": workspace + "/source-" + revision[:12],
@@ -272,7 +287,7 @@ def site_document(raw, card, revision):
             item["node_id"] = str(uuid.UUID(row["node_id"]))
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
             raise ValueError("Managed GLM cache must remain under its dedicated backend workspace")
-        if item["host_ip"] == item["management_ip"] and not (card["nodes"] == 4 and "fabric" in row):
+        if item["host_ip"] == item["management_ip"] and not (card["nodes"] != 2 and "fabric" in row):
             raise ValueError("Management and data fabric addresses must be distinct")
         paths = [PurePosixPath(item[key]) for key in ("model", "cache", "repository", "deployment_root")]
         for i, path in enumerate(paths):
@@ -327,7 +342,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
     if image_runtime is not None:
         from runtime.common import installer_image
         card = installer_image.selection(card, image_runtime)
-    site = site_document(raw_site, card, revision)
+    site = site_document(raw_site, card, revision, transport=transport)
     selected_backend = backend(card)
     if selected_backend == "glm-managed" and all("fabric" in row for row in site["ranks"]):
         selected_backend = "glm-existing-mesh"
@@ -346,6 +361,10 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         if selected_backend != "compose":
             raise ValueError("SIRCL ring sessions run Compose deployments; this profile's backend is " + selected_backend)
         value["transport"] = transports.validate_section(transport, card, image_runtime)
+        positions = site.get("placement") or list(range(card["nodes"]))
+        if transport["group"]["positions"] != positions:
+            raise ValueError(f"The transport group runs on positions {transport['group']['positions']}; the site "
+                             f"lists positions {positions}")
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -416,6 +435,10 @@ def compose_site(lock):
              for row in lock["site"]["ranks"]]
     for rank, row in zip(ranks, lock["site"]["ranks"], strict=True):
         rank["model"] = served_model(lock, row)
+        if "transport" in lock and "fabric" in row:
+            # SIRCL names each rank's devices (the transport section's devices); the container's
+            # prepared-transport device variables keep the four functions of a fully cabled Spark.
+            rank["hcas"] = list(RING_HCAS)
     return {"schema": "sparkring-compose-site/v1", "name": lock["site"]["name"],
             "master": ranks[0]["host_ip"], "ranks": ranks}
 
@@ -579,9 +602,13 @@ def operation_plan(lock, action):
                            phase("mesh-up", ranks, "mutates-host", "mesh-up-check"),
                            phase("mesh-gate", ranks), phase("preflight", ranks)]
             else:
-                if len(ranks) == 4 and lock["backend"] != "glm-existing-mesh":
+                relayed = all("fabric" in row for row in lock["site"]["ranks"]) and "transport" in lock
+                if (len(ranks) == 4 or relayed) and lock["backend"] != "glm-existing-mesh":
                     # A reused mesh is started, repaired and awaited on all
-                    # four ranks before the read-only ring check.
+                    # four ranks before the read-only ring check; a SIRCL
+                    # group whose ranks reach each other through relays checks
+                    # and restores the fabric's relay table on every rank
+                    # (native_mesh.group_operation).
                     phases += [phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
                                phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 elif len(ranks) == 2:

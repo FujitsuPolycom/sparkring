@@ -21,14 +21,15 @@ its base's, with the derivation's section (``runtime.host.derivation``): every
 Spark's derived directory and Node A's donor directory are read first, and the
 approved section bounds the donor downloads and the derived writes.
 
-On a four-Spark ring a two-rank profile installs on one half of the ring
-(``--on 0,1`` or ``--on 2,3``; ``runtime.host.placement``). Each half and the
-whole ring are separate slots with their own active deployment and switch
+A profile of fewer Sparks than the fabric installs on an arc of it, such as
+one half of a four-Spark ring (``--on 0,1``) or positions 4 to 7 of an
+eight-Spark ring (``--on 4-7``; ``runtime.host.placement``). Each arc and the
+whole fabric are separate slots with their own active deployment and switch
 record. An installation replaces the model of its own slot and stops the
-models of the conflicting slots: a four-rank model stops both halves' models,
-and a half's model stops a running four-rank model. Starting a half's model
-first stops and disables the ring's mesh services on every Spark
-(``park_ring``); a four-rank model's own ring step starts them again.
+models of the slots that share a Spark with it; models on other Sparks keep
+serving. On a four-Spark ring, starting a model on part of it first stops and
+disables the ring's mesh services on every Spark (``park_ring``); a four-rank
+model's own ring step starts them again.
 
 The model's API listens on the deployment's API rank (``runtime.host.api_endpoint``).
 ``--api-port`` and ``--api-bind`` are serving settings, checked against the
@@ -51,7 +52,7 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, image_lock, installer, installer_image, process_lock, profiles
+from runtime.common import distribution, fabric_layout, image_lock, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
 from runtime.common import transport as transports
 from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, controller, derivation, discovery,
@@ -166,35 +167,73 @@ def choose_profile(value, count, interactive):
 
 
 def resolve_placement(args, cluster, state_root):
-    """The ring half this request installs on (``runtime.host.placement``), or None for every Spark.
+    """The arc of the fabric this request installs on (``runtime.host.placement``), or None for every Spark.
 
-    ``--on`` names a half; it is refused on a pair and for a four-rank
-    profile. A two-rank profile named without ``--on`` on a four-Spark ring
-    goes on the one half that serves no model; when both or neither serve, the
-    request needs ``--on``. A request without a profile keeps ``--on``, which
-    then limits the profile choices to two-rank profiles.
+    ``--on`` names an arc; it is refused on a pair, and its size must be the
+    profile's node count. A profile of fewer Sparks than the fabric named
+    without ``--on`` goes on the one free arc of those that tile the fabric
+    from Node A (``placement.choose``): on a four-Spark ring a two-Spark
+    profile takes the half that serves no model. When several or none are
+    free the request needs ``--on``. A profile of more Sparks than the fabric
+    is refused with the installer profiles that fit. A request without a
+    profile keeps ``--on``, which then limits the profile choices to profiles
+    of the arc's size. Which transport runs the group is checked when the
+    transport is chosen (``transport_choice``).
     """
-    size = len(cluster["plan"]["nodes"])
+    layout = placements.layout_of(cluster)
+    size = layout["size"]
     try:
-        placements.require_layout(cluster)
-        requested = placements.parse(args.on) if args.on else None
+        requested = placements.parse(args.on, layout) if args.on else None
     except ValueError as error:
         raise NeedsInput(f"{error}. Nothing has been changed.", field="placement") from None
     rows = {row["profile"]: row for row in models.catalog()}
-    nodes = (rows.get(args.profile) or {}).get("nodes") if args.profile else (2 if requested else None)
+    nodes = (rows.get(args.profile) or {}).get("nodes") if args.profile else None
+    if nodes is None and args.on:
+        nodes = len(requested) if requested is not None else size
     try:
-        if requested is not None:
-            return placements.check(requested, cluster_size=size, profile_nodes=nodes or 2,
+        if args.on:
+            return placements.check(requested, layout=layout, profile_nodes=nodes,
                                     profile=args.profile or "this profile")
-        if size == 4 and nodes == 2:
-            chosen = placements.choose(state_root, args.profile)
-            print(f"{args.profile} uses two Sparks: it goes on {placements.text(chosen)} "
-                  f"({placements.flag(chosen)}), the half that serves no model.")
+        if nodes is not None and nodes > size:
+            fit = placements.fitting_profiles(layout)
+            raise ValueError(f"{args.profile} serves {placements.WORDS.get(nodes, nodes)} Sparks and this "
+                             f"{fabric_layout.name(layout)} has {placements.WORDS[size]}. Installer profiles that fit "
+                             f"it: {', '.join(fit) or 'none'}")
+        if nodes is not None and nodes < size:
+            chosen = placements.choose(state_root, args.profile, layout, nodes)
+            print(f"{args.profile} uses {placements.WORDS[nodes]} Sparks: it goes on {placements.text(chosen)} "
+                  f"({placements.flag(chosen)}), the {placements.part_name(layout, nodes)} that serves no model.")
             return chosen
+        if nodes == size:
+            return placements.check(None, layout=layout, profile_nodes=nodes, profile=args.profile)
     except ValueError as error:
         message = str(error) if str(error).endswith("Nothing has been changed.") else f"{error}. Nothing has been changed."
         raise NeedsInput(message, field="placement", details=getattr(error, "details", None)) from None
     return None
+
+
+def hairpin_problem(cluster, layout, placement):
+    """Why the Sparks that relay an arc's lanes cannot carry them, or None.
+
+    The inner Sparks of a path, and every Spark of a whole cycle, forward the
+    group's tagged RDMA traffic in ConnectX hardware, which needs the
+    ConnectX hairpin setting (``hairpin_ring``). An installation on an arc
+    never applies it: its driver restarts would interrupt the models on the
+    Sparks beside the arc. ``sparkring setup`` applies it on every Spark that
+    relays.
+    """
+    positions = set(placements.forwarding_positions(layout, placement))
+    if not positions:
+        return None
+    rows = [row for row in hairpin_ring.requirement(cluster["plan"]) if row["rank"] in positions]
+    lacking = [row for row in rows if row["state"] != hairpin_ring.KEPT]
+    if not lacking:
+        return None
+    names = ", ".join(f"Spark {row['rank']} ({row['hostname']}: {row['state']})" for row in lacking)
+    return (f"{names} relay the lanes of {placements.text(placement, layout['size'])} and lack the ConnectX hairpin "
+            "setting in effect. An installation on part of the fabric restarts no driver, because that would "
+            "interrupt the models beside it: run sudo sparkring setup, which applies the setting, while no model "
+            "serves on those Sparks, then repeat this installation. Nothing has been changed.")
 
 
 def park_ring(cluster, *, invoke=None):
@@ -215,9 +254,9 @@ def park_ring(cluster, *, invoke=None):
                                                                            "mesh-park"])), hosts))
 
 
-def stop_lines(stops):
+def stop_lines(stops, size):
     """One line per model a switch stops: ``It stops PROFILE on Sparks 2 and 3.``"""
-    return [f"It stops {placements.profile_of(path)} on {placements.text(placements.of_directory(path))}."
+    return [f"It stops {placements.profile_of(path)} on {placements.text(placements.of_directory(path), size)}."
             for path in stops]
 
 
@@ -436,8 +475,7 @@ def check_endpoint(args, cluster, placement, state_root, directory, requested, p
             name = api_endpoint.spark_name(cluster, api_endpoint.api_rank(placement))
             raise NeedsInput(f"Could not read the addresses and listening ports of {name}, which serves the model's "
                              f"API: {_error_text(error)}. Nothing has been changed.", field="api_endpoint") from None
-    size = len(cluster["plan"]["nodes"])
-    allowed = [directory, rollout.active(state_root, placement), *placements.displaced(state_root, placement, size)]
+    allowed = [directory, rollout.active(state_root, placement), *placements.displaced(state_root, placement)]
     api_endpoint.check(cluster, placement, requested, document, port=port, allowed=[path for path in allowed if path],
                        created=not directory.exists(), allow_loopback=getattr(args, "allow_loopback_bind", False))
 
@@ -474,7 +512,9 @@ def transport_choice(args, cluster, state_root, image, placement):
 
     ``section`` is the deployment lock's ``transport`` section of a SIRCL
     deployment, else None. An explicit ``--transport sircl`` that cannot run
-    here, and ``--nccl`` with the prepared transport, need input.
+    here, and ``--nccl`` with the prepared transport, need input. So does a
+    placement that only SIRCL runs (``placement.prepared_serves``) when the
+    deployment would use the prepared transport.
     """
     try:
         document = recorded_fabric(state_root, cluster)
@@ -488,6 +528,11 @@ def transport_choice(args, cluster, state_root, image, placement):
         if unreadable and backend == "prepared" and not requested_backend:
             reason = f"the recorded fabric document cannot be read ({unreadable})"
         if backend == "prepared":
+            layout = placements.layout_of(cluster)
+            if not placements.prepared_serves(layout, placement):
+                refusal = placements.prepared_refusal(layout, placement, getattr(args, "on", None),
+                                                      None if requested_backend else reason)
+                raise NeedsInput(f"{refusal}. Nothing has been changed.", field="placement")
             return {"section": None, "backend": backend, "reason": reason, "notes": [],
                     "explicit": requested_backend is not None}
         hosts = cluster["plan"]["spec"]["hosts"]
@@ -528,10 +573,13 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     ``mesh_hint`` is appended to a native-mesh refusal, for example when Sparks
     lack the ConnectX hairpin setting, so their mesh services cannot start.
 
-    ``placement`` names the ring half of a two-rank request
-    (``resolve_placement``). Its two Sparks are the deployment's ranks 0 and 1,
-    and the placement, those Sparks and the half's API address enter the
-    request.
+    ``placement`` names the arc of the request (``resolve_placement``). Its
+    Sparks are the deployment's ranks in arc order, and the placement, those
+    Sparks and the API address of its first Spark enter the request. A group
+    whose ranks reach each other through relays bootstraps over the Sparks'
+    management addresses and refers to the fabric document
+    (``relays.group_reference``), whose relay table the installation checks
+    on every rank before the model starts.
 
     The transport (``transport_choice``) is part of the request when it is
     SIRCL: its NCCL mode, the fabric document's identity and the tuning
@@ -610,7 +658,14 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         image_id = selection["image_id"]
         held_lock = lock.get("image_runtime") or {"name": selection["release"], "image_id": image_id}
     else:
-        site = controller.model_site(cluster, profile, instance, placement)
+        reference = None
+        if choice["section"] is not None and placements.relayed(placements.layout_of(cluster), placement):
+            from runtime.host import relays
+            try:
+                reference = relays.group_reference(state_root, cluster)
+            except ValueError as error:
+                raise NeedsInput(f"{error}. Nothing has been changed.", field="fabric") from None
+        site = controller.model_site(cluster, profile, instance, placement, fabric=reference)
         for row in site["hosts"]:
             row["model"] = owned
             # One compile/tuning cache per cluster. Containers use a subdirectory
@@ -641,16 +696,18 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          **({"serving": request["serving"]} if request.get("serving") else {}),
                                          "transport": getattr(args, "transport", None),
                                          "nccl": getattr(args, "nccl", None)},
-                                derivation=derivation_section(selection, rows, surveys))
+                                derivation=derivation_section(selection, rows, surveys),
+                                line=placements.group(placements.layout_of(cluster), placement)["shape"] == "path")
     if not locked:
         if plan["problems"]:
             return directory, None, plan, choice
         for row, entry in zip(site["hosts"], plan["nodes"], strict=True):
             if entry["mode"] == "in-place":
                 row.update(model=entry["path"], reuse_verified_model=True)
-        if profile in installer.compose.TP4_PROFILES:
+        # A relayed SIRCL group refers to the fabric document instead of a mesh.
+        if reference is None and profile in installer.compose.TP4_PROFILES:
             site = _select_mesh(site, cluster, profile, mesh_hint)
-        elif installer.backend({"profile": profile}) == "glm-managed":
+        elif reference is None and installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
         try:
             lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=view, settings=requested,
@@ -811,9 +868,11 @@ def check_managed_namespace(lock):
 
 
 def serving(directory, *, runner=None):
-    """Whether the deployment in ``directory`` runs on every Spark and, on four Sparks, passes each ring check.
+    """Whether the deployment in ``directory`` runs on every rank and passes each rank's fabric check.
 
-    A pair checks RoCE GID index 3 instead of a ring. Read-only; a check that
+    Four Sparks and a SIRCL group whose ranks reach each other through relays
+    pass the ring check (the mesh, or the fabric's relay table at each rank's
+    position); a pair checks RoCE GID index 3 instead. Read-only; a check that
     cannot run counts as not serving. An installation of the active deployment
     stops it on every Spark first when it does not serve: after one Spark
     restarted, the others keep a model that waits for it and that holds the
@@ -828,6 +887,8 @@ def serving(directory, *, runner=None):
         return True
     ranks = lock["site"]["ranks"]
     checks = {2: "gid-check", 4: "ring-check"} if lock["backend"] == "compose" else {}
+    if lock["backend"] == "compose" and lock.get("transport") and all("fabric" in row for row in ranks):
+        checks[len(ranks)] = "ring-check"
     operations = ["running"] + ([checks[len(ranks)]] if len(ranks) in checks else [])
     for row in ranks:
         for operation in operations:
@@ -1064,22 +1125,28 @@ def execute(args):
         if args.plan:
             cluster = planned_head(cluster)
         placement = resolve_placement(args, cluster, state_root)
-        size = len(cluster["plan"]["nodes"])
-        # A half's model forwards no traffic through a Spark, so it needs no
-        # ConnectX hairpin setting, and a driver restart would interrupt the
-        # other half's model.
+        layout = placements.layout_of(cluster)
+        size = layout["size"]
+        # A model on an arc applies no ConnectX hairpin setting: a driver
+        # restart would interrupt the models on the arcs beside it. A group of
+        # two forwards no traffic; a larger arc needs the setting in effect on
+        # the Sparks that relay its lanes (hairpin_problem).
         hairpin = hairpin_ring.requirement(cluster["plan"]) if placement is None else []
+        if placement is not None:
+            problem = hairpin_problem(cluster, layout, placement)
+            if problem:
+                raise NeedsInput(problem, field="hairpin")
         needs_hairpin = hairpin_ring.required(hairpin)
         # Printed before the deployment is selected, so that a native-mesh
         # refusal caused by Sparks without the setting follows its listing.
         for line in hairpin_ring.consent_lines(cluster["plan"], hairpin):
             print(line)
         mesh_hint = hairpin_ring.mesh_hint(hairpin)
-        pending = placements.unfinished_switches(state_root, placement, size)
+        pending = placements.unfinished_switches(state_root, placement)
         if pending:
             # Its candidate may run on Sparks this switch uses; that switch finishes first.
             slot, unfinished = pending[0]
-            raise NeedsInput(f"A model switch on {placements.text(slot)} to {Path(unfinished['candidate']).name} "
+            raise NeedsInput(f"A model switch on {placements.text(slot, size)} to {Path(unfinished['candidate']).name} "
                              f"stopped while {unfinished['state']}. Install that model again to finish it, then repeat "
                              "this installation. Nothing has been changed.", field="transaction")
         directory, lock, checkpoint, choice = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint,
@@ -1088,19 +1155,25 @@ def execute(args):
             check_managed_namespace(lock)
         previous = rollout.active(state_root, placement)
         replaces = str(previous) if previous and previous != directory else None
-        displaced = [path for path in placements.displaced(state_root, placement, size) if path != directory]
+        displaced = [path for path in placements.displaced(state_root, placement) if path != directory]
         stops = ([previous] if replaces and not placements.stopped(previous) else []) + displaced
+        group = placements.group(layout, placement)
         if placement is None:
             print(f"Install {checkpoint['profile']} on {len(checkpoint['nodes'])} Sparks.")
         else:
             names = [cluster["plan"]["nodes"][rank].get("hostname") for rank in placement]
+            nodes = (" and ".join(f"Node {rank}" for rank in range(len(placement))) if len(placement) == 2 else
+                     f"Node 0 to Node {len(placement) - 1}")
             print(f"Install {checkpoint['profile']} on {placements.text(placement)}"
                   + (f" ({', '.join(names)})." if all(names) else ".")
-                  + " The checkpoint plan and the model steps call them Node 0 and Node 1.")
+                  + f" The checkpoint plan and the model steps call them {nodes}.")
+            if len(placement) > 2:
+                print(f"Placement: {group['name']} at positions {', '.join(map(str, placement))}; "
+                      f"its API is on Spark {placement[0]}.")
             _, note = placements.api_address(cluster, placement)
             if note:
                 print("Note: " + note)
-        for line in stop_lines(stops):
+        for line in stop_lines(stops, size):
             print(line)
         for line in transport_lines(lock, choice):
             print(line)
@@ -1153,8 +1226,11 @@ def execute(args):
                 **api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))}
         if placement is not None:
             plan["placement"] = list(placement)
+        # The group the model serves on: its shape, its positions in rank order and the Spark of its API.
+        plan["group"] = {"shape": group["name"], "positions": group["positions"],
+                         "api_position": group["positions"][0]}
         plan["transport"] = transport_summary(lock, choice)
-        if size == 4:
+        if size > 2:
             plan["stops"] = [{"deployment": str(path), "profile": placements.profile_of(path),
                               "placement": list(placements.of_directory(path) or ()) or None} for path in stops]
         if hairpin:
@@ -1170,8 +1246,8 @@ def execute(args):
         consent = {}
         if displaced:
             # Stopping a model outside the requested slot is asked about; --yes approves it.
-            others = " and ".join(f"{placements.profile_of(path)} on {placements.text(placements.of_directory(path))}"
-                                  for path in displaced)
+            others = " and ".join(f"{placements.profile_of(path)} on "
+                                  f"{placements.text(placements.of_directory(path), size)}" for path in displaced)
             consent["question"] = f"Stop {others} and apply this installation?"
         if needs_hairpin:
             # Sparks whose reload statistics are unavailable stop the step
@@ -1314,9 +1390,10 @@ def execute(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
     parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
-    parser.add_argument("--on", metavar="RANKS",
-                        help="put a two-Spark profile on one half of a four-Spark ring: 0,1 or 2,3; without it, the "
-                             "half that serves no model")
+    parser.add_argument("--on", metavar="ARC",
+                        help="the Sparks a profile of fewer Sparks than the fabric runs on: consecutive positions in "
+                             "cable order, such as 0,1, 0-3, 4-7 or 6-1 (across the cable to Node A); without it, the "
+                             "one group of Sparks that tiles the fabric from Node A and serves no model")
     images = parser.add_mutually_exclusive_group()
     images.add_argument("--image", metavar="NAME",
                         help="run the profile on another installer image: a name or release tag that sparkring images "
@@ -1382,11 +1459,12 @@ def main(argv=None):
     output = sys.stdout
     code = 0
     with contextlib.redirect_stdout(sys.stderr), progress.run("install", events=args.events):
-        # Every slot's switch record: the failure reports the one this run changed.
-        journals = [placements.slot_directory(controller.STATE, slot) / "transaction.json"
-                    for slot in placements.slots(4)]
+        # Every slot's switch record: the failure reports the one this run changed or created.
+        def journals():
+            return [placements.slot_directory(controller.STATE, slot) / "transaction.json"
+                    for slot in placements.slots(controller.STATE)]
         before = {}
-        for journal in journals:
+        for journal in journals():
             try:
                 before[journal] = journal.read_bytes()
             except OSError:
@@ -1397,8 +1475,8 @@ def main(argv=None):
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
             result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
-            for journal in journals:
-                if journal.exists() and journal.read_bytes() != before[journal]:
+            for journal in journals():
+                if journal.exists() and journal.read_bytes() != before.get(journal):
                     result["transaction"] = installer.read(journal)
                     break
             progress.failure(str(error))

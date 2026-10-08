@@ -1,7 +1,7 @@
 """``sudo sparkring check``: functional checks and the transport check of the running models, and the tester report.
 
-For each slot's active deployment (``--on`` selects one half of a four-Spark
-ring) the command:
+For each slot's active deployment (``--on`` selects the model on one arc of
+the fabric, ``runtime.host.placement``) the command:
 
 1. sends the acceptance harness's functional checks to the model's API
    (``performance/harnesses/acceptance/checks.py``): counting, arithmetic and
@@ -47,10 +47,10 @@ MAC = re.compile(r"(?i)(?<![0-9a-f:])(?:[0-9a-f]{2}:){5}[0-9a-f]{2}(?![0-9a-f:])
 
 
 def deployments(on=None):
-    """``[(placement, directory)]`` of the deployments to check: every slot's active one, or the ``--on`` half's."""
+    """``[(placement, directory)]`` of the deployments to check: every slot's active one, or the ``--on`` arc's."""
     from runtime.host import placement as placements
     if on:
-        slot = placements.parse(on)
+        slot = placements.parse(on, controller.recorded_layout())
         path = controller.active_deployment(placement=slot)
         return [(slot, path)] if path is not None else []
     return controller.active_deployments(report=True)
@@ -266,7 +266,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring check", description=(
         "Check the running models: functional requests to each API and, on SIRCL ring sessions, which transport "
         "carried each collective. Sends requests; changes no Spark. Run on Node A with sudo."))
-    parser.add_argument("--on", metavar="RANKS", help="only the model on this half of a four-Spark ring: 0,1 or 2,3")
+    parser.add_argument("--on", metavar="ARC", help="only the model on these Sparks, such as 0,1, 0-3 or 6-1")
     parser.add_argument("--json", action="store_true", help="print the sparkring-check/v1 result")
     parser.add_argument("--report", type=Path, metavar="DIR",
                         help="also write the sanitized tester bundle (sparkring-test-report/v1) under DIR")

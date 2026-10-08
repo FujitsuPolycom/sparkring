@@ -96,8 +96,9 @@ def ops(ring):
 
 
 def recorded():
+    """The deployment each slot of the ring records: the whole ring's and each half's."""
     return {slot: (label(path) if path else None) for slot, path in
-            ((slot, placement.recorded(controller.STATE, slot)) for slot in placement.slots(4))}
+            ((slot, placement.recorded(controller.STATE, slot)) for slot in (None, *placement.HALVES))}
 
 
 def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
@@ -192,7 +193,9 @@ def test_a_two_spark_profile_without_a_free_half_names_the_choices(ring, capsys)
     assert install("--profile", QWEN) == 3
     refused = result(capsys)
     assert refused["field"] == "placement" and "Choose a half with --on 0,1 or --on 2,3" in refused["message"]
-    assert refused["details"]["lines"] == ["--on 0,1: Sparks 0 and 1, free", "--on 2,3: Sparks 2 and 3, free"]
+    # The four-Spark model runs on both halves' Sparks, so neither is free.
+    assert refused["details"]["lines"] == [f"--on 0,1: Sparks 0 and 1, serving {TP4}",
+                                           f"--on 2,3: Sparks 2 and 3, serving {TP4}"]
     assert install("--profile", QWEN, "--on", "0,1") == 0 and install("--profile", GLM, "--on", "2,3") == 0
     capsys.readouterr()
     assert install("--profile", QWEN) == 3

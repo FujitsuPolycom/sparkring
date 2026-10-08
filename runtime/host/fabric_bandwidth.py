@@ -174,11 +174,11 @@ def serving(state_root, size):
 
     A slot's active deployment serves unless its last operation is a
     completed ``down`` (``placement.stopped``). The whole cluster's model
-    (placement None) uses every Spark; a ring half's model uses that half's
-    two Sparks.
+    (placement None) uses every Spark; a model on an arc uses the arc's
+    Sparks.
     """
     found = {}
-    for slot, directory in placement.actives(state_root, size).items():
+    for slot, directory in placement.actives(state_root).items():
         if placement.stopped(directory):
             continue
         for rank in range(size) if slot is None else slot:

@@ -367,7 +367,7 @@ def active_deployment(*, report=True, placement=None):
     """The deployment that up last started, or that down last stopped when none was active; None if neither.
 
     ``placement`` selects the slot (``runtime.host.placement``): None for the
-    whole cluster, a ring half otherwise. A recorded directory that no longer
+    whole cluster, an arc of its Sparks otherwise. A recorded directory that no longer
     holds a deployment, for example one moved by hand, counts as none and,
     with ``report``, is noted on stderr.
     """
@@ -388,28 +388,38 @@ def active_deployments(*, report=False):
     ``report`` notes each recorded directory that no longer holds a deployment, as ``active_deployment`` does.
     """
     from runtime.host import placement as placements
-    return [(slot, path) for slot in placements.slots(4)
+    return [(slot, path) for slot in placements.slots(STATE)
             if (path := active_deployment(report=report, placement=slot)) is not None]
+
+
+def recorded_layout():
+    """The fabric layout of the recorded cluster; ValueError without a cluster record."""
+    from runtime.host import placement as placements
+    if not (STATE / "cluster.json").exists():
+        raise ValueError("No cluster is recorded on this Spark; run sudo sparkring setup first")
+    return placements.layout_of(installer.read(STATE / "cluster.json"))
 
 
 def lifecycle_slot(on):
     """The slot that ``sparkring up``, ``down`` or ``status`` without a profile acts on.
 
-    ``--on`` names a half. Without it, the one slot that records a deployment;
-    the whole cluster when none does. With several recorded, ValueError lists
-    each and the command that names it.
+    ``--on`` names an arc of the fabric. Without it, the one slot that records
+    a deployment; the whole cluster when none does. With several recorded,
+    ValueError lists each and the command that names it.
     """
     from runtime.host import placement as placements
     if on:
-        return placements.parse(on)
+        return placements.parse(on, recorded_layout())
     found = active_deployments()
     if len(found) <= 1:
         return found[0][0] if found else None
-    lines = [f"{placements.text(slot)}: {placements.profile_of(path)} "
+    size = recorded_layout()["size"]
+    lines = [f"{placements.text(slot, size)}: {placements.profile_of(path)} "
              + ("(stopped)" if placements.stopped(path) else "(started)") + "; name it with "
              + (placements.flag(slot) if slot else _up_arguments(path)) for slot, path in found]
-    error = ValueError("This ring records a model on more than one placement. Name one with --on 0,1, --on 2,3 or "
-                       "the deployment's profile.")
+    flags = [placements.flag(slot) for slot, _ in found if slot]
+    error = ValueError("This fabric records a model on more than one placement. Name one with "
+                       + ", ".join(flags) + " or the deployment's profile.")
     error.details = {"lines": lines}
     raise error
 
@@ -422,30 +432,47 @@ def existing_deployment(profile, instance="main"):
     return directory
 
 
-def model_site(cluster, profile, instance="main", placement=None):
+def model_site(cluster, profile, instance="main", placement=None, *, fabric=None):
     """The raw site of a deployment of ``profile`` on the cluster's Sparks.
 
     Without ``placement`` the site holds every Spark, each at port 0's primary
-    fabric function. With a placement (``runtime.host.placement``) it holds
-    the two Sparks of that ring half, each at the port functions facing its
-    partner, records the placement, and keeps Node A as the controller. The
-    API address is Node A's recorded LAN address, or for half (2, 3) the one
-    ``placement.api_address`` gives.
+    fabric function (the last Spark of a line, which has no port 0 cable, at
+    port 1's). A placement (``runtime.host.placement``) of two Sparks holds
+    them at the port functions facing each other. ``fabric`` is the fabric
+    document reference of a group whose ranks reach each other through relays
+    (``relays.group_reference``): every rank then bootstraps over its
+    management address and interface and carries the reference, which its
+    relay check reads. A site on an arc records the placement and keeps Node
+    A as the controller. The API address is Node A's recorded LAN address, or
+    for an arc that starts elsewhere the one ``placement.api_address`` gives.
     """
     from runtime.host import placement as placements
     plan = cluster["plan"]
     rows = []
     identities = plan.get("nodes", [])
     ranks = list(range(len(plan["spec"]["hosts"]))) if placement is None else list(placement)
-    fabric = placements.fabric_rows(cluster, placement) if placement is not None else None
+    pair = placements.fabric_rows(cluster, placement) if placement is not None and fabric is None else None
+    if placement is not None and fabric is None and len(placement) != 2:
+        raise ValueError("A group of more than two Sparks reaches its ranks through relays and needs the fabric "
+                         "document's relay table; run sudo sparkring setup")
     for index, rank in enumerate(ranks):
         host = plan["spec"]["hosts"][rank]
-        if fabric is None:
-            port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
+        if fabric is not None:
+            rows.append({"host": host["host"], "management_ip": host["management_address"],
+                         "fabric_ip": host["management_address"], "interface": host["management_netdev"],
+                         "fabric": dict(fabric)})
+            cabled = {p["role"]: p["rdma_device"] for p in host["data_interfaces"]}
+            if len(cabled) < 4:
+                # A Spark at the end of a line has one port cabled; its rank checks only those functions.
+                rows[-1]["hcas"] = [cabled[role] for role in ("cw_primary", "ccw_primary", "cw_secondary",
+                                                              "ccw_secondary") if role in cabled]
+        elif pair is None:
+            roles = {p["role"]: p for p in host["data_interfaces"]}
+            port = roles.get("cw_primary") or roles["ccw_primary"]
             rows.append({"host": host["host"], "management_ip": host["management_address"],
                          "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
         else:
-            rows.append(dict(fabric[index]))
+            rows.append(dict(pair[index]))
         if len(identities) == len(plan["spec"]["hosts"]) and isinstance(identities[rank], dict) and identities[rank].get("node_id"):
             rows[-1]["node_id"] = identities[rank]["node_id"]
     import re
@@ -466,19 +493,28 @@ def model_site(cluster, profile, instance="main", placement=None):
     return result
 
 
-def _hairpin_problem():
-    """M6 lines when a Spark of the recorded four-Spark ring lacks the ConnectX hairpin setting, else None.
+def _hairpin_problem(placement=None):
+    """M6 lines when a Spark that relays the model's traffic lacks the ConnectX hairpin setting, else None.
 
-    One line per Spark, then the remedy; later lines are indented for the
-    terminal.
+    Without ``placement`` every relaying Spark of the recorded fabric counts;
+    for an arc only the Sparks that relay its lanes
+    (``placement.forwarding_positions``), none for two Sparks. One line per
+    Spark, then the remedy; later lines are indented for the terminal.
     """
     if not (STATE / "cluster.json").exists():
         return None
-    plan = installer.read(STATE / "cluster.json").get("plan") or {}
+    cluster = installer.read(STATE / "cluster.json")
+    plan = cluster.get("plan") or {}
     hosts = (plan.get("spec") or {}).get("hosts") or []
     if not hosts or not hairpin_ring.ranks(plan):
         return None
-    problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh))
+    only = None
+    if placement is not None:
+        from runtime.host import placement as placements
+        only = set(placements.forwarding_positions(placements.layout_of(cluster), placement))
+        if not only:
+            return None
+    problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh), only=only)
     return problem.replace("\n", "\n  ") if problem else None
 
 
@@ -492,9 +528,9 @@ def lifecycle(argv):
     images.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
-    parser.add_argument("--on", metavar="RANKS",
-                        help="the half of a four-Spark ring: 0,1 or 2,3; without a profile, its model; with up "
-                             "PROFILE, where a two-Spark profile's deployment runs")
+    parser.add_argument("--on", metavar="ARC",
+                        help="consecutive Sparks of the fabric, such as 0,1, 0-3 or 6-1: without a profile, the model "
+                             "on them; with up PROFILE, where a new deployment of the profile runs")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
@@ -528,10 +564,13 @@ def lifecycle(argv):
     if args.operation == "status":
         from runtime.host import fabric_bandwidth
         result = node.snapshot() if args.refresh else node.status()
-        plan_id = None
+        plan_id = size = layout = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
             plan_id = cluster["plan"].get("id")
+            from runtime.host import placement as placements
+            layout = placements.layout_of(cluster)
+            size = layout["size"]
             # The saved result of the last bandwidth check; status never measures.
             result["fabric_bandwidth"] = fabric_bandwidth.summary(STATE)
             result["fabric"] = fabric.summary(STATE, cluster)
@@ -551,11 +590,11 @@ def lifecycle(argv):
             path = existing_deployment(args.profile, args.instance)
             paths = [(placements.of_directory(path), path)]
         elif args.on:
-            slot = placements.parse(args.on)
+            slot = placements.parse(args.on, recorded_layout())
             paths = [(slot, path) for path in [active_deployment(placement=slot)] if path is not None]
         else:
             paths = active_deployments(report=True)
-        views = [_status_view(slot, path, args, result, cache) for slot, path in paths]
+        views = [_status_view(slot, path, args, result, cache, layout=layout) for slot, path in paths]
         if views:
             # The first slot's model keeps the document's single-deployment fields.
             result.update({key: views[0][key] for key in ("deployment", "recovery", "model") if key in views[0]})
@@ -569,7 +608,7 @@ def lifecycle(argv):
                 model = view.get("model")
                 if model and model["state"] != "serving":
                     # What stops a model comes first, with the step that restarts it.
-                    where = f"{placements.text(tuple(view['placement']))}: " if view["placement"] else ""
+                    where = f"{placements.text(tuple(view['placement']), size)}: " if view["placement"] else ""
                     print(where + model["summary"] + " | next: " + model["next_action"])
                     for line in model["details"]:
                         print("  " + line)
@@ -610,8 +649,12 @@ def lifecycle(argv):
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:
-                    where = placements.text(tuple(view["placement"]) if view["placement"] else None)
+                    where = placements.text(tuple(view["placement"]) if view["placement"] else None, size)
                     print(where[0].upper() + where[1:] + ":")
+                    if view.get("group"):
+                        group = view["group"]
+                        print(f"Group: {group['shape']} at positions {', '.join(map(str, group['positions']))}; "
+                              f"API on Spark {group['api_position']}")
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
                 # A profile with one checkpoint has no checkpoint name; a derived checkpoint names its base too.
                 source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
@@ -648,7 +691,7 @@ def lifecycle(argv):
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
     from runtime.host import placement as placements
-    requested = placements.parse(args.on) if args.on else None
+    requested = placements.parse(args.on, recorded_layout()) if args.on else None
     if args.profile and requested is not None and args.operation != "up":
         raise ValueError("--on with a profile names where up places a new deployment; down takes the profile alone")
     slot = None if args.profile else lifecycle_slot(args.on)
@@ -656,7 +699,7 @@ def lifecycle(argv):
     if args.operation == "up" and args.profile:
         instance = args.instance
         if requested is not None and instance == "main":
-            # Each half's deployment of a profile needs its own directory.
+            # Each arc's deployment of a profile needs its own directory.
             instance = placements.instance_label(requested)
         directory = deployment_directory(args.profile, instance)
         # Refused before a new deployment is created; checked again under the installation lock.
@@ -665,18 +708,21 @@ def lifecycle(argv):
             from runtime.common import image_lock
             from runtime.host import install_workflow, models
             cluster = installer.read(STATE / "cluster.json")
-            placements.require_layout(cluster)
-            size = len(cluster["plan"]["nodes"])
-            nodes = 2 if requested is not None else size
+            layout = placements.layout_of(cluster)
+            nodes = len(requested) if requested is not None else layout["size"]
             profile = models.select(args.profile, nodes)
-            placements.check(requested, cluster_size=size, profile_nodes=nodes, profile=profile)
+            placements.check(requested, layout=layout, profile_nodes=nodes, profile=profile)
             chosen = image_lock.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
             # The same transport sparkring install would choose: SIRCL where the image and the fabric carry it.
             choice = install_workflow.transport_choice(args, cluster, STATE, chosen, requested)
             image_runtime = image_lock.v2_view(chosen)
             for line in install_workflow.transport_lines(None, choice):
                 print(line)
-            site = model_site(cluster, profile, instance, requested)
+            reference = None
+            if choice["section"] is not None and placements.relayed(layout, requested):
+                from runtime.host import relays
+                reference = relays.group_reference(STATE, cluster)
+            site = model_site(cluster, profile, instance, requested, fabric=reference)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
             # profile's revision, whose model operation adopts what that
             # directory holds and downloads the rest on that rank. A copy
@@ -686,7 +732,7 @@ def lifecycle(argv):
             model = args.model_path or installer.checkpoint_directory(cluster, installer.setup.selection(profile))
             for row in site["hosts"]:
                 row.update(model=model, reuse_verified_model=bool(args.model_path))
-            if profile in installer.compose.TP4_PROFILES:
+            if reference is None and profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
             if {"api_port", "api_bind"} & set(settings):
@@ -719,7 +765,8 @@ def lifecycle(argv):
             if settings and (existing.get("serving") or {}) != settings:
                 raise ValueError("Deployment uses other serving settings; choose a distinct --instance")
             if requested is not None and placements.from_lock(existing) != requested:
-                raise ValueError(f"{directory.name} runs on {placements.text(placements.from_lock(existing))}; "
+                raise ValueError(f"{directory.name} runs on "
+                                 f"{placements.text(placements.from_lock(existing), recorded_layout()['size'])}; "
                                  "choose a distinct --instance")
     elif args.profile:
         directory = existing_deployment(args.profile, args.instance)
@@ -771,8 +818,8 @@ def lifecycle(argv):
         for old in result["native_mesh"]["replaces"]:
             print(f"  Stop/disable rank {old['rank']} service: {old['unit']}")
     if args.plan or not args.execute and not sys.stdin.isatty():
-        if args.operation == "up":
-            problem = _hairpin_problem()
+        if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
+            problem = _hairpin_problem(slot)
             if problem:
                 print("Warning: " + problem)
         print("Review, then repeat with --execute.")
@@ -794,10 +841,11 @@ def lifecycle(argv):
                 raise ValueError("Run sparkring down before selecting another model")
         if args.operation == "up":
             _refuse_conflicts(slot)
-        if args.operation == "up" and slot is None:
-            # A mesh refused by its hairpin start check would otherwise surface
-            # only as a failed systemd job, so nothing starts without the setting.
-            problem = _hairpin_problem()
+        if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
+            # A mesh refused by its hairpin start check, or a relay that drops a
+            # group's lanes, would otherwise surface only as a failed systemd job
+            # or a session timeout, so nothing starts without the setting.
+            problem = _hairpin_problem(slot)
             if problem:
                 raise ValueError(problem)
         confirm("Apply these model/image actions?", args.execute)
@@ -828,25 +876,33 @@ def lifecycle(argv):
 
 
 def _refuse_conflicts(slot):
-    """Refuse to start a model in ``slot`` while the conflicting slots' model runs: the whole ring and its halves never serve at once."""
+    """Refuse to start a model in ``slot`` while a model of a slot that shares a Spark with it runs."""
     from runtime.host import placement as placements
-    for other in placements.conflicting(slot):
+    for other in placements.conflicting(STATE, slot):
         running = active_deployment(report=False, placement=other)
         if running is not None and not placements.stopped(running):
-            raise ValueError(f"{placements.profile_of(running)} runs on {placements.text(other)}. Stop it first: "
+            size = recorded_layout()["size"] if (STATE / "cluster.json").exists() else None
+            raise ValueError(f"{placements.profile_of(running)} runs on {placements.text(other, size)}. Stop it first: "
                              "sudo sparkring down " + (placements.flag(other) if other else _up_arguments(running))
                              + " --execute")
 
 
-def _status_view(slot, path, args, result, cache):
+def _status_view(slot, path, args, result, cache, *, layout=None):
     """One deployment's part of ``sparkring status``: its saved state, recovery record and, with --refresh, model check.
 
-    Returns ``placement``, ``deployment``, ``recovery`` (only for a slot's
-    active deployment, which automatic recovery acts on), ``model`` and the
-    ``lock`` and ``record`` the terminal text reads.
+    Returns ``placement``, ``group`` (the group's shape, its positions in
+    rank order and the position that serves its API, on the recorded
+    ``layout``), ``deployment``, ``recovery`` (only for a slot's active
+    deployment, which automatic recovery acts on), ``model`` and the ``lock``
+    and ``record`` the terminal text reads.
     """
     from runtime.host import recovery, retained_source
+    from runtime.host import placement as placements
     view = {"placement": list(slot) if slot else None, "record": None}
+    if layout is not None and (slot is None or all(position < layout["size"] for position in slot)):
+        group = placements.group(layout, slot)
+        view["group"] = {"shape": group["name"], "positions": group["positions"],
+                         "api_position": group["positions"][0]}
     view["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
     # Read here rather than by the retained source, whose revision may
     # predate these fields.

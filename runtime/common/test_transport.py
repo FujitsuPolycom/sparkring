@@ -36,25 +36,31 @@ def document(shape, size, *, marker=MARKER):
     return value
 
 
-def install_site(nodes, *, relay_reference=True):
+def install_site(nodes, *, relay_reference=True, placement=None):
     hosts = []
     for number in range(nodes):
         row = {"host": f"spark{number}", "management_ip": f"192.0.2.{20 + number}",
                "fabric_ip": f"192.0.2.{20 + number}", "interface": "enp1s0f0np0"}
-        if nodes == 4:
+        if nodes != 2:
+            # A group of more than two Sparks reaches its ranks through relays and refers to the fabric document.
             row["fabric"] = {"site_path": fabric_document.HOST_PATH, "site_sha256": "1" * 64,
                              "plan_sha256": "2" * 64}
         else:
             row["fabric_ip"] = f"198.18.20.{number + 1}"
         hosts.append(row)
-    return {"schema": "sparkring-install-site/v1", "name": "sircltest", "hosts": hosts}
+    site = {"schema": "sparkring-install-site/v1", "name": "sircltest", "hosts": hosts}
+    if placement is not None:
+        site["placement"] = list(placement)
+    return site
 
 
 def sircl_deployment(profile, shape, size, positions, *, nccl="never", tuning=None, image=None):
     image = image or sircl_lock()
     section = transport.section(image, document(shape, size), positions, nccl=nccl,
                                 tuning=tuning or transport.load_tuning())
-    lock = installer.make_lock(profile, install_site(len(positions)), "1" * 40, "2" * 64,
+    # A deployment on some of the fabric's Sparks records them as its placement.
+    placement = None if list(positions) == list(range(size)) else positions
+    lock = installer.make_lock(profile, install_site(len(positions), placement=placement), "1" * 40, "2" * 64,
                                image_runtime=image_lock.v2_view(image), transport=section)
     return lock, section
 
@@ -504,3 +510,4 @@ def test_a_layer_receipt_that_differs_from_the_lock_is_refused():
     lock["transport"]["sircl"]["receipt"]["sha256"] = "0" * 64
     with pytest.raises(transport.TransportError, match="layer receipt differs"):
         transport.admit_layer(lock, run=image)
+

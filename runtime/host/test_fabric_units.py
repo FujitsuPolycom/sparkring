@@ -232,12 +232,15 @@ def test_setup_leaves_the_fabric_supernet_to_the_layout_unless_it_is_named(tmp_p
     assert args.fabric_cidr == "198.18.0.0/21" and args.control_explicit
 
 
-def test_installer_profiles_are_refused_on_layouts_they_do_not_serve():
+def test_the_prepared_transport_serves_a_pair_a_four_spark_ring_and_its_halves_only():
     from runtime.host import placement
-    for layout in (fabric_layout.layout("pair", 2), fabric_layout.layout("cycle", 4)):
-        assert placement.require_layout({"plan": plan_of(layout)}) == layout
-    with pytest.raises(ValueError, match=r"This fabric is a path-4; the installer's profiles run on a pair or a "
-                                         r"four-Spark ring \(cycle-4\)"):
-        placement.require_layout({"plan": plan_of(fabric_layout.layout("path", 4))})
-    with pytest.raises(ValueError, match="This fabric is a cycle-8"):
-        placement.require_layout({"plan": plan_of(fabric_layout.layout("cycle", 8))})
+    pair, cycle4, path4, cycle8 = (fabric_layout.layout(shape, size)
+                                   for shape, size in (("pair", 2), ("cycle", 4), ("path", 4), ("cycle", 8)))
+    assert placement.layout_of({"plan": plan_of(path4)}) == path4
+    assert placement.prepared_serves(pair, None) and placement.prepared_serves(cycle4, None)
+    assert placement.prepared_serves(cycle4, (0, 1)) and placement.prepared_serves(cycle4, (2, 3))
+    assert not placement.prepared_serves(cycle4, (1, 2)) and not placement.prepared_serves(path4, None)
+    assert not placement.prepared_serves(cycle8, None) and not placement.prepared_serves(cycle8, (0, 1, 2, 3))
+    text = placement.prepared_refusal(cycle8, (4, 5, 6, 7), "4-7", "image X carries no SIRCL layer")
+    assert text.startswith("The prepared transport runs a pair, a four-Spark ring and the ring's halves; Sparks 4-7 "
+                           "of this cycle-8 need SIRCL ring sessions") and text.endswith("carries no SIRCL layer")

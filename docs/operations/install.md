@@ -1,16 +1,17 @@
 # Install SparkRing
 
-`sparkring install` sets up two or four cabled DGX Sparks and starts one model.
-Run it on Node A, the Spark connected to your network. `sparkring setup` also
-forms lines and rings of up to eight Sparks
-([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)); the
-installer's profiles run on a pair or a four-Spark ring.
+`sparkring install` sets up two to eight cabled DGX Sparks and starts a
+model on all of them, or several models on separate groups of them. Run it on
+Node A, the Spark connected to your network. On the published images a model
+runs on a pair, a four-Spark ring or half of that ring; an image with SIRCL
+ring sessions runs models on lines and rings of up to eight Sparks
+([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)).
 
 [All commands and flags](commands.md) · [Reference](install-reference.md)
 
 ## Requirements
 
-- Two or four DGX Sparks on the same DGX OS (Ubuntu 24.04 ARM64) with working
+- Two to eight DGX Sparks on the same DGX OS (Ubuntu 24.04 ARM64) with working
   NVIDIA drivers, Docker, NVIDIA Container Toolkit, NetworkManager and SSH.
   Setup does not install drivers or firmware.
 - Root or sudo on every Spark.
@@ -38,8 +39,9 @@ installer's profiles run on a pair or a four-Spark ring.
 
 </details>
 
-Not supported: installer profiles on fabrics other than a pair or a
-four-Spark ring, other port layouts, and Docker's containerd image store
+Not supported: one model on a line of six or more Sparks, a model on other
+than a pair, a four-Spark ring or its halves without an image that carries
+SIRCL ring sessions, other port layouts, and Docker's containerd image store
 ([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
 
 ## Install
@@ -98,6 +100,23 @@ on Node A. [More about the setting](install-reference.md#four-spark-rings).
 A ring can also serve two two-Spark models, one on each half:
 `sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
 [Two models on one ring](install-reference.md#two-models-on-one-ring).
+
+## Several models on one fabric
+
+`--on` puts a model on consecutive Sparks and leaves the others to other
+models. On an eight-Spark ring with an image that carries SIRCL ring
+sessions:
+
+```bash
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 0-3
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 4-7
+```
+
+Each group serves its API on its first Spark; `sudo sparkring status` prints
+one block per group, and `--on` names the group for `down`, `up` and `check`.
+Four pairs (`--on 0,1` to `--on 6,7`) or a group across the cable to Node A
+(`--on 6-1`) work the same way. [Models on part of the
+fabric](install-reference.md#models-on-part-of-the-fabric).
 
 ## Reuse a model already on disk
 

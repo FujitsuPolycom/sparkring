@@ -549,17 +549,18 @@ def rank_rows(rows, plan=None):
     return result
 
 
-def not_in_effect(plan, statuses):
+def not_in_effect(plan, statuses, *, only=None):
     """M6 for ``sparkring up``: one line per Spark that lacks the setting, then the remedy; None when all have it.
 
     ``statuses`` holds each Spark's status document or the error that
-    prevented reading it.
+    prevented reading it. ``only``, when given, limits the check to those
+    ranks, such as the Sparks that relay a model's lanes on part of the fabric.
     """
     lines = []
     relaying = ranks(plan)
     for rank, value in enumerate(statuses):
         host = plan["spec"]["hosts"][rank]
-        if rank not in relaying:
+        if rank not in relaying or (only is not None and rank not in only):
             continue
         if not isinstance(value, dict):
             lines.append(f"rank {rank} ({host['host']}): cannot read its ConnectX hairpin status: {value}.")

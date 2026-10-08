@@ -195,8 +195,9 @@ def install_command(request=None, named=(), *, ignore_local=False):
     ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``,
     the serving settings ``serving`` (``runtime.common.serving``), the
     ``--transport`` and ``--nccl`` choices ``transport`` and ``nccl`` when the
-    operator named them and, for a deployment on half of a four-Spark ring,
-    ``placement``. With the
+    operator named them and, for a deployment on an arc of the fabric,
+    ``placement`` (``--on 2,3`` for two Sparks, ``--on 4-7`` from the first to
+    the last Spark of a longer arc). With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
@@ -210,7 +211,8 @@ def install_command(request=None, named=(), *, ignore_local=False):
     if request.get("profile"):
         argv += ["--profile", str(request["profile"])]
     if request.get("placement"):
-        argv += ["--on", ",".join(str(rank) for rank in request["placement"])]
+        positions = [str(rank) for rank in request["placement"]]
+        argv += ["--on", ",".join(positions) if len(positions) == 2 else f"{positions[0]}-{positions[-1]}"]
     if request.get("checkpoint"):
         argv += ["--checkpoint", str(request["checkpoint"])]
     if request.get("api_address"):
@@ -784,7 +786,7 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
         # Only a request that names the address SparkRing shows records it.
         request["api_address"] = given["api_address"]
     if given.get("placement"):
-        # Only a deployment on half of a four-Spark ring records its placement.
+        # Only a deployment on an arc of the fabric records its placement.
         request["placement"] = list(given["placement"])
     if given.get("serving"):
         # Only a deployment with other serving settings than its profile's records them.

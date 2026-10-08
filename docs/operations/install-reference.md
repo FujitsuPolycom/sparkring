@@ -957,8 +957,9 @@ Log lines beginning `RoCEnante rank` tell which rank was late and why.
 ### Automatic recovery
 
 Node A restarts the model by itself. Once a minute
-(`sparkring-recover.timer`), it checks the active model, or each half's model
-on a [ring that serves two](#two-models-on-one-ring), and, for the first four
+(`sparkring-recover.timer`), it checks the active model, or each group's
+model on a [fabric that serves several](#models-on-part-of-the-fabric), and,
+for the first four
 rows of the table, runs the same `up`, or `down` and then `up`, that the
 table names. It acts only when all of these hold:
 
@@ -1160,9 +1161,11 @@ ring and the end Sparks on which setup can run instead.
 without setting anything up ([command](commands.md#cabling)). For a loop it
 names the fewest swaps; when two choices tie, it leaves Node A's cables alone.
 
-The installer's profiles run on a pair or a four-Spark ring. Setup also forms
-and verifies the other layouts ([fabrics of up to eight
-Sparks](#fabrics-of-up-to-eight-sparks)); no installer profile serves them.
+On the published installer images, whose transport is the prepared one, the
+installer's profiles run on a pair, a four-Spark ring and its halves. On an
+image that carries SIRCL ring sessions they run on every layout setup forms
+([fabrics of up to eight Sparks](#fabrics-of-up-to-eight-sparks)), on all its
+Sparks or on some ([models on part of the fabric](#models-on-part-of-the-fabric)).
 
 ### Cable speed
 
@@ -1635,6 +1638,68 @@ deployment created. When those containers are created again, for example
 after `docker container prune` removed them while the model was stopped, the
 deployment's next `up` installs its mesh services again for the new
 containers, in the same way.
+
+## Models on part of the fabric
+
+A fabric serves one model on all its Sparks, or several models side by side
+on runs of consecutive Sparks that share no Spark. `--on` names the Sparks of
+one model:
+
+```bash
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 0-3   # positions 0 to 3
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 4-7   # positions 4 to 7, beside it
+sudo sparkring install --profile TWO_SPARK_PROFILE --on 6,7    # stops the model on 4-7, then serves on 6 and 7
+```
+
+- **Which Sparks.** `--on` takes consecutive positions in cable order, as a
+  list (`0,1`, `6,7,0,1`) or as the first and last position (`0-3`, `4-7`). On
+  a ring a group may cross the cable to Node A: `--on 6-1` is positions 6, 7,
+  0 and 1. The group has the profile's number of Sparks; `--on` naming every
+  Spark from Node A on is the same as no `--on`. On a pair, `--on` is refused.
+- **Ranks and API.** Rank `r` runs on the `r`-th Spark of the group, so its
+  first Spark serves the API at the profile's port: Node A's address when the
+  group starts at Node A, otherwise that Spark's own LAN address, or its
+  administration address, which only Node A reaches, when it has no LAN
+  connection. `Model ready:` and `sudo sparkring status` print each group's
+  URL.
+- **Which transport.** The prepared transport of the published images runs a
+  pair, a four-Spark ring and that ring's [halves](#two-models-on-one-ring),
+  `--on 0,1` and `--on 2,3`. Every other group needs [SIRCL ring
+  sessions](#transport-and-receipts): two Sparks that share a cable, a line of
+  three to five Sparks, or every Spark of a ring of three to eight. A line of
+  six or more Sparks is not supported: its end Sparks are four or more relays
+  apart, and SIRCL's lanes cross at most three. The installation names the
+  reason before it changes anything.
+- **What stops.** A group's installation replaces the model of the same group
+  and stops every model on a Spark it uses; models on other Sparks keep
+  serving. The plan lists each model it stops (`It stops PROFILE on Sparks
+  0-3.`), and the run asks before it stops one outside the named group;
+  `--yes` approves that.
+- **Without `--on`.** A profile of fewer Sparks than the fabric goes on the
+  one group, of those that divide the fabric from Node A (the halves of a
+  four-Spark ring for two Sparks, positions 0-3 and 4-7 of an eight-Spark ring
+  for four), on whose Sparks no model runs; the run says which. When several
+  or none are free, it asks for `--on`. A profile of more Sparks than the
+  fabric is refused with the installer profiles that fit.
+- **Its own Sparks.** A group's checkpoint plan and model steps call its
+  Sparks Node 0 onwards and name their host names; its checkpoint moves
+  between its own Sparks over their shared cables. A group of more than two
+  Sparks bootstraps over their management addresses, because the relays carry
+  only tagged RDMA traffic, and checks the fabric's [relay
+  table](#the-relay-table) on every Spark before it starts.
+- **Hairpin.** An installation on part of the fabric applies no ConnectX
+  hairpin change: a driver restart would interrupt the models beside it. A
+  Spark that relays the group's traffic (an inner Spark of a line) must have
+  the [setting](#the-hairpin-setting) in effect, which setup applies; the
+  installation stops and names `sudo sparkring setup` otherwise.
+
+`sudo sparkring status` prints one block per group: `Sparks 4-7:`, its shape,
+positions and API Spark (`Group: path-4 at positions 4, 5, 6, 7; API on
+Spark 4`), the saved operation, the transport and the API URL. `sudo sparkring
+down --on 4-7 --execute`, `up --on 4-7` and `check --on 4-7` act on one group;
+with several recorded, `up` and `down` without a profile ask for `--on`.
+[Automatic recovery](#automatic-recovery) restarts only the group that stopped
+serving.
 
 ## Two models on one ring
 

@@ -521,7 +521,7 @@ def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed
     assert retention.release_record(directory) is None
     # Once another operation ran, the record no longer applies and down runs the deployment's own stop.
     write_json(directory / "state.json", {**DOWN, "generation": 4})
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     assert controller.lifecycle(["down", PROFILE, "--instance", "iaaaaaaaaaaa4", "--execute"]) == 0
     assert calls == ["review-down", "down"]
     assert retention.release_record(directory) is None
@@ -532,7 +532,7 @@ def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed
 def test_up_releases_older_deployments_only_after_it_completes(tmp_path, monkeypatch, capsys):
     from runtime.host import recovery, retained_source
     monkeypatch.setattr(controller, "STATE", tmp_path)
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     monkeypatch.setattr(recovery, "started", lambda directory, enabled=None: None)
     monkeypatch.setattr(retained_source, "review", lambda directory, operation, **k: {
         "profile": PROFILE, "hosts": [HOSTS[0]], "phases": ["source", "start"]})
