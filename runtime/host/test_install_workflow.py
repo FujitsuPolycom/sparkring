@@ -27,11 +27,11 @@ import uuid
 
 import pytest
 
-from runtime.common import distribution, installer, installer_image
+from runtime.common import distribution, fabric_document, installer, installer_image
 from runtime.host import checkpoint_place as place
-from runtime.host import (api_endpoint, checkpoint_plan, control, controller, hairpin, hairpin_ring, install_assets,
-                          install_space, install_workflow as flow, node, rollout, single_uplink, test_hairpin,
-                          topology)
+from runtime.host import (api_endpoint, checkpoint_plan, control, controller, fabric, hairpin, hairpin_ring,
+                          install_assets, install_space, install_workflow as flow, node, rollout, single_uplink,
+                          test_hairpin, topology)
 from runtime.host.install_errors import NeedsInput
 from runtime.host.test_appliance import nodes
 from runtime.host.test_fabric_ssh import cluster as fabric_cluster
@@ -2579,6 +2579,8 @@ class SimulatedRing:
         monkeypatch.setattr(hairpin_ring, "DISPATCH_RETRY", 0)
         monkeypatch.setattr(controller, "collect", self.collect)
         monkeypatch.setattr(flow.discovery, "ssh", self.administration)
+        # Setup's last step reaches every Spark, Node A included, through fabric.Access.
+        monkeypatch.setattr(fabric, "Access", lambda plan, **options: RingFabricAccess(self))
         # Status documents report the same package revision as the inspect documents.
         monkeypatch.setattr(distribution, "installed", lambda root, verify=True: {"revision": "a" * 40})
 
@@ -2609,6 +2611,29 @@ class SimulatedRing:
 
     def changes(self):
         return [spark.changes() for spark in self.sparks]
+
+
+class RingFabricAccess:
+    """``fabric.Access`` on the simulated ring: the node side of setup's fabric verification and document step.
+
+    ``fabric-document`` runs the real ``fabric.install_document`` on the
+    Spark's file tree. ``fabric-check`` answers that the Spark's links,
+    addresses and record match, because the simulated Sparks have no routing
+    or traffic-control tables; ``test_fabric`` checks those rows.
+    """
+
+    def __init__(self, ring):
+        self.ring = ring
+
+    def node(self, rank, argv, *, data=None):
+        spark = self.ring.sparks[rank]
+        if argv == ["fabric-document"]:
+            return json.dumps(fabric.install_document(data, root=spark.root))
+        if argv == ["fabric-check"]:
+            fabric_document.validate(json.loads(data))
+            return json.dumps({"schema": fabric.CHECK_SCHEMA, "position": rank,
+                               "rows": [{"kind": "record", "what": "/etc/sparkring/fabric.json", "state": "ok"}]})
+        raise AssertionError(f"unexpected fabric command on rank {rank}: {argv}")
 
 
 def enrolled_ring(ring, monkeypatch):
@@ -2703,6 +2728,11 @@ def test_install_applies_the_hairpin_setting_to_a_ring_at_1024_and_repeats_as_a_
         assert all(current["hairpin"]["in_effect"] and current["hairpin"]["armed"] for current in record["plan"]["nodes"])
         [setup] = controller.STATE.glob("setups/*/setup.json")
         assert {"hairpin": "complete"} in json.loads(setup.read_text())["steps"]
+        # Setup ends by recording one fabric document on Node A and the same bytes on every Spark.
+        recorded = (controller.STATE / "fabric.json").read_text(encoding="utf-8")
+        assert json.loads(recorded)["verified"]["result"] == "healthy"
+        assert all(node.location(spark.root, fabric_document.HOST_PATH).read_text(encoding="utf-8") == recorded
+                   for spark in ring.sparks)
 
     # A second installation finds every Spark kept and changes no ConnectX function.
     changes, events = ring.changes(), list(ring.events)
