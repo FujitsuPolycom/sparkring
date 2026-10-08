@@ -87,6 +87,11 @@ each setting needs; the installer, `sparkring compose render` and the [Install
 Builder](../../docs/operations/compose-builder.md) refuse the setting, or do
 not offer it, on an image without it. A release whose own layer adds a
 capability, such as an image built from new sources, is listed in the file.
+So is an unpublished derived release, which has no `publication.json` to name
+its parent: `dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034`
+keeps the shared-memory reader of `dev-20261004-kraken-cuda1342-nccl2323-status034`,
+as its [CSF-sources record](compositions/kraken-csf-sources-20261007/README.md)
+states.
 
 ## Derived layers
 
@@ -287,7 +292,9 @@ sessions to a kraken-line image with a v2 lock and writes a
 ([release procedure](../../docs/development/releases.md)). Its layer holds:
 
 - the package, installed in the serving interpreter's site-packages (the
-  directory where the parent receipt records `vllm/__init__.py`) from a
+  `site-packages` or `dist-packages` directory where the parent receipt
+  records `vllm/__init__.py`; B12X's `b12x/integration/vllm` subpackage is
+  not one) from a
   reproducible wheel `sparkring_sircl-<version>-py3-none-any.whl`: every
   Python, C, header and JSON file of `spark_transport/sircl/sparkring_sircl`,
   SparkRing's RoCE GID resolver as the top-level module `spark_roce_gid`, and a
@@ -317,7 +324,7 @@ python3 runtime/images/sircl_layer.py prepare --parent-lock PARENT_LOCK \
   --wheel WHEELS/sparkring_sircl-0.2.0-py3-none-any.whl --natives NATIVES \
   [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
 python3 runtime/images/sircl_layer.py build --context CONTEXT --tag sparkring:sircl \
-  --name RELEASE --output LOCK
+  --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
 ```
 
 `wheel` and `prepare` are offline and the wheel's bytes depend only on the
@@ -325,18 +332,43 @@ checkout; `natives` needs the parent image on the build host. `record` (run by
 `build`) confirms that the parent has none of the added paths, runs SIRCL's
 probe in the built image (package and entry points found in site-packages,
 both libraries present), runs the installer's admission for every profile of
-the parent lock and writes the v3 lock with the pinned vLLM builds the probe
-reports. The lock's `image_reference` is the local configuration ID until
-publication replaces it. The deployment's SIRCL sessions read the layer's
-libraries through `SIRCL_NATIVE_LIBRARY` and `SIRCL_P2P_NATIVE_LIBRARY`
-([transport.py](../common/transport.py)).
+the lock and writes the v3 lock with the pinned vLLM builds the probe
+reports. The lock lists the parent lock's profiles, or those of `--profiles`,
+which may add the profiles that run only on SIRCL ring sessions and that a v2
+parent lock cannot list. The lock's `image_reference` is the local
+configuration ID until publication replaces it. The deployment's SIRCL
+sessions read the layer's libraries through `SIRCL_NATIVE_LIBRARY` and
+`SIRCL_P2P_NATIVE_LIBRARY` ([transport.py](../common/transport.py)).
 
-A parent that serves the GLM-5.3-Flash CSF checkpoint needs a software layer
-whose vLLM and B12X sources carry its loader; the SIRCL layer adds no model
-sources. Runtime-status 0.3.5, which adds SIRCL's facts to the dashboard's
-Transport table, enters an image through a
+The SIRCL layer adds no model sources. Runtime-status 0.3.5, which adds
+SIRCL's facts to the dashboard's Transport table, enters an image through a
 [status descriptor layer](#replacing-the-runtime-status-package) below the
 SIRCL layer.
+
+## CSF sources of the kraken line
+
+A parent that serves the GLM-5.3-Flash CSF checkpoint needs vLLM and B12X
+sources that carry its `nvfp4_csf` quantization and loader.
+[derive_kraken_csf_sources.py](derive_kraken_csf_sources.py)
+(`installer-kraken-csf-sources`) is a code layer over
+`dev-20261004-kraken-cuda1342-nccl2323-status034` that replaces 47 and adds 2
+Python files of `vllm/` and `b12x/` in site-packages with those of SparkRing's
+merges vLLM `bc9ea774` and B12X `cc36aa6f`. Its
+[source manifest](compositions/kraken-csf-sources-20261007/README.md) pins
+each file in the parent and in the merges, and `prepare` takes the files from
+a directory that holds them at their site-packages paths (`--sources`, such as
+the CSF source overlay) or from the payload archive (`--payload`). The layer
+writes no compiled file and none of the B12X sources the prepared transport
+verifies; its provenance receipt is
+`/opt/sparkring/receipts/derived-kraken-csf-sources.json`. `record` and
+`build` are those of [derived_layer.py](derived_layer.py).
+
+The SIRCL layer over this layer makes
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034`](../releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
+whose recipe gives the build, load and check commands.
+[layer_delta.py](layer_delta.py) writes a `docker load` archive of a derived
+image without the layers its parent provides, so a Spark that holds the parent
+loads only the added layers.
 
 ## Evidence
 

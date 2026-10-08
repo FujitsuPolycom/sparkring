@@ -13,7 +13,9 @@ sessions carry the model's collectives, with NCCL off: one session for the
 tensor-parallel group and one for each decode-context-parallel group of four
 Sparks. No image lock in this package lists the profile: install it with
 a development image lock (schema v3) whose image carries the SIRCL layer and
-lists `glm53-nvfp4-tp8`:
+lists `glm53-nvfp4-tp8`. The
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+builds such an image and lock:
 
 ```bash
 sudo sparkring install --profile glm53-nvfp4-tp8 --image-lock LOCK
@@ -55,7 +57,15 @@ before the profile leaves research-only:
   linears, W4A16 two-CTA experts, indexer prefill row splitting, the CKV gather
   capacity of 589,824 and the fused all-reduce with RMSNorm), its block size,
   CUDA graph capture sizes and GPU memory utilization.
-- An image whose vLLM serves `GlmMoeDsaForCausalLM` on the B12X attention
-  path: SIRCL's survey of image `aba309e4610c` records that its B12X
-  attention class needs a source change for this model
+- The image. Image `aba309e4610c`'s B12X attention class does not accept an
+  argument that `GlmMoeDsaForCausalLM` passes
   ([survey](../../spark_transport/sircl/sparkring_sircl/vllm/SURVEY.md#5-glm-53-at-tp8-with-dcp4-glmmoedsa)).
+  vLLM `bc9ea774`, which the [recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md) builds into an image, carries the
+  upstream change that passes it (`e3e03644`); no installation on that image
+  has run. Its sources read some of the settings above from these
+  variables: the CKV gather (`VLLM_B12X_MLA_CKV_GATHER`,
+  `VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS`, whose default 524,288 is below the
+  served capacity, and `VLLM_B12X_MLA_CKV_GATHER_MIXED`) and B12X's two CTAs
+  per SM for small-M W4A16 decode (`B12X_W4A16_SMALL_M_OCCUPANCY`). They also
+  carry GLM-5.3's MTP draft head (`VLLM_GLM53_MTP_DRAFT_HEAD`) and decode-time
+  L2 prefetch of its attention weights (`VLLM_L2_PREFETCH`).

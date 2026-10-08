@@ -43,7 +43,12 @@ through SIRCL's own launcher ([package status](../../spark_transport/sircl/STATU
   external-software receipt). The external-image builder declares modes for
   two and four ranks only (`HC_SUPPORTED_MODES` in
   [`external_context.py`](../../runtime/images/external_context.py)), so an
-  image built by it is refused until it declares eight.
+  image built by it is refused until it declares eight. The vLLM of the
+  kraken-line images, `d51b4181` and `bc9ea774`, also starts HC token-row
+  ownership only on tensor-parallel groups of two and four ranks
+  (`vllm/models/qwen4_exp/nvidia/hc_prefill.py`), so the
+  [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034`](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md) lock
+  does not list this profile.
 - The model's 24 attention heads, 16 and 48 linear-attention key and value
   heads and 512 experts divide by eight, and its two KV heads are replicated;
   the KV capacity and decode rate at TP8 are not measured.

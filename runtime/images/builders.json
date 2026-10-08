@@ -66,10 +66,19 @@
       ]
     },
     {
+      "id": "installer-kraken-csf-sources",
+      "path": "runtime/images/derive_kraken_csf_sources.py",
+      "kind": "python",
+      "reason": "Derive a kraken-line installer image whose vLLM and B12X Python sources are SparkRing's merges vLLM bc9ea774 and B12X cc36aa6f of Local Inference Lab's integration/karmic-kraken-beta, which read the GLM-5.3-Flash CSF checkpoint, over dev-20261004-kraken-cuda1342-nccl2323-status034; runtime/images/compositions/kraken-csf-sources-20261007/sources.json pins its 49 files in the parent and in the merges. Its unpublished result is the parent of the SIRCL layer of dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034."
+    },
+    {
       "id": "installer-sircl-layer",
       "path": "runtime/images/sircl_layer.py",
       "kind": "python",
-      "reason": "Add SIRCL ring sessions to a kraken-line installer image: the reproducible sparkring_sircl wheel in site-packages and both native libraries compiled in a network-less container of the parent image, recorded in its external-base receipt; prepare does not invoke Docker, and record probes and admits the built image and writes its sparkring-installer-image/v3 lock."
+      "reason": "Add SIRCL ring sessions to a kraken-line installer image: the reproducible sparkring_sircl wheel in site-packages and both native libraries compiled in a network-less container of the parent image, recorded in its external-base receipt; prepare does not invoke Docker, and record probes and admits the built image and writes its sparkring-installer-image/v3 lock.",
+      "releases": [
+        "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034"
+      ]
     },
     {
       "id": "installer-transport-window",

@@ -1,0 +1,18 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034",
+ "selection": "source-build",
+ "inputs": [
+  {
+   "path": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json",
+   "sha256": "f832ac0df98fd97b30c556868fee27574cb72e1b5f06fc115db12d9728309641"
+  },
+  {
+   "path": "runtime/images/compositions/kraken-csf-sources-20261007/sources.json",
+   "sha256": "79d9c32be94c44d59e1fe06facdaa77fed2518165dbf1c66e323fc78f9e55b7d"
+  }
+ ],
+ "image": {
+  "builder": "runtime/images/sircl_layer.py"
+ }
+}

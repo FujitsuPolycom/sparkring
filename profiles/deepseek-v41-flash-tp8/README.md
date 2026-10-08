@@ -12,7 +12,9 @@ The eight ranks reach each other through ConnectX relays, so only SIRCL ring
 sessions carry the model's collectives, with NCCL off. No image lock in this
 package lists the profile: install it with a development image lock
 (schema v3) whose image carries the SIRCL layer and lists
-`deepseek-v41-flash-tp8`:
+`deepseek-v41-flash-tp8`. The
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+builds such an image and lock:
 
 ```bash
 sudo sparkring install --profile deepseek-v41-flash-tp8 --image-lock LOCK
