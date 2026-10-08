@@ -506,7 +506,10 @@ algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
 `cycle-8`, and `path` and `cycle` for other sizes. A row is `measured` or
-`rules`, where SIRCL's sessions derive their own settings. The `cycle-8` row
+`rules`, where SIRCL's sessions derive their own settings. The shipped rows
+are the accepted defaults until `sudo sparkring fabric tune` measures a
+fabric: a `cycle-4` group, which has no row of its own, runs on SIRCL's own
+rules through the `cycle` row, and a pair takes the `pair` row. The `cycle-8` row
 holds the settings with which GLM-5.3 served at TP8 with NCCL off on an
 eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
 one-shot limit and 16 link slots of 512 KiB. A table that names
@@ -909,6 +912,10 @@ others as pipelines along the cables (`runtime/host/spread.py`):
 - **Repairs.** A file that arrives with another SHA-256 is sent again from the
   Spark before, which verified its copy. Sparks after a Spark that stopped
   answering are reached from the other direction of a cycle.
+- **Resuming.** A file a Spark wrote only partly, because a Spark or cable
+  stopped mid-file, is sent again from its first byte; the partial copy is
+  never extended. A file already placed with its pinned SHA-256 is reused and
+  not sent again, so repeating the command sends only what is missing.
 
 The install plan prints the spread before the checkpoint plan: the order, each
 pipeline and the bytes each Spark writes. It is saved in
@@ -924,9 +931,9 @@ with it by a reviewed plan ([Plan approval](#plan-approval)).
 A cluster set up before the fabric document existed keeps the relay for the
 image and copies checkpoint files cable by cable, level by level.
 
-`sudo sparkring fabric spread-check` runs the same spread with test files on
-any recorded layout and prints each Spark's finish time
-([fabric](commands.md#fabric)).
+`sudo sparkring fabric spread-check` is a user command: it runs the same
+spread with test files on any recorded layout and prints each Spark's finish
+time ([fabric](commands.md#fabric)).
 
 ### Without a reachable registry
 

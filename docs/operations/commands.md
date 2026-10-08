@@ -302,12 +302,15 @@ could not run.
 `sudo sparkring fabric spread-check [flags]` spreads test files from Node A
 to every Spark along the cables, as an install spreads the serving image and
 the checkpoint ([Spreading along the cables](install-reference.md#spreading-along-the-cables)).
+Run it to check a fabric's spread before an installation needs it or after
+recabling.
 It writes the files on Node A, places each on every other Spark only after its
 SHA-256 matches, prints when each Spark finished and how long after the Spark
 before it, and removes the files once every Spark holds them. It works on any
 recorded layout, including those no installer profile serves yet. A Spark that
 stops answering stops it with the message an install prints; repeating the
-command resumes. It changes files below `/var/lib/sparkring/spread/check` on
+command resumes: files already placed are reused, and a partly written file is
+sent again from its first byte. It changes files below `/var/lib/sparkring/spread/check` on
 every Spark and sends traffic on every cable. One line per pass and direction
 lists each Spark's position, when it finished after the start and how long
 after the Spark before it; the report is saved as
