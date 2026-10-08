@@ -233,6 +233,14 @@ def test_nccl_choices_apply_to_sircl_only():
         transport.nccl_mode("ring")
 
 
+def test_the_nccl_modes_and_rule_are_sircls_adapter_settings():
+    from spark_transport.sircl.sparkring_sircl.vllm import settings
+    assert transport.NCCL_MODES == settings.NCCL_MODES and transport.NCCL_ALIASES == settings.NCCL_MODE_ALIASES
+    assert transport.DEFAULT_NCCL == serve_plan.DEFAULT_NCCL_MODE == "never"
+    assert [transport.nccl_mode(mode) for mode in ("never", "auto", "topology")] == ["never", "auto", "auto"]
+    assert transport.nccl_rule() == serve_plan.NCCL_RULE == "NCCL: opt-in only (auto); tables choose among SIRCL options"
+
+
 # The section of the deployment lock.
 
 @pytest.mark.parametrize("shape, size, positions, layout, name, devices", [
@@ -305,8 +313,11 @@ def test_a_managed_backend_cannot_run_on_sircl():
 
 # The adapter.
 
-def launcher_plan(lock, nccl):
-    """The SIRCL launcher's plan for the same group, from the installer's adapted containers without SIRCL."""
+def launcher_plan(lock, nccl, **options):
+    """The SIRCL launcher's plan for the same group, from the installer's adapted containers without SIRCL.
+
+    ``options`` are further ``serve.plan.Options`` fields, such as ``tuning_tables`` and ``dcp_size``.
+    """
     plain = installer.specifications({key: value for key, value in lock.items() if key != "transport"})
     section = lock["transport"]
     ranks = []
@@ -337,7 +348,11 @@ def launcher_plan(lock, nccl):
     options = serve_plan.Options(
         positions=tuple(section["group"]["positions"]), model_path="/srv/model", nccl_mode=nccl,
         require_no_nccl=nccl == "never",
-        **{key: settings[key] for key in ("oneshot_max", "large_blocks", "ring_min", "chain_min") if key in settings})
+        **{key: settings[key] for key in ("capacity", "dispatch", "gather", "oneshot_max", "large_blocks", "ring_min",
+                                          "chain_min", "link_slots", "ring_gather_stagger") if key in settings},
+        link_sizes={key: settings[key] for key in ("link_slot", "link_chunk", "gather_link_chunk", "scatter_link_chunk",
+                                                   "reduce_link_chunk") if key in settings},
+        **options)
     return serve_plan.build_plan(site, profile, options, staged_digest="0" * 16, library="roce_proxy-" + "0" * 16 + ".so")
 
 
@@ -400,30 +415,98 @@ def test_with_nccl_auto_on_a_pair_nccl_uses_the_devices_facing_the_partner():
                for spec in specs)
 
 
-def test_a_measured_table_that_matches_the_group_is_mounted_and_named(tmp_path, monkeypatch):
+def package_image():
+    """A v3 image lock whose SIRCL layer is this checkout's SIRCL build, so the SIRCL launcher's sessions take
+    the same tables as the deployment's."""
+    from runtime.common.test_image_lock import sircl_block
     from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
-    image = sircl_lock()
-    cycle = document("cycle", 4)
+    key = {"native": sircl_tuning.native_hash(), "kernels": sircl_tuning.kernels_hash(),
+           "sircl": sircl_tuning.sircl_version()}
+    version, abi = key["sircl"].split("/abi")
+    block = sircl_block(version, int(abi))
+    block["native"] = {"path": f"{image_lock.LIBRARY_DIRECTORY}/roce_proxy-{key['native']}.so", "sha256": "2" * 64,
+                       "source_digest": key["native"]}
+    block["tuning_key"] = key
+    return sircl_lock(sircl=block)
+
+
+# A tune session's statistics: 16 link slots of 1 MiB, the default chain slot and large-message piece.
+TUNE_SESSION = {"link_slots": 16, "link_slot_bytes": 1 << 20, "chain_slot_bytes": 1 << 20,
+                "large_piece_bytes": 4 << 20}
+
+
+def ring_table(tmp_path, image):
+    """A measured SIRCL table for the four-Spark ring that chooses a ring all-reduce at 8 MiB, written in the
+    repository ``tmp_path``, and the default table naming it."""
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
     topology = transport.group_topology("ring:4", [0, 1, 2, 3])
     key = {**sircl_tuning.facts_for_layout(topology.session_layout(), topology.lane_count),
            **image["sircl"]["tuning_key"]}
     measured = sircl_tuning.build_document(key, [
         {"collective": "all_reduce", "mode": "eager", "bytes": 1 << 20, "choice": {"algorithm": "twoshot"},
-         "p50_us": 100.0}])
+         "p50_us": 100.0},
+        {"collective": "all_reduce", "mode": "eager", "bytes": 8 << 20,
+         "choice": {"schedule": "ring", "piece": 1 << 20, "stagger": 1, "gather_stagger": 1}, "p50_us": 900.0}],
+        session=TUNE_SESSION)
     path = tmp_path / "runtime/tables/cycle4.json"
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps(measured))
     table = dict(transport.load_tuning(), tables=[{"path": "runtime/tables/cycle4.json",
                                                    "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}])
     transport.validate_tuning(table, root=tmp_path)
-    section = transport.section(image, cycle, [0, 1, 2, 3], nccl="never", tuning=table, root=tmp_path)
+    return measured, path, table
+
+
+def test_a_measured_table_that_matches_the_group_is_mounted_named_and_its_settings_recorded(tmp_path):
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    image = sircl_lock()
+    measured, _, table = ring_table(tmp_path, image)
+    assert measured["settings"] == {"SIRCL_LINK_SLOTS": 16, "SIRCL_LINK_SLOT_BYTES": 1 << 20}
+    section = transport.section(image, document("cycle", 4), [0, 1, 2, 3], nccl="never", tuning=table, root=tmp_path)
     digest = sircl_tuning.document_hash(measured)
-    assert section["tuning"]["tables"] == [{**table["tables"][0], "hash": digest}]
+    assert section["tuning"]["tables"] == [{**table["tables"][0], "hash": digest, "settings": measured["settings"]}]
+    assert transport.expected_session_settings(section) == {"link_slot_bytes": 1 << 20, "link_slots": 16}
     lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64, image_runtime=image_lock.v2_view(image),
                                transport=section)
     spec = installer.specifications(lock)[0]
     assert spec.environment["SIRCL_TUNING_TABLE"] == f"{transport.TABLE_TARGET}/{digest}.json"
     assert any(mount.target == f"{transport.TABLE_TARGET}/{digest}.json" and mount.read_only for mount in spec.mounts)
+    # The session applies the table's settings itself; the row sets none.
+    assert "SIRCL_LINK_SLOTS" not in spec.environment and "SIRCL_LINK_SLOT_BYTES" not in spec.environment
+    assert (f"  SIRCL tuning table {digest}: the measured algorithm, schedule, piece and launch grid per collective "
+            "and size; its session applies SIRCL_LINK_SLOTS=16, SIRCL_LINK_SLOT_BYTES=1048576 where the row leaves "
+            "them unset") in transport.plan_lines(section)
+    # A row that gives the session fewer link slots than the table's choices need is refused.
+    fewer = copy.deepcopy(table)
+    fewer["layouts"]["cycle"]["settings"] = {"link_slots": 8}
+    section = transport.section(image, document("cycle", 4), [0, 1, 2, 3], nccl="never", tuning=fewer, root=tmp_path)
+    assert transport.expected_session_settings(section) == {"link_slot_bytes": 1 << 20, "link_slots": 8}
+    lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64, image_runtime=image_lock.v2_view(image),
+                               transport=section)
+    with pytest.raises(transport.TransportError, match="more than the tuning row cycle sets: SIRCL_LINK_SLOTS=8"):
+        installer.specifications(lock)
+
+
+def test_a_session_on_a_measured_table_gets_the_settings_the_sircl_launcher_gives_it(tmp_path):
+    image = package_image()
+    _, path, table = ring_table(tmp_path, image)
+    section = transport.section(image, document("cycle", 4), [0, 1, 2, 3], nccl="never", tuning=table, root=tmp_path)
+    lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64, image_runtime=image_lock.v2_view(image),
+                               transport=section)
+    planned = launcher_plan(lock, "never", tuning_tables=(str(path),))
+    (entry,) = section["tuning"]["tables"]
+    assert planned.tuning.expected()["tp"] == entry["hash"]
+    assert planned.tuning.settings_of("tp") == entry["settings"]
+    for spec, launch in zip(installer.specifications(lock), planned.ranks, strict=True):
+        ours, theirs = spec.environment, launch.environment
+        # Each launcher names the table at its own container path.
+        sircl = {key for key in theirs if key.startswith("SIRCL_")} - LAUNCHER_ONLY - {"SIRCL_TUNING_TABLE"}
+        assert {key for key in ours if key.startswith("SIRCL_")} - ADAPTER_ONLY - {"SIRCL_TUNING_TABLE"} == sircl
+        assert {key: ours.get(key) for key in sircl} == {key: theirs.get(key) for key in sircl}
+        assert "SIRCL_TUNING_TABLE" in ours and "SIRCL_TUNING_TABLE" in theirs
+    # The launcher refuses a link slot count below the table's, as the adapter refuses the row's.
+    with pytest.raises(serve_plan.ServePlanError, match="SIRCL_LINK_SLOTS=8"):
+        launcher_plan(lock, "never", tuning_tables=(str(path),), link_slots=8)
 
 
 def test_a_profile_that_sets_a_variable_the_adapter_owns_is_refused(monkeypatch):
@@ -466,6 +549,7 @@ def test_the_plan_says_what_carries_the_collectives_and_where_the_settings_come_
     assert transport.plan_lines(cycle)[0] == ("Transport: sircl on every collective, NCCL off (default table, "
                                               "cycle-4: not measured, SIRCL's own rules apply)")
     assert "at most 1 relay on a lane" in transport.plan_lines(cycle)[1]
+    assert transport.plan_lines(cycle)[2] == "  NCCL: opt-in only (auto); tables choose among SIRCL options"
     _, pair = sircl_deployment(TP2, "pair", 2, [0, 1], nccl="auto")
     assert pair["group"]["cabling"] == "all"
     assert transport.plan_lines(pair)[0].startswith("Transport: sircl; NCCL may carry what the cabling allows")
@@ -626,6 +710,42 @@ def test_every_eight_spark_profile_renders_on_sircl_on_every_spark_of_an_eight_s
         assert command[command.index("--tensor-parallel-size") + 1] == "8"
         assert command[command.index("--node-rank") + 1] == str(rank)
         assert ("--headless" in command) == (rank > 0)
+
+
+def test_decode_context_parallel_sessions_get_the_settings_the_sircl_launchers_dcp_size_gives(monkeypatch):
+    lock, _ = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    # The launcher's --dcp-size serves only the checkpoints of its list; the parity plan's placeholder
+    # checkpoint joins that list as GLM-5.3, whose attention needs no interleave size.
+    monkeypatch.setitem(serve_plan.DCP_MODELS, "m/m", "GLM-5.3")
+    planned = launcher_plan(lock, "never", dcp_size=4)
+    assert [session.name for session in planned.sessions()] == ["tp", "dcp"]
+    assert planned.required_shims[:2] == ("dcp_all_to_all", "dcp_b12x_transport")
+    for spec, launch in zip(installer.specifications(lock), planned.ranks, strict=True):
+        ours, theirs = spec.environment, launch.environment
+        sircl = {key for key in theirs if key.startswith("SIRCL_")} - LAUNCHER_ONLY
+        assert {key for key in ours if key.startswith("SIRCL_")} - ADAPTER_ONLY == sircl
+        assert {key: ours.get(key) for key in sircl} == {key: theirs.get(key) for key in sircl}
+        assert ours["SIRCL_GROUPS"] == "tp,dcp"
+
+
+def test_decode_context_parallelism_follows_the_launchers_interleave_and_mhc_rules():
+    lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    command = ["vllm", "serve", "--decode-context-parallel-size", "4"]
+    flash = copy.deepcopy(lock)
+    flash["selection"]["model_repository"] = "local-inference-lab/GLM-5.3-Flash-NVFP4"
+    # GLM-5.3-Flash's attention needs the KV cache interleaved in blocks of a multiple of 4.
+    assert transport.dcp_interleave(flash, command) == "4"
+    with pytest.raises(transport.TransportError, match="divisible by 4"):
+        transport.dcp_interleave(flash, [*command, "--cp-kv-cache-interleave-size", "1"])
+    # GLM-5.3, which the eight-Spark profile serves, needs none.
+    assert transport.dcp_interleave(lock, [*command, "--cp-kv-cache-interleave-size", "1"]) is None
+    # mHC prefill row ownership starts only at the sizes a pinned vLLM build admits; TP8 with DCP 4 is not one.
+    groups = transport.dcp_groups(section, command)
+    effective, _ = transport.policy(section, {})
+    transport.dcp_problems(section, groups, {serve_plan.MHC_SHARD: "0"}, command, effective)
+    with pytest.raises(transport.TransportError,
+                       match="no pinned vLLM build starts at TP8 with decode-context parallelism 4"):
+        transport.dcp_problems(section, groups, {serve_plan.MHC_SHARD: "1"}, command, effective)
 
 
 def test_decode_context_parallel_groups_get_sessions_inside_the_tensor_parallel_group():

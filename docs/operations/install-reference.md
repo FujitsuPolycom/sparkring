@@ -494,7 +494,8 @@ the transports each image carries.
 - `--nccl auto` lets NCCL carry the collectives the cabling allows: every
   collective on a pair, NCCL's ring algorithm on a whole cycle, none across
   relays. `--nccl never` is the default; `topology` is another name for
-  `auto`. `--nccl` applies to SIRCL deployments only.
+  `auto`. `--nccl` applies to SIRCL deployments only. The plan states the
+  rule: `NCCL: opt-in only (auto); tables choose among SIRCL options`.
 - The transport, the NCCL setting, the fabric and the tuning table are part
   of the deployment, so another choice installs a separate deployment. A
   deployment made on another fabric does not start; `sudo sparkring install`
@@ -511,7 +512,13 @@ eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
 one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
 for that group's sessions, and each session's setup agreement carries its
-hash, so every rank decides from the same table.
+hash, so every rank decides from the same table. A SIRCL table records the
+session settings its choices ran under (link slots, link slot, chain slot and
+large-message piece); the session applies those the row leaves unset, and a
+row that sets fewer link slots or a smaller link slot than the table's is
+refused. A table's marks of where NCCL measured faster never route a call to
+NCCL. Without a table or a row setting, a session takes twice its ranks in link
+slots, at least 8.
 
 `sudo sparkring fabric tune` measures this fabric and writes
 `/var/lib/sparkring/controller/sircl-tuning.json`
@@ -528,7 +535,12 @@ and the NCCL lines of its model log and judges them:
 - with NCCL off, no group built PyNccl or sent a collective to NCCL, and no
   log shows an NCCL communicator (the containers log NCCL's initialization for
   this check);
-- the sessions decided from the tuning table the deployment recorded.
+- with decode-context parallelism, every rank also has a
+  decode-context-parallel group with a SIRCL session;
+- the sessions decided from the tuning table the deployment recorded, and
+  report the link slots, link slot, chain slot and large-message piece that
+  the row or, where it sets none, the table sets;
+- each receipt names the deployment's NCCL mode.
 
 The summary card's `Transport:` line shows the verdict, for example
 `sircl, NCCL: absent`. A differing verdict is reported; the model keeps
@@ -1505,13 +1517,13 @@ each named by its SHA-256. The table records:
 | `fabric` | The fabric document's identity: another cabling, Spark or port invalidates it |
 | `image_id`, `binding.image`, `binding.tuning_key` | The installer image and its SIRCL build: another image, SIRCL version or SIRCL source invalidates it |
 | `binding.drivers` | Each Spark's GPU driver and kernel: a change on Node A invalidates it; the measurement refuses Sparks whose drivers differ |
-| `layouts` | `measured` rows with the session settings the measured choices ran under (link slots, link slot); `default:<source>` rows carried from the default table |
-| `tables` | The measured SIRCL tables |
+| `layouts` | `measured` rows, which set no session settings; `default:<source>` rows carried from the default table |
+| `tables` | The measured SIRCL tables, each with the session settings its choices ran under (link slots, link slot, chain slot, large-message piece) |
 
 A deployment records the table's digest in its lock, mounts the SIRCL table
 of its group read-only in every rank's container and checks each Spark's copy
 before a container starts. Its receipts must show that every session decided
-from that table and uses the row's settings. A deployment made before the
+from that table and uses the table's settings. A deployment made before the
 measurement keeps its own table; `sudo sparkring install` makes another one on
 the measured table. `sudo sparkring status` prints which table installations
 use, and `sudo sparkring fabric tune --distribute` copies the tables to a

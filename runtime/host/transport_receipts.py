@@ -25,12 +25,18 @@ checks (``sparkring_sircl.vllm.serve.checks``):
   an NCCL communicator;
 - with ``--nccl auto``: no group whose policy is ``none`` built PyNccl or
   sent a collective to NCCL;
+- with decode-context parallelism above 1 in the profile's command, every
+  rank also holds a decode-context-parallel receipt with a SIRCL session;
 - each session decided from the measured tuning table the deployment's
-  transport section matched (none: SIRCL's rules), and with a ``large_blocks``
-  tuning setting its sessions report that grid cap;
-- with ``link_slots`` or ``link_slot`` tuning settings (a row measured by
-  ``sudo sparkring fabric tune`` sets those its measured choices ran under),
-  every tensor-parallel session reports those values.
+  transport section matched (none: SIRCL's rules; a decode-context-parallel
+  session takes none), and with a ``large_blocks`` tuning setting its
+  sessions report that grid cap;
+- every tensor-parallel session reports the link slots, link slot, chain slot
+  and large-message piece that the tuning row sets or, where the row leaves
+  them unset, the matched SIRCL table records
+  (``transport.expected_session_settings``);
+- every receipt that names its NCCL mode names the deployment's (receipts
+  state the mode and SIRCL's NCCL rule, ``nccl_mode`` and ``nccl_rule``).
 
 The verdict is ``as-expected``, ``differs`` (with each problem) or
 ``unknown`` when a Spark could not be read. ``record`` copies the receipts to
@@ -58,8 +64,6 @@ MAX_RECEIPT_BYTES = 1 << 20
 MAX_MATCHES = 50
 TAIL_LINES = 200
 LOG_SECONDS = 300
-# Tuning-row settings a session reports in its statistics (``stats()``), by the statistics key.
-REPORTED_SETTINGS = {"link_slots": "link_slots", "link_slot": "link_slot_bytes"}
 
 
 def _patterns():
@@ -197,9 +201,9 @@ def _rows(receipts):
             for key, calls in sorted(totals.items(), key=lambda item: tuple(map(str, item[0])))]
 
 
-def settings_findings(receipts, settings):
-    """``(lines, problems)``: each rank's tensor-parallel session against the tuning row's reported settings."""
-    expected = {stat: settings[name] for name, stat in REPORTED_SETTINGS.items() if name in settings}
+def settings_findings(receipts, expected):
+    """``(lines, problems)``: each rank's tensor-parallel session against ``expected``, the statistics the
+    tuning row and its SIRCL table set (``transport.expected_session_settings``)."""
     if not expected:
         return [], []
     lines, problems = [], []
@@ -211,11 +215,42 @@ def settings_findings(receipts, settings):
             continue
         for stat, value in sorted(expected.items()):
             if stats.get(stat) != value:
-                problems.append(f"rank {rank}: the session's {stat} is {stats.get(stat)}, the tuning row sets {value}")
+                problems.append(f"rank {rank}: the session's {stat} is {stats.get(stat)}, the tuning row and its "
+                                f"table set {value}")
     if not problems:
-        lines.append("tuning settings: the sessions report the row's " + ", ".join(
+        lines.append("tuning settings: the sessions report the row's and its table's " + ", ".join(
             f"{stat} {value}" for stat, value in sorted(expected.items())))
     return lines, problems
+
+
+def nccl_mode_findings(receipts, mode):
+    """``(lines, problems)``: the NCCL mode each receipt names against the deployment's ``mode``."""
+    lines, problems, unnamed = [], [], []
+    for rank, records in sorted(receipts.items()):
+        for record in records:
+            named = record.get("nccl_mode")
+            if named is None:
+                unnamed.append(f"rank {rank} group {record.get('group')}")
+            elif named != mode:
+                problems.append(f"rank {rank} group {record.get('group')}: the receipt names NCCL mode {named}, the "
+                                f"deployment sets {mode}")
+    if unnamed:
+        lines.append("NCCL mode: not stated by the receipts of " + ", ".join(unnamed[:8]) + " (not judged)")
+    elif receipts and not problems:
+        lines.append(f"NCCL mode: every receipt names {mode} ({transport.nccl_rule()})")
+    return lines, problems
+
+
+def decode_context_parallel(lock):
+    """``(size, reason)``: the decode-context parallelism of the deployment's command (1 without it), and why
+    it could not be read (None when it could)."""
+    from runtime.common import installer
+    from spark_transport.sircl.sparkring_sircl.vllm.serve import plan
+    try:
+        command = installer.specifications(lock, only_rank=0)[0].command
+    except (OSError, ValueError, KeyError) as error:
+        return 1, str(error)
+    return plan.recipe_dcp(command), None
 
 
 def evaluate(lock, reports, *, now=time.time):
@@ -237,16 +272,24 @@ def evaluate(lock, reports, *, now=time.time):
         logs[rank] = list(log.get("init") or []) + list(log.get("library") or [])
         if log and not log.get("complete", True):
             lines.append(f"rank {rank}: the log was read for {LOG_SECONDS} s and not to its end")
-    found, summary = checks.evaluate_receipts(receipts, world)
+    dcp, unread = decode_context_parallel(lock)
+    if unread:
+        lines.append(f"decode-context-parallel receipts: the deployment's command could not be rendered ({unread}); "
+                     "not judged")
+    found, summary = checks.evaluate_receipts(receipts, world, dcp=dcp)
     problems += found
     lines += summary
+    mode_lines, mode_problems = nccl_mode_findings(receipts, section["nccl"])
+    lines += mode_lines
+    problems += mode_problems
     if section["nccl"] == "never":
         free_lines, free_problems = checks.nccl_free_findings(receipts, world)
         log_lines, log_problems = checks.nccl_log_findings(logs, debug=True)
         lines += free_lines + log_lines
         problems += free_problems + log_problems
     tables = section["tuning"]["tables"]
-    tuning_lines, tuning_problems = checks.tuning_findings(receipts, {"tp": tables[0]["hash"] if tables else None})
+    expected = {"tp": tables[0]["hash"] if tables else None, **({"dcp": None} if dcp > 1 else {})}
+    tuning_lines, tuning_problems = checks.tuning_findings(receipts, expected)
     lines += tuning_lines
     problems += tuning_problems
     blocks = section["tuning"]["settings"].get("large_blocks")
@@ -254,7 +297,7 @@ def evaluate(lock, reports, *, now=time.time):
         block_lines, block_problems = checks.large_blocks_findings(receipts, blocks)
         lines += block_lines
         problems += block_problems
-    setting_lines, setting_problems = settings_findings(receipts, section["tuning"]["settings"])
+    setting_lines, setting_problems = settings_findings(receipts, transport.expected_session_settings(section))
     lines += setting_lines
     problems += setting_problems
     rows = _rows(receipts)
@@ -266,7 +309,8 @@ def evaluate(lock, reports, *, now=time.time):
     else:
         verdict = "as-expected" if not problems else "differs"
         observed = "present" if nccl_rows or log_hits else "absent"
-    return {"schema": VERDICT_SCHEMA, "backend": "sircl", "nccl": section["nccl"], "expected": expectation(section),
+    return {"schema": VERDICT_SCHEMA, "backend": "sircl", "nccl": section["nccl"], "nccl_rule": transport.nccl_rule(),
+            "expected": expectation(section),
             "verdict": verdict, "nccl_observed": observed, "fabric": section["fabric"]["id"],
             "group": section["group"]["name"], "checked_at": _iso(now()), "ranks_read": world - len(unreadable),
             "groups": {"tp": {"rows": rows}}, "problems": problems, "lines": lines}

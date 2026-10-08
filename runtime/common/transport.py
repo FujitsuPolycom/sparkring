@@ -17,7 +17,10 @@ Every ``sparkring install`` deployment runs on one of two transports:
 SIRCL deployment (``nccl: never``) unless the operator opts in with
 ``--nccl auto``, which lets NCCL carry the collectives the group's cabling
 allows: every collective on a pair, NCCL's ring algorithm on a whole cycle,
-none on a group whose members are not all neighbors around it.
+none on a group whose members are not all neighbors around it. ``topology``
+is another name for ``auto``. The modes, their other names and the rule the
+plan text states (``nccl_rule``: NCCL is opt-in only, and tables choose among
+SIRCL options) are SIRCL's adapter settings (``sparkring_sircl.vllm.settings``).
 
 The deployment lock records the decision as its ``transport`` section
 (``section``, schema ``sparkring-transport/v1``): the fabric document's
@@ -33,9 +36,15 @@ grid, schedules, minimums, link sizes, capacities and waits), with each
 row's evidence (``measured``, ``rules`` for SIRCL's own derivation,
 ``inherited:<row>``). ``tables`` names measured SIRCL tuning tables
 (``sircl-tuning-table/v1``: per collective, size and mode, the fastest SIRCL
-algorithm, schedule, piece and launch grid); each session takes the one whose
-key matches its group and the image's SIRCL build, and its hash joins the
-session's setup agreement. Two tables exist:
+algorithm, schedule, piece and launch grid, and the session settings those
+choices ran under and need: link slots, link slot, chain slot and
+large-message piece); each session takes the one whose key matches its group
+and the image's SIRCL build, applies the table's settings that its
+environment leaves unset, and its hash joins the session's setup agreement.
+The section records the matched table's settings; a tuning row that sets a
+link slot count or link slot below the table's is refused, as the SIRCL
+launcher refuses it, because the table's choices could not run. A table's
+marks of where NCCL measured faster route no call. Two tables exist:
 
 - the default table, ``runtime/common/sircl-tuning-defaults.json``
   (``source: defaults``), bound to no fabric and no image; its ``tables``
@@ -95,8 +104,9 @@ BINDING_FIELDS = frozenset({"image", "tuning_key", "drivers", "defaults_sha256",
 DRIVER_FIELDS = ("gpu", "kernel")
 DRIVER_LABELS = {"gpu": "GPU driver", "kernel": "kernel"}
 BACKENDS = ("sircl", "prepared")
+# SIRCL's NCCL modes and their other names (sparkring_sircl.vllm.settings NCCL_MODES and NCCL_MODE_ALIASES),
+# kept here for the commands' --nccl choices; test_transport.py compares the two.
 NCCL_MODES = ("never", "auto")
-# The SIRCL launcher's other name for auto.
 NCCL_ALIASES = {"topology": "auto"}
 DEFAULT_NCCL = "never"
 # Container paths of the receipts and of measured tuning tables; the fabric
@@ -138,13 +148,26 @@ def _sircl():
     return plan, guard, fabric
 
 
+def _adapter_settings():
+    from spark_transport.sircl.sparkring_sircl.vllm import settings
+    return settings
+
+
 def nccl_mode(value):
-    """``--nccl`` as recorded: ``never`` or ``auto`` (``topology`` reads as ``auto``); None stays None."""
+    """``--nccl`` as recorded: the mode SIRCL's adapter names, ``never`` or ``auto`` (``topology`` is ``auto``);
+    None stays None."""
     if value is None:
         return None
-    value = NCCL_ALIASES.get(value, value)
-    _require(value in NCCL_MODES, f"--nccl takes never or auto, not {value!r}")
+    settings = _adapter_settings()
+    value = settings.nccl_mode_name(value)
+    _require(value in settings.NCCL_MODES, f"--nccl takes never or auto, not {value!r}")
     return value
+
+
+def nccl_rule():
+    """The NCCL rule SIRCL's plans, bundles and receipts state: ``NCCL: opt-in only (auto); tables choose among
+    SIRCL options``."""
+    return _adapter_settings().NCCL_RULE
 
 
 # The tuning table.
@@ -446,7 +469,8 @@ def section(image_value, document, positions, *, nccl, tuning, root=ROOT, host_r
 
     ``tuning`` is the table in effect (``tuning_in_effect``); the section
     records its digest, the group's row and the one table of ``tuning`` whose
-    key matches the group and the image's SIRCL build, if any.
+    key matches the group and the image's SIRCL build, if any, with the
+    session settings that table records.
     """
     _require(unavailable(image_value, document) is None, "SIRCL cannot run: " + str(unavailable(image_value, document)))
     nccl = nccl_mode(nccl) or DEFAULT_NCCL
@@ -466,7 +490,7 @@ def section(image_value, document, positions, *, nccl, tuning, root=ROOT, host_r
             path = table_file(entry, root=root, host_root=host_root)
             table = sircl_tuning.Table(json.loads(path.read_text(encoding="utf-8")), entry["path"])
             if not table.mismatches(facts):
-                tables.append({**entry, "hash": table.hash})
+                tables.append({**entry, "hash": table.hash, "settings": dict(table.settings)})
         _require(len(tables) <= 1, "several measured tuning tables match this group and image")
     return {
         "schema": SECTION_SCHEMA, "backend": "sircl", "nccl": nccl, "image": image_value["name"],
@@ -524,14 +548,20 @@ def validate_section(value, card, image_runtime):
              "The transport section records the tuning table's digest, row and settings")
     _require(("measured_at" in tuning) == (tuning["source"] == "measured"),
              "The transport section dates a measured tuning table and only a measured one")
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
     for entry in tuning["tables"]:
-        _require(isinstance(entry, dict) and set(entry) == {"path", "sha256", "hash"}
+        _require(isinstance(entry, dict) and set(entry) == {"path", "sha256", "hash", "settings"}
                  and isinstance(entry["sha256"], str) and _SHA256.fullmatch(entry["sha256"])
                  and isinstance(entry["hash"], str) and _SHORT.fullmatch(entry["hash"])
                  and isinstance(entry["path"], str)
                  and (not PurePosixPath(entry["path"]).is_absolute()
                       or _HOST_TABLE.fullmatch(entry["path"]) is not None),
-                 "The transport section names each SIRCL tuning table by path, SHA-256 and hash")
+                 "The transport section names each SIRCL tuning table by path, SHA-256, hash and settings")
+        _require(isinstance(entry["settings"], dict)
+                 and all(name in sircl_tuning.SETTINGS and type(number) is int and number >= 1
+                         for name, number in entry["settings"].items()),
+                 "A SIRCL tuning table's settings are positive integers of " + ", ".join(sircl_tuning.SETTINGS))
+    _require(len(tuning["tables"]) <= 1, "The transport section names at most one SIRCL tuning table")
     for key, setting in tuning["settings"].items():
         _require(key in SETTINGS and _setting(key, setting), f"Tuning setting {key}={setting!r} is not passed")
     image_lock.validate_sircl(value["sircl"])
@@ -587,6 +617,56 @@ def dcp_groups(value, arguments):
         raise TransportError(str(error)) from None
 
 
+def table_settings(value):
+    """The session settings (``tuning.SETTINGS``) of the SIRCL tuning table the tensor-parallel session of the
+    transport section ``value`` takes; empty when it takes none and its rules choose."""
+    tables = value["tuning"]["tables"]
+    return dict(tables[0]["settings"]) if tables else {}
+
+
+# The tuning-row settings that set a variable of tuning.SETTINGS, which the session then takes instead of the
+# table's: the row's link slot count and link slot.
+ROW_TABLE_SETTINGS = {"link_slots": "SIRCL_LINK_SLOTS", "link_slot": "SIRCL_LINK_SLOT_BYTES"}
+
+
+def expected_session_settings(value):
+    """``{stats() field: value}`` the tensor-parallel session of ``value`` reports for the variables of
+    ``tuning.SETTINGS`` that the tuning row or the table sets: the row's value where it sets one, else the
+    table's, which the session applies where its environment leaves the variable unset."""
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    found = dict(table_settings(value))
+    row = value["tuning"]["settings"]
+    found.update({variable: row[name] for name, variable in ROW_TABLE_SETTINGS.items() if name in row})
+    return {sircl_tuning.SETTING_STATS[variable]: number for variable, number in sorted(found.items())}
+
+
+def dcp_problems(value, groups, profile_environment, arguments, effective):
+    """Refuse decode-context parallelism where the SIRCL launcher's ``--dcp-size`` refuses it.
+
+    With mHC prefill row ownership on (``VLLM_GLM53_MHC_PREFILL_SHARD``),
+    GLM-5.3-Flash starts only at the tensor and decode-context sizes a pinned
+    vLLM build admits (``pins.MHC_ADMITS``, ``serve.plan.mhc_dcp_problem``).
+    On a tensor-parallel group where NCCL may run, decode-context-parallel
+    groups where it may not run refuse the settings that need NCCL there
+    (``serve.plan.relay_conflicts``). The launcher's ``--dcp-size`` also
+    requires a checkpoint of its list (``serve.plan.DCP_MODELS``) and the B12X
+    attention backend; installer profiles set decode-context parallelism in
+    their own recipe and are not checked against that list.
+    """
+    plan, guard, _ = _sircl()
+    tensor, size = len(value["group"]["positions"]), len(groups[0].members)
+    mhc = profile_environment.get(plan.MHC_SHARD, "0").strip() not in ("", "0")
+    _require(plan.mhc_dcp_problem(tensor, size, mhc) is None,
+             f"the profile turns on GLM-5.3-Flash's mHC prefill row ownership ({plan.MHC_SHARD}=1), which no pinned "
+             f"vLLM build starts at TP{tensor} with decode-context parallelism {size} (sparkring_sircl.vllm.pins)")
+    policy_, reason = guard.effective_policy(groups[0].nccl_policy, groups[0].nccl_reason, nccl_mode=value["nccl"],
+                                             environ=profile_environment)
+    if policy_.value == "none" and effective.value != "none":
+        conflicts = plan.relay_conflicts(arguments, profile_environment)
+        _require(not conflicts, "SIRCL's communicator refuses this profile's decode-context-parallel groups, where "
+                                f"NCCL may not run ({reason}): " + "; ".join(conflicts))
+
+
 def environment(value, profile_environment, arguments):
     """The SIRCL variables every rank's container gets, and the checks the SIRCL launcher applies.
 
@@ -594,7 +674,9 @@ def environment(value, profile_environment, arguments):
     its command, which holds the recipe's vLLM arguments.
     """
     plan, _, _ = _sircl()
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
     settings = value["tuning"]["settings"]
+    taken = table_settings(value)
     topology = group_topology(value["group"]["layout"], value["group"]["positions"])
     capacity = settings.get("capacity", plan.DEFAULT_CAPACITY)
     dispatch = settings.get("dispatch", capacity)
@@ -628,15 +710,20 @@ def environment(value, profile_environment, arguments):
                                                "reduce_link_chunk") if name in settings}
     schedules = {name: settings[name] for name in SCHEDULE_SETTINGS if name in settings}
     try:
+        # The tensor-parallel session applies its table's settings where the row leaves them unset.
         sessions = [plan.session_settings(topology, name="tp", groups="", scoped=True, schedules=schedules,
                                           link_sizes=links, link_slots=settings.get("link_slots"),
-                                          ring_gather_stagger=settings.get("ring_gather_stagger"))]
+                                          ring_gather_stagger=settings.get("ring_gather_stagger"),
+                                          table_settings=taken)]
         dcp = dcp_groups(value, arguments)
         if dcp:
             # Each decode-context-parallel group gets a session of its own with the session defaults: the
-            # tuning row's schedules and link sizes apply to the tensor-parallel session only.
+            # tuning row's schedules and link sizes apply to the tensor-parallel session only, and the section
+            # mounts no table whose key matches a decode-context-parallel group, so its rules choose.
             sessions.append(plan.session_settings(dcp[0], name="dcp", scoped=False,
-                                                  groups=f"{len(dcp)} groups of {len(dcp[0].members)} ranks"))
+                                                  groups=plan.dcp_groups_text(len(topology.members),
+                                                                              len(dcp[0].members))))
+            dcp_problems(value, dcp, profile_environment, arguments, effective)
         plan.session_problems(sessions)
         gid = int(profile_environment.get("NCCL_IB_GID_INDEX", "3"))
         common = {
@@ -678,7 +765,35 @@ def environment(value, profile_environment, arguments):
     tables = value["tuning"]["tables"]
     if tables:
         common[plan.TUNING_VARIABLE] = ",".join(f"{TABLE_TARGET}/{entry['hash']}.json" for entry in tables)
+        # As the SIRCL launcher refuses it (serve.plan.TuningPlan.conflicts): a row setting below the table's
+        # would leave the table's choices that need more unable to run.
+        conflicts = sircl_tuning.settings_conflicts(taken, common)
+        _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {tables[0]['hash']}, whose "
+                                f"choices need more than the tuning row {value['tuning']['row']} sets: "
+                                + ", ".join(conflicts))
     return common, effective
+
+
+def dcp_interleave(lock, arguments):
+    """The ``--cp-kv-cache-interleave-size`` value every rank's command adds, or None.
+
+    As the SIRCL launcher's ``--dcp-size`` does (``serve.plan.dcp_interleave``):
+    with decode-context parallelism above 1, a model whose attention needs the
+    KV cache interleaved in blocks of a multiple of its size (GLM-5.3-Flash: 4,
+    ``serve.plan.DCP_INTERLEAVE``) gets that size where the recipe leaves the
+    flag unset, and a recipe that gives another value is refused.
+    """
+    plan, _, _ = _sircl()
+    size = plan.recipe_dcp(arguments)
+    card = lock["selection"]
+    checkpoint = f"{card['model_repository']}@{card['model_revision']}"
+    try:
+        return plan.dcp_interleave(size, checkpoint, arguments)
+    except plan.ServePlanError:
+        model = plan.DCP_MODELS[card["model_repository"]]
+        raise TransportError(f"{model}'s attention under decode-context parallelism {size} needs "
+                             f"{plan.INTERLEAVE_FLAG} divisible by {plan.DCP_INTERLEAVE[model]}; the profile's recipe "
+                             "gives another value") from None
 
 
 def adapt(specs, lock):
@@ -688,6 +803,7 @@ def adapt(specs, lock):
     rows = lock["site"]["ranks"]
     _require(len(specs) == len(rows) == len(value["devices"]), "one container per rank of the transport group")
     common, effective = environment(value, specs[0].environment, specs[0].command)
+    interleave = dcp_interleave(lock, specs[0].command)
     result = []
     for rank, (spec, row) in enumerate(zip(specs, rows, strict=True)):
         environment_ = dict(spec.environment)
@@ -706,7 +822,8 @@ def adapt(specs, lock):
         mounts += [Bind(entry["path"] if PurePosixPath(entry["path"]).is_absolute()
                         else str(PurePosixPath(row["repository"]) / entry["path"]),
                         f"{TABLE_TARGET}/{entry['hash']}.json", True) for entry in value["tuning"]["tables"]]
-        result.append(replace(spec, environment=environment_, mounts=tuple(mounts)))
+        command = (*spec.command, plan.INTERLEAVE_FLAG, interleave) if interleave is not None else spec.command
+        result.append(replace(spec, environment=environment_, mounts=tuple(mounts), command=command))
     shards = {spec.environment.get(plan.MHC_SHARD, "0").strip() not in ("", "0") for spec in result}
     _require(len(shards) == 1, f"the profile's ranks disagree on {plan.MHC_SHARD}")
     _require(len({spec.environment.get(plan.HC_PREFILL) for spec in result}) == 1,
@@ -743,12 +860,16 @@ def plan_lines(value, notes=()):
     lines.append(f"  SIRCL group: {group['name']} at positions {', '.join(map(str, group['positions']))}; "
                  f"{group['lanes']} lanes per peer, "
                  + (f"at most {relays} relay{'s' if relays != 1 else ''} on a lane" if relays else "no relays"))
+    # SIRCL's plans, bundles and receipts state the same rule.
+    lines.append(f"  {nccl_rule()}")
     if tuning["settings"]:
         lines.append("  SIRCL settings: " + ", ".join(f"{key} {setting}" for key, setting in
                                                        sorted(tuning["settings"].items())))
     for entry in tuning["tables"]:
+        applied = ", ".join(f"{name}={number}" for name, number in sorted(entry["settings"].items()))
         lines.append(f"  SIRCL tuning table {entry['hash']}: the measured algorithm, schedule, piece and launch grid "
-                     "per collective and size")
+                     "per collective and size" + (f"; its session applies {applied} where the row leaves them unset"
+                                                  if applied else ""))
     for note in notes:
         lines.append("  Note: " + note)
     return lines

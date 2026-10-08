@@ -186,19 +186,61 @@ def test_node_a_reads_every_rank_and_records_one_verdict(tmp_path):
     assert receipts.latest(tmp_path)["verdict"] == "unknown"
 
 
-def test_a_measured_rows_link_settings_are_checked_against_every_session():
+def test_the_rows_and_its_tables_session_settings_are_checked_against_every_session():
     lock, _ = sircl_deployment(TP2, "pair", 2, [0, 1])
-    lock["transport"]["tuning"]["settings"] = {"link_slots": 12, "link_slot": 1048576}
-    reports = pair_reports()
+    # The row sets the link slot; the table, which the session takes, records the link slots and chain slot.
+    lock["transport"]["tuning"]["settings"] = {"link_slot": 1048576}
+    lock["transport"]["tuning"]["tables"] = [{"path": "runtime/tables/pair.json", "sha256": "0" * 64, "hash": "1" * 16,
+                                              "settings": {"SIRCL_LINK_SLOTS": 16, "SIRCL_LINK_SLOT_BYTES": 524288,
+                                                           "SIRCL_CHAIN_SLOT_BYTES": 2097152}}]
+    reports = pair_reports(tuning="1" * 16)
     for item in reports:
-        item["receipts"][0]["session_stats"] = {"link_slots": 12, "link_slot_bytes": 1048576}
+        item["receipts"][0]["session_stats"] = {"link_slots": 16, "link_slot_bytes": 1048576,
+                                                "chain_slot_bytes": 2097152}
     verdict = receipts.evaluate(lock, reports, now=lambda: 0)
     assert verdict["verdict"] == "as-expected", verdict["problems"]
-    assert "tuning settings: the sessions report the row's link_slot_bytes 1048576, link_slots 12" in verdict["lines"]
+    assert ("tuning settings: the sessions report the row's and its table's chain_slot_bytes 2097152, "
+            "link_slot_bytes 1048576, link_slots 16") in verdict["lines"]
     reports[1]["receipts"][0]["session_stats"]["link_slots"] = 8
     verdict = receipts.evaluate(lock, reports, now=lambda: 0)
-    assert "rank 1: the session's link_slots is 8, the tuning row sets 12" in verdict["problems"]
+    assert "rank 1: the session's link_slots is 8, the tuning row and its table set 16" in verdict["problems"]
     reports[1]["receipts"][0].pop("session_stats")
     verdict = receipts.evaluate(lock, reports, now=lambda: 0)
     assert verdict["verdict"] == "as-expected"
     assert "tuning settings of rank 1: its receipt states no session statistics (not judged)" in verdict["lines"]
+
+
+def test_each_receipt_names_the_deployments_nccl_mode_and_the_verdict_states_the_rule():
+    lock, _ = sircl_deployment(TP2, "pair", 2, [0, 1])
+    reports = pair_reports()
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert verdict["nccl_rule"] == "NCCL: opt-in only (auto); tables choose among SIRCL options"
+    assert any(line.startswith("NCCL mode: not stated by the receipts of rank 0 group tp") for line in verdict["lines"])
+    for item in reports:
+        item["receipts"][0].update(nccl_mode="never", nccl_rule=verdict["nccl_rule"])
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert verdict["verdict"] == "as-expected", verdict["problems"]
+    assert ("NCCL mode: every receipt names never (NCCL: opt-in only (auto); tables choose among SIRCL options)"
+            in verdict["lines"])
+    reports[1]["receipts"][0]["nccl_mode"] = "auto"
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert "rank 1 group tp: the receipt names NCCL mode auto, the deployment sets never" in verdict["problems"]
+
+
+def test_with_decode_context_parallelism_every_rank_needs_its_decode_context_parallel_receipt():
+    from runtime.common.test_transport import eight_spark_image
+    lock, _ = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    assert receipts.decode_context_parallel(lock) == (4, None)
+    tensor = [report(rank, [dict(receipt(rank), world=8)]) for rank in range(8)]
+    verdict = receipts.evaluate(lock, tensor, now=lambda: 0)
+    assert verdict["verdict"] == "differs"
+    assert "rank 3: no decode-context-parallel receipt with a SIRCL session (--dcp-size 4)" in verdict["problems"]
+    both = [report(rank, [dict(receipt(rank), world=8), dict(receipt(rank, group=f"dcp:{rank // 4}"), world=4)])
+            for rank in range(8)]
+    verdict = receipts.evaluate(lock, both, now=lambda: 0)
+    assert verdict["verdict"] == "as-expected", verdict["problems"]
+    # A decode-context-parallel session takes no table: the section mounts only the tensor-parallel group's.
+    both[2]["receipts"][1]["tuning"] = "2" * 16
+    verdict = receipts.evaluate(lock, both, now=lambda: 0)
+    assert any(problem.startswith("rank 2 group dcp:0: tuning table 2222222222222222") for problem in
+               verdict["problems"]), verdict["problems"]

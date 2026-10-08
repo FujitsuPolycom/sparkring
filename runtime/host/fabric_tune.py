@@ -64,10 +64,13 @@ fabric document's identity, the image and its SIRCL build, and each Spark's
 GPU driver and kernel; ``transport.tuning_in_effect`` uses it only while they
 hold, and ``summary`` tells ``sparkring status`` when they no longer do.
 
-Measured rows also set the session settings the measured choices ran under:
-the tune session's link slot (the largest swept piece above SIRCL's 512 KiB
-default slot) and its link slot count (``row_settings``). A SIRCL build whose
-tables record their own session settings makes that derivation unnecessary.
+Measured rows set no session settings of their own. Each measured SIRCL
+table records the settings its choices ran under and need (``settings``: the
+tune session's link slots, link slot, chain slot and large-message piece,
+``sparkring_sircl.tuning.table_settings``); the deployment's transport section
+records them, every session that takes the table applies those its
+environment leaves unset, and the receipt check compares the sessions'
+statistics with them.
 """
 import argparse
 import concurrent.futures
@@ -112,8 +115,6 @@ PREFLIGHT_SECONDS_PER_SPARK = 120
 RUN_MARGIN = 300
 TABLE_SECONDS = 120
 TIMED_OUT = 124
-# SIRCL's default link slot (SIRCL_LINK_SLOT_BYTES): pieces above it need a larger slot.
-DEFAULT_LINK_SLOT = 512 << 10
 PAIR_REASON = ("the ring harness describes the Sparks as a cycle in cabling order, and a pair is cabled port 0 to "
                "port 0")
 WHOLE_PATH_REASON = ("the ring harness plans a group of every Spark of its site as a cycle, and a path has no "
@@ -571,30 +572,6 @@ def _tail(log, lines=12):
         return []
 
 
-def row_settings(table_document, options, world):
-    """The session settings a measured row sets so that its table's link choices run as they were measured.
-
-    The tune session ran with a link slot that holds the largest swept piece
-    when that exceeds SIRCL's default slot, and with link slots for the
-    largest swept stagger, at least the harness's ``TUNE_LINK_SLOTS``
-    (``ring/worker.py``). A table that chooses no chain or ring candidate
-    needs neither.
-    """
-    from spark_transport.sircl.sparkring_sircl import protocol
-    links = [interval["choice"] for entry in table_document.get("decisions", ())
-             for interval in entry["intervals"] if interval["choice"].get("schedule") in ("chain", "ring")]
-    if not links:
-        return {}
-    defaults = _harness_plan().Options()
-    pieces = options.get("tune_pieces") or defaults.tune_pieces
-    staggers = options.get("tune_staggers") or defaults.tune_staggers
-    settings = {"link_slots": max([protocol.ring_stagger_slots(world, stagger) for stagger in staggers]
-                                  + [_harness_plan().TUNE_LINK_SLOTS])}
-    if max(pieces) > DEFAULT_LINK_SLOT:
-        settings["link_slot"] = int(max(pieces))
-    return settings
-
-
 class Measurement:
     """One ``--execute`` run: the work directory of its binding, its progress and its harness calls."""
 
@@ -736,10 +713,9 @@ class Measurement:
         stored = self.work / "tables" / f"{digest}.json"
         if not stored.is_file():
             stored.write_bytes(data)
-        options = json.loads((folder / "plan.json").read_text(encoding="utf-8"))["options"]
+        # The table records the session settings its choices ran under (table.settings); the row adds none.
         finished = {**entry, "state": "measured", "table": {"sha256": digest, "hash": table.hash},
-                    "settings": row_settings(table_document, options, len(row["positions"])),
-                    "measured_at": _iso(self.now())}
+                    "settings": {}, "measured_at": _iso(self.now())}
         finished.pop("reason", None)
         self.progress["layouts"][name] = finished
         self.save()

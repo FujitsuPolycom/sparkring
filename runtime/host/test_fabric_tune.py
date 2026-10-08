@@ -36,6 +36,12 @@ from spark_transport.sircl.sparkring_sircl.ring import cli, remote
 MARKER = {"binary": relays.MARKER_BINARY, "sha256": "ab" * 32}
 GPU, KERNEL = "580.95.05", "6.11.0-1016-nvidia"
 NOW = 1791540000.0   # 2026-10-09T09:20:00Z
+# The settings each measured table of the four-Spark cycle records with the synthetic timings: the tune
+# session's 8 link slots (twice the ranks, at least 8) and 1 MiB link slot for the chosen ring and chain pieces,
+# the default chain slot and the large-message piece of the chosen two-shot pieces.
+SETTINGS = {"SIRCL_CHAIN_SLOT_BYTES": 1 << 20, "SIRCL_LARGE_PIECE_BYTES": 4 << 20, "SIRCL_LINK_SLOTS": 8,
+            "SIRCL_LINK_SLOT_BYTES": 1 << 20}
+APPLIED = ", ".join(f"{name}={value}" for name, value in sorted(SETTINGS.items()))
 
 
 def image():
@@ -89,6 +95,19 @@ def candidates(collective, nbytes, options):
     return found
 
 
+def tune_session(plan, global_rank):
+    """The session statistics a tune session reports (``ring/worker.py``): link slots for every swept stagger
+    and at least the session's default, a link slot that holds the largest swept piece, and the default chain
+    slot and large-message piece."""
+    from spark_transport.sircl.sparkring_sircl import protocol
+    options = plan["options"]
+    world = len(next(group for group in plan["groups"] if global_rank in group["global_ranks"])["global_ranks"])
+    slots = max([protocol.ring_stagger_slots(world, stagger) for stagger in options["tune_staggers"]]
+                + [protocol.default_link_slots(world)])
+    return {"link_slots": slots, "link_slot_bytes": max(max(options["tune_pieces"]), 512 << 10),
+            "chain_slot_bytes": 1 << 20, "large_piece_bytes": 4 << 20}
+
+
 def rank_result(plan, global_rank):
     options = plan["options"]
     runs = []
@@ -102,7 +121,7 @@ def rank_result(plan, global_rank):
                                  "tune": {"collective": collective, "choice": choice}})
     rank = plan["ranks"][global_rank]
     return {"global_rank": global_rank, "group": rank["group"], "host": rank["host"], "runs": runs, "error": None,
-            "exit_code": 0}
+            "exit_code": 0, "session": tune_session(plan, global_rank)}
 
 
 class Sparks:
@@ -331,8 +350,11 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
         tuning = section["tuning"]
         assert (tuning["source"], tuning["row"], tuning["row_source"]) == ("measured", name, "measured")
         assert tuning["sha256"] == transport.tuning_digest(measured) and tuning["measured_at"] == "2026-10-09"
-        assert tuning["settings"] == {"link_slots": 12, "link_slot": 1048576}
+        # The measured row sets nothing; the table records the tune session's settings its choices need.
+        assert tuning["settings"] == {}
         (entry,) = tuning["tables"]
+        stored = json.loads((cycle4["fleet"].host(0) / entry["path"].lstrip("/")).read_bytes())
+        assert entry["settings"] == stored["settings"] == SETTINGS
         on_spark = cycle4["fleet"].host(0) / entry["path"].lstrip("/")
         # The session's own choice: the table whose key matches its group and build (its setup agreement
         # then carries the table's hash).
@@ -343,7 +365,9 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
         lines = transport.plan_lines(section)
         assert lines[0] == f"Transport: sircl on every collective, NCCL off (measured on this fabric 2026-10-09, {name})"
         assert any(f"SIRCL tuning table {entry['hash']}" in line for line in lines)
-        assert "  SIRCL settings: link_slot 1048576, link_slots 12" in lines
+        assert not any(line.startswith("  SIRCL settings:") for line in lines)
+        assert any(line.startswith(f"  SIRCL tuning table {entry['hash']}:") and line.endswith(
+            f"its session applies {APPLIED} where the row leaves them unset") for line in lines)
 
 
 def test_a_deployment_on_the_measured_table_mounts_it_and_its_receipts_are_checked_against_it(cycle4):
@@ -359,24 +383,26 @@ def test_a_deployment_on_the_measured_table_mounts_it_and_its_receipts_are_check
     for spec in installer.specifications(lock):
         environment = spec.environment
         assert environment["SIRCL_TUNING_TABLE"] == f"{transport.TABLE_TARGET}/{entry['hash']}.json"
-        assert (environment["SIRCL_LINK_SLOTS"], environment["SIRCL_LINK_SLOT_BYTES"]) == ("12", "1048576")
+        # The session applies the table's settings itself.
+        assert not {"SIRCL_LINK_SLOTS", "SIRCL_LINK_SLOT_BYTES", "SIRCL_CHAIN_SLOT_BYTES"} & set(environment)
         mounts = {mount.target: mount for mount in spec.mounts}
         mounted = mounts[f"{transport.TABLE_TARGET}/{entry['hash']}.json"]
         assert mounted.source == entry["path"] and mounted.read_only
-    stats = {"link_slots": 12, "link_slot_bytes": 1048576}
+    stats = {sircl_tuning.SETTING_STATS[name]: value for name, value in SETTINGS.items()}
     good = [report(rank, [dict(receipt(rank, tuning=entry["hash"]), session_stats=stats)]) for rank in range(4)]
     from runtime.host import transport_receipts
     verdict = transport_receipts.evaluate(lock, good, now=lambda: 0)
     assert verdict["verdict"] == "as-expected", verdict["problems"]
-    assert any("the sessions report the row's link_slot_bytes 1048576, link_slots 12" in line
-               for line in verdict["lines"])
-    other = [report(rank, [dict(receipt(rank, tuning="0" * 16), session_stats=dict(stats, link_slots=8))])
+    assert any(line.startswith("tuning settings: the sessions report the row's and its table's ")
+               and "link_slots 8" in line for line in verdict["lines"])
+    other = [report(rank, [dict(receipt(rank, tuning="0" * 16), session_stats=dict(stats, link_slots=6))])
              for rank in range(4)]
     verdict = transport_receipts.evaluate(lock, other, now=lambda: 0)
     assert verdict["verdict"] == "differs"
     assert any("tuning table 0000000000000000, the plan matched " + entry["hash"] in problem
                for problem in verdict["problems"])
-    assert any("the session's link_slots is 8, the tuning row sets 12" in problem for problem in verdict["problems"])
+    assert any("the session's link_slots is 6, the tuning row and its table set 8" in problem
+               for problem in verdict["problems"])
 
 
 def test_each_spark_holds_the_tables_its_deployment_mounts(cycle4):
@@ -567,20 +593,6 @@ def test_status_says_which_table_installations_use_and_when_it_went_stale(cycle4
     value = fabric_tune.summary(state, facts={"gpu": GPU, "kernel": KERNEL}, host_root=host)
     assert fabric_tune.status_line(value).endswith("installations without --image use newer-image, which it does "
                                                    "not cover")
-
-
-def test_row_settings_hold_the_tune_sessions_link_slot_and_slots():
-    options = {"tune_pieces": [262144, 524288, 1048576], "tune_staggers": [0, 1]}
-    ring = {"decisions": [{"collective": "all_reduce", "mode": "graph", "intervals": [
-        {"from": 4096, "choice": {"algorithm": "oneshot", "grid": 8}, "nccl": False},
-        {"from": 1 << 22, "choice": {"schedule": "ring", "piece": 524288, "stagger": 1}, "nccl": False}]}]}
-    assert fabric_tune.row_settings(ring, options, 8) == {"link_slots": 12, "link_slot": 1048576}
-    assert fabric_tune.row_settings(ring, dict(options, tune_staggers=[0, 2]), 8) == {"link_slots": 16,
-                                                                                       "link_slot": 1048576}
-    assert fabric_tune.row_settings(ring, dict(options, tune_pieces=[262144]), 4) == {"link_slots": 12}
-    small = {"decisions": [{"collective": "all_reduce", "mode": "graph", "intervals": [
-        {"from": 4096, "choice": {"algorithm": "twoshot", "grid": 16}, "nccl": False}]}]}
-    assert fabric_tune.row_settings(small, options, 8) == {}
 
 
 def test_the_harness_runs_as_a_subprocess_from_this_package_with_a_deadline(cycle4, tmp_path):
