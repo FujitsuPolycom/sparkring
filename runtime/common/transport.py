@@ -1132,6 +1132,8 @@ def nccl_adapt(specs, lock):
     result = []
     for rank, (spec, row) in enumerate(zip(specs, rows, strict=True)):
         environment_ = {key: item for key, item in spec.environment.items() if not key.startswith("SIRCL_")}
+        owned = [key for key in plan.OWNED if key in environment_]
+        _require(not owned, f"rank {rank}: the profile sets {owned}, which the nccl transport owns")
         plugins = [item for item in environment_.get("VLLM_PLUGINS", "").split(",") if item and item != "sircl"]
         environment_["VLLM_PLUGINS"] = ",".join(plugins)
         environment_.update(plan.DISABLED_TRANSPORTS)
