@@ -31,6 +31,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
+| [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
@@ -73,6 +74,8 @@ serves, it releases what older deployments hold on the Sparks
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
 | `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
+| `--transport sircl` or `--transport prepared` | The collective transport ([transport and receipts](install-reference.md#transport-and-receipts)); default: `sircl` where the image and the recorded fabric carry it, else `prepared` |
+| `--nccl never` or `--nccl auto` | NCCL on a SIRCL deployment: `never` (default) keeps it off; `auto` lets it carry what the cabling allows; `topology` is another name for `auto` |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--reasoning-effort LEVEL`, `--thinking off` | How hard the model thinks, or that it doesn't, when a request doesn't say; requests can still choose ([thinking](install-reference.md#thinking)) |
 | `--api-port N` | The port of the model's API, 1024 to 65535; a serving setting ([API endpoint](install-reference.md#api-endpoint)); default: the profile's |
@@ -308,8 +311,9 @@ request doesn't say, such as `on · xhigh`, and the effort levels it accepts
 
 `sparkring images [--profile PROFILE] [--json]` lists the installer images
 this package records, the default first, with the GitHub release that
-published each, its download size and the profiles it runs. `--profile`
-lists only the images that run that profile. Any listed name, release tag or
+published each, its download size, the transports it carries (`prepared`,
+`sircl`) and the profiles it runs; an archived image is marked `archived`.
+`--profile` lists only the images that run that profile. Any listed name, release tag or
 part of a name that only one image has selects that image in
 `sudo sparkring install --image NAME`.
 
@@ -326,6 +330,7 @@ half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
 Thinking: on · xhigh (model default)
+Transport: sircl, NCCL: absent (checked 2026-10-08T10:00:00Z); sudo sparkring check repeats it
 Automatic recovery: on
 ```
 
@@ -347,6 +352,11 @@ After the Spark lines, a `Fabric bandwidth:` line shows the last
 cables, measured 3 h ago`, or `never measured`. A degraded cable follows with
 its repair steps. Status does not measure.
 
+`Transport` names the deployment's transport and, on SIRCL ring sessions,
+the last receipt verdict ([transport and receipts](install-reference.md#transport-and-receipts)):
+`Transport check failed: ...` names the first rank and collective that
+differs.
+
 With `--refresh`, a line per model container follows the saved model. When
 the model does not serve, the first line says why and gives the command that
 fixes it ([every case](install-reference.md#when-a-model-stops-serving)):
@@ -361,6 +371,29 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
 | `--on 0,1` or `--on 2,3` | Only that half's model |
 | `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth` |
+
+## check
+
+`sudo sparkring check [flags]` checks each running model and changes no Spark.
+It sends the functional requests of the acceptance harness to the model's API
+(counting, arithmetic and code, and a tool call, an image and thinking where
+the profile serves them) and, for a model on SIRCL ring sessions, reads every
+rank's receipts and the NCCL lines of its log and judges them as the
+installation does ([transport and receipts](install-reference.md#transport-and-receipts)).
+It exits with 0 when every check passes, 1 when one fails and 2 when it cannot
+run.
+
+| Flag | Meaning |
+|---|---|
+| `--on 0,1` or `--on 2,3` | Only that half's model |
+| `--json` | Print `sparkring-check/v1` |
+| `--report DIR` | Also write `DIR/sparkring-report-<time>/` (`sparkring-test-report/v1`): the last installation's result, `fabric show` and the last `fabric verify` report, the status, this check, the receipts with the tuning table, the last 200 lines of the installation's details log and of each rank's model log, and Node A's package, image, DGX OS, driver, Docker, container toolkit and ConnectX firmware |
+
+The report replaces management and LAN addresses, host names, MAC addresses
+and account names with placeholders and keeps fabric addresses. A file that
+still names a private item is left out and listed in its `report.json`.
+Review the files, then attach the directory to a
+[Test report](https://github.com/FujitsuPolycom/sparkring/issues/new?template=test_report.yml) issue.
 
 ## logs
 

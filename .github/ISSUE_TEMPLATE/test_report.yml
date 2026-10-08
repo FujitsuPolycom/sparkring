@@ -1,0 +1,64 @@
+name: Test report
+description: Report what an installation run passed or failed, with the bundle sparkring check --report writes.
+title: "[test] "
+labels: ["test-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for testing. Run `sudo sparkring check --report ~/sparkring-report` on Node A and attach the directory it names (zip it first). The command replaces management and LAN addresses, host names, MAC addresses and account names; review the files before attaching them. A partial report is welcome.
+
+  - type: dropdown
+    id: layout
+    attributes:
+      label: Layout
+      description: The `Layout:` line of `sudo sparkring cabling`.
+      options:
+        - pair
+        - cycle-4
+        - cycle of 3, 5, 6, 7 or 8 Sparks
+        - path of 3 to 8 Sparks
+        - other
+    validations:
+      required: true
+
+  - type: input
+    id: profile
+    attributes:
+      label: Profile, checkpoint and placement
+      description: The exact profile ID from `sparkring models`, the `--checkpoint` name if you gave one, and `--on` if you gave one.
+    validations:
+      required: true
+
+  - type: input
+    id: image
+    attributes:
+      label: Image and transport
+      description: The `Image:` line of `sudo sparkring status` and its `Transport:` line, for example `sircl, NCCL: absent`. Add `--transport` or `--nccl` if you gave them.
+
+  - type: checkboxes
+    id: steps
+    attributes:
+      label: Steps that passed
+      options:
+        - label: "`sudo sparkring cabling` shows the cabling and the intended layout"
+        - label: "`sudo sparkring setup` ends with `Fabric verified`"
+        - label: "`sudo sparkring install` ends with `Model ready:`"
+        - label: "`sudo sparkring check` passes its functional checks and its receipt verdict is as expected"
+        - label: "After rebooting one worker, `sudo sparkring fabric verify` is healthy and the model serves again"
+        - label: "Switching to another profile or placement and back ends in `Model ready:`"
+        - label: "Installing the previous image with `--image` works"
+
+  - type: textarea
+    id: observed
+    attributes:
+      label: What failed or surprised you?
+      description: The command, what you expected and what happened. Leave empty when everything passed.
+
+  - type: textarea
+    id: bundle
+    attributes:
+      label: Report bundle
+      description: Attach the zipped `sparkring-report-<time>` directory, or paste its `report.json` and `check.json`.
+    validations:
+      required: true
