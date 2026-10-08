@@ -1,0 +1,720 @@
+{
+ "schema": "sircl-vllm-shims/v1",
+ "statuses": {
+  "verified": "the files it touches match a pinned build; it installs when its condition holds",
+  "applicable-unverified": "its files, functions and anchors are present but match no pinned build; it refuses to install until a matching build is pinned",
+  "absent": "a file, function or anchor it relies on is missing; it cannot install"
+ },
+ "builds": [
+  {
+   "name": "lil-image-aba309e4610c",
+   "version": "0.1.dev21553+gab86b7073.d20261001",
+   "source": "Local Inference Lab vLLM fork as installed in serving image aba309e4610c"
+  },
+  {
+   "name": "lil-karmic-kraken-beta-4a87c588",
+   "version": "source tree (no generated _version.py)",
+   "source": "local-inference-lab/vllm integration/karmic-kraken-beta at 4a87c5884c2d640ae4514f90df455de584472cb9"
+  },
+  {
+   "name": "sparkring-kraken-beta-20261007-bc9ea774",
+   "version": "the image's vLLM with the CSF overlay payload over it",
+   "source": "FujitsuPolycom/vllm sparkring/kraken-beta-20261007 at bc9ea7744bc73d1f45cf3232d5de1b8f823919ae: local-inference-lab/vllm integration/karmic-kraken-beta 89f1ceec merged into the image's build, sparkring/kraken-beta-20261004 at d51b4181. Overlay payload csf_payload.tar, SHA-256 05ba9d1c6e5ac005c0279901b911afc78b7d74a792c06a359ee2aed854c53c84"
+  }
+ ],
+ "shims": [
+  {
+   "name": "dcp_all_to_all",
+   "purpose": "Carries vLLM's decode-context-parallel output combine (the LSE-weighted all-to-all) through SIRCL's communicator instead of torch.distributed on the group's NCCL device group.",
+   "models": [
+    "MLA attention with decode context parallelism and the a2a combine (dcp_comm_backend a2a, vLLM's default for GLM-5.3): GLM-5.3 and other models on vLLM's DeepSeek-V3.2 code"
+   ],
+   "code": [
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "dcp_a2a_lse_reduce",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "_dcp_a2a_lse_pack_dim",
+     "role": "calls"
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "_dcp_a2a_send_recv_buffers",
+     "role": "calls"
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "_dcp_a2a_pack_send",
+     "role": "calls"
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "_dcp_a2a_unpack_combine",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "v1/attention/ops/dcp.py"
+   ],
+   "anchors": [
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "lines": [
+      951,
+      960
+     ],
+     "text": "def dcp_a2a_lse_reduce("
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "lines": [
+      1012,
+      1017
+     ],
+     "text": "dist.all_to_all_single("
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "v1/attention/ops/dcp.py": "17586fe1dbf702e05757b1acba1926b2ad7341501c1d10d233e9d57720b919a2"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "v1/attention/ops/dcp.py": "17586fe1dbf702e05757b1acba1926b2ad7341501c1d10d233e9d57720b919a2"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "v1/attention/ops/dcp.py": "5cc592b1baa5defd47336d19be4002fe0f98827134ebbd755ef9364350456a53"
+    }
+   },
+   "enable": "SIRCL's communicator installs it when it builds a decode-context-parallel group of two or more ranks with a session (SIRCL_GROUPS=tp,dcp; bundle --session-groups tp,dcp)",
+   "disable": "SIRCL_GROUPS=tp: decode-context-parallel groups get no session",
+   "without": "vLLM's combine calls torch.distributed.all_to_all_single on the group's NCCL device group: where NCCL may not connect the ranks, SIRCL's tripwire refuses the call; where it may, NCCL carries it. A decode-context-parallel group with a session fails setup on every rank when the shim cannot install",
+   "measured": [],
+   "needs": [
+    "the session's all-to-all (scatter collectives, prepare(..., scatter=True))"
+   ]
+  },
+  {
+   "name": "dcp_b12x_transport",
+   "purpose": "Withholds vLLM's B12X PCIe decode-context-parallel transport, which maps peer memory within one machine, from groups SIRCL owns, so the MLA DCP manager keeps the a2a combine and the group coordinator's query all-gather.",
+   "models": [
+    "MLA attention with decode context parallelism, the B12X attention backend and VLLM_USE_B12X_DCP_A2A=1 (GLM-5.3)"
+   ],
+   "code": [
+    {
+     "file": "distributed/device_communicators/b12x_dcp.py",
+     "name": "get_b12x_dcp_transport",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "name": "MLADCPManager.__init__",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "distributed/device_communicators/b12x_dcp.py"
+   ],
+   "anchors": [
+    {
+     "file": "v1/attention/ops/dcp.py",
+     "lines": [
+      1521,
+      1535
+     ],
+     "text": "self.b12x_transport = get_b12x_dcp_transport("
+    },
+    {
+     "file": "distributed/device_communicators/b12x_dcp.py",
+     "lines": [
+      185,
+      185
+     ],
+     "text": "def get_b12x_dcp_transport("
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
+    }
+   },
+   "enable": "installed with dcp_all_to_all when SIRCL's communicator builds a decode-context-parallel group of two or more ranks with a session",
+   "disable": "SIRCL_GROUPS=tp: decode-context-parallel groups get no session",
+   "without": "vLLM selects the B12X PCIe transport, whose CUDA IPC handles work within one machine only; a decode-context-parallel group with a session fails setup on every rank when the shim cannot install",
+   "measured": [],
+   "needs": [
+    "dcp_all_to_all, installed with it"
+   ]
+  },
+  {
+   "name": "fused_allreduce_rms_norm",
+   "purpose": "Runs vLLM's eager all-reduce + residual add + RMSNorm helper as one SIRCL collective where the result is bit-identical to SIRCL's all-reduce followed by vLLM's vllm_c fused_add_rms_norm kernel.",
+   "models": [
+    "models whose decoder layers, final norm or MTP draft call vLLM's fused_allreduce_rms_norm helper: GLM-5.3 and other models on vLLM's DeepSeek-V3.2 code"
+   ],
+   "code": [
+    {
+     "file": "models/common/ops/fused_allreduce_rms_norm.py",
+     "name": "fused_allreduce_rms_norm",
+     "role": "wraps"
+    },
+    {
+     "file": "distributed/parallel_state.py",
+     "name": "get_tp_group",
+     "role": "calls"
+    },
+    {
+     "file": "model_executor/layers/layernorm.py",
+     "name": "RMSNorm",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "models/common/ops/fused_allreduce_rms_norm.py",
+    "model_executor/layers/layernorm.py",
+    "ir/op.py",
+    "ir/ops/layernorm.py",
+    "kernels/vllm_c.py"
+   ],
+   "anchors": [
+    {
+     "file": "models/common/ops/fused_allreduce_rms_norm.py",
+     "lines": [
+      23,
+      27
+     ],
+     "text": "def fused_allreduce_rms_norm("
+    },
+    {
+     "file": "models/common/ops/fused_allreduce_rms_norm.py",
+     "lines": [
+      62,
+      63
+     ],
+     "text": "return norm(reduced, residual)"
+    },
+    {
+     "file": "compilation/passes/fusion/allreduce_rms_fusion.py",
+     "lines": [
+      108,
+      131
+     ],
+     "text": "FI_ALLREDUCE_FUSION_MAX_SIZE_MB"
+    },
+    {
+     "file": "model_executor/layers/layernorm.py",
+     "lines": [
+      87,
+      94
+     ],
+     "text": "ir.ops.fused_add_rms_norm.maybe_inplace("
+    },
+    {
+     "file": "kernels/vllm_c.py",
+     "lines": [
+      54,
+      86
+     ],
+     "text": "torch.ops._C.fused_add_rms_norm(x, x_residual, weight, epsilon)"
+    },
+    {
+     "file": "ir/ops/layernorm.py",
+     "lines": [
+      43,
+      62
+     ],
+     "text": "def fused_add_rms_norm("
+    },
+    {
+     "file": "platforms/cuda.py",
+     "lines": [
+      756,
+      778
+     ],
+     "text": "default = [\"native\"] if using_inductor else [\"vllm_c\", \"native\"]"
+    },
+    {
+     "file": "v1/worker/worker_base.py",
+     "lines": [
+      97,
+      99
+     ],
+     "text": "ir_op_priority.set_default()"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "models/common/ops/fused_allreduce_rms_norm.py": "036e07b212f3154fb58a26da97c18015315cc736f89097eac1b733456d4c3e4c",
+     "model_executor/layers/layernorm.py": "4126258bf85aa3af54c78cfbf2a0f32000491e42be37661f2d1ac9f0beea00f3",
+     "ir/op.py": "fd0355b398c0d96235bb6aba0c9c08f73c199429bd8ec2aed227178c297c1eb2",
+     "ir/ops/layernorm.py": "65d33dcb96404ddde273acf84ef901151a8155a2cffc144bdd0c49fe1d576a22",
+     "kernels/vllm_c.py": "ef37e71736807026f0b8ad187155b63f147984c03d287a78790ef8f8ed642ec1"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "models/common/ops/fused_allreduce_rms_norm.py": "664180169082cb65241bd9b82497d669e552ebb1f063c2e0b23657b3707dd080",
+     "model_executor/layers/layernorm.py": "4126258bf85aa3af54c78cfbf2a0f32000491e42be37661f2d1ac9f0beea00f3",
+     "ir/op.py": "fd0355b398c0d96235bb6aba0c9c08f73c199429bd8ec2aed227178c297c1eb2",
+     "ir/ops/layernorm.py": "65d33dcb96404ddde273acf84ef901151a8155a2cffc144bdd0c49fe1d576a22",
+     "kernels/vllm_c.py": "ef37e71736807026f0b8ad187155b63f147984c03d287a78790ef8f8ed642ec1"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "models/common/ops/fused_allreduce_rms_norm.py": "664180169082cb65241bd9b82497d669e552ebb1f063c2e0b23657b3707dd080",
+     "model_executor/layers/layernorm.py": "4126258bf85aa3af54c78cfbf2a0f32000491e42be37661f2d1ac9f0beea00f3",
+     "ir/op.py": "fd0355b398c0d96235bb6aba0c9c08f73c199429bd8ec2aed227178c297c1eb2",
+     "ir/ops/layernorm.py": "65d33dcb96404ddde273acf84ef901151a8155a2cffc144bdd0c49fe1d576a22",
+     "kernels/vllm_c.py": "ef37e71736807026f0b8ad187155b63f147984c03d287a78790ef8f8ed642ec1"
+    }
+   },
+   "enable": "SIRCL_FUSED_NORM=1 (bundle --fused-norm on), research-only: SIRCL's communicator installs it when it binds the fused kernels to a tensor-parallel session",
+   "disable": "SIRCL_FUSED_NORM=0, the default; the serve launcher keeps it off",
+   "without": "the helper's all-reduce runs through SIRCL's communicator and vLLM's RMSNorm follows",
+   "measured": [
+    {
+     "conditions": "decode at TP8 on the ring of eight, 4 streams, 1 MiB dispatch ceiling",
+     "result": "41.3 steps/s, 9 % more than with SIRCL_FUSED_NORM=0"
+    }
+   ],
+   "needs": [
+    "the tensor-parallel session's fused all-reduce + residual add + RMSNorm kernels (sparkring_sircl.fused_norm)",
+    "vLLM's RMSNorm on the vllm_c provider of fused_add_rms_norm"
+   ]
+  },
+  {
+   "name": "mhc_prefill_shard",
+   "purpose": "Carries GLM-5.3-Flash's mHC prefill row ownership, whose reduce-scatters and all-gathers call PyNccl directly, through SIRCL's communicator on a tensor-parallel group without PyNccl.",
+   "models": [
+    "GLM-5.3-Flash (model type glm5_next) with VLLM_GLM53_MHC_PREFILL_SHARD=1"
+   ],
+   "code": [
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "name": "maybe_create",
+     "role": "wraps"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "name": "maybe_create_mhc_prefill_ownership",
+     "role": "binding"
+    },
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "name": "PrefillOwnership.reduce_scatter",
+     "role": "calls"
+    },
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "name": "PrefillOwnership.all_gather",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "models/glm5next/nvidia/mhc_prefill_sharding.py",
+    "models/glm5next/nvidia/model.py"
+   ],
+   "anchors": [
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "lines": [
+      339,
+      351
+     ],
+     "text": "self.comm.reduce_scatter(output, partial, stream=stream)"
+    },
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "lines": [
+      353,
+      363
+     ],
+     "text": "self.comm.all_gather(output, owned, stream=stream)"
+    },
+    {
+     "file": "models/glm5next/nvidia/mhc_prefill_sharding.py",
+     "lines": [
+      447,
+      466
+     ],
+     "text": "comm = getattr(group.device_communicator, \"pynccl_comm\", None)"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "lines": [
+      110,
+      112
+     ],
+     "text": "maybe_create as maybe_create_mhc_prefill_ownership"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "lines": [
+      1169,
+      1171
+     ],
+     "text": "mhc_owner = maybe_create_mhc_prefill_ownership(self, hidden_states, positions)"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "lines": [
+      671,
+      673
+     ],
+     "text": "x = mhc_prefill_ownership.reduce_scatter(x)"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "lines": [
+      694,
+      698
+     ],
+     "text": "x = mhc_prefill_ownership.all_gather(x)"
+    },
+    {
+     "file": "models/glm5next/nvidia/model.py",
+     "lines": [
+      1216,
+      1218
+     ],
+     "text": "hidden_states = mhc_owner.all_gather(hidden_states)"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "models/glm5next/nvidia/mhc_prefill_sharding.py": "b3616d081087eec0a35475e202f37e08c5e88753cfd280e64fb09e0e2ed1a66c",
+     "models/glm5next/nvidia/model.py": "23b4af130ebd443274a79695dd5a94871df6243ff9d6b66aa1fc254b298f89d1"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "models/glm5next/nvidia/mhc_prefill_sharding.py": "b3616d081087eec0a35475e202f37e08c5e88753cfd280e64fb09e0e2ed1a66c",
+     "models/glm5next/nvidia/model.py": "1576615576632007e80fbb7138996b0f4fe4cfdbeb1695841ee0e3cef2210791"
+    }
+   },
+   "enable": "SIRCL's communicator installs it when it builds a tensor-parallel group without PyNccl, with a session, while VLLM_GLM53_MHC_PREFILL_SHARD is set (the profile's value; serve --mhc-prefill-shard profile)",
+   "disable": "serve --mhc-prefill-shard off (VLLM_GLM53_MHC_PREFILL_SHARD=0)",
+   "without": "with the setting on, setup fails on every rank and names VLLM_GLM53_MHC_PREFILL_SHARD=0; with it off, every rank mixes the mHC streams of every prefill row. On a pair with NCCL allowed (SIRCL_NCCL=auto), where PyNccl works, vLLM's own path runs and the shim is not needed",
+   "measured": [
+    {
+     "conditions": "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, TP4 on the path of Sparks 0-3",
+     "result": "prefill 12-14 % faster than with --mhc-prefill-shard off"
+    },
+    {
+     "conditions": "GLM-5.3-Flash-NVFP4-Spark, TP4 on the path of Sparks 0-3",
+     "result": "prefill 3.7 % faster than with --mhc-prefill-shard off"
+    }
+   ],
+   "needs": [
+    "the tensor-parallel session's reduce-scatter (scatter_available) and all-gather; without the session's reduce-scatter the adapter carries each reduce-scatter as an all-reduce and keeps this rank's rows"
+   ]
+  },
+  {
+   "name": "qwen_hc_prefill_shard",
+   "purpose": "Carries Qwen3.8's hyper-connection prefill row ownership, whose all-gathers and reduce-scatters call PyNccl directly, through SIRCL's communicator on a tensor-parallel group without PyNccl.",
+   "models": [
+    "Qwen3.8 (vLLM's qwen4_exp code) with VLLM_QWEN3_8_HC_PREFILL_MODE=shard"
+   ],
+   "code": [
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "name": "create",
+     "role": "wraps"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "name": "RowOwnership.gather",
+     "role": "calls"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "name": "RowOwnership.reduce",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "models/qwen4_exp/nvidia/hc_prefill.py",
+    "models/qwen4_exp/nvidia/model.py"
+   ],
+   "anchors": [
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "lines": [
+      104,
+      111
+     ],
+     "text": "self.group.all_gather(output, source)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "lines": [
+      113,
+      120
+     ],
+     "text": "self.group.reduce_scatter(output, source)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/hc_prefill.py",
+     "lines": [
+      123,
+      130
+     ],
+     "text": "comm = getattr(group.device_communicator, \"pynccl_comm\", None)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/model.py",
+     "lines": [
+      595,
+      595
+     ],
+     "text": "hc_owner = hc_prefill.create(self, full_rows) if hc_prefill_eager else None"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/model.py",
+     "lines": [
+      387,
+      387
+     ],
+     "text": "hc_owner.reduce(attn_out)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/model.py",
+     "lines": [
+      405,
+      405
+     ],
+     "text": "hc_owner.reduce(mlp_out)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/model.py",
+     "lines": [
+      374,
+      374
+     ],
+     "text": "block_input = hc_owner.gather(block_input)"
+    },
+    {
+     "file": "models/qwen4_exp/nvidia/model.py",
+     "lines": [
+      785,
+      785
+     ],
+     "text": "if hc_prefill.eligible(self.model, positions.shape[-1]):"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "models/qwen4_exp/nvidia/hc_prefill.py": "7c7ed3319d99a7d2d7e608f06a0950b33b3d268713a3ea58ffee4720c205e1ab",
+     "models/qwen4_exp/nvidia/model.py": "1808f802faf97a7ec5add2ff3db261786f92e5ef01b7b9aeaad26c8f07c692c3"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "models/qwen4_exp/nvidia/hc_prefill.py": "7c7ed3319d99a7d2d7e608f06a0950b33b3d268713a3ea58ffee4720c205e1ab",
+     "models/qwen4_exp/nvidia/model.py": "1808f802faf97a7ec5add2ff3db261786f92e5ef01b7b9aeaad26c8f07c692c3"
+    }
+   },
+   "enable": "SIRCL's communicator installs it when it builds a tensor-parallel group without PyNccl, with a session, while VLLM_QWEN3_8_HC_PREFILL_MODE=shard (the profile's value)",
+   "disable": "--env VLLM_QWEN3_8_HC_PREFILL_MODE=off",
+   "without": "with the mode shard, setup fails on every rank and names --env VLLM_QWEN3_8_HC_PREFILL_MODE=off; with it off, every rank processes every prefill row. On a pair with NCCL allowed (SIRCL_NCCL=auto), where PyNccl works, vLLM's own path runs and the shim is not needed",
+   "measured": [],
+   "needs": [
+    "the tensor-parallel session's reduce-scatter (scatter_available) and all-gather; without the session's reduce-scatter the adapter carries each reduce-scatter as an all-reduce and keeps this rank's rows"
+   ]
+  },
+  {
+   "name": "roce_slot",
+   "purpose": "Makes vLLM's RoCE all-reduce slot class (B12xRoceAllReduce) SIRCL's ring all-reduce, so a container that enables vLLM's RoCE slot builds SIRCL there.",
+   "models": [
+    "every model with a tensor-parallel group"
+   ],
+   "code": [
+    {
+     "file": "distributed/device_communicators/b12x_roce_all_reduce.py",
+     "name": "B12xRoceAllReduce",
+     "role": "wraps"
+    },
+    {
+     "file": "distributed/device_communicators/cuda_communicator.py",
+     "name": "CudaCommunicator.__init__",
+     "role": "calls"
+    }
+   ],
+   "files": [
+    "distributed/device_communicators/b12x_roce_all_reduce.py",
+    "distributed/device_communicators/cuda_communicator.py"
+   ],
+   "anchors": [
+    {
+     "file": "distributed/device_communicators/cuda_communicator.py",
+     "lines": [
+      193,
+      203
+     ],
+     "text": "self.b12x_ar_comm = B12xRoceAllReduce("
+    },
+    {
+     "file": "distributed/device_communicators/b12x_roce_all_reduce.py",
+     "lines": [
+      56,
+      59
+     ],
+     "text": "class B12xRoceAllReduce:"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "distributed/device_communicators/b12x_roce_all_reduce.py": "cca86b8c97d96b3647e4ef3f90f9638ebc4d8b5dfc1673abc2e5a7750bed9018",
+     "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "distributed/device_communicators/b12x_roce_all_reduce.py": "cca86b8c97d96b3647e4ef3f90f9638ebc4d8b5dfc1673abc2e5a7750bed9018",
+     "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "distributed/device_communicators/b12x_roce_all_reduce.py": "cca86b8c97d96b3647e4ef3f90f9638ebc4d8b5dfc1673abc2e5a7750bed9018",
+     "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
+    }
+   },
+   "enable": "the general plugin installs it when VLLM_ENABLE_ROCE_ALLREDUCE=1, or when SIRCL_VLLM_SHIMS names it",
+   "disable": "VLLM_ENABLE_ROCE_ALLREDUCE=0, which the serve launcher and bundle set",
+   "without": "SIRCL's communicator builds its tensor-parallel slot itself, as the launchers run it; with VLLM_ENABLE_ROCE_ALLREDUCE=1 and the shim refused, the general plugin stops the process",
+   "measured": [],
+   "needs": [
+    "the tensor-parallel session's all-reduce"
+   ]
+  },
+  {
+   "name": "worker_regimes",
+   "purpose": "Runs the worker's start-up work (compilation, warm-up, graph capture, memory profiling, sleep, wake-up, weight loads, profiling) in the sessions' startup flag-wait regime and arms the serving regime when warm-up returns.",
+   "models": [
+    "every model"
+   ],
+   "code": [
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.compile_or_warm_up_model",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.determine_available_memory",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.sleep",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.wake_up",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.reload_weights",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.update_weights",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.profile",
+     "role": "wraps"
+    }
+   ],
+   "files": [
+    "v1/worker/gpu_worker.py"
+   ],
+   "anchors": [
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1400,
+      1400
+     ],
+     "text": "return self._b12x_roce_guarded(self.model_runner.sample_tokens"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1002,
+      1002
+     ],
+     "text": "def compile_or_warm_up_model(self)"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      636,
+      636
+     ],
+     "text": "def determine_available_memory(self)"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      278,
+      278
+     ],
+     "text": "def sleep(self, level: int = 1)"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      315,
+      315
+     ],
+     "text": "def wake_up(self, tags"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      562,
+      562
+     ],
+     "text": "def reload_weights(self"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1720,
+      1720
+     ],
+     "text": "def update_weights(self"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1543,
+      1543
+     ],
+     "text": "def profile(self"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "v1/worker/gpu_worker.py": "989330be6dca8f5068032b6fe4f0f6276b31fef8bea491443a9f6c7cafd038bd"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "v1/worker/gpu_worker.py": "d0dd42c8ec547d2efb0135b455ef5372ef4bf93231c2c69c1904a5212821c368"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
+    }
+   },
+   "enable": "SIRCL's communicator installs it with the first group that gets a session",
+   "disable": "none: every process with a session tries it",
+   "without": "the sessions keep the startup regime's flag-wait limit (SIRCL_STARTUP_WAIT_S, 600 s) while serving instead of the serving limit (SIRCL_SERVING_WAIT_S, 20 s), and a warning says so",
+   "measured": [],
+   "needs": [
+    "the sessions' flag-wait regimes (enter_startup, enter_serving)"
+   ]
+  }
+ ]
+}

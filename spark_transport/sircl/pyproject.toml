@@ -1,0 +1,56 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sparkring-sircl"
+version = "0.2.0"
+description = "SIRCL ring sessions: RDMA collectives for switchless rings, paths and pairs of DGX Sparks"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+# Route planning, the native build and the CPU simulator need only the
+# standard library. Torch, CUDA Python and the CuTe DSL come from the serving
+# image and are deliberately not dependencies, so installing this package never
+# replaces the image's builds.
+dependencies = []
+
+[project.optional-dependencies]
+# For environments without the serving image's packages. Lower bounds only.
+kernels = [
+  "cuda-python>=12.6",
+  "nvidia-cutlass-dsl>=4.2",
+]
+test = ["pytest>=8", "numpy>=1.26"]
+
+[project.scripts]
+# Builds the native library into the build cache ahead of serving.
+sircl-prepare = "sparkring_sircl.build:main"
+# The standalone ring harness (plan, preflight, stage, run, cleanup, summarize).
+sircl-ring = "sparkring_sircl.ring.cli:main"
+# The relay plan installer (plan, facts, show, diff, up, down, marker).
+sircl-fabric = "sparkring_sircl.fabric.cli:main"
+
+[project.entry-points."vllm.platform_plugins"]
+sircl = "sparkring_sircl.vllm.platform:activate"
+
+[project.entry-points."vllm.general_plugins"]
+sircl = "sparkring_sircl.vllm.plugin:register"
+
+[tool.setuptools.packages.find]
+include = ["sparkring_sircl*"]
+
+[tool.setuptools.package-data]
+sparkring_sircl = [
+  "fabric/*.c",
+  "oneshot/*.c",
+  "ring/*.json",
+  "testing/fake_verbs/*.c",
+  "testing/fake_verbs/*.h",
+  "testing/fake_verbs/infiniband/*.h",
+  "testing/sim/*.c",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"

@@ -476,3 +476,17 @@ commits `0d5e663b8f8d80a6caec2a7f7ce4eed6394756b7` and
 `cb8dd033ab54af8904733199dbae94270c3395ce`, with the second adapted to the pinned
 backend's candidate-mask interface. The patch headers retain upstream authorship;
 the adjacent manifest records original and adapted content hashes.
+
+## 17. B12X one-shot collectives in SIRCL ring sessions (derived source included)
+
+`spark_transport/sircl/` (the SIRCL ring-session package `sparkring_sircl`)
+contains source derived from
+[`local-inference-lab/b12x`](https://github.com/local-inference-lab/b12x)
+commit `236ddff04a5f5064084b46464800b70b34ec7d8c` (Apache-2.0): the one-shot
+all-reduce and all-gather kernels, the device intrinsics, and the session and
+progress-thread protocol they follow; its fused all-reduce + RMSNorm kernel
+follows the layout of b12x's PCIe fused all-reduce. The derived files and the
+blobs they derive from are listed in `spark_transport/sircl/PROVENANCE.md`.
+The package keeps the Apache-2.0 license text as `spark_transport/sircl/LICENSE`
+and its attribution in `spark_transport/sircl/NOTICE`; distribution must
+preserve both.
