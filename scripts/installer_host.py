@@ -193,6 +193,8 @@ def admit_image(lock):
             # Qwen admission depends on the profile's HC mode and feature selection.
             "recipe": repr(installer_image.qwen_recipe(installer_image.profile_environment(card["profile"])))
             if card["profile"] in installer_image.QWEN4_EXP else None,
+            # A SIRCL deployment also admits the image's SIRCL layer (transport.admit_layer).
+            "sircl": (lock.get("transport") or {}).get("sircl"),
         }, sort_keys=True).encode()).hexdigest()
         record = ADMISSIONS / (key + ".json")
         if record.is_file() and not record.is_symlink():
@@ -201,6 +203,9 @@ def admit_image(lock):
                 return saved["receipt"]
         receipt = installer_image.admit(lock["image_runtime"], run=run, profile=card["profile"], nodes=card["nodes"])
         loader_policy.check(card["image_id"], run=run)
+        if "transport" in lock:
+            from runtime.common import transport
+            receipt = {**receipt, "sircl": transport.admit_layer(lock, run=run)}
         try:
             ADMISSIONS.mkdir(parents=True, exist_ok=True, mode=0o700)
             deploy_engine.save_receipt(record, {"image_id": current, "receipt": receipt})
@@ -2064,6 +2069,10 @@ def perform(operation, lock, number):
             owned(spec, info, image)
         if operation == "status":
             return model_observation(lock, row, info)
+        if operation == "transport-receipts":
+            # Read-only: this rank's SIRCL receipts and what its model log says about NCCL.
+            from runtime.host import transport_receipts
+            return transport_receipts.host_report(lock, number, info)
         if operation == "owned":
             if info:
                 owned(spec, info, image)
@@ -2100,6 +2109,10 @@ def perform(operation, lock, number):
                     "Config": {"Env": info["Config"].get("Env", [])}}
         if operation in ("preflight", "create", "start"):
             receipt = admit_image(lock)
+            if "transport" in lock:
+                # SIRCL reads this Spark's fabric document; it must describe the deployment's fabric.
+                from runtime.common import transport
+                transport.check_host_document(lock["transport"])
             verify_model(lock, row, model_receipt, refresh=True)
             served = row["model"]
             views = _derived(lock, row, state)
@@ -2143,6 +2156,10 @@ def perform(operation, lock, number):
                         binding = local_binding_path(lock, row)
                         if read_runtime_binding(binding) is None:
                             installer.write(binding, {})
+                    if "transport" in lock:
+                        # The container's SIRCL_RECEIPT_DIR; a bind mount needs its source to exist.
+                        from runtime.common import transport
+                        plain(Path(transport.receipt_directory(lock))).mkdir(parents=True, exist_ok=True)
                     run(compose.compose_command(spec.name, path) + ["create", "--no-build", "--no-recreate", "--pull", "never", "model"])
                 if "image_runtime" in lock:
                     created = owned(spec, container(spec), image)

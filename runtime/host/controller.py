@@ -502,7 +502,11 @@ def lifecycle(argv):
     parser.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1 for a new deployment: only programs on "
                              "Node A can then use the model")
-    from runtime.common import serving
+    from runtime.common import serving, transport as transports
+    parser.add_argument("--transport", choices=transports.BACKENDS,
+                        help="for a new deployment: sircl (the default where the image and fabric carry it) or prepared")
+    parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
+                        help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
     settings = serving.from_arguments(args)
@@ -511,9 +515,12 @@ def lifecycle(argv):
     image_runtime = None
     if (args.image or args.image_lock) and (args.operation != "up" or not args.profile):
         raise ValueError("--image and --image-lock require up with an exact profile")
+    if (args.transport or args.nccl) and (args.operation != "up" or not args.profile):
+        raise ValueError("--transport and --nccl require up with an exact profile")
+    args.nccl = transports.nccl_mode(args.nccl)
     if args.image:
-        from runtime.common import installer_image
-        args.image_lock = installer_image.lock_path(args.image)
+        from runtime.common import image_lock
+        args.image_lock = image_lock.lock_path(args.image)
     if args.instance != "main" and not args.profile:
         raise ValueError("--instance names one deployment of a profile; give the profile as well")
     from runtime.host import retained_source
@@ -618,6 +625,8 @@ def lifecycle(argv):
                                                            for name, value in sorted(saved["serving"].items())))
                 if "thinking" in saved:
                     print("Thinking: " + thinking.deployment_text(saved["thinking"]))
+                if saved.get("transport"):
+                    print(transport_status_line(saved["transport"]))
                 print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
                                           if saved.get("check_url") else ""))
                 if saved.get("observations"):
@@ -653,15 +662,20 @@ def lifecycle(argv):
         # Refused before a new deployment is created; checked again under the installation lock.
         _refuse_conflicts(requested if not directory.exists() else placements.of_directory(directory))
         if not directory.exists():
-            from runtime.common import installer_image
-            from runtime.host import models
+            from runtime.common import image_lock
+            from runtime.host import install_workflow, models
             cluster = installer.read(STATE / "cluster.json")
             placements.require_layout(cluster)
             size = len(cluster["plan"]["nodes"])
             nodes = 2 if requested is not None else size
             profile = models.select(args.profile, nodes)
             placements.check(requested, cluster_size=size, profile_nodes=nodes, profile=profile)
-            image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+            chosen = image_lock.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+            # The same transport sparkring install would choose: SIRCL where the image and the fabric carry it.
+            choice = install_workflow.transport_choice(args, cluster, STATE, chosen, requested)
+            image_runtime = image_lock.v2_view(chosen)
+            for line in install_workflow.transport_lines(None, choice):
+                print(line)
             site = model_site(cluster, profile, instance, requested)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
             # profile's revision, whose model operation adopts what that
@@ -684,16 +698,20 @@ def lifecycle(argv):
                 serving.apply(arguments, settings)
                 install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
                                                 settings.get("api_port") or serving.profile_value(arguments, "api_port"))
-            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings)
+            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings,
+                           transport=choice["section"])
         else:
             # The deployment's own source validates its lock (retained_source);
             # the installed package may carry other profile inputs or images.
             existing = installer.read(directory / "deployment.lock.json")
             if args.image_lock:
-                from runtime.common import installer_image
-                image_runtime = installer_image.for_profile(args.profile, installer.read(args.image_lock))
+                from runtime.common import image_lock
+                image_runtime = image_lock.v2_view(image_lock.for_profile(args.profile, installer.read(args.image_lock)))
                 if existing.get("image_runtime") != image_runtime:
                     raise ValueError("Deployment uses another image lock; choose a distinct --instance")
+            if args.transport and args.transport != ("sircl" if existing.get("transport") else "prepared") or (
+                    args.nccl and args.nccl != (existing.get("transport") or {}).get("nccl")):
+                raise ValueError("Deployment uses another transport; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
             if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
@@ -727,6 +745,14 @@ def lifecycle(argv):
         print(json.dumps({"operation": "down", "complete": True, "released": True, "message": message}, indent=2)
               if args.json else message)
         return 0
+    recorded_transport = installer.read(directory / "deployment.lock.json").get("transport")
+    if args.operation == "up" and recorded_transport:
+        # A SIRCL deployment's routes come from the fabric it was made on; a re-formed fabric needs a new one.
+        current = recorded_fabric_id()
+        if current != recorded_transport["fabric"]["id"]:
+            raise ValueError(f"This deployment was made on fabric {recorded_transport['fabric']['id'][7:19]}; the "
+                             f"recorded fabric is {current[7:19] if current else 'none'}. Run sudo sparkring install "
+                             "again")
     result = retained_source.review(directory, args.operation, cache=cache)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     if image_runtime is not None:
@@ -835,6 +861,7 @@ def _status_view(slot, path, args, result, cache):
     except (OSError, ValueError):
         model = None
     view["deployment"]["thinking"] = thinking.deployment_default(model, lock.get("serving"))
+    view["deployment"]["transport"] = transport_view(path, lock)
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)
         # Automatic recovery acts on each slot's active deployment only.
@@ -856,6 +883,42 @@ def _status_view(slot, path, args, result, cache):
     from runtime.host import api_endpoint
     view["deployment"] = api_endpoint.present(view["deployment"], api_endpoint.recorded(path))
     return view
+
+
+def transport_view(directory, lock):
+    """A deployment's transport for ``sparkring status``: the backend and, on SIRCL, its last receipt verdict."""
+    value = lock.get("transport")
+    if not value:
+        return {"backend": "prepared"}
+    from runtime.host import transport_receipts
+    verdict = transport_receipts.latest(directory)
+    result = {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
+              "positions": value["group"]["positions"], "fabric": value["fabric"]["id"]}
+    if verdict is not None:
+        result.update({key: verdict.get(key) for key in ("verdict", "nccl_observed", "checked_at", "receipts")},
+                      problems=verdict.get("problems", [])[:5])
+    return result
+
+
+def transport_status_line(value):
+    """The ``Transport:`` line of ``sparkring status``."""
+    if value.get("backend") != "sircl":
+        return "Transport: prepared"
+    from runtime.host import transport_receipts
+    if "verdict" not in value:
+        return (f"Transport: sircl on {value['group']} (NCCL {value['nccl']}); no receipt check recorded yet: "
+                "sudo sparkring check")
+    line = transport_receipts.text({"problems": ["no detail"], **value})
+    return line + f" (checked {value.get('checked_at')}); sudo sparkring check repeats it"
+
+
+def recorded_fabric_id():
+    """The identity of the fabric document setup recorded on Node A, or None."""
+    from runtime.host import fabric
+    try:
+        return fabric.read_document(STATE)["id"]
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def _up_arguments(directory):

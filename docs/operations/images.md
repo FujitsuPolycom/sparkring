@@ -48,6 +48,14 @@ installs a profile on it ([Another image](install-reference.md#another-image)).
 | Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, gets HTTP 400 if the token limit ended generation and HTTP 500 otherwise, not HTTP 200 without a tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
 | Shared-memory reader window | vLLM's shared-memory readers poll for `SPARKRING_SHM_BUSY_LOOP_S` seconds after a read when that variable is set, and for one second otherwise ([derive_spin_wait.py](../../runtime/images/derive_spin_wait.py)). `sparkring install --save-cpu` sets it to 2 ms, and is refused on an image without it ([serving settings](install-reference.md#serving-settings), [#189](https://github.com/FujitsuPolycom/sparkring/issues/189)) |
 
+This image carries no SIRCL layer, so its deployments run on the prepared
+transport. A kraken-line image with the SIRCL layer
+([SIRCL layer](../../runtime/images/installer-images.md#sircl-layer)) adds the
+SIRCL package and its two prebuilt native libraries; `sparkring images` lists
+`sircl` among its transports, and `sparkring install` runs profiles on it with
+SIRCL ring sessions and NCCL off
+([transport and receipts](install-reference.md#transport-and-receipts)).
+
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that
 allows `io_uring` (`runtime/common/loader-seccomp.json`). Run it with

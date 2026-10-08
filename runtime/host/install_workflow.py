@@ -51,8 +51,9 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, installer_image, process_lock, profiles
+from runtime.common import distribution, image_lock, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
+from runtime.common import transport as transports
 from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, controller, derivation, discovery,
                           fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
                           recovery, retained_source, retention, rollout, settings, topology)
@@ -457,6 +458,57 @@ def derivation_section(card, rows, surveys, *, invoke=None):
     return derivation.section(card["target_variant"], manifest, donor, rows, probes, hostnames)
 
 
+def recorded_fabric(state_root, cluster):
+    """The cluster's fabric document (``runtime/host/fabric.py``), or None when setup recorded none for it."""
+    from runtime.host import fabric
+    if not (Path(state_root) / "fabric.json").exists():
+        return None
+    document = fabric.read_document(state_root)
+    if [row["node_id"] for row in document["positions"]] != [host["node_id"] for host in cluster["plan"]["spec"]["hosts"]]:
+        return None
+    return document
+
+
+def transport_choice(args, cluster, state_root, image, placement):
+    """``{"section", "backend", "reason", "notes"}``: the transport this request runs on (``transport.choose``).
+
+    ``section`` is the deployment lock's ``transport`` section of a SIRCL
+    deployment, else None. An explicit ``--transport sircl`` that cannot run
+    here, and ``--nccl`` with the prepared transport, need input.
+    """
+    try:
+        document = recorded_fabric(state_root, cluster)
+    except (OSError, ValueError) as error:
+        document, unreadable = None, str(error)
+    else:
+        unreadable = None
+    requested_backend, requested_nccl = getattr(args, "transport", None), getattr(args, "nccl", None)
+    try:
+        backend, nccl, reason = transports.choose(image, document, backend=requested_backend, nccl=requested_nccl)
+        if unreadable and backend == "prepared" and not requested_backend:
+            reason = f"the recorded fabric document cannot be read ({unreadable})"
+        if backend == "prepared":
+            return {"section": None, "backend": backend, "reason": reason, "notes": [],
+                    "explicit": requested_backend is not None}
+        hosts = cluster["plan"]["spec"]["hosts"]
+        positions = list(placement) if placement is not None else list(range(len(hosts)))
+        tuning, notes = transports.tuning_in_effect(state_root, document, image)
+        section = transports.section(image, document, positions, nccl=nccl, tuning=tuning)
+    except transports.TransportError as error:
+        raise NeedsInput(f"{error}. Nothing has been changed.", field="transport") from None
+    return {"section": section, "backend": backend, "reason": None, "notes": notes,
+            "explicit": requested_backend is not None}
+
+
+def transport_lines(lock, choice):
+    """What the installation prints about the transport before it asks."""
+    choice = choice or {}
+    section = (lock or {}).get("transport") or (choice.get("section") if lock is None else None)
+    if section:
+        return transports.plan_lines(section, choice.get("notes") or ())
+    return [transports.prepared_line(choice.get("reason"), choice.get("explicit"))]
+
+
 def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None):
     """Choose the deployment for this request, survey every Spark and plan its checkpoint.
 
@@ -480,14 +532,25 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     (``resolve_placement``). Its two Sparks are the deployment's ranks 0 and 1,
     and the placement, those Sparks and the half's API address enter the
     request.
+
+    The transport (``transport_choice``) is part of the request when it is
+    SIRCL: its NCCL mode, the fabric document's identity and the tuning
+    table's digest. A request on the prepared transport keeps the identity it
+    had before SIRCL existed. Returns ``(directory, lock, plan, transport
+    choice)``.
     """
     count = len(placement) if placement is not None else len(cluster["plan"]["nodes"])
     interactive = not args.json and sys.stdin.isatty()
     profile = choose_profile(args.profile, count, interactive)
-    image = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+    try:
+        image = image_lock.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+    except ValueError as error:
+        raise NeedsInput(f"{error}. Nothing has been changed.", field="image") from None
+    view = image_lock.v2_view(image)
     # A switch the image cannot apply, such as --save-cpu without the shared-memory
     # reader window, is refused before anything is asked or surveyed.
-    serving_settings.check_image(serving_settings.from_arguments(args), image["name"], installer_image.capabilities(image["name"]))
+    serving_settings.check_image(serving_settings.from_arguments(args), view["name"], installer_image.capabilities(view["name"]))
+    choice = transport_choice(args, cluster, state_root, image, placement)
     try:
         named = checkpoint_plan.named_paths(args.model_path, count)
     except ValueError as error:
@@ -511,6 +574,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         request["placement"] = list(placement)
     if checkpoint is not None:
         request["checkpoint"] = checkpoint
+    if choice["section"] is not None:
+        section = choice["section"]
+        request["transport"] = {"backend": "sircl", "nccl": section["nccl"], "fabric": section["fabric"]["id"],
+                                "tuning": section["tuning"]["sha256"]}
     # In a terminal without --yes, where the model's API listens is asked
     # unless the command line names the endpoint; the answers are serving
     # settings like --api-bind and --api-port.
@@ -541,7 +608,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         rows = lock["site"]["ranks"]
         selection = lock["selection"]
         image_id = selection["image_id"]
-        image_lock = lock.get("image_runtime") or {"name": selection["release"], "image_id": image_id}
+        held_lock = lock.get("image_runtime") or {"name": selection["release"], "image_id": image_id}
     else:
         site = controller.model_site(cluster, profile, instance, placement)
         for row in site["hosts"]:
@@ -552,10 +619,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
             row["cache"] = args.cache_path or "/srv/sparkring/" + cluster["name"] + "/cache"
         rows = [{"rank": rank, "host": row["host"], "model": owned, "cache": row["cache"],
                  "reuse_verified_model": False} for rank, row in enumerate(site["hosts"])]
-        selection, image_lock, image_id = card, image, image["image_id"]
+        selection, held_lock, image_id = card, view, image["image_id"]
     operator = os.environ.get("SUDO_USER") or "root"
     print(checkpoint_plan.announce(pins, len(rows)))
-    lineage = install_space.lineage(image_lock)
+    lineage = install_space.lineage(held_lock)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         found = pool.submit(inspect_sparks, rows, [entry["image_id"] for entry in lineage],
                             cache_paths(rows, selection, image_id))
@@ -571,11 +638,13 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          "api_address": getattr(args, "api_address", None),
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
                                          **({"placement": list(placement)} if placement is not None else {}),
-                                         **({"serving": request["serving"]} if request.get("serving") else {})},
+                                         **({"serving": request["serving"]} if request.get("serving") else {}),
+                                         "transport": getattr(args, "transport", None),
+                                         "nccl": getattr(args, "nccl", None)},
                                 derivation=derivation_section(selection, rows, surveys))
     if not locked:
         if plan["problems"]:
-            return directory, None, plan
+            return directory, None, plan, choice
         for row, entry in zip(site["hosts"], plan["nodes"], strict=True):
             if entry["mode"] == "in-place":
                 row.update(model=entry["path"], reuse_verified_model=True)
@@ -583,8 +652,12 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
             site = _select_mesh(site, cluster, profile, mesh_hint)
         elif installer.backend({"profile": profile}) == "glm-managed":
             site = _select_mesh(site, cluster, profile, mesh_hint, existing_only=True)
-        lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=image, settings=requested)
-    return directory, lock, plan
+        try:
+            lock = installer.init(directory, profile, site, variant=checkpoint, image_runtime=view, settings=requested,
+                                  transport=choice["section"])
+        except transports.TransportError as error:
+            raise NeedsInput(f"{error}. Nothing has been changed.", field="transport") from None
+    return directory, lock, plan, choice
 
 
 def saved_plan(directory):
@@ -879,12 +952,68 @@ def summary(lock, connection, previous, *, displaced=()):
                          "remove": REMOVE_COMMAND}}
 
 
+RESULT_FILE = "install-result.json"
+
+
+def transport_summary(lock, choice):
+    """The result's ``transport`` field before the model starts: backend, NCCL mode and what is expected."""
+    value = (lock or {}).get("transport")
+    if not value:
+        choice = choice or {}
+        return {"backend": "prepared", "reason": choice.get("reason")}
+    from runtime.host import transport_receipts
+    return {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
+            "positions": value["group"]["positions"], "fabric": value["fabric"]["id"],
+            "tuning": {"source": value["tuning"]["source"], "row": value["tuning"]["row"],
+                       "row_source": value["tuning"]["row_source"], "sha256": value["tuning"]["sha256"]},
+            "expected": transport_receipts.expectation(value)}
+
+
+def check_transport(directory, *, cache):
+    """The recorded receipt verdict of a SIRCL deployment (``sparkring-transport-verdict/v1``), from its own source.
+
+    A check that cannot run gives ``verdict: unknown`` with the reason; it
+    never fails the installation.
+    """
+    try:
+        verdict = retained_source.apply(directory, "transport", cache=cache)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+        return {"verdict": "unknown", "problems": [_error_text(error)]}
+    if not isinstance(verdict, dict) or "verdict" not in verdict:
+        return {"verdict": "unknown", "problems": ["the receipt check returned no verdict"]}
+    return {key: verdict[key] for key in ("verdict", "nccl_observed", "expected", "problems", "receipts", "groups",
+                                          "checked_at") if key in verdict}
+
+
+def save_result(directory, result):
+    """Keep the installation's result in its deployment directory, for ``sparkring check --report``."""
+    try:
+        node.save(directory, RESULT_FILE, result, mode=0o600)
+    except (OSError, ValueError, TypeError):
+        pass
+
+
+def transport_card_line(result):
+    """The summary card's Transport line from the result's ``transport`` field."""
+    value = result.get("transport") or {}
+    if value.get("backend") != "sircl":
+        return "prepared" if value else None
+    from runtime.host import transport_receipts
+    if "verdict" not in value:
+        return None
+    line = transport_receipts.text({"verdict": value["verdict"], "nccl": value.get("nccl"),
+                                    "nccl_observed": value.get("nccl_observed"), "problems": value.get("problems") or
+                                    ["no detail"], "receipts": value.get("receipts")})
+    return line.removeprefix("Transport: ").replace("Transport check failed", "check failed", 1)
+
+
 def summary_lines(result):
     """The card printed after ``Model ready:``; empty when the result lacks the summary fields."""
     if "example_request" not in result:
         return []
     commands = result.get("commands") or {}
     rows = [("Model", result.get("model")), ("API", result.get("api_url")), ("Dashboard", result.get("dashboard_url")),
+            ("Transport", transport_card_line(result)),
             ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
             ("Stop", commands.get("stop")),
             ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
@@ -953,8 +1082,8 @@ def execute(args):
             raise NeedsInput(f"A model switch on {placements.text(slot)} to {Path(unfinished['candidate']).name} "
                              f"stopped while {unfinished['state']}. Install that model again to finish it, then repeat "
                              "this installation. Nothing has been changed.", field="transaction")
-        directory, lock, checkpoint = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint,
-                                                        placement=placement)
+        directory, lock, checkpoint, choice = select_deployment(args, cluster, state_root, mesh_hint=mesh_hint,
+                                                                placement=placement)
         if lock is not None:
             check_managed_namespace(lock)
         previous = rollout.active(state_root, placement)
@@ -972,6 +1101,8 @@ def execute(args):
             if note:
                 print("Note: " + note)
         for line in stop_lines(stops):
+            print(line)
+        for line in transport_lines(lock, choice):
             print(line)
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
                                                             else "start the selected model."))
@@ -1022,6 +1153,7 @@ def execute(args):
                 **api_endpoint.present(installer.connection(lock), getattr(args, "api_address", None))}
         if placement is not None:
             plan["placement"] = list(placement)
+        plan["transport"] = transport_summary(lock, choice)
         if size == 4:
             plan["stops"] = [{"deployment": str(path), "profile": placements.profile_of(path),
                               "placement": list(placements.of_directory(path) or ()) or None} for path in stops]
@@ -1169,8 +1301,14 @@ def execute(args):
             plan["checkpoint"]["derivation_result"] = installer.read(directory / "assets/derivation-result.json")
         except (OSError, ValueError):
             pass
-        return {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
-                **summary(lock, plan, replaces, displaced=displaced)}
+        if lock.get("transport"):
+            # Judged after the smoke request; a differing verdict is reported and never stops the model.
+            with progress.step("Check which transport carried each collective"):
+                plan["transport"].update(check_transport(directory, cache=cache))
+        completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
+                     **summary(lock, plan, replaces, displaced=displaced)}
+        save_result(directory, completed)
+        return completed
 
 
 def main(argv=None):
@@ -1220,15 +1358,25 @@ def main(argv=None):
     parser.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1: only programs on Node A can then use "
                              "the model")
+    parser.add_argument("--transport", choices=transports.BACKENDS,
+                        help="the collective transport: sircl (SIRCL ring sessions; the default on an image that "
+                             "carries them and a fabric recorded by sparkring setup) or prepared (the prepared "
+                             "transport with NCCL)")
+    parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
+                        help="NCCL on a SIRCL deployment: never (default) keeps NCCL off every collective; auto lets "
+                             "NCCL carry what the cabling allows (every collective on a pair, the ring algorithm on "
+                             "a whole cycle, nothing across relays); topology is another name for auto")
     serving_settings.add_arguments(parser)
     args = parser.parse_args(argv)
+    if args.nccl is not None:
+        args.nccl = transports.nccl_mode(args.nccl)
     if args.events is not None and not args.events.parent.is_dir():
         parser.error(f"--events: the directory {args.events.parent} does not exist")
     if args.image is not None:
         # A named image is its lock in this package; naming the default image
         # requests the same deployment as no selection.
         try:
-            args.image_lock = installer_image.lock_path(args.image)
+            args.image_lock = image_lock.lock_path(args.image)
         except ValueError as error:
             parser.error(f"--image: {error}")
     output = sys.stdout

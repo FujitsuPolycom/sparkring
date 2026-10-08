@@ -463,6 +463,57 @@ images that run that profile.
 - `sudo sparkring up PROFILE --image NAME` selects an image for a deployment
   the same way.
 
+### Transport and receipts
+
+A deployment's collectives run on one of two transports:
+
+| Transport | Where it runs | NCCL |
+|---|---|---|
+| `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
+| `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+
+`sudo sparkring install` chooses `sircl` wherever it can run and says so
+before it asks: `Transport: sircl on every collective, NCCL off (...)`, or
+`Transport: prepared, because ...` with the reason. `sparkring images` lists
+the transports each image carries.
+
+- `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
+  with the reason where it cannot run; nothing changes.
+- `--nccl auto` lets NCCL carry the collectives the cabling allows: every
+  collective on a pair, NCCL's ring algorithm on a whole cycle, none across
+  relays. `--nccl never` is the default; `topology` is another name for
+  `auto`. `--nccl` applies to SIRCL deployments only.
+- The transport, the NCCL setting, the fabric and the tuning table are part
+  of the deployment, so another choice installs a separate deployment. A
+  deployment made on another fabric does not start; `sudo sparkring install`
+  makes one on the recorded fabric.
+
+SIRCL's settings come from a tuning table that chooses only among SIRCL's own
+algorithms, schedules, pieces and launch grids. The package carries a default
+table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
+(`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
+`cycle-8`, and `path` and `cycle` for other sizes. A row is `measured` or
+`rules`, where SIRCL's sessions derive their own settings. A table that names
+a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
+for that group's sessions. A table at
+`/var/lib/sparkring/controller/sircl-tuning.json` that is bound to the
+recorded fabric and the deployment's image replaces the default.
+
+After the model answers, the installation reads every rank's SIRCL receipts
+and the NCCL lines of its model log and judges them:
+
+- each rank's tensor-parallel group is ready and ran all-reduces on SIRCL;
+- with NCCL off, no group built PyNccl or sent a collective to NCCL, and no
+  log shows an NCCL communicator (the containers log NCCL's initialization for
+  this check);
+- the sessions decided from the tuning table the deployment recorded.
+
+The summary card's `Transport:` line shows the verdict, for example
+`sircl, NCCL: absent`. A differing verdict is reported; the model keeps
+serving. The receipts and the verdict are kept in the deployment's directory
+on Node A under `receipts/<time>/`; `sudo sparkring status` prints the last
+verdict and `sudo sparkring check` repeats the check.
+
 ### Serving settings
 
 `sudo sparkring install`, `sudo sparkring up PROFILE`, `sparkring init` and

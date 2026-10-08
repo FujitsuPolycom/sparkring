@@ -193,8 +193,10 @@ def install_command(request=None, named=(), *, ignore_local=False):
     """The ``sudo sparkring install`` command that repeats one deployment request.
 
     ``request`` holds ``profile``, ``checkpoint``, ``cache_path``, ``image_lock``,
-    the serving settings ``serving`` (``runtime.common.serving``) and, for a
-    deployment on half of a four-Spark ring, ``placement``. With the
+    the serving settings ``serving`` (``runtime.common.serving``), the
+    ``--transport`` and ``--nccl`` choices ``transport`` and ``nccl`` when the
+    operator named them and, for a deployment on half of a four-Spark ring,
+    ``placement``. With the
     ``--model-path`` entries ``named`` they make the deployment's identity, so
     a command that leaves one out plans another deployment.
     ``--ignore-local-copies`` is kept when set, because it narrows the search
@@ -230,6 +232,11 @@ def install_command(request=None, named=(), *, ignore_local=False):
     if settings.get("api_bind") and ipaddress.ip_address(settings["api_bind"]).is_loopback:
         # A new deployment with a loopback listen address needs this approval.
         argv.append("--allow-loopback-bind")
+    # The operator's transport choices; without them the installer chooses the same transport again.
+    if request.get("transport"):
+        argv += ["--transport", str(request["transport"])]
+    if request.get("nccl"):
+        argv += ["--nccl", str(request["nccl"])]
     if ignore_local:
         argv.append("--ignore-local-copies")
     return shlex.join(argv)
@@ -773,6 +780,10 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if given.get("serving"):
         # Only a deployment with other serving settings than its profile's records them.
         request["serving"] = dict(given["serving"])
+    for key in ("transport", "nccl"):
+        # Only a request that names --transport or --nccl records it.
+        if given.get(key):
+            request[key] = given[key]
     context = {"request": request, "named": entries, "ignore_local_copies": bool(ignore_local)}
     command = install_command(request, entries, ignore_local=ignore_local)
     policy = policy or storage_policy()

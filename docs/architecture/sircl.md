@@ -16,9 +16,14 @@ has two session generations:
 | Role | the default generation: every SIRCL deployment outside the retained images uses it | retained images and the retired profiles under [Profile use](#profile-use) |
 | Status | per component in the [ring-session status table](../../spark_transport/sircl/STATUS.md#component-status): one-shot all-reduce and all-gather **qualified** on the eight-Spark ring; serving through vLLM **research-only** | **implemented**; qualified only for the retained images named under [Profile use](#profile-use) |
 
-The published installer profiles serve on the `prepared` RoCEnante transport
-and patched NCCL; none of them selects SIRCL ring sessions. Ring sessions
-serve through their own launchers ([serve and bundle
+No profile names a transport. `sparkring install` runs an installer profile
+on ring sessions, with NCCL off, when its image carries the SIRCL layer (image
+lock v3, [SIRCL layer](../../runtime/images/installer-images.md#sircl-layer))
+and `sparkring setup` recorded the fabric with its relay table; elsewhere it
+uses the `prepared` RoCEnante transport and patched NCCL
+([transport and receipts](../operations/install-reference.md#transport-and-receipts)).
+The published installer images carry no SIRCL layer. The serve and bundle
+launchers also run ring sessions outside the installer ([serve and bundle
 runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md)).
 
 ## Ring sessions
@@ -94,8 +99,11 @@ address of every Spark that shares no cable with the sender.
 
 ## Profile use
 
-Ring sessions: no repository profile selects them. The serve launcher plans
-the catalog's installer profiles on SIRCL groups; which profiles plan on
+Ring sessions: `sparkring install` serves every installer profile on them
+on an image with the SIRCL layer; its transport adapter
+([transport.py](../../runtime/common/transport.py)) sets what the serve
+launcher's plan sets for the same group. The serve launcher plans the
+catalog's installer profiles on SIRCL groups; which profiles plan on
 Sparks 0-1 or 0-3 and what blocks the others is in the [serve
 runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#installer-profiles-on-the-ring-of-eight).
 
