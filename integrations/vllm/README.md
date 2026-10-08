@@ -77,6 +77,7 @@ the following variables:
 
 | Variable | Purpose |
 |---|---|
+| `SPARK_TP4_ENABLED` | `0` turns every four-rank startup hook off (all-reduce, vocabulary all-gather, health gate, DCP collective audit), whatever their own variables say; `1` or unset leaves each hook to its variable; any other value stops startup. Launchers that serve on SIRCL ring sessions set `0`. |
 | `VLLM_SPARK_TP4_MODE` | All-reduce mode: `shadow`, `custom`, `disabled`, or unset. |
 | `VLLM_SPARK_TP4_VOCAB_MODE` | Vocabulary mode: `shadow`, `custom`, or unset. |
 | `SPARK_TP4_LIBRARY` | Path to `libspark_transport_capi.so` for candidate execution in either `shadow` or `custom` mode. |
