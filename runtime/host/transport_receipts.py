@@ -27,7 +27,10 @@ checks (``sparkring_sircl.vllm.serve.checks``):
   sent a collective to NCCL;
 - each session decided from the measured tuning table the deployment's
   transport section matched (none: SIRCL's rules), and with a ``large_blocks``
-  tuning setting its sessions report that grid cap.
+  tuning setting its sessions report that grid cap;
+- with ``link_slots`` or ``link_slot`` tuning settings (a row measured by
+  ``sudo sparkring fabric tune`` sets those its measured choices ran under),
+  every tensor-parallel session reports those values.
 
 The verdict is ``as-expected``, ``differs`` (with each problem) or
 ``unknown`` when a Spark could not be read. ``record`` copies the receipts to
@@ -55,6 +58,8 @@ MAX_RECEIPT_BYTES = 1 << 20
 MAX_MATCHES = 50
 TAIL_LINES = 200
 LOG_SECONDS = 300
+# Tuning-row settings a session reports in its statistics (``stats()``), by the statistics key.
+REPORTED_SETTINGS = {"link_slots": "link_slots", "link_slot": "link_slot_bytes"}
 
 
 def _patterns():
@@ -192,6 +197,27 @@ def _rows(receipts):
             for key, calls in sorted(totals.items(), key=lambda item: tuple(map(str, item[0])))]
 
 
+def settings_findings(receipts, settings):
+    """``(lines, problems)``: each rank's tensor-parallel session against the tuning row's reported settings."""
+    expected = {stat: settings[name] for name, stat in REPORTED_SETTINGS.items() if name in settings}
+    if not expected:
+        return [], []
+    lines, problems = [], []
+    for rank, records in sorted(receipts.items()):
+        record = next((item for item in records if str(item.get("group", "")).split(":")[0] == "tp"), None)
+        stats = (record or {}).get("session_stats")
+        if not isinstance(stats, dict) or "error" in stats:
+            lines.append(f"tuning settings of rank {rank}: its receipt states no session statistics (not judged)")
+            continue
+        for stat, value in sorted(expected.items()):
+            if stats.get(stat) != value:
+                problems.append(f"rank {rank}: the session's {stat} is {stats.get(stat)}, the tuning row sets {value}")
+    if not problems:
+        lines.append("tuning settings: the sessions report the row's " + ", ".join(
+            f"{stat} {value}" for stat, value in sorted(expected.items())))
+    return lines, problems
+
+
 def evaluate(lock, reports, *, now=time.time):
     """The ``sparkring-transport-verdict/v1`` document of a SIRCL deployment's reports."""
     from spark_transport.sircl.sparkring_sircl.vllm.serve import checks
@@ -228,6 +254,9 @@ def evaluate(lock, reports, *, now=time.time):
         block_lines, block_problems = checks.large_blocks_findings(receipts, blocks)
         lines += block_lines
         problems += block_problems
+    setting_lines, setting_problems = settings_findings(receipts, section["tuning"]["settings"])
+    lines += setting_lines
+    problems += setting_problems
     rows = _rows(receipts)
     nccl_rows = [row for row in rows if row["backend"] == "nccl"]
     log_hits = any(any(pattern in line for pattern in _patterns()[0]) for values in logs.values() for line in values)

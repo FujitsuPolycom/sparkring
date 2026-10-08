@@ -25,15 +25,32 @@ identity, the group (SIRCL's layout text, the positions and the shape the
 tuning table is keyed by), each rank's RDMA devices, the tuning row in
 effect, and the image's SIRCL layer. The lock's identity covers it.
 
-The default tuning table, ``runtime/common/sircl-tuning-defaults.json``
-(schema ``sparkring-sircl-tuning/v1``), chooses only among SIRCL's own
-settings: per group shape (``pair``, ``path-<n>``, ``cycle-<n>``, else the
-row of the shape alone), the session settings that ``serve.plan.Options``
-of the SIRCL launcher names (one-shot limit, launch grid, schedules,
-minimums, link sizes, capacities and waits), with each row's evidence
-(``measured``, ``rules`` for SIRCL's own derivation). ``tables`` may name
-measured ``sircl-tuning-table/v1`` files in the repository; each session
-takes the one whose key matches its group and the image's SIRCL build.
+A tuning table (schema ``sparkring-sircl-tuning/v1``) chooses only among
+SIRCL's own settings: per group shape (``pair``, ``path-<n>``,
+``cycle-<n>``, else the row of the shape alone), the session settings that
+``serve.plan.Options`` of the SIRCL launcher names (one-shot limit, launch
+grid, schedules, minimums, link sizes, capacities and waits), with each
+row's evidence (``measured``, ``rules`` for SIRCL's own derivation,
+``inherited:<row>``). ``tables`` names measured SIRCL tuning tables
+(``sircl-tuning-table/v1``: per collective, size and mode, the fastest SIRCL
+algorithm, schedule, piece and launch grid); each session takes the one whose
+key matches its group and the image's SIRCL build, and its hash joins the
+session's setup agreement. Two tables exist:
+
+- the default table, ``runtime/common/sircl-tuning-defaults.json``
+  (``source: defaults``), bound to no fabric and no image; its ``tables``
+  are repository paths;
+- a measured table, ``/var/lib/sparkring/controller/sircl-tuning.json`` on
+  Node A (``source: measured``), which ``sudo sparkring fabric tune``
+  (``runtime/host/fabric_tune.py``) writes from ring-harness measurements on
+  the cluster's own fabric. It is bound to the fabric document's identity,
+  the image and its SIRCL build, and each Spark's GPU driver and kernel
+  (``binding``); its measured rows are ``measured``, and the default rows it
+  carries for shapes it did not measure are ``default:<their source>``. Its
+  ``tables`` are absolute paths under ``HOST_TABLES``, where every Spark holds
+  the same bytes. ``tuning_in_effect`` uses it only while every binding
+  holds (``measured_problems``) and otherwise falls back to the default table
+  and says why.
 
 ``adapt`` renders each rank's container from the installer image's adapted
 container (``installer_image.adapt``): the environment the SIRCL launcher's
@@ -66,8 +83,17 @@ SECTION_SCHEMA = "sparkring-transport/v1"
 TUNING_SCHEMA = "sparkring-sircl-tuning/v1"
 ROOT = Path(__file__).resolve().parents[2]
 TUNING_DEFAULTS = Path(__file__).with_name("sircl-tuning-defaults.json")
-# A table that `sudo sparkring fabric tune` measures on this cluster, bound to its fabric and image.
+# The measured table in Node A's controller directory: `sudo sparkring fabric tune` writes it from
+# measurements on this cluster's fabric, bound to that fabric, the image and the Sparks' drivers.
 MEASURED_TUNING = "sircl-tuning.json"
+# Every Spark's copies of the measured SIRCL tables, named by their SHA-256; written once, never changed.
+HOST_TABLES = "/etc/sparkring/fabric/sircl-tuning"
+DOCUMENT_FIELDS = frozenset({"schema", "source", "sircl", "fabric", "image_id", "measured_at", "layouts", "tables"})
+BINDING_FIELDS = frozenset({"image", "tuning_key", "drivers", "defaults_sha256", "harness"})
+# What a measured table records of each Spark's software: the NVIDIA GPU driver and the kernel release,
+# which carries the ConnectX (mlx5) driver. None where a Spark did not report it.
+DRIVER_FIELDS = ("gpu", "kernel")
+DRIVER_LABELS = {"gpu": "GPU driver", "kernel": "kernel"}
 BACKENDS = ("sircl", "prepared")
 NCCL_MODES = ("never", "auto")
 # The SIRCL launcher's other name for auto.
@@ -87,9 +113,13 @@ SCHEDULE_SETTINGS = ("large_schedule", "gather_schedule", "scatter_schedule")
 SECONDS_SETTINGS = ("startup_wait", "serving_wait")
 SETTINGS = (*INTEGER_SETTINGS, *SCHEDULE_SETTINGS, *SECONDS_SETTINGS, "large_allreduce")
 ROW_SOURCES = re.compile(r"measured|rules|inherited:[a-z0-9-]+")
+# A measured table's rows for group shapes it did not measure: the default table's row and its evidence.
+CARRIED = "default:"
 GROUP_NAME = re.compile(r"pair|(?:path|cycle)(?:-[2-9]|-1[0-6])?")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
+_SHORT = re.compile(r"[0-9a-f]{16}")
 _FABRIC_ID = re.compile(r"sha256:[0-9a-f]{64}")
+_HOST_TABLE = re.compile(re.escape(HOST_TABLES) + r"/([0-9a-f]{64})\.json")
 
 
 class TransportError(ValueError):
@@ -138,20 +168,54 @@ def _setting(name, value):
     return value in ("auto", "sircl", "nccl")
 
 
-def validate_tuning(document, *, root=ROOT):
-    """A ``sparkring-sircl-tuning/v1`` document after checking it; TransportError otherwise."""
+def _validate_binding(document):
+    """The ``binding`` of a measured table: what its measurements depend on besides the fabric and the image."""
+    binding = document["binding"]
+    _require(isinstance(binding, dict) and set(binding) == BINDING_FIELDS,
+             "a measured tuning table's binding names the image, its SIRCL tuning key, each Spark's drivers, the "
+             "default table it carries rows of and the harness runs")
+    _require(isinstance(binding["image"], str) and binding["image"], "a measured tuning table names its image")
+    key = binding["tuning_key"]
+    sircl = document["sircl"]
+    _require(isinstance(key, dict) and set(key) == {"native", "kernels", "sircl"}
+             and all(isinstance(key[name], str) and _SHORT.fullmatch(key[name]) for name in ("native", "kernels"))
+             and key["sircl"] == f"{sircl['version']}/abi{sircl['abi_version']}",
+             "a measured tuning table records the SIRCL tuning key of its image (native and kernel source hashes "
+             "and <version>/abi<n>)")
+    drivers = binding["drivers"]
+    _require(isinstance(drivers, dict) and drivers
+             and all(isinstance(position, str) and position.isdigit() and isinstance(row, dict)
+                     and set(row) == set(DRIVER_FIELDS)
+                     and all(value is None or isinstance(value, str) for value in row.values())
+                     for position, row in drivers.items()),
+             "a measured tuning table records each Spark's GPU driver and kernel by position")
+    _require(isinstance(binding["defaults_sha256"], str) and _SHA256.fullmatch(binding["defaults_sha256"]),
+             "a measured tuning table records the SHA-256 of the default table it carries rows of")
+    _require(isinstance(binding["harness"], dict), "a measured tuning table records its harness runs")
+
+
+def validate_tuning(document, *, root=ROOT, host_root="/"):
+    """A ``sparkring-sircl-tuning/v1`` document after checking it; TransportError otherwise.
+
+    ``root`` holds the repository tables a ``tables`` entry names by a
+    relative path; ``host_root`` holds this Spark's ``HOST_TABLES``, which a
+    measured table names by absolute path.
+    """
     _require(isinstance(document, dict) and document.get("schema") == TUNING_SCHEMA, f"expected {TUNING_SCHEMA}")
-    _require(set(document) == {"schema", "source", "sircl", "fabric", "image_id", "measured_at", "layouts", "tables"},
-             f"a {TUNING_SCHEMA} table has schema, source, sircl, fabric, image_id, measured_at, layouts and tables")
+    measured = document.get("source") == "measured"
+    _require(set(document) == (DOCUMENT_FIELDS | {"binding"} if measured else DOCUMENT_FIELDS),
+             f"a {TUNING_SCHEMA} table has schema, source, sircl, fabric, image_id, measured_at, layouts and tables, "
+             "and a measured one also its binding")
     _require(document["source"] in ("defaults", "measured"), "a tuning table's source is defaults or measured")
     sircl = document["sircl"]
     _require(isinstance(sircl, dict) and set(sircl) == {"version", "abi_version"}
              and isinstance(sircl["version"], str) and type(sircl["abi_version"]) is int,
              "a tuning table names the SIRCL version and ABI it applies to")
-    if document["source"] == "measured":
+    if measured:
         _require(isinstance(document["fabric"], str) and _FABRIC_ID.fullmatch(document["fabric"])
                  and isinstance(document["image_id"], str),
                  "a measured tuning table names the fabric and the image it was measured on")
+        _validate_binding(document)
     else:
         _require(document["fabric"] is None and document["image_id"] is None,
                  "the default tuning table is bound to no fabric and no image")
@@ -159,9 +223,12 @@ def validate_tuning(document, *, root=ROOT):
     _require(isinstance(layouts, dict) and layouts, "a tuning table has layout rows")
     for name, row in layouts.items():
         _require(GROUP_NAME.fullmatch(name), f"tuning row {name!r}: rows are pair, path, cycle, path-<n> or cycle-<n>")
-        _require(isinstance(row, dict) and set(row) == {"source", "settings"} and isinstance(row["source"], str)
-                 and ROW_SOURCES.fullmatch(row["source"]) and isinstance(row["settings"], dict),
-                 f"tuning row {name}: source (measured, rules or inherited:<row>) and settings")
+        source = row.get("source") if isinstance(row, dict) else None
+        own = source.removeprefix(CARRIED) if isinstance(source, str) and measured else source
+        _require(isinstance(row, dict) and set(row) == {"source", "settings"} and isinstance(own, str)
+                 and ROW_SOURCES.fullmatch(own) and isinstance(row["settings"], dict),
+                 f"tuning row {name}: source (measured, rules or inherited:<row>; in a measured table also "
+                 "default:<source>) and settings")
         for key, value in row["settings"].items():
             _require(key in SETTINGS and _setting(key, value), f"tuning row {name}: {key}={value!r} is not a "
                      "SIRCL session setting the installer passes")
@@ -171,37 +238,123 @@ def validate_tuning(document, *, root=ROOT):
         _require(isinstance(entry, dict) and set(entry) == {"path", "sha256"} and isinstance(entry["path"], str)
                  and isinstance(entry["sha256"], str) and _SHA256.fullmatch(entry["sha256"]),
                  "a measured table entry is {path, sha256}")
-        relative = PurePosixPath(entry["path"])
-        _require(not relative.is_absolute() and ".." not in relative.parts, "a measured table is a repository path")
-        path = Path(root) / relative
+        named = PurePosixPath(entry["path"])
+        if named.is_absolute():
+            found = _HOST_TABLE.fullmatch(entry["path"])
+            _require(measured and found is not None and found.group(1) == entry["sha256"],
+                     f"a measured table is a repository path, or in a measured tuning table "
+                     f"{HOST_TABLES}/<sha256>.json")
+            path = Path(host_root) / entry["path"].lstrip("/")
+        else:
+            _require(".." not in named.parts, "a measured table is a repository path")
+            path = Path(root) / named
         _require(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"],
                  f"measured table {entry['path']} is missing or differs from its SHA-256")
     return document
 
 
-def load_tuning(path=TUNING_DEFAULTS, *, root=ROOT):
+def load_tuning(path=TUNING_DEFAULTS, *, root=ROOT, host_root="/"):
     try:
         document = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError) as error:
         raise TransportError(f"{path} cannot be read: {error}") from None
-    return validate_tuning(document, root=root)
+    return validate_tuning(document, root=root, host_root=host_root)
 
 
-def tuning_in_effect(state, document, image_value, *, root=ROOT):
-    """``(tuning document, notes)``: the measured table of ``state`` when it is bound to this fabric and
-    image, else the default table. A measured table bound elsewhere is named in ``notes``."""
+def measured_problems(measured, document, image_value, *, drivers=None):
+    """Why the measured table ``measured`` does not apply here; empty when it does.
+
+    ``document`` is the recorded fabric document (or None) and
+    ``image_value`` the lock of the image the installation uses; its SIRCL
+    build is compared when the lock carries one. ``drivers`` maps positions to
+    their observed ``{"gpu", "kernel"}``; a field either side does not know is
+    not compared.
+    """
+    problems = []
+    binding = measured["binding"]
+    if document is None:
+        problems.append("this cluster has no fabric document")
+    elif measured["fabric"] != document["id"]:
+        problems.append(f"it was measured on fabric {measured['fabric'][7:19]}, and the recorded fabric is "
+                        f"{document['id'][7:19]}")
+    if measured["image_id"] != image_value.get("image_id"):
+        problems.append(f"it was measured with image {binding['image']}, and this installation uses "
+                        f"{image_value.get('name') or image_value.get('image_id')}")
+    sircl = image_lock.sircl(image_value)
+    if sircl is not None:
+        if measured["sircl"] != {"version": sircl["version"], "abi_version": sircl["abi_version"]}:
+            problems.append(f"it was measured with SIRCL {measured['sircl']['version']} (ABI "
+                            f"{measured['sircl']['abi_version']}), and the image carries SIRCL {sircl['version']} "
+                            f"(ABI {sircl['abi_version']})")
+        elif binding["tuning_key"] != sircl["tuning_key"]:
+            problems.append("the image's SIRCL native or kernel sources differ from the measured build")
+    for position, observed in sorted((drivers or {}).items(), key=lambda item: int(item[0])):
+        recorded = binding["drivers"].get(str(position)) or {}
+        for field in DRIVER_FIELDS:
+            before, now = recorded.get(field), (observed or {}).get(field)
+            if before and now and before != now:
+                problems.append(f"the {DRIVER_LABELS[field]} of position {position} changed from {before} to {now}")
+    return problems
+
+
+def tuning_in_effect(state, document, image_value, *, root=ROOT, host_root="/", drivers=None):
+    """``(tuning document, notes)``: the measured table of ``state`` while it applies here, else the default.
+
+    The measured table applies while ``measured_problems`` finds nothing
+    against the recorded fabric document, the installation's image and
+    ``drivers``; ``notes`` says why it does not, or why it cannot be read.
+    """
     notes = []
     path = Path(state) / MEASURED_TUNING if state is not None else None
     if path is not None and path.exists():
         try:
-            measured = load_tuning(path, root=root)
-            if measured["fabric"] == document["id"] and measured["image_id"] == image_value["image_id"]:
-                return measured, notes
-            notes.append(f"the measured tuning table {path} was measured on another fabric or image; the default "
-                         "table applies")
+            measured = load_tuning(path, root=root, host_root=host_root)
         except TransportError as error:
             notes.append(f"the measured tuning table {path} cannot be used ({error}); the default table applies")
+        else:
+            problems = measured_problems(measured, document, image_value, drivers=drivers)
+            if not problems:
+                return measured, notes
+            notes.append(f"the measured tuning table no longer applies: {'; '.join(problems)}. The default table "
+                         "applies; sudo sparkring fabric tune measures this fabric again")
     return load_tuning(root=root), notes
+
+
+def table_identity(table_document):
+    """``(shape, world, lanes, max_relays)`` of a ``sircl-tuning-table/v1`` key: the groups it can serve."""
+    key = table_document["key"]
+    return (str(key["shape"]), int(key["world"]), int(key["lanes"]), int(key["max_relays"]))
+
+
+def measured_document(defaults, rows, tables, *, fabric, image_value, measured_at, binding, root=ROOT):
+    """A measured ``sparkring-sircl-tuning/v1`` table over the default table ``defaults``.
+
+    ``rows`` maps measured group names to their settings and ``tables`` the
+    SHA-256 of each measured SIRCL table to its parsed document. Every row of
+    ``defaults`` the measurement did not replace is carried as
+    ``default:<source>``; a repository table of ``defaults`` is carried unless a
+    measured table serves the same groups. ``binding`` holds every field of
+    ``BINDING_FIELDS`` but ``defaults_sha256``, which is ``defaults``' digest.
+    The result is not validated here: its tables must first reach ``HOST_TABLES``.
+    """
+    layouts = {name: {"source": CARRIED + row["source"], "settings": dict(row["settings"])}
+               for name, row in defaults["layouts"].items()}
+    for name, settings in rows.items():
+        _require(GROUP_NAME.fullmatch(name), f"measured row {name!r} is not a group shape")
+        layouts[name] = {"source": "measured", "settings": dict(settings)}
+    served = {table_identity(table) for table in tables.values()}
+    entries = [{"path": f"{HOST_TABLES}/{digest}.json", "sha256": digest} for digest in sorted(tables)]
+    for entry in defaults["tables"]:
+        carried = json.loads((Path(root) / entry["path"]).read_text(encoding="utf-8"))
+        if table_identity(carried) not in served:
+            entries.append(dict(entry))
+    sircl = image_lock.sircl(image_value)
+    _require(sircl is not None, f"image {image_value.get('name')} carries no SIRCL layer")
+    return {"schema": TUNING_SCHEMA, "source": "measured",
+            "sircl": {"version": sircl["version"], "abi_version": sircl["abi_version"]},
+            "fabric": fabric, "image_id": image_value["image_id"], "measured_at": measured_at,
+            "layouts": dict(sorted(layouts.items())), "tables": entries,
+            "binding": {**binding, "defaults_sha256": tuning_digest(defaults)}}
 
 
 def group_name(shape, size):
@@ -280,8 +433,21 @@ def choose(image_value, document, *, backend=None, nccl=None):
     return backend, nccl or DEFAULT_NCCL, None
 
 
-def section(image_value, document, positions, *, nccl, tuning, root=ROOT):
-    """The deployment lock's ``transport`` section of a SIRCL deployment on ``positions`` of ``document``."""
+def table_file(entry, *, root=ROOT, host_root="/"):
+    """Where a tuning table's ``tables`` entry lies here: a repository path under ``root``, or a Spark's
+    ``HOST_TABLES`` copy under ``host_root``."""
+    if PurePosixPath(entry["path"]).is_absolute():
+        return Path(host_root) / entry["path"].lstrip("/")
+    return Path(root) / entry["path"]
+
+
+def section(image_value, document, positions, *, nccl, tuning, root=ROOT, host_root="/"):
+    """The deployment lock's ``transport`` section of a SIRCL deployment on ``positions`` of ``document``.
+
+    ``tuning`` is the table in effect (``tuning_in_effect``); the section
+    records its digest, the group's row and the one table of ``tuning`` whose
+    key matches the group and the image's SIRCL build, if any.
+    """
     _require(unavailable(image_value, document) is None, "SIRCL cannot run: " + str(unavailable(image_value, document)))
     nccl = nccl_mode(nccl) or DEFAULT_NCCL
     layout = sircl_layout(document)
@@ -297,7 +463,8 @@ def section(image_value, document, positions, *, nccl, tuning, root=ROOT):
         facts = {**sircl_tuning.facts_for_layout(topology.session_layout(), topology.lane_count),
                  **sircl["tuning_key"]}
         for entry in tuning["tables"]:
-            table = sircl_tuning.Table(json.loads((Path(root) / entry["path"]).read_text(encoding="utf-8")), entry["path"])
+            path = table_file(entry, root=root, host_root=host_root)
+            table = sircl_tuning.Table(json.loads(path.read_text(encoding="utf-8")), entry["path"])
             if not table.mismatches(facts):
                 tables.append({**entry, "hash": table.hash})
         _require(len(tables) <= 1, "several measured tuning tables match this group and image")
@@ -311,7 +478,8 @@ def section(image_value, document, positions, *, nccl, tuning, root=ROOT):
         "tuning": {"source": tuning["source"], "sha256": tuning_digest(tuning), "row": name,
                    "row_source": row["source"] if applies else "rules",
                    "settings": dict(row["settings"]) if applies else {}, "tables": tables,
-                   "applies": applies},
+                   "applies": applies,
+                   **({"measured_at": tuning["measured_at"]} if tuning["source"] == "measured" else {})},
         "sircl": sircl,
     }
 
@@ -350,10 +518,20 @@ def validate_section(value, card, image_runtime):
              and all(isinstance(row, list) and row and all(isinstance(name, str) for name in row) for row in devices),
              "The transport section lists each rank's RDMA devices")
     tuning = value["tuning"]
-    _require(isinstance(tuning, dict) and set(tuning) == {"source", "sha256", "row", "row_source", "settings", "tables",
-                                                         "applies"}
+    fields = {"source", "sha256", "row", "row_source", "settings", "tables", "applies"}
+    _require(isinstance(tuning, dict) and set(tuning) in (fields, fields | {"measured_at"})
              and isinstance(tuning["sha256"], str) and _SHA256.fullmatch(tuning["sha256"]),
              "The transport section records the tuning table's digest, row and settings")
+    _require(("measured_at" in tuning) == (tuning["source"] == "measured"),
+             "The transport section dates a measured tuning table and only a measured one")
+    for entry in tuning["tables"]:
+        _require(isinstance(entry, dict) and set(entry) == {"path", "sha256", "hash"}
+                 and isinstance(entry["sha256"], str) and _SHA256.fullmatch(entry["sha256"])
+                 and isinstance(entry["hash"], str) and _SHORT.fullmatch(entry["hash"])
+                 and isinstance(entry["path"], str)
+                 and (not PurePosixPath(entry["path"]).is_absolute()
+                      or _HOST_TABLE.fullmatch(entry["path"]) is not None),
+                 "The transport section names each SIRCL tuning table by path, SHA-256 and hash")
     for key, setting in tuning["settings"].items():
         _require(key in SETTINGS and _setting(key, setting), f"Tuning setting {key}={setting!r} is not passed")
     image_lock.validate_sircl(value["sircl"])
@@ -492,8 +670,11 @@ def adapt(specs, lock):
         mounts = [*spec.mounts,
                   Bind(fabric_document.HOST_PATH, fabric_document.HOST_PATH, True),
                   Bind(receipt_directory(lock), RECEIPT_TARGET, False)]
-        mounts += [Bind(str(PurePosixPath(row["repository"]) / entry["path"]), f"{TABLE_TARGET}/{entry['hash']}.json",
-                        True) for entry in value["tuning"]["tables"]]
+        # A measured table's copy lies at the same absolute path on every Spark; a repository table in the
+        # rank's own checkout of the deployment's source.
+        mounts += [Bind(entry["path"] if PurePosixPath(entry["path"]).is_absolute()
+                        else str(PurePosixPath(row["repository"]) / entry["path"]),
+                        f"{TABLE_TARGET}/{entry['hash']}.json", True) for entry in value["tuning"]["tables"]]
         result.append(replace(spec, environment=environment_, mounts=tuple(mounts)))
     shards = {spec.environment.get(plan.MHC_SHARD, "0").strip() not in ("", "0") for spec in result}
     _require(len(shards) == 1, f"the profile's ranks disagree on {plan.MHC_SHARD}")
@@ -508,14 +689,18 @@ def plan_lines(value, notes=()):
     """What ``sparkring install`` prints about a SIRCL deployment's transport before it asks."""
     tuning = value["tuning"]
     row = tuning["row"]
+    # A measured table's row for a shape it did not measure is the default table's row.
+    source = tuning["row_source"].removeprefix(CARRIED)
     if not tuning["applies"]:
         evidence = f"the default table is for another SIRCL build; SIRCL's own rules apply on this {row} group"
-    elif tuning["row_source"] == "measured":
-        evidence = f"{'measured on this fabric' if tuning['source'] == 'measured' else 'default table'}, {row}"
-    elif tuning["row_source"] == "rules":
+    elif source == "measured" and tuning["row_source"] == "measured" and tuning["source"] == "measured":
+        evidence = f"measured on this fabric {tuning['measured_at']}, {row}"
+    elif source == "measured":
+        evidence = f"default table, {row}"
+    elif source == "rules":
         evidence = f"default table, {value['group']['name']}: not measured, SIRCL's own rules apply"
     else:
-        evidence = f"default table, {value['group']['name']}: {tuning['row_source'].replace(':', ' from ')}"
+        evidence = f"default table, {value['group']['name']}: {source.replace(':', ' from ')}"
     if value["nccl"] == "never":
         lines = [f"Transport: sircl on every collective, NCCL off ({evidence})"]
     else:
@@ -530,6 +715,9 @@ def plan_lines(value, notes=()):
     if tuning["settings"]:
         lines.append("  SIRCL settings: " + ", ".join(f"{key} {setting}" for key, setting in
                                                        sorted(tuning["settings"].items())))
+    for entry in tuning["tables"]:
+        lines.append(f"  SIRCL tuning table {entry['hash']}: the measured algorithm, schedule, piece and launch grid "
+                     "per collective and size")
     for note in notes:
         lines.append("  Note: " + note)
     return lines
@@ -589,7 +777,8 @@ def admit_layer(lock, *, run):
 
 
 def check_host_document(value, *, root="/"):
-    """Raise TransportError unless this Spark's fabric document has the deployment's identity."""
+    """Raise TransportError unless this Spark's fabric document has the deployment's identity and the Spark
+    holds every measured tuning table the deployment mounts from ``HOST_TABLES``, byte for byte."""
     path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
     try:
         document = fabric_document.load(path)
@@ -599,4 +788,11 @@ def check_host_document(value, *, root="/"):
              f"This deployment was made on fabric {value['fabric']['id'][7:19]}; this Spark records fabric "
              f"{document['id'][7:19]}. Run sudo sparkring install again")
     _require(fabric_document.uniform_names(document), "the Sparks name their fabric devices differently")
+    for entry in value["tuning"]["tables"]:
+        if not PurePosixPath(entry["path"]).is_absolute():
+            continue
+        path = table_file(entry, host_root=root)
+        _require(path.is_file() and hashlib.sha256(path.read_bytes()).hexdigest() == entry["sha256"],
+                 f"This Spark lacks the measured SIRCL tuning table {entry['sha256'][:12]} ({entry['path']}) that "
+                 "this deployment uses; sudo sparkring fabric tune --distribute copies it to every Spark")
     return {"ok": True, "fabric": document["id"]}

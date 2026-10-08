@@ -94,14 +94,105 @@ def test_a_malformed_tuning_table_is_refused(edit, message):
         transport.validate_tuning(table)
 
 
-def test_a_measured_table_applies_only_to_its_own_fabric_and_image(tmp_path):
+def measured_table(host, value, image, *, rows=None, tables=None):
+    """A measured table over the default table, its SIRCL tables copied under ``host`` as every Spark holds them."""
+    tables = tables or {}
+    for digest, data in tables.items():
+        path = host / transport.HOST_TABLES.lstrip("/") / f"{digest}.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+    binding = {"image": image["name"], "tuning_key": image["sircl"]["tuning_key"],
+               "drivers": {"0": {"gpu": "580.95.05", "kernel": "6.11.0-1016-nvidia"}}, "harness": {"runs": {}}}
+    return transport.measured_document(transport.load_tuning(), rows or {}, {d: json.loads(b) for d, b in tables.items()},
+                                       fabric=value["id"], image_value=image, measured_at="2026-10-09", binding=binding)
+
+
+def pair_table(image, value=None, positions=(0, 1)):
+    """A SIRCL table keyed for a pair group of ``value`` (default: a pair fabric) with ``image``'s build, as bytes."""
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    value = value or document("pair", 2)
+    topology = transport.group_topology(transport.sircl_layout(value), list(positions))
+    key = {**sircl_tuning.facts_for_layout(topology.session_layout(), topology.lane_count),
+           **image["sircl"]["tuning_key"], "image": image["image_id"]}
+    table = sircl_tuning.build_document(key, [
+        {"collective": "all_reduce", "mode": "graph", "bytes": size, "choice": {"algorithm": name, "grid": 16},
+         "p50_us": micros} for size, name, micros in ((8192, "oneshot", 14.0), (65536, "twoshot", 30.0))])
+    data = (json.dumps(table, indent=1, sort_keys=True) + "\n").encode()
+    return hashlib.sha256(data).hexdigest(), data
+
+
+def test_a_measured_table_applies_only_while_its_fabric_image_and_drivers_hold(tmp_path):
     cycle = document("cycle", 4)
     image = sircl_lock()
-    measured = dict(transport.load_tuning(), source="measured", fabric=cycle["id"], image_id=image["image_id"])
+    measured = measured_table(tmp_path, cycle, image)
+    transport.validate_tuning(measured, host_root=tmp_path)
     (tmp_path / transport.MEASURED_TUNING).write_text(transport.encoded(measured))
-    assert transport.tuning_in_effect(tmp_path, cycle, image) == (measured, [])
-    table, notes = transport.tuning_in_effect(tmp_path, cycle, dict(image, image_id="sha256:" + "9" * 64))
-    assert table == transport.load_tuning() and "another fabric or image" in notes[0]
+    drivers = {0: {"gpu": "580.95.05", "kernel": "6.11.0-1016-nvidia"}}
+    assert transport.tuning_in_effect(tmp_path, cycle, image, host_root=tmp_path, drivers=drivers) == (measured, [])
+    for value, image_value, observed, reason in (
+            (cycle, dict(image, image_id="sha256:" + "9" * 64), drivers, "measured with image"),
+            (document("cycle", 8), image, drivers, "measured on fabric"),
+            (cycle, image, {0: {"gpu": "590.1", "kernel": "6.11.0-1016-nvidia"}}, "GPU driver of position 0")):
+        table, notes = transport.tuning_in_effect(tmp_path, value, image_value, host_root=tmp_path, drivers=observed)
+        assert table == transport.load_tuning() and reason in notes[0]
+    # A field neither side records is not compared.
+    assert transport.measured_problems(measured, cycle, image, drivers={0: {"gpu": None, "kernel": None}}) == []
+
+
+@pytest.mark.parametrize("edit, message", [
+    (lambda table: table.pop("binding"), "a measured one also its binding"),
+    (lambda table: table["binding"].update(drivers={}), "GPU driver and kernel by position"),
+    (lambda table: table["binding"]["tuning_key"].update(sircl="0.3.0/abi9"), "SIRCL tuning key"),
+    (lambda table: table["layouts"]["pair"].update(source="default:guessed"), "default:<source>"),
+    (lambda table: table["tables"].append({"path": "/etc/sparkring/x.json", "sha256": "0" * 64}), "repository path"),
+    (lambda table: table["tables"].append({"path": f"{transport.HOST_TABLES}/{'0' * 64}.json", "sha256": "0" * 64}),
+     "missing or differs"),
+])
+def test_a_measured_table_records_its_binding_and_names_only_tables_every_spark_holds(tmp_path, edit, message):
+    image = sircl_lock()
+    measured = measured_table(tmp_path, document("pair", 2), image, rows={"pair": {"link_slots": 12}},
+                              tables=dict([pair_table(image)]))
+    transport.validate_tuning(measured, host_root=tmp_path)
+    edit(measured)
+    with pytest.raises(transport.TransportError, match=message):
+        transport.validate_tuning(measured, host_root=tmp_path)
+
+
+def test_the_default_table_neither_carries_rows_nor_names_spark_tables(tmp_path):
+    table = transport.load_tuning()
+    table["layouts"]["pair"]["source"] = "default:measured"
+    with pytest.raises(transport.TransportError, match="default:<source>"):
+        transport.validate_tuning(table)
+    digest, data = pair_table(sircl_lock())
+    path = tmp_path / transport.HOST_TABLES.lstrip("/") / f"{digest}.json"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(data)
+    table = dict(transport.load_tuning(), tables=[{"path": f"{transport.HOST_TABLES}/{digest}.json", "sha256": digest}])
+    with pytest.raises(transport.TransportError, match="in a measured tuning table"):
+        transport.validate_tuning(table, host_root=tmp_path)
+
+
+def test_a_measured_table_carries_default_rows_and_drops_a_default_table_it_replaces(tmp_path):
+    image = sircl_lock()
+    digest, data = pair_table(image)
+    shipped = tmp_path / "repository/runtime/common/sircl-tuning/pair.json"
+    shipped.parent.mkdir(parents=True)
+    shipped.write_bytes(data)
+    defaults = dict(transport.load_tuning(), tables=[{"path": "runtime/common/sircl-tuning/pair.json",
+                                                      "sha256": digest}])
+    binding = {"image": image["name"], "tuning_key": image["sircl"]["tuning_key"],
+               "drivers": {"0": {"gpu": None, "kernel": None}}, "harness": {}}
+    other_digest, other = pair_table(image, document("cycle", 4), positions=(0, 1, 2, 3))
+    kept = transport.measured_document(defaults, {"cycle-4": {}}, {other_digest: json.loads(other)},
+                                       fabric=document("cycle", 4)["id"], image_value=image, measured_at="2026-10-09",
+                                       binding=binding, root=tmp_path / "repository")
+    assert [entry["sha256"] for entry in kept["tables"]] == [other_digest, digest]
+    assert kept["layouts"]["pair"]["source"] == "default:measured" and kept["layouts"]["cycle-4"]["source"] == "measured"
+    replaced = transport.measured_document(defaults, {"pair": {}}, {digest: json.loads(data)},
+                                           fabric=document("pair", 2)["id"], image_value=image,
+                                           measured_at="2026-10-09", binding=binding, root=tmp_path / "repository")
+    assert replaced["tables"] == [{"path": f"{transport.HOST_TABLES}/{digest}.json", "sha256": digest}]
+    assert replaced["binding"]["defaults_sha256"] == transport.tuning_digest(defaults)
 
 
 # Choosing the transport.
