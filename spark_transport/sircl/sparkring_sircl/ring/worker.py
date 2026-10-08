@@ -630,8 +630,9 @@ class Harness:
 
         if self._adapter is None:
             limits = planner.SessionLimits.of(self.session, reduce_dtypes=("bfloat16",))
-            self._adapter = (limits, planner.Policy(None, "never", "sircl"))
-        limits, policy = self._adapter
+            self._adapter = (limits, planner.Policy(None, "never", "sircl"),
+                             executor.ColumnGather.from_environment())
+        limits, policy, column_gather = self._adapter
         capturing = self.torch.cuda.is_current_stream_capturing()
         started = time.perf_counter_ns()
         meta = planner.TensorMeta.of(x)
@@ -642,10 +643,14 @@ class Harness:
         else:
             plan = planner.plan_all_gather(meta, dim, limits, policy, capturing=capturing)
             planned = time.perf_counter_ns()
-            result = executor.all_gather(self.session, plan, x, dim, self.world)
+            result = executor.all_gather(self.session, plan, x, dim, self.world, column_gather=column_gather)
         done = time.perf_counter_ns()
+        method = plan.method
+        if not collective.startswith("all_reduce") and column_gather.last_route is not None:
+            # A column gather staged on the session's links (SIRCL_COLUMN_GATHER), e.g. large+column-ring.
+            method += f"+column-{column_gather.last_route}"
         if not capturing:
-            self._adapter_times.append((planned - started, done - planned, plan.method))
+            self._adapter_times.append((planned - started, done - planned, method))
         y.copy_(result)
         return y
 

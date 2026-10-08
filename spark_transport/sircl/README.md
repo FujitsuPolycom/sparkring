@@ -495,7 +495,10 @@ Diagnostics: `SIRCL_CALL_PROFILE`, `SIRCL_CALL_PROFILE_GPU`,
 `SIRCL_CALL_PROFILE_FILE`, `SIRCL_EVENT_TRACE`, `SIRCL_FAST_LAUNCH`. Refused
 at setup: `SIRCL_POST_MODE` other than `verbs`, `SIRCL_TRACE` other than
 unset or 0, `SIRCL_TOPOLOGY` other than `direct`. `SIRCL_FUSED_NORM_MAX_ROWS`
-sets the rows per fused all-reduce and RMSNorm launch.
+sets the rows per fused all-reduce and RMSNorm launch. `SIRCL_COLUMN_GATHER`
+(default `1`) is read by the vLLM adapter's executor, not by sessions: it
+carries column gathers as a dimension-0 ring or chain all-gather plus one
+local copy ([adapter README](sparkring_sircl/vllm/README.md#column-gathers)).
 
 ## Build and test
 
@@ -531,6 +534,10 @@ CUTE_DSL_ARCH=sm_120a python -m sparkring_sircl.testing.p2p_emulation --layout r
 It needs CUDA, torch with CUDA, CUDA Python, the CuTe DSL, a host C compiler
 and a GPU that addresses pinned host memory at its host pointer.
 `CUTE_DSL_ARCH` names the GPU architecture when the DSL cannot detect it.
+`--column-gather-only` prepares the sessions and runs only the column-gather
+checks (`sparkring_sircl/testing/column_gather_checks.py`): the vLLM adapter's
+staged dimension-0 gather against `all_gather_large` along the column
+dimension, bit for bit, eager and captured.
 `--path-latency BASE_NS,RELAY_NS[,BYTES_PER_US[,ACK_DELAY_NS]]` delays each
 write by a base time plus a time per relay, limits each queue pair's rate and
 delays completions, so relayed lanes wait on their forward windows.

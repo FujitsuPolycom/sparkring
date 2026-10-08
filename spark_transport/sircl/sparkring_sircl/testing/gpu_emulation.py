@@ -1473,7 +1473,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
                dtypes: Sequence[str] = ("bfloat16", "float32"),
                report: Callable[[tuple[str, bool, str]], None] | None = None,
                event_trace: int = 0,
-               path_latency: tuple[int, int, int, int] | None = None) -> list[tuple[str, bool, str]]:
+               path_latency: tuple[int, int, int, int] | None = None,
+               column_gather_only: bool = False) -> list[tuple[str, bool, str]]:
     """Every collective of the session, eager and captured, against host references; with
     ``event_trace`` records, every session keeps an event trace (``SIRCL_EVENT_TRACE``, the traced
     chain kernel runs every chain op) and :func:`_trace_checks` checks one chain all-reduce's."""
@@ -1510,6 +1511,14 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         checks.append(("settings", True, f"algorithms {stats['algorithms_available']}, large pieces "
                        f"{stats['large_piece_bytes']}, gather pieces {stats['gather_piece_bytes']}, "
                        f"windows {stats['forward_windows']}"))
+        if column_gather_only:
+            from .column_gather_checks import column_gather_checks
+
+            for check in column_gather_checks(group):
+                checks.append(check)
+            healthy = [not session.poisoned for session in group.sessions]
+            checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
+            return checks
         seed = 1
         for dtype in types:
             item = torch.empty((), dtype=dtype).element_size()
@@ -1565,6 +1574,10 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
             checks.append(check)
         for check in _tuning_forced_checks(group):
             checks.append(check)
+        from .column_gather_checks import column_gather_checks
+
+        for check in column_gather_checks(group):
+            checks.append(check)
         checks.append(_graph_check(group, "graph all_reduce_large", ((2 * max_size + 32) // 2,), bf16,
                                    lambda session, x: session.all_reduce_large(x),
                                    lambda inputs: _sum(torch, inputs), (101, 102)))
@@ -1619,6 +1632,9 @@ def main(argv: list[str] | None = None) -> int:
                              "BYTES_PER_US (default unlimited), and completions return ACK_DELAY_NS later")
     parser.add_argument("--event-trace", type=int, default=0,
                         help="records of every session's event trace (SIRCL_EVENT_TRACE); 0: no trace")
+    parser.add_argument("--column-gather-only", action="store_true",
+                        help="after preparing, run only the column-gather checks (the vLLM adapter's staged "
+                             "dimension-0 link all-gather against all_gather_large along the column dimension)")
     args = parser.parse_args(argv)
     def show(check: tuple[str, bool, str]) -> None:
         name, ok, detail = check
@@ -1626,7 +1642,7 @@ def main(argv: list[str] | None = None) -> int:
 
     checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
                         dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,
-                        path_latency=_path_latency(args.path_latency))
+                        path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only)
     failed = sum(1 for _, ok, _ in checks if not ok)
     print(f"{len(checks)} checks, {failed} failed")
     sys.stdout.flush()

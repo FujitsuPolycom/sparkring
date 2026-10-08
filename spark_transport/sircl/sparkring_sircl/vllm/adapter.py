@@ -384,6 +384,8 @@ class GroupAdapter:
         self.capturing = capturing
         self._environ = environ
         self.counters = receipt.Counters()
+        # Column gathers staged on the session's links (executor.ColumnGather; SIRCL_COLUMN_GATHER).
+        self.column_gather = executor.ColumnGather.from_environment(environ)
         self.fused_norm: Any = None             # bound fused all-reduce + RMSNorm (norm_fusion)
         self.slot = None
         self.dcp = None
@@ -572,6 +574,7 @@ class GroupAdapter:
             return
         self.session = owner.session
         self.limits = owner.limits
+        self.column_gather = owner.column_gather
         self.per_peer = owner.per_peer
         self.prepared_extra = owner.prepared_extra
         self.shared_from = owner.placement.name
@@ -936,7 +939,8 @@ class GroupAdapter:
                                                     self.policy, capturing=capturing))
         if plan.backend == NCCL:
             return self.nccl.all_gather(inp, dim)
-        return executor.all_gather(self.session, plan, inp, dim, self.placement.world)
+        return executor.all_gather(self.session, plan, inp, dim, self.placement.world,
+                                   column_gather=self.column_gather)
 
     def all_gatherv(self, inp: torch.Tensor | list[torch.Tensor], dim: int = 0,
                     sizes: list[int] | None = None):
@@ -1151,6 +1155,7 @@ class GroupAdapter:
             "fused_norm": (None if placement.kind != "tp" else
                            "on" if self.fused_norm is not None else "off"),
             "fused_norm_detail": self.fused_norm.describe() if self.fused_norm is not None else None,
+            "column_gather": self.column_gather.describe() if session is not None else None,
             "p2p": self._p2p_text(),
             "p2p_detail": self._p2p_detail(),
             "wait": self._wait_text(),
@@ -1222,6 +1227,7 @@ class GroupAdapter:
         record["vllm"] = receipt.package_dir("vllm")      # b12x loads with the model, after group setup
         record["b12x"] = receipt.package_dir("b12x")
         record["decisions"] = self.counters.snapshot()
+        record["column_gather_detail"] = self.column_gather.snapshot() if self.session is not None else None
         if stats and self.session is not None and not self._closed:
             try:
                 self._session_stats = self.session.stats()

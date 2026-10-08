@@ -488,6 +488,9 @@ every Spark, with progress on standard error.
 - `--fused-norm on` (research-only) runs vLLM's post-all-reduce RMSNorm helper
   as one fused SIRCL collective; setup refuses it unless vLLM's RMSNorm runs
   the `vllm_c` provider of `fused_add_rms_norm`.
+- `--column-gather on|off` sets `SIRCL_COLUMN_GATHER` on every rank; without
+  the option the variable stays unset and the adapter's default (on)
+  applies ([Column gathers](README.md#column-gathers)).
 - `--reasoning-effort LEVEL` with `--repository` and `--checkpoint
   REPOSITORY@REVISION` (or `--thinking-behaviour NAME`) gives global rank 0
   the `--default-chat-template-kwargs` value to add.

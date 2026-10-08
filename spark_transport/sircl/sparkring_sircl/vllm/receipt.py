@@ -11,6 +11,9 @@ The record states what this rank will do with each collective of the group:
 - the group's point-to-point channels (``p2p``: the peers this rank has a
   channel with, the slots and the forward windows, ``shared:<group>``, or
   ``none`` with the reason in ``p2p_detail``);
+- on a group with a session, ``column_gather`` (``on`` or ``off``) and
+  ``column_gather_detail``: the column gathers staged on the session's links
+  per route and the staging bytes kept (``executor.ColumnGather``);
 - the plan counters (:meth:`Counters.snapshot`): calls per collective,
   backend and method, refreshed whenever the receipt is written again
   (point-to-point rows ``send/sircl/direct``, ``recv/sircl/relayed``,
@@ -91,7 +94,8 @@ def _value(value: Any) -> str:
 LINE_FIELDS = (
     "group", "global_rank", "rank", "world", "layout", "fabric", "positions", "nccl",
     "pynccl", "session", "lanes", "hcas", "capacity", "dispatch", "oneshot_max", "gather", "op_per_peer",
-    "large_piece", "gather_piece", "schedules", "chain_min", "ring_min", "links", "tuning", "mhc", "fused_norm", "p2p", "wait", "vllm",
+    "large_piece", "gather_piece", "schedules", "chain_min", "ring_min", "links", "tuning", "mhc", "fused_norm",
+    "column_gather", "p2p", "wait", "vllm",
     "state",
 )
 

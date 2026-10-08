@@ -225,7 +225,7 @@ caller's stream.
 |---|---|---|
 | all-reduce of a prepared dtype (BF16; FP16 and FP32 too on a `none` group) | one op up to D | eager, where NCCL may all-reduce and `SIRCL_LARGE_ALLREDUCE` is not `sircl`: NCCL; otherwise the session's `all_reduce_large` (method `large`), which chooses its pieces and schedule; a session without it gets pieces of at most D from the host (method `chunked`) |
 | all-reduce, other dtypes | — | NCCL where it may run; otherwise all-gather, then a rank-ordered local sum (method `gather_sum`) |
-| all-gather, any dimension | one op up to the gather op size (G, capped by the relay-safe per-peer size) | eager, where NCCL may run: NCCL; otherwise `all_gather_large` (method `large`), or rows of the `[outer, inner]` view or column tiles of a row; bool, complex and FP8 move as bytes |
+| all-gather, any dimension | one op up to the gather op size (G, capped by the relay-safe per-peer size) | eager, where NCCL may run: NCCL; otherwise `all_gather_large` (method `large`), or rows of the `[outer, inner]` view or column tiles of a row; bool, complex and FP8 move as bytes. A column gather the session would run on its ring or chain as a dimension-0 gather runs as that gather plus one local copy ([Column gathers](#column-gathers)) |
 | reduce-scatter | the session's reduce-scatter where prepared: the whole message in one call when the session states its op size, else strided calls | eager, where NCCL may run: NCCL; otherwise all-reduce, then this rank's chunk |
 | all-gatherv, reduce-scatterv with uneven sizes | — | padded all-gather; all-reduce, then this rank's rows |
 | broadcast, gather | — | eager, where NCCL may run: NCCL; otherwise all-gather of the bytes, then the source's copy or the concatenation on the destination |
@@ -241,6 +241,43 @@ every SIRCL candidate at that size, SIRCL elsewhere. Captured calls never go
 to NCCL. Composed plans give every rank the same bits; a chained large
 all-reduce may differ from the rank-ordered sum in the last place, the same
 on every rank.
+
+## Column gathers
+
+A column gather is an all-gather along a dimension with more than one row in
+front of it, such as a column-split projection's output gathered along its
+last dimension (GLM-5.3 at TP8 gathers `[8192, 328]` BF16 per rank at an
+8,192-token prefill chunk). Each rank's shard lands in one piece per row of
+the output, while the session's ring and chain all-gathers carry one
+contiguous piece per rank, so `all_gather_large` along that dimension runs as
+tiled ops.
+
+[`executor.py`](executor.py) (`ColumnGather`, `column_gather_route`) runs such
+a call as one dimension-0 all-gather of the shard's bytes into a staging
+buffer laid out as `[world, *shard]`, then one local copy into the requested
+layout, when the plan sends the call to `all_gather_large` and the session
+would run a dimension-0 gather of the same bytes on its ring or chain
+(`gather_uses_ring` or `gather_uses_chain`: its gather schedule, minimums,
+tuning table and capture mode). These facts are the same on every rank. The
+copy moves each row in the widest integer view that divides it, so the
+output is bit-identical to the tiled gather's for every dtype.
+
+- **Switch.** `SIRCL_COLUMN_GATHER`: `1` (default) or `0`, which keeps
+  `all_gather_large` along the dimension. It is read when a group is set up
+  and must be the same on every rank; the bundle sets it with
+  `--column-gather on|off`.
+- **Memory.** Outside CUDA graph capture each session keeps one staging
+  buffer, grown to the largest `world * shard` bytes it carried (41 MiB for
+  the GLM-5.3 shard above at TP8). A captured call takes its staging from the
+  graph's memory pool.
+- **Capture.** No host synchronization and no compilation: the ring and chain
+  launchers are compiled when the group is prepared.
+- **Receipt.** `column_gather=on|off` in the receipt line;
+  `column_gather_detail` in the JSON receipt names the calls each route
+  (`ring`, `chain`) carried and the staging bytes kept.
+- **Ring harness.** With `--eager-path adapter`, the harness's column cases
+  go through the same executor; the summary's adapter methods read
+  `large+column-ring` or `large+column-chain` where a call was staged.
 
 ## Point-to-point
 

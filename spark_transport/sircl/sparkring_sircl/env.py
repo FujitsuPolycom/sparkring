@@ -2,7 +2,9 @@
 
 Every variable is read when a session is constructed; values that affect the
 wire protocol are part of the setup agreement, so ranks with different values
-fail together. SIRCL's four-rank sessions keep their own ``SPARK_TP4_*`` and
+fail together. ``SIRCL_COLUMN_GATHER`` is the exception: the vLLM adapter's
+executor reads it when a group is set up (the ring harness's adapter path when
+it first plans a call), and it must be the same on every rank. SIRCL's four-rank sessions keep their own ``SPARK_TP4_*`` and
 ``VLLM_SPARK_TP4_*`` names. ``python -m sparkring_sircl.env`` prints the table.
 """
 
@@ -75,6 +77,10 @@ VARIABLES = (
     Variable("SIRCL_CHAIN_SLOTS", "slots per chain stream ring (2-32)", "4"),
     Variable("SIRCL_CHAIN_BLOCKS", "blocks per role of the chain kernel", "4"),
     Variable("SIRCL_CHAIN_UNROLL", "16-byte packs each thread of the chain kernel moves per pass (1-8)", "4"),
+    Variable("SIRCL_COLUMN_GATHER", "1: the vLLM adapter carries an all-gather along a dimension with more than one "
+             "row in front of it, which the session would run on its ring or chain as a dimension-0 gather of the "
+             "same shard, as that gather into a staging buffer plus one local copy "
+             "(sparkring_sircl.vllm.executor.ColumnGather); 0: all_gather_large along that dimension", "1"),
     Variable("SIRCL_GATHER_SCHEDULE", "all_gather_large: auto (chain all-gathers on chains of cable neighbors "
              "when every rank's shard lands in one piece of the output, from SIRCL_CHAIN_MIN_BYTES of output), "
              "chain (whenever the shard qualifies), ring (ring all-gathers whenever the shard qualifies) or "

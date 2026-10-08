@@ -116,6 +116,7 @@ class BundleOptions:
     spin_limit: int | None = None
     gid_index: int | None = None              # None: the site's, else 3
     fused_norm: bool = False                  # SIRCL_FUSED_NORM (research-only)
+    column_gather: bool | None = None         # SIRCL_COLUMN_GATHER; None: the adapter's default (on)
     large_schedule: str | None = None         # SIRCL_LARGE_SCHEDULE; None: the session's default
     gather_schedule: str | None = None        # SIRCL_GATHER_SCHEDULE
     scatter_schedule: str | None = None       # SIRCL_SCATTER_SCHEDULE
@@ -469,6 +470,8 @@ def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_diges
     }
     if options.spin_limit is not None:
         common["SIRCL_SPIN_LIMIT"] = str(options.spin_limit)
+    if options.column_gather is not None:
+        common["SIRCL_COLUMN_GATHER"] = "1" if options.column_gather else "0"
     common.update(oneshot)
     common.update(large_blocks)
     common.update(schedules)
@@ -766,6 +769,12 @@ def add_arguments(sub: argparse._SubParsersAction) -> None:
                              help="SIRCL_FUSED_NORM: on runs vLLM's post-all-reduce RMSNorm helper as one fused "
                                   "SIRCL kernel where it is bit-identical (research-only; setup refuses it "
                                   "where it cannot be)")
+        command.add_argument("--column-gather", dest="column_gather", choices=("off", "on"),
+                             help="SIRCL_COLUMN_GATHER: on (the adapter's default when the option is absent) "
+                                  "carries an all-gather along a dimension with rows in front of it on the "
+                                  "session's ring or chain as a dimension-0 gather plus one local copy wherever "
+                                  "the session would run that dimension-0 gather there; off keeps "
+                                  "all_gather_large along the dimension")
         command.add_argument("--env", action="append", metavar="KEY=VALUE",
                              help="add one variable to every rank's environment (repeatable)")
         command.add_argument("--text", action="store_true",
@@ -791,6 +800,7 @@ def plan_from_args(args: argparse.Namespace) -> BundlePlan:
             large_allreduce=args.large_allreduce,
             startup_wait=args.startup_wait, serving_wait=args.serving_wait, spin_limit=args.spin_limit,
             gid_index=args.gid_index, fused_norm=args.fused_norm == "on",
+            column_gather=None if args.column_gather is None else args.column_gather == "on",
             large_schedule=args.large_schedule, gather_schedule=args.gather_schedule,
             scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
             link_sizes=plan_mod.link_values(args), reasoning_effort=args.reasoning_effort,
