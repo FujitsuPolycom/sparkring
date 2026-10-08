@@ -51,8 +51,10 @@ def test_management_prefix_conflict_and_disconnected_graph_are_rejected():
     with pytest.raises(ValueError, match="overlaps"):
         control.plan(nodes, edges, "0")
     nodes[0]["routes"] = []
-    with pytest.raises(ValueError, match="pair or"):
-        control.plan(nodes, edges[:-1], "0")
+    # A ring without one cable is a line; without two it leaves a Spark unconnected.
+    assert len(control.plan(nodes, edges[:-1], "0")) == len(nodes)
+    with pytest.raises(ValueError, match="a pair, a line or a ring"):
+        control.plan(nodes, edges[:-2], "0")
 
 
 def test_no_uplink_sharing_never_adds_default_route_or_nat():
@@ -234,7 +236,7 @@ def test_discovery_names_skipped_addresses_when_no_pair_is_found():
 
     with pytest.raises(ValueError, match="refused SSH on port 22"):
         bootstrap.discover(Refused(a, b))
-    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two or four\. Skipped neighbor addresses "
+    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two to eight\. Skipped neighbor addresses "
                                          r"that did not answer: fe80::6531:4cc1:4038:6c3d on a's port0 \(no echo reply\)\."):
         bootstrap.discover(PairSSH(a, b), select=lambda peer: False)
 

@@ -9,6 +9,12 @@ import shlex
 import subprocess
 import tempfile
 
+from runtime.common import fabric_layout
+
+# The most cable hops between Node A and a Spark it reaches: the far end of an
+# eight-Spark line.
+MAX_HOPS = fabric_layout.MAX_SPARKS - 1
+
 
 def fabric_identity(guids, machine_id):
     """A Spark's discovery identity: a hash of its RDMA node GUIDs.
@@ -171,8 +177,8 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
     ``directory``, unhashed, so setup can print what it trusted; keys already
     in the user's known_hosts are still honored.
     """
-    if not route or len(route) > 3:
-        raise ValueError("Bootstrap SSH route requires one through three hops")
+    if not route or len(route) > MAX_HOPS:
+        raise ValueError(f"Bootstrap SSH route requires one through {MAX_HOPS} hops")
     hop = validate_hop(route[-1])
     socket_id = hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:20]
     check = ("accept-new" if trust_new else "ask") if interactive else "yes"
@@ -309,7 +315,7 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
             # An unrecognized function can still lead to an already enrolled
             # machine; authenticate before assigning either identity or rank.
             route = [*routes[ident], {"user": user, "address": str(address), "interface": interface["netdev"], "port": port}]
-            if len(route) > 3 or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
+            if len(route) > MAX_HOPS or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
                 continue
             try:
                 transport.login(route)
@@ -328,14 +334,16 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
                 raise ValueError("Fabric neighbor is not Linux ARM64")
             link(ident, interface, peer["id"], matches[0], str(address))
             if peer["id"] not in nodes:
-                if len(nodes) >= 4:
-                    raise ValueError("More than four Sparks found; select a supported pair/ring")
+                if len(nodes) >= fabric_layout.MAX_SPARKS:
+                    raise ValueError(f"More than {fabric_layout.WORDS[fabric_layout.MAX_SPARKS]} Sparks found; "
+                                     "SparkRing sets up two to eight cabled Sparks")
                 nodes[peer["id"]], routes[peer["id"]] = peer, route
                 queue.append(peer["id"])
-    if len(nodes) not in (2, 4):
+    if not fabric_layout.MIN_SPARKS <= len(nodes) <= fabric_layout.MAX_SPARKS:
         found = ", ".join(n["hostname"] for n in nodes.values())
         detail = f" Skipped neighbor addresses that did not answer: {', '.join(skipped)}." if skipped else ""
-        raise ValueError(f"Found {len(nodes)} Spark{'s' if len(nodes) != 1 else ''} ({found}); setup needs two or four."
+        raise ValueError(f"Found {len(nodes)} Spark{'s' if len(nodes) != 1 else ''} ({found}); setup needs two to "
+                         "eight."
                          + detail + " Check the fabric cables and that each Spark accepts SSH.")
     by_machine = {}
     for n in nodes.values():

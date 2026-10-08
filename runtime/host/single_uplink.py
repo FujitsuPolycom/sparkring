@@ -9,24 +9,37 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer
-from runtime.host import (bootstrap, cabling, control, control_node, controller, discovery, fabric_bandwidth, lan_peers,
-                          node, packages, reform, seed, settings, survey, topology)
+from runtime.common import distribution, fabric_layout, installer
+from runtime.host import (bootstrap, cabling, control, control_node, controller, discovery, fabric, fabric_bandwidth,
+                          lan_peers, node, packages, reform, seed, settings, survey, topology)
 from scripts import hairpin_setting
 
-# The approval line for the ConnectX hairpin setting on four-Spark rings. The
-# restart timing is measured on running hosts (5.1-7.8 s from command to link up).
+# The approval lines for the ConnectX hairpin setting on fabrics that relay.
+# The restart timing is measured on running hosts (5.1-7.8 s from command to
+# link up).
 HAIRPIN_SCOPE = (
-    "  - on a four-Spark ring: apply the ConnectX hairpin setting that four-Spark",
-    "    forwarding needs (a hairpin queue of " + str(hairpin_setting.HAIRPIN_QUEUE_SIZE) + " packets on each fabric port",
-    "    function), now and at every boot. After fabric addressing is configured,",
-    "    each function's driver restarts once, one at a time: its link is down for",
-    "    about 8 seconds, about 30 seconds per Spark and about 3 minutes for the",
-    "    ring. Every later boot takes about 30 seconds longer before networking",
+    "  - where the fabric relays (a ring of four or more Sparks, a line of three or",
+    "    more): apply the ConnectX hairpin setting that relayed forwarding needs (a",
+    "    hairpin queue of " + str(hairpin_setting.HAIRPIN_QUEUE_SIZE) + " packets on each fabric port function of every",
+    "    Spark between two cables), now and at every boot. After fabric addressing",
+    "    is configured, each function's driver restarts once, one at a time: its",
+    "    link is down for about 8 seconds, about 30 seconds per Spark and about 3",
+    "    minutes for four Sparks. Every later boot takes about 30 seconds longer before networking",
     "    starts. SparkRing restarts nothing while a model, a mesh service or",
-    "    another RDMA program runs on the ring. A worker that reaches Node A only",
-    "    through the ring cables stays unreachable if one of its restarts fails,",
+    "    another RDMA program runs on the fabric. A worker that reaches Node A only",
+    "    through the fabric cables stays unreachable if one of its restarts fails,",
     "    until it is power-cycled; it then starts without the setting.",
+)
+# The approval lines for the relay table on fabrics that relay.
+RELAY_SCOPE = (
+    "  - on a fabric that relays: install the relay table, so Sparks two or more",
+    "    cables apart reach each other through the ConnectX cards between them:",
+    "    routes and permanent neighbor entries toward those Sparks, ConnectX",
+    "    ingress rules on every Spark between two cables, and one relay marker",
+    "    process per fabric RDMA device; sparkring-fabric.service and",
+    "    sparkring-relay-marker.service restore them at every boot",
+    "  - record the fabric document (positions, ports, cables, relays) on every",
+    "    Spark and verify the fabric",
 )
 
 
@@ -231,8 +244,9 @@ def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, colle
 def scope_lines(args, *, fresh, follow=None, four=None):
     """The automated setup scope that the one approval covers.
 
-    ``four`` adds the ConnectX hairpin line; it defaults to ``fresh``, because
-    a fresh setup does not know the ring size before discovery.
+    ``four`` (the fabric may relay) adds the ConnectX hairpin and relay table
+    lines; it defaults to ``fresh``, because a fresh setup does not know the
+    layout before discovery.
     """
     lines = []
     if fresh:
@@ -255,7 +269,7 @@ def scope_lines(args, *, fresh, follow=None, four=None):
         lines.append("  - install Node A's SparkRing revision on workers that run another one")
     lines.append("  - keep compatible fabric IPv4 addresses and replace incompatible ones, saving connection backups")
     if fresh if four is None else four:
-        lines += HAIRPIN_SCOPE
+        lines += HAIRPIN_SCOPE + RELAY_SCOPE
     if follow:
         lines.append("  - " + follow)
     lines.append("Running GPU containers that block setup are listed and stopped only after a separate answer.")
@@ -278,7 +292,7 @@ def announce(args, *, fresh, follow=None, four=None):
 
 
 def ring_state(base, reason=None):
-    """(fresh, four): whether setup starts from nothing, and whether the ring has, or may have, four Sparks.
+    """(fresh, four): whether setup starts from nothing, and whether the fabric relays, or may relay.
 
     ``reason`` (``record_reason``) says the cabled Sparks differ from the
     record, so setup re-forms them and starts as fresh.
@@ -287,10 +301,19 @@ def ring_state(base, reason=None):
     if reason:
         return True, True
     if (base / "cluster.json").exists():
-        return False, len(installer.read(base / "cluster.json")["plan"]["nodes"]) == 4
+        return False, fabric_layout.relayed(topology.layout_of(installer.read(base / "cluster.json")["plan"]))
     if (base / "enrolled.json").exists():
-        return False, len(installer.read(base / "enrolled.json")["targets"]) == 4
+        # An enrolled set of three or more Sparks may form a line or ring that relays.
+        return False, len(installer.read(base / "enrolled.json")["targets"]) >= 3
     return True, True
+
+
+def recorded_layout(base, reason=None):
+    """The fabric layout of the installed cluster record, or None without one or when setup re-forms the Sparks."""
+    path = Path(base) / "cluster.json"
+    if reason or not path.exists():
+        return None
+    return topology.layout_of(installer.read(path)["plan"])
 
 
 def record_reason(base, *, lldp=None, hostname=None):
@@ -336,7 +359,7 @@ def reform_step(args, transport, worker_archive, *, reason, keep=(), say=print, 
         say(line)
     for note in found["notes"]:
         say("Note: " + note)
-    if diagnosis["layout"] not in ("pair", "ring") or not diagnosis["ready"]:
+    if diagnosis["layout"] not in cabling.SHAPE_OF or not diagnosis["ready"]:
         raise cabling.CablingError(diagnosis)
     unreached = [row["name"] for row in diagnosis["sparks"] if not row["reached"]]
     if unreached:
@@ -346,9 +369,9 @@ def reform_step(args, transport, worker_archive, *, reason, keep=(), say=print, 
     for line in reform.plan_lines(value):
         say(line)
     if args.plan:
-        if diagnosis["layout"] == "ring":
-            say("Setup of these Sparks also includes this step:")
-            for line in HAIRPIN_SCOPE:
+        if fabric_layout.relayed(fabric_layout.layout(diagnosis["shape"], diagnosis["layout_size"])):
+            say("Setup of these Sparks also includes these steps:")
+            for line in HAIRPIN_SCOPE + RELAY_SCOPE:
                 say(line)
         return "planned"
     (run or reform.execute)(value, found, transport, archive=worker_archive, transfer=packages.transfer,
@@ -370,7 +393,8 @@ def _arguments(argv):
     parser.add_argument("--ssh-user", default=values["SPARKRING_SSH_USER"])
     parser.add_argument("--ssh-port", type=int, choices=(22, 2222), default=int(values["SPARKRING_SSH_PORT"]))
     parser.add_argument("--control-cidr", default=values["SPARKRING_CONTROL_CIDR"])
-    parser.add_argument("--fabric-cidr", default=values["SPARKRING_FABRIC_CIDR"])
+    parser.add_argument("--fabric-cidr", default=None,
+                        help="fabric supernet (default: 198.18.0.0/21 for up to four cables, 198.18.0.0/20 above)")
     parser.add_argument("--no-share-internet", action="store_true", default=values["SPARKRING_SHARE_INTERNET"] == "no")
     parser.add_argument("--reset-links", action="store_true", default=values["SPARKRING_LINK_POLICY"] == "reset")
     parser.add_argument("--plan", action="store_true", help="discover/review with existing SSH access; no host configuration")
@@ -379,10 +403,20 @@ def _arguments(argv):
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that block fabric preparation")
     parser.add_argument("--worker-bundle", action="store_true", help="build a USB/offline preparation bundle for workers without SSH")
+    parser.add_argument("--re-form", action="store_true",
+                        help="set up the cabled Sparks again as a new cluster, as after recabling them into another "
+                             "layout: what they keep from their setup is moved aside (kept, with a receipt) first")
     parser.add_argument("--admin-fallback", action="store_true",
                         help="on an installed cluster, add fallback paths (the other fabric cables, the LAN) to the "
                              "administration network; changes nothing else")
-    return parser.parse_args(argv), env.env
+    args = parser.parse_args(argv)
+    chosen = settings.explicit(env.env)
+    if args.fabric_cidr is None and "SPARKRING_FABRIC_CIDR" in chosen:
+        args.fabric_cidr = values["SPARKRING_FABRIC_CIDR"]
+    # A control subnet named on the command line or in the file is used as it is.
+    args.control_explicit = (any(arg.startswith("--control-cidr") for arg in argv or [])
+                             or "SPARKRING_CONTROL_CIDR" in chosen)
+    return args, env.env
 
 
 def _default_user(args, argv, env, fresh):
@@ -419,7 +453,7 @@ def main(argv=None, *, follow=None):
     directory = base / "setups" / str(time.time_ns())
     if args.admin_fallback:
         return admin_fallback(args, base, public, directory)
-    reason = record_reason(base)
+    reason = record_reason(base) or ("the re-form was requested with --re-form" if args.re_form else None)
     fresh, four = ring_state(base, reason)
     _default_user(args, argv, env, fresh)
     trust_new = False
@@ -496,17 +530,18 @@ def main(argv=None, *, follow=None):
         print("Node A Internet sharing: " + ("disabled" if args.no_share_internet else "enabled (package/image/model downloads)"))
         installer.write(directory / "discovery.json", found)
         if args.plan:
-            if len(found["nodes"]) == 4:
-                print("Setup of these Sparks also includes this step:")
-                for line in HAIRPIN_SCOPE:
+            if len(found["nodes"]) >= 3:
+                print("Setup of these Sparks also includes these steps where their layout relays:")
+                for line in HAIRPIN_SCOPE + RELAY_SCOPE:
                     print(line)
             print("Discovery saved: " + str(directory / "discovery.json"))
             return 0
         controller.confirm("Install on these Sparks and establish the private administration network?", args.yes)
         archive = worker_archive()
         api_address = next(n["api_address"] for n in found["nodes"] if n["id"] == found["head"])
+        control_cidr = control.subnet_for(args.control_cidr, len(found["nodes"]), explicit=args.control_explicit)
         targets = provision(found, transport, archive, private_key=private, public_key=public,
-                            control_cidr=args.control_cidr, share_uplink=not args.no_share_internet, directory=directory)
+                            control_cidr=control_cidr, share_uplink=not args.no_share_internet, directory=directory)
         node.save(base, "enrolled.json", {"targets": targets, "api_address": api_address}, mode=0o600)
     nodes = controller.collect(targets)
     if args.plan:
@@ -526,20 +561,29 @@ def main(argv=None, *, follow=None):
         print(str(error))
         controller.confirm("Existing fabric addressing is incompatible. Replace fabric IPv4 settings while retaining control access?", args.yes)
         plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr, reset=True, preserve_control=True)
-    controller.summarize(plan)
+    recorded = recorded_layout(base, reason)
+    if recorded is not None and recorded != topology.layout_of(plan):
+        raise ValueError(f"The recorded {fabric_layout.name(recorded)} is now cabled as a "
+                         f"{fabric_layout.name(topology.layout_of(plan))}. To keep the recorded layout, restore its "
+                         "cables (sudo sparkring cabling shows them). To set the Sparks up as they are cabled now, "
+                         "run sudo sparkring setup --re-form")
+    controller.summarize(plan, api_address=api_address)
     installer.write(directory / "plan.json", plan)
     if args.plan:
         return 0
     controller.confirm("Apply these fabric IPv4/MTU settings? Existing connection backups will be retained.", args.yes)
     # The setup approval (the question, or --yes) lists the ConnectX hairpin
-    # step on four-Spark rings; controller.apply runs it after addressing.
-    final = controller.apply(plan, directory, approved=args.yes,
-                             review=lambda p: (controller.summarize(p), controller.confirm("Apply this refreshed fabric plan?", args.yes)))
+    # step and the relay table on fabrics that relay; controller.apply runs
+    # them after addressing.
+    final = controller.apply(plan, directory, approved=args.yes, api_address=api_address,
+                             review=lambda p: (controller.summarize(p, api_address=api_address),
+                                               controller.confirm("Apply this refreshed fabric plan?", args.yes)))
     cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": final,
                "api_address": api_address, "setup_receipt": str(directory / "setup.json")}
     node.save(base, "cluster.json", cluster, mode=0o600)
     # Fresh setups, re-forms and repeated setups all end here. A degraded
     # cable is a warning with its repair steps; setup never fails here.
-    fabric_bandwidth.after_setup(base, cluster)
+    bandwidth = fabric_bandwidth.after_setup(base, cluster)
+    fabric.finish_setup(base, cluster, directory, bandwidth=bandwidth)
     print("Setup complete. Choose a model: sparkring models")
     return 0

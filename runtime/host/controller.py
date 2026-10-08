@@ -1,7 +1,11 @@
 """Guided Linux setup; existing network and model engines own all execution.
 
-On four-Spark rings setup also applies the ConnectX hairpin setting through
-``runtime/host/hairpin_ring.py`` once fabric addressing has converged.
+On a fabric that relays (a ring of four or more Sparks, a line of three or
+more) setup also applies the ConnectX hairpin setting through
+``runtime/host/hairpin_ring.py`` once fabric addressing has converged, and
+installs the relay table (``runtime/host/relays.py``) with each Spark's
+persistent fabric record. Setup ends by recording the fabric document
+(``runtime/host/fabric.py``).
 """
 import argparse
 import contextlib
@@ -14,8 +18,8 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, process_lock, thinking
-from runtime.host import discovery, hairpin_ring, node, topology
+from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
+from runtime.host import discovery, fabric, hairpin_ring, node, relays, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -40,8 +44,9 @@ def confirm(prompt, yes=False, *, default=False):
 
 
 def collect(targets, *, invoke=discovery.inspect_node):
-    if len(targets) not in (2, 4) or len(set(targets)) != len(targets):
-        raise ValueError("Select exactly two or four distinct Spark management addresses")
+    if (not fabric_layout.MIN_SPARKS <= len(targets) <= fabric_layout.MAX_SPARKS
+            or len(set(targets)) != len(targets)):
+        raise ValueError("Select two to eight distinct Spark management addresses")
     import concurrent.futures
     from runtime.host import progress
 
@@ -81,8 +86,15 @@ def detail_lines(details):
     return lines
 
 
-def summarize(plan, *, observe_only=False):
-    print(f"{len(plan['nodes'])} Sparks: " + ("p0 pair" if len(plan["nodes"]) == 2 else "p0-to-p1 ring"))
+def summarize(plan, *, observe_only=False, api_address=None):
+    layout = topology.layout_of(plan)
+    print(f"{len(plan['nodes'])} Sparks: " + {"pair": "p0 pair", "cycle": "p0-to-p1 ring",
+                                               "path": "p0-to-p1 line"}[layout["shape"]])
+    if not observe_only:
+        document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
+                                              marker=relays.marker_artifact(installer.ROOT))
+        for line in fabric.plan_lines(document, relay_plan):
+            print(line)
     hairpin = hairpin_ring.requirement(plan)
     for host, proposed in zip(plan["spec"]["hosts"], plan["network"]["hosts"], strict=True):
         line = f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"])
@@ -93,9 +105,10 @@ def summarize(plan, *, observe_only=False):
             print(f"    {port['netdev']}  {port['address']}  MTU 9000")
         for problem in proposed["blocked_by"]:
             print("    BLOCKED: " + problem)
-        if hairpin:
+        row = next((row for row in hairpin if row["rank"] == host["rank"]), None)
+        if row is not None:
             # Adoption restarts no function, so its lines never announce a restart.
-            print("    ConnectX hairpin: " + hairpin_ring.summary_line(hairpin[host["rank"]], adopt=observe_only))
+            print("    ConnectX hairpin: " + hairpin_ring.summary_line(row, adopt=observe_only))
     print("Existing networking will be verified and recorded." if observe_only else "Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
 
 
@@ -109,14 +122,18 @@ def _sync_workers(plan, directory):
 
 
 def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.ssh,
-          approved=False, review=lambda p: None, ensure=None, update_workers=None):
+          approved=False, review=lambda p: None, ensure=None, update_workers=None, api_address=None,
+          marker=None):
     """Journal each step and re-observe after each pass; never retry an unknown mutation.
 
     Fabric addressing passes run NetworkManager changes only
-    (``defer_driver=True``) until no host needs one. On a four-Spark ring the
-    ConnectX hairpin step (``hairpin_ring.ensure``, approved by ``approved``)
-    then applies the driver setting, and the network is verified on the plan
-    that step returns.
+    (``defer_driver=True``) until no host needs one. On a fabric that relays
+    the ConnectX hairpin step (``hairpin_ring.ensure``, approved by
+    ``approved``) then applies the driver setting, and the network is
+    verified on the plan that step returns. The fabric document and relay
+    plan of that final plan (``fabric.prepare``; ``marker`` defaults to the
+    installed package's relay marker) are saved in ``directory``, and each
+    Spark's persistent record carries its part of the relay table.
     """
     directory = Path(directory)
     journal = directory / "setup.json"
@@ -163,12 +180,16 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     record["steps"][-1]["hairpin"] = outcome.get("state", "complete")
     deploy_engine.save_receipt(journal, record)
     deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+    document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
+                                          marker=marker or relays.marker_artifact(installer.ROOT))
+    fabric.save_prepared(directory, document, relay_plan)
+    sections = [relays.section(relay_plan, rank) if relay_plan else None for rank in range(len(plan["spec"]["hosts"]))]
     # All nodes verify before any persistent service is installed.
     for rank, host in enumerate(plan["spec"]["hosts"]):
-        config = topology.persistent_config(plan, rank)
+        config = topology.persistent_config(plan, rank, relays=sections[rank])
         invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "verify"], data=json.dumps(config))
     for rank, host in enumerate(plan["spec"]["hosts"]):
-        config = topology.persistent_config(plan, rank)
+        config = topology.persistent_config(plan, rank, relays=sections[rank])
         record["steps"].append({"host": host["host"], "persist": "running"})
         deploy_engine.save_receipt(journal, record)
         invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "configure"], data=json.dumps(config))
@@ -191,10 +212,12 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
 
 
 def setup(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair/ring, review its fabric, then save persistent host setup.")
+    parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair, line or ring of up to eight "
+                                     "Sparks, review its fabric, then save persistent host setup.")
     parser.add_argument("--node", action="append", help="USER@management-IP (include this head); bypass mDNS")
     parser.add_argument("--name", default="sparkring")
-    parser.add_argument("--fabric-cidr", default="198.18.0.0/21")
+    parser.add_argument("--fabric-cidr", default=None,
+                        help="fabric supernet (default: 198.18.0.0/21 for up to four cables, 198.18.0.0/20 above)")
     parser.add_argument("--plan", action="store_true", help="read existing SSH access only; no enrollment or host changes")
     parser.add_argument("--apply", action="store_true", help="apply the reviewed plan")
     parser.add_argument("--adopt", action="store_true", help="verify/save existing networking without changing links, routes or services")
@@ -227,13 +250,14 @@ def setup(argv=None):
                 print(f"  {i}: {candidate['hostname']}  {candidate['address']} (identity unverified)")
             if not sys.stdin.isatty():
                 raise ValueError("Select nodes with --node for noninteractive setup")
-            indices = [int(s) - 1 for s in input("Select two or four numbers, including this Spark: ").split()]
+            indices = [int(s) - 1 for s in input("Select two to eight numbers, including this Spark: ").split()]
             if any(i < 0 or i >= len(candidates) for i in indices):
                 raise ValueError("Selection is outside the candidate list")
             targets = [getpass.getuser() + "@" + candidates[i]["address"] for i in indices]
         targets = [discovery.target(t) for t in targets]
-        if len(targets) not in (2, 4) or len(set(targets)) != len(targets):
-            raise ValueError("Select exactly two or four distinct management targets")
+        if (not fabric_layout.MIN_SPARKS <= len(targets) <= fabric_layout.MAX_SPARKS
+                or len(set(targets)) != len(targets)):
+            raise ValueError("Select two to eight distinct management targets")
         if not args.skip_enroll and not args.plan:
             confirm("Enroll SSH access to " + ", ".join(targets) + "?", args.yes)
             key = sparkring_bootstrap.ensure_local_key()
@@ -253,9 +277,11 @@ def setup(argv=None):
     if args.plan or not args.apply and not sys.stdin.isatty():
         print("Plan saved. Repeat with --apply to configure these hosts.")
         return 0
+    relaying = fabric_layout.relayed(topology.layout_of(plan))
+    mesh_ring = topology.layout_of(plan) == fabric_layout.layout(fabric_layout.CYCLE, 4)
     if args.adopt:
         question = "Record this verified existing fabric without network changes"
-        if len(nodes) == 4:
+        if relaying:
             question += (", and record the ConnectX hairpin setting that is in effect and apply it at every boot"
                          " (no driver restart)")
         confirm(question + "?", args.yes)
@@ -275,7 +301,7 @@ def setup(argv=None):
         for rank, host in enumerate(plan["spec"]["hosts"]):
             config = topology.persistent_config(plan, rank)
             config.update(ownership="observed", routes=[], forwarding=[])
-            if len(nodes) == 4:
+            if mesh_ring:
                 mesh = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
                 if not mesh or not mesh.get("active", True):
                     raise ValueError("No verified native mesh found; ordinary setup can prepare one")
@@ -289,7 +315,7 @@ def setup(argv=None):
             observed.append({"rank": rank, "adopted": True})
         receipt = {"complete": True, "network_changed": False, "nodes": observed}
         armed = []
-        if len(nodes) == 4:
+        if relaying:
             # Adoption requires an active mesh, so no function restarts here:
             # Sparks that need one get M19 and adoption still completes.
             outcome = {}
@@ -298,7 +324,7 @@ def setup(argv=None):
                                        update_workers=lambda: _sync_workers(current, directory),
                                        directory=directory, record=outcome)
             receipt["hairpin"] = outcome.get("state", "complete")
-            armed = (list(range(4)) if outcome.get("state") == hairpin_ring.KEPT else
+            armed = (hairpin_ring.ranks(plan) if outcome.get("state") == hairpin_ring.KEPT else
                      [entry["rank"] for entry in outcome.get("ranks") or [] if entry.get("after") == hairpin_ring.KEPT])
         installer.write(directory / "setup.json", receipt)
         if armed:
@@ -317,7 +343,9 @@ def setup(argv=None):
     node.save(STATE, "cluster.json", cluster, mode=0o600)
     from runtime.host import fabric_bandwidth
     # A degraded cable is a warning with its repair steps; setup never fails here.
-    fabric_bandwidth.after_setup(STATE, cluster)
+    bandwidth = fabric_bandwidth.after_setup(STATE, cluster)
+    if not args.adopt:
+        fabric.finish_setup(STATE, cluster, directory, bandwidth=bandwidth)
     print("Network configured. Choose a model: sparkring models")
     return 0
 
@@ -448,7 +476,7 @@ def _hairpin_problem():
         return None
     plan = installer.read(STATE / "cluster.json").get("plan") or {}
     hosts = (plan.get("spec") or {}).get("hosts") or []
-    if len(hosts) != 4:
+    if not hosts or not hairpin_ring.ranks(plan):
         return None
     problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh))
     return problem.replace("\n", "\n  ") if problem else None
@@ -499,6 +527,7 @@ def lifecycle(argv):
             plan_id = cluster["plan"].get("id")
             # The saved result of the last bandwidth check; status never measures.
             result["fabric_bandwidth"] = fabric_bandwidth.summary(STATE)
+            result["fabric"] = fabric.summary(STATE, cluster)
             result["nodes"] = []
             for host in cluster["plan"]["spec"]["hosts"]:
                 try:
@@ -569,6 +598,8 @@ def lifecycle(argv):
             if "fabric_bandwidth" in result:
                 for line in fabric_bandwidth.status_lines(result["fabric_bandwidth"], plan_id):
                     print(line)
+            if "fabric" in result:
+                print(fabric.status_line(result["fabric"]))
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:
@@ -625,6 +656,7 @@ def lifecycle(argv):
             from runtime.common import installer_image
             from runtime.host import models
             cluster = installer.read(STATE / "cluster.json")
+            placements.require_layout(cluster)
             size = len(cluster["plan"]["nodes"])
             nodes = 2 if requested is not None else size
             profile = models.select(args.profile, nodes)

@@ -167,7 +167,8 @@ def _parser() -> argparse.ArgumentParser:
     # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
-    subcommands.add_parser("setup", help="guided Linux pair/ring setup; show/storage retain profile planning")
+    subcommands.add_parser("setup", help="guided Linux setup of a pair, line or ring of up to eight Sparks; "
+                                         "show/storage retain profile planning")
     subcommands.add_parser("node", help="Linux node services and observations")
     subcommands.add_parser("models", help="list exact model/version/topology profiles")
     subcommands.add_parser("images", help="list the installer images this package can run, for install --image")
@@ -176,10 +177,13 @@ def _parser() -> argparse.ArgumentParser:
     subcommands.add_parser("checkpoints", help="list SparkRing's checkpoint directories on every Spark, or release one")
     subcommands.add_parser("storage", help="report SparkRing's disk use on every Spark, or release an unreferenced "
                                            "cache directory or deployment workspace")
-    subcommands.add_parser("hairpin", help="apply the ConnectX hairpin setting that four-Spark rings need (Node A)")
+    subcommands.add_parser("hairpin", help="apply the ConnectX hairpin setting that relayed forwarding needs (Node A)")
     subcommands.add_parser("recover", help="restart the active model automatically when a Spark stops serving (Node A)")
-    subcommands.add_parser("cabling", help="show how the Sparks are cabled and what to change for a pair or ring, "
-                                           "or with --bandwidth measure each cable's speed; changes nothing")
+    subcommands.add_parser("cabling", help="show how the Sparks are cabled, the port-to-Spark map and what to change "
+                                           "for a pair, line or ring, or with --bandwidth measure each cable's speed; "
+                                           "changes nothing")
+    subcommands.add_parser("fabric", help="show or verify the recorded fabric: positions, ports, cables, relay table "
+                                          "and boot units (Node A)")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
@@ -225,6 +229,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "cabling":
         from runtime.host.cabling import main as cabling_main
         return cabling_main(raw[1:])
+    if raw and raw[0] == "fabric":
+        from runtime.host.fabric import main as fabric_main
+        return fabric_main(raw[1:])
     if raw and (raw[0] == "setup" and (len(raw) == 1 or raw[1] not in ("show", "storage"))
                 or raw[0] in ("up", "down", "status") and "--deployment" not in raw
                 and (Path(root, "distribution.json").exists() or len(raw) > 1 and not raw[1].startswith("-"))):

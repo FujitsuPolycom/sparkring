@@ -11,7 +11,14 @@ The survey reaches each Spark without changing any host, in this order:
    eight (``lan_peers.match``). The LAN reaches a Spark even when its fabric
    ports have no IPv6 address.
 4. Other Sparks over the cables' IPv6 link-local addresses, as setup's
-   discovery does (``bootstrap.discover``), up to three hops from this Spark.
+   discovery does (``bootstrap.discover``), up to ``bounds(size)`` hops from
+   this Spark.
+
+How far and how many: for ``size`` Sparks (the size the caller expects, or
+eight, the most SparkRing sets up), the survey follows routes of up to
+``size - 1`` cable hops, the far end of a line, and reads up to ``size + 1``
+Sparks, so a Spark cabled beyond the expected set is read and reported rather
+than silently left out.
 
 Steps 3 and 4 sign in as the operator's account; SSH asks for passwords and
 for unknown host keys. On each Spark one program (``program``) runs, through
@@ -25,11 +32,27 @@ import ipaddress
 import json
 import subprocess
 
+from runtime.common import fabric_layout
 from runtime.host import bootstrap, cabling, discovery, lan_peers
 
-# The most Sparks and sign-in rounds a survey takes; a ring has four.
-LIMIT = 8
-ROUNDS = 6
+
+def bounds(size=None):
+    """``(hops, limit, rounds)`` of a survey that expects ``size`` Sparks (default: the most SparkRing sets up).
+
+    ``hops`` is the longest fabric route, ``size - 1`` cables (the far end of
+    a line); ``limit`` is ``size + 1`` Sparks, one more than expected, so a
+    mis-cabled extra Spark is read and named; ``rounds`` of sign-ins reach
+    ``hops`` cables out plus the LAN round.
+    """
+    size = fabric_layout.MAX_SPARKS if size is None else size
+    if not fabric_layout.MIN_SPARKS <= size <= fabric_layout.MAX_SPARKS:
+        raise ValueError(f"A survey expects two to {fabric_layout.MAX_SPARKS} Sparks")
+    hops = min(size - 1, bootstrap.MAX_HOPS)
+    return hops, size + 1, hops + 2
+
+
+# The defaults for any supported fabric: seven hops, nine Sparks, nine rounds.
+HOPS, LIMIT, ROUNDS = bounds()
 
 
 def observe(state=False):
@@ -136,13 +159,16 @@ def _hostname(found, key):
     return found[key]["data"]["inventory"].get("hostname") or key
 
 
-def fabric_hops(found, *, user, port):
-    """Link-local SSH routes to cable neighbors that are no found Spark's function, as discovery takes them."""
+def fabric_hops(found, *, user, port, depth=HOPS):
+    """Link-local SSH routes to cable neighbors that are no found Spark's function, as discovery takes them.
+
+    Routes stay within ``depth`` cable hops of this Spark.
+    """
     known = known_macs(found)
     hops = []
     for key, spark in found.items():
         reach = spark["reach"]
-        if reach.kind == "target" or len(reach.route) >= 3:
+        if reach.kind == "target" or len(reach.route) >= depth:
             continue
         local_functions = {f["netdev"]: f for f in _functions(spark["data"])}
         for neighbor in spark["data"]["inventory"].get("neighbors") or []:
@@ -208,16 +234,18 @@ def lan_hops(found, head, *, user, arp=lan_peers.arp_table, sweep=lan_peers.swee
 
 
 def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, lan=True, state=None, say=print,
-           ssh=discovery.ssh, arp=lan_peers.arp_table, sweep=lan_peers.sweep, here=None):
+           ssh=discovery.ssh, arp=lan_peers.arp_table, sweep=lan_peers.sweep, here=None, size=None):
     """Reach and observe the Sparks on this Spark's cables; change nothing.
 
     ``recorded`` are administration-network SSH targets of the recorded
     cluster's other Sparks. Without ``sign_in`` only this Spark and those are
     read; without ``lan`` no LAN address is signed in to (SSH port 22); ``state``
-    is passed to ``program``. Returns ``{"head", "sparks":
-    {id: {"reach", "data"}}, "notes"}``; ``notes`` name each Spark the survey
-    could not read and why.
+    is passed to ``program``; ``size`` is the number of Sparks expected
+    (``bounds``). Returns ``{"head", "sparks": {id: {"reach", "data"}},
+    "notes", "bounds"}``; ``notes`` name each Spark the survey could not read
+    and why, including Sparks beyond its limit.
     """
+    depth, limit, rounds = bounds(size)
     notes = []
     head_reach = here or Reach("local", "this Spark")
     data = run_program(head_reach, transport, state=state, ssh=ssh)
@@ -247,13 +275,17 @@ def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, lan=Tr
             swept.append(interface)
             sweep(interface)
 
-    for _ in range(ROUNDS if sign_in else 0):
+    beyond = []
+    for _ in range(rounds if sign_in else 0):
         progress = False
         hops = (lan_hops(found, head, user=user, arp=arp, sweep=sweep_once) if lan else []) + fabric_hops(
-            found, user=user, port=port)
+            found, user=user, port=port, depth=depth)
         for reach, mac in hops:
             key = json.dumps(reach.route, sort_keys=True)
-            if key in tried or mac in known_macs(found) or len(found) >= LIMIT:
+            if key in tried or mac in known_macs(found):
+                continue
+            if len(found) >= limit:
+                beyond.append(reach.label)
                 continue
             tried.add(key)
             try:
@@ -263,7 +295,10 @@ def survey(transport, *, recorded=(), user="root", port=22, sign_in=True, lan=Tr
                 notes.append(f"Sign-in over {reach.label} failed: " + (str(error).strip().splitlines() or ["no answer"])[-1][:200])
         if not progress:
             break
-    return {"head": head, "sparks": found, "notes": notes}
+    if beyond:
+        notes.append(f"The survey stopped at {limit} Sparks; more are cabled beyond them (over "
+                     + ", ".join(sorted(set(beyond))[:3]) + ")")
+    return {"head": head, "sparks": found, "notes": notes, "bounds": {"hops": depth, "limit": limit}}
 
 
 def records(result):

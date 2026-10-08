@@ -175,6 +175,7 @@ def resolve_placement(args, cluster, state_root):
     """
     size = len(cluster["plan"]["nodes"])
     try:
+        placements.require_layout(cluster)
         requested = placements.parse(args.on) if args.on else None
     except ValueError as error:
         raise NeedsInput(f"{error}. Nothing has been changed.", field="placement") from None
@@ -1255,7 +1256,7 @@ def main(argv=None):
             progress.failure(str(error))
         if result["state"] == "complete":
             if (result.get("hairpin") or {}).get("required"):
-                print(hairpin_ring.COMPLETE)
+                print(hairpin_ring.complete_text(len(result["hairpin"].get("ranks") or []) or 4))
             print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
                 print(line)

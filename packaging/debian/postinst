@@ -9,14 +9,15 @@ if [ "$1" = configure ]; then
         systemctl restart sparkring-agent.service
         # Restore the units that were enabled when the package was last
         # removed (recorded by prerm). Administration units start at once so
-        # the installer can reach this node. The fabric and hairpin units are
-        # only enabled for the next boot, because package installation never
-        # changes the data network or restarts a ConnectX driver.
+        # the installer can reach this node. The fabric, relay marker and
+        # hairpin units are only enabled for the next boot, because package
+        # installation never changes the data network or restarts a ConnectX
+        # driver.
         recorded=/var/lib/sparkring/package-enabled-units
         if [ -f "$recorded" ]; then
             while read -r unit; do
                 case "$unit" in
-                    sparkring-fabric.service|sparkring-hairpin.service) systemctl enable "$unit" ;;
+                    sparkring-fabric.service|sparkring-hairpin.service|sparkring-relay-marker.service) systemctl enable "$unit" ;;
                     sparkring-*) systemctl enable --now "$unit" ;;
                 esac
             done < "$recorded"

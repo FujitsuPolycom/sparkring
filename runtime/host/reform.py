@@ -553,7 +553,7 @@ def plan_lines(value):
     lines.append(f"Moved state stays in /var/lib/sparkring/retired/{value['stamp']}/ on each Spark, with a receipt "
                  "that lists how to restore it.")
     lines.append("Checkpoints, images and caches in /srv/sparkring stay where they are.")
-    shape = "pair" if value["layout"] == "pair" else "ring"
+    shape = {"pair": "pair", "ring": "ring", "path": "line"}.get(value["layout"], "ring")
     lines.append(f"Then setup sets up the {shape} " + " → ".join(value["order"]) + " like a first setup and renumbers "
                  "its fabric addresses.")
     if value["blockers"]:

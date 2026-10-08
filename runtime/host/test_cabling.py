@@ -159,15 +159,21 @@ def test_a_port_in_two_cables_is_a_disagreement_not_a_layout():
     assert "spark-a port 0 sees more than one far port" in result["summary"]
 
 
-def test_loose_cable_names_the_two_free_ports():
+def test_loose_cable_leaves_a_line_from_node_a_and_names_the_two_free_ports():
     # The loop spark-a → b → c → d → a with the d-to-a cable unplugged: both ends report no carrier.
     sparks = synthetic(4, ring([(0, 1)] * 4)[:3])
     result = cabling.diagnose(sparks, "spark-a")
-    assert result["layout"] == "ring" and not result["ready"]
-    assert result["summary"].startswith("Four Sparks are cabled in a line: spark-d port 0 and spark-a port 1 have no "
-                                        "cable (missing or loose).")
-    assert result["fix"] == ["Connect a cable from spark-d port 0 to spark-a port 1."]
+    assert result["layout"] == "path" and result["ready"] and result["layout_name"] == "path-4"
+    assert result["summary"] == "Four-Spark line (path-4) from Node A, cabled as SparkRing needs."
+    assert result["notes"] == ["spark-d port 0 and spark-a port 1 are free; a cable from the first to the second "
+                               "makes a cycle-4."]
     assert result["order_names"] == ["spark-a", "spark-b", "spark-c", "spark-d"]
+    # Seen from a Spark inside the line, the line becomes a ring with its last cable.
+    inside = cabling.diagnose(sparks, "spark-b")
+    assert inside["layout"] == "ring" and not inside["ready"]
+    assert inside["summary"].startswith("Four Sparks are cabled in a line: spark-d port 0 and spark-a port 1 have no "
+                                        "cable (missing or loose).")
+    assert inside["fix"] == ["Connect a cable from spark-d port 0 to spark-a port 1."]
 
 
 def test_line_with_a_link_whose_far_end_is_unseen_is_incomplete():
@@ -176,12 +182,11 @@ def test_line_with_a_link_whose_far_end_is_unseen_is_incomplete():
     assert result["layout"] == "incomplete" and not result["fix"]
 
 
-def test_three_sparks_are_not_supported():
+def test_three_sparks_in_a_line_are_a_path():
     sparks = synthetic(3, [((0, 0), (1, 1)), ((1, 0), (2, 1))])
     result = cabling.diagnose(sparks, "spark-a")
-    assert result["layout"] == "unsupported"
-    assert result["summary"] == ("Three Sparks are cabled together (spark-a, spark-b, spark-c). SparkRing needs two "
-                                 "Sparks (a pair) or four (a ring). Free ports: spark-a port 1, spark-c port 0.")
+    assert (result["layout"], result["layout_name"], result["ready"]) == ("path", "path-3", True)
+    assert result["free"] == ["spark-a port 1", "spark-c port 0"]
 
 
 def test_duplicate_cable_in_a_four_spark_set():

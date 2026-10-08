@@ -17,6 +17,8 @@ import copy
 import ipaddress
 import re
 
+from runtime.common import fabric_layout
+
 INTERFACE = "sr-control"
 PORT = 51871
 SSH_PORT = 2222
@@ -407,18 +409,40 @@ def choose(state, usable, current, handshake, received, now, *, has_endpoint=Fal
     return target, check, reason, s
 
 
-def plan(nodes, edges, head, *, subnet="10.253.255.0/29", share_uplink=True):
+DEFAULT_SUBNET = "10.253.255.0/29"
+# The administration network's prefix lengths: a /29 holds six Sparks, a /28 up to fourteen.
+SUBNET_PREFIXES = (28, 29)
+
+
+def subnet_for(subnet, count, *, explicit=False):
+    """The administration subnet for ``count`` Sparks: ``subnet``, or the /28 that contains a default /29 too small.
+
+    An explicitly chosen subnet is used as it is, and ``plan`` refuses it when
+    it lacks an address per Spark.
+    """
+    network = ipaddress.IPv4Network(subnet)
+    if explicit or network.num_addresses - 2 >= count or network.prefixlen != 29:
+        return str(network)
+    return str(network.supernet(new_prefix=28))
+
+
+def plan(nodes, edges, head, *, subnet=DEFAULT_SUBNET, share_uplink=True):
     """nodes: authenticated inventories; edges: reciprocal physical cable ends.
 
-    The primary path of each tree link is its edge; the inventories' other
-    cables and LAN addresses become its fallback paths (``extend``).
+    The Sparks form a pair, or a line or ring of up to eight. The primary
+    path of each tree link is its edge; the inventories' other cables and LAN
+    addresses become its fallback paths (``extend``).
     """
     ids = {n["id"] for n in nodes}
-    if len(nodes) not in (2, 4) or len(ids) != len(nodes) or head not in ids:
-        raise ValueError("Control setup requires two or four distinct authenticated Sparks")
+    if (not fabric_layout.MIN_SPARKS <= len(nodes) <= fabric_layout.MAX_SPARKS or len(ids) != len(nodes)
+            or head not in ids):
+        raise ValueError("Control setup requires two to eight distinct authenticated Sparks")
     network = ipaddress.IPv4Network(subnet)
-    if network.prefixlen != 29 or not network.is_private:
-        raise ValueError("Choose a private /29 for SparkRing management")
+    if network.prefixlen not in SUBNET_PREFIXES or not network.is_private:
+        raise ValueError("Choose a private /29 or /28 for SparkRing management")
+    if network.num_addresses - 2 < len(nodes):
+        raise ValueError(f"The management subnet {network} holds {network.num_addresses - 2} Sparks; "
+                         f"{len(nodes)} need a /28")
     by_id = {n["id"]: n for n in nodes}
     adjacency = {ident: {} for ident in ids}
     for edge in edges:
@@ -432,8 +456,8 @@ def plan(nodes, edges, head, *, subnet="10.253.255.0/29", share_uplink=True):
             if peer["id"] in adjacency[local["id"]]:
                 raise ValueError("Multiple physical cables between the same nodes are unsupported")
             adjacency[local["id"]][peer["id"]] = (local, peer)
-    if any(len(peers) != (1 if len(nodes) == 2 else 2) for peers in adjacency.values()):
-        raise ValueError("Cables must form a pair or one complete four-node ring")
+    if any(not 1 <= len(peers) <= (1 if len(nodes) == 2 else 2) for peers in adjacency.values()):
+        raise ValueError("Cables must form a pair, a line or a ring")
     # BFS picks a deterministic tree; the non-tree ring edge remains data-only.
     order, parent = [head], {head: None}
     for ident in order:
@@ -442,7 +466,7 @@ def plan(nodes, edges, head, *, subnet="10.253.255.0/29", share_uplink=True):
                 order.append(peer)
                 parent[peer] = ident
     if len(order) != len(nodes):
-        raise ValueError("The selected Sparks do not form one connected ring")
+        raise ValueError("The selected Sparks do not form one connected line or ring")
     addresses = {ident: str(network.network_address + rank + 1) for rank, ident in enumerate(order)}
     for n in nodes:
         key(n["public_key"])

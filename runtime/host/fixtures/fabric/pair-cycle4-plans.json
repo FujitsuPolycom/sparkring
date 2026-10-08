@@ -1,0 +1,1112 @@
+{
+ "cycle4-addressed": {
+  "bulk_routes": [
+   {
+    "address": null,
+    "parent": null,
+    "rank": 0
+   },
+   {
+    "address": "198.18.1.2",
+    "parent": 0,
+    "rank": 1,
+    "source_interface": "enp1s0f0np0"
+   },
+   {
+    "address": "198.18.2.2",
+    "parent": 1,
+    "rank": 2,
+    "source_interface": "enp1s0f0np0"
+   },
+   {
+    "address": "198.18.4.1",
+    "parent": 0,
+    "rank": 3,
+    "source_interface": "enp1s0f1np1"
+   }
+  ],
+  "cable_ends": [
+   [
+    {
+     "hostname": "spark0",
+     "port": 0,
+     "rank": 0
+    },
+    {
+     "hostname": "spark1",
+     "port": 1,
+     "rank": 1
+    }
+   ],
+   [
+    {
+     "hostname": "spark1",
+     "port": 0,
+     "rank": 1
+    },
+    {
+     "hostname": "spark2",
+     "port": 1,
+     "rank": 2
+    }
+   ],
+   [
+    {
+     "hostname": "spark2",
+     "port": 0,
+     "rank": 2
+    },
+    {
+     "hostname": "spark3",
+     "port": 1,
+     "rank": 3
+    }
+   ],
+   [
+    {
+     "hostname": "spark3",
+     "port": 0,
+     "rank": 3
+    },
+    {
+     "hostname": "spark0",
+     "port": 1,
+     "rank": 0
+    }
+   ]
+  ],
+  "cable_functions": [
+   [
+    [
+     "primary",
+     0,
+     "enp1s0f0np0",
+     "198.18.1.1",
+     1,
+     "enp1s0f1np1",
+     "198.18.1.2"
+    ],
+    [
+     "secondary",
+     0,
+     "enP2p1s0f0np0",
+     "198.18.101.1",
+     1,
+     "enP2p1s0f1np1",
+     "198.18.101.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     1,
+     "enp1s0f0np0",
+     "198.18.2.1",
+     2,
+     "enp1s0f1np1",
+     "198.18.2.2"
+    ],
+    [
+     "secondary",
+     1,
+     "enP2p1s0f0np0",
+     "198.18.102.1",
+     2,
+     "enP2p1s0f1np1",
+     "198.18.102.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     2,
+     "enp1s0f0np0",
+     "198.18.3.1",
+     3,
+     "enp1s0f1np1",
+     "198.18.3.2"
+    ],
+    [
+     "secondary",
+     2,
+     "enP2p1s0f0np0",
+     "198.18.103.1",
+     3,
+     "enP2p1s0f1np1",
+     "198.18.103.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     3,
+     "enp1s0f0np0",
+     "198.18.4.1",
+     0,
+     "enp1s0f1np1",
+     "198.18.4.2"
+    ],
+    [
+     "secondary",
+     3,
+     "enP2p1s0f0np0",
+     "198.18.104.1",
+     0,
+     "enP2p1s0f1np1",
+     "198.18.104.2"
+    ]
+   ]
+  ],
+  "fabric_cidr": "198.18.0.0/21",
+  "forwarding": [
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ]
+  ],
+  "hairpin": [
+   [
+    0,
+    "kept"
+   ],
+   [
+    1,
+    "kept"
+   ],
+   [
+    2,
+    "kept"
+   ],
+   [
+    3,
+    "kept"
+   ]
+  ],
+  "interfaces": [
+   [
+    {
+     "address": "198.18.1.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.101.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.4.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.104.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.2.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.102.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.1.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.101.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.3.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.103.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.2.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.102.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.4.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.104.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.3.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.103.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ]
+  ],
+  "network_sha256": "15fa5af7475208de87f7fd9b603bbfcec6c981ebd8ca079eb2b41f586739fd26",
+  "persistent_sha256": [
+   "e8f34fde974790e11b4e3ac331344e94904dbe27f290e088c1ed0ce7e6cad85c",
+   "d4db30e824f548aac45922de9e7e7f296c428b8a03f8e556ab9484fef4228f78",
+   "5538565f417766a9010a20bd5e913cf3b04dca97e4f8f340bb2191690765eb71",
+   "1fdf3ae89b62add74174560a6271de844197e2ed5b494ff0c5d6c1234a6322a9"
+  ],
+  "plan_id": "ea2522bcfcbb07c91a3aa5345022c2b4a7e130831b07ce92186da8298b292b78",
+  "routes": [
+   [
+    {
+     "destination": "198.18.2.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.1.2"
+    },
+    {
+     "destination": "198.18.102.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.101.2"
+    },
+    {
+     "destination": "198.18.3.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.4.1"
+    },
+    {
+     "destination": "198.18.103.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.104.1"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.3.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.2.2"
+    },
+    {
+     "destination": "198.18.103.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.102.2"
+    },
+    {
+     "destination": "198.18.4.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.1.1"
+    },
+    {
+     "destination": "198.18.104.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.101.1"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.1.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.2.1"
+    },
+    {
+     "destination": "198.18.101.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.102.1"
+    },
+    {
+     "destination": "198.18.4.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.3.2"
+    },
+    {
+     "destination": "198.18.104.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.103.2"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.1.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.4.2"
+    },
+    {
+     "destination": "198.18.101.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.104.2"
+    },
+    {
+     "destination": "198.18.2.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.3.1"
+    },
+    {
+     "destination": "198.18.102.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.103.1"
+    }
+   ]
+  ],
+  "spec_sha256": "b6065d8fad2438c886d0e07867f2151c57bde86cb44021ae63bee36a49f8775f"
+ },
+ "cycle4-blank": {
+  "bulk_routes": [
+   {
+    "address": null,
+    "parent": null,
+    "rank": 0
+   },
+   {
+    "address": "198.18.0.2",
+    "parent": 0,
+    "rank": 1,
+    "source_interface": "enp1s0f0np0"
+   },
+   {
+    "address": "198.18.2.2",
+    "parent": 1,
+    "rank": 2,
+    "source_interface": "enp1s0f0np0"
+   },
+   {
+    "address": "198.18.6.1",
+    "parent": 0,
+    "rank": 3,
+    "source_interface": "enp1s0f1np1"
+   }
+  ],
+  "cable_ends": [
+   [
+    {
+     "hostname": "spark0",
+     "port": 0,
+     "rank": 0
+    },
+    {
+     "hostname": "spark1",
+     "port": 1,
+     "rank": 1
+    }
+   ],
+   [
+    {
+     "hostname": "spark1",
+     "port": 0,
+     "rank": 1
+    },
+    {
+     "hostname": "spark2",
+     "port": 1,
+     "rank": 2
+    }
+   ],
+   [
+    {
+     "hostname": "spark2",
+     "port": 0,
+     "rank": 2
+    },
+    {
+     "hostname": "spark3",
+     "port": 1,
+     "rank": 3
+    }
+   ],
+   [
+    {
+     "hostname": "spark3",
+     "port": 0,
+     "rank": 3
+    },
+    {
+     "hostname": "spark0",
+     "port": 1,
+     "rank": 0
+    }
+   ]
+  ],
+  "cable_functions": [
+   [
+    [
+     "primary",
+     0,
+     "enp1s0f0np0",
+     "198.18.0.1",
+     1,
+     "enp1s0f1np1",
+     "198.18.0.2"
+    ],
+    [
+     "secondary",
+     0,
+     "enP2p1s0f0np0",
+     "198.18.1.1",
+     1,
+     "enP2p1s0f1np1",
+     "198.18.1.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     1,
+     "enp1s0f0np0",
+     "198.18.2.1",
+     2,
+     "enp1s0f1np1",
+     "198.18.2.2"
+    ],
+    [
+     "secondary",
+     1,
+     "enP2p1s0f0np0",
+     "198.18.3.1",
+     2,
+     "enP2p1s0f1np1",
+     "198.18.3.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     2,
+     "enp1s0f0np0",
+     "198.18.4.1",
+     3,
+     "enp1s0f1np1",
+     "198.18.4.2"
+    ],
+    [
+     "secondary",
+     2,
+     "enP2p1s0f0np0",
+     "198.18.5.1",
+     3,
+     "enP2p1s0f1np1",
+     "198.18.5.2"
+    ]
+   ],
+   [
+    [
+     "primary",
+     3,
+     "enp1s0f0np0",
+     "198.18.6.1",
+     0,
+     "enp1s0f1np1",
+     "198.18.6.2"
+    ],
+    [
+     "secondary",
+     3,
+     "enP2p1s0f0np0",
+     "198.18.7.1",
+     0,
+     "enP2p1s0f1np1",
+     "198.18.7.2"
+    ]
+   ]
+  ],
+  "fabric_cidr": "198.18.0.0/21",
+  "forwarding": [
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ],
+   [
+    [
+     "enp1s0f0np0",
+     "enp1s0f1np1"
+    ],
+    [
+     "enp1s0f1np1",
+     "enp1s0f0np0"
+    ],
+    [
+     "enP2p1s0f0np0",
+     "enP2p1s0f1np1"
+    ],
+    [
+     "enP2p1s0f1np1",
+     "enP2p1s0f0np0"
+    ]
+   ]
+  ],
+  "hairpin": [
+   [
+    0,
+    "kept"
+   ],
+   [
+    1,
+    "kept"
+   ],
+   [
+    2,
+    "kept"
+   ],
+   [
+    3,
+    "kept"
+   ]
+  ],
+  "interfaces": [
+   [
+    {
+     "address": "198.18.0.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.1.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.6.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.7.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.2.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.3.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.0.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.1.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.4.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.5.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.2.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.3.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.6.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.7.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    },
+    {
+     "address": "198.18.4.2/24",
+     "netdev": "enp1s0f1np1",
+     "rdma_device": "rocep1s0f1",
+     "role": "ccw_primary"
+    },
+    {
+     "address": "198.18.5.2/24",
+     "netdev": "enP2p1s0f1np1",
+     "rdma_device": "roceP2p1s0f1",
+     "role": "ccw_secondary"
+    }
+   ]
+  ],
+  "network_sha256": "b411b983dd8a090261c016d55673d226e3285b7e50be2f6c4aedfc1ddd42ac31",
+  "persistent_sha256": [
+   "a0380f8f28ea72fed7c0f78b3984f97b64faf307958453abfa239531a1b89440",
+   "03cae7bc5f2b14a9a6347e78f239cdbd7bc9b34307211e6d5595b18887813153",
+   "b2610a18629bd72a2ef1d8c9a882bd1527cb7dc7d1ad5deaca2be38342af869a",
+   "b2bb6e3c98667719a0c09c99c4402845e3499294e9befefe7467a20716b62228"
+  ],
+  "plan_id": "400401e05a7aab386e81a472f7041ec6af4f5b25f56990f8d15dd2a3afc6809e",
+  "routes": [
+   [
+    {
+     "destination": "198.18.2.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.0.2"
+    },
+    {
+     "destination": "198.18.3.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.1.2"
+    },
+    {
+     "destination": "198.18.4.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.6.1"
+    },
+    {
+     "destination": "198.18.5.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.7.1"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.4.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.2.2"
+    },
+    {
+     "destination": "198.18.5.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.3.2"
+    },
+    {
+     "destination": "198.18.6.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.0.1"
+    },
+    {
+     "destination": "198.18.7.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.1.1"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.0.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.2.1"
+    },
+    {
+     "destination": "198.18.1.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.3.1"
+    },
+    {
+     "destination": "198.18.6.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.4.2"
+    },
+    {
+     "destination": "198.18.7.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.5.2"
+    }
+   ],
+   [
+    {
+     "destination": "198.18.0.0/24",
+     "dev": "enp1s0f0np0",
+     "via": "198.18.6.2"
+    },
+    {
+     "destination": "198.18.1.0/24",
+     "dev": "enP2p1s0f0np0",
+     "via": "198.18.7.2"
+    },
+    {
+     "destination": "198.18.2.0/24",
+     "dev": "enp1s0f1np1",
+     "via": "198.18.4.1"
+    },
+    {
+     "destination": "198.18.3.0/24",
+     "dev": "enP2p1s0f1np1",
+     "via": "198.18.5.1"
+    }
+   ]
+  ],
+  "spec_sha256": "c0966a722e4c81bf5f330301fa6039b49581984da7967ca6740e32cc8ee06bb3"
+ },
+ "pair-addressed": {
+  "bulk_routes": [
+   {
+    "address": null,
+    "parent": null,
+    "rank": 0
+   },
+   {
+    "address": "198.18.0.2",
+    "parent": 0,
+    "rank": 1,
+    "source_interface": "enp1s0f0np0"
+   }
+  ],
+  "cable_ends": [
+   [
+    {
+     "hostname": "spark0",
+     "port": 0,
+     "rank": 0
+    },
+    {
+     "hostname": "spark1",
+     "port": 0,
+     "rank": 1
+    }
+   ]
+  ],
+  "cable_functions": [
+   [
+    [
+     "primary",
+     0,
+     "enp1s0f0np0",
+     "198.18.0.1",
+     1,
+     "enp1s0f0np0",
+     "198.18.0.2"
+    ],
+    [
+     "secondary",
+     0,
+     "enP2p1s0f0np0",
+     "198.18.1.1",
+     1,
+     "enP2p1s0f0np0",
+     "198.18.1.2"
+    ]
+   ]
+  ],
+  "fabric_cidr": "198.18.0.0/21",
+  "forwarding": [
+   [],
+   []
+  ],
+  "hairpin": [],
+  "interfaces": [
+   [
+    {
+     "address": "198.18.0.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.1.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.0.2/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.1.2/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    }
+   ]
+  ],
+  "network_sha256": "9b78c3fa4100de776be60e9c35ece8634698daf876b44e9182626b782264d65b",
+  "persistent_sha256": [
+   "8a5b40d7828e408f289968bb031e7a83b8c29913000b7ccb698b1716300924ca",
+   "7f7f6d671016114781a6e4c5cf816dfefaf470d66cfee9a618022b047fe8b38d"
+  ],
+  "plan_id": "772e936773f5aa47494f25a7c360af0d6b2428ba4d5a7734e9b84561cc41a155",
+  "routes": [
+   [],
+   []
+  ],
+  "spec_sha256": "435e976b00a23bde78228e1d86a0efdf392ac73e2c0a6d7a8e6c76c4d60ab641"
+ },
+ "pair-blank": {
+  "bulk_routes": [
+   {
+    "address": null,
+    "parent": null,
+    "rank": 0
+   },
+   {
+    "address": "198.18.0.2",
+    "parent": 0,
+    "rank": 1,
+    "source_interface": "enp1s0f0np0"
+   }
+  ],
+  "cable_ends": [
+   [
+    {
+     "hostname": "spark0",
+     "port": 0,
+     "rank": 0
+    },
+    {
+     "hostname": "spark1",
+     "port": 0,
+     "rank": 1
+    }
+   ]
+  ],
+  "cable_functions": [
+   [
+    [
+     "primary",
+     0,
+     "enp1s0f0np0",
+     "198.18.0.1",
+     1,
+     "enp1s0f0np0",
+     "198.18.0.2"
+    ],
+    [
+     "secondary",
+     0,
+     "enP2p1s0f0np0",
+     "198.18.1.1",
+     1,
+     "enP2p1s0f0np0",
+     "198.18.1.2"
+    ]
+   ]
+  ],
+  "fabric_cidr": "198.18.0.0/21",
+  "forwarding": [
+   [],
+   []
+  ],
+  "hairpin": [],
+  "interfaces": [
+   [
+    {
+     "address": "198.18.0.1/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.1.1/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    }
+   ],
+   [
+    {
+     "address": "198.18.0.2/24",
+     "netdev": "enp1s0f0np0",
+     "rdma_device": "rocep1s0f0",
+     "role": "cw_primary"
+    },
+    {
+     "address": "198.18.1.2/24",
+     "netdev": "enP2p1s0f0np0",
+     "rdma_device": "roceP2p1s0f0",
+     "role": "cw_secondary"
+    }
+   ]
+  ],
+  "network_sha256": "c01fbfd043d7774af4fdd3d8b1e152bbcfa558bd106403af3fdfa95f94eeb8f5",
+  "persistent_sha256": [
+   "8a5b40d7828e408f289968bb031e7a83b8c29913000b7ccb698b1716300924ca",
+   "7f7f6d671016114781a6e4c5cf816dfefaf470d66cfee9a618022b047fe8b38d"
+  ],
+  "plan_id": "772e936773f5aa47494f25a7c360af0d6b2428ba4d5a7734e9b84561cc41a155",
+  "routes": [
+   [],
+   []
+  ],
+  "spec_sha256": "435e976b00a23bde78228e1d86a0efdf392ac73e2c0a6d7a8e6c76c4d60ab641"
+ }
+}

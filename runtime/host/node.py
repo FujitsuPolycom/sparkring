@@ -2,8 +2,9 @@
 
 Only the node CLI runs privileged operations, including the host agent it
 runs (``sparkring node agent``). The agent observes, adds the approved fabric
-routes that are missing and sets the approved per-interface fabric settings
-that differ (``restore_fabric``); it changes nothing else.
+routes and relay table objects that are missing and sets the approved
+per-interface fabric settings that differ (``restore_fabric``); it changes
+nothing else.
 No listening control socket or sudoers rule is installed; setup uses the
 operator's existing SSH/sudo authority.
 """
@@ -18,8 +19,8 @@ import sys
 import time
 import uuid
 
-from runtime.common import distribution
-from runtime.host import control
+from runtime.common import distribution, fabric_layout
+from runtime.host import control, relays as relay_table
 from runtime.host.discovery import target
 from scripts import hairpin_setting
 from scripts.deploy_inventory import _collect_local, _request, gid_index_hint, validate_inventory
@@ -34,8 +35,12 @@ HAIRPIN_REMEDY = "on Node A: sudo sparkring hairpin"
 HANDSHAKE_STALE = control.HANDSHAKE_STALE
 # The characters of an error line that a status document carries.
 ERROR_TEXT = 300
-# The boot service that restores the approved fabric (routes, forwarding settings and rules).
+# The boot service that restores the approved fabric (routes, forwarding settings and rules, relay table).
 FABRIC_UNIT = "sparkring-fabric.service"
+# The service that runs the relay table's marker processes (runtime/host/relays.py).
+MARKER_UNIT = relay_table.MARKER_UNIT
+# Fields of a fabric record that a setup of the same Sparks may replace in place.
+REFRESHED_FIELDS = ("layout", "relays")
 # Seconds between the agent's observations, and so between its route and setting checks.
 AGENT_INTERVAL = 30
 # Per-interface IPv4 settings (net.ipv4.conf.IFACE.NAME) of each fabric function
@@ -47,7 +52,7 @@ FORWARDING_SETTINGS = (("forwarding", "1"), ("rp_filter", "0"))
 
 
 class HairpinNotInEffect(ValueError):
-    """A fabric function of a four-Spark ring lacks the ConnectX hairpin setting."""
+    """A fabric function of a Spark that relays between its cables lacks the ConnectX hairpin setting."""
 
     next_action = HAIRPIN_REMEDY
 
@@ -118,12 +123,35 @@ def inspect(rank, ssh_target, management, witness, *, root="/", collect=_collect
             "facts": facts, "lldp": lldp, "hairpin": hairpin.status(facts=facts, root=root, run=run)}
 
 
+def record_layout(config):
+    """The fabric layout of a fabric record: its ``layout``, or a pair or four-Spark cycle by ``size``."""
+    if config.get("layout") is not None:
+        value = fabric_layout.checked(config["layout"])
+        if value["size"] != config.get("size"):
+            raise ValueError("Fabric record size differs from its layout")
+        return value
+    return fabric_layout.legacy(config.get("size"))
+
+
+def relays_hairpin(config):
+    """Whether this Spark relays between its cables, so its functions need the ConnectX hairpin setting."""
+    value = record_layout(config)
+    return fabric_layout.relayed(value) and fabric_layout.forwards(value, config["rank"])
+
+
+def mesh_ring(config):
+    """Whether the record is a four-Spark cycle, the only layout with per-deployment mesh services."""
+    return record_layout(config) == fabric_layout.layout(fabric_layout.CYCLE, 4)
+
+
 def validate(config):
     if config.get("schema") != "sparkring-fabric-state/v1" or not re.fullmatch("[0-9a-f]{64}", config.get("cluster_id", "")):
         raise ValueError("Invalid approved fabric state")
     uuid.UUID(config["node_id"])
-    if config["size"] not in (2, 4) or type(config["rank"]) is not int or config["rank"] not in range(config["size"]):
+    if (type(config.get("size")) is not int or not fabric_layout.MIN_SPARKS <= config["size"] <= fabric_layout.MAX_SPARKS
+            or type(config["rank"]) is not int or config["rank"] not in range(config["size"])):
         raise ValueError("Invalid rank or size")
+    layout = record_layout(config)
     target(config["ssh_target"])
     management = config["management"]
     for key in ("address", "witness"):
@@ -133,8 +161,10 @@ def validate(config):
     if management["address"] == management["witness"]:
         raise ValueError("Management witness must be another host")
     ports = config["interfaces"]
-    count = 2 if config["size"] == 2 else 4
-    if len(ports) != count or len({p["netdev"] for p in ports}) != count:
+    roles = fabric_layout.roles(layout, config["rank"])
+    count = len(roles)
+    if (len(ports) != count or len({p["netdev"] for p in ports}) != count
+            or sorted(p.get("role") for p in ports) != sorted(roles)):
         raise ValueError("Invalid fabric interfaces")
     nets = {}
     for p in ports:
@@ -157,8 +187,10 @@ def validate(config):
             raise ValueError("Route must reach a remote fabric /24 through a verified data interface")
     if any(len(pair) != 2 or pair[0] == pair[1] or not set(pair) <= nets.keys() for pair in config["forwarding"]):
         raise ValueError("Forwarding must stay between distinct data interfaces")
-    if config["size"] == 2 and (config["routes"] or config["forwarding"]):
+    if layout["shape"] == fabric_layout.PAIR and (config["routes"] or config["forwarding"]):
         raise ValueError("Pair requires no routed fabric")
+    if config.get("relays") is not None:
+        relay_table.validate_section(config["relays"], config)
     return config
 
 
@@ -189,8 +221,8 @@ def observe(config, *, collect=_collect_local):
     return facts
 
 
-def restore(config, *, collect=_collect_local, run=subprocess.run):
-    """Restore only missing routes/rules; refuse conflicting routes before mutation."""
+def restore(config, *, collect=_collect_local, run=subprocess.run, root="/"):
+    """Restore only missing routes/rules and relay table objects; refuse conflicting routes before mutation."""
     if config.get("ownership") == "observed":
         raise ValueError("This fabric belongs to its existing service; no restoration changes are authorized")
     facts = observe(config, collect=collect)
@@ -210,7 +242,12 @@ def restore(config, *, collect=_collect_local, run=subprocess.run):
         exists = call(["iptables", "-w", "-C", *rule], run=run, accepted=(0, 1)).returncode == 0
         if not exists:
             call(["iptables", "-w", "-I", *rule], run=run)
-    return {"configured": True, "hardware_qualified": False}
+    result = {"configured": True, "hardware_qualified": False}
+    if config.get("relays") is not None:
+        rows = relay_table.restore(config["relays"], call=lambda argv: call(argv, run=run), root=root)
+        result["relays"] = {"restored": sum(row["state"] == "restored" for row in rows),
+                            "missing": relay_table.missing(rows)}
+    return result
 
 
 def approved_settings(config):
@@ -372,18 +409,31 @@ def restore_fabric(config, *, root="/", run=subprocess.run, log=_log):
     routes and settings, never removes or replaces a route, and changes
     nothing once everything matches.
 
-    Returns None for a record without routes and forwarding (a pair, or an
-    adopted fabric); ``{"active": False, "routes": [], "settings": []}`` while
-    the service is not active; else ``{"active": True, "routes": add_routes(...),
-    "settings": apply_settings(...)}``.
+    - Relay table (``relays.restore``): a function's relay routes leave with
+      its address, and a driver restart removes its ingress queue and
+      filters; the record's objects are added again once the link is up.
+
+    Returns None for a record without routes, forwarding and relays (a
+    pair, or an adopted fabric); ``{"active": False, "routes": [],
+    "settings": []}`` while the service is not active; else ``{"active":
+    True, "routes": add_routes(...), "settings": apply_settings(...)}``,
+    with ``relays`` (``relays.restore`` rows) for a record with a relay table.
     """
     validate(config)
-    if config.get("ownership") == "observed" or not (config["routes"] or config["forwarding"]):
+    table = config.get("relays")
+    if config.get("ownership") == "observed" or not (config["routes"] or config["forwarding"] or table):
         return None
     if call(["systemctl", "is-active", FABRIC_UNIT], run=run, accepted=(0, 3)).returncode:
         return {"active": False, "routes": [], "settings": []}
-    return {"active": True, "routes": add_routes(config, root=root, run=run, log=log),
-            "settings": apply_settings(config, root=root, run=run, log=log)}
+    result = {"active": True, "routes": add_routes(config, root=root, run=run, log=log),
+              "settings": apply_settings(config, root=root, run=run, log=log)}
+    if table:
+        try:
+            result["relays"] = relay_table.restore(table, call=lambda argv: call(argv, run=run), root=root, log=log)
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            result["relays_error"] = str(error)
+            log("could not check the relay table for restoration: " + str(error))
+    return result
 
 
 class LinkDown(ValueError):
@@ -431,7 +481,7 @@ def require_links(config, *, root="/"):
     raise LinkDown(text, f"start {names} or reconnect the cable")
 
 
-def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, active=True):
+def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, active=True, root="/"):
     """Raise ValueError naming the first approved route, forwarding rule or per-interface setting that is missing.
 
     A missing route's error says why it is missing: another route to its
@@ -474,21 +524,62 @@ def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, a
         else:
             text += f"; sparkring-agent sets it again within {AGENT_INTERVAL} seconds"
         raise ValueError(text)
+    table = config.get("relays")
+    if table:
+        rows = relay_table.observe(table, call=lambda argv: call(argv, run=run), root=root)
+        if active and table.get("markers"):
+            rows += relay_table.check_markers(table, root=root)
+        absent = [row for row in relay_table.missing(rows) if row["state"] != "no-link"]
+        if absent:
+            row = absent[0]
+            what = row.get("dst") or row.get("addr") or row.get("rdma") or f"{row.get('dev')} preference {row.get('pref')}"
+            raise ValueError(f"Relay table {row['kind']} {what} is {row['state']}"
+                             + ("" if len(absent) == 1 else f", and {len(absent) - 1} more objects")
+                             + f"; sparkring-agent adds missing objects while {FABRIC_UNIT} is active, "
+                               "and sudo sparkring fabric verify lists each")
+
+
+def _comparable(config):
+    return {key: value for key, value in config.items() if key not in REFRESHED_FIELDS}
 
 
 def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
+    """Save the approved fabric record and enable the units that restore it at every boot.
+
+    A recorded configuration that differs is refused, except in the fields
+    a setup of the same Sparks refreshes (``REFRESHED_FIELDS``: the layout
+    name and the relay table). A record with relay markers enables and
+    restarts ``sparkring-relay-marker.service``; one without disables it.
+    """
     validate(config)
     if config["node_id"] != read(root, "/etc/sparkring/node.json")["node_id"]:
         raise ValueError("Configuration belongs to another node")
     path = location(root, "/etc/sparkring/fabric.json")
-    if path.exists() and read(root, "/etc/sparkring/fabric.json") != config:
+    if path.exists() and _comparable(read(root, "/etc/sparkring/fabric.json")) != _comparable(config):
         raise ValueError("Node already has another approved configuration; inspect before replacing it")
     observe(config, collect=collect)
     save(root, "/etc/sparkring/fabric.json", config)
     call(["systemctl", "enable", "sparkring-fabric.service"], run=run)
     # A failed start stays visible; repeating the same configuration is idempotent.
     call(["systemctl", "restart", "sparkring-fabric.service"], run=run)
-    return {"persisted": True, "cluster_id": config["cluster_id"]}
+    markers = bool((config.get("relays") or {}).get("markers"))
+    if markers:
+        call(["systemctl", "enable", MARKER_UNIT], run=run)
+        call(["systemctl", "restart", MARKER_UNIT], run=run)
+    else:
+        call(["systemctl", "disable", "--now", MARKER_UNIT], run=run, accepted=(0, 1, 5))
+    return {"persisted": True, "cluster_id": config["cluster_id"], "relay_markers": markers}
+
+
+def relay_markers(*, root="/", popen=subprocess.Popen):
+    """``sparkring node relay-markers``: run this Spark's relay markers until stopped (sparkring-relay-marker.service)."""
+    config = read(root, "/etc/sparkring/fabric.json")
+    validate(config)
+    table = config.get("relays")
+    if not table or not table.get("markers"):
+        _log("this Spark's fabric record has no relay markers")
+        return 0
+    return relay_table.supervise(table, popen=popen)
 
 
 def adopt(config, *, root="/", collect=_collect_local):
@@ -592,7 +683,7 @@ def require_hairpin(rows):
 
 
 def check_hairpin(config, facts, warnings, *, root="/", run=subprocess.run):
-    """Apply the in-effect rule to a four-Spark record; append M10 warnings, then raise if needed.
+    """Apply the in-effect rule to a relaying Spark's record; append M10 warnings, then raise if needed.
 
     The rule is evaluated from the collected facts. hairpin.status adds the
     warnings about arming and suspended boot runs; when it cannot be read,
@@ -862,11 +953,14 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
 
     A Spark with a recorded administration network adds ``control``
     (``control_report``) and a warning per tunnel peer without a recent
-    handshake. A four-Spark ring member adds ``mesh`` (``mesh_report``); when
+    handshake. A four-Spark cycle member adds ``mesh`` (``mesh_report``); when
     the fabric check fails while a mesh unit has failed, the error names that
     unit and its last log line, and the ring check's finding becomes a warning.
+    A Spark that relays between its cables (``relays_hairpin``) must have the
+    ConnectX hairpin setting in effect, and a record with a relay table must
+    have its routes, neighbors, filters and markers in place.
 
-    On a four-Spark ring, a ConnectX function whose restart failed in this
+    On a Spark that relays, a ConnectX function whose restart failed in this
     boot and that carries the administration tunnel to other Sparks cuts
     their path to Node A; ``sudo sparkring hairpin`` cannot reach them, so the
     next action is then to reboot this Spark, whose next boot restarts no
@@ -892,11 +986,11 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
     try:
         config = read(root, "/etc/sparkring/fabric.json")
         result.update(rank=config["rank"], size=config["size"], cluster_id=config["cluster_id"])
-        four = config["size"] == 4
-        if four:
+        relaying = relays_hairpin(config)
+        if relaying:
             from runtime.host import hairpin
             advice = hairpin.reboot_advice(root=root)
-        if four:
+        if mesh_ring(config):
             # Read before the fabric check, which a failed mesh can fail.
             try:
                 result["mesh"] = mesh_report(root=root, run=run)
@@ -909,8 +1003,8 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
             # native_mesh imports this module.
             from runtime.host import native_mesh
             warnings += native_mesh.code_warnings(root=root)
-        elif location(root, "/etc/sparkring/hairpin.json").exists():
-            warnings.append("hairpin approval on a Spark that is not in a four-Spark ring: "
+        if not relaying and location(root, "/etc/sparkring/hairpin.json").exists():
+            warnings.append("hairpin approval on a Spark that does not relay between its cables: "
                             "sudo sparkring node hairpin revoke")
         validate(config)
         restoration = None
@@ -922,13 +1016,13 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
                                 + str(error))
         require_links(config, root=root)
         facts = observe(config, collect=collect)
-        if four:
+        if relaying:
             # Checked before the fabric routes, the fabric service and the mesh:
             # a mesh that its start check refused then reports the root cause.
             check_hairpin(config, facts, warnings, root=root, run=run)
         active = config.get("ownership") == "observed" or not call(
             ["systemctl", "is-active", FABRIC_UNIT], run=run, accepted=(0, 3)).returncode
-        verify_persistence(config, facts, run=run, restoration=restoration, active=active)
+        verify_persistence(config, facts, run=run, restoration=restoration, active=active, root=root)
         if config.get("ownership") == "observed" and config.get("native_mesh"):
             from runtime.common import qwen_mesh
             from runtime.host import native_mesh

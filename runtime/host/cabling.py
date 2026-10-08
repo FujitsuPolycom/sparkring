@@ -1,18 +1,25 @@
-"""Diagnose the fabric cabling of a SparkRing pair or four-Spark ring from observations.
+"""Diagnose the fabric cabling of 2 to 8 SparkRing Sparks from observations.
 
 Each Spark has two ConnectX ports (QSFP cages), port 0 and port 1. Each port
 appears as two network functions that share its cable (Socket Direct): port 0
 is ``enp1s0f0np0`` and ``enP2p1s0f0np0``, port 1 is ``enp1s0f1np1`` and
-``enP2p1s0f1np1``. SparkRing serves two layouts:
+``enP2p1s0f1np1``. SparkRing serves three layouts
+(``runtime/common/fabric_layout.py``):
 
 - A pair: two Sparks with a cable between their ports 0. Pair profiles use
   both functions of port 0 on both Sparks. A second cable between the two
   ports 1 is allowed; only the administration network's fallback path uses it.
-- A four-Spark ring: one loop through four Sparks in which every cable joins
-  port 0 of one Spark to port 1 of the next. Node A is rank 0, and rank r+1 is
-  the Spark on rank r's port 0. The transport code in the serving images
-  assumes this direction, so SparkRing never reassigns port roles to accept
-  other cabling: the diagnosis names the physical change instead.
+- A cycle (a ring) of 3 to 8 Sparks: one loop in which every cable joins
+  port 0 of one Spark to port 1 of the next. Node A is position 0, and
+  position p+1 is the Spark on position p's port 0.
+- A path (a line) of 3 to 8 Sparks that starts at Node A: every cable joins
+  port 0 of one Spark to port 1 of the next, so Node A's port 1 and the last
+  Spark's port 0 are free.
+
+The four-Spark transport in the serving images assumes the port direction,
+and addresses and port roles follow from it, so SparkRing never reassigns
+port roles to accept other cabling: the diagnosis names the physical change
+instead.
 
 The diagnosis only reads observations. An observation is what one function of
 a Spark sees across its cable: an LLDP neighbor, named by its chassis name and
@@ -30,17 +37,23 @@ Inputs are Spark records (``from_capture``, ``from_probe``, ``from_inspection``)
      "lldp": [lldp_rows(...)] or None when LLDP was not read,
      "neighbors": [ip -6 neigh rows with "answered"] or None}
 
-``diagnose`` returns a ``sparkring-cabling/v1`` document; ``lines`` and
+``diagnose`` returns a ``sparkring-cabling/v2`` document; ``lines`` and
 ``message`` render it.
 """
 import re
 
-SCHEMA = "sparkring-cabling/v1"
+from runtime.common import fabric_layout
+
+SCHEMA = "sparkring-cabling/v2"
 MAC = re.compile(r"(?:[0-9a-f]{2}:){5}[0-9a-f]{2}")
 # The interface names of a Spark's ConnectX fabric functions.
 FABRIC_NETDEV = re.compile(r"enP?\d*p\d+s\d+f[01]np[01]")
 RULE = "In a ring, every cable runs from port 0 of one Spark to port 1 of the next."
+PATH_RULE = "In a line, every cable runs from port 0 of one Spark to port 1 of the next, starting at Node A."
 PAIR_RULE = "Pair models use port 0 on both Sparks."
+MAX_SPARKS = fabric_layout.MAX_SPARKS
+# The diagnosis ``layout`` of each fabric shape; ``ring`` is a cycle of any size.
+SHAPE_OF = {"pair": fabric_layout.PAIR, "ring": fabric_layout.CYCLE, "path": fabric_layout.PATH}
 CHECK = "sparkring cabling shows the cables."
 # The phrase that marks observations which can still arrive: LLDP announces a
 # neighbor up to 30 seconds after its link comes up, as after a driver
@@ -257,6 +270,31 @@ def _ring_fix(order, ports, head):
     return sorted((order[i] for i in range(count) if chosen[i]), key=ring.index), ring
 
 
+def _path_fix(order, ports):
+    """The physical steps that make a line from Node A follow the port rule, and whether reversing it would.
+
+    ``order`` walks the line from Node A; ``ports[i]`` is ``(port at
+    order[i], port at order[i+1])`` of the cable between them. Every cable
+    must run from port 0 to the next Spark's port 1. A Spark inside the line
+    has one cable on each port, so its two cables are right or both wrong
+    (one swap); Node A's one cable belongs on port 0 and the last Spark's on
+    port 1. Returns ``(steps, reversed_ok)`` where ``steps`` are ``(kind,
+    index)`` pairs: ``("move-to-0", 0)``, ``("swap", i)`` or ``("move-to-1",
+    last)``; ``reversed_ok`` says every cable already runs the other way, so
+    the line is right when it starts at its other end.
+    """
+    last = len(order) - 1
+    steps = []
+    if ports[0][0] != 0:
+        steps.append(("move-to-0", 0))
+    for i in range(1, last):
+        if ports[i - 1][1] != 1:
+            steps.append(("swap", i))
+    if ports[-1][1] != 1:
+        steps.append(("move-to-1", last))
+    return steps, all(a == 1 and b == 0 for a, b in ports)
+
+
 class _Diagnosis:
     """One diagnosis run; ``diagnose`` documents the inputs and the result."""
 
@@ -350,7 +388,7 @@ class _Diagnosis:
         members = set(group)
         inner = {c: e for c, e in cables.items() if c not in unknown or not self.strict}
         inner = {c: e for c, e in inner.items() if c[0][0] in members and c[1][0] in members}
-        port_cable = {end: cable for cable in inner for end in cable}
+        port_cable = self.port_cable = {end: cable for cable in inner for end in cable}
         # With a fixed set of two Sparks, the pair rules apply even before a cable joins them.
         pair = len(members) == 2 or self.whole and len(self.reached) == 2
         expected = (0,) if pair else (0, 1)
@@ -391,11 +429,14 @@ class _Diagnosis:
         outside = sorted((k for k in self.reached if k not in members), key=names.get)
         if not self.whole:
             self.notes += [f"{names[k]} was reached but is not cabled to {names[head]}'s Sparks" for k in outside]
+        self.cable_ends = [c for c, _ in sorted(cables.items(), key=lambda item: self.cable(item[0]))]
         self.result = {"schema": SCHEMA, "head": self.key(head), "layout": "unsupported", "ready": False,
+                       "shape": None, "layout_size": None, "layout_name": None,
                        "summary": None, "fix": [], "order": None, "order_names": None, "walk": [],
                        "cables": [{"ends": [{"spark": names[e[0]], "port": e[1]} for e in c],
-                                   "seen_from": sorted(names[e[0]] for e in ends)}
+                                   "seen_from": sorted(names[e[0]] for e in ends), "cable": None}
                                   for c, ends in sorted(cables.items(), key=lambda item: self.cable(item[0]))],
+                       "positions": None, "free": [],
                        "sparks": [{"name": names[k], "key": self.key(k), "reached": k in self.reached,
                                    "lldp": self.sparks.get(k, {}).get("lldp") is not None,
                                    "ports": {str(p): self.port_state(k, p, port_cable) for p in (0, 1)}}
@@ -409,16 +450,51 @@ class _Diagnosis:
         return None if isinstance(key, tuple) else key
 
     def finish(self, layout, summary, fix=(), order=None, ready=False):
-        """Complete the result. Observation problems replace a finding that needs no physical change."""
+        """Complete the result. Observation problems replace a finding that needs no physical change.
+
+        A ``pair``, ``ring`` (a cycle) or ``path`` with an order also gets its
+        ``shape``, ``layout_size`` and ``layout_name``, as it is or as the fix
+        leaves it; a ready one gets the port map (``positions``), the free
+        ports and each fabric cable's index.
+        """
         problems = self.result["problems"]
         if problems and not fix:
             summary = "SparkRing cannot confirm the cabling: " + problems[0].rstrip(".") + "."
-            if layout in ("pair", "ring"):
+            if layout in SHAPE_OF:
                 layout = "incomplete" if any(MISSING in p for p in problems) else "unsupported"
-        self.result.update(layout=layout, summary=summary, fix=list(fix), ready=ready and not problems,
+        ready = ready and not problems
+        self.result.update(layout=layout, summary=summary, fix=list(fix), ready=ready,
                            order=[self.key(k) for k in order] if order else None,
                            order_names=[self.names[k] for k in order] if order else None)
+        if layout in SHAPE_OF and order:
+            value = fabric_layout.layout(SHAPE_OF[layout], len(order))
+            self.result.update(shape=value["shape"], layout_size=value["size"], layout_name=fabric_layout.name(value))
+            if ready:
+                self.port_map(value, order)
         return self.result
+
+    def port_map(self, value, order):
+        """Fill ``positions``, ``free`` and each fabric cable's ``cable`` index of a ready layout."""
+        positions, free = [], []
+        for position, key in enumerate(order):
+            ports = {}
+            for port in (0, 1):
+                far = fabric_layout.peer(value, position, port)
+                if far is None:
+                    ports[str(port)] = {"cable": None, "peer": None,
+                                        "state": self.port_state(key, port, self.port_cable)}
+                    free.append(self.end((key, port)))
+                else:
+                    ports[str(port)] = {"cable": fabric_layout.cable_of(value, position, port),
+                                        "peer": {"position": far[0], "spark": self.names[order[far[0]]],
+                                                 "port": far[1]}}
+            positions.append({"position": position, "spark": self.names[key], "key": self.key(key), "ports": ports})
+        for cable, a, b in fabric_layout.cables(value):
+            ends = {(order[a[0]], a[1]), (order[b[0]], b[1])}
+            for row, observed in zip(self.result["cables"], self.cable_ends, strict=True):
+                if set(observed) == ends:
+                    row["cable"] = cable
+        self.result.update(positions=positions, free=free)
 
     def classify(self, group, members, inner, port_cable, graph, outside):
         names, head = self.names, self.head
@@ -451,7 +527,7 @@ class _Diagnosis:
                                    f"cannot also reach {others}. For a ring, each Spark needs one cable to each of two "
                                    f"different Sparks. {RULE}")
             return self.finish("unsupported", f"{others} {'is' if len(outside) == 1 else 'are'} not cabled to "
-                               f"{names[head]}'s Sparks; setup needs one group of two or four cabled Sparks.")
+                               f"{names[head]}'s Sparks; setup needs one group of two to eight cabled Sparks.")
         size = len(group)
         if size == 1:
             ports = ", ".join(f"port {p}: {state(head, p)}" for p in (0, 1))
@@ -473,14 +549,10 @@ class _Diagnosis:
                        for k, port in ((head, ours), (other, theirs)) if port == 1]
             return self.finish("pair", f"Pair: {used}, but no cable joins the two ports 0. {PAIR_RULE}", fix,
                                order=[head, other])
-        if size == 3:
-            loose = free(group)
-            return self.finish("unsupported", "Three Sparks are cabled together (" + ", ".join(names[k] for k in group)
-                               + "). SparkRing needs two Sparks (a pair) or four (a ring)."
-                               + (" Free ports: " + ", ".join(loose) + "." if loose else ""))
-        if size > 4:
-            return self.finish("unsupported", f"{size} Sparks are cabled together. SparkRing needs two Sparks (a pair) "
-                               "or four (a ring).")
+        if size > MAX_SPARKS:
+            return self.finish("unsupported", f"{size} Sparks are cabled together. SparkRing supports two to "
+                               f"{fabric_layout.WORDS[MAX_SPARKS]} Sparks: a pair, a line or a ring.")
+        word = fabric_layout.WORDS[size]
         degree = {k: sum(e[0] == k for c in inner for e in c) for k in group}
         between = {frozenset((c[0][0], c[1][0])): c for c in inner}
 
@@ -495,11 +567,15 @@ class _Diagnosis:
                     rows.append((next(e[1] for e in cable if e[0] == a), next(e[1] for e in cable if e[0] == b)))
             return rows
 
-        if len(inner) == 3:
-            ends = [k for k in group if degree[k] == 1]
-            order = [ends[0]]
-            while len(order) < 4:
+        def walk(start):
+            order = [start]
+            while len(order) < size:
                 order.append(next(k for k in sorted(graph[order[-1]], key=names.get) if k in members and k not in order))
+            return order
+
+        if len(inner) == size - 1 and all(d <= 2 for d in degree.values()):
+            ends = [k for k in group if degree[k] == 1]
+            order = walk(head if head in ends else ends[0])
             gaps = [(k, next(p for p in (0, 1) if state(k, p) != "cabled")) for k in (order[-1], order[0])]
             states = [state(*gap) for gap in gaps]
             text = " and ".join(self.end(gap) for gap in gaps)
@@ -507,36 +583,62 @@ class _Diagnosis:
                 unseen = [gap[0] for gap, s in zip(gaps, states, strict=True) if s == "unseen"]
                 why = ("not reached" if all(k not in self.reached for k in unseen)
                        else "reached, but the far end of a link there was not seen")
-                return self.finish("incomplete", f"Four Sparks are cabled in a line; {text} have no cable seen. "
-                                   + " and ".join(names[k] for k in unseen) + f" {'was' if len(unseen) == 1 else 'were'} "
-                                   f"{why}, so the last cable is unknown.")
-            swapped, ring = _ring_fix(order, ports_along(order, (gaps[0][1], gaps[1][1])), head)
-            fix = [f"Connect a cable from {self.end(gaps[0])} to {self.end(gaps[1])}."]
-            fix += [f"On {names[k]}, swap its two cables (port 0 ↔ port 1)." for k in swapped]
-            return self.finish("ring", f"Four Sparks are cabled in a line: {text} have no cable (missing or loose). "
-                               + RULE, fix, order=ring)
-        if len(inner) == 4 and all(d == 2 for d in degree.values()):
+                return self.finish("incomplete", f"{word.capitalize()} Sparks are cabled in a line; {text} have no "
+                                   "cable seen. " + " and ".join(names[k] for k in unseen)
+                                   + f" {'was' if len(unseen) == 1 else 'were'} {why}, so the last cable is unknown.")
+            if head not in ends:
+                # A line that does not start at Node A becomes a ring with its last cable.
+                swapped, ring = _ring_fix(order, ports_along(order, (gaps[0][1], gaps[1][1])), head)
+                fix = [f"Connect a cable from {self.end(gaps[0])} to {self.end(gaps[1])}."]
+                fix += [f"On {names[k]}, swap its two cables (port 0 ↔ port 1)." for k in swapped]
+                return self.finish("ring", f"{word.capitalize()} Sparks are cabled in a line: {text} have no cable "
+                                   f"(missing or loose). {RULE} A line must start at Node A ({names[head]}); to use "
+                                   f"this line as it is, run setup on {names[ends[0]]} or {names[ends[1]]}.",
+                                   fix, order=ring)
+            ports = ports_along(order)[:-1]
+            self.result["walk"] = [f"{self.end((order[i], a))} ↔ {self.end((order[i + 1], b))}"
+                                   for i, (a, b) in enumerate(ports)]
+            steps, reverse = _path_fix(order, ports)
+            if not steps:
+                self.notes.append(f"{self.end((order[-1], 0))} and {self.end((head, 1))} are free; a cable from the "
+                                  f"first to the second makes a cycle-{size}.")
+                return self.finish("path", f"{word.capitalize()}-Spark line (path-{size}) from Node A, cabled as "
+                                   "SparkRing needs.", order=order, ready=True)
+            texts = {"move-to-0": "move the cable from port 1 to port 0",
+                     "swap": "swap its two cables (port 0 ↔ port 1)", "move-to-1": "move the cable from port 0 to port 1"}
+            fix = [f"On {names[order[i]]}, {texts[kind]}." for kind, i in steps]
+            wrong = sum((a, b) != (0, 1) for a, b in ports)
+            summary = (f"The {word} Sparks form a line from Node A, but {wrong} "
+                       f"{'cable does' if wrong == 1 else 'cables do'} not run from port 0 to the next Spark's port 1. "
+                       + PATH_RULE)
+            if reverse:
+                summary += (f" From {names[order[-1]]}, at the other end, every cable already runs that way; run setup "
+                            "there to use the line as it is.")
+            return self.finish("path", summary, fix, order=order)
+        if len(inner) == size and all(d == 2 for d in degree.values()):
             start = port_cable.get((head, 0)) or next(c for c in inner if any(e[0] == head for e in c))
             order = [head, next(e[0] for e in start if e[0] != head)]
-            while len(order) < 4:
+            while len(order) < size:
                 order.append(next(k for k in graph[order[-1]] if k not in order))
             ports = ports_along(order)
-            self.result["walk"] = [f"{self.end((order[i], a))} ↔ {self.end((order[(i + 1) % 4], b))}"
+            self.result["walk"] = [f"{self.end((order[i], a))} ↔ {self.end((order[(i + 1) % size], b))}"
                                    for i, (a, b) in enumerate(ports)]
             swapped, ring = _ring_fix(order, ports, head)
             if not swapped:
-                return self.finish("ring", "Four-Spark ring, cabled as SparkRing needs.", order=ring, ready=True)
+                summary = ("Four-Spark ring, cabled as SparkRing needs." if size == 4 else
+                           f"{word.capitalize()}-Spark ring (cycle-{size}), cabled as SparkRing needs.")
+                return self.finish("ring", summary, order=ring, ready=True)
             same = sum(a == b for a, b in ports)
-            return self.finish("ring", f"The four Sparks form a loop, but {same} cables join the same port number at "
+            return self.finish("ring", f"The {word} Sparks form a loop, but {same} cables join the same port number at "
                                f"both ends. {RULE}", [f"On {names[k]}, swap its two cables (port 0 ↔ port 1)."
                                                        for k in swapped], order=ring)
         loose = free(group)
-        return self.finish("unsupported", "Four Sparks are cabled together but do not form one loop."
-                           + (" Free ports: " + ", ".join(loose) + "." if loose else "") + " " + RULE)
+        return self.finish("unsupported", f"{word.capitalize()} Sparks are cabled together but do not form one loop "
+                           "or line." + (" Free ports: " + ", ".join(loose) + "." if loose else "") + " " + RULE)
 
 
 def diagnose(sparks, head=None, *, strict=False, whole=False, neighbors=True):
-    """The ``sparkring-cabling/v1`` diagnosis of the Sparks' cables.
+    """The ``sparkring-cabling/v2`` diagnosis of the Sparks' cables.
 
     ``head`` is Node A's key. Without ``whole`` the layout is that of Node A's
     group (the Sparks its cables reach) and other reached Sparks are noted;
@@ -547,19 +649,27 @@ def diagnose(sparks, head=None, *, strict=False, whole=False, neighbors=True):
     are not used. On a pair, findings that concern only port 1 are notes,
     because pair profiles do not use port 1.
 
-    The result has ``layout`` (``pair``, ``ring``, ``unsupported`` or
-    ``incomplete``), ``ready`` (cabled as SparkRing needs, nothing to change),
-    ``summary``, ``fix`` (physical steps, in order), ``order`` and
-    ``order_names`` (Node A first, after the fix), ``walk`` (the cables as
-    text, around the loop when there is one), ``cables`` (each with the
-    Sparks that saw it), ``sparks`` (each port ``cabled``, ``no link`` or
-    ``unseen``), ``problems`` and ``notes``.
+    The result has ``layout`` (``pair``, ``ring`` for a cycle of any size,
+    ``path``, ``unsupported`` or ``incomplete``), ``ready`` (cabled as
+    SparkRing needs, nothing to change), ``summary``, ``fix`` (physical
+    steps, in order), ``order`` and ``order_names`` (Node A first, after the
+    fix), ``walk`` (the cables as text, along the ring or line when there is
+    one), ``cables`` (each with the Sparks that saw it and, on a ready layout,
+    its ``cable`` index), ``sparks`` (each port ``cabled``, ``no link`` or
+    ``unseen``), ``problems`` and ``notes``. Version 2 adds ``shape``
+    (``pair``, ``path`` or ``cycle``), ``layout_size`` and ``layout_name``
+    (``pair``, ``path-5``, ``cycle-8``) for a layout with an order, and on a
+    ready layout ``positions`` (the port-to-Spark map: each position's ports
+    with their cable and far end, or their state when free) and ``free``.
     """
     return _Diagnosis(sparks, head, strict, whole, neighbors).run()
 
 
+ORDER_LABELS = {"ring": "Ring order", "path": "Line order"}
+
+
 def message(result):
-    """One line for an error: the finding, the fix and the ring order afterwards."""
+    """One line for an error: the finding, the fix and the ring or line order afterwards."""
     text = "Fabric cabling: " + result["summary"].rstrip(".") + "."
     # The first observation problem stays in the line, so a caller can tell missing evidence (MISSING) apart.
     problems = [p for p in result["problems"] if p.rstrip(".") not in result["summary"]]
@@ -567,15 +677,36 @@ def message(result):
         text += " Also: " + problems[0].rstrip(".") + "."
     if result["fix"]:
         text += " To fix: " + " ".join(result["fix"])
-    if result["order_names"] and result["layout"] == "ring":
-        text += (" Then the ring order is " if result["fix"] else " Ring order: ") + " → ".join(result["order_names"]) + "."
+    label = ORDER_LABELS.get(result["layout"])
+    if result["order_names"] and label:
+        text += (f" Then the {label[0].lower() + label[1:]} is " if result["fix"] else f" {label}: ")             + " → ".join(result["order_names"]) + "."
     return text + " " + CHECK
 
 
-def lines(result, *, finding=True):
-    """Terminal lines of a diagnosis: the cables, the finding, the fix, the order, problems and notes.
+def port_lines(result):
+    """The port-to-Spark map of a ready layout: one line per position, Node A first."""
+    if not result.get("positions"):
+        return []
+    rows = []
+    for spark in result["positions"]:
+        parts = []
+        for port in ("0", "1"):
+            row = spark["ports"][port]
+            if row["peer"] is None:
+                parts.append(f"port {port} free" + ("" if row.get("state") in (None, "no link")
+                                                     else f" ({row['state']})"))
+            else:
+                far = row["peer"]
+                parts.append(f"port {port} → position {far['position']} {far['spark']} port {far['port']} "
+                             f"(cable {row['cable']})")
+        rows.append(f"  position {spark['position']} {spark['spark']}: " + "; ".join(parts))
+    return [f"Layout: {result['layout_name']}", "Ports:"] + rows
 
-    Without ``finding`` the summary, fix and order (which ``message`` carries) are left out.
+
+def lines(result, *, finding=True):
+    """Terminal lines of a diagnosis: the cables, the finding, the fix, the port map, the order, problems and notes.
+
+    Without ``finding`` the summary, fix, port map and order (which ``message`` carries) are left out.
     """
     output = []
     if result["walk"]:
@@ -584,8 +715,10 @@ def lines(result, *, finding=True):
         output.append(result["summary"])
         if result["fix"]:
             output += ["To fix:"] + ["  " + step for step in result["fix"]]
-        if result["order_names"] and result["layout"] == "ring":
-            output.append(("Ring order after the fix: " if result["fix"] else "Ring order: ")
+        output += port_lines(result)
+        label = ORDER_LABELS.get(result["layout"])
+        if result["order_names"] and label:
+            output.append((f"{label} after the fix: " if result["fix"] else f"{label}: ")
                           + " → ".join(result["order_names"]))
     output += ["Problem: " + p for p in result["problems"] if p.rstrip(".") not in result["summary"]]
     output += ["Note: " + n for n in result["notes"]]
@@ -595,7 +728,7 @@ def lines(result, *, finding=True):
 def main(argv=None):
     """``sparkring cabling``: read the Sparks on this Spark's cables and print the diagnosis; change nothing.
 
-    Exit status: 0 when the cables form a pair or ring as SparkRing needs, 1
+    Exit status: 0 when the cables form a pair, line or ring as SparkRing needs, 1
     when they need a change or could not all be seen, 2 when the command
     could not run. With ``--bandwidth`` it measures each recorded cable
     instead (``fabric_bandwidth.command``): 0 when every cable is healthy, 1
@@ -611,18 +744,18 @@ def main(argv=None):
     from runtime.host import bootstrap, controller, single_uplink, survey
 
     parser = argparse.ArgumentParser(prog="sparkring cabling", description=(
-        "Show how the Sparks on this Spark's fabric cables are cabled and what to change for a pair or a "
-        "four-Spark ring. Reads only; changes nothing on any Spark. With --bandwidth, measure the RDMA "
-        "bandwidth of each cable of the recorded pair or ring instead."))
+        "Show how the Sparks on this Spark's fabric cables are cabled, the port-to-Spark map, and what to change "
+        "for a pair, or a line (path) or ring (cycle) of up to eight Sparks. Reads only; changes nothing on any "
+        "Spark. With --bandwidth, measure the RDMA bandwidth of each cable of the recorded fabric instead."))
     parser.add_argument("--json", action="store_true",
-                        help="print one sparkring-cabling/v1 document, or with --bandwidth one "
+                        help="print one sparkring-cabling/v2 document, or with --bandwidth one "
                              "sparkring-fabric-bandwidth/v1 document")
     parser.add_argument("--ssh-user", default=os.environ.get("SUDO_USER") or "root",
                         help="account for signing in to the other Sparks (default: the account that ran sudo)")
     parser.add_argument("--no-sign-in", action="store_true",
                         help="read only this Spark and the Sparks of its recorded cluster; ask for no password")
     parser.add_argument("--bandwidth", action="store_true",
-                        help="measure each cable of the recorded pair or ring in both directions, one link at a "
+                        help="measure each cable of the recorded fabric in both directions, one link at a "
                              "time (about 30 seconds per cable), and save the result for sparkring status")
     parser.add_argument("--while-serving", action="store_true",
                         help="with --bandwidth, also measure cables a serving model uses; the test slows the model "

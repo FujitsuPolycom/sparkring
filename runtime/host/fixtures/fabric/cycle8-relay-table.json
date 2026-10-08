@@ -1,0 +1,1997 @@
+{
+ "positions": [
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p7:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p7:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p7:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p1:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p1:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p1:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.10.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p7:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.11.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p7:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.12.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p7:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.13.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p7:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.2.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p1:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.3.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p1:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.4.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p1:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.5.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p1:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.6.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p1:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.7.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p1:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.8.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p7:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.9.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p7:enP2p1s0f0np0"
+    }
+   ],
+   "position": 0,
+   "routes": [
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.10.1/32",
+     "src": "198.18.14.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.11.1/32",
+     "src": "198.18.15.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.12.1/32",
+     "src": "198.18.14.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.13.1/32",
+     "src": "198.18.15.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.2.2/32",
+     "src": "198.18.0.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.3.2/32",
+     "src": "198.18.1.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.4.2/32",
+     "src": "198.18.0.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.5.2/32",
+     "src": "198.18.1.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.6.2/32",
+     "src": "198.18.0.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.7.2/32",
+     "src": "198.18.1.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.8.1/32",
+     "src": "198.18.14.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.9.1/32",
+     "src": "198.18.15.2"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p0:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p0:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p0:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p2:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p2:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p2:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.10.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p0:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.11.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p0:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.12.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p0:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.13.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p0:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.14.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p0:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.15.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p0:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.4.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p2:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.5.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p2:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.6.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p2:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.7.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p2:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.8.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p2:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.9.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p2:enP2p1s0f1np1"
+    }
+   ],
+   "position": 1,
+   "routes": [
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.10.1/32",
+     "src": "198.18.0.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.11.1/32",
+     "src": "198.18.1.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.12.1/32",
+     "src": "198.18.0.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.13.1/32",
+     "src": "198.18.1.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.14.1/32",
+     "src": "198.18.0.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.15.1/32",
+     "src": "198.18.1.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.4.2/32",
+     "src": "198.18.2.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.5.2/32",
+     "src": "198.18.3.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.6.2/32",
+     "src": "198.18.2.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.7.2/32",
+     "src": "198.18.3.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.8.2/32",
+     "src": "198.18.2.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.9.2/32",
+     "src": "198.18.3.1"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p1:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p1:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p1:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p1:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p3:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p3:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p3:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p1:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.1.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p1:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.10.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p3:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.11.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p3:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.12.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p1:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.13.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p1:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.14.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p1:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.15.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p1:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.6.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p3:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.7.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p3:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.8.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p3:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.9.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p3:enP2p1s0f1np1"
+    }
+   ],
+   "position": 2,
+   "routes": [
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.0.1/32",
+     "src": "198.18.2.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.1.1/32",
+     "src": "198.18.3.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.10.2/32",
+     "src": "198.18.4.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.11.2/32",
+     "src": "198.18.5.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.12.1/32",
+     "src": "198.18.2.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.13.1/32",
+     "src": "198.18.3.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.14.1/32",
+     "src": "198.18.2.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.15.1/32",
+     "src": "198.18.3.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.6.2/32",
+     "src": "198.18.4.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.7.2/32",
+     "src": "198.18.5.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.8.2/32",
+     "src": "198.18.4.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.9.2/32",
+     "src": "198.18.5.1"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p2:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p2:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p2:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p2:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p4:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p4:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p4:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p2:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.1.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p2:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.10.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p4:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.11.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p4:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.12.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p4:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.13.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p4:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.14.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p2:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.15.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p2:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.2.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p2:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.3.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p2:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.8.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p4:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.9.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p4:enP2p1s0f1np1"
+    }
+   ],
+   "position": 3,
+   "routes": [
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.0.1/32",
+     "src": "198.18.4.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.1.1/32",
+     "src": "198.18.5.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.10.2/32",
+     "src": "198.18.6.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.11.2/32",
+     "src": "198.18.7.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.12.2/32",
+     "src": "198.18.6.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.13.2/32",
+     "src": "198.18.7.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.14.1/32",
+     "src": "198.18.4.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.15.1/32",
+     "src": "198.18.5.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.2.1/32",
+     "src": "198.18.4.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.3.1/32",
+     "src": "198.18.5.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.8.2/32",
+     "src": "198.18.6.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.9.2/32",
+     "src": "198.18.7.1"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p3:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p3:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p3:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p3:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p5:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p5:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p5:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p3:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.1.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p3:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.10.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p5:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.11.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p5:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.12.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p5:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.13.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p5:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.14.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p5:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.15.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p5:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.2.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p3:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.3.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p3:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.4.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p3:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.5.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p3:enP2p1s0f0np0"
+    }
+   ],
+   "position": 4,
+   "routes": [
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.0.1/32",
+     "src": "198.18.6.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.1.1/32",
+     "src": "198.18.7.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.10.2/32",
+     "src": "198.18.8.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.11.2/32",
+     "src": "198.18.9.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.12.2/32",
+     "src": "198.18.8.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.13.2/32",
+     "src": "198.18.9.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.14.2/32",
+     "src": "198.18.8.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.15.2/32",
+     "src": "198.18.9.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.2.1/32",
+     "src": "198.18.6.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.3.1/32",
+     "src": "198.18.7.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.4.1/32",
+     "src": "198.18.6.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.5.1/32",
+     "src": "198.18.7.2"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p4:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p4:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p4:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p4:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p6:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p6:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p6:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p6:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.1.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p6:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.12.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p6:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.13.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p6:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.14.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p6:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.15.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p6:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.2.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p4:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.3.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p4:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.4.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p4:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.5.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p4:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.6.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p4:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.7.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p4:enP2p1s0f0np0"
+    }
+   ],
+   "position": 5,
+   "routes": [
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.0.2/32",
+     "src": "198.18.10.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.1.2/32",
+     "src": "198.18.11.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.12.2/32",
+     "src": "198.18.10.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.13.2/32",
+     "src": "198.18.11.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.14.2/32",
+     "src": "198.18.10.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.15.2/32",
+     "src": "198.18.11.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.2.1/32",
+     "src": "198.18.8.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.3.1/32",
+     "src": "198.18.9.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.4.1/32",
+     "src": "198.18.8.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.5.1/32",
+     "src": "198.18.9.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.6.1/32",
+     "src": "198.18.8.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.7.1/32",
+     "src": "198.18.9.2"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p5:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p7:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p5:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p5:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p5:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p7:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p7:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p7:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p7:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.1.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p7:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.14.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p7:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.15.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p7:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.2.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p7:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.3.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p7:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.4.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p5:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.5.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p5:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.6.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p5:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.7.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p5:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.8.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p5:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.9.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p5:enP2p1s0f0np0"
+    }
+   ],
+   "position": 6,
+   "routes": [
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.0.2/32",
+     "src": "198.18.12.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.1.2/32",
+     "src": "198.18.13.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.14.2/32",
+     "src": "198.18.12.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.15.2/32",
+     "src": "198.18.13.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.2.2/32",
+     "src": "198.18.12.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.3.2/32",
+     "src": "198.18.13.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.4.1/32",
+     "src": "198.18.10.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.5.1/32",
+     "src": "198.18.11.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.6.1/32",
+     "src": "198.18.10.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.7.1/32",
+     "src": "198.18.11.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.8.1/32",
+     "src": "198.18.10.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.9.1/32",
+     "src": "198.18.11.2"
+    }
+   ]
+  },
+  {
+   "filters": [
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p6:enP2p1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f1np1"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p0:enP2p1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enP2p1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p6:enp1s0f0np0",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p6:enp1s0f0np0",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p6:enp1s0f0np0",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f1np1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x0800",
+     "handle": 1,
+     "in_hw": true,
+     "next": "p0:enp1s0f1np1",
+     "pref": 11,
+     "protocol": "0x88b5",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b5",
+     "handle": 2,
+     "in_hw": true,
+     "next": "p0:enp1s0f1np1",
+     "pref": 12,
+     "protocol": "0x88b6",
+     "redirect": "enp1s0f0np0"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "eth_type": "0x88b6",
+     "handle": 3,
+     "in_hw": true,
+     "next": "p0:enp1s0f1np1",
+     "pref": 13,
+     "protocol": "0x88b7",
+     "redirect": "enp1s0f0np0"
+    }
+   ],
+   "neighbours": [
+    {
+     "addr": "198.18.0.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p0:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.1.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p0:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.10.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p6:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.11.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p6:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.2.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p0:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.3.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p0:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.4.2",
+     "dev": "enp1s0f0np0",
+     "lladdr": "p0:enp1s0f1np1"
+    },
+    {
+     "addr": "198.18.5.2",
+     "dev": "enP2p1s0f0np0",
+     "lladdr": "p0:enP2p1s0f1np1"
+    },
+    {
+     "addr": "198.18.6.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p6:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.7.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p6:enP2p1s0f0np0"
+    },
+    {
+     "addr": "198.18.8.1",
+     "dev": "enp1s0f1np1",
+     "lladdr": "p6:enp1s0f0np0"
+    },
+    {
+     "addr": "198.18.9.1",
+     "dev": "enP2p1s0f1np1",
+     "lladdr": "p6:enP2p1s0f0np0"
+    }
+   ],
+   "position": 7,
+   "routes": [
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.0.2/32",
+     "src": "198.18.14.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.1.2/32",
+     "src": "198.18.15.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.10.1/32",
+     "src": "198.18.12.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.11.1/32",
+     "src": "198.18.13.2"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.2.2/32",
+     "src": "198.18.14.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.3.2/32",
+     "src": "198.18.15.1"
+    },
+    {
+     "dev": "enp1s0f0np0",
+     "dst": "198.18.4.2/32",
+     "src": "198.18.14.1"
+    },
+    {
+     "dev": "enP2p1s0f0np0",
+     "dst": "198.18.5.2/32",
+     "src": "198.18.15.1"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.6.1/32",
+     "src": "198.18.12.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.7.1/32",
+     "src": "198.18.13.2"
+    },
+    {
+     "dev": "enp1s0f1np1",
+     "dst": "198.18.8.1/32",
+     "src": "198.18.12.2"
+    },
+    {
+     "dev": "enP2p1s0f1np1",
+     "dst": "198.18.9.1/32",
+     "src": "198.18.13.2"
+    }
+   ]
+  }
+ ],
+ "source": "recorded relay table of an eight-Spark cycle, MACs and host names replaced by position labels"
+}

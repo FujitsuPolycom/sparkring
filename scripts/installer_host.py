@@ -1993,8 +1993,8 @@ def perform(operation, lock, number):
                 "ring-serve": native_mesh.serve_ring}[operation]
         return step(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
     if operation == "ring-check":
-        from runtime.common import qwen_mesh
-        qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+        from runtime.host import native_mesh
+        native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
         return {"ok": True}
     if operation in ("gid-serve", "gid-check"):
         from runtime.host import roce_gid
@@ -2117,8 +2117,8 @@ def perform(operation, lock, number):
                 profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
                 qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
             if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
-                from runtime.common import qwen_mesh
-                qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+                from runtime.host import native_mesh
+                native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
             if not (info and info["State"].get("Running")):
                 require_idle()
                 if number == 0 and operation == "preflight" and {"api_port", "api_bind"} & set(lock.get("serving") or {}):

@@ -2382,10 +2382,11 @@ def test_first_installation_approval_lists_the_hairpin_scope(machine, monkeypatc
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "approval"
     scope = result["details"]["scope"]
-    assert "  - on a four-Spark ring: apply the ConnectX hairpin setting that four-Spark" in scope
+    assert "    more): apply the ConnectX hairpin setting that relayed forwarding needs (a" in scope
+    assert "  - on a fabric that relays: install the relay table, so Sparks two or more" in scope
     # Terminal mode prints the same lines under the message.
     assert sparkring.main(["install", "--profile", PROFILE]) == 3
-    assert "    about 8 seconds, about 30 seconds per Spark and about 3 minutes for the" in capsys.readouterr().err
+    assert "    link is down for about 8 seconds, about 30 seconds per Spark and about 3" in capsys.readouterr().err
 
 
 # End to end: sparkring install applies the ConnectX hairpin setting on a

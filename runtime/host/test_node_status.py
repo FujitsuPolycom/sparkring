@@ -282,7 +282,7 @@ def test_pair_snapshot_is_unchanged_and_warns_only_about_a_leftover_approval(tmp
     node.save(tmp_path, "/etc/sparkring/hairpin.json", {"schema": "sparkring-hairpin-approval/v1"})
     result = node.snapshot(root=tmp_path, collect=lambda _: facts, run=Host())
     assert result["state"] == "network-configured"
-    assert result["warnings"] == ["hairpin approval on a Spark that is not in a four-Spark ring: "
+    assert result["warnings"] == ["hairpin approval on a Spark that does not relay between its cables: "
                                   "sudo sparkring node hairpin revoke"]
 
 

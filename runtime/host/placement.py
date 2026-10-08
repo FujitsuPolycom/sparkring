@@ -17,11 +17,14 @@ it: the lower rank through its port 0 functions (roles ``cw_primary`` and
 ``cw_secondary`` of the setup plan), the higher rank through its port 1
 functions (``ccw_primary`` and ``ccw_secondary``). ``fabric_rows`` takes each
 rank's host address, socket interface and RDMA devices from those functions.
+
+The installer's profiles run on a pair or a four-Spark ring (``require_layout``);
+setup also forms lines and rings of other sizes, which they do not serve.
 """
 import ipaddress
 from pathlib import Path
 
-from runtime.common import installer
+from runtime.common import fabric_layout, installer
 from runtime.host import control, node
 
 HALVES = ((0, 1), (2, 3))
@@ -51,6 +54,20 @@ def text(placement):
 def flag(placement):
     """``--on 2,3`` for a half, the empty string for ``None``."""
     return "" if placement is None else f"--on {placement[0]},{placement[1]}"
+
+
+# The layouts the installer's profiles serve.
+SERVED_LAYOUTS = (fabric_layout.layout(fabric_layout.PAIR, 2), fabric_layout.layout(fabric_layout.CYCLE, 4))
+
+
+def require_layout(cluster):
+    """Refuse a cluster whose fabric layout no installer profile serves; returns the layout."""
+    from runtime.host import topology
+    value = topology.layout_of(cluster["plan"])
+    if value not in SERVED_LAYOUTS:
+        raise ValueError(f"This fabric is a {fabric_layout.name(value)}; the installer's profiles run on a pair or a "
+                         "four-Spark ring (cycle-4). sudo sparkring fabric show describes the fabric")
+    return value
 
 
 def check(placement, *, cluster_size, profile_nodes, profile):

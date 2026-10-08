@@ -227,7 +227,7 @@ def test_discovery_ignores_this_hosts_own_sibling_functions():
 
         def login(self, route):
             raise AssertionError("logged into its own sibling function")
-    with pytest.raises(ValueError, match="setup needs two or four"):
+    with pytest.raises(ValueError, match="setup needs two to eight"):
         bootstrap.discover(Transport())
 
 

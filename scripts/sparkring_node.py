@@ -47,6 +47,12 @@ def main(argv=None):
     workspace.add_argument("--name", required=True)
     agent = commands.add_parser("agent")
     agent.add_argument("--once", action="store_true")
+    commands.add_parser("relay-markers", help="run this Spark's relay markers until stopped "
+                                              "(sparkring-relay-marker.service)")
+    commands.add_parser("fabric-check", help="check this Spark's part of the fabric that Node A sends on stdin "
+                                             "(sparkring fabric verify); reads only, apart from ICMP echo requests")
+    commands.add_parser("fabric-document", help="write the fabric document that Node A sends on stdin as this "
+                                                "Spark's copy")
     status = commands.add_parser("status")
     status.add_argument("--refresh", action="store_true")
     hairpin = commands.add_parser("hairpin", help="ConnectX hairpin setting of a four-Spark ring member")
@@ -131,6 +137,15 @@ def main(argv=None):
         elif args.action == "agent":
             node.agent(once=args.once)
             return 0
+        elif args.action == "relay-markers":
+            return node.relay_markers()
+        elif args.action in ("fabric-check", "fabric-document"):
+            from runtime.host import fabric
+            text = sys.stdin.read()
+            if args.action == "fabric-check":
+                result = fabric.check_local(json.loads(text))
+            else:
+                result = fabric.install_document(text)
         elif args.action == "hairpin":
             from runtime.host import hairpin
             if args.hairpin_action == "apply" and not args.dry_run:
