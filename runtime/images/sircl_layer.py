@@ -34,8 +34,9 @@ Actions (none pushes or publishes an image):
   write the Docker build context, reading the parent's two receipts from
   ``--base-receipt``/``--toolchain-receipt`` or the local parent image.
 - ``record --context CONTEXT --image ID --name NAME --output LOCK``: admit the
-  built image for every profile of the parent lock, probe it, and write its
-  v3 lock.
+  built image for every profile of its lock, probe it, and write its v3 lock.
+  The lock lists the parent lock's profiles, or those of ``--profiles``, which
+  may name the profiles that run only on SIRCL ring sessions.
 - ``build --context CONTEXT --tag TAG --name NAME --output LOCK``: tag the
   parent, build, then record.
 """
@@ -244,9 +245,16 @@ def tuning_key():
 
 
 def site_packages(base):
-    """The serving interpreter's site-packages directory: where the parent receipt records ``vllm/__init__.py``."""
-    found = sorted({path[:-len("vllm/__init__.py")] for path in base["files"] if path.endswith("/vllm/__init__.py")})
-    require(len(found) == 1, f"The parent receipt records vllm/__init__.py in {len(found)} directories, not one")
+    """The serving interpreter's site-packages directory: the ``site-packages`` or ``dist-packages`` directory
+    where the parent receipt records ``vllm/__init__.py``.
+
+    Kraken-line images also record a subpackage named ``vllm`` inside B12X
+    (``b12x/integration/vllm/__init__.py``), which is not a package root.
+    """
+    found = sorted({path[:-len("vllm/__init__.py")] for path in base["files"] if path.endswith("/vllm/__init__.py")
+                    and PurePosixPath(path).parent.parent.name in ("site-packages", "dist-packages")})
+    require(len(found) == 1, f"The parent receipt records vllm/__init__.py in {len(found)} package directories, "
+                             "not one")
     return found[0]
 
 
@@ -328,8 +336,12 @@ def sircl_block(plan, probe_record):
             "vllm_pins": sorted(set((probe_record.get("vllm") or {}).get("matches") or []))}
 
 
-def v3_lock(plan, image, name, probe_record):
-    """The v3 lock of the built image: the parent's v2 contract bound to the image, with the SIRCL layer."""
+def v3_lock(plan, image, name, probe_record, profiles=None):
+    """The v3 lock of the built image: the parent's v2 contract bound to the image, with the SIRCL layer.
+
+    ``profiles`` replaces the parent lock's profile list; it may name the
+    profiles that run only on SIRCL ring sessions, which a v2 lock cannot.
+    """
     lock = {key: value for key, value in plan["parent_lock"].items() if key != "schema"}
     lock.update(schema=image_lock.SCHEMA_V3, name=name, image_id=image["Id"], image_reference=image["Id"],
                 image_bytes=image["Size"], download_bytes=lock["download_bytes"] + plan["payload_bytes"],
@@ -337,6 +349,8 @@ def v3_lock(plan, image, name, probe_record):
                 toolchain_receipt_sha256=plan["receipts"][derived_layer.TOOLCHAIN_RECEIPT],
                 line="kraken", transports=["prepared", "sircl"], sircl=sircl_block(plan, probe_record),
                 tuning_defaults_sha256=plan["tuning_defaults_sha256"], archived=False)
+    if profiles:
+        lock["profiles"] = sorted(set(profiles))
     for profile in image_lock.profiles_of(lock):
         image_lock.validate(lock, profile)
     return lock
@@ -349,8 +363,11 @@ def probe_image(image_id, *, run=_run):
     return parse_probe(run(command).stdout)
 
 
-def record(context, image_id, name, output, *, run=_run):
-    """Admit the built image for every profile of its parent lock, probe SIRCL in it, and write its v3 lock."""
+def record(context, image_id, name, output, *, run=_run, profiles=None):
+    """Admit the built image for every profile of its lock, probe SIRCL in it, and write its v3 lock.
+
+    The lock lists ``profiles`` when given, else the parent lock's profiles.
+    """
     from spark_transport.sircl.sparkring_sircl.vllm.serve import probe
     plan = json.loads((Path(context) / "plan.json").read_text(encoding="utf-8"))
     output = Path(output)
@@ -367,7 +384,7 @@ def record(context, image_id, name, output, *, run=_run):
     blockers, _ = probe.evaluate(probed, staged_root=plan["layer"]["site_packages"].rstrip("/"),
                                  library=PurePosixPath(plan["layer"]["native"]["path"]).name)
     require(not blockers, "The built image's SIRCL probe found: " + "; ".join(blockers))
-    lock = v3_lock(plan, image, name, probed)
+    lock = v3_lock(plan, image, name, probed, profiles)
     view = image_lock.v2_view(lock)
     for profile in image_lock.profiles_of(lock):
         installer_image.admit(view, run=run, profile=profile)
@@ -377,14 +394,14 @@ def record(context, image_id, name, output, *, run=_run):
             "vllm_pins": lock["sircl"]["vllm_pins"], "serving_qualified": False}
 
 
-def build(context, tag, name, output, *, run=_run):
+def build(context, tag, name, output, *, run=_run, profiles=None):
     plan = json.loads((Path(context) / "plan.json").read_text(encoding="utf-8"))
     parent = plan["parent_lock"]["image_id"]
     run(["docker", "tag", parent, derived_layer.parent_tag(parent)])
     run(["docker", "build", "-q", "--build-arg", "PARENT_IMAGE=" + derived_layer.parent_tag(parent), "-t", tag,
          str(context)])
     image_id = json.loads(run(["docker", "image", "inspect", tag]).stdout)[0]["Id"]
-    return record(context, image_id, name, output, run=run)
+    return record(context, image_id, name, output, run=run, profiles=profiles)
 
 
 def main(argv=None):
@@ -409,6 +426,8 @@ def main(argv=None):
         action.add_argument("--context", required=True, type=Path)
         action.add_argument("--name", required=True, help="release name of the v3 lock")
         action.add_argument("--output", required=True, type=Path)
+        action.add_argument("--profiles", help="comma-separated profiles of the v3 lock, including profiles that run "
+                                               "only on SIRCL ring sessions; default: the parent lock's")
     args = parser.parse_args(argv)
     try:
         if args.action == "wheel":
@@ -423,9 +442,11 @@ def main(argv=None):
                         if args.base_receipt else derived_layer.docker_reader(lock["image_id"]))
                 result = prepare(lock, read, args.wheel, args.natives, args.output)
         elif args.action == "record":
-            result = record(args.context, args.image, args.name, args.output)
+            profiles = args.profiles.split(",") if args.profiles else None
+            result = record(args.context, args.image, args.name, args.output, profiles=profiles)
         else:
-            result = build(args.context, args.tag, args.name, args.output)
+            profiles = args.profiles.split(",") if args.profiles else None
+            result = build(args.context, args.tag, args.name, args.output, profiles=profiles)
     except (ValueError, OSError, KeyError, subprocess.CalledProcessError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))

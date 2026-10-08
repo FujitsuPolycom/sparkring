@@ -166,8 +166,71 @@ def test_a_parent_that_already_holds_a_sircl_file_or_lacks_vllm_is_refused(tmp_p
     files = {derived_layer.BASE_RECEIPT: held_raw, derived_layer.TOOLCHAIN_RECEIPT: toolchain_raw}
     with pytest.raises(ValueError, match="already records .*spark_roce_gid.py"):
         sircl_layer.prepare(held_lock, files.__getitem__, wheel["wheel"], directory, tmp_path / "context")
-    with pytest.raises(ValueError, match="in 0 directories"):
+    with pytest.raises(ValueError, match="in 0 package directories"):
         sircl_layer.site_packages({"files": {}})
+
+
+def test_the_site_packages_directory_is_not_a_vllm_subpackage_of_another_package():
+    # Kraken-line receipts also record B12X's vLLM integration subpackage.
+    files = {SITE + "vllm/__init__.py": "a" * 64, SITE + "b12x/integration/vllm/__init__.py": "b" * 64}
+    assert sircl_layer.site_packages({"files": files}) == SITE
+    site = "/usr/lib/python3/site-packages/"
+    assert sircl_layer.site_packages({"files": {site + "vllm/__init__.py": "a" * 64}}) == site
+    with pytest.raises(ValueError, match="in 0 package directories"):
+        sircl_layer.site_packages({"files": {SITE + "b12x/integration/vllm/__init__.py": "b" * 64}})
+
+
+def test_the_v3_lock_may_list_profiles_that_run_only_on_sircl_ring_sessions(tmp_path):
+    _, _, _, result = prepared(tmp_path)
+    plan = json.loads((Path(result["context"]) / "plan.json").read_text())
+    image = {"Id": "sha256:" + "7" * 64, "Size": 33_000_000_000}
+    probe = {"vllm": {"matches": ["sparkring-kraken-beta-20261007-bc9ea774"]}}
+    research = [name for name in installer_image.SIRCL_ONLY if name not in installer_image.QWEN4_EXP]
+    assert research
+    listed = [*plan["parent_lock"]["profiles"], *research]
+    value = sircl_layer.v3_lock(plan, image, "dev-20261009-kraken-sircl-cuda1342-nccl2323-status034", probe,
+                                profiles=reversed(listed))
+    assert value["profiles"] == sorted(listed)
+    for profile in research:
+        assert image_lock.validate(value, profile) is value
+    # A v2 lock cannot list them.
+    with pytest.raises(ValueError, match="run only on SIRCL ring sessions"):
+        image_lock.validate(dict(plan["parent_lock"], profiles=sorted(listed)), research[0])
+
+
+def test_record_admits_and_writes_the_profiles_it_is_given(tmp_path, monkeypatch):
+    _, _, _, result = prepared(tmp_path)
+    context = Path(result["context"])
+    layer = json.loads((context / "plan.json").read_text())["layer"]
+    probe_record = {"package": SITE + "sparkring_sircl/__init__.py",
+                    "entry_points": {"vllm.general_plugins": [["sircl", "sparkring_sircl.vllm.plugin:register", "x"]],
+                                     "vllm.platform_plugins": [["sircl", "sparkring_sircl.vllm.platform:activate",
+                                                                "x"]]},
+                    "vllm": {"root": SITE + "vllm", "matches": ["sparkring-kraken-beta-20261007-bc9ea774"]},
+                    "library": {"path": layer["native"]["path"], "exists": True},
+                    "p2p_library": {"path": layer["p2p"]["path"], "exists": True}}
+    image_id = "sha256:" + "8" * 64
+
+    def run(argv, text=True):
+        if argv[:3] == ["docker", "image", "inspect"]:
+            return subprocess.CompletedProcess(argv, 0, json.dumps([{"Id": image_id, "Size": 1}]), "")
+        if sircl_layer.PROBE in argv:
+            return subprocess.CompletedProcess(argv, 0, "SIRCL-SERVE-PROBE " + json.dumps(probe_record) + "\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    admitted = []
+    monkeypatch.setattr(installer_image, "admit", lambda view, *, run, profile: admitted.append((view["schema"],
+                                                                                                profile)))
+    research = [name for name in installer_image.SIRCL_ONLY if name not in installer_image.QWEN4_EXP]
+    plan = json.loads((context / "plan.json").read_text())
+    listed = sorted([*plan["parent_lock"]["profiles"], *research])
+    output = tmp_path / "lock.json"
+    summary = sircl_layer.record(context, image_id, "dev-20261009-kraken-sircl-cuda1342-nccl2323-status034", output,
+                                 run=run, profiles=listed)
+    assert summary["vllm_pins"] == ["sparkring-kraken-beta-20261007-bc9ea774"]
+    assert json.loads(output.read_text())["profiles"] == listed
+    # Admission sees each listed profile through the lock's v2 view.
+    assert admitted == [(installer_image.SCHEMA, profile) for profile in listed]
 
 
 def test_natives_built_from_another_wheel_are_refused(tmp_path):
