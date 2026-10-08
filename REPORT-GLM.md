@@ -182,12 +182,12 @@ All commands run in WSL with `python3 -m pytest <files> -q` (CPU only) and
   that are paths (and acceptance of pairs of two), `choose` without a fabric
   document and with `--nccl`, six malformed-section refusals, lock identity,
   and the fabric-document host check.
-- `runtime/host/test_install_sircl.py`: 8 tests. First run: 7 passed and
+- `runtime/host/test_install_sircl.py`: 8 passed. First run: 7 passed and
   `test_status_prints_the_last_receipt_verdict` failed — `transport_view` read
   a transport section's `backend` by key, so a section without the field
   (the test's minimal record) stopped `sparkring status` with a KeyError;
-  fixed (`value.get("backend")`), that test passes again, and the whole file
-  was re-run afterwards (count below). Includes the new
+  fixed (`value.get("backend")`), that test passed again on its own, and the
+  whole file then passed 8/8 on a full re-run. Includes the new
   `test_the_nccl_transport_installs_on_a_pair_without_sircl`, which installs
   `--transport nccl` on the pair cluster and checks the printed plan, the lock
   section, the result field and the `--nccl` refusal.
