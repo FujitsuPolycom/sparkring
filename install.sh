@@ -18,6 +18,8 @@ YES=0
 PLAN=0
 JSON=0
 PACKAGE_ONLY=0
+# Package-build options: --relay-marker-binary PATH, when given.
+BUILD_ARGS=()
 
 say() {
   printf '%s\n' "$*" >&2
@@ -84,13 +86,19 @@ INSTALL_ARGS=()
 
 usage() {
   cat <<'EOF'
-usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [--package-only] [SPARKRING_INSTALL_OPTION ...]
+usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [--package-only]
+                  [--relay-marker-binary PATH] [SPARKRING_INSTALL_OPTION ...]
 
 Run on Node A, the Spark connected to your network, as a user with sudo.
 Clones the SparkRing repository at --ref and builds its Debian package, asks
 before installing the package on this Spark, then runs `sudo sparkring install`
 with every other option, for example --profile qwen38-flash-next-tp2. That
 command asks for approval before it changes any Spark. --yes approves both.
+
+The package ships the prebuilt relay marker: the build downloads the binary
+published for the source and checks its SHA-256; nothing is compiled.
+--relay-marker-binary PATH ships a copy of that binary instead, for example
+without Internet access.
 
 --package-only stops after installing the package, before any other Spark or
 model changes; `sudo sparkring install --plan` can then review the rest.
@@ -122,6 +130,10 @@ while (($#)); do
     --package-only)
       PACKAGE_ONLY=1
       shift
+      ;;
+    --relay-marker-binary)
+      BUILD_ARGS=(--relay-marker-binary "${2:?--relay-marker-binary requires a value}")
+      shift 2
       ;;
     *)
       case "$1" in
@@ -172,7 +184,7 @@ revision=$(git -C "$WORK/source" rev-parse HEAD)
 say "Source revision: $revision"
 
 say "Building the SparkRing package"
-python3 "$WORK/source/scripts/build_deb.py" --output "$WORK/dist" >/dev/null \
+python3 "$WORK/source/scripts/build_deb.py" --output "$WORK/dist" "${BUILD_ARGS[@]}" >/dev/null \
   || stop failed build "Could not build the SparkRing package from $revision."
 package=$(echo "$WORK"/dist/sparkring_*_arm64.deb)
 chmod 0644 "$package"

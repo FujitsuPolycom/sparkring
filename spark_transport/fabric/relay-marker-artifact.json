@@ -1,0 +1,8 @@
+{
+  "schema": "sparkring-relay-marker-artifact/v1",
+  "source": "spark_transport/fabric/relay_marker.c",
+  "source_sha256": "c64c74535c06230e5c5f06d8a04becc2669e36276eba16d80288f4b9155dca1f",
+  "architecture": "arm64",
+  "binary_sha256": null,
+  "download_url": null
+}

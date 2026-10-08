@@ -71,8 +71,10 @@ ETHERTYPE_BASE = 0x88b4
 IPV4 = 0x0800
 ROUTE_PROTOCOL = 82
 FILTER_PREFERENCE_BASE = 10
-# The marker binary that the Debian package builds from spark_transport/fabric/relay_marker.c.
-MARKER_BINARY = "/usr/lib/sparkring/bin/sparkring-relay-marker"
+# The installed package's payload, and the prebuilt relay marker it ships
+# (built from spark_transport/fabric/relay_marker.c; scripts/build_deb.py).
+PACKAGE_ROOT = "/usr/lib/sparkring"
+MARKER_BINARY = PACKAGE_ROOT + "/bin/sparkring-relay-marker"
 MARKER_UNIT = "sparkring-relay-marker.service"
 # The UDP source port of the prepared transport's opposite-peer queue pairs.
 PREPARED_SOURCE_PORT = 65535
@@ -647,3 +649,29 @@ def marker_artifact(root):
         return None
     return {"binary": MARKER_BINARY, "sha256": value["sha256"]}
 
+
+
+def check_installed(root=PACKAGE_ROOT, *, digest=binary_digest):
+    """The installed package's relay marker against the digest its ``distribution.json`` records.
+
+    The package's ``postinst`` runs this (``sparkring node relay-marker-check``)
+    before anything else, so an installation whose marker is missing or
+    differs fails. Returns ``{"relay_marker": "verified", "sha256"}``, or
+    ``{"relay_marker": None}`` for a package built without the marker
+    (``build_deb.py --relay-marker skip``); raises ValueError otherwise.
+    """
+    record = json.loads((Path(root) / "distribution.json").read_text(encoding="utf-8"))
+    value = record.get("relay_marker")
+    if value is None:
+        return {"relay_marker": None}
+    if (not isinstance(value, dict) or value.get("path") != MARKER_BINARY[len(PACKAGE_ROOT) + 1:]
+            or not re.fullmatch(r"[0-9a-f]{64}", str(value.get("sha256")))):
+        raise ValueError("The package's distribution.json records the relay marker in an unknown form")
+    path = Path(root) / value["path"]
+    if not path.is_file():
+        raise ValueError(f"The package's relay marker {MARKER_BINARY} is missing")
+    actual = digest(path)
+    if actual != value["sha256"]:
+        raise ValueError(f"The package's relay marker {MARKER_BINARY} has sha256 {actual}; the package records "
+                         f"{value['sha256']}. Reinstall the package.")
+    return {"relay_marker": "verified", "sha256": actual}

@@ -41,6 +41,27 @@ shared-memory reader window of `--save-cpu`, is listed in
 ([capabilities](../../runtime/images/installer-images.md#capabilities)); an
 image derived from a listed one needs no entry.
 
+A release's SparkRing package carries the relay marker compiled for arm64.
+Build the release package on an arm64 Linux host with `gcc` and
+`libibverbs-dev`:
+
+```bash
+python3 scripts/build_deb.py --relay-marker require
+```
+
+A missing compiler or header, or another host architecture, stops the build.
+Beside the package it writes `sparkring-relay-marker-<source>-arm64` and its
+`.sha256` file, where `<source>` is the first 12 hexadecimal digits of the
+marker source's SHA-256. When
+[`relay-marker-artifact.json`](../../spark_transport/fabric/relay-marker-artifact.json)
+names no binary for that source, publish the binary as a release asset and
+record its SHA-256 and download URL there; package builds without a compiler,
+`install.sh` among them, take that binary. When the record names one, the
+release build stops if the binary it compiled differs, so every package of one
+marker source carries the same binary. A change to `relay_marker.c` updates the
+record's `source_sha256` and sets its binary and URL to `null` until the
+release build publishes the new binary.
+
 Publishing a GitHub release that is not a prerelease runs the
 [Install Builder pages workflow](../../.github/workflows/compose-builder-pages.yml):
 it builds the [Install Builder](../operations/compose-builder.md) from the

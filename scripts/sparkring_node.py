@@ -49,6 +49,8 @@ def main(argv=None):
     agent.add_argument("--once", action="store_true")
     commands.add_parser("relay-markers", help="run this Spark's relay markers until stopped "
                                               "(sparkring-relay-marker.service)")
+    commands.add_parser("relay-marker-check", help="check the installed package's relay marker against the "
+                                                   "SHA-256 the package records (the package installation runs it)")
     commands.add_parser("fabric-check", help="check this Spark's part of the fabric that Node A sends on stdin "
                                              "(sparkring fabric verify); reads only, apart from ICMP echo requests")
     commands.add_parser("fabric-document", help="write the fabric document that Node A sends on stdin as this "
@@ -139,6 +141,9 @@ def main(argv=None):
             return 0
         elif args.action == "relay-markers":
             return node.relay_markers()
+        elif args.action == "relay-marker-check":
+            from runtime.host import relays
+            result = relays.check_installed()
         elif args.action in ("fabric-check", "fabric-document"):
             from runtime.host import fabric
             text = sys.stdin.read()

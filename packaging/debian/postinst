@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 if [ "$1" = configure ]; then
+    # The prebuilt relay marker must match the SHA-256 that distribution.json
+    # records; a missing or different binary fails the installation.
+    /usr/bin/sparkring node relay-marker-check >/dev/null
     /usr/bin/sparkring node initialize
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload

@@ -3,6 +3,7 @@
 No host is contacted; the package build and the deployment ring operations
 run with fakes.
 """
+import hashlib
 import json
 from pathlib import Path
 
@@ -64,7 +65,32 @@ def test_setup_reads_the_marker_digest_the_package_recorded(tmp_path):
 
 def test_the_marker_binary_path_is_inside_the_package_payload():
     from scripts import build_deb
-    assert relays.MARKER_BINARY == "/usr/lib/sparkring/" + build_deb.MARKER_PATH
+    assert relays.MARKER_BINARY == relays.PACKAGE_ROOT + "/" + build_deb.MARKER_PATH
+
+
+def test_package_installation_checks_the_shipped_marker_before_anything_else(tmp_path):
+    postinst = (PACKAGING / "postinst").read_text(encoding="utf-8")
+    configure = postinst.split('if [ "$1" = configure ]; then\n', 1)[1]
+    commands = [line.strip() for line in configure.splitlines() if line.strip() and not line.strip().startswith("#")]
+    assert commands[:2] == ["/usr/bin/sparkring node relay-marker-check >/dev/null",
+                            "/usr/bin/sparkring node initialize"]
+    binary = tmp_path / "bin/sparkring-relay-marker"
+    binary.parent.mkdir()
+    binary.write_bytes(b"marker")
+    digest = hashlib.sha256(b"marker").hexdigest()
+    record = {"path": "bin/sparkring-relay-marker", "sha256": digest, "source_sha256": "cd" * 32,
+              "origin": "published"}
+    (tmp_path / "distribution.json").write_text(json.dumps({"relay_marker": record}))
+    assert relays.check_installed(tmp_path) == {"relay_marker": "verified", "sha256": digest}
+    binary.write_bytes(b"other")
+    with pytest.raises(ValueError, match="has sha256 .*; the package records .* Reinstall the package"):
+        relays.check_installed(tmp_path)
+    binary.unlink()
+    with pytest.raises(ValueError, match="relay marker .* is missing"):
+        relays.check_installed(tmp_path)
+    # A package built with --relay-marker skip carries no marker and records none.
+    (tmp_path / "distribution.json").write_text(json.dumps({"files": {}}))
+    assert relays.check_installed(tmp_path) == {"relay_marker": None}
 
 
 # The prepared transport over the relay table.
