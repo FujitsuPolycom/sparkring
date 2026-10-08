@@ -101,6 +101,10 @@ A ring can also serve two two-Spark models, one on each half:
 `sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
 [Two models on one ring](install-reference.md#two-models-on-one-ring).
 
+To tune SIRCL to your own cables, run `sudo sparkring fabric tune --execute`
+while no model serves, then install again. It takes up to half an hour per
+group shape. [Measure the tuning table](install-reference.md#measure-the-tuning-table).
+
 ## Several models on one fabric
 
 `--on` puts a model on consecutive Sparks and leaves the others to other

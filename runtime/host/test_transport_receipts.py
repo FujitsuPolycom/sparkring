@@ -184,3 +184,21 @@ def test_node_a_reads_every_rank_and_records_one_verdict(tmp_path):
     assert sorted(runner.calls) == [(0, "transport-receipts"), (1, "transport-receipts")]
     assert verdict["verdict"] == "unknown" and verdict["problems"][0] == "rank 1: spark1: Connection refused"
     assert receipts.latest(tmp_path)["verdict"] == "unknown"
+
+
+def test_a_measured_rows_link_settings_are_checked_against_every_session():
+    lock, _ = sircl_deployment(TP2, "pair", 2, [0, 1])
+    lock["transport"]["tuning"]["settings"] = {"link_slots": 12, "link_slot": 1048576}
+    reports = pair_reports()
+    for item in reports:
+        item["receipts"][0]["session_stats"] = {"link_slots": 12, "link_slot_bytes": 1048576}
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert verdict["verdict"] == "as-expected", verdict["problems"]
+    assert "tuning settings: the sessions report the row's link_slot_bytes 1048576, link_slots 12" in verdict["lines"]
+    reports[1]["receipts"][0]["session_stats"]["link_slots"] = 8
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert "rank 1: the session's link_slots is 8, the tuning row sets 12" in verdict["problems"]
+    reports[1]["receipts"][0].pop("session_stats")
+    verdict = receipts.evaluate(lock, reports, now=lambda: 0)
+    assert verdict["verdict"] == "as-expected"
+    assert "tuning settings of rank 1: its receipt states no session statistics (not judged)" in verdict["lines"]

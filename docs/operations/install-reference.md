@@ -510,9 +510,16 @@ holds the settings with which GLM-5.3 served at TP8 with NCCL off on an
 eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
 one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
-for that group's sessions. A table at
-`/var/lib/sparkring/controller/sircl-tuning.json` that is bound to the
-recorded fabric and the deployment's image replaces the default.
+for that group's sessions, and each session's setup agreement carries its
+hash, so every rank decides from the same table.
+
+`sudo sparkring fabric tune` measures this fabric and writes
+`/var/lib/sparkring/controller/sircl-tuning.json`
+([measure the tuning table](#measure-the-tuning-table)). While its fabric,
+image and drivers hold, it replaces the default table and the installation
+says so: `Transport: sircl on every collective, NCCL off (measured on this
+fabric DATE, cycle-4)`. When they no longer hold, the installation names the
+change in a `Note:` line and uses the default table.
 
 After the model answers, the installation reads every rank's SIRCL receipts
 and the NCCL lines of its model log and judges them:
@@ -1400,6 +1407,60 @@ about 10 seconds each, which crosses the hardware relays. It is refused while
 a model serves unless `--while-serving` is given. Each run writes
 `fabric-verify-TIME.json` in `/var/lib/sparkring/controller/fabric-reports/`.
 Setup runs the same checks before it records the document.
+
+### Measure the tuning table
+
+`sudo sparkring fabric tune` prints what it would measure;
+`sudo sparkring fabric tune --execute` measures
+([flags](commands.md#fabric-tune)). Without it, deployments use the default
+table, measured on the owner's fabric. The measurement:
+
+- times, with SIRCL's ring harness, every SIRCL candidate of the all-reduce,
+  all-gather, reduce-scatter and all-to-all from 4 KiB to 128 MiB per rank,
+  eagerly and in CUDA graph replay: one-shot and two-shot at each launch grid
+  (latency), and from 256 KiB the two-shot pieces, the chain and the ring at
+  each piece (crossover). NCCL is not measured;
+- measures one group of each shape a deployment can use: on a cycle the pair,
+  the paths of 3 to 5 Sparks shorter than the cycle, and the whole cycle; on a
+  path the pairs and paths shorter than it. A deployment on any positions of
+  that shape uses the group's measurement;
+- cannot measure a pair cabled port 0 to port 0, or every Spark of a path:
+  the ring harness describes the Sparks as a cycle. Those groups keep the
+  default table's row;
+- runs one container per rank on GPU 0 of the measured Sparks and fills the
+  fabric. It holds the installation lock, so nothing installs or starts while
+  it runs, and refuses while a model serves unless `--stop-serving` stops it
+  first. A stopped model stays stopped;
+- takes at most `--layout-timeout` (30 minutes) per group, plus staging and
+  checks; the plan prints the worst case. `--max-hours` leaves the groups that
+  do not fit for the next run, and a repeated command keeps the groups already
+  measured.
+
+It writes `/var/lib/sparkring/controller/sircl-tuning.json` on Node A and the
+measured SIRCL tables to `/etc/sparkring/fabric/sircl-tuning/` on every Spark,
+each named by its SHA-256. The table records:
+
+| Field | What it binds |
+|---|---|
+| `fabric` | The fabric document's identity: another cabling, Spark or port invalidates it |
+| `image_id`, `binding.image`, `binding.tuning_key` | The installer image and its SIRCL build: another image, SIRCL version or SIRCL source invalidates it |
+| `binding.drivers` | Each Spark's GPU driver and kernel: a change on Node A invalidates it; the measurement refuses Sparks whose drivers differ |
+| `layouts` | `measured` rows with the session settings the measured choices ran under (link slots, link slot); `default:<source>` rows carried from the default table |
+| `tables` | The measured SIRCL tables |
+
+A deployment records the table's digest in its lock, mounts the SIRCL table
+of its group read-only in every rank's container and checks each Spark's copy
+before a container starts. Its receipts must show that every session decided
+from that table and uses the row's settings. A deployment made before the
+measurement keeps its own table; `sudo sparkring install` makes another one on
+the measured table. `sudo sparkring status` prints which table installations
+use, and `sudo sparkring fabric tune --distribute` copies the tables to a
+Spark that lost them.
+
+The harness measures this package's SIRCL sources built inside the image. It
+refuses when they differ from the image's SIRCL layer, because the image's
+sessions would not take the table; install the package the image was built
+with, or name its image with `--image`.
 
 ### Change the layout
 
