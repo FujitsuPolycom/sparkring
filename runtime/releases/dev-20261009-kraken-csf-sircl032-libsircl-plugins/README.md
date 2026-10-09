@@ -182,7 +182,7 @@ deployment, and none is serving qualification.
 | `libsircl-ring8-release-image`: the libsircl gate on the release image | **pending** | — |
 | `clean-room-audit`: the clean-room acceptance audit | **pending** | — |
 | `relay-marker`: the relay marker binary of source `c64c74535c06` published as a release asset and named in [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json), which names none; package builds without a compiler, `install.sh` among them, stop until it does | **pending** | — |
-| `compose-v3`: Compose rendering and the Install Builder (`python scripts/generate_compose_builder.py --verify`) on this release's lock. [releases.md](../../../docs/development/releases.md) states that they use a v3 image through its v2 fields; `compose.build` passes the lock to `installer_image.for_profile`, which accepts v1 and v2 locks only | **pending** | — |
+| `compose-v3`: Compose rendering and the Install Builder (`python scripts/generate_compose_builder.py --verify`) on this release's lock. [releases.md](../../../docs/development/releases.md) states that they use a v3 image through its v2 fields; `compose.build` passes the lock to `installer_image.for_profile`, which accepts v1 and v2 locks only. The Install Builder's default card is a profile's own checkpoint, while on this image the GLM-5.3-Flash profiles install their preferred CSF checkpoint | **pending** | — |
 | `publication`: registry push, anonymous manifest and configuration check, and the publication records | **pending** | — |
 
 A measured `cycle-4` row changes `sircl-tuning-defaults.json`, and therefore

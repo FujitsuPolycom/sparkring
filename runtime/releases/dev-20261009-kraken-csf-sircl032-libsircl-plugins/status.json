@@ -245,7 +245,7 @@
     {
       "id": "compose-v3",
       "result": "pending",
-      "scope": "Compose rendering and the Install Builder (generate_compose_builder.py --verify) on this release's v3 lock; compose.build passes the lock to installer_image.for_profile, which accepts v1 and v2 locks only",
+      "scope": "Compose rendering and the Install Builder (generate_compose_builder.py --verify) on this release's v3 lock; compose.build passes the lock to installer_image.for_profile, which accepts v1 and v2 locks only; the Install Builder's default card is a profile's own checkpoint, while on this image the GLM-5.3-Flash profiles install their preferred CSF checkpoint",
       "record": null
     },
     {
