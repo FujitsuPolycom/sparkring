@@ -77,7 +77,7 @@
     "chat_template_repository_path": "scripts/chat_template_agentic.jinja",
     "chat_template_sha256": "4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9",
     "environment_template": "scripts/config/qwen38-27b-exl3-k5k6.env.example",
-    "launcher": "scripts/qwen38_dgx4_serve.sh",
+    "launcher": "scripts/qwen38_ring4_serve.sh",
     "launcher_preflight_argument": "--check",
     "launcher_run_argument": "--run",
     "smoke_harness": "scripts/qwen38_smoke.py",

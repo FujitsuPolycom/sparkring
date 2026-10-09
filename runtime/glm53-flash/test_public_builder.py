@@ -97,7 +97,7 @@ def test_prepared_context_rejects_incomplete_or_contaminated_inputs(tmp_path, mo
     module = qwen if family == 'qwen' else prepare
     pins_path = HERE.parent / 'qwen38/pins.json' if family == 'qwen' else PINS
     pins = module.load_pins(pins_path)
-    names = ['pins.json', 'verify_runtime.py', 'qwen38_dgx2_serve.sh', 'qwen38_dgx4_serve.sh', 'chat_template_agentic.jinja', 'requirements-public.txt'] if family == 'qwen' else ['pins.json', 'verify_image.py', 'Containerfile', 'Containerfile.seed', 'build-image.sh', 'LICENSES.md', 'SparkRing-LICENSE']
+    names = ['pins.json', 'verify_runtime.py', 'qwen38_pair_serve.sh', 'qwen38_ring4_serve.sh', 'qwen38_dgx2_serve.sh', 'qwen38_dgx4_serve.sh', 'chat_template_agentic.jinja', 'requirements-public.txt'] if family == 'qwen' else ['pins.json', 'verify_image.py', 'Containerfile', 'Containerfile.seed', 'build-image.sh', 'LICENSES.md', 'SparkRing-LICENSE']
     files = {'bundle/runtime/'+name: b'payload' for name in names}
     files['bundle/runtime/pins.json'] = pins_path.read_bytes()
     if family == 'glm':

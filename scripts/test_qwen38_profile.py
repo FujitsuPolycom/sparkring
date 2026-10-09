@@ -11,7 +11,7 @@ RECIPE_PATH = ROOT / "recipes" / "qwen38-27b-exl3-k5k6.json"
 ENV_PATH = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6.env.example"
 QUICKSTART_PATH = ROOT / "profiles/qwen38-27b-exl3-k5k6/README.md"
 PROFILE_PATH = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6.md"
-LAUNCHER_PATH = ROOT / "scripts" / "qwen38_dgx4_serve.sh"
+LAUNCHER_PATH = ROOT / "scripts" / "qwen38_ring4_serve.sh"
 SMOKE_PATH = ROOT / "scripts" / "qwen38_smoke.py"
 BUILDER_PATH = ROOT / "runtime" / "qwen38" / "build-image.sh"
 BUILDER_PINS_PATH = ROOT / "runtime" / "qwen38" / "pins.json"
@@ -158,7 +158,7 @@ def test_runtime_records_the_public_qwen_image_builder() -> None:
     assert runtime["environment_template"] == (
         "scripts/config/qwen38-27b-exl3-k5k6.env.example"
     )
-    assert runtime["launcher"] == "scripts/qwen38_dgx4_serve.sh"
+    assert runtime["launcher"] == "scripts/qwen38_ring4_serve.sh"
     assert runtime["image_status"] == (
         "public clean-checkout local image builder; no published image"
     )
@@ -274,7 +274,7 @@ def test_quickstart_command_matches_the_recipe() -> None:
     assert "229effc810ee6b8112f661472f6aace4eb8c787d" in text
     assert "594b01547b0d801cf95926ea973719354150893121019aba2ad8832bc9f17fdb" in text
     quickstart = QUICKSTART_PATH.read_text(encoding="utf-8")
-    assert "scripts/qwen38_dgx4_serve.sh" in quickstart
+    assert "scripts/qwen38_ring4_serve.sh" in quickstart
     for value in (
         "runtime/qwen38/build-image.sh",
         "bash ./runtime/qwen38/build-image.sh",

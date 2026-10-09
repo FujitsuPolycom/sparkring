@@ -430,8 +430,11 @@ and speculative-token limits configured by `MAX_MODEL_LEN`, `MAX_NUM_SEQS`,
 prefix caching; probabilistic Qwen speculation with standard rejection; FP8
 EXL3 prefill; and full-decode CUDA graphs.
 The tracked
-[`scripts/qwen38_dgx4_serve.sh`](../../scripts/qwen38_dgx4_serve.sh) is baked at
-`/ws/qwen38_dgx4_serve.sh` by the image builder.
+[`scripts/qwen38_ring4_serve.sh`](../../scripts/qwen38_ring4_serve.sh) is baked at
+`/ws/qwen38_ring4_serve.sh` by the image builder, which also bakes its
+compatibility name `/ws/qwen38_dgx4_serve.sh` ("dgx4" for four DGX Sparks).
+The commands above use the compatibility name, the only one in images built
+before the new name existed.
 
 ## 8. Bound startup and inspect every rank
 

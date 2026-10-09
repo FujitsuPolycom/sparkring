@@ -189,7 +189,7 @@ by the 1M static-YaRN launch. Follow
 The pair env also records host model/cache/log paths, API and master ports,
 speculative depth, context, sequence count, and scheduler budget.
 `CACHE_HOST_PATH` is mounted at `/ws/cache`; the `/ws/cache/jit` values are
-container paths and must remain unchanged. `scripts/qwen38_dgx2_serve.sh`
+container paths and must remain unchanged. `scripts/qwen38_pair_serve.sh`
 validates and consumes the serving values inside the prepared runtime
 container.
 

@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6-pair.json"
 CYCLE_RECIPE = ROOT / "recipes" / "qwen38-27b-exl3-k5k6.json"
 ENV = ROOT / "scripts" / "config" / "qwen38-27b-exl3-k5k6-pair.env.example"
-LAUNCHER = ROOT / "scripts" / "qwen38_dgx2_serve.sh"
+LAUNCHER = ROOT / "scripts" / "qwen38_pair_serve.sh"
 QUICKSTART = ROOT / "profiles/qwen38-27b-exl3-k5k6-pair/README.md"
 PROFILE = ROOT / "docs" / "profiles" / "QWEN38_27B_EXL3_K5K6_PAIR.md"
 def _recipe() -> dict:
@@ -172,7 +172,7 @@ def test_pair_launcher_rejects_an_invalid_rank_before_touching_runtime() -> None
         [
             "bash",
             "-c",
-            "export RANK=2; bash scripts/qwen38_dgx2_serve.sh --check",
+            "export RANK=2; bash scripts/qwen38_pair_serve.sh --check",
         ],
         check=False,
         capture_output=True,
@@ -181,6 +181,20 @@ def test_pair_launcher_rejects_an_invalid_rank_before_touching_runtime() -> None
     )
     assert result.returncode == 20
     assert "RANK must be 0 or 1; got 2" in result.stderr
+
+
+@pytest.mark.parametrize("wrapper, launcher", [("qwen38_dgx2_serve.sh", "qwen38_pair_serve.sh"),
+                                               ("qwen38_dgx4_serve.sh", "qwen38_ring4_serve.sh")])
+def test_the_dgx_names_run_the_pair_and_ring_launchers(wrapper: str, launcher: str) -> None:
+    usage = subprocess.run(["bash", f"scripts/{wrapper}", "--bogus"], check=False,
+                           capture_output=True, text=True, cwd=ROOT)
+    assert usage.returncode == 64
+    assert usage.stderr.strip() == f"usage: {launcher} [--check|--run]"
+    rank = subprocess.run(["bash", "-c", f"export RANK=9; bash scripts/{wrapper} --check"], check=False,
+                          capture_output=True, text=True, cwd=ROOT)
+    direct = subprocess.run(["bash", "-c", f"export RANK=9; bash scripts/{launcher} --check"], check=False,
+                            capture_output=True, text=True, cwd=ROOT)
+    assert (rank.returncode, rank.stderr) == (direct.returncode, direct.stderr)
 
 
 def _run_early_pair_preflight(
@@ -237,7 +251,7 @@ def _run_early_pair_preflight(
         f"export {key}={shlex.quote(value)}" for key, value in assignments.items()
     )
     return subprocess.run(
-        ["bash", "-c", f"{exports}; bash scripts/qwen38_dgx2_serve.sh --check"],
+        ["bash", "-c", f"{exports}; bash scripts/qwen38_pair_serve.sh --check"],
         check=False,
         capture_output=True,
         text=True,

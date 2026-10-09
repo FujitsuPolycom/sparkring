@@ -164,6 +164,8 @@ def payload_files(pins):
     return (
         "bundle/runtime/pins.json",
         "bundle/runtime/verify_runtime.py",
+        "bundle/runtime/qwen38_pair_serve.sh",
+        "bundle/runtime/qwen38_ring4_serve.sh",
         "bundle/runtime/qwen38_dgx2_serve.sh",
         "bundle/runtime/qwen38_dgx4_serve.sh",
         "bundle/runtime/chat_template_agentic.jinja",
@@ -266,8 +268,9 @@ def prepare(output: Path, *, repo_root: Path, pins_path: Path) -> dict[str, Any]
 
     copy_file(pins_path, runtime / "pins.json")
     copy_file(HERE / "verify_runtime.py", runtime / "verify_runtime.py")
-    copy_file(repo_root / "scripts" / "qwen38_dgx2_serve.sh", runtime / "qwen38_dgx2_serve.sh")
-    copy_file(repo_root / "scripts" / "qwen38_dgx4_serve.sh", runtime / "qwen38_dgx4_serve.sh")
+    # The pins' launcher paths name the dgx2/dgx4 compatibility wrappers, which run the pair and ring launchers.
+    for name in ("qwen38_pair_serve.sh", "qwen38_ring4_serve.sh", "qwen38_dgx2_serve.sh", "qwen38_dgx4_serve.sh"):
+        copy_file(repo_root / "scripts" / name, runtime / name)
 
     receipt_files = payload_files(pins)
     receipt = {
