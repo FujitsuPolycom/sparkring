@@ -456,6 +456,10 @@ def test_receipt_is_allowlisted_and_not_a_fresh_file_audit(tmp_path):
     assert result["sources"]["vllm"]["commit"] == "a" * 40
     assert result["runtime_image_id"]["state"] == "unknown"
     assert result["verification"] == "receipt_read_at_plugin_startup_no_fresh_file_audit"
+    # The b12x communication bundle is reported as what the image carries, not as the active transport.
+    assert result["b12x_comm_bundle"]["name"]["value"] == "tp2-rocenante-adaptive-prepared"
+    assert result["b12x_comm_bundle"]["role"] == "carried_by_image_not_the_active_transport"
+    assert "transport_profile" not in result
     assert "test-only" not in json.dumps(result)
 
 

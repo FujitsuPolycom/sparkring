@@ -260,3 +260,23 @@ def test_sircl_facts_come_from_this_workers_tensor_parallel_receipt(tmp_path):
     # Without SIRCL the rows say so instead of guessing.
     plain = transport.snapshot(modules=modules, environ={}, sysfs_root=tmp_path)['effective']
     assert plain['tp_sircl_session'] == {'state': 'unknown', 'source': 'sircl_receipt', 'reason': 'no_sircl_receipt'}
+
+
+def test_the_collective_transport_names_sircl_before_the_b12x_slot_and_reads_its_version(tmp_path):
+    known = {'state': 'known'}
+    sircl = {'tp_sircl_session': dict(known, value='tp-0'), 'tp_rocenante_enabled': dict(known, value=True),
+             'tp_nccl_version': dict(known, value='2.29.2')}
+    # SIRCL's shim may hold the b12x RoCE slot; its receipt decides.
+    assert transport.collective_transport(sircl)['value'] == 'sircl'
+    roce = {'tp_sircl_session': {'state': 'unknown'}, 'tp_rocenante_enabled': dict(known, value=True)}
+    assert transport.collective_transport(roce)['value'] == 'rocenante'
+    nccl = {'tp_sircl_session': {'state': 'unknown'}, 'tp_rocenante_enabled': dict(known, value=False),
+            'tp_nccl_version': dict(known, value='2.29.2')}
+    assert transport.collective_transport(nccl)['value'] == 'nccl'
+    assert transport.collective_transport({})['state'] == 'unknown'
+    receipt = tmp_path / 'sircl-layer.json'
+    receipt.write_text(json.dumps({'schema': 'sparkring-sircl-layer/v1', 'version': '0.3.2'}))
+    assert transport.sircl_version(receipt) == '0.3.2'
+    receipt.write_text(json.dumps({'schema': 'other', 'version': '0.3.2'}))
+    assert transport.sircl_version(receipt) is transport.MISSING
+    assert transport.sircl_version(tmp_path / 'absent.json') is transport.MISSING

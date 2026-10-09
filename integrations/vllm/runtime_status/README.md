@@ -66,9 +66,11 @@ config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
 
-The package version is 0.3.5. It provides passive transport, resource, library
+The package version is 0.3.6. It provides passive transport, resource, library
 and acceptance views, and the settings tables described below. Its Transport
-table also shows each worker's SIRCL ring-session facts: the `SIRCL_MODE`,
+table names the transport that carries each worker's tensor-parallel
+collectives (SIRCL with its version, RoCEnante or NCCL) and shows each worker's
+SIRCL ring-session facts: the `SIRCL_MODE`,
 `SIRCL_NCCL`, `SIRCL_FABRIC` and `SIRCL_RANK_POSITIONS` settings and, from the
 worker's tensor-parallel SIRCL receipt in `SIRCL_RECEIPT_DIR`, the session
 identity and state, the NCCL policy, whether PyNccl was built, the most relays
@@ -202,7 +204,7 @@ has no execution evidence, even when the corresponding optimization is enabled.
 | `observed` | Request execution evidence. Uninstrumented paths remain `not_observed`; configuration or preparation is not proof that a request used a kernel. |
 | `workers.ranks` | Per-worker identity, rank-local configured environment, resolved config and passive resident state at the worker's `collected_at_unix_ns`. These can differ from the API process. |
 | `workers.state` | `complete`, `partial`, `pending`, `error`, or `unavailable`. Complete means the expected count and unique rank identities were returned; it is not a health or correctness certification. |
-| `provenance` | Bounded installed receipt summary read once at plugin startup, including receipt/composition/source hashes and the parent image config ID when recorded. This read does not perform a fresh source-file audit. |
+| `provenance` | Bounded installed receipt summary read once at plugin startup, including receipt/composition/source hashes and the parent image config ID when recorded. `b12x_comm_bundle` names the b12x communication bundle the image carries (its published name, such as `tp2-rocenante-adaptive-prepared`, and manifest digest); it is not the transport that carries the collectives, which the workers report as `tp_collective_transport`. This read does not perform a fresh source-file audit. |
 
 ### Transport, versions and node resources
 
@@ -217,6 +219,12 @@ or library paths as configuration mismatches.
   handle name. NCCL algorithm/protocol selection and channel counts remain
   unknown because these objects do not expose them; selection can vary by
   collective or communicator. An available backend need not have served a request.
+- `tp_collective_transport` names the transport that carries the worker's
+  tensor-parallel collectives: `sircl` when the group has a SIRCL receipt
+  (also where SIRCL's shim takes the b12x RoCE slot), else `rocenante` when
+  the RoCEnante communicator is enabled, else `nccl`. With `sircl`,
+  `tp_sircl_version` is the version the image's SIRCL layer receipt
+  (`/opt/sparkring/receipts/sircl-layer.json`) records.
 - `transport.nics` reads bounded sysfs fields for up to eight selected HCAs:
   PCI address/domain, current and maximum PCIe link, associated interface,
   negotiated link rate, MTU, MAC and RDMA port counters. Functions sharing a PCI
@@ -409,7 +417,7 @@ Python 3.12, setuptools 78.1.0 and pip 24.0:
 ```bash
 COMMIT=$(git rev-parse HEAD)
 EPOCH=$(git log -1 --format=%ct "$COMMIT")
-VERSION=0.3.5
+VERSION=0.3.6
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
 git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \

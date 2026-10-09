@@ -54,6 +54,8 @@ GROUPS = {
         ("LM head A16", "VLLM_LM_HEAD_A16", None),
     ],
     "Transport": [
+        ('Collective transport (TP)', None, 'tp_collective_transport'),
+        ('SIRCL version (TP)', None, 'tp_sircl_version'),
         ('RoCEnante available (TP)', 'VLLM_ENABLE_ROCE_ALLREDUCE', 'tp_rocenante_enabled'),
         ('RoCE all-reduce size limit', 'VLLM_ROCE_ALLREDUCE_MAX_SIZE', 'tp_roce_allreduce_max_bytes'),
         ('RoCE all-gather shard size limit', 'VLLM_ROCE_ALLGATHER_MAX_SIZE', 'tp_roce_allgather_max_bytes'),
@@ -145,7 +147,8 @@ AUTO_FIELDS = {'model_dtype', 'quantization', 'attention_backend', 'draft_tensor
                'fuse_act_quant', 'max_model_len', 'max_num_seqs', 'max_num_batched_tokens',
                'block_size', 'kv_cache_memory_bytes', 'prefix_caching_enabled', 'chunked_prefill_enabled',
                'draft_load_format', 'linear_backend', 'moe_backend'}
-RUNTIME_ONLY = {'served_model_name': 'From launch arguments',
+RUNTIME_ONLY = {'served_model_name': 'From launch arguments', 'tp_collective_transport': 'From the running workers',
+                'tp_sircl_version': 'From the image',
                 'model_type': 'From checkpoint', 'decoder_attention_modules': 'Read from the model',
                 'sampled_qk_head_dims': 'From model', 'sampled_value_head_dims': 'From model',
                 'hc_projection_tp_size': 'From topology', 'target_head_quantization': 'Chosen at model load',
@@ -465,6 +468,10 @@ def identity_items(view):
             items.append((component + " source commit", source["commit"]))
     if provenance.get("composition_sha256"):
         items.append(("Image composition SHA-256", provenance["composition_sha256"]))
+    bundle = (provenance.get("b12x_comm_bundle") or {}).get("name") or {}
+    if bundle.get("state") == "known":
+        # The bundle the image carries; the Transport section's collective transport is what runs.
+        items.append(("b12x communication bundle in the image", bundle["value"]))
     return items or [("Build information", "Not reported")]
 
 

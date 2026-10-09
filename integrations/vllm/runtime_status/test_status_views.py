@@ -432,3 +432,21 @@ def test_unselected_parsers_and_other_reader_windows_read_plainly():
         "state": "unknown", "source": "process_environment", "reason": "not_set_in_environment"}
     row = settings_row(doc, "Shared-memory reader window")
     assert row["severity"] == "warn" and row["rank_values"][1] == ("1", "1 s (vLLM default)")
+
+
+def test_sircl_is_the_collective_transport_and_the_bundle_is_the_images():
+    doc = observed_fixture()
+    fact = lambda value, source: {'state': 'known', 'value': value, 'source': source}
+    for rank in doc['workers']['ranks']:
+        rank['effective'].update(tp_collective_transport=fact('sircl', 'sircl_receipt'),
+                                 tp_sircl_version=fact('0.3.2', 'sircl_layer_receipt'))
+    doc['provenance']['b12x_comm_bundle'] = {
+        'name': fact('tp2-rocenante-adaptive-prepared', 'installed_receipt'), 'manifest_sha256': 'e' * 64,
+        'role': 'carried_by_image_not_the_active_transport'}
+    view = presentation.summarize(doc)
+    rows = {row['label']: row for _, group in view['groups'] for row in group}
+    assert rows['Collective transport (TP)']['resolved'] == 'sircl'
+    assert rows['SIRCL version (TP)']['resolved'] == '0.3.2'
+    items = dict(presentation.identity_items(view))
+    assert items['b12x communication bundle in the image'] == 'tp2-rocenante-adaptive-prepared'
+    assert 'Transport profile' not in presentation.render_text(doc)

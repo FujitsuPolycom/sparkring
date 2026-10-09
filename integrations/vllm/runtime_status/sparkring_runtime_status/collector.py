@@ -532,7 +532,12 @@ def provenance(receipt_dir=Path("/opt/sparkring/receipts")):
                 "composition_sha256": _hex(data.get("composition_sha256")),
                 "sources": sources, "parent_image_config_id": base_id,
                 "runtime_image_id": {"state": "unknown", "reason": "not_available_inside_container"},
-                "transport_profile": fact(path(data, "capabilities.transport_profile"), source="installed_receipt"),
-                "transport_manifest_sha256": _hex(path(data, "capabilities.transport_manifest_sha256")),
+                # The b12x communication bundle the image carries (its published, content-bound name and
+                # manifest), not the transport that carries the collectives: the workers report that as
+                # tp_collective_transport.
+                "b12x_comm_bundle": {
+                    "name": fact(path(data, "capabilities.transport_profile"), source="installed_receipt"),
+                    "manifest_sha256": _hex(path(data, "capabilities.transport_manifest_sha256")),
+                    "role": "carried_by_image_not_the_active_transport"},
                 "verification": "receipt_read_at_plugin_startup_no_fresh_file_audit"}
     return {"state": "unknown", "reason": "installed_receipt_missing"}

@@ -232,6 +232,38 @@ def sircl(tp_group, environ, *, now=time.time):
     return facts
 
 
+SIRCL_LAYER_RECEIPT = Path('/opt/sparkring/receipts/sircl-layer.json')
+
+
+def sircl_version(receipt=SIRCL_LAYER_RECEIPT):
+    """The SIRCL version the image's SIRCL layer receipt records (``sparkring-sircl-layer/v1``), or MISSING."""
+    try:
+        if receipt.stat().st_size > SIRCL_RECEIPT_BYTES:
+            return MISSING
+        record = json.loads(receipt.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return MISSING
+    version = record.get('version') if type(record) is dict and record.get('schema') == 'sparkring-sircl-layer/v1' else None
+    return version if type(version) is str and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version) else MISSING
+
+
+def collective_transport(effective):
+    """Which transport carries this worker's tensor-parallel collectives (``sircl``, ``rocenante`` or ``nccl``),
+    from facts already collected.
+
+    A SIRCL receipt of the group means SIRCL's session carries them, also where SIRCL's shim takes the b12x
+    RoCE slot (``VLLM_ENABLE_ROCE_ALLREDUCE=1``); otherwise an enabled RoCEnante communicator, else NCCL when
+    vLLM built its communicator. The image's b12x communication bundle (provenance) names what the image
+    carries, not this."""
+    if effective.get('tp_sircl_session', {}).get('state') == 'known':
+        return _fact('sircl', source='sircl_receipt')
+    if effective.get('tp_rocenante_enabled', {}).get('value') is True:
+        return _fact('rocenante', source='resident_rocenante_communicator')
+    if effective.get('tp_nccl_version', {}).get('state') == 'known':
+        return _fact('nccl', source='resident_nccl_communicator')
+    return _fact(source='resident_transport_facts', reason='no_tp_communicator')
+
+
 def snapshot(*, modules, environ, sysfs_root=Path('/sys')):
     """Read existing groups and selected NICs; configuration flags prove no use.
 
@@ -262,6 +294,10 @@ def snapshot(*, modules, environ, sysfs_root=Path('/sys')):
         ('tp_roce_hcas', 'rocenante', 'hcas'), ('tp_roce_gid_index', 'rocenante', 'gid_index'),
         ('tp_roce_pci_domains', 'rocenante', 'pci_domains'))}
     effective.update(sircl(stored(parallel, '_TP'), environ))
+    effective['tp_collective_transport'] = collective_transport(effective)
+    effective['tp_sircl_version'] = (_fact(sircl_version(), source='sircl_layer_receipt', reason='no_sircl_layer_receipt')
+                                     if effective['tp_collective_transport'].get('value') == 'sircl'
+                                     else _fact(source='sircl_layer_receipt', reason='sircl_not_the_transport'))
     return {'state': 'known' if any(g['state'] == 'known' for g in groups.values()) else 'unknown',
             'source': 'passive_resident_transport_and_sysfs', 'collected_at_unix_ns': time.time_ns(),
             'groups': groups, 'nics': nics, 'nics_truncated': len(all_names) > MAX_HCAS,
