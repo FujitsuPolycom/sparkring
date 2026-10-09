@@ -289,13 +289,32 @@ def named_image(name):
 
     ``name`` is what `sparkring install --image` takes: a release name, the
     GitHub release tag that published it, or a unique part of a release name
-    (installer_image.lock_path).
+    (installer_image.lock_path). A v3 lock is returned whole, so render checks
+    a checkpoint against its pinned vLLM builds; build and specifications run
+    it on its v2 fields (runtime_lock).
     """
     if name is None:
         return None
     from runtime.common import installer_image
     path = installer_image.lock_path(name)
     return None if path is None else json.loads(path.read_text(encoding="utf-8"))
+
+
+def runtime_lock(profile_id, image_runtime):
+    """The image lock a Compose deployment of ``profile_id`` records and runs on.
+
+    A Compose deployment runs the prepared transport. A v1 or v2 lock is
+    returned unchanged. A v3 lock is checked for the profile as `sparkring
+    install` checks it (image_lock.for_profile) and returned as its v2 fields
+    (image_lock.v2_view), which describe that transport; `sparkring up` and the
+    Install Builder pass the same view, so each records the same document.
+    """
+    if image_runtime is None:
+        return None
+    from runtime.common import image_lock
+    if image_lock.schema(image_runtime) != image_lock.SCHEMA_V3:
+        return image_runtime
+    return image_lock.v2_view(image_lock.for_profile(profile_id, image_runtime))
 
 
 def installer_image_runtime(profile_id):
@@ -328,10 +347,11 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     source-extension trials select their KV alternative with
     ``local_kv_cache_gib`` instead.
 
-    ``image_runtime`` is an installer image lock. With it, each rank is the
-    container that installer_container derives for the host; build records the
-    lock so every later check and host operation selects the same containers.
-    Without it, toolchain profiles return the canonical envelope that
+    ``image_runtime`` is an installer image lock; a v3 lock runs on its v2
+    fields (runtime_lock). With it, each rank is the container that
+    installer_container derives for the host; build records the lock so every
+    later check and host operation selects the same containers. Without it,
+    toolchain profiles return the canonical envelope that
     runtime/common/installer.py adapts itself.
     """
     if profile_id not in SUPPORTED and profile_id not in FABRIC_PROFILES:
@@ -348,7 +368,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         if policy["kind"] != "toolchain":
             raise ValueError("Only profiles on the shared toolchain image select an installer image lock")
         from runtime.common import installer_image
-        image_runtime = installer_image.for_profile(profile_id, image_runtime)
+        image_runtime = installer_image.for_profile(profile_id, runtime_lock(profile_id, image_runtime))
     if policy["kind"] == "source" and not policy["local"]:
         from runtime.common import source_candidate
         publication = source_candidate.release_publication(release, policy["source_extension"])
@@ -543,6 +563,8 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     and nonempty serving settings; without them a deployment's manifest and ID
     are those of the profile's own checkpoint and values.
 
+    A v3 ``image_runtime`` is recorded as its v2 fields (runtime_lock).
+
     The manifest ``id``, which labels every container, is the digest of the
     profile ID, the site, the selection options and identity_inventory of the
     source inventory. The manifest's ``inputs`` keep every file's byte digest.
@@ -552,6 +574,7 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
                          "install it with sudo sparkring install")
     if image_runtime is None and profile_id in SUPPORTED:
         image_runtime = installer_image_runtime(profile_id)
+    image_runtime = runtime_lock(profile_id, image_runtime)
     options = {key: value for key, value in {
         "local_image_id": local_image_id, "local_source_extension": local_source_extension,
         "local_kv_cache_gib": local_kv_cache_gib, "local_master_port": local_master_port,

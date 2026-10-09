@@ -105,8 +105,14 @@ repeats the status of each model it installs. Statuses use the labels of the
   covers every checkpoint entry there, so a label would make each deployment
   of the profile another deployment.
 - A checkpoint that only some vLLM builds read, such as the GLM profiles'
-  `csf`, has a card only on an image that reads it; the page lists no such
-  image.
+  `csf`, has a card only on an image that reads it.
+- The card marked **Default** is the checkpoint `sparkring install` installs
+  without `--checkpoint` on the selected image: the profile's preferred
+  checkpoint where the image reads it (`csf` on an image whose lock pins the
+  vLLM build that reads it), else the profile's own. `sparkring compose
+  render` renders the profile's own checkpoint without `--checkpoint`, so on
+  such an image the page's install command for the **Default** card has no
+  `--checkpoint`, while its render command and the Compose files name `csf`.
 
 ## Commands
 

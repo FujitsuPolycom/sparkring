@@ -407,6 +407,30 @@ def test_an_export_of_a_checkpoint_its_image_cannot_read_is_refused(tmp_path):
     assert compose.build(profile, site, checkpoint="csf")[0]["checkpoint"] == "csf"
 
 
+def test_a_v3_lock_renders_on_its_v2_fields_and_render_checks_its_pinned_builds(tmp_path):
+    """A Compose export runs the prepared transport: a v3 lock is checked for the profile and recorded as its v2
+    fields, so the export equals one made from that view, while render checks a checkpoint against the whole
+    lock's pinned vLLM builds, which the view does not carry."""
+    from runtime.common import image_lock
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    site = example_site(profile)
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    view = image_lock.v2_view(pinned)
+    manifest, files = compose.build(profile, site, image_runtime=pinned)
+    assert manifest["image_runtime"] == view and manifest["image"] == pinned["image_reference"]
+    assert (manifest, files) == compose.build(profile, site, image_runtime=view)
+    assert compose.runtime_lock(profile, view) is view and compose.runtime_lock(profile, None) is None
+    rendered = compose.render(profile, site, tmp_path / "csf", image_runtime=pinned, checkpoint="csf")
+    assert rendered["checkpoint"] == "csf" and rendered["image_runtime"] == view
+    with pytest.raises(ValueError, match="needs an image whose vLLM is the pinned build"):
+        compose.render(profile, site, tmp_path / "view", image_runtime=view, checkpoint="csf")
+    # A v3 lock that does not list the profile is refused, as `sparkring install` refuses it.
+    with pytest.raises(ValueError, match="not admitted"):
+        compose.build(profile, site, image_runtime=sircl_lock(profiles=["qwen38-flash-next-tp2"]))
+
+
 def test_save_cpu_is_refused_on_an_image_without_the_reader_window():
     profile = "qwen38-flash-next-tp2"
     older = compose.named_image("plainstatus")

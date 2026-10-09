@@ -719,11 +719,23 @@ const SparkRingEngine = (() => {
     if (meta.since_tag) return `SparkRing ${meta.since_tag} + ${meta.commits_since} commit${meta.commits_since === 1 ? '' : 's'}`;
     return 'SparkRing at ' + meta.commit.slice(0, 12);
   }
+  // Whether `sparkring install` installs `checkpoint` without --checkpoint on the profile's image
+  // (export.profile_data's install_default): the profile's preferred checkpoint where the image
+  // reads it, else its own. `sparkring compose render` renders the profile's own (`default`).
+  const installDefault = checkpoint => checkpoint.install_default ?? checkpoint.default;
+  // The checkpoint name a selection without a chosen checkpoint stands for: null when the install
+  // default is the profile's own checkpoint, else the install default's name, which
+  // `sparkring compose render` needs as --checkpoint.
+  function installDefaultName(profile) {
+    const found = profile.checkpoints.find(installDefault);
+    return found && !found.default ? found.name : null;
+  }
   // A profile rendered on a non-default installer image carries the `--image` value that selects it.
-  function selectionWords(profile, checkpoint, settings) {
+  // `install` gives the words of `sparkring install`, else those of `sparkring compose render`.
+  function selectionWords(profile, checkpoint, settings, install = false) {
     const words = [];
     if (profile.image_option) words.push('--image', profile.image_option);
-    if (!checkpoint.default) words.push('--checkpoint', checkpoint.name);
+    if (!(install ? installDefault(checkpoint) : checkpoint.default)) words.push('--checkpoint', checkpoint.name);
     for (const name of Object.keys(settings).sort()) {
       words.push(...(settings[name] === true ? [option(name)] : [option(name), String(settings[name])]));
     }
@@ -737,7 +749,7 @@ const SparkRingEngine = (() => {
   // profile on that half of a four-Spark ring. `apiAddress` is the address shown for the
   // model (apiAddress()).
   function installCommand(profile, checkpoint, settings, meta, opts) {
-    const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings)];
+    const words = ['--profile', profile.id, ...(opts.on ? ['--on', opts.on] : []), ...selectionWords(profile, checkpoint, settings, true)];
     if (opts.apiAddress) words.push('--api-address', opts.apiAddress);
     if (opts.downloadLimit) words.push('--download-limit', opts.downloadLimit);
     if (opts.approval === 'plan') words.push('--plan');
@@ -851,7 +863,7 @@ const SparkRingEngine = (() => {
       if (problem) problems.push({ field: null, message: problem, pair });
       else if ((selection.problems || []).length) problem = 'Fix the marked fields.';
       if (endpoint.ask) asks = true;
-      const model = check.ok ? selection.profile.model_name + (check.checkpoint.default ? '' : ' (' + check.checkpoint.name + ')')
+      const model = check.ok ? selection.profile.model_name + (installDefault(check.checkpoint) ? '' : ' (' + check.checkpoint.name + ')')
         : selection.profile.model_name;
       return {
         where: form === 'script' ? 'On ' + names[0].label + ', the Spark connected to your network, as a user with sudo' : run,
@@ -982,7 +994,7 @@ const SparkRingEngine = (() => {
       const p = byId[query.get(key)];
       if (!p || (nodes && p.nodes !== nodes)) return null;
       const prefix = key === 'profile' ? '' : key + '.', name = query.get(prefix + 'checkpoint');
-      const checkpoint = p.checkpoints.some(c => c.name === name && !c.default) ? name : null;
+      const checkpoint = p.checkpoints.some(c => c.name === name && !installDefault(c)) ? name : null;
       const settings = {};
       for (const row of checkpointOf(p, checkpoint).settings) {
         const text = query.get(prefix + row.name);
@@ -1081,7 +1093,7 @@ const SparkRingEngine = (() => {
   }
 
   return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
-    checkpointOf, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
+    checkpointOf, installDefault, installDefaultName, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
     layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText,
     readSetting, readAddress, readDownloadLimit, readSelection, offered };
 })();

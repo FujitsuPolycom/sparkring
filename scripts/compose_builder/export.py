@@ -308,7 +308,10 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     image's own lock when ``image_runtime`` is its v2 view. A checkpoint that
     only some vLLM builds read is offered only where that image reads it
     (image_lock.checkpoint_problem), since `sparkring install --checkpoint`
-    and `sparkring compose render --checkpoint` refuse it elsewhere.
+    and `sparkring compose render --checkpoint` refuse it elsewhere. Each
+    checkpoint says whether it is the profile's own (``default``) and whether
+    `sparkring install` installs it without --checkpoint on this image
+    (``install_default``).
     """
     metadata, _ = profiles.load(profile_id)
     configuration = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
@@ -321,15 +324,19 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     for checkpoint in checkpoints:
         checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
     status = _labelled(profile_id, metadata, checkpoints, labels())
-    # The page's default card is the profile's own checkpoint. On an image that reads a profile's
-    # preferred checkpoint, `sparkring install` without --checkpoint installs that one instead
-    # (image_lock.preferred_checkpoint). TODO: make the preferred checkpoint the default card on such
-    # an image. test_no_listed_image_reads_a_preferred_checkpoint fails as soon as the image catalog
-    # lists one; this note and that test go once the page selects its default card by image.
     readable_by = image_lock_value or runtime
     if readable_by is not None:
         checkpoints = [checkpoint for checkpoint in checkpoints if checkpoint["default"] or not image_lock.checkpoint_problem(
             readable_by, setup.selection(profile_id, checkpoint["name"]))]
+    # ``default`` is the profile's own checkpoint, which `sparkring compose render` renders without
+    # --checkpoint. ``install_default`` is the one `sparkring install` installs without --checkpoint on
+    # this image: the profile's preferred checkpoint where the image reads it, such as GLM-5.3-Flash's
+    # CSF checkpoint on an image whose lock pins the vLLM build that reads it, else its own
+    # (image_lock.preferred_checkpoint). The page's default card is the install default.
+    preferred = image_lock.preferred_checkpoint(readable_by, profile_id) if readable_by is not None else None
+    for checkpoint in checkpoints:
+        checkpoint["install_default"] = (checkpoint["name"] == preferred if preferred is not None
+                                         else checkpoint["default"])
     site = sentinel_site(example)
     release = (runtime or {}).get("name") or Path(metadata["release"]).parent.name
     capabilities = list(installer_image.capabilities(release))
