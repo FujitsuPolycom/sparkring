@@ -313,3 +313,15 @@ def test_the_plan_warns_of_quantized_linears_without_a_linear_backend():
     warnings = cli.catalog_warnings({"S+": [quantized], "N": [quantized]})
     assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit:")
     assert cli.catalog_warnings({"S+": [quantized + ["--linear-backend", "b12x"]]}) == []
+
+
+def test_extra_mounts_bind_read_only_before_the_image_and_refuse_runner_targets():
+    bases = [base(0), base(1)]
+    changed, applied = cli.extra_mounts(bases, ["/srv/models/drafter/rev=/models/draft"])
+    for tokens in bases:
+        assert "type=bind,src=/srv/models/drafter/rev,dst=/models/draft,readonly" in spec.mounts(tokens)
+    assert applied == [{"source": "/srv/models/drafter/rev", "target": "/models/draft", "readonly": True}]
+    assert changed == ["mount /srv/models/drafter/rev at /models/draft, read-only (not in the profile)"]
+    for bad in ("/srv/x=/models/target", "/srv/x=/cache/y", "relative=/models/draft", "/srv/x", "/srv/a,b=/m"):
+        with pytest.raises(SystemExit):
+            cli.extra_mounts([base(0)], [bad])

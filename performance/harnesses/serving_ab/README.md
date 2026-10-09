@@ -81,6 +81,14 @@ is applied to every rank's base before the arms' parts and printed as a
 deviation from the profile with the profile's own value; `plan.json` keeps the
 full values under `overrides`.
 
+`--mount HOST_PATH=CONTAINER_PATH` (research only) binds a host directory
+read-only into every rank's container, for a second checkpoint such as a
+separate speculative drafter that the profile's container does not mount. Both
+paths are absolute; `/models/target`, `/cache` and `/sircl` and paths below them
+are refused, because the runner and the SIRCL bundle mount them. `plan` checks
+that the host path exists on every chosen Spark, prints each mount as a
+deviation and keeps it under `overrides.mounts`.
+
 `plan` prints every rank's command of every arm and, for a SIRCL arm against
 `N`, the difference of rank 0's commands: the environment variables, mounts and
 any other token that differs. It also prints a `WARNING:` line, and `plan.json`
