@@ -83,11 +83,19 @@ REWRITES = (
     ("SOURCE_SNAPSHOT.json", rb'"lead": "[^"]*"',
      b'"reference": "SIRCL\'s clean-room implementation tree (its local path is not vendored)"'),
     ("SOURCE_SNAPSHOT.json", rb'"selected": "lead"', b'"selected": "reference"'),
+    # The reference tree's run results (spark_transport/sircl/sircl-ring-results), which the SIRCL tree this
+    # repository vendors does not hold, are left out of the vendored file list.
+    ("SOURCE_SNAPSHOT.json", rb'excluding build outputs \(\.build, \.pytest_tmp\) and caches\."',
+     b'excluding build outputs (.build, .pytest_tmp) and caches. This copy of the record leaves the reference '
+     b'tree\'s run results out of its file list."'),
+    ("SOURCE_SNAPSHOT.json", rb'\n  "spark_transport/sircl/sircl-ring-results/[^"\n]*": \{\n   "sha256": "[0-9a-f]{64}",'
+                             rb'\n   "bytes": [0-9]+\n  \},', b""),
 )
 # Text that no vendored file may hold: a local Windows user path (a drive or WSL mount followed by Users,
-# or AppData) and references to the snapshot workspace's own directories.
+# or AppData), references to the snapshot workspace's own directories and paths of the SIRCL reference
+# tree's run results.
 WORKSPACE_SHAPES = re.compile(
-    rb"[A-Za-z]:(?:\\|/)+Users(?:\\|/)|/mnt/[a-z]/Users/|AppData(?:\\|/)|sircl-current|cleanroom/impl"
+    rb"[A-Za-z]:(?:\\|/)+Users(?:\\|/)|/mnt/[a-z]/Users/|AppData(?:\\|/)|sircl-current|cleanroom/impl|sircl-ring-results/"
     rb"|\blead (?:workspace|scratchpad|implementation tree)|\bits lead\b", re.I)
 # Outputs of libsircl's own build (make's default BUILD directory) and Python caches, which check tolerates.
 IGNORED = ("build", "__pycache__")

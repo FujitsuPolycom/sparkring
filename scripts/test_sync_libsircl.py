@@ -52,6 +52,8 @@ def test_the_vendored_copy_is_the_snapshot_its_manifest_names():
     assert sync.workspace_references(vendored) == []
     source = json.loads((sync.TARGET / "SOURCE_SNAPSHOT.json").read_text(encoding="utf-8"))
     assert source["selected"] in source["sources"]
+    # The record lists the reference tree's sources, not its run results.
+    assert source["files"] and not any("sircl-ring-results/" in path for path in source["files"])
 
 
 def test_a_synced_snapshot_keeps_its_bytes_and_leaves_out_caches_and_run_evidence(tmp_path):
