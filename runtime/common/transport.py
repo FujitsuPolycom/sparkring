@@ -16,6 +16,19 @@ Every ``sparkring install`` deployment runs on one of these transports:
   library, chosen only by name (research-only). ``runtime/common/libsircl.py``
   owns it; the functions of this module that take a deployment's section
   pass a section whose ``backend`` is ``libsircl`` to it.
+- ``nccl``: vLLM's PyNccl alone, on an image with or without the SIRCL
+  layer. No SIRCL variable or plugin reaches the container and the RoCEnante
+  slot stays off, so PyNccl carries every tensor-parallel and
+  expert-parallel collective. It runs only where NCCL's own cabling rule
+  holds (``nccl_cabling_rule``): a cabled pair, or a whole cycle, whose
+  consecutive ranks share cables around the group. A group whose ranks reach
+  each other through relays is refused, because NCCL picks its RDMA devices
+  and addresses without the relay table. On a whole cycle the deployment
+  adds the NCCL settings of NCCL's ring algorithm (``ring_settings``, the
+  SIRCL serve launcher's ``RING_SETTINGS``), so NCCL builds no tree
+  connections between Sparks that share no cable, and each rank's
+  ``NCCL_IB_HCA`` names the RDMA devices of its own lanes, which the fabric
+  document records per position.
 
 ``choose`` makes ``sircl`` the default wherever it can run. NCCL is off on a
 SIRCL deployment (``nccl: never``) unless the operator opts in with
@@ -114,8 +127,12 @@ BINDING_FIELDS = frozenset({"image", "tuning_key", "drivers", "defaults_sha256",
 # which carries the ConnectX (mlx5) driver. None where a Spark did not report it.
 DRIVER_FIELDS = ("gpu", "kernel")
 DRIVER_LABELS = {"gpu": "GPU driver", "kernel": "kernel"}
-BACKENDS = ("sircl", "prepared", "libsircl")
+BACKENDS = ("sircl", "prepared", "nccl", "libsircl")
 LIBSIRCL = "libsircl"
+# The transports whose containers write receipts to the deployment's receipt directory and whose ranks check the
+# fabric's relay table at their own fabric positions: SIRCL ring sessions and libsircl. The prepared and nccl
+# transports do neither.
+SESSION_BACKENDS = ("sircl", LIBSIRCL)
 # SIRCL's NCCL modes and their other names (sparkring_sircl.vllm.settings NCCL_MODES and NCCL_MODE_ALIASES),
 # kept here for the commands' --nccl choices; test_transport.py compares the two.
 NCCL_MODES = ("never", "auto")
@@ -158,6 +175,11 @@ class TransportError(ValueError):
 def _require(condition, text):
     if not condition:
         raise TransportError(text)
+
+
+def session_backend(lock):
+    """Whether the deployment of ``lock`` runs on a transport of ``SESSION_BACKENDS``."""
+    return (lock.get("transport") or {}).get("backend") in SESSION_BACKENDS
 
 
 def _sircl():
@@ -506,19 +528,25 @@ def choose(image_value, document, *, backend=None, nccl=None):
 
     ``backend`` and ``nccl`` are the operator's ``--transport`` and ``--nccl``
     or None; ``reason`` says why SIRCL cannot run (None when it can). An
-    explicit ``--transport sircl`` that cannot run, and ``--nccl`` with the
-    prepared transport, are refused.
+    explicit ``--transport sircl`` that cannot run, ``--nccl`` with the
+    prepared or nccl transport, and ``--transport nccl`` without a fabric
+    document are refused.
     """
     if backend == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.choose(image_value, document, nccl=nccl_mode(nccl))
-    _require(backend in (None, *BACKENDS), f"--transport takes sircl or prepared, not {backend!r}")
+    _require(backend in (None, *BACKENDS), f"--transport takes sircl, prepared, nccl or libsircl, not {backend!r}")
     nccl = nccl_mode(nccl)
     reason = unavailable(image_value, document)
     if backend is None:
         backend = "prepared" if reason else "sircl"
     if backend == "sircl" and reason:
         raise TransportError(f"--transport sircl cannot run here: {reason}")
+    if backend == "nccl":
+        _require(nccl is None, "--nccl applies to deployments on SIRCL; the nccl transport is NCCL itself")
+        _require(document is not None, "--transport nccl reads the fabric document that names each Spark's RDMA "
+                                       "devices; this cluster has none; sudo sparkring setup records one")
+        return backend, None, None
     if backend == "prepared":
         _require(nccl is None, "--nccl applies to deployments on SIRCL; the prepared transport keeps its own NCCL "
                                "settings")
@@ -663,6 +691,136 @@ def validate_section(value, card, image_runtime):
     return value
 
 
+# The nccl transport.
+
+def ring_settings():
+    """The NCCL settings under which NCCL's ring algorithm runs on a cycle of Sparks: the SIRCL serve launcher's
+    ``RING_SETTINGS`` (``sparkring_sircl.vllm.serve.bundle``), which the bundle sets whenever it lets NCCL run there."""
+    from spark_transport.sircl.sparkring_sircl.vllm.serve import bundle
+    return dict(bundle.RING_SETTINGS)
+
+
+# Why the deployment adds each NCCL ring setting on a whole cycle; the plan prints one line per setting.
+NCCL_SETTING_REASONS = {
+    "NCCL_ALGO": "NCCL's ring algorithm carries every collective on this cycle",
+    "NCCL_SKIP_TREE_CONNECT": "NCCL must not build tree connections between Sparks that share no cable; this is the "
+                              "repository's patched-NCCL cycle contract",
+}
+# What an nccl deployment's receipt and summary state to expect.
+NCCL_EXPECTED = ("vLLM's PyNccl carries every tensor-parallel and expert-parallel collective; SIRCL is not loaded "
+                 "and the RoCEnante slot is off")
+
+
+def nccl_cabling_rule():
+    """The cabling rule NCCL itself obeys, which the nccl transport requires of a group and of every
+    decode-context-parallel group of its profile."""
+    return ("NCCL cannot connect Sparks that share no cable; it runs on a cabled pair, or on a group whose "
+            "consecutive ranks share cables around the whole group")
+
+
+def nccl_refusal(reason):
+    """The refusal for a group whose ranks reach each other through relays, worded as SIRCL's refusals are."""
+    return (f"--transport nccl cannot run on this group: {reason}. {nccl_cabling_rule()}. SIRCL ring sessions run "
+            "the Sparks between them (--transport sircl)")
+
+
+def nccl_section(image_value, document, positions, *, dcp=1):
+    """The deployment lock's ``transport`` section of an nccl deployment on ``positions`` of ``document``.
+
+    The section records the group, each rank's RDMA devices as the fabric
+    document names them at its position, and, on a whole cycle, the NCCL
+    settings of NCCL's ring algorithm (``ring_settings``) with the reason the
+    deployment adds each one. A group whose ranks reach each other through
+    relays is refused (``nccl_refusal``), and so is a profile whose
+    decode-context-parallel groups do.
+    """
+    _require(document is not None, "--transport nccl reads the fabric document that names each Spark's RDMA "
+                                   "devices; this cluster has none; sudo sparkring setup records one")
+    layout = sircl_layout(document)
+    _, _, sircl_fabric = _sircl()
+    try:
+        raw_policy, raw_reason = sircl_fabric.nccl_policy_of(sircl_fabric.Layout.parse(layout), positions)
+    except sircl_fabric.FabricError as error:
+        raise TransportError(str(error)) from None
+    _require(raw_policy is not sircl_fabric.NcclPolicy.NONE, nccl_refusal(raw_reason))
+    topology = group_topology(layout, positions)
+    shape, size = topology.fabric.kind, len(topology.members)
+    if dcp != 1:
+        for group in dcp_topologies(layout, positions, dcp):
+            _require(group.nccl_policy is not sircl_fabric.NcclPolicy.NONE,
+                     f"--transport nccl cannot run this profile's decode-context-parallel groups of {dcp} ranks: "
+                     f"{group.nccl_reason}. {nccl_cabling_rule()}; run the profile with decode-context parallelism 1, "
+                     "or on SIRCL ring sessions (--transport sircl)")
+    settings = {} if topology.nccl_policy is sircl_fabric.NcclPolicy.ALL else ring_settings()
+    return {
+        "schema": SECTION_SCHEMA, "backend": "nccl", "image": image_value["name"],
+        "fabric": {"id": document["id"], "shape": document["shape"], "size": document["size"]},
+        "group": {"layout": layout, "positions": [int(position) for position in positions], "shape": shape,
+                  "size": size, "name": group_name(shape, size), "max_relays": topology.max_relays(),
+                  "lanes": topology.lane_count, "cabling": topology.nccl_policy.value, "dcp": dcp},
+        "devices": [rank_devices(document, topology, rank) for rank in range(size)],
+        "nccl": {"settings": settings, "reasons": {name: NCCL_SETTING_REASONS[name] for name in settings}},
+    }
+
+
+def validate_nccl_section(value, card, image_runtime):
+    """The ``transport`` section of an nccl deployment lock after checking it against the lock's selection."""
+    _, _, sircl_fabric = _sircl()
+    _require(isinstance(value, dict) and value.get("schema") == SECTION_SCHEMA and value.get("backend") == "nccl",
+             f"A deployment's transport section is a {SECTION_SCHEMA} nccl section")
+    _require(set(value) == {"schema", "backend", "image", "fabric", "group", "devices", "nccl"},
+             "The transport section has schema, backend, image, fabric, group, devices and nccl")
+    _require(image_runtime is not None and value["image"] == image_runtime["name"] == card["release"],
+             "The transport section names the deployment's installer image")
+    fabric_value = value["fabric"]
+    _require(isinstance(fabric_value, dict) and set(fabric_value) == {"id", "shape", "size"}
+             and isinstance(fabric_value["id"], str) and _FABRIC_ID.fullmatch(fabric_value["id"]),
+             "The transport section names the fabric document's identity, shape and size")
+    try:
+        fabric_layout.layout(fabric_value["shape"], fabric_value["size"])
+    except ValueError as error:
+        raise TransportError(str(error)) from None
+    group = value["group"]
+    _require(isinstance(group, dict) and set(group) == {"layout", "positions", "shape", "size", "name", "max_relays",
+                                                       "lanes", "cabling", "dcp"},
+             "The transport group has layout, positions, shape, size, name, max_relays, lanes, cabling and dcp")
+    _require(type(group["dcp"]) is int and group["dcp"] >= 1 and group["size"] % group["dcp"] == 0,
+             "The transport group's decode-context parallelism divides its ranks")
+    _require(group["size"] == len(group["positions"]) == card["nodes"],
+             f"The transport group has {card['nodes']} positions, one per rank")
+    _require(group["layout"] == sircl_layout(fabric_value),
+             "The transport group differs from its layout and positions")
+    layout = group["layout"]
+    topology = group_topology(layout, group["positions"])
+    _require(topology.fabric.kind == group["shape"] and topology.max_relays() == group["max_relays"]
+             and topology.lane_count == group["lanes"] and topology.nccl_policy.value == group["cabling"]
+             and group["name"] == group_name(group["shape"], group["size"]),
+             "The transport group differs from its layout and positions")
+    _require(topology.nccl_policy is not sircl_fabric.NcclPolicy.NONE,
+             "The transport group's ranks reach each other through relays: " + nccl_cabling_rule())
+    devices = value["devices"]
+    _require(isinstance(devices, list) and len(devices) == card["nodes"]
+             and all(isinstance(row, list) and row and all(isinstance(name, str) for name in row) for row in devices),
+             "The transport section lists each rank's RDMA devices")
+    nccl = value["nccl"]
+    _require(isinstance(nccl, dict) and set(nccl) == {"settings", "reasons"},
+             "The transport section's nccl has settings and reasons")
+    settings = nccl["settings"]
+    _require(isinstance(settings, dict) and set(settings) <= set(ring_settings())
+             and all(type(setting) is str for setting in settings.values()),
+             "The transport section's nccl settings are the NCCL ring settings, as strings")
+    if topology.nccl_policy is sircl_fabric.NcclPolicy.ALL:
+        _require(settings == {}, "A cabled pair needs no NCCL setting added")
+    else:
+        _require(settings == ring_settings(),
+                 "NCCL's ring on this cycle needs " + ", ".join(f"{name}={setting}" for name, setting in
+                                                                sorted(ring_settings().items())))
+    _require(isinstance(nccl["reasons"], dict) and set(nccl["reasons"]) == set(settings)
+             and all(isinstance(text, str) and text for text in nccl["reasons"].values()),
+             "The transport section's nccl gives the reason each added setting is needed")
+    return value
+
+
 # The adapter.
 
 def receipt_directory(lock):
@@ -676,6 +834,27 @@ def policy(value, environment):
     topology = group_topology(value["group"]["layout"], value["group"]["positions"])
     return guard.effective_policy(topology.nccl_policy, topology.nccl_reason, nccl_mode=value["nccl"],
                                   environ=environment)
+
+
+def added_ring_settings(value, profile_environment):
+    """The NCCL settings this deployment adds on a whole cycle with ``--nccl auto`` (``ring_settings``).
+
+    The cycle contract needs exactly these settings, so NCCL builds no tree
+    connections between Sparks that share no cable. The profile's own value
+    stays when it already names the setting; a profile that names another
+    value is refused.
+    """
+    if value["nccl"] != "auto" or value["group"]["cabling"] != "ring":
+        return {}
+    added = {}
+    for key, setting in ring_settings().items():
+        current = (profile_environment.get(key) or "").strip()
+        _require(not current or current.lower() == setting.lower(),
+                 f"the profile sets {key}={profile_environment.get(key)!r}; NCCL's ring on this cycle needs "
+                 f"{key}={setting}, so NCCL builds no tree connections between Sparks that share no cable")
+        if current != setting:
+            added[key] = setting
+    return added
 
 
 def _options(settings):
@@ -808,7 +987,8 @@ def environment(value, profile_environment, arguments):
     _require(spin is None or 1 <= spin < 1 << 32, "the spin limit must be a positive 32-bit poll count")
     owned = [key for key in plan.OWNED if key in profile_environment]
     _require(not owned, f"the profile sets {owned}, which SIRCL's adapter owns")
-    effective, reason = policy(value, profile_environment)
+    ring = added_ring_settings(value, profile_environment)
+    effective, reason = policy(value, {**profile_environment, **ring})
     _require(large != "nccl" or effective.allows("all_reduce"),
              f"SIRCL_LARGE_ALLREDUCE=nccl needs NCCL, which may not all-reduce on this group ({reason})")
     required = value["nccl"] == "never"
@@ -876,6 +1056,8 @@ def environment(value, profile_environment, arguments):
         # Without NCCL every NCCL communicator a container creates is a fault, and NCCL names each one
         # only with INIT logging; the receipt check scans for them (runtime/host/transport_receipts.py).
         common.update(plan.nccl_debug_environment(required, {}))
+        # The NCCL settings the cycle contract needs, added where the profile leaves them unset.
+        common.update(ring)
     except plan.ServePlanError as error:
         raise TransportError(str(error)) from None
     tables = value["tuning"]["tables"]
@@ -921,6 +1103,8 @@ def adapt(specs, lock):
     if value.get("backend") == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.adapt(specs, lock)
+    if value["backend"] == "nccl":
+        return nccl_adapt(specs, lock)
     plan, _, _ = _sircl()
     rows = lock["site"]["ranks"]
     _require(len(specs) == len(rows) == len(value["devices"]), "one container per rank of the transport group")
@@ -953,13 +1137,45 @@ def adapt(specs, lock):
     return result
 
 
+def nccl_adapt(specs, lock):
+    """Each rank's container with vLLM's PyNccl carrying every collective (the lock's ``transport`` section).
+
+    No SIRCL variable or plugin reaches the container, and the RoCEnante slot
+    and the prepared transports stay off (the SIRCL launcher's
+    ``DISABLED_TRANSPORTS``). Each rank's ``NCCL_IB_HCA`` names the RDMA
+    devices of its own lanes, in the style of the profile's own value
+    (``serve.plan.nccl_hca_value``), which keeps the profile's port suffixes;
+    a whole cycle takes the section's NCCL ring settings. The profile's other
+    NCCL settings are kept.
+    """
+    plan, _, _ = _sircl()
+    value = lock["transport"]
+    rows = lock["site"]["ranks"]
+    _require(len(specs) == len(rows) == len(value["devices"]), "one container per rank of the transport group")
+    result = []
+    for rank, (spec, row) in enumerate(zip(specs, rows, strict=True)):
+        environment_ = {key: item for key, item in spec.environment.items() if not key.startswith("SIRCL_")}
+        owned = [key for key in plan.OWNED if key in environment_]
+        _require(not owned, f"rank {rank}: the profile sets {owned}, which the nccl transport owns")
+        plugins = [item for item in environment_.get("VLLM_PLUGINS", "").split(",") if item and item != "sircl"]
+        environment_["VLLM_PLUGINS"] = ",".join(plugins)
+        environment_.update(plan.DISABLED_TRANSPORTS)
+        environment_["NCCL_IB_HCA"] = plan.nccl_hca_value(spec.environment.get("NCCL_IB_HCA"),
+                                                          value["devices"][rank])
+        environment_.update(value["nccl"]["settings"])
+        result.append(replace(spec, environment=environment_))
+    return result
+
+
 # Text.
 
 def plan_lines(value, notes=()):
-    """What ``sparkring install`` prints about a SIRCL deployment's transport before it asks."""
+    """What ``sparkring install`` prints about a deployment's transport before it asks."""
     if value.get("backend") == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.plan_lines(value, notes)
+    if value["backend"] == "nccl":
+        return nccl_plan_lines(value, notes)
     tuning = value["tuning"]
     row = tuning["row"]
     # A measured table's row for a shape it did not measure is the default table's row.
@@ -989,6 +1205,11 @@ def plan_lines(value, notes=()):
                  + (f"at most {relays} relay{'s' if relays != 1 else ''} on a lane" if relays else "no relays"))
     # SIRCL's plans, bundles and receipts state the same rule.
     lines.append(f"  {nccl_rule()}")
+    if value["nccl"] != "never" and value["group"]["cabling"] == "ring":
+        lines.append("  NCCL on this cycle: " + ", ".join(f"{name}={setting}" for name, setting in
+                                                           sorted(ring_settings().items()))
+                     + "; the installer adds what the profile leaves unset, so NCCL's ring runs but builds no "
+                       "tree connections between Sparks that share no cable")
     if tuning["source"] == "measured" and tuning["row_source"] == "measured":
         lines.append(f"  Measured row {row}: {MEASURED_ROW_RULE}")
     if tuning["settings"]:
@@ -1010,6 +1231,24 @@ def prepared_line(reason, explicit):
     if explicit:
         return "Transport: prepared (--transport prepared)"
     return f"Transport: prepared, because {reason}" if reason else "Transport: prepared"
+
+
+def nccl_plan_lines(value, notes=()):
+    """What ``sparkring install`` prints about an nccl deployment's transport before it asks."""
+    group = value["group"]
+    relays = group["max_relays"]
+    lines = ["Transport: nccl on every collective; SIRCL is not loaded and the RoCEnante slot is off "
+             "(--transport nccl)"]
+    lines.append(f"  NCCL group: {group['name']} at positions {', '.join(map(str, group['positions']))}; "
+                 f"{group['lanes']} lanes per peer, "
+                 + (f"at most {relays} relay{'s' if relays != 1 else ''} on a lane" if relays else "no relays"))
+    for name, reason in sorted(value["nccl"]["reasons"].items()):
+        lines.append(f"  {name}={value['nccl']['settings'][name]}: {reason}")
+    if not value["nccl"]["reasons"]:
+        lines.append("  NCCL settings: the profile's own; a cabled pair needs none added")
+    for note in notes:
+        lines.append("  Note: " + note)
+    return lines
 
 
 # Image admission and host checks.
@@ -1063,8 +1302,9 @@ def admit_layer(lock, *, run):
 
 
 def check_host_document(value, *, root="/"):
-    """Raise TransportError unless this Spark's fabric document has the deployment's identity and the Spark
-    holds every measured tuning table the deployment mounts from ``HOST_TABLES``, byte for byte."""
+    """Raise TransportError unless this Spark's fabric document has the deployment's identity and — on a SIRCL
+    deployment, which records tuning — the Spark holds every measured tuning table the deployment mounts from
+    ``HOST_TABLES``, byte for byte. A libsircl deployment's check is ``libsircl.check_host_document``."""
     if value.get("backend") == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.check_host_document(value, root=root)
@@ -1077,7 +1317,7 @@ def check_host_document(value, *, root="/"):
              f"This deployment was made on fabric {value['fabric']['id'][7:19]}; this Spark records fabric "
              f"{document['id'][7:19]}. Run sudo sparkring install again")
     _require(fabric_document.uniform_names(document), "the Sparks name their fabric devices differently")
-    for entry in value["tuning"]["tables"]:
+    for entry in (value.get("tuning") or {}).get("tables") or []:
         if not PurePosixPath(entry["path"]).is_absolute():
             continue
         path = table_file(entry, host_root=root)

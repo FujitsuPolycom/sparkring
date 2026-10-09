@@ -364,7 +364,9 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         from runtime.common import transport as transports
         if selected_backend != "compose":
             raise ValueError("SIRCL ring sessions run Compose deployments; this profile's backend is " + selected_backend)
-        value["transport"] = transports.validate_section(transport, card, image_runtime)
+        validate = (transports.validate_nccl_section if transport.get("backend") == "nccl"
+                    else transports.validate_section)
+        value["transport"] = validate(transport, card, image_runtime)
         positions = site.get("placement") or list(range(card["nodes"]))
         if transport["group"]["positions"] != positions:
             raise ValueError(f"The transport group runs on positions {transport['group']['positions']}; the site "

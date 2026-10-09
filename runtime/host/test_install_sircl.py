@@ -107,6 +107,29 @@ def test_the_default_image_keeps_the_prepared_transport_and_its_deployment_ident
     assert json.loads(capsys.readouterr().out)["field"] == "transport"
 
 
+def test_the_nccl_transport_installs_on_a_pair_without_sircl(machine, capsys):  # noqa: F811
+    """An nccl deployment runs on the installer's own image: the plan, the lock and the result name the transport."""
+    from runtime.common import transport
+    cluster = installer.read(controller.STATE / "cluster.json")
+    document, _ = fabric.prepare(cluster["plan"], cluster="test", marker=MARKER)
+    (controller.STATE / "fabric.json").write_text(fabric_document.encoded(document))
+    assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", "--transport", "nccl"]) == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    recorded = deployment(result)["transport"]
+    assert recorded["backend"] == "nccl" and recorded["group"]["name"] == "pair"
+    assert recorded["nccl"] == {"settings": {}, "reasons": {}}
+    assert recorded["fabric"]["id"] == document["id"]
+    assert result["transport"]["backend"] == "nccl" and result["transport"]["expected"] == transport.NCCL_EXPECTED
+    assert ("Transport: nccl on every collective; SIRCL is not loaded and the RoCEnante slot is off "
+            "(--transport nccl)") in out.err
+    assert "  Transport:   nccl" in out.err
+    # The nccl transport takes no --nccl mode.
+    assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", "--transport", "nccl",
+                           "--nccl", "auto"]) == 3
+    assert json.loads(capsys.readouterr().out)["field"] == "transport"
+
+
 def test_a_failed_receipt_check_is_reported_and_the_model_keeps_serving(sircl, monkeypatch, capsys):
     events, lock, _ = sircl
     failing = dict(VERDICT, verdict="differs", problems=["rank 1 group tp:0: 14 calls reached NCCL (['all_gather'])"])
