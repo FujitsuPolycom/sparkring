@@ -4,7 +4,8 @@ Every arm is checked before it is measured:
 
 - ``S`` and ``S+``: every rank's tensor-parallel receipt reads ``nccl=none`` and ``pynccl=skipped``, no
   rank's log shows an NCCL communicator, and the sircl plugin was loaded; the installed shims are listed.
-  ``S+`` also needs ``fused_norm`` on in the receipts, and the runner records the fused calls the receipt
+  With decode-context parallelism every rank also needs a ``dcp:`` receipt with a SIRCL session and the
+  ``dcp_all_to_all`` shim. ``S+`` also needs ``fused_norm`` on in the receipts, and the runner records the fused calls the receipt
   taken after the measurement counts (:func:`fused_calls`).
 - ``N``: every rank's log shows ``Init COMPLETE`` for an NCCL communicator and vLLM's ``PYNCCL`` all-reduce
   backend, and no rank loaded the sircl plugin.
@@ -18,13 +19,13 @@ from collections.abc import Mapping, Sequence
 
 SHIM = re.compile(r"SIRCL shim ([a-z0-9_]+) installed")
 BACKENDS = re.compile(r"Using (\[[^\]]*\]) all-reduce backends .* for group '([^']+)'")
-RECEIPT = re.compile(r"SIRCL receipt group=(\S+) .*?nccl=(\S+) pynccl=(\S+)")
+RECEIPT = re.compile(r"SIRCL receipt group=(\S+) .*?nccl=(\S+) pynccl=(\S+) session=(\S+)")
 
 
 def scan_log(text: str) -> dict:
     receipts = {}
-    for group, nccl, pynccl in RECEIPT.findall(text):
-        receipts[group] = {"nccl": nccl, "pynccl": pynccl}
+    for group, nccl, pynccl, session in RECEIPT.findall(text):
+        receipts[group] = {"nccl": nccl, "pynccl": pynccl, "session": session}
     return {"nccl_info_lines": text.count("NCCL INFO"),
             "nccl_init_complete": len(re.findall(r"NCCL INFO.*Init COMPLETE", text)),
             "nccl_net_ib": len(re.findall(r"NCCL INFO NET/IB : Using", text)),
@@ -49,7 +50,7 @@ def fused_calls(receipt: Mapping | None) -> dict | None:
     return {"fused_norm": receipt.get("fused_norm"), "provider": detail.get("provider"), "fused_calls": calls}
 
 
-def check(arm: str, logs: Sequence[str], receipts: Sequence[Mapping | None] = ()) -> dict:
+def check(arm: str, logs: Sequence[str], receipts: Sequence[Mapping | None] = (), *, dcp: int = 1) -> dict:
     ranks = [scan_log(text) for text in logs]
     problems = []
     if arm in ("S", "S+"):
@@ -61,6 +62,12 @@ def check(arm: str, logs: Sequence[str], receipts: Sequence[Mapping | None] = ()
                 problems.append(f"rank {r}: {scan['nccl_info_lines']} NCCL INFO lines")
             if not scan["sircl_plugin_loaded"]:
                 problems.append(f"rank {r}: the sircl plugin was not loaded")
+            if dcp > 1:
+                groups = {k: v for k, v in scan["receipts"].items() if k.startswith("dcp:")}
+                if not groups or any(v["session"] in ("-", "none") or v["nccl"] != "none" for v in groups.values()):
+                    problems.append(f"rank {r}: no decode-context-parallel receipt with a SIRCL session ({groups})")
+                if "dcp_all_to_all" not in scan["shims"]:
+                    problems.append(f"rank {r}: the dcp_all_to_all shim is not installed")
         if arm == "S+":
             for r, receipt in enumerate(receipts):
                 if not receipt or receipt.get("fused_norm") != "on":

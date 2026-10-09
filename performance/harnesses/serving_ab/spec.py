@@ -61,6 +61,22 @@ def mounts(tokens: Sequence[str]) -> list[str]:
     return [tokens[i + 1] for i in range(image_index(tokens)) if tokens[i] == "--mount"]
 
 
+def set_arg(tokens: list[str], flag: str, value: str) -> str | None:
+    """Replace the value of a vLLM argument after the image, or append the flag; returns the old value."""
+    at = image_index(tokens)
+    for i in range(at + 1, len(tokens) - 1):
+        if tokens[i] == flag:
+            old, tokens[i + 1] = tokens[i + 1], value
+            return old
+    tokens += [flag, value]
+    return None
+
+
+def arg(tokens: Sequence[str], flag: str) -> str | None:
+    at = image_index(tokens)
+    return next((tokens[i + 1] for i in range(at + 1, len(tokens) - 1) if tokens[i] == flag), None)
+
+
 def set_env(tokens: list[str], key: str, value: str) -> None:
     for i in range(image_index(tokens)):
         if tokens[i] == "--env" and tokens[i + 1].split("=", 1)[0] == key:
@@ -80,8 +96,13 @@ def drop_env(tokens: list[str], prefix: str, keep: Sequence[str] = ()) -> None:
 
 
 def common(base: Sequence[str], *, docker: Sequence[str], run: str, arm: str, rank: int, model: str, cache: str,
-           host_ip: str) -> list[str]:
-    """The site substitutions every arm shares."""
+           host_ip: str, seccomp: str | None = None) -> list[str]:
+    """The site substitutions every arm shares.
+
+    ``seccomp`` is the host path of runtime/common/loader-seccomp.json, the policy that admits the io_uring
+    calls of the B12X weight loader (Docker's default policy refuses them); the runner copies it to every
+    Spark and every arm runs under it.
+    """
     tokens = list(base)
     if tokens[:3] != ["docker", "create", "--name"]:
         raise SpecError(f"rank {rank}: the base is not a docker create command: {tokens[:3]}")
@@ -94,6 +115,9 @@ def common(base: Sequence[str], *, docker: Sequence[str], run: str, arm: str, ra
                 tokens[i + 1] = tokens[i + 1].replace(f"src={fields['src']},", f"src={model},")
             elif fields.get("dst") == "/cache":
                 tokens[i + 1] = tokens[i + 1].replace(f"src={fields['src']},", f"src={cache},")
+    if seccomp:
+        at = image_index(tokens)
+        tokens[at:at] = ["--security-opt", f"seccomp={seccomp}"]
     set_env(tokens, "VLLM_HOST_IP", host_ip)
     for key, value in LOGGING.items():
         set_env(tokens, key, value)
@@ -146,7 +170,7 @@ def prepared_allowed(ring_size: int, positions: Sequence[int]) -> bool:
 def render_arm(arm: str, bases: Sequence[Sequence[str]], *, docker: Sequence[str], run: str,
                models: Sequence[str], caches: Mapping[str, str], host_ips: Sequence[str], bundle: Mapping | None,
                bundle_auto: Mapping | None, ring_size: int, positions: Sequence[int], roce_slot: bool = False,
-               extra_env: Mapping[str, str] | None = None) -> list[list[str]]:
+               extra_env: Mapping[str, str] | None = None, seccomp: str | None = None) -> list[list[str]]:
     """Every rank's command of one arm."""
     if arm not in ARMS:
         raise SpecError(f"unknown arm {arm!r}; arms are {', '.join(ARMS)}")
@@ -159,7 +183,7 @@ def render_arm(arm: str, bases: Sequence[Sequence[str]], *, docker: Sequence[str
     out = []
     for rank, base in enumerate(bases):
         tokens = common(base, docker=docker, run=run, arm=arm, rank=rank, model=models[rank],
-                        cache=caches[arm], host_ip=host_ips[rank])
+                        cache=caches[arm], host_ip=host_ips[rank], seccomp=seccomp)
         if arm in SIRCL_ARMS:
             part = bundle["ranks"][rank]
             if part["rank"] != rank or part["lan_address"] != host_ips[rank]:

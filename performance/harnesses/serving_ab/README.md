@@ -12,7 +12,7 @@ measurements, not serving qualification.
 
 ```bash
 python -m performance.harnesses.serving_ab plan --site SITE --profile PROFILE --positions 2-3 \
-  --image IMAGE_ID --order W:S+,W:N,S+,N,N,S+ --metrics phase1 --run-id RUN --output DIR
+  --image-lock LOCK --order W:S+,W:N,S+,N,N,S+ --metrics phase1 --run-id RUN --output DIR
 python -m performance.harnesses.serving_ab run  ...same options...
 python -m performance.harnesses.serving_ab.report DIR S+1 N1 N2 S+2
 ```
@@ -30,14 +30,19 @@ WSL when the keys live on the Windows side).
 | Command | Class |
 |---|---|
 | `plan` | READ-ONLY REMOTE: `sudo -n` reads on the Sparks to find the checkpoint (none with `--model-path` for every position) |
-| `run` | MUTATES HOST: the SIRCL arms' staged tree, native library, tuning tables and run directories under the site's `remote_dir`; one cache directory per arm; containers labelled `serving-ab=<run>`. Loads the GPUs and the fabric of the chosen Sparks |
+| `run` | MUTATES HOST: the loader seccomp policy under `<remote_dir>/serving-ab/source`, the SIRCL arms' staged tree, native library, tuning tables and run directories under the site's `remote_dir`; one cache directory per arm; containers labelled `serving-ab=<run>`. Loads the GPUs and the fabric of the chosen Sparks |
 | `report` | OFFLINE |
 
 ## Arms
 
-Every rank's base is the installer's container for the profile
-(`runtime/common/qwen_flash_next.py`, the same `render` that `sparkring install`
-uses), so research-only profiles without Compose exports render the same way.
+Every rank's base is the installer's container for the profile: the profile
+adapter's specification (`runtime/common/qwen_flash_next.py`), adapted to the
+image lock (`--image-lock`) as the installer runs it on a host
+(`runtime/common/compose.py`, `installer_container`: the toolchain entrypoint,
+CUDA 13.4 and NCCL 2.32.3 library paths, the runtime-status plugin,
+image-scoped caches, the B12X weight loader's io_uring seccomp policy and health
+timing; without the per-rank runtime binding, which only the installer writes).
+Research-only profiles without Compose exports render the same way.
 Every arm then applies the same site substitutions: its own container name and
 labels, the Spark's checkpoint copy, the arm's own cache directory (compile and
 JIT caches; `S` and `S+` share one), the rank's LAN address, and `NCCL_DEBUG=INFO`,
@@ -52,6 +57,16 @@ logs). Each arm differs from the others only in its transport part
 | `N` | vLLM's own communicator and PyNccl over the image's NCCL | `VLLM_ENABLE_ROCE_ALLREDUCE=0`, no RoCEnante bundle (`SPARKRING_TRANSPORT_PROFILE` empty), `SPARK_TP4_ENABLED=0`, and the NCCL variables `bundle --nccl auto` gives the rank: the RDMA devices facing its peers (`NCCL_IB_HCA`) and, on a whole cycle, `NCCL_ALGO=Ring` with `NCCL_SKIP_TREE_CONNECT=1`. The profile's other NCCL settings stay. Refused where NCCL may not run: a group whose consecutive ranks do not all share a cable, such as four Sparks of an eight-Spark ring |
 | `P` | the profile's prepared transport | the base unchanged. Refused unless the placement is one the prepared transport runs: a whole pair site, a whole four-Spark ring or one of its halves |
 
+`--dcp-size N` serves decode-context parallelism N in every arm, by the serve
+launcher's own rules (`sparkring_sircl/vllm/serve/plan.py`): the size must
+divide the tensor parallelism and the checkpoint and attention backend must run
+it (`dcp_problem`); the SIRCL arms' bundles take `--session-groups tp,dcp`; the
+model's `--cp-kv-cache-interleave-size` is added only where the recipe leaves it
+unset (`dcp_interleave`, 4 for GLM-5.3-Flash); and where no pinned vLLM build
+admits mHC prefill row ownership at the sizes (`mhc_dcp_problem`),
+`VLLM_GLM53_MHC_PREFILL_SHARD=0`. `plan` prints each such change as a deviation
+from the profile. Without the option every arm runs the profile's own size.
+
 `plan` prints every rank's command of every arm and, for a SIRCL arm against
 `N`, the difference of rank 0's commands: the environment variables, mounts and
 any other token that differs.
@@ -64,7 +79,9 @@ what it should:
 
 - `S`, `S+`: every rank's tensor-parallel receipt reads `nccl=none` and
   `pynccl=skipped`, no log shows an NCCL communicator, the sircl plugin was
-  loaded; the installed shims are listed. `S+` needs `fused_norm` on, and the
+  loaded; the installed shims are listed. With decode-context parallelism
+  every rank also needs a `dcp:` receipt with a SIRCL session and the
+  `dcp_all_to_all` shim. `S+` needs `fused_norm` on, and the
   receipts taken after the measurement count the fused calls (decision rows
   `all_reduce` / `sircl` / `fused_rms_norm`).
 - `N`: every rank shows `Init COMPLETE` for an NCCL communicator and vLLM's

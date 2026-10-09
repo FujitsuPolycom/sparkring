@@ -46,7 +46,8 @@ COMMON = dict(docker=["sudo", "-n", "docker"], run="t", models=["/m0", "/m1"],
 
 def test_every_arm_shares_the_site_substitutions():
     for arm in ("S", "S+", "N"):
-        tokens = spec.render_arm(arm, [base(0), base(1)], **COMMON)[1]
+        tokens = spec.render_arm(arm, [base(0), base(1)], **COMMON, seccomp="/r/loader-seccomp-1.json")[1]
+        assert tokens[tokens.index("--security-opt") + 1] == "seccomp=/r/loader-seccomp-1.json"
         assert tokens[:7] == ["sudo", "-n", "docker", "run", "-d", "--name", f"ab-t-{spec.slug(arm)}-r1"]
         assert "type=bind,src=/m1,dst=/models/target,readonly" in tokens
         assert f"type=bind,src={COMMON['caches'][arm]},dst=/cache" in tokens
@@ -100,7 +101,9 @@ def test_order_labels():
 
 
 S_LOG = ("INFO Loading plugin sircl\nSIRCL shim mhc_prefill_shard installed\nSIRCL shim worker_regimes installed\n"
-         "INFO SIRCL receipt group=tp:0 global_rank=0 rank=0 nccl=none pynccl=skipped session=ring\n")
+         "INFO SIRCL receipt group=tp:0 global_rank=0 rank=0 nccl=none pynccl=skipped session=ring lanes=2\n")
+DCP_LOG = (S_LOG + "SIRCL shim dcp_all_to_all installed\n"
+           "INFO SIRCL receipt group=dcp:0 global_rank=0 rank=0 nccl=none pynccl=skipped session=chain lanes=2\n")
 N_LOG = ("x NCCL INFO NET/IB : Using [0]a:1/RoCE\nx NCCL INFO ncclCommInitRank comm 0x1 rank 0 nranks 2 - Init COMPLETE\n"
          "INFO Using ['PYNCCL'] all-reduce backends (in dispatch order) for group 'tp:0' out of potential backends: []\n")
 
@@ -165,3 +168,17 @@ def test_fused_calls_come_from_the_receipt_decisions():
                "decisions": [{"collective": "all_reduce", "method": "direct", "calls": 9},
                              {"collective": "all_reduce", "method": "fused_rms_norm", "calls": 120}]}
     assert verify.fused_calls(receipt) == {"fused_norm": "on", "provider": "vllm_c", "fused_calls": 120}
+
+
+def test_decode_context_checks_need_a_dcp_session_and_the_all_to_all_shim():
+    assert verify.check("S", [DCP_LOG], dcp=2)["passed"]
+    problems = verify.check("S", [S_LOG], dcp=2)["problems"]
+    assert any("decode-context-parallel receipt" in p for p in problems)
+    assert any("dcp_all_to_all" in p for p in problems)
+
+
+def test_set_arg_replaces_or_appends_after_the_image():
+    tokens = base(0)
+    assert spec.set_arg(tokens, "--node-rank", "3") == "0" and spec.arg(tokens, "--node-rank") == "3"
+    assert spec.set_arg(tokens, "--decode-context-parallel-size", "2") is None
+    assert tokens[-2:] == ["--decode-context-parallel-size", "2"]
