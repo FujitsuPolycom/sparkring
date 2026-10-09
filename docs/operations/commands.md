@@ -63,7 +63,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
-| `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
+| `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's preferred checkpoint on an image whose vLLM reads it, else the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |
 | `--cache-path PATH` | Another writable compile cache on each Spark |

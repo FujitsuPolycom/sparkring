@@ -731,13 +731,17 @@ def lifecycle(argv):
                 from runtime.host import relays
                 reference = relays.group_reference(STATE, cluster)
             site = model_site(cluster, profile, instance, requested, fabric=reference)
+            # The checkpoint sparkring install installs without --checkpoint on this
+            # image: the profile's preferred one where the image's vLLM reads it.
+            variant = image_lock.preferred_checkpoint(chosen, profile)
+            card = installer.setup.selection(profile, variant)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
-            # profile's revision, whose model operation adopts what that
+            # checkpoint's revision, whose model operation adopts what that
             # directory holds and downloads the rest on that rank. A copy
             # SparkRing did not create is used only when named, and is then
             # served in place: verified, never written. Copies found elsewhere
             # on the Sparks are adopted by sparkring install.
-            model = args.model_path or installer.checkpoint_directory(cluster, installer.setup.selection(profile))
+            model = args.model_path or installer.checkpoint_directory(cluster, card)
             for row in site["hosts"]:
                 row.update(model=model, reuse_verified_model=bool(args.model_path))
             if reference is None and profile in installer.compose.TP4_PROFILES:
@@ -748,11 +752,11 @@ def lifecycle(argv):
                 # port before the deployment is created, as sparkring install
                 # checks it.
                 from runtime.host import install_workflow
-                arguments = install_workflow.profile_arguments(installer.setup.selection(profile))
+                arguments = install_workflow.profile_arguments(card)
                 serving.apply(arguments, settings)
                 install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
                                                 settings.get("api_port") or serving.profile_value(arguments, "api_port"))
-            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings,
+            installer.init(directory, profile, site, variant=variant, image_runtime=image_runtime, settings=settings,
                            transport=choice["section"])
         else:
             # The deployment's own source validates its lock (retained_source);

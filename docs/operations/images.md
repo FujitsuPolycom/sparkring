@@ -55,6 +55,12 @@ SIRCL package and its two prebuilt native libraries; `sparkring images` lists
 `sircl` among its transports, and `sparkring install` runs profiles on it with
 SIRCL ring sessions and NCCL off
 ([transport and receipts](install-reference.md#transport-and-receipts)).
+The image that the
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+builds also has the vLLM and B12X sources that read GLM-5.3-Flash's CSF
+checkpoint; on it, the GLM profiles of two and four Sparks install that
+checkpoint by default
+([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
 
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that

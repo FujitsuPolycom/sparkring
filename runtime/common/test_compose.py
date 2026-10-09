@@ -391,6 +391,22 @@ def test_unlisted_checkpoints_and_invalid_settings_are_refused(options, message)
         compose.build(profile, example_site(profile), **options)
 
 
+def test_an_export_of_a_checkpoint_its_image_cannot_read_is_refused(tmp_path):
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    site = example_site(profile)
+    # The CSF checkpoint needs SIRCL's pinned vLLM build, which no Compose image lock records.
+    with pytest.raises(ValueError, match="needs an image whose vLLM is the pinned build "
+                                         "sparkring-kraken-beta-20261007-bc9ea774"):
+        compose.render(profile, site, tmp_path / "csf", checkpoint="csf")
+    assert not (tmp_path / "csf").exists()
+    assert compose.unreadable_checkpoint(profile, None) is None
+    assert compose.unreadable_checkpoint("mimo-v26-flash-mopd-tp2", None) is None
+    # The default export stays the profile's own checkpoint; build serves locks the installer checked.
+    manifest, files = compose.build(profile, site)
+    assert "checkpoint" not in manifest and "GLM-5.3-Flash-NVFP4-Spark-TP2" in files["rank0/compose.yaml"]
+    assert compose.build(profile, site, checkpoint="csf")[0]["checkpoint"] == "csf"
+
+
 def test_save_cpu_is_refused_on_an_image_without_the_reader_window():
     profile = "qwen38-flash-next-tp2"
     older = compose.named_image("plainstatus")

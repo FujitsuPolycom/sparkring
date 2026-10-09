@@ -118,9 +118,9 @@ them in `config.json` instead of repeating the profile; `sudo sparkring install
 `checkpoints` maps each name to an entry; `runtime/common/qwen_flash_next.py`
 (`checkpoint_names`, `checkpoint_settings`) validates and applies it. Examples:
 the Qwen profiles (two branches of one repository),
-`glm53-flash-nvfp4-spark-tp4` (three repositories) and
-`glm53-flash-nvfp4-spark-tp2` (two repositories; the second with a smaller KV
-cache and context window).
+`glm53-flash-nvfp4-spark-tp4` (four repositories) and
+`glm53-flash-nvfp4-spark-tp2` (three repositories; the QAD entry with a smaller
+KV cache and context window).
 
 | Entry key | Value |
 |---|---|
@@ -139,8 +139,20 @@ in `scripts/test_pin_checkpoint.py`, add render assertions for its settings to
 `runtime/common/test_qwen_flash_next.py`, and list it in
 [Another checkpoint of a profile](../operations/install-reference.md#another-checkpoint-of-a-profile)
 with its size in the Downloads table. Without `--checkpoint`, the profile
-installs its default checkpoint with unchanged settings; each other name is a
-separate deployment.
+installs its preferred checkpoint on an image that reads it and otherwise its
+default checkpoint with unchanged settings; each other name is a separate
+deployment.
+
+`preferred_checkpoint` optionally names another published entry that only
+some vLLM builds read (`runtime/common/image_lock.py` `CHECKPOINT_BUILDS`).
+Without `--checkpoint`, `sparkring install` and `sparkring up` install it on
+an image whose lock lists one of those builds in `sircl.vllm_pins`
+(`image_lock.preferred_checkpoint`), and the default entry on every other
+image. The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`. The
+default entry keeps the profile's own settings, so the profile's
+`SHA256SUMS`, its Compose exports, whose images cannot read the preferred
+checkpoint, and every reader of the profile's top-level command describe the
+default entry.
 
 A derived entry describes a checkpoint that no repository publishes: the
 installer acquires its base like any checkpoint, then writes the derived
@@ -187,7 +199,8 @@ above:
 A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF checkpoint, is registered in
 `runtime/common/image_lock.py` `CHECKPOINT_BUILDS` with the pinned vLLM builds of
 `sparkring_sircl.vllm.pins` that read it; the installer refuses it on an image whose lock lists none of
-them in `sircl.vllm_pins`.
+them in `sircl.vllm_pins`, `sparkring compose render` refuses it on its image lock, and the Install
+Builder does not offer it there.
 
 ## Invariants the tests enforce
 

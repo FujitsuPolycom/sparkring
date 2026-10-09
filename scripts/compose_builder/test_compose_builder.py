@@ -46,6 +46,32 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert names["qad-step-4000"]["changes"] == ["VLLM_MXFP8_LM_HEAD=1", "speculative moe_backend: b12x"]
     assert names["qad-step5500-mxfp8-attention"]["derived"]
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
+    # The CSF checkpoint needs a vLLM build the default image lacks: the page does not offer it there.
+    assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
+            if profile["id"].startswith("glm53-flash-nvfp4-spark-")} == {
+        "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "nvfp4-qad"],
+        "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4"]}
+
+
+def test_a_checkpoint_only_some_vllm_builds_read_is_offered_on_an_image_that_reads_it():
+    from runtime.common import image_lock
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    profile = export.profile_data("glm53-flash-nvfp4-spark-tp2", image_lock.v2_view(pinned), "csf-image", pinned)
+    named = {checkpoint["name"]: checkpoint for checkpoint in profile["checkpoints"]}
+    assert list(named) == ["nvfp4-spark", "csf", "nvfp4-qad"]
+    assert named["csf"]["status"] == "research-only" and named["csf"]["served_model_name"] == "GLM-5.3-Flash-CSF-TP2"
+    assert "--quantization nvfp4_csf" in named["csf"]["changes"]
+
+
+def test_no_listed_image_reads_a_preferred_checkpoint():
+    """The page's default card is a profile's own checkpoint, which `sparkring install` installs without
+    --checkpoint only on an image that cannot read the profile's preferred checkpoint."""
+    from runtime.common import image_lock
+    for row in export.image_catalog():
+        lock = next(item["lock"] for item in installer_image.catalog() if item["name"] == row["name"])
+        assert [profile for profile in row["profiles"] if image_lock.preferred_checkpoint(lock, profile)] == [], row["name"]
 
 
 def test_profiles_and_checkpoints_carry_their_status_and_purpose(data):

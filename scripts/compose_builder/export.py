@@ -43,7 +43,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, image_lock, installer_image, profiles, qwen_flash_next
+from runtime.common import compose, image_lock, installer_image, profiles, qwen_flash_next, setup
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -300,11 +300,15 @@ def _check_template(text, site, n, identity, key_of, label):
             raise ValueError(f"{label}: GID line without the GID sentinel: {line.strip()}")
 
 
-def profile_data(profile_id, image_runtime=None, image_option=None):
+def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_value=None):
     """One profile's facts, checkpoints and sentinel templates, on the default or the given installer image.
 
     ``image_option`` is the `--image` value that selects ``image_runtime``; the
-    page's commands pass it when it is set.
+    page's commands pass it when it is set. ``image_lock_value`` is the
+    image's own lock when ``image_runtime`` is its v2 view. A checkpoint that
+    only some vLLM builds read is offered only where that image reads it
+    (image_lock.checkpoint_problem), since `sparkring install --checkpoint`
+    and `sparkring compose render --checkpoint` refuse it elsewhere.
     """
     metadata, _ = profiles.load(profile_id)
     configuration = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
@@ -317,6 +321,15 @@ def profile_data(profile_id, image_runtime=None, image_option=None):
     for checkpoint in checkpoints:
         checkpoint["capacity"] = kv_measurement(record, checkpoint["name"], checkpoints[0]["name"])
     status = _labelled(profile_id, metadata, checkpoints, labels())
+    # The page's default card is the profile's own checkpoint. On an image that reads a profile's
+    # preferred checkpoint, `sparkring install` without --checkpoint installs that one instead
+    # (image_lock.preferred_checkpoint). TODO: make the preferred checkpoint the default card on such
+    # an image. test_no_listed_image_reads_a_preferred_checkpoint fails as soon as the image catalog
+    # lists one; this note and that test go once the page selects its default card by image.
+    readable_by = image_lock_value or runtime
+    if readable_by is not None:
+        checkpoints = [checkpoint for checkpoint in checkpoints if checkpoint["default"] or not image_lock.checkpoint_problem(
+            readable_by, setup.selection(profile_id, checkpoint["name"]))]
     site = sentinel_site(example)
     release = (runtime or {}).get("name") or Path(metadata["release"]).parent.name
     capabilities = list(installer_image.capabilities(release))
@@ -479,7 +492,8 @@ def image_data(name):
     runs = [profile_id for profile_id in profile_ids() if profile_id in installer_image.profiles_of(row["lock"])]
     return {"schema": SCHEMA, "image": name,
             # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
-            "profiles": [profile_data(profile_id, image_lock.v2_view(row["lock"]), option) for profile_id in runs]}
+            "profiles": [profile_data(profile_id, image_lock.v2_view(row["lock"]), option, row["lock"])
+                         for profile_id in runs]}
 
 
 def engine_source():

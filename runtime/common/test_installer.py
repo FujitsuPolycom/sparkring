@@ -448,7 +448,8 @@ def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_dire
     directories = {installer.checkpoint_directory("ring", default)}
     for name, repository, revision in (
             ("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"),
-            ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348")):
+            ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"),
+            ("csf", "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be")):
         card = installer.setup.selection(GLM_RING, name)
         assert (card["target_variant"], card["model_repository"], card["model_revision"]) == (name, repository, revision)
         assert card["image_id"] == default["image_id"] and card["nodes"] == 4
@@ -460,16 +461,20 @@ def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_dire
         directory = installer.checkpoint_directory("ring", card)
         assert directory == f"/srv/sparkring/ring/checkpoints/{repository.replace('/', '--')}/{revision}"
         directories.add(directory)
-    assert len(directories) == 3
-    # The pair lists the QAD checkpoint, in the same directory as the ring's, and not NVIDIA's.
+    assert len(directories) == 4
+    # The pair lists the QAD and CSF checkpoints, in the same directories as the ring's, and not NVIDIA's.
     pair = installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad")
     assert (pair["model_repository"], pair["nodes"]) == ("local-inference-lab/GLM-5.3-Flash-NVFP4", 2)
     assert installer.checkpoint_directory("ring", pair) == installer.checkpoint_directory(
         "ring", installer.setup.selection(GLM_RING, "nvfp4-qad"))
     assert installer.checkpoint_pins(pair) == installer.checkpoint_pins(installer.setup.selection(GLM_RING, "nvfp4-qad"))
-    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark$"):
+    csf = installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "csf")
+    assert installer.checkpoint_directory("ring", csf) == installer.checkpoint_directory(
+        "ring", installer.setup.selection(GLM_RING, "csf")) == installer.checkpoint_directory(
+        "ring", installer.setup.selection("glm53-flash-csf-tp8"))
+    with pytest.raises(ValueError, match="lists: csf, nvfp4-qad, nvfp4-spark$"):
         installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvidia-nvfp4")
-    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
+    with pytest.raises(ValueError, match="lists: csf, nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
         installer.setup.selection(GLM_RING, "qad-step-4000")
 
 
