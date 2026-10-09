@@ -17,6 +17,7 @@ workspace.
 | `glm_dsa_indexer_split` | **Ported** as 1.1.0 (`integrations/vllm/glm_dsa_indexer_split/`) | Its two wrapped methods survive in the image's `b12x_indexer.py` (`e1841ab0…`), and every other file it relies on is unchanged or re-pinned below. |
 | `glm53full_speedups` | **Ported** as 1.1.0 (`integrations/vllm/glm53full_speedups/`) | Both patch anchors survive: `DeepseekV32Attention.__init__` builds `fused_qkv_a_proj` with `DeepSeekV2FusedQkvAProjLinear` (image `attention.py` `c1358e67…`, line 299), and `DeepseekV32MultiTokenPredictorLayer.__init__` builds `eh_proj` as a replicated `nn.Linear` (image `mtp.py` `103516ab…`, line 78). |
 | `glm53full_backports` | **Dropped: already upstream in the image** | All four items are in the image's own sources; file and line citations below. Porting it would patch nothing and its pins would all refuse. |
+| `glm_dcp_prefill_q_replicate` | **Dropped: covered natively in the image** | The image's own full-CKV route and new mixed-batch route remove the prefill query exchange for every batch regime the plugin ever measured; the two environment switches are in "Query replication" below. Porting it would also have to rewrite its eligibility for the image's new route (its query-gather replacement refuses the shapes the mixed route gathers). |
 
 The backports, each against the image's own sources:
 
@@ -180,6 +181,8 @@ prefill chunks, `--load-format b12x`, on SIRCL ring sessions):
 | `GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES` | `1` |
 | `GLM53FULL_LATENT_SHARD` | `1` |
 | `GLM53FULL_EH_PROJ_TP` | `1` |
+| `VLLM_B12X_MLA_CKV_GATHER` | `1` |
+| `VLLM_B12X_MLA_CKV_GATHER_MIXED` | `1` |
 
 The `vllm_args` stay as the profile pins them. The earlier build measured
 each plugin's gain separately (indexer split: prefill +8-9% at 16K/64K/128K,
@@ -198,3 +201,132 @@ the mechanics and the exactness of loading and selection against the image's
 own sources; they do not qualify serving. The indexer split's selections
 remain equal to the image's only up to candidates tied at a row's lowest
 selected score, and the verify mode above is the on-ring qualification step.
+
+## Query replication
+
+The earlier build's `glm_dcp_prefill_q_replicate` 1.0.0 (clean copy
+`q_replicate/site/`) attacked the prefill query exchange from the query side.
+After each model's weights are processed it all-gathers, over the DCP group's
+CPU (gloo) process group, every member's processed `q_b_proj` (the packed
+MXFP8 weight) and `W_UK_T` — 0.44 / 1.33 / 3.11 GiB per rank at DCP 2 / 4 / 8
+over the 79 attention modules of target and MTP draft — and for an eager batch
+of at least 512 query rows (`GLM_DCP_PREFILL_Q_REPLICATE_MIN_ROWS`, default
+512, above the 24-row decode-graph ceiling) with at least one prefill row on
+the sparse-MQA path, each rank computes the whole group's absorbed queries
+(each member's `q_b_proj` GEMM, `W_UK_T` BMM and `fused_q` RoPE, into one
+`[rows, 8 d, 576]` BF16 tensor in group order) and hands them to the image's
+`_sparse_indexer_and_attn` through a one-shot replacement of
+`dcp_manager.query_gather`. That is the tensor the all-gather would have
+returned, so attention and the combine are unchanged; a prefill chunk's query
+shard is 72 MiB per rank, layer and 8,192-row chunk. Decode-only
+batches and every CUDA-graph capture keep the gather. Its eligibility yields
+to the full-CKV gather (`impl.uses_full_ckv_dcp`), so on the earlier build it
+was recorded as that gather's complement — mixed batches and batches above the
+gather's capacity — and it composed with it. The earlier build's A/B measured
++3.7 / +15.1 / +13.1 % 16K prefill at DCP 2 / 4 / 8; the clean copy's
+`STATUS.md` holds the pre-A/B cost model (+4.7 / +15.5 / +13.9 %, from
+isolated gather microbenchmarks) and no GPU run.
+
+**The image covers it natively, by gathering the cache instead of the
+queries** — the trade of the earlier build's `glm_dsa_ckv_gather` plugin, now
+in the image's own sources and extended to mixed batches. Evidence, all in
+`816c6d6a7e96`:
+
+1. **Full-CKV prefill route.** `b12x_mla_sparse.py` (`28ba2439…`)
+   `_use_b12x_full_ckv_gather` (lines 223-244) selects eager pure-prefill
+   batches (`num_decode_tokens == 0`, not speculative, `max_query_len > 1`,
+   not a CUDA-graph capture, `b12x_mla_sparse.py` 1015-1028) with DCP above 1
+   and a batch token count inside
+   [`VLLM_B12X_MLA_CKV_GATHER_MIN_TOKENS`, `VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS`]
+   (defaults 16 and 524,288, image `envs.py` 234-237 and 1931-1945). Every
+   8,192-token prefill chunk of the serving profile is inside that window.
+   `uses_full_ckv_dcp` (2022-2034) confirms it per call, again refusing
+   captures. A route batch attends its local heads over the DCP group's
+   gathered cache: no query gather, no LSE combine.
+2. **Mixed-batch route, new in this image.** `_use_b12x_split_ckv_gather`
+   (lines 247-272) selects eager mixed batches (decode rows and prefills both
+   present) on the same token window over their prefill tokens, when
+   `VLLM_B12X_MLA_CKV_GATHER_MIXED` is set (requested at 790-794). The
+   attention layer routes them to `_split_ckv_dcp_mqa`
+   (`models/deepseek_v32/attention.py` `c1358e67…`, lines 514-560, selected at
+   675-685): the decode rows — ordered first — keep the query gather and the
+   LSE combine (537-544, tens of microseconds), the prefill rows attend their
+   local heads over their own requests' gathered cache through
+   `forward_mqa(..., route="ckv_extend")` (551-558), and none of the prefill
+   rows' queries or outputs move. The method's own docstring: the prefill
+   cache gather "moves far fewer bytes than exchanging every head's queries
+   and outputs". This is exactly the plugin's mixed-batch domain.
+3. **GLM-5.3 is in scope for both routes.** The backend recognises the model
+   (`_GLM_DSA_MODEL_TYPES = frozenset(("glm_moe_dsa",))`, line 63; set at
+   752) and both predicates take `is_glm_dsa` (238, 266).
+4. **No native query-replication switch exists for this model.**
+   `DeepseekV32Attention` builds `q_b_proj` as a plain `ColumnParallelLinear`
+   and passes no `dcp_q_replicate` (`attention.py` 306-311, 253-270), so
+   `VLLM_DCP_Q_REPLICATE` / `parallel_config.dcp_q_replicate` reach only
+   `DeepseekV2MLAAttention` (`model_executor/models/deepseek_v2.py`
+   1076-1085, `mla_attention.py` 614 and 1612-1615) and stay inert for
+   GLM-5.3 — as on the earlier image. The coverage is the CKV-gather family,
+   not query replication.
+5. **The residue.** A batch whose gathered cache exceeds the per-rank
+   capacity guard keeps the image's query exchange: eligibility is granted
+   only while `padded_total_tokens <= max_local_capacity` with
+   `max_local_capacity = round_up(ceil(MAX_TOKENS/d) +
+   max_reqs × cp_kv_cache_interleave_size)` (`b12x_mla_sparse.py` 1078-1090;
+   the flags stay at their `False` initialisers, line 730). With the defaults
+   that is roughly 524,288 cached tokens summed over the batch's prefill
+   requests at any DCP size, so prefill chunks into requests cached beyond
+   about half a million tokens fall back. That is the plugin's one remaining
+   domain, and it is unmeasured on every build: the earlier A/B used 16K
+   prompts, the image's own routes have never been measured on the ring above
+   16K, and the plugin never ran on a GPU at all.
+
+**Disposition: dropped — use the image's switches, port nothing.** The image's
+routes cover every batch regime the plugin ever measured, and in the shared
+one (16K pure prefill) the earlier build measured the cache gather well ahead
+of query replication (+5.3 / +59 / +79 % at DCP 2 / 4 / 8 — 4-bit KV at DCP 2,
+8-bit at DCP 8 — `glm_dsa_ckv_gather` A/B, against the plugin's
++3.7 / +15.1 / +13.1 %). A like-for-like port is not
+possible either: the plugin's query-gather replacement requires the full local
+`[rows, 8, 576]` query and raises on any other shape (clean copy
+`runtime.py` 476-485), while the image's mixed route calls `query_gather` with
+the decode rows only (`attention.py` 537) — a port would have to add
+`uses_split_ckv_dcp` and a mirror of the capacity guard to the eligibility,
+i.e. new eligibility code on an unmeasured regime, at 1.33 GiB per rank of
+replicated weights (DCP 4), for a plugin that never left research-only status
+anywhere. If above-capacity prefill ever matters on the ring, the image's own
+`VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS` (default 524,288; the per-rank gathered
+workspace scales with it, `b12x_mla_sparse.py` 1083-1089 and 1708) is the
+first knob to test, before any port. `VLLM_DCP_INDEXER_KEY_GATHER`
+(`b12x_indexer.py`) is the DSA indexer's own prefill key gather; it does not
+touch the attention query exchange and is already handled in the indexer
+split's port above.
+
+**Tests.** Nothing was ported, so no tests were added; the ported suites keep
+their counts (359 + 21 + 6). The clean copy holds 25 of the plugin's 39 files;
+its own CPU suite was 54 tests on the earlier image (`STATUS.md` section 4),
+and the copied parts cannot run here: `tests/test_plugin.py` (the wrapper
+installation tests, 12) was withheld as transport, `test_replication.py` (4)
+and the cost model `qrep_budget.py` behind `test_qrep_budget.py` (18) are
+absent, and `test_prefill_path.py` (15) and `test_source_facts.py` (5) replay
+the earlier image's sources, not this one.
+
+### Launch setting for query replication: GLM-5.3 TP8/DCP4
+
+Set both switches in the profile's environment (table above); nothing else
+changes — no plugin name joins `VLLM_PLUGINS`, and no image layer is rebuilt
+for this task:
+
+| Variable | Value |
+|---|---|
+| `VLLM_B12X_MLA_CKV_GATHER` | `1` |
+| `VLLM_B12X_MLA_CKV_GATHER_MIXED` | `1` |
+
+Both default to 0 in the image (`envs.py` 234-237). With them on, the backend
+allocates its selection-index and DCP bookkeeping buffers at startup
+(`b12x_mla_sparse.py` 795-815) and the gathered-cache workspace of the
+`ckv_extend` plan (1708) — tens of MiB per rank, sized from the batch limits
+and the gather token window; watch the startup memory margin on the first
+launch. `VLLM_B12X_MLA_CKV_GATHER_MIXED=0` alone leaves pure prefill covered;
+the mixed switch is the piece the earlier plugin would have served. These
+routes' gains above 16K contexts are unmeasured on the ring; the first serving
+run is their qualification, as for the ported plugins.
