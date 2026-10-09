@@ -499,7 +499,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "4-bit activations decode 3-7 % slower than W4A16", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
       ],
       "evidence": ["profiles/glm53-flash-csf-tp8/README.md", "private record 2026-10-07..08: SIRCL ring results"],
-      "profiles": ["glm53-flash-csf-tp8"]
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf"]
     },
     {
       "id": "b12x-w4a16-two-cta",
@@ -1068,7 +1068,7 @@
       ],
       "parallelism": {"supported": [{"tp": [2, 4, 8], "dcp": [1]}]},
       "enable": {
-        "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be (profile glm53-flash-csf-tp8; the TP2 and TP4 profiles have no checkpoint entry for it)",
+        "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be (profile glm53-flash-csf-tp8; checkpoint csf of glm53-flash-nvfp4-spark-tp2 and glm53-flash-nvfp4-spark-tp4, their default on an image that reads it)",
         "arguments": {"--quantization": "nvfp4_csf", "--load-format": "nvfp4_csf"},
         "environment": {"VLLM_B12X_MOE_FP4_FORCE_A16": "1"},
         "speculative": {"moe_backend": "marlin"}
@@ -1083,7 +1083,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": "1-16", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "decode steps equal at 1-8 users, +4 % at 16; prefill equal to NVFP4-Spark once mHC sharding is on", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
       ],
       "evidence": ["runtime/images/compositions/kraken-csf-sources-20261007/README.md", "runtime/common/image_lock.py", "profiles/glm53-flash-csf-tp8/README.md", "private record 2026-10-07..08: SIRCL ring results"],
-      "profiles": ["glm53-flash-csf-tp8"]
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf"]
     },
     {
       "id": "glm53-flash-mtp-nvfp4-draft-head",

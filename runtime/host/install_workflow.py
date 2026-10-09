@@ -621,8 +621,12 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         named = checkpoint_plan.named_paths(args.model_path, count)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="model_path") from None
+    # Without --checkpoint, a profile's preferred checkpoint is installed on an
+    # image whose vLLM reads it, and its default checkpoint on any other image.
+    requested_checkpoint = (args.checkpoint if args.checkpoint is not None
+                            else image_lock.preferred_checkpoint(image, profile))
     try:
-        card = installer.setup.selection(profile, args.checkpoint)
+        card = installer.setup.selection(profile, requested_checkpoint)
     except ValueError as error:
         raise NeedsInput(str(error) + ". Nothing has been changed.", field="checkpoint_name") from None
     # A checkpoint that only some vLLM builds read needs an image whose vLLM is one of them.
@@ -630,8 +634,9 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     if unreadable:
         raise NeedsInput(f"{unreadable}. Nothing has been changed.", field="checkpoint_name")
     # A checkpoint is requested by its listed name: an alias requests the same
-    # deployment as that name, and the profile's default the same as no flag.
-    checkpoint = (card["target_variant"] if args.checkpoint is not None
+    # deployment as that name, and the profile's default the same as no flag on
+    # an image that does not read its preferred checkpoint.
+    checkpoint = (card["target_variant"] if requested_checkpoint is not None
                   and card["target_variant"] != installer.setup.selection(profile)["target_variant"] else None)
     hosts = cluster["plan"]["spec"]["hosts"]
     api_address = cluster.get("api_address")
@@ -1468,7 +1473,8 @@ def main(argv=None):
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "
                              "another filesystem read-only, and never writes to it")
     parser.add_argument("--checkpoint", metavar="NAME",
-                        help="another checkpoint the profile lists, with the settings it needs; default: the profile's own")
+                        help="another checkpoint the profile lists, with the settings it needs; default: the "
+                             "profile's preferred checkpoint where the image's vLLM reads it, else its own")
     parser.add_argument("--ignore-local-copies", action="store_true",
                         help="use only SparkRing's own checkpoint directories and named copies")
     parser.add_argument("--cache-path", help="optional local writable cache path on each Spark")

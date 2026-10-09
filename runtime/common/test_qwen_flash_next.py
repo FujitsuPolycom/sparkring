@@ -156,14 +156,16 @@ def glm_command(checkpoint=None, rank=0, path=GLM_TP4):
     return spec, list(spec.command)
 
 
-def test_the_glm_ring_lists_three_checkpoints_of_three_repositories():
+def test_the_glm_ring_lists_four_checkpoints_of_four_repositories():
     profile = adapter.read(GLM_TP4)
-    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("nvfp4-qad", "nvfp4-spark", "nvidia-nvfp4"))
+    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("csf", "nvfp4-qad", "nvfp4-spark", "nvidia-nvfp4"))
     assert adapter.checkpoint_settings(profile, "nvfp4-spark") is profile
+    assert adapter.preferred_checkpoint(profile) == "csf"
     repositories = {name: entry["model"]["repository"] for name, entry in profile["checkpoints"].items()}
     assert repositories == {"nvfp4-spark": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
                             "nvfp4-qad": "local-inference-lab/GLM-5.3-Flash-NVFP4",
-                            "nvidia-nvfp4": "nvidia/GLM-5.3-Flash-NVFP4"}
+                            "nvidia-nvfp4": "nvidia/GLM-5.3-Flash-NVFP4",
+                            "csf": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"}
     # The QAD checkpoint is the target record's; NVIDIA's revision da920bb0
     # holds the weights and index of the record's 423acf37 and a config that
     # excludes the BF16 MTP layer from quantization.
@@ -207,11 +209,11 @@ def test_a_glm_checkpoint_with_larger_weights_reserves_that_much_less_kv_cache()
 
 def test_the_glm_pair_serves_the_qad_checkpoint_with_a_smaller_kv_cache_and_context():
     profile = adapter.read(GLM_TP2)
-    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("nvfp4-qad", "nvfp4-spark"))
+    assert adapter.checkpoint_names(profile) == ("nvfp4-spark", ("csf", "nvfp4-qad", "nvfp4-spark"))
     assert profile["checkpoints"]["nvfp4-qad"]["model"] == adapter.read(GLM_TP4)["checkpoints"]["nvfp4-qad"]["model"]
     # NVIDIA's weights take 7.8 GiB more on each Spark of a pair, which the
     # pair's 10 GiB of KV cache cannot give up; the pair does not list it.
-    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark"):
+    with pytest.raises(ValueError, match="lists: csf, nvfp4-qad, nvfp4-spark"):
         adapter.checkpoint_settings(profile, "nvidia-nvfp4")
     for rank in (0, 1):
         _, default = glm_command(rank=rank, path=GLM_TP2)
@@ -272,6 +274,87 @@ def test_the_nvidia_checkpoint_runs_modelopt_nvfp4_with_the_safetensors_loader()
     assert spec.environment["B12X_COMPILE_CACHE_DIR"] == "/cache/glm53-flash-nvfp4-spark-cuda13.4.2-da920bb0b9f4/b12x"
     worker, _ = glm_command("nvidia-nvfp4", rank=3)
     assert worker.command[-1] == "--headless" and worker.name == "glm53-flash-nvfp4-spark-tp4-r3"
+
+
+CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+             "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
+             "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
+             "index_sha256": "568c770e4a083ab53c3d74deab348d541724f23ec9637d83513ecb8fa4a7ef73"}
+GLM_TP8 = ROOT / "profiles/glm53-flash-csf-tp8/config.json"
+CACHE_VARIABLES = {"XDG_CACHE_HOME", "VLLM_CACHE_ROOT", "TRITON_CACHE_DIR", "B12X_COMPILE_CACHE_DIR",
+                   "CUTE_DSL_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"}
+
+
+@pytest.mark.parametrize("path, nodes, kv_gib", [(GLM_TP4, 4, 37), (GLM_TP2, 2, 10)])
+def test_the_glm_csf_checkpoint_runs_the_eight_spark_profiles_quantization_loader_and_draft(path, nodes, kv_gib):
+    """The CSF entries pin the eight-Spark CSF profile's checkpoint and change only what that checkpoint needs."""
+    profile = adapter.read(path)
+    eight = adapter.read(GLM_TP8)
+    assert profile["checkpoints"]["csf"]["model"] == CSF_MODEL == eight["model"]
+    for rank in range(nodes):
+        default_spec, default = glm_command(rank=rank, path=path)
+        spec, command = glm_command("csf", rank=rank, path=path)
+        assert command[command.index("--served-model-name") + 1] == f"GLM-5.3-Flash-CSF-TP{nodes}"
+        for flag in ("--quantization", "--load-format"):
+            assert command[command.index(flag) + 1] == eight["vllm_args"][eight["vllm_args"].index(flag) + 1] == (
+                "nvfp4_csf")
+        # W4A16 decode, as the eight-Spark profile sets it; every other variable but the
+        # revision-keyed cache paths is the profile's own.
+        assert spec.environment["VLLM_B12X_MOE_FP4_FORCE_A16"] == eight["environment"]["VLLM_B12X_MOE_FP4_FORCE_A16"]
+        assert {key for key, value in spec.environment.items() if default_spec.environment.get(key) != value} == {
+            "VLLM_B12X_MOE_FP4_FORCE_A16", *CACHE_VARIABLES}
+        assert set(spec.environment) == set(default_spec.environment)
+        # The draft's experts run on Marlin, as in the eight-Spark profile.
+        draft = json.loads(command[command.index("--speculative-config") + 1])
+        assert draft == {**json.loads(default[default.index("--speculative-config") + 1]), "moe_backend": "marlin"}
+        assert command[command.index("--kv-cache-memory-bytes") + 1] == str(kv_gib * 2**30)
+        assert command[command.index("--max-model-len") + 1] == "1048576"
+        changed = ["--served-model-name", "--speculative-config", "--quantization", "--load-format"]
+        if nodes == 4:
+            changed.append("--kv-cache-memory-bytes")
+        assert [index for index, (a, b) in enumerate(zip(command, default)) if a != b] == sorted(
+            command.index(flag) + 1 for flag in changed)
+        assert len(command) == len(default) and (command[-1] == "--headless") == (rank != 0)
+        assert spec.name == f"glm53-flash-nvfp4-spark-tp{nodes}-r{rank}"
+        assert spec.environment["XDG_CACHE_HOME"] == (
+            f"/cache/glm53-flash-nvfp4-spark-{installer_image_id()[7:19]}-dec48abd33ef")
+    if nodes == 4:
+        # The ring's entry keeps the 37 GiB of the QAD entry and of the eight-Spark profile.
+        assert str(kv_gib * 2**30) == eight["vllm_args"][eight["vllm_args"].index("--kv-cache-memory-bytes") + 1] == (
+            profile["checkpoints"]["nvfp4-qad"]["arguments"]["--kv-cache-memory-bytes"])
+
+
+def test_the_csf_checkpoint_keeps_no_larger_kv_cache_than_nvfp4_spark_for_smaller_weights():
+    """The CSF weights take less memory on each Spark than NVFP4-Spark's, whose memory the profiles measured."""
+    from runtime.common import installer, setup
+
+    def weights(profile_id, name):
+        pins = installer.checkpoint_pins(setup.selection(profile_id, name))
+        return sum(pins["files"][file]["size"] for file in pins["weights"])
+
+    for path in (GLM_TP4, GLM_TP2):
+        profile, profile_id = adapter.read(path), path.parent.name
+        per_spark = (weights(profile_id, "nvfp4-spark") - weights(profile_id, "csf")) / adapter.node_count(profile)
+        assert round(per_spark / 2**30, 1) == {4: 2.3, 2: 4.6}[adapter.node_count(profile)]
+        args, csf = profile["vllm_args"], adapter.checkpoint_settings(profile, "csf")["vllm_args"]
+        assert int(csf[csf.index("--kv-cache-memory-bytes") + 1]) <= int(args[args.index("--kv-cache-memory-bytes") + 1])
+
+
+def test_a_preferred_checkpoint_is_another_listed_published_checkpoint():
+    profile = adapter.read(GLM_TP2)
+    assert adapter.preferred_checkpoint(profile) == "csf"
+    assert adapter.preferred_checkpoint(adapter.read(PROFILE)) is None
+    # The preferred checkpoint changes no setting of the profile's own command.
+    assert adapter.checkpoint_settings(profile, None) is profile
+    for preferred in ("nvfp4-spark", "missing", 1):
+        with pytest.raises(ValueError, match="preferred checkpoint must name another listed"):
+            adapter.checkpoint_names({**profile, "preferred_checkpoint": preferred})
+    qwen = adapter.read(PROFILE)
+    with pytest.raises(ValueError, match="preferred checkpoint must name another listed"):
+        adapter.checkpoint_names({**qwen, "preferred_checkpoint": "qad-step5500-mxfp8-attention"})
+    without = {key: value for key, value in profile.items() if key not in ("checkpoint", "checkpoints")}
+    with pytest.raises(ValueError, match="requires a checkpoints table"):
+        adapter.checkpoint_names(without)
 
 
 def test_qwen_model_and_native_prefix_only():

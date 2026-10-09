@@ -754,8 +754,14 @@ def test_a_pair_installs_the_qad_checkpoint_with_its_own_kv_limit_and_refuses_nv
     surveyed = len(sparks.surveys)
     assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvidia-nvfp4", "--yes", "--json"]) == 3
     refused = json.loads(capsys.readouterr().out)
-    assert refused["field"] == "checkpoint_name" and "lists: nvfp4-qad, nvfp4-spark" in refused["message"]
+    assert refused["field"] == "checkpoint_name" and "lists: csf, nvfp4-qad, nvfp4-spark" in refused["message"]
     assert len(sparks.surveys) == surveyed
+    # The default image's vLLM cannot read the CSF checkpoint, which the pair prefers where it can.
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "csf", "--yes", "--json"]) == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "checkpoint_name" and "(--checkpoint csf) needs an image whose vLLM is the pinned " \
+        "build sparkring-kraken-beta-20261007-bc9ea774" in refused["message"]
+    assert "records no pinned vLLM build" in refused["message"] and len(sparks.surveys) == surveyed
 
 
 def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):

@@ -98,6 +98,14 @@ def checkpoint_names(profile):
     changes no setting. The optional `checkpoint_aliases` maps further names,
     such as a spelling that matches the other branches, to listed checkpoints.
 
+    The optional `preferred_checkpoint` names another, published entry that
+    the installer selects instead of the default when no checkpoint is named
+    and the image's vLLM reads it (runtime/common/image_lock.py,
+    ``preferred_checkpoint``): a checkpoint that only some vLLM builds read,
+    such as GLM-5.3-Flash's CSF checkpoint. On every other image the default
+    entry stays the profile's checkpoint, so its settings remain those of
+    the profile's own command.
+
     An entry with `derived`, `{"base": NAME, "donor": NAME}`, is a checkpoint
     that the installer writes on the Sparks from two other entries of the
     table, neither of them derived (runtime/common/derived_checkpoint.py). Its
@@ -107,8 +115,8 @@ def checkpoint_names(profile):
     """
     table = profile.get("checkpoints")
     if table is None:
-        if "checkpoint" in profile:
-            raise ValueError("A default checkpoint requires a checkpoints table")
+        if "checkpoint" in profile or "preferred_checkpoint" in profile:
+            raise ValueError("A default or preferred checkpoint requires a checkpoints table")
         return None, ()
     default = profile.get("checkpoint")
     if not isinstance(table, dict) or default not in table:
@@ -142,7 +150,19 @@ def checkpoint_names(profile):
     if not isinstance(aliases, dict) or any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", alias) or alias in table
                                             or target not in table for alias, target in aliases.items()):
         raise ValueError("Each checkpoint alias must be a new name for a listed checkpoint")
+    if "preferred_checkpoint" in profile:
+        preferred = profile["preferred_checkpoint"]
+        if (not isinstance(preferred, str) or preferred not in table or preferred == default
+                or "derived" in table[preferred]):
+            raise ValueError("The preferred checkpoint must name another listed, published checkpoint "
+                             "than the default")
     return default, tuple(sorted(table))
+
+
+def preferred_checkpoint(profile):
+    """The profile's ``preferred_checkpoint`` after checking its checkpoints table, or None without one."""
+    checkpoint_names(profile)
+    return profile.get("preferred_checkpoint")
 
 
 def checkpoint_name(profile, name):

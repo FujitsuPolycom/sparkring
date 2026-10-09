@@ -14,6 +14,10 @@ variant of the GLM TP4 settings below; NVFP4-Spark remains their default. The
 four-Spark GLM installer profile, `glm53-flash-nvfp4-spark-tp4`, installs the
 NVIDIA and Local Inference Lab NVFP4 QAD checkpoints with `--checkpoint`
 ([names and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
+The GLM installer profiles of two and four Sparks install Local Inference
+Lab's CSF checkpoint by default on an image whose vLLM reads it, and the
+NVFP4-Spark checkpoint the GLM rows below name on every other image
+([default checkpoint by profile](glm53-checkpoints.md#default-checkpoint-by-profile)).
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
 runs on image `dev-20261004-kraken-cuda1342-nccl2323-status034`

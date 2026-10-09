@@ -206,6 +206,23 @@ def checkpoint_problem(value, card):
             + (f"matches {', '.join(pins)}" if pins else "records no pinned vLLM build"))
 
 
+def preferred_checkpoint(value, profile):
+    """The checkpoint that installer profile ``profile`` installs without ``--checkpoint`` on the image of
+    lock ``value``: its ``preferred_checkpoint`` when that image reads it, else None for its default.
+
+    A profile prefers a checkpoint that only some vLLM builds read (CHECKPOINT_BUILDS), such as
+    GLM-5.3-Flash's CSF checkpoint. Its default checkpoint, whose settings are the profile's own, is
+    what every other image installs, so a profile whose admitted images differ keeps one installable
+    default on each of them.
+    """
+    from runtime.common import qwen_flash_next, setup
+    card = setup.selection(profile)
+    name = qwen_flash_next.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
+    if name is None:
+        return None
+    return None if checkpoint_problem(value, setup.selection(profile, name)) else name
+
+
 def sircl_only(value):
     """The profiles a lock lists that only SIRCL ring sessions run (``installer_image.SIRCL_ONLY``)."""
     listed = value.get("profiles") if isinstance(value, dict) else None

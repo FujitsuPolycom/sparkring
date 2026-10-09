@@ -66,6 +66,7 @@
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a608241037e4c2565356bff7ca293f2133888f88": "glm53-flash-template",
     "local-inference-lab/GLM-5.3-Flash-NVFP4@175ae8ce3b5af842b0d0140dbeb43e9cfc557c49": "glm53-flash-template",
     "nvidia/GLM-5.3-Flash-NVFP4@da920bb0b9f4a06727223a349e55468e38352348": "glm53-flash-template",
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be": "glm53-flash-template",
     "XiaomiMiMo/MiMo-V2.6-Flash-MOPD@2479e2d0029eca9a34cc7e7f55a121925f81908e": "mimo-v26-flash-template",
     "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a40aa45a94ad051997016db3960a90277": "deepseek-v41-encoder"
   }

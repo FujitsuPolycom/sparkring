@@ -34,6 +34,15 @@ run only on SIRCL ring sessions.
 | `glm53-flash-csf-tp8` | Reads the CSF checkpoint with the merged sources |
 | `deepseek-v41-flash-tp8`, `glm53-nvfp4-tp8` | Eight-Spark research profiles; `glm53-nvfp4-tp8` needs the merged vLLM's B12X DSA attention ([open items](../../../profiles/glm53-nvfp4-tp8/README.md#evidence-and-open-items)) |
 
+The lock's `sircl.vllm_pins` names the vLLM build that reads the CSF
+checkpoint, so `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`
+install it without `--checkpoint` on this image (their
+`preferred_checkpoint`, `csf`); `--checkpoint nvfp4-spark` installs
+NVFP4-Spark, their default on the parent image
+([default checkpoint by profile](../../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+The lock lists profiles, not their settings, so this choice changes neither
+the lock nor the build.
+
 `qwen38-flash-next-qad-tp8` is not listed: its HC token-row ownership at
 eight ranks is refused by installer admission, because the image receipt's
 `hc_supported_modes` names two and four ranks only, and by the image's
@@ -204,6 +213,10 @@ sudo sparkring status
 | `install` | `Model ready:` and the summary card's `Transport:   sircl, NCCL: absent` |
 | `check --report` | Exit status 0; the functional checks pass; the receipt verdict is as expected; `~/sparkring-report/sparkring-report-<time>/` exists |
 | `status` | `Image: dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` and `Transport: sircl, NCCL: absent (checked ...)` |
+
+Without `--checkpoint` these commands serve the CSF checkpoint as
+`GLM-5.3-Flash-CSF-TP2`. Adding `--checkpoint nvfp4-spark` to both `install`
+commands checks NVFP4-Spark on the same image.
 
 The same commands with `--on 2,3` check the other pair. A line of four Sparks
 uses `--profile glm53-flash-nvfp4-spark-tp4 --on 0-3` or `--on 4-7`; its plan

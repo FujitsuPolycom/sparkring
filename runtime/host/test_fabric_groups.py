@@ -269,6 +269,42 @@ def test_the_csf_checkpoint_needs_an_image_whose_vllm_reads_it(ring8, capsys, tm
     assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-CSF-TP8"
 
 
+def test_the_glm_pair_installs_the_csf_checkpoint_without_a_name_on_an_image_that_reads_it(ring8, capsys, tmp_path):
+    assert install(ring8, "--profile", GLM_TP2, "--on", "0,1") == 0
+    preferred = result(capsys)
+    lock = lock_of(preferred)
+    assert lock["selection"]["target_variant"] == "csf"
+    assert lock["selection"]["model_repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"
+    command = list(installer.specifications(lock, only_rank=0)[0].command)
+    assert command[command.index("--quantization") + 1] == "nvfp4_csf"
+    assert command[command.index("--served-model-name") + 1] == "GLM-5.3-Flash-CSF-TP2"
+    # The saved plan repeats the selection by name, and naming it requests the same deployment.
+    assert "--checkpoint csf" in preferred["checkpoint"]["command"]
+    assert install(ring8, "--profile", GLM_TP2, "--on", "0,1", "--checkpoint", "csf") == 0
+    assert result(capsys)["deployment"] == preferred["deployment"]
+    # NVFP4-Spark stays selectable on the same image, as its own deployment.
+    assert install(ring8, "--profile", GLM_TP2, "--on", "0,1", "--checkpoint", "nvfp4-spark") == 0
+    spark = result(capsys)
+    assert spark["deployment"] != preferred["deployment"]
+    assert lock_of(spark)["selection"]["model_repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark"
+    command = list(installer.specifications(lock_of(spark), only_rank=0)[0].command)
+    assert command[command.index("--quantization") + 1] == "modelopt_mixed"
+    # An image whose vLLM cannot read it installs NVFP4-Spark without a name, the same request as naming
+    # nvfp4-spark there, and refuses the name csf before any Spark changes.
+    plain = image_lock_file(tmp_path, pins=("lil-image-aba309e4610c",))
+    assert install(ring8, "--profile", GLM_TP2, "--on", "2,3", lock=plain) == 0
+    other = result(capsys)
+    assert lock_of(other)["selection"]["target_variant"] == "nvfp4-spark"
+    assert "--checkpoint" not in other["checkpoint"]["command"]
+    assert install(ring8, "--profile", GLM_TP2, "--on", "2,3", "--checkpoint", "nvfp4-spark", lock=plain) == 0
+    assert result(capsys)["deployment"] == other["deployment"]
+    ops(ring8)
+    assert install(ring8, "--profile", GLM_TP2, "--on", "2,3", "--checkpoint", "csf", lock=plain) == 3
+    refused = result(capsys)
+    assert refused["field"] == "checkpoint_name" and CSF_BUILD in refused["message"]
+    assert ops(ring8) == []
+
+
 def test_an_arc_whose_relaying_spark_lacks_the_hairpin_setting_is_refused(ring8, capsys, monkeypatch):
     value = installer.read(controller.STATE / "cluster.json")
     plan = value["plan"]
@@ -319,9 +355,8 @@ def test_a_profile_of_more_sparks_than_the_fabric_names_the_profiles_that_fit(ma
 # sparkring up, status and down of groups on the ring, each deployment's real
 # operation plan run against simulated Sparks.
 
-@pytest.fixture
-def groups(tmp_path, monkeypatch):
-    """Qwen TP4 on positions 0-3 and DeepSeek TP4 on 4-7, each started by sparkring up --on."""
+def up_ring(tmp_path, monkeypatch):
+    """A recorded eight-Spark ring whose Sparks the real operation plans of sparkring up run against."""
     from runtime.common import distribution
     from runtime.host import discovery
     from runtime.host.test_ring_halves import RingSparks
@@ -341,11 +376,34 @@ def groups(tmp_path, monkeypatch):
     # Up checks the hairpin setting of the Sparks that relay each group's lanes.
     simulated.hairpin = []
     monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: simulated.hairpin.append(placement))
-    lock = image_lock_file(tmp_path)
-    for profile, arc in ((QWEN_TP4, "0-3"), (DEEPSEEK_TP4, "4-7")):
-        assert controller.lifecycle(["up", profile, "--on", arc, "--image-lock", str(lock), "--execute"]) == 0
-    simulated.lock = lock
+    simulated.lock = image_lock_file(tmp_path)
     return simulated
+
+
+@pytest.fixture
+def groups(tmp_path, monkeypatch):
+    """Qwen TP4 on positions 0-3 and DeepSeek TP4 on 4-7, each started by sparkring up --on."""
+    simulated = up_ring(tmp_path, monkeypatch)
+    for profile, arc in ((QWEN_TP4, "0-3"), (DEEPSEEK_TP4, "4-7")):
+        assert controller.lifecycle(["up", profile, "--on", arc, "--image-lock", str(simulated.lock), "--execute"]) == 0
+    return simulated
+
+
+def test_up_creates_the_glm_pair_with_the_checkpoint_its_image_reads(tmp_path, monkeypatch):
+    simulated = up_ring(tmp_path, monkeypatch)
+    plain = image_lock_file(tmp_path, pins=("lil-image-aba309e4610c",))
+    expected = {(0, 1): (simulated.lock, "csf", "GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"),
+                (2, 3): (plain, "nvfp4-spark", "GLM-5.3-Flash-NVFP4-Spark")}
+    for arc, (lock, variant, name) in expected.items():
+        on = ",".join(map(str, arc))
+        assert controller.lifecycle(["up", GLM_TP2, "--on", on, "--image-lock", str(lock), "--plan"]) == 0
+        directory = controller.deployment_directory(GLM_TP2, placement.instance_label(arc))
+        value = installer.read(directory / "deployment.lock.json")
+        assert value["selection"]["target_variant"] == variant
+        assert value["selection"]["model_repository"] == "local-inference-lab/" + name
+        # Every rank uses the cluster's checkpoint directory of that checkpoint's revision.
+        assert {row["model"] for row in value["site"]["ranks"]} == {
+            installer.checkpoint_directory(installer.read(controller.STATE / "cluster.json"), value["selection"])}
 
 
 def test_status_prints_one_block_per_group_with_its_own_api(groups, capsys):

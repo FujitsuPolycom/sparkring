@@ -117,7 +117,8 @@ python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/q
   same containers; a deployment rendered without them keeps its ID. The
   profile's default checkpoint, by name or alias, selects the deployment
   without `--checkpoint`. `render` prints a warning for a KV cache above the
-  profile's value, as `sparkring install` does.
+  profile's value, as `sparkring install` does, and refuses a checkpoint that
+  its image's vLLM cannot read, such as the GLM profiles' `csf`.
 - `check` runs `docker compose config` locally, with `.env` loading disabled
   and literal `$` signs escaped, and compares every resolved setting with the
   specification: arguments, image, environment, GPU reservation, RDMA devices,

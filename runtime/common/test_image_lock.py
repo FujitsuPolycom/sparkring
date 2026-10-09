@@ -245,3 +245,40 @@ def test_a_libsircl_layer_that_disagrees_with_itself_is_refused(edit, message):
     edit(block)
     with pytest.raises(ValueError, match=message):
         image_lock.validate_libsircl(block)
+
+
+CSF_PINS = ["lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"]
+GLM_PROFILES = ("glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4")
+
+
+@pytest.mark.parametrize("profile", GLM_PROFILES)
+def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_it(profile):
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
+    assert image_lock.preferred_checkpoint(pinned, profile) == "csf"
+    # The default image, a SIRCL image of another vLLM build and the lock's v2 view keep the default checkpoint.
+    for value in (installer_image.default_lock(), sircl_lock(), image_lock.v2_view(pinned)):
+        assert image_lock.preferred_checkpoint(value, profile) is None
+    from runtime.common import setup
+    card = setup.selection(profile, "csf")
+    assert {key: card[key] for key in CSF if key != "target_variant"} == {
+        key: value for key, value in CSF.items() if key != "target_variant"}
+    assert image_lock.checkpoint_problem(pinned, card) is None
+    assert "(--checkpoint csf)" in image_lock.checkpoint_problem(installer_image.default_lock(), card)
+
+
+def test_a_preferred_checkpoint_is_one_that_only_some_vllm_builds_read():
+    from runtime.common import profiles, qwen_flash_next, setup
+    preferring = []
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
+    for profile in sorted({*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY}):
+        card = setup.selection(profile)
+        name = qwen_flash_next.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
+        if name is None:
+            assert image_lock.preferred_checkpoint(pinned, profile) is None
+            continue
+        preferring.append(profile)
+        preferred = setup.selection(profile, name)
+        # Otherwise every image would install it and it would be the profile's default.
+        assert f"{preferred['model_repository']}@{preferred['model_revision']}" in image_lock.CHECKPOINT_BUILDS
+        assert image_lock.checkpoint_problem(installer_image.default_lock(), card) is None
+    assert preferring == list(GLM_PROFILES)

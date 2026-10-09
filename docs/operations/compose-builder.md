@@ -104,6 +104,9 @@ repeats the status of each model it installs. Statuses use the labels of the
 - The labels are not in the profiles' configurations: the deployment identity
   covers every checkpoint entry there, so a label would make each deployment
   of the profile another deployment.
+- A checkpoint that only some vLLM builds read, such as the GLM profiles'
+  `csf`, has a card only on an image that reads it; the page lists no such
+  image.
 
 ## Commands
 

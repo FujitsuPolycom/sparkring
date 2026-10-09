@@ -418,7 +418,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, the default image among them | MTP3 |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
@@ -431,9 +431,14 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   two and four Sparks and the GLM-5.3-Flash profiles of two and four Sparks
   also install other checkpoints
   ([Another checkpoint of a profile](#another-checkpoint-of-a-profile)).
-  `glm53-flash-csf-tp8` needs an image whose vLLM is SIRCL's pinned build
-  `sparkring-kraken-beta-20261007-bc9ea774`, listed in the lock's
-  `sircl.vllm_pins`; the installer refuses it on any other image.
+- The GLM-5.3-Flash CSF checkpoint needs an image whose vLLM is SIRCL's
+  pinned build `sparkring-kraken-beta-20261007-bc9ea774`, listed in the
+  lock's `sircl.vllm_pins`, such as the image that the
+  [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+  builds. On such an image the GLM-5.3-Flash profiles of two and four Sparks
+  install it without `--checkpoint`; on every other image, including the
+  default image, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
+  the CSF checkpoint, and the installer refuses it on any other image.
 - All installer profiles run with SparkCache off and vLLM's native prefix
   cache on.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
@@ -2144,7 +2149,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
-| GLM-5.3-Flash CSF (eight Sparks), `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
+| GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
 
 The derived Qwen checkpoint, `--checkpoint qad-step5500-mxfp8-attention`,
@@ -2426,6 +2431,20 @@ listed one with the settings it needs, as its own deployment with its own
 pinned revision and checkpoint directory; an unlisted name changes nothing.
 Installing again without `--checkpoint` switches back to the default.
 
+The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
+`--checkpoint`, an image whose vLLM reads the CSF checkpoint installs `csf`,
+and every other image, including the default image, installs `nvfp4-spark`.
+`--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
+`--checkpoint csf` on an image that cannot read it is refused before any
+Spark changes. `sparkring images` does not list the image of the
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
+which reads it; its lock is selected with `--image-lock`:
+
+```bash
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK --checkpoint nvfp4-spark
+```
+
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
@@ -2440,9 +2459,11 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
-| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default on an image that cannot read `csf`) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
-| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default on an image that cannot read `csf`) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode; the draft's experts on the Marlin MoE backend instead of Humming; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
@@ -2524,6 +2545,28 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
+- The `csf` entries of both GLM profiles are **research-only**: no
+  installation of either has run on Sparks. Their quantization, loader, W4A16
+  decode and draft MoE backend are those of `glm53-flash-csf-tp8`
+  ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
+  SIRCL's serve launcher served this checkpoint with the pair profile's
+  10 GiB of KV cache and 1,048,576-token context window, the same
+  quantization, loader and draft backend and the CSF source overlay instead
+  of the image's sources, and its check passed
+  ([measured results](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#measured-results));
+  that row records no change to the profile's environment, which does not
+  force W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=0`). By their pin manifests the
+  CSF weights take 2.3 GiB less than NVFP4-Spark's on each Spark of a ring
+  and 4.6 GiB less on each Spark of a pair. The ring's entry takes the 37 GiB
+  of KV cache of the QAD entry and of the eight-Spark profile, 3 GiB less
+  than NVFP4-Spark's; the pair's entry keeps the pair's 10 GiB. Neither has a
+  measured KV capacity or host memory headroom.
+- Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
+  repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1`,
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` and
+  `B12X_W4A16_SMALL_M_OCCUPANCY=2`. A checkpoint entry changes only
+  variables the profile already sets, and these profiles set none of the
+  three, so `csf` runs without them, as `glm53-flash-csf-tp8` does.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its

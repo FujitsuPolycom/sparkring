@@ -48,6 +48,10 @@ with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-
 0.7.6 on installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`
 ([all results, 16K–128K](performance/records/images/dev-20261004-kraken-matrix-20261004.md)).
 \* The two-Spark GLM profile serves 8 requests at a time.
+On an image whose vLLM reads Local Inference Lab's
+[CSF checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD),
+the GLM profiles install it instead; it has no measurements here
+([default checkpoint by profile](profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
 
 Four Experimental profiles serve on all eight Sparks of an eight-Spark ring
 (`glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,
