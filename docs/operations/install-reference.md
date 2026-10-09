@@ -493,6 +493,7 @@ A deployment's collectives run on one of these transports:
 |---|---|---|
 | `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
 | `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+| `nccl`, vLLM's PyNccl alone | Any installer image, on a recorded fabric, on a group NCCL's cabling rule holds for: a cabled pair or a whole cycle; only with `--transport nccl` | Every collective; on a whole cycle with NCCL's ring settings |
 | `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
 
 `sudo sparkring install` chooses `sircl` wherever it can run and says so
@@ -502,6 +503,12 @@ the transports each image carries.
 
 - `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
   with the reason where it cannot run; nothing changes.
+- `--transport nccl` runs every collective on vLLM's PyNccl with SIRCL and
+  the RoCEnante slot off. Each rank's `NCCL_IB_HCA` names the RDMA devices
+  of its own lanes from the fabric document; a group whose ranks reach each
+  other through relays, such as four Sparks of a ring of eight, is refused.
+  It writes no SIRCL receipts, so the transport verdict names the backend
+  only.
 - `--transport libsircl` runs vLLM's PyNccl on libsircl, SIRCL's
   NCCL-compatible C library, with SIRCL's adapter and RoCEnante off. It is
   research-only and never the default; it runs on pairs, paths and whole
@@ -551,6 +558,24 @@ row that sets fewer link slots or a smaller link slot than the table's is
 refused. The row's settings reach the tensor-parallel session only. A table's marks of where NCCL measured faster never route a call to
 NCCL. Without a table or a row setting, a session takes twice its ranks in link
 slots, at least 8.
+
+A table's rows apply only to sessions of the SIRCL build it names (`sircl`:
+version and ABI). The default table names SIRCL 0.2.0, the build its rows
+were measured with; on an image whose SIRCL layer is another version, such as
+0.3.0, no default row applies, the sessions derive their own settings, and
+the plan says `the default table is for another SIRCL build`.
+
+A profile's environment can also set SIRCL session variables. The two- and
+four-Spark GLM-5.3-Flash, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash profiles
+and the four-Spark Swift profile set SIRCL's ring schedules for large
+all-reduces, all-gathers and reduce-scatters with a 64 KiB one-shot limit and
+1 MiB link pieces and slot
+([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+They reach the session where the tuning row leaves a variable unset; a
+profile setting below what a mounted SIRCL table needs is refused, as a row's
+is. The `nccl` and `libsircl` transports drop the profile's `SIRCL_*`
+variables (`SIRCL_ENABLED` excepted), and the prepared transport reads none
+of them.
 
 `sudo sparkring fabric tune` measures this fabric and writes
 `/var/lib/sparkring/controller/sircl-tuning.json`
@@ -2460,10 +2485,10 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default on an image that cannot read `csf`) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
-| `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
+| `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) with two CTAs per SM for small-M experts (`B12X_W4A16_SMALL_M_OCCUPANCY=2`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default on an image that cannot read `csf`) | GLM-5.3-Flash NVFP4-Spark, as above | — |
-| `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode; the draft's experts on the Marlin MoE backend instead of Humming; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
+| `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode with two CTAs per SM for small-M experts; KDA prefill coalescing (`VLLM_B12X_KDA_PREFILL_COALESCING=1`); the draft's experts on the Marlin MoE backend instead of Humming, with the four-Spark profile's draft tensor parallelism, probabilistic draft sampling and standard rejection; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
@@ -2561,12 +2586,14 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   of KV cache of the QAD entry and of the eight-Spark profile, 3 GiB less
   than NVFP4-Spark's; the pair's entry keeps the pair's 10 GiB. Neither has a
   measured KV capacity or host memory headroom.
-- Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
-  repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1`,
-  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` and
-  `B12X_W4A16_SMALL_M_OCCUPANCY=2`. A checkpoint entry changes only
-  variables the profile already sets, and these profiles set none of the
-  three, so `csf` runs without them, as `glm53-flash-csf-tp8` does.
+- The serving A/B runner measured the `csf` entries' settings, with SIRCL's
+  ring schedules, on a pair and on a path of four Sparks of a ring of eight
+  ([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+  Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
+  repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1` and
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`. A checkpoint entry changes only
+  variables the profile already sets, and these profiles set neither, so
+  `csf` runs without them, as `glm53-flash-csf-tp8` does.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its

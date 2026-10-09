@@ -1,0 +1,63 @@
+{
+ "arms": [
+  "S"
+ ],
+ "context_limit": 262144,
+ "dcp": 1,
+ "deviations": [
+  "checkpoint qad-step5500-mxfp8-attention (the profile's default: qad-step5500-ple1000)"
+ ],
+ "image": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+ "image_lock": {
+  "name": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034",
+  "sha256": "e7281985ac51e45ce5c4ea8583c389a5dd3b46508cda77c09d1d829290834ee4"
+ },
+ "metrics": "phase1",
+ "model": {
+  "config_sha256": "cea126321b72fd8a54d942e60a3922bdeaa105ce2211df6aa2da38104c5f5043",
+  "index_sha256": "29240d1afce0c936839f82cdc9679586fe061de2649526e068ecf6aee0f92f4c",
+  "repository": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention",
+  "revision": "648b194a96e5f130ab62702113242d8e1ddd6e76"
+ },
+ "nccl_auto_policy": null,
+ "order": [
+  [
+   "W-S",
+   "S",
+   true
+  ],
+  [
+   "S1",
+   "S",
+   false
+  ],
+  [
+   "S2",
+   "S",
+   false
+  ]
+ ],
+ "overrides": {
+  "environment": {},
+  "vllm_arguments": {}
+ },
+ "positions": [
+  6,
+  7
+ ],
+ "profile": "qwen38-flash-next-tp2",
+ "roce_slot": false,
+ "run_id": "mx-qwen-tp2",
+ "schema": "serving-ab-plan/v1",
+ "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2",
+ "sircl_env": {
+  "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_GATHER_SCHEDULE": "ring",
+  "SIRCL_LARGE_SCHEDULE": "ring",
+  "SIRCL_LINK_SLOT_BYTES": "1048576",
+  "SIRCL_ONESHOT_MAX_BYTES": "65536",
+  "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_SCHEDULE": "ring"
+ }
+}

@@ -114,6 +114,15 @@ services:
       OMP_NUM_THREADS: '16'
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SIRCL_ENABLED: '0'
+      SIRCL_FUSED_NORM: '1'
+      SIRCL_GATHER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_GATHER_SCHEDULE: ring
+      SIRCL_LARGE_SCHEDULE: ring
+      SIRCL_LINK_SLOT_BYTES: '1048576'
+      SIRCL_ONESHOT_MAX_BYTES: '65536'
+      SIRCL_REDUCE_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_SCHEDULE: ring
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
@@ -149,7 +158,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-aba309e4610c-dba1be0a40aa
     labels:
-      io.sparkring.deployment: 6846fb61c83086661eed9a6cd030dc2968c94c9b9029267cfec55d429fb6d7e9
+      io.sparkring.deployment: 5d6cf6ba25b1127440e83dcc903cc65839d52f408039d79f4fef1e5bcbd7597d
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

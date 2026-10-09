@@ -57,6 +57,10 @@ STATUS_ORDER = ("missing", "needs-port", "refused-here", "enabled")
 TRANSPORTS = ("prepared", "sircl", "libsircl")
 # Topologies whose ranks reach each other through relays: only SIRCL ring sessions run them.
 RELAYED = profile_catalog.RELAYED
+# Variables that SIRCL's adapter and serve launcher set on every container they run on SIRCL ring sessions. A
+# profile's own SIRCL session settings (schedules, link sizes, the one-shot limit) take effect only where its
+# deployment runs SIRCL, so they do not show which transport a deployment uses.
+SIRCL_MARKERS = ("SIRCL_MODE", "SIRCL_FABRIC", "SIRCL_RANK_POSITIONS")
 
 TOP_KEYS = {"schema", "purpose", "related", "categories", "sides", "statuses", "images", "checks",
             "enhancements", "not_adopted"}
@@ -204,8 +208,8 @@ def infer_transport(environment: dict[str, str], topology: str | None, image: di
     plugins = [part.strip() for part in environment.get("VLLM_PLUGINS", "").split(",")]
     if "libsircl" in environment.get("VLLM_NCCL_SO_PATH", "") or "libsircl" in plugins:
         return "libsircl", "vLLM's NCCL library is libsircl"
-    if "sircl" in plugins or any(key.startswith("SIRCL_") for key in environment):
-        return "sircl", "the environment configures SIRCL"
+    if "sircl" in plugins or any(key in environment for key in SIRCL_MARKERS):
+        return "sircl", "the environment runs SIRCL's adapter"
     if topology in RELAYED:
         return "sircl", f"only SIRCL ring sessions run topology {topology}"
     if image and "sircl" in image["transports"]:

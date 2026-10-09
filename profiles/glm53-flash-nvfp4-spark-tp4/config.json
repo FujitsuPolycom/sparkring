@@ -61,7 +61,8 @@
         "--load-format": "nvfp4_csf"
       },
       "environment": {
-        "VLLM_B12X_MOE_FP4_FORCE_A16": "1"
+        "VLLM_B12X_MOE_FP4_FORCE_A16": "1",
+        "B12X_W4A16_SMALL_M_OCCUPANCY": "2"
       },
       "speculative": {
         "moe_backend": "marlin"
@@ -132,7 +133,16 @@
     "VLLM_B12X_MOE_FP4_FORCE_A16": "0",
     "VLLM_ALLREDUCE_USE_FLASHINFER": "0",
     "VLLM_ALLREDUCE_USE_SYMM_MEM": "0",
-    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0"
+    "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
+    "B12X_W4A16_SMALL_M_OCCUPANCY": "1",
+    "SIRCL_LARGE_SCHEDULE": "ring",
+    "SIRCL_GATHER_SCHEDULE": "ring",
+    "SIRCL_SCATTER_SCHEDULE": "ring",
+    "SIRCL_ONESHOT_MAX_BYTES": "65536",
+    "SIRCL_LINK_SLOT_BYTES": "1048576",
+    "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+    "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+    "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"
   },
   "vllm_args": [
     "--tensor-parallel-size",

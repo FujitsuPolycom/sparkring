@@ -136,6 +136,14 @@ services:
       QWEN_DISPATCH_MODE: both
       QWEN_DISPATCH_TRACE: '0'
       SIRCL_ENABLED: '0'
+      SIRCL_GATHER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_GATHER_SCHEDULE: ring
+      SIRCL_LARGE_SCHEDULE: ring
+      SIRCL_LINK_SLOT_BYTES: '1048576'
+      SIRCL_ONESHOT_MAX_BYTES: '65536'
+      SIRCL_REDUCE_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_SCHEDULE: ring
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: qwen-collectives,qwen4-prefill
@@ -176,7 +184,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-aba309e4610c-3ff0520224f2
     labels:
-      io.sparkring.deployment: 93ae9fbb74525c8ec94ae1d195c24ec14480c740f311a929c6e05a43554e83f1
+      io.sparkring.deployment: 206c5e6c408244e5bb41c344671803af0d97a18187ad11a011854882942171c8
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

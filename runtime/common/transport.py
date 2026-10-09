@@ -1072,6 +1072,11 @@ def environment(value, profile_environment, arguments):
         _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {session_table(value)['hash']}, "
                                 f"whose choices need more than the tuning row {value['tuning']['row']} sets: "
                                 + ", ".join(conflicts))
+        # The profile's own SIRCL settings reach the session as well, where the row leaves them unset.
+        own = {key: item for key, item in profile_environment.items() if key.startswith("SIRCL_") and key not in common}
+        conflicts = sircl_tuning.settings_conflicts(taken, own)
+        _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {session_table(value)['hash']}, "
+                                "whose choices need more than the profile's environment sets: " + ", ".join(conflicts))
     return common, effective
 
 

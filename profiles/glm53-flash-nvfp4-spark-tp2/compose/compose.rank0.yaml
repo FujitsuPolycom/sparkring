@@ -54,6 +54,7 @@ services:
     - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X"}'
     - --compilation-config
     - '{"mode":0,"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32],"max_cudagraph_capture_size":32}'
+    - --async-scheduling
     - --pipeline-parallel-size
     - '1'
     - --decode-context-parallel-size
@@ -110,6 +111,7 @@ services:
       B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
       B12X_ROCE_PAIR_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 1=0/1
+      B12X_W4A16_SMALL_M_OCCUPANCY: '1'
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
@@ -138,6 +140,14 @@ services:
       OMP_NUM_THREADS: '16'
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SIRCL_ENABLED: '0'
+      SIRCL_GATHER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_GATHER_SCHEDULE: ring
+      SIRCL_LARGE_SCHEDULE: ring
+      SIRCL_LINK_SLOT_BYTES: '1048576'
+      SIRCL_ONESHOT_MAX_BYTES: '65536'
+      SIRCL_REDUCE_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_LINK_CHUNK_BYTES: '1048576'
+      SIRCL_SCATTER_SCHEDULE: ring
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
@@ -151,6 +161,7 @@ services:
       TVM_FFI_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/tvm-ffi
       VLLM_ALLREDUCE_USE_FLASHINFER: '0'
       VLLM_ALLREDUCE_USE_SYMM_MEM: '0'
+      VLLM_B12X_KDA_PREFILL_COALESCING: '0'
       VLLM_B12X_MLA_CKV_GATHER: auto
       VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: '524288'
       VLLM_B12X_MOE_FP4_FORCE_A16: '0'
@@ -175,7 +186,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: 4b1da7334328f1fd91bd628677f52ca338c42827fdcb7ac8556ee1cd388829e6
+      io.sparkring.deployment: d679eb02926f7b5f467ec8c9175395b06fe551700cdc0ba744caee24355241cc
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

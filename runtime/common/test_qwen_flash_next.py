@@ -276,6 +276,11 @@ def test_the_nvidia_checkpoint_runs_modelopt_nvfp4_with_the_safetensors_loader()
     assert worker.command[-1] == "--headless" and worker.name == "glm53-flash-nvfp4-spark-tp4-r3"
 
 
+# SIRCL's ring-schedule session settings that the Qwen and GLM-5.3-Flash two- and four-Spark profiles carry.
+SIRCL_RING_SCHEDULES = {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring",
+                        "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576",
+                        "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+                        "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
 CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
              "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
              "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
@@ -283,6 +288,16 @@ CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QA
 GLM_TP8 = ROOT / "profiles/glm53-flash-csf-tp8/config.json"
 CACHE_VARIABLES = {"XDG_CACHE_HOME", "VLLM_CACHE_ROOT", "TRITON_CACHE_DIR", "B12X_COMPILE_CACHE_DIR",
                    "CUTE_DSL_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"}
+
+
+@pytest.mark.parametrize("profile", ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "qwen38-flash-next-tp2",
+                                     "qwen38-flash-next-qad-tp4", "swift15-qwen38-flash-next-tp4",
+                                     "deepseek-v41-flash-tp4"])
+def test_two_and_four_spark_profiles_carry_sircls_ring_schedules(profile):
+    """The measured ring-schedule settings take effect only where the deployment runs SIRCL ring sessions: the
+    nccl transport and libsircl drop every SIRCL_* variable, and the prepared transport reads none."""
+    environment = adapter.read(ROOT / "profiles" / profile / "config.json")["environment"]
+    assert {key: environment.get(key) for key in SIRCL_RING_SCHEDULES} == SIRCL_RING_SCHEDULES
 
 
 @pytest.mark.parametrize("path, nodes, kv_gib", [(GLM_TP4, 4, 37), (GLM_TP2, 2, 10)])
@@ -298,15 +313,29 @@ def test_the_glm_csf_checkpoint_runs_the_eight_spark_profiles_quantization_loade
         for flag in ("--quantization", "--load-format"):
             assert command[command.index(flag) + 1] == eight["vllm_args"][eight["vllm_args"].index(flag) + 1] == (
                 "nvfp4_csf")
-        # W4A16 decode, as the eight-Spark profile sets it; every other variable but the
-        # revision-keyed cache paths is the profile's own.
+        # W4A16 decode, as the eight-Spark profile sets it, with two CTAs per SM for small-M experts, as the
+        # measured CSF configurations ran (performance/records/images/
+        # dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md); on two Sparks also KDA prefill
+        # coalescing. Every other variable but the revision-keyed cache paths is the profile's own.
         assert spec.environment["VLLM_B12X_MOE_FP4_FORCE_A16"] == eight["environment"]["VLLM_B12X_MOE_FP4_FORCE_A16"]
-        assert {key for key, value in spec.environment.items() if default_spec.environment.get(key) != value} == {
-            "VLLM_B12X_MOE_FP4_FORCE_A16", *CACHE_VARIABLES}
+        assert (spec.environment["B12X_W4A16_SMALL_M_OCCUPANCY"], default_spec.environment[
+            "B12X_W4A16_SMALL_M_OCCUPANCY"]) == ("2", "1")
+        changed_environment = {"VLLM_B12X_MOE_FP4_FORCE_A16", "B12X_W4A16_SMALL_M_OCCUPANCY", *CACHE_VARIABLES}
+        if nodes == 2:
+            assert (spec.environment["VLLM_B12X_KDA_PREFILL_COALESCING"], default_spec.environment[
+                "VLLM_B12X_KDA_PREFILL_COALESCING"]) == ("1", "0")
+            changed_environment.add("VLLM_B12X_KDA_PREFILL_COALESCING")
+        assert {key for key, value in spec.environment.items() if default_spec.environment.get(key) != value} == (
+            changed_environment)
         assert set(spec.environment) == set(default_spec.environment)
-        # The draft's experts run on Marlin, as in the eight-Spark profile.
+        # The draft's experts run on Marlin, as in the eight-Spark profile; on two Sparks the draft also runs
+        # tensor-parallel with probabilistic draft sampling and standard rejection, as the four-Spark profile's.
         draft = json.loads(command[command.index("--speculative-config") + 1])
-        assert draft == {**json.loads(default[default.index("--speculative-config") + 1]), "moe_backend": "marlin"}
+        drafted = {"moe_backend": "marlin"}
+        if nodes == 2:
+            drafted.update(draft_tensor_parallel_size=2, kv_cache_dtype="auto", draft_sample_method="probabilistic",
+                           rejection_sample_method="standard")
+        assert draft == {**json.loads(default[default.index("--speculative-config") + 1]), **drafted}
         assert command[command.index("--kv-cache-memory-bytes") + 1] == str(kv_gib * 2**30)
         assert command[command.index("--max-model-len") + 1] == "1048576"
         changed = ["--served-model-name", "--speculative-config", "--quantization", "--load-format"]
@@ -675,6 +704,10 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
         # Two Sparks cannot keep the 95.4 GiB BF16 PLE table resident beside the other weights and KV.
         del expected["VLLM_PLE_CPU_OFFLOAD"]
         expected["VLLM_PLE_TABLE_MEMORY"] = "disk"
+        # SIRCL's ring-schedule settings: no Swift measurement on a pair supports them (catalog entry
+        # sircl-ring-schedules-pair); on four Sparks they were measured (sircl-ring-schedules-path4).
+        for key in SIRCL_RING_SCHEDULES:
+            del expected[key]
     assert swift["environment"] == expected
     args, expected_args = list(swift["vllm_args"]), list(qwen["vllm_args"])
     expected_args[expected_args.index("--master-port") + 1] = master_port

@@ -102,6 +102,10 @@ INDEPENDENT_TRANSPORTS_OFF = {
     "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
 }
 CUSTOM_ALL_REDUCE_OFF = "--disable-custom-all-reduce"
+# A profile's SIRCL_* variables tune SIRCL's own ring sessions (schedules, link sizes, the one-shot limit, the
+# fused norm). libsircl reads several of the same variables, and no libsircl measurement ran with them, so its
+# containers do not take them; SIRCL_ENABLED, which the prepared images read, stays as the profile sets it.
+PROFILE_SIRCL_KEPT = ("SIRCL_ENABLED",)
 SECTION_FIELDS = {"schema", "backend", "status", "image", "fabric", "group", "devices", "routes", "planner",
                   "libsircl"}
 GROUP_FIELDS = {"layout", "positions", "shape", "size", "name", "max_relays", "lanes", "cabling"}
@@ -488,8 +492,10 @@ def adapt(specs, lock):
         owned = owned_settings(spec.environment)
         _require(not owned, f"rank {rank}: the profile sets {owned}, which the libsircl transport owns")
         _require(spec.environment.get("VLLM_HOST_IP"), f"rank {rank}'s container names no VLLM_HOST_IP")
+        profile = {key: item for key, item in spec.environment.items()
+                   if not key.startswith("SIRCL_") or key in PROFILE_SIRCL_KEPT}
         # The address a rank publishes in the unique id of a communicator it roots: its own bootstrap address.
-        settings = {**spec.environment, **common, **value["routes"][rank],
+        settings = {**profile, **common, **value["routes"][rank],
                     "SIRCL_BOOTSTRAP_ADDR": spec.environment["VLLM_HOST_IP"]}
         settings["VLLM_PLUGINS"] = plugins(settings.get("VLLM_PLUGINS", ""))
         mounts = (*spec.mounts, Bind(transport.receipt_directory(lock), transport.RECEIPT_TARGET, False))
