@@ -78,8 +78,8 @@ def bundle(site_path: str, positions: list[int], run_id: str, nccl: str, args, s
         for flag in ("capacity", "dispatch"):
             if getattr(args, flag):
                 command += [f"--{flag}", str(getattr(args, flag))]
-        if args.tuning_table:
-            command += ["--tuning-table", args.tuning_table]
+        for table in args.tuning_table:
+            command += ["--tuning-table", table]
         if fused_norm:
             command += ["--fused-norm", "on"]
     if stage:
@@ -133,9 +133,10 @@ def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) ->
     Returns it, for the checkpoint search and the plan, and the deviations. The containers render from the
     unchanged profile (the adapter refuses any other) with ``checkpoint`` passed on, which applies that entry
     of the profile's checkpoint table as the installer's ``--checkpoint`` does
-    (qwen_flash_next.checkpoint_settings: its model and pinned settings). ``model_of`` takes only another
-    profile's pinned model (repository, revision, config and index digests): the containers mount that
-    checkpoint copy, and the arguments it needs are given with --set-arg and --set-env.
+    (qwen_flash_next.checkpoint_settings: its model and pinned settings). ``model_of`` (``PROFILE`` or
+    ``PROFILE:CHECKPOINT``) takes only the pinned model (repository, revision, config and index digests) of
+    another profile or of an entry of its checkpoint table: the containers mount that checkpoint copy, and
+    the arguments it needs are given with --set-arg and --set-env.
     """
     deviations = []
     if checkpoint:
@@ -143,10 +144,12 @@ def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) ->
         profile = qwen_flash_next.checkpoint_settings(profile, checkpoint)
         deviations.append(f"checkpoint {checkpoint} (the profile's default: {default})")
     if model_of:
-        other, _ = profile_config(model_of)
+        name, _, entry = model_of.partition(":")
+        other, _ = profile_config(name)
+        model = qwen_flash_next.checkpoint_settings(other, entry)["model"] if entry else other["model"]
         before = profile["model"]
-        profile = dict(profile, model=dict(other["model"]))
-        deviations.append(f"model {other['model']['repository']}@{other['model']['revision'][:12]} of {model_of} "
+        profile = dict(profile, model=dict(model))
+        deviations.append(f"model {model['repository']}@{model['revision'][:12]} of {model_of} "
                           f"(the profile's: {before['repository']}@{before['revision'][:12]})")
     return profile, deviations
 
@@ -216,8 +219,13 @@ def build_plan(args) -> dict:
     master = sparks[0].lan_address
     lock = json.loads(Path(args.image_lock).read_text(encoding="utf-8"))
     view = image_lock.v2_view(lock)
+    unlisted = []
     if args.profile not in view["profiles"]:
-        raise SystemExit(f"the image lock {lock['name']} does not list {args.profile}")
+        if not args.unlisted_profile:
+            raise SystemExit(f"the image lock {lock['name']} does not list {args.profile}")
+        # Research only: the lock's profiles are those the installer admitted when it recorded the image; a
+        # profile it did not admit can still be rendered and served here, and the plan says so.
+        unlisted.append(f"profile {args.profile} is not admitted by image lock {lock['name']} (--unlisted-profile)")
     source_root = f"{site.remote_dir}/serving-ab/source"
     # The installer's container: the profile adapter's specification, adapted to the image lock as the installer
     # runs it on a host (entrypoint, CUDA and NCCL library selection, status plugin, image-scoped caches, the
@@ -231,7 +239,7 @@ def build_plan(args) -> dict:
                  view, profile_id=args.profile, source_root=source_root))
              for r, spark in enumerate(sparks)]
     deviations, dcp = decode_context(served, bases, args.dcp_size)
-    deviations = chosen + deviations
+    deviations = unlisted + chosen + deviations
     changed, applied = overrides(bases, args.set_arg, args.set_env)
     deviations += changed
     run = args.run_id
@@ -367,6 +375,41 @@ def start(plan: dict, site: remote.Site, arm: str, out: Path) -> None:
     raise RuntimeError(f"arm {arm}: not ready within 3600 s")
 
 
+def post(url: str, body: dict | None = None, timeout: float = 600) -> str:
+    data = json.dumps(body).encode() if body is not None else b""
+    request = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(request, timeout=timeout).read().decode(errors="replace")
+
+
+def profile_capture(plan: dict, site: remote.Site, arm: str, out: Path, tokens: int) -> dict:
+    """Capture vLLM's torch profiler over one one-stream request and copy rank 0's traces.
+
+    The containers must run with VLLM_TORCH_PROFILER_DIR under the cache mount (--set-env
+    VLLM_TORCH_PROFILER_DIR=/cache/torch-profile); /start_profile and /stop_profile switch every worker's
+    profiler, and the traces rank 0's Spark wrote are copied into ``torch-profile-r0.tar``.
+    """
+    spark = site.sparks[plan["positions"][0]]
+    env = spec.environment(plan["commands"][arm][0])
+    folder = env.get("VLLM_TORCH_PROFILER_DIR", "")
+    if not folder.startswith("/cache/"):
+        raise RuntimeError("profiling needs VLLM_TORCH_PROFILER_DIR under /cache (--set-env)")
+    host = plan["caches"][arm] + folder[len("/cache"):]
+    t0 = time.monotonic()
+    post(plan["api"] + "/start_profile")
+    reply = json.loads(post(plan["api"] + "/v1/completions", {
+        "model": plan["served_model_name"], "prompt": "Count from 1 to 400, separated by commas:",
+        "max_tokens": tokens, "temperature": 0, "ignore_eos": True}))
+    post(plan["api"] + "/stop_profile")
+    listing = remote.run(spark, remote.sudo(f"ls -la {host}"), check=False)
+    archive = subprocess.run([*remote.SSH, spark.ssh, remote.sudo(f"tar -C {host} -cf - .")], capture_output=True,
+                             timeout=1800)
+    (out / "torch-profile-r0.tar").write_bytes(archive.stdout)
+    record = {"tokens": tokens, "usage": reply.get("usage"), "seconds": round(time.monotonic() - t0, 1),
+              "host_dir": host, "listing": listing.splitlines(), "tar_bytes": len(archive.stdout)}
+    (out / "profile.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+    return record
+
+
 def name_of(tokens: list[str]) -> str:
     return tokens[tokens.index("--name") + 1]
 
@@ -455,6 +498,10 @@ def run_campaign(args) -> int:
                                     model=plan["served_model_name"], context_limit=plan["context_limit"],
                                     bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics)
             (d / "measure.json").write_text(json.dumps(codes, indent=1), encoding="utf-8")
+            if args.profile_label == label:
+                record = profile_capture(plan, site, arm, d, args.profile_tokens)
+                log(f"{label}: profiled {record['usage']} in {record['seconds']} s; {record['tar_bytes']} bytes of "
+                    "rank 0 traces", out)
             if arm == "S+":
                 after = [verify.fused_calls(r) for r in receipts(plan, site, arm)]
                 (d / "fused-after.json").write_text(json.dumps(after, indent=1), encoding="utf-8")
@@ -496,6 +543,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lock-host", type=int, default=0, help="site position of the lock host (default 0)")
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
+    parser.add_argument("--profile-label", help="after measuring this start, capture vLLM's torch profiler over one "
+                        "one-stream request (needs --set-env VLLM_TORCH_PROFILER_DIR=/cache/...)")
+    parser.add_argument("--profile-tokens", type=int, default=60, help="tokens of the profiled request (default 60)")
+    parser.add_argument("--unlisted-profile", action="store_true",
+                        help="research only: serve a profile the image lock does not list (one the installer did not "
+                             "admit), recorded as a deviation; the lock and its checks are unchanged")
     parser.add_argument("--checkpoint", help="another checkpoint of the profile's table, as the installer's "
                         "--checkpoint applies it; recorded as a deviation")
     parser.add_argument("--model-of", metavar="PROFILE", help="serve another profile's pinned model with this "
@@ -505,7 +558,9 @@ def main(argv: list[str] | None = None) -> int:
                              "(VALUE @PATH reads a file; FLAG alone adds a bare flag)")
     parser.add_argument("--set-env", action="append", default=[], metavar="KEY=VALUE",
                         help="set a container variable in every arm, recorded as a deviation from the profile")
-    parser.add_argument("--tuning-table", help="SIRCL tuning table for the S arms (bundle --tuning-table)")
+    parser.add_argument("--tuning-table", action="append", default=[],
+                        help="SIRCL tuning table for the S arms (bundle --tuning-table; repeatable: each session takes "
+                             "the table whose key matches its group shape, sizes and build)")
     parser.add_argument("--capacity", type=int, help="SIRCL all-reduce capacity of the S arms (bundle --capacity)")
     parser.add_argument("--dispatch", type=int, help="SIRCL dispatch ceiling of the S arms (bundle --dispatch)")
     parser.add_argument("--sircl-env", action="append", default=[], metavar="KEY=VALUE",

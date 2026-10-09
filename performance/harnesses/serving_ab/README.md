@@ -136,6 +136,16 @@ are four greedy 96-token answers compared token by token; prompt logprobs run
 Restarts of one arm need not give identical tokens, so output agreement is
 reported against the same-arm restarts, not as a pass or fail.
 
+## Profiling
+
+`--profile-label LABEL` captures vLLM's torch profiler after that start's
+measurement: `/start_profile`, one one-stream completion of
+`--profile-tokens` tokens (default 60), `/stop_profile`. The containers need
+`--set-env VLLM_TORCH_PROFILER_DIR=/cache/<folder>`, so the traces land in the
+arm's cache directory; rank 0's Spark's traces are copied into the start's
+`torch-profile-r0.tar`, with `profile.json` (the request's usage, the wall
+time and the trace folder's listing).
+
 ## Outputs
 
 `DIR/plan.json`; per start `DIR/<label>/` with the containers' logs and
