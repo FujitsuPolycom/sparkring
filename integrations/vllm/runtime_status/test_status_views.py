@@ -70,7 +70,7 @@ def test_resident_transport_resolves_without_inventing_nccl_defaults():
     doc = observed_fixture()
     view = presentation.summarize(doc)
     rows = {row['label']: row for _, group in view['groups'] for row in group}
-    assert rows['RoCEnante available (TP)']['resolved'] == 'ON'
+    assert rows['RoCE all-reduce adapter (B12X) available (TP)']['resolved'] == 'ON'
     assert rows['RoCE all-reduce size limit']['resolved'] == '2 MiB'
     assert rows['NCCL runtime version (TP)']['resolved'] == '2.32.3'
     assert rows['NCCL algorithm override']['configured'] == 'Not set in environment'
@@ -78,7 +78,7 @@ def test_resident_transport_resolves_without_inventing_nccl_defaults():
     assert rows['NCCL algorithm override']['evidence'] != 'Running worker'
     doc['workers']['ranks'][1]['effective']['tp_roce_hcas']['value'] = 'rdma2,rdma3'
     row = next(row for _, group in presentation.summarize(doc)['groups'] for row in group
-               if row['label'] == 'RoCEnante selected HCAs')
+               if row['label'] == 'Selected HCAs (RoCE adapter)')
     assert row['severity'] != 'bad' and row['resolved'] == 'Differs by node'
 
 
@@ -445,8 +445,33 @@ def test_sircl_is_the_collective_transport_and_the_bundle_is_the_images():
         'role': 'carried_by_image_not_the_active_transport'}
     view = presentation.summarize(doc)
     rows = {row['label']: row for _, group in view['groups'] for row in group}
-    assert rows['Collective transport (TP)']['resolved'] == 'sircl'
+    assert rows['Collective transport (TP)']['resolved'] == 'SIRCL'
     assert rows['SIRCL version (TP)']['resolved'] == '0.3.2'
     items = dict(presentation.identity_items(view))
     assert items['b12x communication bundle in the image'] == 'tp2-rocenante-adaptive-prepared'
     assert 'Transport profile' not in presentation.render_text(doc)
+
+
+def test_the_roce_adapter_rows_name_the_component_and_the_slot_sircl_takes():
+    doc = observed_fixture()
+    view = presentation.summarize(doc)
+    labels = [row['label'] for _, group in view['groups'] for row in group]
+    assert not [label for label in labels if 'RoCEnante' in label]
+    assert {'RoCE all-reduce adapter (B12X) available (TP)', 'Selected HCAs (RoCE adapter)',
+            'GID index (RoCE adapter)', 'PCI domains (RoCE adapter)'} <= set(labels)
+    assert any(presentation.SIRCL_SLOT in note for note in presentation.group_notes('Transport', []))
+    text = presentation.render_text(doc)
+    html = presentation.render_report(doc)[1]
+    for shown in (text, html):
+        assert 'RoCEnante' not in shown
+        assert "When SIRCL is enabled it replaces the RoCE adapter" in shown
+    assert 'Only the network adapters that the RoCE all-reduce adapter (B12X) selected are listed' in html
+
+
+def test_the_collective_transport_shows_its_plain_name():
+    doc = observed_fixture()
+    fact = lambda value: {'state': 'known', 'value': value, 'source': 'resident_rocenante_communicator'}
+    for rank in doc['workers']['ranks']:
+        rank['effective']['tp_collective_transport'] = fact('rocenante')
+    rows = {row['label']: row for _, group in presentation.summarize(doc)['groups'] for row in group}
+    assert rows['Collective transport (TP)']['resolved'] == 'RoCE all-reduce adapter (B12X)'
