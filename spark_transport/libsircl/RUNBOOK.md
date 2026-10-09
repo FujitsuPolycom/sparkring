@@ -45,8 +45,11 @@ names an entry some architecture's cubin lacks stops the build with that entry's
 
 ## 2. GPU emulation on the workstation (EMULATION)
 
-Every command runs inside WSL under the shared GPU lock. `REF` is the SIRCL reference tree's
-`spark_transport/sircl` directory; `LOCK` is the script of that GPU lock.
+Every command runs inside WSL under the workstation's GPU lock. `REF` is this repository's
+`spark_transport/sircl` directory (SIRCL's package, which the emulation imports). `LOCK` is the
+workstation's GPU-lock wrapper: a script that takes an owner name and a command and runs the command while
+it holds the one lock that every GPU job on the workstation takes (here, the owner `sircl-ccl`); a
+workstation with one GPU user can run the commands without it.
 `CUDA_DEVICE_MAX_CONNECTIONS=32` keeps ranks that share one process from serializing on
 the GPU's default eight hardware queues.
 

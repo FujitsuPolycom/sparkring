@@ -298,9 +298,11 @@ and their terms, and every source or binary copy carries `LICENSE`, `NOTICE`, `v
 - The interface follows NVIDIA NCCL's public header `src/nccl.h.in` at tag v2.32.3-1 (Apache-2.0;
   unmodified in `vendor/`, adapted with marked changes in `include/nccl.h`) and the NCCL user guide;
   no NCCL implementation source is used.
-- The SIRCL reference this library follows is a copy of SIRCL's clean-room implementation tree;
-  `SOURCE_SNAPSHOT.json` records its files' SHA-256 hashes. The library's change
-  requests to SIRCL's package stay with the libsircl snapshot and are not vendored.
+- The SIRCL implementation this library follows is SIRCL's package in this repository
+  (`spark_transport/sircl`, `sparkring_sircl` 0.3.1); its tests run against that package
+  (`SIRCL_PACKAGE`). `SOURCE_SNAPSHOT.json` records the SHA-256 of each of the 200 files of the SIRCL tree
+  that the evidence in `STATUS.md` was taken against (captured 2026-10-08 06:00 UTC). A change the
+  library needs inside SIRCL is a change to `spark_transport/sircl`.
 - The RDMA transport contains code from rdma-core's `<infiniband/verbs.h>` inline functions, under the
   OpenIB.org BSD option (`LICENSES/rdma-core-verbs.txt`).
 - The kernel packs a build compiles (`build/packs/*.fatbin`, embedded in the library) contain object code
