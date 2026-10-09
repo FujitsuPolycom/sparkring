@@ -87,6 +87,16 @@
       "description": "The Kraken CSF sources with a SIRCL 0.3.0 layer built from repository commit ee4466b7 and libsircl 0.6.0 (fail-stop, NCCL API 22705); its v3 lock lists twelve profiles and SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. Built with the libsircl layer builder; its lock is not in the repository",
       "evidence": ["docs/architecture/libsircl.md", "private record 2026-10-08: matrix host conditions and image lock"]
     },
+    "glm53-plugins-af06e272": {
+      "label": "GLM-5.3 plugin layer image (af06e272)",
+      "release": null,
+      "image_id": null,
+      "short_id": null,
+      "parent": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The SIRCL 0.3.0 and libsircl image (816c6d6a) with the GLM-5.3 plugin layer of runtime/images/derive_glm53_plugins.py, which adds the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0; image af06e272, whose full ID and lock are not in the repository. A lock that the layer's record writes from the parent's v3 lock lists both plugins in vllm_plugins",
+      "evidence": ["runtime/images/derive_glm53_plugins.py", "profiles/glm53-nvfp4-tp8/README.md"]
+    },
     "shared-2026.09.3": {
       "label": "shared 2026.09.3",
       "release": "runtime/releases/shared-2026.09.3/release.json",
@@ -130,11 +140,12 @@
       "detect": [{"arg": "--linear-backend", "equals": "b12x"}],
       "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
       "status": "implemented",
-      "gain": {"percent": null, "summary": "No A/B measurement is recorded (one started on 2026-10-08). Without the flag, MXFP8 linears took 51 of 93 ms of a GLM-5.3 TP8 decode step: 828 GEMMs at 62 us each at 3 tokens per step"},
+      "gain": {"percent": 61, "summary": "GLM-5.3 TP8/DCP4 with MXFP8 dense linears: 1-stream decode 11.1 -> 17.8 steps/s (+61 %), 26.6 -> 46.0 tok/s at 0K context; without the flag MXFP8 linears took 51 of 93 ms of a decode step"},
       "measurements": [
-        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "decode-step profile without --linear-backend and with MXFP8 linears: FlashInferCutlassMxfp8LinearKernel 51 of 93 ms per step, 828 GEMMs at 62 us each, M = 3 tokens", "evidence": "private record 2026-10-08: GLM-5.3 TP8 decode profile"}
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "decode-step profile without --linear-backend and with MXFP8 linears: FlashInferCutlassMxfp8LinearKernel 51 of 93 ms per step, 828 GEMMs at 62 us each, M = 3 tokens", "evidence": "private record 2026-10-08: GLM-5.3 TP8 decode profile"},
+        {"image": null, "tp": 8, "dcp": 4, "streams": "1", "context": "0", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "--linear-backend b12x against no --linear-backend, with MXFP8 dense linears: decode 11.1 -> 17.8 steps/s (+61 %), 26.6 -> 46.0 tok/s; the image is not recorded with the result", "evidence": "private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B"}
       ],
-      "evidence": ["private record 2026-10-08: GLM-5.3 TP8 decode profile"],
+      "evidence": ["private record 2026-10-08: GLM-5.3 TP8 decode profile", "private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B"],
       "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
     },
     {
@@ -777,22 +788,23 @@
     {
       "id": "glm53-indexer-prefill-split",
       "title": "DSA indexer prefill row split",
-      "description": "Each DCP group scores only its block of a prefill step's DSA indexer rows, and one tensor-parallel all-gather fills in the rest. Implemented as a workspace vLLM general plugin for image aba309e4610c; no SparkRing image carries it.",
+      "description": "Each DCP group scores only its block of a prefill step's DSA indexer rows, and one tensor-parallel all-gather fills in the rest. The vLLM general plugin glm_dsa_indexer_split 1.1.0 (integrations/vllm/glm_dsa_indexer_split), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py); it pins the image files it wraps and refuses other versions.",
       "category": "vllm-plugin",
       "sides": ["prefill"],
       "models": [
         {"name": "GLM-5.3"}
       ],
       "parallelism": {"supported": [{"tp": [8], "dcp": [1, 2, 4]}]},
-      "enable": {"environment": {"GLM_DSA_INDEXER_SPLIT": "1", "GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES": "1"}, "plugin": "glm_dsa_indexer_split 1.0.0 (workspace plugin), after a port"},
+      "enable": {"environment": {"GLM_DSA_INDEXER_SPLIT": "1", "GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES": "1"}, "plugin": "glm_dsa_indexer_split 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM_DSA_INDEXER_SPLIT", "equals": "1"}],
-      "provided_by": {"images": [], "port": "port the workspace plugin glm_dsa_indexer_split 1.0.0 (written for image aba309e4610c) into an image layer, or measure the image's own VLLM_DCP_INDEXER_KEY_GATHER (glm53-dcp-indexer-key-gather) against it"},
+      "provided_by": {"images": ["glm53-plugins-af06e272"]},
       "status": "research-only",
-      "gain": {"percent": 8, "summary": "16K prefill 1,298 -> 1,402 tok/s (+8 %), +9 % at 64K, +8 % at 128K (TTFT -7 to -8 %); decode unchanged; outputs bit-exact"},
+      "gain": {"percent": 7, "summary": "with glm53full_speedups on image af06e272: prefill about +7 % (the set's decode steps/s +10-15 % come from glm53full_speedups); alone, as workspace plugin 1.0.0 on image aba309e4610c: 16K prefill 1,298 -> 1,402 tok/s (+8 %), +9 % at 64K, +8 % at 128K, decode unchanged, outputs bit-exact"},
       "measurements": [
-        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": null, "context": "16K, 64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "16K prefill 1,298 -> 1,400 / 1,402 tok/s, TTFT -6.9 / -7.2 % at 64K / 128K; with full launches 1,404 tok/s, TTFT -8.2 / -7.8 %; two runs per arm", "evidence": "private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B"}
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": null, "context": "16K, 64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "16K prefill 1,298 -> 1,400 / 1,402 tok/s, TTFT -6.9 / -7.2 % at 64K / 128K; with full launches 1,404 tok/s, TTFT -8.2 / -7.8 %; two runs per arm", "evidence": "private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B"},
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
       ],
-      "evidence": ["private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B", "private record 2026-10-08: model-side plugin classification"],
+      "evidence": ["private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
       "profiles": ["glm53-nvfp4-tp8"]
     },
     {
@@ -838,42 +850,45 @@
     {
       "id": "glm53-latent-shard",
       "title": "Latent projection split over TP8",
-      "description": "Splits GLM-5.3's fused q_a/kv_a projection over the eight tensor-parallel ranks with one all-gather instead of computing it on every rank. Implemented in the workspace plugin glm53full_speedups for image aba309e4610c; no SparkRing image carries it.",
+      "description": "Splits GLM-5.3's fused q_a/kv_a projection over the eight tensor-parallel ranks with one all-gather instead of computing it on every rank. Part of the vLLM general plugin glm53full_speedups 1.1.0 (integrations/vllm/glm53full_speedups), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py); it pins the image files it patches and refuses other versions.",
       "category": "vllm-plugin",
       "sides": ["decode"],
       "models": [
         {"name": "GLM-5.3"}
       ],
       "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
-      "enable": {"environment": {"GLM53FULL_LATENT_SHARD": "1"}, "plugin": "glm53full_speedups (workspace plugin), after a port"},
+      "enable": {"environment": {"GLM53FULL_LATENT_SHARD": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM53FULL_LATENT_SHARD", "equals": "1"}],
-      "provided_by": {"images": [], "port": "port the workspace plugin glm53full_speedups (offline-validated against image aba309e4610c) into an image layer"},
+      "provided_by": {"images": ["glm53-plugins-af06e272"]},
       "status": "research-only",
-      "gain": {"percent": null, "summary": "with MTP3, MXFP8 linears and the MTP eh_proj split (glm53-mtp-eh-proj-tp): about 6 % faster together; not measured alone"},
-      "measurements": [],
-      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
+      "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the row-parallel MTP eh_proj and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; not measured alone"},
+      "measurements": [
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
+      ],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
       "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-mtp-eh-proj-tp",
       "title": "Row-parallel MTP eh_proj",
-      "description": "Makes the MTP layer's eh_proj row-parallel over the tensor-parallel ranks instead of replicated. Implemented in the workspace plugin glm53full_speedups for image aba309e4610c; no SparkRing image carries it.",
+      "description": "Makes the MTP layer's eh_proj row-parallel over the tensor-parallel ranks instead of replicated. Part of the vLLM general plugin glm53full_speedups 1.1.0 (integrations/vllm/glm53full_speedups), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py).",
       "category": "vllm-plugin",
       "sides": ["decode"],
       "models": [
         {"name": "GLM-5.3"}
       ],
       "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
-      "enable": {"environment": {"GLM53FULL_EH_PROJ_TP": "1"}, "plugin": "glm53full_speedups (workspace plugin), after a port"},
+      "enable": {"environment": {"GLM53FULL_EH_PROJ_TP": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM53FULL_EH_PROJ_TP", "equals": "1"}],
       "requires": ["glm53-mtp-speculative"],
-      "provided_by": {"images": [], "port": "port the workspace plugin glm53full_speedups (offline-validated against image aba309e4610c) into an image layer"},
+      "provided_by": {"images": ["glm53-plugins-af06e272"]},
       "status": "research-only",
-      "gain": {"percent": 6, "summary": "with MTP3, MXFP8 linears and the latent split (glm53-latent-shard): about 6 % faster together, acceptance 96 / 89 / 72 %"},
+      "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the latent split and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; earlier, with MTP3 and the latent split on image aba309e4610c: about 6 % faster together, acceptance 96 / 89 / 72 %"},
       "measurements": [
-        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP3 + MXFP8 + both splits about 6 % faster", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP3 + MXFP8 + both splits about 6 % faster", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"},
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
       ],
-      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
       "profiles": ["glm53-nvfp4-tp8"]
     },
     {

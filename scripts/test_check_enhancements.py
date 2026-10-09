@@ -281,3 +281,13 @@ def test_command_line(capsys):
     assert ce.main(["no-such-profile"]) == 2
     assert ce.main(["glm53-nvfp4-tp8", "--enabled", "no-such-entry"]) == 2
     assert ce.main(["--validate"]) == 0
+
+
+def test_glm53_tp8_profile_on_the_plugin_layer_image_enables_the_plugin_set(catalog):
+    report = ce.evaluate(catalog, ce.deployment("glm53-nvfp4-tp8", catalog=catalog, image="glm53-plugins-af06e272"))
+    for entry in ("glm53-indexer-prefill-split", "glm53-latent-shard", "glm53-mtp-eh-proj-tp", "b12x-linear-backend"):
+        assert row(report, entry)["status"] == "enabled", entry
+    assert row(report, "b12x-linear-backend")["gain_percent"] == 61
+    # The plugins' parent image does not carry them.
+    parent = ce.evaluate(catalog, ce.deployment("glm53-nvfp4-tp8", catalog=catalog, image=LIBSIRCL_IMAGE))
+    assert row(parent, "glm53-latent-shard")["status"] == "needs-port"
