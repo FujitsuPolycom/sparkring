@@ -263,3 +263,46 @@ def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(
     assert never[never.index("--repository") + 1] == str(cli.ROOT) and never[never.index("--profile") + 1] == (
         "glm53-nvfp4-tp8")
     assert "--profile" not in auto and "--fused-norm" not in never
+
+
+def test_the_nccl_arm_removes_the_sircl_plugin_a_profile_lists():
+    bases = [base(0), base(1)]
+    for tokens in bases:
+        spec.set_env(tokens, "VLLM_PLUGINS", "b12x_loader,sparkring_status,sircl,glm_dsa_indexer_split")
+    env = spec.environment(spec.render_arm("N", bases, **COMMON)[0])
+    assert env["VLLM_PLUGINS"] == "b12x_loader,sparkring_status,glm_dsa_indexer_split"
+    # The SIRCL arms keep it once.
+    s = spec.environment(spec.render_arm("S", [base(0), base(1)], **COMMON)[0])
+    assert s["VLLM_PLUGINS"].split(",").count("sircl") == 1
+
+
+def test_arm_n_is_refused_where_a_decode_context_parallel_group_is_not_cabled(monkeypatch):
+    from types import SimpleNamespace
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({"nccl": "ring", "ranks": []}), "")
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    args = SimpleNamespace(site="site.json", capacity=None, dispatch=None, tuning_table=[], profile="glm53-nvfp4-tp8")
+    # Four consecutive Sparks of a ring of eight: the last and first share no cable.
+    assert "positions [0, 1, 2, 3]" in cli.nccl_dcp_problem(8, list(range(8)), 4)
+    with pytest.raises(SystemExit, match="arm N: decode-context parallelism 4"):
+        cli.nccl_bundle(args, 8, list(range(8)), "run", 4)
+    assert not seen
+    assert cli.nccl_dcp_problem(8, list(range(8)), 2) is None and cli.nccl_dcp_problem(8, list(range(8)), 1) is None
+    # The auto bundle takes the same decode-context parallelism as the SIRCL arms' bundles.
+    cli.nccl_bundle(args, 8, list(range(8)), "run", 2)
+    cli.nccl_bundle(args, 8, [0, 1], "run", 1)
+    with_dcp, without = seen
+    assert with_dcp[with_dcp.index("--dcp-size") + 1] == "2" and with_dcp[with_dcp.index("--nccl") + 1] == "auto"
+    assert "--dcp-size" not in without
+
+
+def test_the_plan_states_that_arm_s_runs_a_fused_norm_the_profile_pins():
+    glm, _ = cli.profile_config("glm53-nvfp4-tp8")
+    assert cli.fused_norm_notes(glm["environment"], ["S", "S+"]) == [
+        "arm S runs SIRCL_FUSED_NORM=1, which the profile pins; arms S and S+ run the same SIRCL switches"]
+    assert cli.fused_norm_notes(glm["environment"], ["S+", "N"]) == []
+    qwen, _ = cli.profile_config("qwen38-flash-next-tp2")
+    assert cli.fused_norm_notes(qwen["environment"], ["S", "S+"]) == []

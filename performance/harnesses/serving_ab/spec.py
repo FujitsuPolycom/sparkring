@@ -38,6 +38,9 @@ LOGGING = {"NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT"}
 NO_PREPARED = {"VLLM_ENABLE_ROCE_ALLREDUCE": "0", "SPARKRING_TRANSPORT_PROFILE": "",
                "SPARKRING_TRANSPORT_MANIFEST_SHA256": "", "SPARK_TP4_ENABLED": "0"}
 NCCL_FROM_AUTO = ("NCCL_IB_HCA", "NCCL_ALGO", "NCCL_SKIP_TREE_CONNECT")
+# SIRCL's vLLM general plugin. A profile that lists it in VLLM_PLUGINS would start SIRCL's communicator in arm N
+# even with every SIRCL_* variable removed, so arm N removes it from the list.
+SIRCL_PLUGIN = "sircl"
 
 
 class SpecError(ValueError):
@@ -154,6 +157,9 @@ def nccl_part(tokens: list[str], auto_part: Mapping) -> list[str]:
         if key in auto_part["environment"]:
             set_env(tokens, key, auto_part["environment"][key])
     drop_env(tokens, "SIRCL_", keep=("SIRCL_ENABLED",))
+    plugins = environment(tokens).get("VLLM_PLUGINS")
+    if plugins is not None:
+        set_env(tokens, "VLLM_PLUGINS", ",".join(p for p in plugins.split(",") if p and p != SIRCL_PLUGIN))
     return tokens
 
 
