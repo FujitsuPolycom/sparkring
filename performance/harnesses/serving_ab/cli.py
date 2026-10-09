@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import shlex
 import subprocess
 import sys
 import time
@@ -251,6 +252,33 @@ def catalog_warnings(commands: dict) -> list[str]:
     return sorted(found)
 
 
+RESERVED_TARGETS = ("/models/target", "/cache", "/sircl")
+
+
+def extra_mounts(bases: list[list[str]], mounts: list[str]) -> tuple[list[str], list[dict]]:
+    """Add ``--mount HOST_PATH=CONTAINER_PATH`` read-only bind mounts to every rank's base command.
+
+    Research only: a profile's container mounts only its target checkpoint and the cache, so a second checkpoint,
+    such as a separate speculative drafter, reaches the containers this way. Both paths must be absolute, and the
+    container path may not be one the runner or the SIRCL bundle mounts. Returns one deviation line per mount and
+    the mounts for the plan.
+    """
+    deviations, applied = [], []
+    for item in mounts:
+        source, sep, target = item.partition("=")
+        if not sep or not source.startswith("/") or not target.startswith("/") or "," in item:
+            raise SystemExit(f"--mount {item!r}: give HOST_PATH=CONTAINER_PATH, both absolute, without commas")
+        if any(target == reserved or target.startswith(reserved + "/") for reserved in RESERVED_TARGETS):
+            raise SystemExit(f"--mount {item!r}: {target} is mounted by the runner or the SIRCL bundle")
+        option = f"type=bind,src={source},dst={target},readonly"
+        for tokens in bases:
+            at = spec.image_index(tokens)
+            tokens[at:at] = ["--mount", option]
+        applied.append({"source": source, "target": target, "readonly": True})
+        deviations.append(f"mount {source} at {target}, read-only (not in the profile)")
+    return deviations, applied
+
+
 def build_plan(args) -> dict:
     site = remote.load_site(args.site)
     positions = positions_of(args.positions)
@@ -303,6 +331,13 @@ def build_plan(args) -> dict:
     deviations = unlisted + chosen + deviations
     changed, applied = overrides(bases, args.set_arg, args.set_env)
     deviations += changed
+    mounted, applied["mounts"] = extra_mounts(bases, args.mount)
+    deviations += mounted
+    for item in applied["mounts"]:
+        for spark in sparks:
+            if remote.run(spark, remote.sudo(f"test -e {shlex.quote(item['source'])} && echo present"),
+                          check=False).strip() != "present":
+                raise SystemExit(f"--mount: {item['source']} is not on {spark.name}")
     run = args.run_id
     bundles = {arm: bundle(args.site, positions, f"{run}-{spec.slug(arm)}", "never", args, fused_norm=arm == "S+",
                            dcp=dcp)
@@ -659,6 +694,9 @@ def main(argv: list[str] | None = None) -> int:
                         help="SIRCL_* variable added to the S arms at the container level, e.g. SIRCL_REDUCE_LINK_BLOCKS=1")
     parser.add_argument("--roce-slot", action="store_true",
                         help="S arms keep VLLM_ENABLE_ROCE_ALLREDUCE=1 so SIRCL's roce_slot shim takes vLLM's RoCE slot")
+    parser.add_argument("--mount", action="append", default=[], metavar="HOST_PATH=CONTAINER_PATH",
+                        help="research only: bind HOST_PATH read-only at CONTAINER_PATH in every rank's container "
+                             "(for example a speculative drafter's checkpoint); recorded as a deviation")
     parser.add_argument("--model-path", action="append", default=[], metavar="POSITION=PATH",
                         help="checkpoint directory of one position instead of discovering it")
     parser.add_argument("--bench-dir", default=str(Path.home() / "llm-inference-bench"),
