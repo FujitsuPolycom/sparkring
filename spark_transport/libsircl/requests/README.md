@@ -10,6 +10,7 @@ they land, by re-vendoring the proxy and porting the kernel change.
 | PO | An externally driven progress loop: `roce_start_external` and `roce_progress` let one thread serve every session of a process (native ABI 10) | edit script, test and landing script ready; checked on a copy of the reference package (below) | `PO/edit_PO.py`, `PO/land_PO.py`, `PO/base.json` |
 | FO | Flags-only own items: bit 24 of a link op word sends every own item of the op as its flags only, for a rank whose peer discards them (native ABI 9 unchanged) | landed in SIRCL's implementation tree after TD (`_roce_proxy.c` SHA-256 `93c65f37...cfa3b3`); libsircl vendors that file and its exchange kernel sets the bit | `FO/edit_FO.py`, `FO/land_FO.py`, `FO/base.json` |
 | AW | An abort word in the command ring that every timed flag wait watches | specification (below); no edit script yet | none |
+| P2 | Point-to-point between any two ranks of a communicator of more than two ranks, on SIRCL's point-to-point channels (`p2p/_p2p_proxy.c`, native ABI 1) | adopted in libsircl without a SIRCL edit (below); the setup check of LF's `p2p_local_features` waits for LF to land | none |
 
 ## PO: one progress thread per process
 
@@ -118,3 +119,56 @@ Specification:
 
 libsircl's kernel pack adopts the same word and error kind when AW lands; `ncclCommAbort` and
 `ncclCommRevoke` then write it before stopping the progress thread.
+
+## P2: point-to-point on communicators of more than two ranks
+
+Why: libsircl's two-rank point-to-point runs as pair exchanges and all-to-all tiles on the communicator's
+collective sequence: every op advances one per-communicator counter, and the native layer assumes no rank
+runs more than one op ahead of its peers. Point-to-point between two ranks of a larger communicator advances
+only those two ranks, so it cannot use that counter. What needs it: PyNccl's `send` and `recv` on a group of
+more than two ranks (vLLM 0.19.1's stateless coordinator for elastic expert parallelism), torch initialized
+eagerly (`device_id`), which issues its sends and receives on the group's communicator, and nccl-tests'
+point-to-point tests on more than two processes. vLLM's V1 pipeline exchange does not: torch, initialized
+lazily as vLLM does, gives each stage pair a two-rank communicator.
+
+Design: SIRCL's point-to-point channels (`sparkring_sircl/p2p`, status implemented in SIRCL's STATUS.md), a
+native library separate from `_roce_proxy.c`. Every ordered pair of a group's ranks whose channel is enabled
+is a first-in first-out channel with its own item counter (32 bits, wrapping), `slots` slots of
+`slot_bytes` on both ends and credits; nothing it does depends on the collective sequence. Its own arena
+holds a control line (wait limit, error record, poison, abort, lane check) and one block per rank (receive
+and send slots, flag lines whose lane-0 line carries an item header, and desc, ready, consumed, sent and
+credit lines). Relayed lanes post within windows (`p2p_set_windows`); a kernel that times out or meets an
+unexpected header poisons its context, and the progress thread writes an abort notice into every peer,
+which stops them (fail-stop). Connection records carry `P2P_ABI_VERSION` (1) and a channel mask. It uses
+the verbs subset libsircl's shared-memory stand-in implements.
+
+Request to SIRCL: none beyond LF. libsircl adopts the library as it is:
+
+1. `src/transport/sircl_p2p_proxy.c` is a byte-identical copy of the lead implementation tree's
+   `p2p/_p2p_proxy.c` (SHA-256 `91bac368...`, recorded in `src/transport/sircl_p2p_proxy.c.sha256`; the build
+   refuses another copy), whose `p2p_destroy` returns the number of verbs calls that failed; the reference
+   copy recorded in `SOURCE_SNAPSHOT.json` (`5325f3c4...`) predates that and returns nothing. It is compiled twice like
+   the collective proxy (`p2p_hw.c` over libibverbs, `p2p_emu.c` over the stand-in) under
+   `src/transport/p2p_names.h`, which prefixes every `p2p_*` symbol (`sccl_hw_p2p_*`, `sccl_emu_p2p_*`); the
+   library exports none of them.
+2. `kernels/sircl_p2p.cu` ports `p2p/_kernels.py` to CUDA C++ (one send and one receive entry per unroll 1-8,
+   the geometry and the native layer's block offsets as launch parameters), a fourth prebuilt pack with its
+   SHA-256, entry check and `kernels-check`.
+3. The engine creates the channel context with the communicator when `LIBSIRCL_P2P_CHANNELS=on` and the
+   communicator has three or more ranks, inside the setup's exchanges; `ncclSend` and `ncclRecv` to another
+   rank then run as channel items on per-direction channel streams joined to the caller's stream. README.md
+   ("Point-to-point channels") describes the behavior and STATUS.md the evidence.
+
+The context is not created lazily at the first `ncclSend` or `ncclRecv`: connecting it is collective (every
+rank's record is validated against every other's, including a symmetric channel table, and every rank
+connects each of its channels' lanes), the bootstrap offers only all-gather rounds of every rank, and a first
+send involves two ranks. Laziness would need a pairwise rendezvous and a two-rank context per pair (a
+progress thread each), and would move the settings agreement from setup to the first call. The setting
+defaults to off, so a communicator that never uses the channels holds no arena, queue pairs or thread.
+
+What waits for LF: the setup check of the native library's local feature word (`p2p_local_features`
+bit 0: `p2p_destroy` counts the verbs calls that failed, which decides whether the arena may be freed). The
+check is compiled only with `make P2P_FEATURES=1`, and the build refuses that option while the vendored copy
+does not define the word. Until LF lands, the build's SHA-256 check of the copy stands for the feature: the
+vendored source's `p2p_destroy` returns that count. After LF lands: vendor the LF copy, record its SHA-256,
+and build with `P2P_FEATURES=1` (then make it the default).

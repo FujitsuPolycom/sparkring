@@ -162,11 +162,9 @@ def main(argv=None) -> int:
                       f"graph {row.get('graph_us', float('nan')):10.2f} us  busbw {row['busbw_GBps']:8.3f} GB/s  "
                       f"{'' if 'correct' not in row else 'ok' if row['correct'] else 'WRONG'}", flush=True)
             del x, y
-    needed = ctypes.c_size_t(0)
-    lib.sirclGetReceipt(comm, None, 0, ctypes.byref(needed))
-    text = ctypes.create_string_buffer(needed.value)
-    lib.sirclGetReceipt(comm, text, needed.value, ctypes.byref(needed))
-    receipt = json.loads(text.value.decode())
+    from library_rank import receipt_of
+
+    receipt = receipt_of(lib, comm)
     lib.ncclCommDestroy(comm)
     Path(args.out).write_text(json.dumps({"rank": args.rank, "world": args.world, "rows": rows, "checks": checks,
                                           "receipt": receipt, "time": time.strftime("%Y-%m-%dT%H:%M:%S%z")}))

@@ -333,16 +333,25 @@ def adapt(spec, value, *, binding, source_root, profile=None):
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
 
+def profile_nodes(profile):
+    """The number of Sparks installer profile ``profile`` runs on: its configuration's
+    ``--tensor-parallel-size``, one rank per Spark."""
+    metadata, _ = profiles.load(profile)
+    arguments = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))["vllm_args"]
+    return int(arguments[arguments.index("--tensor-parallel-size") + 1])
+
+
 def admit(value, *, run, profile=None, nodes=None, environment=None):
     """Verify the local image against the lock before any model downtime.
 
     ``profile`` and ``nodes`` select model-specific capability checks. They
-    default to the single profile of a v1 lock. ``environment`` is the Qwen
-    serving environment; it defaults to the profile's configuration.
+    default to the single profile of a v1 lock and to the profile's tensor
+    parallelism (``profile_nodes``). ``environment`` is the Qwen serving
+    environment; it defaults to the profile's configuration.
     """
     profile = profile if profile is not None else profiles_of(value)[0]
     validate(value, profile)
-    nodes = nodes if nodes is not None else (8 if profile.endswith("tp8") else 4 if profile.endswith("tp4") else 2)
+    nodes = nodes if nodes is not None else profile_nodes(profile)
     image = json.loads(run(["docker", "image", "inspect", value["image_id"]]).stdout)[0]
     if (image.get("Id") != value["image_id"] or image.get("Os") != "linux" or image.get("Architecture") != "arm64"
             or image.get("Config", {}).get("Entrypoint") != list(ENTRYPOINT)):

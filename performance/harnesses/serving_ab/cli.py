@@ -79,7 +79,7 @@ def bundle(site_path: str, positions: list[int], run_id: str, nccl: str, args, s
         for flag in ("capacity", "dispatch"):
             if getattr(args, flag):
                 command += [f"--{flag}", str(getattr(args, flag))]
-        for table in args.tuning_table:
+        for table in args.tuning_table or ():
             command += ["--tuning-table", table]
         if fused_norm:
             command += ["--fused-norm", "on"]

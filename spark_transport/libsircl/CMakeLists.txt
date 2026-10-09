@@ -7,9 +7,9 @@ endif()
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# The prebuilt transport, fold and link packs, embedded for cuModuleLoadData and checked against their
-# recorded SHA-256.
-foreach(pack kernels fold links)
+# The prebuilt transport, fold, link and point-to-point packs, embedded for cuModuleLoadData and checked
+# against their recorded SHA-256.
+foreach(pack kernels fold links p2p)
   set(FATBIN ${CMAKE_CURRENT_SOURCE_DIR}/kernels/prebuilt/sircl_${pack}.fatbin)
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c
@@ -18,10 +18,18 @@ foreach(pack kernels fold links)
     DEPENDS ${FATBIN} ${FATBIN}.sha256 ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py)
 endforeach()
 
-# SIRCL's native proxy twice: over the real libibverbs (loaded at run time) and over the shared-memory
-# verbs stand-in (emulation), each with its own include path.
-add_library(transport_hw OBJECT src/transport/proxy_hw.c src/transport/verbs_dl.c)
-add_library(transport_emu OBJECT src/transport/proxy_emu.c src/transport/shm_verbs.c)
+# SIRCL's point-to-point native library is vendored byte-identical; configuration refuses a copy whose
+# SHA-256 differs from the one recorded beside it.
+file(SHA256 ${CMAKE_CURRENT_SOURCE_DIR}/src/transport/sircl_p2p_proxy.c P2P_PROXY_SHA256)
+file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/src/transport/sircl_p2p_proxy.c.sha256 P2P_PROXY_RECORDED LIMIT_COUNT 1)
+if(NOT P2P_PROXY_SHA256 STREQUAL P2P_PROXY_RECORDED)
+  message(FATAL_ERROR "src/transport/sircl_p2p_proxy.c differs from the vendored SIRCL source recorded in its .sha256")
+endif()
+
+# SIRCL's native proxy and point-to-point library twice: over the real libibverbs (loaded at run time) and
+# over the shared-memory verbs stand-in (emulation), each with its own include path.
+add_library(transport_hw OBJECT src/transport/proxy_hw.c src/transport/p2p_hw.c src/transport/verbs_dl.c)
+add_library(transport_emu OBJECT src/transport/proxy_emu.c src/transport/p2p_emu.c src/transport/shm_verbs.c)
 target_include_directories(transport_emu BEFORE PRIVATE src/transport/fake_verbs src/transport)
 foreach(target transport_hw transport_emu)
   set_target_properties(${target} PROPERTIES POSITION_INDEPENDENT_CODE ON C_STANDARD 11)
@@ -31,14 +39,14 @@ endforeach()
 add_library(sircl SHARED src/api.c src/bootstrap.c src/stubs.c src/aliases.c src/device_api.c src/fabric.c src/engine.c
             src/cuda_api.c src/kernelpack.c ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c
             ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c
-            $<TARGET_OBJECTS:transport_hw> $<TARGET_OBJECTS:transport_emu>)
+            ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c $<TARGET_OBJECTS:transport_hw> $<TARGET_OBJECTS:transport_emu>)
 target_compile_features(sircl PRIVATE c_std_11)
 target_compile_definitions(sircl PUBLIC LIBSIRCL_CPU_ONLY NCCL_OS_LINUX
                            PRIVATE LIBSIRCL_VERSION="${PROJECT_VERSION}")
 target_include_directories(sircl PUBLIC include PRIVATE src)
 target_compile_options(sircl PRIVATE -Wall -Wextra -Werror -Wno-format-truncation)
 set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
-                            ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c
+                            ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c
                             PROPERTIES COMPILE_OPTIONS "-O0;-w")
 target_link_libraries(sircl PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 set_target_properties(sircl PROPERTIES NO_SONAME TRUE SUFFIX ".so.${PROJECT_VERSION}")
@@ -54,7 +62,7 @@ target_link_options(fake_cuda PRIVATE -Wl,-soname,libcuda.so.1)
 target_compile_options(fake_cuda PRIVATE -Wall -Wextra -Werror)
 add_executable(check_entries tests/check_entries.c src/kernelpack.c src/cuda_api.c
                ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
-               ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c)
+               ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c)
 target_include_directories(check_entries PRIVATE include src)
 target_compile_definitions(check_entries PRIVATE LIBSIRCL_CPU_ONLY NCCL_OS_LINUX)
 target_link_libraries(check_entries PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
@@ -74,7 +82,7 @@ add_test(NAME fabric COMMAND test_fabric)
 foreach(name abi api lifecycle engine_cpu)
   add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${name}.py --library $<TARGET_FILE:sircl>)
 endforeach()
-foreach(name bootstrap shm_verbs mpi_shim check_nccl_tests)
+foreach(name bootstrap shm_verbs p2p_native site_routes mpi_shim check_nccl_tests)
   add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${name}.py)
 endforeach()
 add_test(NAME kernel_entries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kernel_entries.py

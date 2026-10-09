@@ -1,5 +1,5 @@
 /* The kernel-entry check. It runs the library's own pack loader (src/kernelpack.c, sccl_kp_load) on the
- * embedded transport, fold and link fatbins through the stand-in driver tests/fake_cuda.c, which reads the
+ * embedded transport, fold, link and point-to-point fatbins through the stand-in driver tests/fake_cuda.c, which reads the
  * fatbins' cubins offline: every entry name the loader asks for must be a defined function in every cubin
  * (every GPU architecture) of its pack. The build runs it before it links the library, so a loader that
  * names an entry its prebuilt pack lacks fails the build, without a GPU. Exit 0 when every entry is
@@ -31,12 +31,12 @@ int main(int argc, char **argv) {
   }
   int modules = 0, cubins = 0, lookups = 0;
   stats(&modules, &cubins, &lookups);
-  if (modules != 3 || cubins < architectures) {
-    fprintf(stderr, "check_entries: %d packs loaded with at least %d cubins each; expected 3 packs of %d\n", modules,
+  if (modules != 4 || cubins < architectures) {
+    fprintf(stderr, "check_entries: %d packs loaded with at least %d cubins each; expected 4 packs of %d\n", modules,
             cubins, architectures);
     return 1;
   }
-  printf("kernel entries: all %d the loader names are defined in every cubin of the 3 packs (%d or more "
+  printf("kernel entries: all %d the loader names are defined in every cubin of the 4 packs (%d or more "
          "architectures each)\n", lookups, cubins);
   return 0;
 }

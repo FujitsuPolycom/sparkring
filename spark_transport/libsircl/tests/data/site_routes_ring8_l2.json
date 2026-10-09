@@ -1,0 +1,311 @@
+{
+ "layout": "ring:8",
+ "lanes": 2,
+ "chain_order": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7
+ ],
+ "ring_problems": [],
+ "p2p_reserve": "session",
+ "ring_schedules": false,
+ "session_share": 1.0,
+ "p2p_relayed_pairs": 40,
+ "p2p_unavailable": [
+  [
+   0,
+   2,
+   "relay 1 primary function toward port 0 has 65536 of its 393216 bytes left for 4 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   0,
+   3,
+   "relay 2 primary function toward port 0 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   0,
+   4,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   0,
+   5,
+   "relay 7 primary function toward port 1 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   0,
+   6,
+   "relay 7 primary function toward port 1 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   1,
+   3,
+   "relay 2 primary function toward port 0 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   1,
+   4,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   1,
+   5,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   1,
+   6,
+   "relay 7 primary function toward port 1 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   1,
+   7,
+   "relay 0 primary function toward port 1 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   2,
+   0,
+   "relay 1 primary function toward port 1 has 65536 of its 393216 bytes left for 4 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   2,
+   4,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   2,
+   5,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   2,
+   6,
+   "relay 3 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   2,
+   7,
+   "relay 0 primary function toward port 1 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   3,
+   0,
+   "relay 2 primary function toward port 1 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   3,
+   1,
+   "relay 2 primary function toward port 1 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   3,
+   5,
+   "relay 4 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   3,
+   6,
+   "relay 4 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   3,
+   7,
+   "relay 4 primary function toward port 0 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   4,
+   0,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   4,
+   1,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   4,
+   2,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   4,
+   6,
+   "relay 5 primary function toward port 0 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   4,
+   7,
+   "relay 5 primary function toward port 0 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   5,
+   0,
+   "relay 7 primary function toward port 0 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   5,
+   1,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   5,
+   2,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   5,
+   3,
+   "relay 4 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   5,
+   7,
+   "relay 6 primary function toward port 0 has 65536 of its 393216 bytes left for 4 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   6,
+   0,
+   "relay 7 primary function toward port 0 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   6,
+   1,
+   "relay 7 primary function toward port 0 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   6,
+   2,
+   "relay 3 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   6,
+   3,
+   "relay 4 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   6,
+   4,
+   "relay 5 primary function toward port 1 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   7,
+   1,
+   "relay 0 primary function toward port 0 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   7,
+   2,
+   "relay 0 primary function toward port 0 has 32768 of its 393216 bytes left for 3 point-to-point lanes (360448 bytes reserved before them)"
+  ],
+  [
+   7,
+   3,
+   "relay 4 primary function toward port 1 has 0 of its 393216 bytes left for 6 point-to-point lanes (393216 bytes reserved before them)"
+  ],
+  [
+   7,
+   4,
+   "relay 5 primary function toward port 1 has 65536 of its 393216 bytes left for 5 point-to-point lanes (327680 bytes reserved before them)"
+  ],
+  [
+   7,
+   5,
+   "relay 6 primary function toward port 1 has 65536 of its 393216 bytes left for 4 point-to-point lanes (327680 bytes reserved before them)"
+  ]
+ ],
+ "ranks": [
+  {
+   "rank": 0,
+   "env": {
+    "LIBSIRCL_POSITION": "0",
+    "SIRCL_PEER_ROUTES": "1=rocep1s0f0/roceP2p1s0f0,2=rocep1s0f0/roceP2p1s0f0,3=rocep1s0f0/roceP2p1s0f0,4=rocep1s0f0/roceP2p1s0f1,5=rocep1s0f1/roceP2p1s0f1,6=rocep1s0f1/roceP2p1s0f1,7=rocep1s0f1/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "2=98304/65536,3=65536/65536,4=65536/65536,5=98304/65536,6=131072/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 1,
+   "env": {
+    "LIBSIRCL_POSITION": "1",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,2=rocep1s0f0/roceP2p1s0f0,3=rocep1s0f0/roceP2p1s0f0,4=rocep1s0f0/roceP2p1s0f0,5=rocep1s0f0/roceP2p1s0f1,6=rocep1s0f1/roceP2p1s0f1,7=rocep1s0f1/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "3=65536/98304,4=65536/98304,5=65536/65536,6=131072/65536,7=131072/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 2,
+   "env": {
+    "LIBSIRCL_POSITION": "2",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,1=rocep1s0f1/roceP2p1s0f1,3=rocep1s0f0/roceP2p1s0f0,4=rocep1s0f0/roceP2p1s0f0,5=rocep1s0f0/roceP2p1s0f0,6=rocep1s0f0/roceP2p1s0f1,7=rocep1s0f1/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=98304/65536,4=65536/131072,5=65536/131072,6=65536/65536,7=98304/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 3,
+   "env": {
+    "LIBSIRCL_POSITION": "3",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,1=rocep1s0f1/roceP2p1s0f1,2=rocep1s0f1/roceP2p1s0f1,4=rocep1s0f0/roceP2p1s0f0,5=rocep1s0f0/roceP2p1s0f0,6=rocep1s0f0/roceP2p1s0f0,7=rocep1s0f0/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=65536/65536,1=65536/98304,5=65536/131072,6=65536/98304,7=65536/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 4,
+   "env": {
+    "LIBSIRCL_POSITION": "4",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f0,1=rocep1s0f1/roceP2p1s0f1,2=rocep1s0f1/roceP2p1s0f1,3=rocep1s0f1/roceP2p1s0f1,5=rocep1s0f0/roceP2p1s0f0,6=rocep1s0f0/roceP2p1s0f0,7=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=65536/65536,1=65536/98304,2=65536/131072,6=65536/98304,7=65536/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 5,
+   "env": {
+    "LIBSIRCL_POSITION": "5",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f0/roceP2p1s0f0,1=rocep1s0f1/roceP2p1s0f0,2=rocep1s0f1/roceP2p1s0f1,3=rocep1s0f1/roceP2p1s0f1,4=rocep1s0f1/roceP2p1s0f1,6=rocep1s0f0/roceP2p1s0f0,7=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=98304/65536,1=65536/65536,2=65536/131072,3=65536/131072,7=98304/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 6,
+   "env": {
+    "LIBSIRCL_POSITION": "6",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f0/roceP2p1s0f0,1=rocep1s0f0/roceP2p1s0f0,2=rocep1s0f1/roceP2p1s0f0,3=rocep1s0f1/roceP2p1s0f1,4=rocep1s0f1/roceP2p1s0f1,5=rocep1s0f1/roceP2p1s0f1,7=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=131072/65536,1=131072/65536,2=65536/65536,3=65536/98304,4=65536/98304",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  },
+  {
+   "rank": 7,
+   "env": {
+    "LIBSIRCL_POSITION": "7",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f0/roceP2p1s0f0,1=rocep1s0f0/roceP2p1s0f0,2=rocep1s0f0/roceP2p1s0f0,3=rocep1s0f1/roceP2p1s0f0,4=rocep1s0f1/roceP2p1s0f1,5=rocep1s0f1/roceP2p1s0f1,6=rocep1s0f1/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3,4,5,6,7",
+    "LIBSIRCL_FORWARD_WINDOWS": "1=131072/65536,2=98304/65536,3=65536/65536,4=65536/65536,5=98304/65536",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0"
+   }
+  }
+ ]
+}

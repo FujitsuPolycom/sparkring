@@ -88,6 +88,70 @@ static const transport_ops emulation_ops = PROXY_OPS(emu, "emulation");
 
 int sccl_verbs_available(void);
 
+/* -- SIRCL's point-to-point native library (src/transport/sircl_p2p_proxy.c), compiled once per transport --- */
+
+#define P2P_DECLARE(tag)                                                                                  \
+  int sccl_##tag##_p2p_abi_version(void);                                                                 \
+  int sccl_##tag##_p2p_layout(int, int, int, uint64_t, uint64_t *);                                       \
+  uint64_t sccl_##tag##_p2p_blob_bytes(void);                                                             \
+  void *sccl_##tag##_p2p_create(int, int, const char *const *, int, const int *, int, const int *, int,   \
+                                const int *, void *, uint64_t, int, uint64_t, char *, uint64_t);          \
+  int sccl_##tag##_p2p_local_blob(void *, void *, uint64_t);                                              \
+  int sccl_##tag##_p2p_connect(void *, const void *, uint64_t);                                           \
+  int sccl_##tag##_p2p_lane_check(void *, int);                                                           \
+  int sccl_##tag##_p2p_set_windows(void *, const uint32_t *, uint32_t);                                   \
+  int sccl_##tag##_p2p_start(void *);                                                                     \
+  void sccl_##tag##_p2p_stop(void *);                                                                     \
+  int sccl_##tag##_p2p_failed(void *);                                                                    \
+  const char *sccl_##tag##_p2p_error(void *);                                                             \
+  uint64_t sccl_##tag##_p2p_stat(void *, int);                                                            \
+  uint64_t sccl_##tag##_p2p_peer_stat(void *, int, int);                                                  \
+  int sccl_##tag##_p2p_destroy(void *);
+P2P_DECLARE(hw)
+P2P_DECLARE(emu)
+/* The local feature word of SIRCL change LF (p2p_local_features; bit 0: p2p_destroy returns the number of
+ * verbs calls that failed). Built only with P2P_FEATURES=1 (Makefile), which needs a vendored source that
+ * defines it; otherwise the build's SHA-256 check of the vendored copy stands for the feature. */
+#ifdef SCCL_P2P_LOCAL_FEATURES
+unsigned sccl_hw_p2p_local_features(void);
+unsigned sccl_emu_p2p_local_features(void);
+#define P2P_FEATURES_ENTRY(tag) , sccl_##tag##_p2p_local_features
+#else
+#define P2P_FEATURES_ENTRY(tag)
+#endif
+
+typedef struct {
+  int (*abi_version)(void);
+  int (*layout)(int, int, int, uint64_t, uint64_t *);
+  uint64_t (*blob_bytes)(void);
+  void *(*create)(int, int, const char *const *, int, const int *, int, const int *, int, const int *, void *,
+                  uint64_t, int, uint64_t, char *, uint64_t);
+  int (*local_blob)(void *, void *, uint64_t);
+  int (*connect)(void *, const void *, uint64_t);
+  int (*lane_check)(void *, int);
+  int (*set_windows)(void *, const uint32_t *, uint32_t);
+  int (*start)(void *);
+  void (*stop)(void *);
+  int (*failed)(void *);
+  const char *(*error)(void *);
+  uint64_t (*stat)(void *, int);
+  uint64_t (*peer_stat)(void *, int, int);
+  /* Stops the progress thread and releases every verbs object; the number of verbs calls that failed. */
+  int (*destroy)(void *);
+#ifdef SCCL_P2P_LOCAL_FEATURES
+  unsigned (*local_features)(void);
+#endif
+} p2p_ops;
+
+#define P2P_OPS(tag)                                                                                      \
+  {sccl_##tag##_p2p_abi_version, sccl_##tag##_p2p_layout, sccl_##tag##_p2p_blob_bytes, sccl_##tag##_p2p_create, \
+   sccl_##tag##_p2p_local_blob, sccl_##tag##_p2p_connect, sccl_##tag##_p2p_lane_check,                    \
+   sccl_##tag##_p2p_set_windows, sccl_##tag##_p2p_start, sccl_##tag##_p2p_stop, sccl_##tag##_p2p_failed,  \
+   sccl_##tag##_p2p_error, sccl_##tag##_p2p_stat, sccl_##tag##_p2p_peer_stat,                             \
+   sccl_##tag##_p2p_destroy P2P_FEATURES_ENTRY(tag)}
+static const p2p_ops p2p_verbs_ops = P2P_OPS(hw);
+static const p2p_ops p2p_emulation_ops = P2P_OPS(emu);
+
 /* -- protocol constants (SIRCL protocol.py) ---------------------------------------------------- */
 
 enum {
@@ -162,6 +226,45 @@ static const char *const link_kind_names[SCCL_LINK_KINDS] = {"chain_gather", "ch
                                                              "ring_scatter", "ring_reduce"};
 static const unsigned link_roles[SCCL_LINK_KINDS] = {4, 2, 2, 2, 3};
 
+/* SIRCL's point-to-point channels (p2p/protocol.py and p2p/settings.py): the native p2p_layout words, the
+ * control line's words, the kernels' error kinds, the header's last-item bit and SIRCL's defaults. A window
+ * holds 1 to P2P_MAX_WINDOW_CHUNKS chunks (p2p_set_windows: P2P_INFLIGHT - 8). */
+enum {
+  P2P_LAYOUT_WORDS = 11,
+  P2P_L_CONTROL = 0,
+  P2P_L_BLOCK = 1,
+  P2P_L_RECV = 2,
+  P2P_L_SEND = 3,
+  P2P_L_FLAG = 4,
+  P2P_L_DESC = 5,
+  P2P_L_READY = 6,
+  P2P_L_CONSUMED = 7,
+  P2P_L_SENT = 8,
+  P2P_L_CREDIT = 9,
+  P2P_L_TOTAL = 10,
+  P2P_C_WAIT_LIMIT_US = 0,
+  P2P_C_ERROR_TAG = 1,
+  P2P_C_ERROR_PEER = 2,
+  P2P_C_ERROR_LANE = 3,
+  P2P_C_ERROR_KIND = 4,
+  P2P_C_ERROR_EXPECTED = 5,
+  P2P_C_ERROR_GOT = 6,
+  P2P_C_POISON = 7,
+  P2P_KIND_FLAG = 1,
+  P2P_KIND_SLOT = 2,
+  P2P_KIND_SIZE = 3,
+  P2P_STAT_ABORT_FROM = 12,
+  P2P_MAX_WINDOW_CHUNKS = 120,
+};
+#define P2P_HEADER_LAST (1u << 31)
+#define P2P_HEADER_BYTES (((1u << 30) - 1u) & ~15u)
+#define P2P_DEFAULT_SLOTS 8u
+#define P2P_DEFAULT_SLOT_BYTES (512u << 10)
+#define P2P_DEFAULT_BLOCKS 4u
+#define P2P_DEFAULT_THREADS 512u
+#define P2P_DEFAULT_UNROLL 4u
+#define P2P_DEFAULT_CHUNK_BYTES 32768u
+
 enum { ALG_AUTO = -1 };
 /* LIBSIRCL_FAIL_STOP's modes (see fail_stop). */
 enum { FAIL_STOP_EXIT = 1, FAIL_STOP_ABORT = 2 };
@@ -193,12 +296,41 @@ typedef struct {
    * coll_blocks[c] from LIBSIRCL_<collective>_LINK_BLOCKS (0: unset), blocks_set when SIRCL_LINK_BLOCKS
    * sets link_blocks; pair_plan when the pair plan chooses the rest by size. */
   uint32_t chunk_set[COLLECTIVES], coll_blocks[COLLECTIVES], blocks_set, pair_plan;
+  /* Point-to-point channels: on (LIBSIRCL_P2P_CHANNELS on a communicator of three or more ranks), the native
+   * library's ABI, SIRCL's channel geometry (SIRCL_P2P_*) and the point-to-point pack. */
+  uint32_t p2p_on, p2p_abi, p2p_slots, p2p_blocks, p2p_threads, p2p_unroll, p2p_chunk, p2p_reserved;
+  uint64_t p2p_slot_bytes;
+  char p2p_pack[72];
 } shared_settings;
 
 typedef struct {
   char error[400];
   shared_settings settings;
+  /* Bit p: this rank's lanes toward rank p can carry point-to-point channel items (every lane direct, or
+   * relayed with a point-to-point window); every rank builds the same channel table from these masks. */
+  uint32_t p2p_out, p2p_reserved;
 } setup_record;
+
+/* Ahead of each rank's connection records in the second setup exchange: whether its point-to-point
+ * channel context opened (0: the group has no channel, 1: opened, 2: failed, `p2p_error` says why). */
+typedef struct {
+  uint32_t p2p_state, reserved;
+  char p2p_error[296];
+} link_header;
+
+/* One direction of the channel with one peer on this rank: its own stream (a receive waits on its stream
+ * until the peer sends, so no other work may queue behind it), the event that joins the stream back to the
+ * caller's, the channel's next item, whether the group being issued uses it, its staging buffer (drivers
+ * without stream-ordered allocation) and its counts. */
+typedef struct {
+  sccl_CUstream stream;
+  sccl_CUevent done;
+  uint32_t next;
+  int joined;
+  sccl_CUdeviceptr stage;
+  uint64_t stage_bytes;
+  _Atomic uint64_t messages, bytes, items;
+} p2p_channel;
 
 typedef struct {
   uint32_t ok;
@@ -288,6 +420,28 @@ struct sccl_engine {
    * watcher's list, and the next one on it. */
   int fail_stop;
   struct sccl_engine *watch_next;
+  /* Point-to-point channels (see "point-to-point channels" below): the native library and context, the
+   * arena (host and device addresses, bytes, p2p_layout words, control line), every rank's p2p_out mask and
+   * this rank's channels, the windows of this rank's lanes (LIBSIRCL_P2P_WINDOWS), the kernels, the
+   * channels by direction (0: receive, 1: send) and peer, the event that orders a group's channels after
+   * the caller's stream, the lane check's duration, a failure to enqueue (which poisons the channels), the
+   * messages staged and the calls refused (no channel with the peer, or under CUDA graph capture). */
+  const p2p_ops *p2p_transport;
+  void *p2p;
+  uint8_t *p2p_host;
+  sccl_CUdeviceptr p2p_dev;
+  uint64_t p2p_bytes, p2p_layout[P2P_LAYOUT_WORDS];
+  int p2p_host_registered, p2p_host_emulated;
+  volatile uint32_t *p2p_ctrl;
+  uint32_t p2p_out, p2p_masks[MAX_WORLD], p2p_channels;
+  uint32_t p2p_window[MAX_WORLD][MAX_LANES];
+  int p2p_windowed;
+  sccl_CUfunction p2p_fn[2];
+  p2p_channel p2p_ch[2][MAX_WORLD];
+  sccl_CUevent p2p_ready;
+  uint64_t p2p_check_ns;
+  char p2p_fault[300];
+  _Atomic uint64_t p2p_staged, p2p_refused;
   /* receipts */
   _Atomic uint64_t ops[SCCL_ALG_COUNT][SCCL_DT_COUNT];
   _Atomic uint64_t gather_calls, gather_ops, gather_bytes, gather_padded;
@@ -533,6 +687,52 @@ static int relayed_toward(const sccl_engine *e, int peer) {
   return 0;
 }
 
+/* LIBSIRCL_P2P_CHANNELS=on gives a communicator of three or more ranks SIRCL's point-to-point channels (see
+ * "point-to-point channels" below), with SIRCL's channel geometry under SIRCL's names and defaults; the
+ * point-to-point pack runs at most SCCL_P2P_MAX_THREADS threads per block (SIRCL's kernels up to 1024). */
+static int p2p_settings(sccl_engine *e, shared_settings *s, char *err, size_t len) {
+  const char *text = sccl_env("LIBSIRCL_P2P_CHANNELS");
+  if (text && *text && strcmp(text, "on") && strcmp(text, "off")) {
+    put_error(err, len, "LIBSIRCL_P2P_CHANNELS=%s: on or off", text);
+    return -1;
+  }
+  s->p2p_on = text && !strcmp(text, "on") && e->world > 2;
+  if (!s->p2p_on) return 0;
+  uint64_t v;
+  if (env_u64("SIRCL_P2P_SLOTS", P2P_DEFAULT_SLOTS, 2, 32, &v, err, len)) return -1;
+  if (!is_power_of_two(v)) {
+    put_error(err, len, "SIRCL_P2P_SLOTS must be a power of two from 2 to 32");
+    return -1;
+  }
+  s->p2p_slots = (uint32_t)v;
+  if (env_u64("SIRCL_P2P_SLOT_BYTES", P2P_DEFAULT_SLOT_BYTES, SLOT_ALIGNMENT, 1u << 29, &v, err, len)) return -1;
+  if (v % SLOT_ALIGNMENT) {
+    put_error(err, len, "SIRCL_P2P_SLOT_BYTES must be a multiple of %d bytes", SLOT_ALIGNMENT);
+    return -1;
+  }
+  s->p2p_slot_bytes = v;
+  if (env_u64("SIRCL_P2P_BLOCKS", P2P_DEFAULT_BLOCKS, 1, 64, &v, err, len)) return -1;
+  s->p2p_blocks = (uint32_t)v;
+  if (env_u64("SIRCL_P2P_THREADS", P2P_DEFAULT_THREADS, SCCL_P2P_MIN_THREADS, SCCL_P2P_MAX_THREADS, &v, err, len))
+    return -1;
+  if (v % 32) {
+    put_error(err, len, "SIRCL_P2P_THREADS must be a multiple of 32 from %d to %d", SCCL_P2P_MIN_THREADS,
+              SCCL_P2P_MAX_THREADS);
+    return -1;
+  }
+  s->p2p_threads = (uint32_t)v;
+  if (env_u64("SIRCL_P2P_UNROLL", P2P_DEFAULT_UNROLL, 1, SCCL_P2P_MAX_UNROLL, &v, err, len)) return -1;
+  s->p2p_unroll = (uint32_t)v;
+  if (env_u64("SIRCL_P2P_CHUNK_BYTES", P2P_DEFAULT_CHUNK_BYTES, PACK, 1u << 30, &v, err, len)) return -1;
+  if (v % PACK) {
+    put_error(err, len, "SIRCL_P2P_CHUNK_BYTES must be a multiple of 16 bytes");
+    return -1;
+  }
+  s->p2p_chunk = (uint32_t)v;
+  snprintf(s->p2p_pack, sizeof s->p2p_pack, "%s", sccl_kp_p2p_hash());
+  return 0;
+}
+
 static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   shared_settings *s = &e->shared;
   uint64_t v;
@@ -685,6 +885,7 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   if (link_settings(e, s, pair_plan, err, len)) return -1;
+  if (p2p_settings(e, s, err, len)) return -1;
   e->link_on = e->world > 1 && links;
   if (!s->ring_on && (s->large_schedule == SCHEDULE_RING || s->gather_schedule == SCHEDULE_RING ||
                       s->scatter_schedule == SCHEDULE_RING)) {
@@ -692,27 +893,27 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
                         "(tools/site_routes.py prints it when the ring can run)");
     return -1;
   }
-  /* Chain order: LIBSIRCL_CHAIN_ORDER lists positions in chain order; unset, the ranks by position (the
-   * cable order of a path or cycle whose positions are ring positions). */
+  /* Chain order: LIBSIRCL_CHAIN_ORDER lists positions in chain order, the layout's (one setting per process
+   * serves every communicator it joins); a communicator of some of the layout's positions (a split child, a
+   * two-rank communicator) takes its members in the order the list gives them, the other positions skipped.
+   * Unset, the ranks by position (the cable order of a path or cycle whose positions are ring positions). */
   int order[MAX_WORLD] = {0}, count = 0;
   const char *text = sccl_env("LIBSIRCL_CHAIN_ORDER");
   if (text && *text) {
     char copy[256];
+    int listed[MAX_POSITIONS] = {0};
     snprintf(copy, sizeof copy, "%s", text);
     for (char *save = NULL, *item = strtok_r(copy, ",", &save); item; item = strtok_r(NULL, ",", &save)) {
       char *end;
       long position = strtol(item, &end, 10);
-      int found = -1;
-      for (int r = 0; r < e->world; ++r)
-        if (e->positions[r] == position) found = r;
-      for (int k = 0; k < count && found >= 0; ++k)
-        if (order[k] == found) found = -1;
-      if (*end || found < 0 || count == e->world) {
-        put_error(err, len, "LIBSIRCL_CHAIN_ORDER=%s must list the positions of the communicator's ranks once",
-                  text);
+      if (*end || end == item || position < 0 || position >= MAX_POSITIONS || listed[position]) {
+        put_error(err, len, "LIBSIRCL_CHAIN_ORDER=%s must list positions (0-%d) once each", text,
+                  MAX_POSITIONS - 1);
         return -1;
       }
-      order[count++] = found;
+      listed[position] = 1;
+      for (int r = 0; r < e->world; ++r)
+        if (e->positions[r] == position) order[count++] = r;
     }
     if (count != e->world) {
       put_error(err, len, "LIBSIRCL_CHAIN_ORDER=%s names %d of %d ranks", text, count, e->world);
@@ -779,6 +980,14 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(link_blocks, "SIRCL_LINK_BLOCKS");
   SAME(blocks_set, "SIRCL_LINK_BLOCKS");
   SAME(pair_plan, "the pair plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
+  SAME(p2p_on, "LIBSIRCL_P2P_CHANNELS");
+  SAME(p2p_abi, "point-to-point native ABI");
+  SAME(p2p_slots, "SIRCL_P2P_SLOTS");
+  SAME(p2p_slot_bytes, "SIRCL_P2P_SLOT_BYTES");
+  SAME(p2p_blocks, "SIRCL_P2P_BLOCKS");
+  SAME(p2p_threads, "SIRCL_P2P_THREADS");
+  SAME(p2p_unroll, "SIRCL_P2P_UNROLL");
+  SAME(p2p_chunk, "SIRCL_P2P_CHUNK_BYTES");
 #undef SAME
   if (memcmp(a->coll_blocks, b->coll_blocks, sizeof a->coll_blocks)) return "LIBSIRCL_*_LINK_BLOCKS";
   if (memcmp(a->chunk_set, b->chunk_set, sizeof a->chunk_set)) return "link pieces (SIRCL_*LINK_CHUNK_BYTES)";
@@ -788,6 +997,7 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   if (strcmp(a->kernel_pack, b->kernel_pack)) return "transport kernel pack";
   if (strcmp(a->fold_pack, b->fold_pack)) return "fold kernel pack";
   if (strcmp(a->links_pack, b->links_pack)) return "link kernel pack";
+  if (strcmp(a->p2p_pack, b->p2p_pack)) return "point-to-point kernel pack";
   if (memcmp(a->chain_order, b->chain_order, sizeof a->chain_order)) return "chain order (LIBSIRCL_CHAIN_ORDER)";
   return NULL;
 }
@@ -865,11 +1075,13 @@ static void format_cpus(const cpu_set_t *set, char *out, size_t len) {
   }
 }
 
-/* Start the transport's progress thread. SIRCL_PROGRESS_CPU, when set, pins it (the transport reads it).
- * Otherwise LIBSIRCL_CPU_POLICY=performance (the default) keeps it on the fastest CPU class this thread may
- * use, so it never runs on an efficiency core, where every op of the group waits for it; `none` leaves it
- * to the scheduler. The thread inherits its creator's affinity, so the start runs under that set and this
- * thread's own affinity is restored afterwards. */
+/* Start the transport's progress thread and, with point-to-point channels, the channels' progress thread.
+ * SIRCL_PROGRESS_CPU (SIRCL_P2P_PROGRESS_CPU for the channels' thread), when set, pins it (the native layer
+ * reads it). Otherwise LIBSIRCL_CPU_POLICY=performance (the default) keeps the threads on the fastest CPU
+ * class this thread may use, so they never run on an efficiency core, where every op of the group waits for
+ * them; `none` leaves them to the scheduler. A thread inherits its creator's affinity, so the starts run
+ * under that set and this thread's own affinity is restored afterwards. Returns 0, 1 when the transport's
+ * thread failed to start and 2 when the channels' thread did. */
 static int start_progress(sccl_engine *e) {
   const char *pinned = getenv("SIRCL_PROGRESS_CPU");
   const char *policy = sccl_env("LIBSIRCL_CPU_POLICY");
@@ -879,7 +1091,8 @@ static int start_progress(sccl_engine *e) {
                pthread_getaffinity_np(pthread_self(), sizeof mine, &mine) == 0 && fastest_cpus(&mine, &fast) > 0 &&
                pthread_setaffinity_np(pthread_self(), sizeof fast, &fast) == 0;
   if (placed) format_cpus(&fast, e->progress_cpus, sizeof e->progress_cpus);
-  int rc = e->transport->start(e->proxy);
+  int rc = e->transport->start(e->proxy) ? 1 : 0;
+  if (!rc && e->p2p && e->p2p_transport->start(e->p2p)) rc = 2;
   if (placed) pthread_setaffinity_np(pthread_self(), sizeof mine, &mine);
   return rc;
 }
@@ -928,6 +1141,89 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
       e->forward[peer][lane] = (uint32_t)bytes;
       if (bytes) e->forward_lanes += 1;
     }
+  }
+  return 0;
+}
+
+/* The native layer's ring links post through relays in chunks of 32 KiB and accept a ring window of 1 to
+ * 60 such chunks (roce_set_links). */
+enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
+
+/* The window of this communicator's ring lanes toward its ring's next rank. LIBSIRCL_RING_WINDOW is the
+ * process's layout's ring plan, the same for every communicator the process joins; for the layout's own
+ * ring it is 0 where the next rank is a cable neighbor. A communicator whose ring closes over other lanes
+ * (a split child, or a two-rank communicator of ranks the layout does not cable, such as pipeline stage
+ * pairs i and i + 4 of a ring of eight) may have a ring next reached through relays, which the forward
+ * windows name: its ring lanes then keep the smallest forward window toward that rank in flight, never
+ * posting through relays unwindowed. A nonzero LIBSIRCL_RING_WINDOW is the planner's own value and is kept. */
+static void ring_lane_window(sccl_engine *e) {
+  if (e->ring_window || e->ring_next < 0) return;
+  uint32_t window = 0;
+  for (int l = 0; l < e->lanes; ++l) {
+    uint32_t lane = e->forward[e->ring_next][l];
+    if (lane && (!window || lane < window)) window = lane;
+  }
+  if (!window) return;
+  window = window / RING_WINDOW_CHUNK * RING_WINDOW_CHUNK;
+  if (window < RING_WINDOW_CHUNK) window = RING_WINDOW_CHUNK;
+  if (window > RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS) window = RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS;
+  e->ring_window = window;
+}
+
+/* LIBSIRCL_P2P_WINDOWS: <position>=<bytes>[/<bytes>],... the window of each of this process's lanes toward the
+ * rank at that position for point-to-point channel items, the bytes posted and not yet delivered on the
+ * lane's queue pair through relays (SIRCL's p2p_set_windows); positions outside the communicator are
+ * ignored. tools/site_routes.py prints them from SIRCL's point-to-point budget (p2p/budget.py: the share of
+ * every relay hairpin queue that the layout's collective session leaves). A lane counts as relayed when
+ * LIBSIRCL_FORWARD_WINDOWS gives it a window; a peer some of whose relayed lanes have no point-to-point
+ * window has no channel with this rank (bit p of p2p_out stays clear), so no item crosses relays
+ * unwindowed. */
+static int p2p_windows(sccl_engine *e, char *err, size_t len) {
+  memset(e->p2p_window, 0, sizeof e->p2p_window);
+  e->p2p_windowed = 0;
+  const uint64_t chunk = e->shared.p2p_chunk;
+  const char *text = sccl_env("LIBSIRCL_P2P_WINDOWS");
+  if (text && *text) {
+    char copy[1024];
+    snprintf(copy, sizeof copy, "%s", text);
+    for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
+      char *equals = strchr(entry, '=');
+      char *end;
+      long position = equals ? strtol(entry, &end, 10) : -1;
+      if (!equals || end != equals || position < 0) {
+        put_error(err, len, "LIBSIRCL_P2P_WINDOWS entry '%s' is not <position>=<bytes>[/<bytes>]", entry);
+        return -1;
+      }
+      int peer = -1;
+      for (int r = 0; r < e->world; ++r)
+        if (e->positions[r] == position) peer = r;
+      int lane = 0;
+      for (char *save2 = NULL, *value = strtok_r(equals + 1, "/", &save2); value;
+           value = strtok_r(NULL, "/", &save2), ++lane) {
+        char *stop;
+        unsigned long bytes = strtoul(value, &stop, 10);
+        if (*stop || lane >= MAX_LANES || bytes > 0xFFFFFFFFul) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS entry for position %ld needs 1 or 2 byte counts", position);
+          return -1;
+        }
+        if (bytes && (bytes % PACK || bytes < chunk || bytes / chunk > P2P_MAX_WINDOW_CHUNKS)) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS: the window of %lu bytes toward position %ld must be 0 or a "
+                    "multiple of 16 holding 1 to %d chunks of SIRCL_P2P_CHUNK_BYTES (%" PRIu64 ")", bytes, position,
+                    P2P_MAX_WINDOW_CHUNKS, chunk);
+          return -1;
+        }
+        if (peer < 0 || peer == e->rank || lane >= e->lanes) continue;
+        e->p2p_window[peer][lane] = (uint32_t)bytes;
+        if (bytes) e->p2p_windowed += 1;
+      }
+    }
+  }
+  e->p2p_out = 0;
+  for (int p = 0; p < e->world; ++p) {
+    int ok = p != e->rank;
+    for (int l = 0; ok && l < e->lanes; ++l)
+      if (e->forward[p][l] && !e->p2p_window[p][l]) ok = 0;
+    if (ok) e->p2p_out |= 1u << p;
   }
   return 0;
 }
@@ -1261,6 +1557,144 @@ static void release_memory(sccl_engine *e) {
   e->host = NULL;
 }
 
+/* -- point-to-point channels: context ------------------------------------------------------------------
+
+ * A communicator of three or more ranks created with LIBSIRCL_P2P_CHANNELS=on carries ncclSend and ncclRecv
+ * between its ranks on SIRCL's point-to-point channels: SIRCL's native library (sircl_p2p_proxy.c, its own
+ * arena, queue pairs and progress thread, nothing shared with the collective session's sequence) and the
+ * point-to-point pack's kernels. Every ordered pair of ranks with a channel is a first-in first-out channel:
+ * the k-th send from rank a to rank b matches b's k-th receive from a. The context is created with the
+ * communicator, inside its setup exchanges, because connecting it is collective: every rank's connection
+ * record is validated against every other's (geometry and a symmetric channel table) and every rank connects
+ * every lane of each of its channels. A first ncclSend or ncclRecv involves two ranks only, so a context made
+ * then could not take that agreement; LIBSIRCL_P2P_CHANNELS off (the default) leaves the communicator
+ * without the arena, queue pairs and thread. */
+
+/* Release the channel context: stop its progress thread and release its verbs objects, then, with
+ * `free_memory` and when every verbs object was released, the arena, streams, events and staging buffers.
+ * Returns the number of verbs calls that failed; the arena then stays allocated, since a queue pair or
+ * registration that survived may still be written. */
+static int p2p_close(sccl_engine *e, int free_memory) {
+  int unreleased = 0;
+  if (e->p2p) {
+    unreleased = e->p2p_transport->destroy(e->p2p);
+    e->p2p = NULL;
+  }
+  if (!free_memory || unreleased || !cu) return unreleased;
+  for (int d = 0; d < 2; ++d)
+    for (int p = 0; p < MAX_WORLD; ++p) {
+      p2p_channel *ch = &e->p2p_ch[d][p];
+      if (ch->stream) cu->StreamDestroy(ch->stream);
+      if (ch->done) cu->EventDestroy(ch->done);
+      if (ch->stage) cu->MemFree(ch->stage);
+      ch->stream = NULL;
+      ch->done = NULL;
+      ch->stage = 0;
+    }
+  if (e->p2p_ready) cu->EventDestroy(e->p2p_ready);
+  e->p2p_ready = NULL;
+  if (e->p2p_host) {
+    if (e->p2p_host_registered) cu->MemHostUnregister(e->p2p_host);
+    if (e->p2p_host_emulated) {
+      sccl_emu_segment_free(e->p2p_host);
+    } else {
+      cu->MemFreeHost(e->p2p_host);
+    }
+  }
+  e->p2p_host = NULL;
+  e->p2p_ctrl = NULL;
+  return 0;
+}
+
+/* After the first setup exchange gave every rank's p2p_out: ranks a and b have a channel when each one's lanes
+ * toward the other can carry items, so every rank derives the same table. A rank without a channel still
+ * opens a context (every rank's connection record is validated together); when no pair of the group has one,
+ * no rank opens a context. The arena (control line, then one block per rank: SIRCL's p2p_layout) is pinned
+ * host memory that the GPU addresses and every RDMA device registers, zeroed: every tag word starts at 0 and
+ * the first item's tag is 1. */
+static int p2p_open(sccl_engine *e, const route_table *routes, char *err, size_t len) {
+  const shared_settings *s = &e->shared;
+  int any = 0;
+  e->p2p_channels = 0;
+  for (int a = 0; a < e->world; ++a)
+    for (int b = 0; b < e->world; ++b)
+      if (a != b && (e->p2p_masks[a] >> b & 1u) && (e->p2p_masks[b] >> a & 1u)) {
+        any = 1;
+        if (a == e->rank) e->p2p_channels |= 1u << b;
+      }
+  if (!any) return 0;
+  if (e->p2p_transport->layout(e->world, e->lanes, (int)s->p2p_slots, s->p2p_slot_bytes, e->p2p_layout) != 0) {
+    put_error(err, len, "the point-to-point native layer refused %d ranks, %d lanes and %u slots of %" PRIu64
+              " bytes", e->world, e->lanes, s->p2p_slots, s->p2p_slot_bytes);
+    return -1;
+  }
+  e->p2p_bytes = e->p2p_layout[P2P_L_TOTAL];
+  if (e->transport == &emulation_ops) {
+    e->p2p_host = sccl_emu_segment_alloc(e->p2p_bytes, err, len);
+    if (!e->p2p_host) return -1;
+    e->p2p_host_emulated = 1;
+    if (cuda_check(cu->MemHostRegister(e->p2p_host, e->p2p_bytes,
+                                       SCCL_CU_MEMHOSTREGISTER_PORTABLE | SCCL_CU_MEMHOSTREGISTER_DEVICEMAP),
+                   "registering the emulated point-to-point arena with CUDA", err, len))
+      return -1;
+    e->p2p_host_registered = 1;
+  } else {
+    void *host = NULL;
+    if (cuda_check(cu->MemHostAlloc(&host, e->p2p_bytes, SCCL_CU_MEMHOSTALLOC_PORTABLE | SCCL_CU_MEMHOSTALLOC_DEVICEMAP),
+                   "allocating the pinned point-to-point arena", err, len))
+      return -1;
+    e->p2p_host = host;
+    memset(e->p2p_host, 0, e->p2p_bytes);
+  }
+  if (cuda_check(cu->MemHostGetDevicePointer(&e->p2p_dev, e->p2p_host, 0), "mapping the point-to-point arena", err,
+                 len))
+    return -1;
+  e->p2p_ctrl = (volatile uint32_t *)e->p2p_host;
+  e->p2p_ctrl[P2P_C_WAIT_LIMIT_US] = e->serving ? s->serving_wait_us : s->startup_wait_us;
+  if (sccl_kp_p2p_function(e->ctx, 1, (int)s->p2p_unroll, &e->p2p_fn[1]) ||
+      sccl_kp_p2p_function(e->ctx, 0, (int)s->p2p_unroll, &e->p2p_fn[0])) {
+    put_error(err, len, "%s", sccl_kp_error());
+    return -1;
+  }
+  if (cuda_check(cu->EventCreate(&e->p2p_ready, SCCL_CU_EVENT_DISABLE_TIMING), "creating the point-to-point "
+                 "order event", err, len))
+    return -1;
+  const char *names[MAX_DEVICES];
+  for (int d = 0; d < routes->n_devices; ++d) names[d] = routes->devices[d];
+  int lane_devices[MAX_WORLD * MAX_LANES], channels[MAX_WORLD];
+  for (int p = 0; p < e->world; ++p) {
+    channels[p] = (int)(e->p2p_channels >> p & 1u);
+    for (int l = 0; l < e->lanes; ++l) lane_devices[p * e->lanes + l] = channels[p] ? routes->lane_device[p][l] : -1;
+  }
+  char native[512] = {0};
+  e->p2p = e->p2p_transport->create(e->world, e->rank, names, routes->n_devices, lane_devices, e->lanes,
+                                    routes->gid_index, traffic_class(), channels, e->p2p_host, e->p2p_bytes,
+                                    (int)s->p2p_slots, s->p2p_slot_bytes, native, sizeof native);
+  if (!e->p2p) {
+    put_error(err, len, "point-to-point native setup: %s", native);
+    return -1;
+  }
+#ifdef SCCL_P2P_LOCAL_FEATURES
+  if (!(e->p2p_transport->local_features() & 1u)) {
+    put_error(err, len, "the point-to-point native library's p2p_destroy does not count failed verbs calls "
+                        "(p2p_local_features bit 0)");
+    return -1;
+  }
+#endif
+  return 0;
+}
+
+/* The windows of this rank's lanes toward its channels' peers (none toward a rank without a channel, which
+ * the native layer refuses), set before the channels' progress thread starts. */
+static int p2p_apply_windows(sccl_engine *e) {
+  if (!e->p2p_windowed) return 0;
+  uint32_t table[MAX_WORLD * MAX_LANES] = {0};
+  for (int p = 0; p < e->world; ++p)
+    for (int l = 0; l < e->lanes; ++l)
+      table[p * e->lanes + l] = (e->p2p_channels >> p & 1u) ? e->p2p_window[p][l] : 0;
+  return e->p2p_transport->set_windows(e->p2p, table, e->shared.p2p_chunk);
+}
+
 /* One all-gather round of fixed-size records; returns the records or NULL. */
 static void *exchange(sccl_bootstrap *b, const void *mine, unsigned bytes, int world, const atomic_int *cancelled,
                       char *err, size_t len) {
@@ -1328,15 +1762,20 @@ static int watcher_started;
 static atomic_int watcher_stop;
 static void write_receipt(sccl_engine *e);
 static uint64_t realtime_ns(void);
+static uint64_t monotonic_ns(void);
 
+/* The line names the time twice: the wall clock for logs, and CLOCK_MONOTONIC (the clock of the host's own
+ * timeouts and of Python's time.monotonic), which a stepped wall clock (a VM's time synchronization) does
+ * not move. */
 static void fail_stop(sccl_engine *e, const char *message) {
   char line[1200];
-  uint64_t now = realtime_ns();
+  uint64_t now = realtime_ns(), mono = monotonic_ns();
   int n = snprintf(line, sizeof line,
-                   "libsircl: LIBSIRCL_FAIL_STOP: ending the process at %" PRIu64 ".%03u (Unix time) on an "
-                   "asynchronous error of communicator %d (rank %d of %d): %s\n",
-                   now / 1000000000u, (unsigned)(now % 1000000000u / 1000000u), e->receipt_id, e->rank, e->world,
-                   message);
+                   "libsircl: LIBSIRCL_FAIL_STOP: ending the process at %" PRIu64 ".%03u (Unix time; "
+                   "CLOCK_MONOTONIC %" PRIu64 ".%03u s) on an asynchronous error of communicator %d (rank %d of "
+                   "%d): %s\n",
+                   now / 1000000000u, (unsigned)(now % 1000000000u / 1000000u), mono / 1000000000u,
+                   (unsigned)(mono % 1000000000u / 1000000u), e->receipt_id, e->rank, e->world, message);
   if (n < 0) n = 0;
   if (n > (int)sizeof line - 1) n = (int)sizeof line - 1;
   if (write(STDERR_FILENO, line, (size_t)n) < 0) {
@@ -1460,6 +1899,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       break;
     }
     e->transport = emulation ? &emulation_ops : &verbs_ops;
+    e->p2p_transport = emulation ? &p2p_emulation_ops : &p2p_verbs_ops;
     if (!cu) {
       put_error(local, sizeof local, "%s", sccl_cuda_error());
       break;
@@ -1477,9 +1917,18 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     if (nranks == 1) e->fail_stop = 0;
     if (e->fail_stop && watch_start(local, sizeof local)) break;
     e->shared.proxy_abi = (uint32_t)e->transport->abi_version();
+    if (e->shared.p2p_on) e->shared.p2p_abi = (uint32_t)e->p2p_transport->abi_version();
+    /* LIBSIRCL_STREAM_ORDERED_ALLOC=off keeps the staging of a driver without stream-ordered allocation
+     * (the communicator's own staging buffers; captured calls that need more are refused), for comparisons
+     * and tests; auto (the default) uses it where the driver and device have it. */
     int pools = 0;
+    const char *ordered = sccl_env("LIBSIRCL_STREAM_ORDERED_ALLOC");
+    if (ordered && *ordered && strcmp(ordered, "auto") && strcmp(ordered, "off")) {
+      put_error(local, sizeof local, "LIBSIRCL_STREAM_ORDERED_ALLOC=%s: auto or off", ordered);
+      break;
+    }
     e->shared.graph_staging =
-        cu->MemAllocAsync &&
+        !(ordered && !strcmp(ordered, "off")) && cu->MemAllocAsync &&
         cu->DeviceGetAttribute(&pools, SCCL_CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED, device) == SCCL_CUDA_SUCCESS &&
         pools == 1;
     if (nranks == 1) {
@@ -1543,18 +1992,23 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
                e->transport->set_chain(e->proxy, e->chain_prev, e->chain_next, (int)e->shared.chain_slots,
                                        e->shared.chain_slot_bytes, e->chain_off) != 0) {
       put_error(local, sizeof local, "chain schedule: %s", e->transport->error(e->proxy));
-    } else if (e->link_on &&
-               e->transport->set_links(e->proxy, e->chain_prev, e->chain_next, e->chain_index, e->ring_prev,
-                                       e->ring_next, e->ring_window, (int)e->shared.link_slots,
-                                       e->shared.link_slot_bytes, e->link_off) != 0) {
-      put_error(local, sizeof local, "link collectives: %s", e->transport->error(e->proxy));
-    } else if (forward_windows(e, local, sizeof local) == 0 && e->forward_lanes) {
-      uint32_t table[MAX_WORLD * MAX_LANES];
-      for (int p = 0; p < nranks; ++p)
-        for (int l = 0; l < e->lanes; ++l) table[p * e->lanes + l] = e->forward[p][l];
-      if (e->transport->set_forward(e->proxy, table, e->forward_chunk) != 0)
-        put_error(local, sizeof local, "forward windows: %s", e->transport->error(e->proxy));
+    } else if (forward_windows(e, local, sizeof local) == 0) {
+      /* The forward windows first: the ring lanes' window may come from them (ring_lane_window). */
+      if (e->link_on) ring_lane_window(e);
+      if (e->link_on &&
+          e->transport->set_links(e->proxy, e->chain_prev, e->chain_next, e->chain_index, e->ring_prev,
+                                  e->ring_next, e->ring_window, (int)e->shared.link_slots,
+                                  e->shared.link_slot_bytes, e->link_off) != 0) {
+        put_error(local, sizeof local, "link collectives: %s", e->transport->error(e->proxy));
+      } else if (e->forward_lanes) {
+        uint32_t table[MAX_WORLD * MAX_LANES];
+        for (int p = 0; p < nranks; ++p)
+          for (int l = 0; l < e->lanes; ++l) table[p * e->lanes + l] = e->forward[p][l];
+        if (e->transport->set_forward(e->proxy, table, e->forward_chunk) != 0)
+          put_error(local, sizeof local, "forward windows: %s", e->transport->error(e->proxy));
+      }
     }
+    if (!local[0] && e->shared.p2p_on) p2p_windows(e, local, sizeof local);
   } while (0);
 
   int status = ncclSuccess;
@@ -1574,6 +2028,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   memset(&record, 0, sizeof record);
   snprintf(record.error, sizeof record.error, "%s", local);
   record.settings = e->shared;
+  record.p2p_out = e->p2p_out;
   setup_record *records = exchange(bootstrap, &record, sizeof record, nranks, cancelled, err, err_len);
   if (!records) {
     status = ncclRemoteError;
@@ -1586,6 +2041,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
      * holds the settings it read before failing. */
     int any_error = 0;
     for (int r = 0; r < nranks; ++r) any_error |= records[r].error[0] != 0;
+    for (int r = 0; r < nranks; ++r) e->p2p_masks[r] = records[r].p2p_out;
     for (int r = 0; r < nranks; ++r) {
       const char *why = records[r].error[0] ? records[r].error : NULL;
       const char *field = why || any_error ? NULL : settings_difference(&records[r].settings, &records[0].settings);
@@ -1601,27 +2057,57 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       goto fail;
     }
   }
-  /* Exchange 2: connection records; connect every lane. */
+  /* Exchange 2: connection records of the session and of the point-to-point channels (each rank's link
+   * header says whether its channel context opened); connect every lane. */
   {
+    link_header header;
+    memset(&header, 0, sizeof header);
+    if (e->shared.p2p_on) {
+      char why[sizeof header.p2p_error] = {0};
+      header.p2p_state = p2p_open(e, &routes, why, sizeof why) ? 2u : e->p2p ? 1u : 0u;
+      snprintf(header.p2p_error, sizeof header.p2p_error, "%s", why);
+    }
     uint64_t blob_bytes = e->transport->blob_bytes();
-    void *blob = calloc(1, blob_bytes);
-    if (!blob || e->transport->local_blob(e->proxy, blob, blob_bytes) != 0) {
+    uint64_t p2p_bytes = e->shared.p2p_on ? e->p2p_transport->blob_bytes() : 0;
+    uint64_t record_bytes = sizeof header + blob_bytes + p2p_bytes;
+    uint8_t *blob = calloc(1, record_bytes);
+    if (!blob || e->transport->local_blob(e->proxy, blob + sizeof header, blob_bytes) != 0 ||
+        (e->p2p && e->p2p_transport->local_blob(e->p2p, blob + sizeof header + blob_bytes, p2p_bytes) != 0)) {
       free(blob);
       put_error(err, err_len, "connection record");
       status = ncclInternalError;
       goto fail;
     }
-    void *blobs = exchange(bootstrap, blob, (unsigned)blob_bytes, nranks, cancelled, err, err_len);
+    memcpy(blob, &header, sizeof header);
+    uint8_t *gathered = exchange(bootstrap, blob, (unsigned)record_bytes, nranks, cancelled, err, err_len);
     free(blob);
+    uint8_t *blobs = gathered ? malloc((size_t)(blob_bytes + p2p_bytes) * (size_t)nranks) : NULL;
     if (!blobs) {
-      status = ncclRemoteError;
+      status = gathered ? ncclSystemError : ncclRemoteError;
+      if (gathered) put_error(err, err_len, "out of memory");
+      free(gathered);
       goto fail;
     }
+    char why[400] = {0};
+    for (int r = 0; r < nranks; ++r) {
+      const uint8_t *at = gathered + (size_t)r * record_bytes;
+      link_header theirs;
+      memcpy(&theirs, at, sizeof theirs);
+      memcpy(blobs + (size_t)r * blob_bytes, at + sizeof header, blob_bytes);
+      memcpy(blobs + (size_t)nranks * blob_bytes + (size_t)r * p2p_bytes, at + sizeof header + blob_bytes, p2p_bytes);
+      if (theirs.p2p_state == 2 && !why[0])
+        snprintf(why, sizeof why, "point-to-point channels of rank %d: %.296s", r, theirs.p2p_error);
+    }
+    free(gathered);
     int rc = e->transport->connect(e->proxy, blobs, blob_bytes * (uint64_t)nranks);
+    if (rc) {
+      snprintf(why, sizeof why, "queue-pair connection: %s", e->transport->error(e->proxy));
+    } else if (!why[0] && e->p2p &&
+               e->p2p_transport->connect(e->p2p, blobs + (size_t)nranks * blob_bytes, p2p_bytes * (uint64_t)nranks)) {
+      snprintf(why, sizeof why, "point-to-point queue-pair connection: %s", e->p2p_transport->error(e->p2p));
+    }
     free(blobs);
-    char why[400];
-    snprintf(why, sizeof why, "queue-pair connection: %s", rc ? e->transport->error(e->proxy) : "");
-    if (verdict(bootstrap, nranks, rank, rc == 0, why, cancelled, err, err_len)) {
+    if (verdict(bootstrap, nranks, rank, !why[0], why, cancelled, err, err_len)) {
       status = ncclSystemError;
       goto fail;
     }
@@ -1633,12 +2119,21 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       status = ncclInvalidArgument;
       goto fail;
     }
+    char why[400] = {0};
     int rc = e->transport->lane_check(e->proxy, (int)check_ms);
+    if (rc) snprintf(why, sizeof why, "lane check: %s", e->transport->error(e->proxy));
+    if (!rc && e->p2p) {
+      uint64_t started = monotonic_ns();
+      rc = e->p2p_transport->lane_check(e->p2p, (int)check_ms) || p2p_apply_windows(e);
+      e->p2p_check_ns = monotonic_ns() - started;
+      if (rc) snprintf(why, sizeof why, "point-to-point lane check: %s", e->p2p_transport->error(e->p2p));
+    }
     const char *dump = sccl_env("LIBSIRCL_LINK_DUMP");
     if (rc == 0 && dump && *dump) e->transport->set_trace(e->proxy, 1u << 20);
-    if (rc == 0) rc = start_progress(e);
-    char why[400];
-    snprintf(why, sizeof why, "lane check: %s", rc ? e->transport->error(e->proxy) : "");
+    if (rc == 0) {
+      rc = start_progress(e);
+      if (rc) snprintf(why, sizeof why, "%s", rc == 1 ? e->transport->error(e->proxy) : e->p2p_transport->error(e->p2p));
+    }
     if (verdict(bootstrap, nranks, rank, rc == 0, why, cancelled, err, err_len)) {
       status = ncclSystemError;
       goto fail;
@@ -1656,6 +2151,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   return ncclSuccess;
 fail:;
   /* A queue pair or registration that could not be released may still be written: keep the memory. */
+  p2p_close(e, pushed);
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
   if (pushed) {
@@ -1718,6 +2214,63 @@ static int timed_out(const sccl_engine *e, char *message, size_t len) {
 
 static void dump_links(sccl_engine *e, const char *why, int device);
 
+/* A point-to-point header in words (SIRCL's protocol.describe_header). */
+static void describe_header(uint32_t word, char *out, size_t len) {
+  int n = snprintf(out, len, "%u bytes", word & P2P_HEADER_BYTES);
+  if ((word & P2P_HEADER_LAST) && n >= 0 && (size_t)n < len) {
+    if (word & 15u)
+      snprintf(out + n, len - (size_t)n, ", last item of a message of 16k+%u bytes", word & 15u);
+    else
+      snprintf(out + n, len - (size_t)n, ", last item");
+  }
+}
+
+/* The channels' failure: a failed progress thread (its own completion error, or a peer's abort notice) or a
+ * kernel's record in the control line, as SIRCL's session describes them; ncclSuccess when healthy. */
+static ncclResult_t p2p_health(sccl_engine *e, char *message, size_t len) {
+  if (!e->p2p_ctrl) return ncclSuccess;
+  uint32_t tag = __atomic_load_n((const uint32_t *)&e->p2p_ctrl[P2P_C_ERROR_TAG], __ATOMIC_ACQUIRE);
+  uint32_t poison = __atomic_load_n((const uint32_t *)&e->p2p_ctrl[P2P_C_POISON], __ATOMIC_ACQUIRE);
+  int failed = e->p2p && e->p2p_transport->failed(e->p2p);
+  if (!tag && !poison && !failed) return ncclSuccess;
+  char kernel[400] = {0};
+  ncclResult_t code = ncclRemoteError;
+  double limit = (e->serving ? e->shared.serving_wait_us : e->shared.startup_wait_us) / 1e6;
+  const char *regime = e->serving ? "serving" : "startup";
+  if (tag) {
+    uint32_t kind = e->p2p_ctrl[P2P_C_ERROR_KIND], peer = e->p2p_ctrl[P2P_C_ERROR_PEER];
+    uint32_t lane = e->p2p_ctrl[P2P_C_ERROR_LANE], item = tag - 1u;
+    if (kind == P2P_KIND_FLAG) {
+      snprintf(kernel, sizeof kernel, "a receive timed out waiting for item %u from rank %u lane %u (wait limit "
+               "%.6g s, %s regime)", item, peer, lane, limit, regime);
+    } else if (kind == P2P_KIND_SLOT) {
+      snprintf(kernel, sizeof kernel, "a send timed out waiting for a free slot for item %u toward rank %u: rank "
+               "%u did not receive the earlier items (wait limit %.6g s, %s regime)", item, peer, peer, limit, regime);
+    } else if (kind == P2P_KIND_SIZE) {
+      char expected[96], got[96];
+      describe_header(e->p2p_ctrl[P2P_C_ERROR_EXPECTED], expected, sizeof expected);
+      describe_header(e->p2p_ctrl[P2P_C_ERROR_GOT], got, sizeof got);
+      snprintf(kernel, sizeof kernel, "received item %u from rank %u as %s, but the receive expected %s: the two "
+               "ranks issued messages of different sizes on this channel", item, peer, got, expected);
+      code = ncclInvalidUsage;
+    } else {
+      snprintf(kernel, sizeof kernel, "a kernel stopped (error kind %u)", kind);
+    }
+  } else if (e->p2p_fault[0]) {
+    snprintf(kernel, sizeof kernel, "a channel op could not be enqueued: %s", e->p2p_fault);
+    code = ncclUnhandledCudaError;
+  }
+  if (failed) {
+    if (!tag && !e->p2p_fault[0] && !e->p2p_transport->stat(e->p2p, P2P_STAT_ABORT_FROM)) code = ncclSystemError;
+    put_error(message, len, "rank %d: point-to-point channels failed: %s%s%s", e->rank, e->p2p_transport->error(e->p2p),
+              kernel[0] ? "; on this rank " : "", kernel);
+  } else {
+    put_error(message, len, "rank %d: point-to-point channels: %s; the channels are poisoned and received data is "
+              "untrustworthy", e->rank, kernel[0] ? kernel : "poisoned");
+  }
+  return code;
+}
+
 /* A failed native progress thread is reported ahead of a timed-out wait, and both when both hold: a progress
  * thread that stopped leaves the flags its peers and its own kernels wait for unwritten, so the timeout is
  * usually its consequence and never hides it. */
@@ -1737,7 +2290,7 @@ ncclResult_t sccl_engine_async_error(sccl_engine *e, char *message, size_t len) 
     if (!atomic_exchange(&e->link_dumped, 1)) dump_links(e, "a wait of the session timed out", 0);
     return ncclRemoteError;
   }
-  return ncclSuccess;
+  return p2p_health(e, message, len);
 }
 
 static sccl_CUresult copy_async(sccl_engine *e, sccl_CUdeviceptr dst, sccl_CUdeviceptr src, size_t bytes,
@@ -1954,6 +2507,21 @@ static ncclResult_t launch_exchange(sccl_engine *e, sccl_CUdeviceptr input, sccl
  * hold takes a graph allocation on the capturing stream, which end_call frees on that stream. Without
  * stream-ordered allocation (shared.graph_staging, agreed at setup) such a capture is refused on the rank
  * that needs the staging, until one eager call of that size has grown its buffer. */
+/* Room for one more buffer on the list of staging buffers kept until destroy (release_memory frees them):
+ * work queued earlier and captured graphs may still use a buffer that a larger one replaced. */
+static int reserve_retired(sccl_engine *e, char *err, size_t len) {
+  if (e->retired < e->retired_room) return 0;
+  int room = e->retired_room ? 2 * e->retired_room : 8;
+  sccl_CUdeviceptr *grown = realloc(e->retired_stage, (size_t)room * sizeof *grown);
+  if (!grown) {
+    put_error(err, len, "out of host memory for the staging buffer list");
+    return -1;
+  }
+  e->retired_stage = grown;
+  e->retired_room = room;
+  return 0;
+}
+
 static ncclResult_t stage_buffer(sccl_engine *e, uint64_t bytes, int capturing, sccl_CUstream stream,
                                  sccl_CUdeviceptr *out, char *err, size_t len) {
   if (bytes > e->stage_bytes && capturing) {
@@ -1983,16 +2551,7 @@ static ncclResult_t stage_buffer(sccl_engine *e, uint64_t bytes, int capturing, 
     return ncclSuccess;
   }
   if (bytes > e->stage_bytes) {
-    if (e->stage && e->retired == e->retired_room) {
-      int room = e->retired_room ? 2 * e->retired_room : 8;
-      sccl_CUdeviceptr *grown = realloc(e->retired_stage, (size_t)room * sizeof *grown);
-      if (!grown) {
-        put_error(err, len, "out of host memory for the staging buffer list");
-        return ncclSystemError;
-      }
-      e->retired_stage = grown;
-      e->retired_room = room;
-    }
+    if (e->stage && reserve_retired(e, err, len)) return ncclSystemError;
     uint64_t size = e->stage_bytes * 2 > bytes ? e->stage_bytes * 2 : bytes;
     sccl_CUdeviceptr fresh = 0;
     if (cuda_check(cu->MemAlloc(&fresh, size), "allocating the link staging buffer", err, len))
@@ -3077,6 +3636,191 @@ static ncclResult_t p2p_exchange(sccl_engine *e, sccl_CUdeviceptr sent, uint64_t
   return result;
 }
 
+/* -- point-to-point channels: ops ---------------------------------------------------------------------- */
+
+/* Why rank `peer` has no channel with this rank (NULL when it has one). The channel table and
+ * LIBSIRCL_P2P_CHANNELS are the same on every rank, so a call refused here is refused on its peer too. */
+static const char *p2p_refusal(const sccl_engine *e, int peer, char *out, size_t len) {
+  if (!e->shared.p2p_on) {
+    snprintf(out, len, "point-to-point between ranks of a communicator of %d ranks runs on SIRCL's point-to-point "
+             "channels, and this communicator was created without them: set LIBSIRCL_P2P_CHANNELS=on on every "
+             "rank before creating it", e->world);
+    return out;
+  }
+  if (e->p2p && (e->p2p_channels >> peer & 1u)) return NULL;
+  if (!(e->p2p_masks[e->rank] >> peer & 1u)) {
+    int lane = 0;
+    while (lane < e->lanes - 1 && !(e->forward[peer][lane] && !e->p2p_window[peer][lane])) ++lane;
+    snprintf(out, len, "no point-to-point channel with rank %d (position %d): this rank's lane %d toward it crosses "
+             "relays (LIBSIRCL_FORWARD_WINDOWS) and LIBSIRCL_P2P_WINDOWS gives it no window", peer,
+             e->positions[peer], lane);
+  } else {
+    snprintf(out, len, "no point-to-point channel with rank %d (position %d): a lane of that rank toward this one "
+             "crosses relays and its LIBSIRCL_P2P_WINDOWS gives it no window", peer, e->positions[peer]);
+  }
+  return out;
+}
+
+/* Poison the channels after a failure to enqueue a channel op: this rank's item counters may no longer match
+ * its peers', so the progress thread stops every rank's channels (the abort notices) instead of letting a
+ * later message land in the wrong receive. */
+static void p2p_fault(sccl_engine *e, const char *why) {
+  if (!e->p2p_ctrl) return;
+  if (!e->p2p_fault[0]) snprintf(e->p2p_fault, sizeof e->p2p_fault, "%s", why && *why ? why : "unknown failure");
+  __atomic_store_n((uint32_t *)&e->p2p_ctrl[P2P_C_POISON], 1u, __ATOMIC_RELEASE);
+}
+
+/* The channel's stream (non-blocking, so it never waits for the legacy default stream) and join event,
+ * created on first use. */
+static ncclResult_t p2p_channel_ready(sccl_engine *e, p2p_channel *ch, char *err, size_t len) {
+  (void)e;
+  if (!ch->stream && cuda_check(cu->StreamCreate(&ch->stream, SCCL_CU_STREAM_NON_BLOCKING),
+                                "creating a point-to-point channel stream", err, len)) {
+    ch->stream = NULL;
+    return ncclUnhandledCudaError;
+  }
+  if (!ch->done && cuda_check(cu->EventCreate(&ch->done, SCCL_CU_EVENT_DISABLE_TIMING),
+                              "creating a point-to-point channel event", err, len)) {
+    ch->done = NULL;
+    return ncclUnhandledCudaError;
+  }
+  return ncclSuccess;
+}
+
+/* A staging buffer of `bytes` on the channel's stream, for a message that is not 16-byte aligned or not whole
+ * packs (SIRCL's session stages these too): a stream-ordered allocation that the caller frees on the stream
+ * after the launch where the driver and device have them (`*ordered` set), else the channel's own buffer,
+ * grown when too small (the old one is kept until destroy: work queued on the stream may still use it). */
+static ncclResult_t p2p_stage(sccl_engine *e, p2p_channel *ch, uint64_t bytes, sccl_CUdeviceptr *out, int *ordered,
+                              char *err, size_t len) {
+  *ordered = 0;
+  if (e->shared.graph_staging) {
+    if (cuda_check(cu->MemAllocAsync(out, bytes, ch->stream), "allocating point-to-point staging", err, len))
+      return ncclUnhandledCudaError;
+    *ordered = 1;
+    return ncclSuccess;
+  }
+  if (bytes > ch->stage_bytes) {
+    if (ch->stage && reserve_retired(e, err, len)) return ncclSystemError;
+    uint64_t size = ch->stage_bytes * 2 > bytes ? ch->stage_bytes * 2 : bytes;
+    sccl_CUdeviceptr fresh = 0;
+    if (cuda_check(cu->MemAlloc(&fresh, size), "allocating point-to-point staging", err, len))
+      return ncclUnhandledCudaError;
+    if (ch->stage) e->retired_stage[e->retired++] = ch->stage;
+    ch->stage = fresh;
+    ch->stage_bytes = size;
+  }
+  *out = ch->stage;
+  return ncclSuccess;
+}
+
+/* One message on its channel's stream: items(n) items from the channel's next item (SIRCL's protocol.items),
+ * one launch of min(SIRCL_P2P_BLOCKS, items) blocks; a buffer that is not 16-byte aligned or not whole packs
+ * goes through staging (a send copies into it first, a receive lands in it and copies out). The channel's
+ * counter advances only when the launch was enqueued. */
+static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, char *err, size_t len) {
+  const shared_settings *s = &e->shared;
+  p2p_channel *ch = &e->p2p_ch[send][op->peer];
+  uint64_t n = op->bytes, padded = round_up(n, PACK);
+  uint64_t items = padded ? (padded + s->p2p_slot_bytes - 1) / s->p2p_slot_bytes : 1;
+  sccl_CUdeviceptr buffer = (sccl_CUdeviceptr)(uintptr_t)op->buff, data = buffer, stage = 0;
+  int ordered = 0, direct = n == 0 || (buffer % PACK == 0 && n % PACK == 0);
+  ncclResult_t result = ncclSuccess;
+  if (!direct) {
+    result = p2p_stage(e, ch, padded, &stage, &ordered, err, len);
+    if (result != ncclSuccess) return result;
+    if (send && cuda_check(copy_async(e, stage, buffer, n, ch->stream), "staging a channel send", err, len))
+      result = ncclUnhandledCudaError;
+    data = stage;
+    atomic_fetch_add_explicit(&e->p2p_staged, 1, memory_order_relaxed);
+  }
+  sccl_p2p_args a;
+  memset(&a, 0, sizeof a);
+  a.data = data;
+  a.block_base = e->p2p_dev + e->p2p_layout[P2P_L_CONTROL] + (uint64_t)op->peer * e->p2p_layout[P2P_L_BLOCK];
+  a.ctrl_base = e->p2p_dev;
+  a.slot_bytes = s->p2p_slot_bytes;
+  a.packs = (int32_t)(padded / PACK);
+  a.tail = (int32_t)(n % PACK);
+  a.items = (int32_t)items;
+  a.peer = op->peer;
+  a.first = ch->next;
+  a.slots = s->p2p_slots;
+  a.lanes = (uint32_t)e->lanes;
+  a.recv_off = e->p2p_layout[P2P_L_RECV];
+  a.send_off = e->p2p_layout[P2P_L_SEND];
+  a.flag_off = e->p2p_layout[P2P_L_FLAG];
+  a.desc_off = e->p2p_layout[P2P_L_DESC];
+  a.ready_off = e->p2p_layout[P2P_L_READY];
+  a.consumed_off = e->p2p_layout[P2P_L_CONSUMED];
+  a.sent_off = e->p2p_layout[P2P_L_SENT];
+  unsigned grid = items < s->p2p_blocks ? (unsigned)items : s->p2p_blocks;
+  if (result != ncclSuccess) {
+    /* The staging copy failed: nothing launched. */
+  } else if (cuda_check(sccl_kp_launch_p2p(e->p2p_fn[send], &a, grid, s->p2p_threads, ch->stream),
+                        send ? "launching a channel send" : "launching a channel receive", err, len)) {
+    result = ncclUnhandledCudaError;
+  } else {
+    ch->next += (uint32_t)items;
+    atomic_fetch_add_explicit(&ch->messages, 1, memory_order_relaxed);
+    atomic_fetch_add_explicit(&ch->bytes, n, memory_order_relaxed);
+    atomic_fetch_add_explicit(&ch->items, items, memory_order_relaxed);
+  }
+  if (result == ncclSuccess && !direct && !send &&
+      cuda_check(copy_async(e, buffer, stage, n, ch->stream), "placing a channel receive", err, len))
+    result = ncclUnhandledCudaError;
+  if (ordered) {
+    sccl_CUresult freed = cu->MemFreeAsync(stage, ch->stream);
+    if (freed != SCCL_CUDA_SUCCESS && result == ncclSuccess) {
+      put_error(err, len, "freeing point-to-point staging: %s", sccl_cuda_result_text(freed));
+      result = ncclUnhandledCudaError;
+    }
+  }
+  return result;
+}
+
+/* The channel ops of one group (or one call outside a group) on `stream`: the sends, then the receives, each in
+ * issue order on its channel's stream after `stream` reached the group (so a receive waiting for its peer holds
+ * back nothing but later items of its own channel, and every send of the group is queued ahead of the group's
+ * receives); then `stream` waits for every channel stream the group used, so later work on it, and the
+ * stream's completion, follow the group's transfers. A failure to enqueue poisons the channels. */
+static ncclResult_t p2p_group(sccl_engine *e, const sccl_p2p_op *ops, unsigned count, sccl_CUstream stream, char *err,
+                              size_t len) {
+  if (cuda_check(cu->EventRecord(e->p2p_ready, stream), "recording the point-to-point order event", err, len)) {
+    p2p_fault(e, err);
+    return ncclUnhandledCudaError;
+  }
+  ncclResult_t result = ncclSuccess;
+  for (int send = 1; send >= 0 && result == ncclSuccess; --send)
+    for (unsigned i = 0; i < count && result == ncclSuccess; ++i) {
+      const sccl_p2p_op *op = &ops[i];
+      if (op->send != send || op->peer == e->rank) continue;
+      p2p_channel *ch = &e->p2p_ch[send][op->peer];
+      result = p2p_channel_ready(e, ch, err, len);
+      if (result == ncclSuccess && !ch->joined) {
+        if (cuda_check(cu->StreamWaitEvent(ch->stream, e->p2p_ready, 0), "ordering a channel stream", err, len))
+          result = ncclUnhandledCudaError;
+        else
+          ch->joined = 1;
+      }
+      if (result == ncclSuccess) result = p2p_launch(e, send, op, err, len);
+    }
+  for (int d = 0; d < 2; ++d)
+    for (int p = 0; p < e->world; ++p) {
+      p2p_channel *ch = &e->p2p_ch[d][p];
+      if (!ch->joined) continue;
+      ch->joined = 0;
+      sccl_CUresult joined = cu->EventRecord(ch->done, ch->stream);
+      if (joined == SCCL_CUDA_SUCCESS) joined = cu->StreamWaitEvent(stream, ch->done, 0);
+      if (joined != SCCL_CUDA_SUCCESS && result == ncclSuccess) {
+        put_error(err, len, "joining a channel stream: %s", sccl_cuda_result_text(joined));
+        result = ncclUnhandledCudaError;
+      }
+    }
+  if (result != ncclSuccess) p2p_fault(e, err);
+  return result;
+}
+
 ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned count, char *err, size_t len) {
   if (!count) return ncclSuccess;
   sccl_CUstream stream = (sccl_CUstream)ops[0].stream;
@@ -3086,9 +3830,15 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
                 ops[i].send ? "ncclSend" : "ncclRecv");
       return ncclInvalidUsage;
     }
-    if (ops[i].peer != e->rank && e->world != 2) {
-      put_error(err, len, "%s: point-to-point between ranks is carried on communicators of two ranks; this one has %d",
-                ops[i].send ? "ncclSend" : "ncclRecv", e->world);
+    char why[400];
+    if (ops[i].peer != e->rank && e->world > 2 && p2p_refusal(e, ops[i].peer, why, sizeof why)) {
+      atomic_fetch_add_explicit(&e->p2p_refused, 1, memory_order_relaxed);
+      put_error(err, len, "%s to rank %d: %s", ops[i].send ? "ncclSend" : "ncclRecv", ops[i].peer, why);
+      return ncclInvalidUsage;
+    }
+    if (ops[i].peer != e->rank && e->world > 2 && round_up(ops[i].bytes, PACK) / PACK > INT32_MAX) {
+      put_error(err, len, "%s: a channel message carries at most %llu bytes", ops[i].send ? "ncclSend" : "ncclRecv",
+                (unsigned long long)INT32_MAX * PACK);
       return ncclInvalidUsage;
     }
   }
@@ -3127,13 +3877,26 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
   call_state call;
   ncclResult_t result = begin_call(e, ops[0].send ? "ncclSend" : "ncclRecv", stream, &call, err, len);
   if (result != ncclSuccess) return result;
+  /* Communicators of more than two ranks: the calls to other ranks as channel items (not under CUDA graph
+   * capture: a replay would reuse the item numbers fixed at enqueue), the sends to the rank itself as copies. */
+  if (e->world > 2 && nsend[0] + nrecv[0]) {
+    if (call.capturing) {
+      atomic_fetch_add_explicit(&e->p2p_refused, 1, memory_order_relaxed);
+      put_error(err, len, "%s: point-to-point channel items cannot be captured in a CUDA graph (a replay would reuse "
+                "the item numbers fixed at enqueue); issue them outside the capture", ops[0].send ? "ncclSend"
+                                                                                                 : "ncclRecv");
+      result = ncclInvalidUsage;
+    } else {
+      result = p2p_group(e, ops, count, stream, err, len);
+    }
+  }
   /* The all-to-all of two ranks as point-to-point calls (torch's pattern, and nccl-tests' below NCCL API
    * level 22800): one send to and one receive from the peer and one send to and receive from this rank
    * itself, every block `chunk` bytes, the two receive blocks adjacent in rank order and neither send block
    * overlapping their span. One pair exchange carries it, its local role copying the own block in parallel
    * with the transfer (as ncclAlltoAll's exchange does) instead of a copy ahead of the exchange. */
   int fused = 0;
-  if (nsend[1] == 1 && nsend[0] == 1 && nrecv[0] == 1) {
+  if (e->world == 2 && result == ncclSuccess && nsend[1] == 1 && nsend[0] == 1 && nrecv[0] == 1) {
     const sccl_p2p_op *own_send = &ops[sends[1][0]], *own_recv = &ops[recvs[1][0]];
     const sccl_p2p_op *peer_send = &ops[sends[0][0]], *peer_recv = &ops[recvs[0][0]];
     uint64_t chunk = peer_send->bytes, rank = (uint64_t)e->rank;
@@ -3159,7 +3922,7 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
                    "a send to this rank itself", err, len))
       result = ncclUnhandledCudaError;
   }
-  unsigned exchanges = fused ? 0 : nsend[0] > nrecv[0] ? nsend[0] : nrecv[0];
+  unsigned exchanges = fused || e->world != 2 ? 0 : nsend[0] > nrecv[0] ? nsend[0] : nrecv[0];
   for (unsigned k = 0; result == ncclSuccess && k < exchanges; ++k) {
     const sccl_p2p_op *send = k < nsend[0] ? &ops[sends[0][k]] : NULL;
     const sccl_p2p_op *recv = k < nrecv[0] ? &ops[recvs[0][k]] : NULL;
@@ -3186,6 +3949,10 @@ ncclResult_t sccl_engine_teardown_sync(sccl_engine *e) {
   if (e->ctx && !pushed) result = ncclUnhandledCudaError;
   if (pushed && e->have_last && cu->StreamSynchronize(e->last_stream) != SCCL_CUDA_SUCCESS)
     result = ncclUnhandledCudaError;
+  for (int d = 0; pushed && d < 2; ++d)
+    for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
+      if (e->p2p_ch[d][p].stream && cu->StreamSynchronize(e->p2p_ch[d][p].stream) != SCCL_CUDA_SUCCESS)
+        result = ncclUnhandledCudaError;
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
@@ -3218,6 +3985,8 @@ ncclResult_t sccl_engine_set_wait_regime(sccl_engine *e, const char *regime) {
   e->serving = !strcmp(regime, "serving");
   /* A plain host store: the next launch's kernels read it, eager or replayed. */
   if (e->ctrl) e->ctrl[CTRL_WAIT_LIMIT_US] = e->serving ? e->shared.serving_wait_us : e->shared.startup_wait_us;
+  if (e->p2p_ctrl)
+    e->p2p_ctrl[P2P_C_WAIT_LIMIT_US] = e->serving ? e->shared.serving_wait_us : e->shared.startup_wait_us;
   return ncclSuccess;
 }
 
@@ -3225,7 +3994,12 @@ int sccl_engine_device(const sccl_engine *e) { return e ? e->device : -1; }
 int sccl_engine_position(const sccl_engine *e) { return e ? e->position : -1; }
 
 void sccl_engine_shutdown(sccl_engine *e) {
-  if (!e || !e->proxy) return;
+  if (!e) return;
+  if (e->p2p) {
+    e->p2p_transport->destroy(e->p2p);
+    e->p2p = NULL;
+  }
+  if (!e->proxy) return;
   e->transport->stop(e->proxy);
   e->transport->destroy(e->proxy);
   e->proxy = NULL;
@@ -3258,6 +4032,60 @@ static uint64_t realtime_ns(void) {
   struct timespec t;
   clock_gettime(CLOCK_REALTIME, &t);
   return (uint64_t)t.tv_sec * 1000000000ull + (uint64_t)t.tv_nsec;
+}
+
+/* The receipt's "channels" object: the setting, geometry and arena, this rank's channel peers and the windows
+ * of its lanes toward them, the lane check, per peer the messages, bytes and items sent and received, the
+ * messages staged, the calls refused, and the native counters (SIRCL's p2p_stat). */
+static void p2p_receipt(sccl_engine *e, char *out, size_t len) {
+  if (!e->shared.p2p_on) {
+    snprintf(out, len, "{\"on\":false,\"refused\":%" PRIu64 "}", atomic_load(&e->p2p_refused));
+    return;
+  }
+  char peers[64] = {0}, windows[256] = {0}, flows[2][768];
+  size_t used = 0, wused = 0;
+  for (int p = 0; p < e->world; ++p) {
+    if (!(e->p2p_channels >> p & 1u)) continue;
+    used += (size_t)snprintf(peers + used, sizeof peers - used, "%s%d", used ? "," : "", p);
+    if (used >= sizeof peers) used = sizeof peers - 1;
+    if (e->p2p_window[p][0] || (e->lanes > 1 && e->p2p_window[p][1])) {
+      wused += (size_t)snprintf(windows + wused, sizeof windows - wused, "%s\"%d\":[%u,%u]", wused ? "," : "", p,
+                                e->p2p_window[p][0], e->lanes > 1 ? e->p2p_window[p][1] : 0);
+      if (wused >= sizeof windows) wused = sizeof windows - 1;
+    }
+  }
+  for (int d = 0; d < 2; ++d) {
+    size_t fused = 0;
+    flows[d][0] = 0;
+    for (int p = 0; p < e->world; ++p) {
+      const p2p_channel *ch = &e->p2p_ch[d][p];
+      uint64_t messages = atomic_load_explicit(&ch->messages, memory_order_relaxed);
+      if (!messages) continue;
+      fused += (size_t)snprintf(flows[d] + fused, sizeof flows[d] - fused,
+                                "%s\"%d\":{\"messages\":%" PRIu64 ",\"bytes\":%" PRIu64 ",\"items\":%" PRIu64 "}",
+                                fused ? "," : "", p, messages, atomic_load_explicit(&ch->bytes, memory_order_relaxed),
+                                atomic_load_explicit(&ch->items, memory_order_relaxed));
+      if (fused >= sizeof flows[d]) fused = sizeof flows[d] - 1;
+    }
+  }
+  void *c = e->p2p;
+  const p2p_ops *t = e->p2p_transport;
+  snprintf(out, len,
+           "{\"on\":true,\"context\":%s,\"peers\":[%s],\"slots\":%u,\"slot_bytes\":%" PRIu64 ",\"blocks\":%u,"
+           "\"threads\":%u,\"unroll\":%u,\"chunk_bytes\":%u,\"arena_bytes\":%" PRIu64 ",\"windows\":{%s},"
+           "\"lane_check_s\":%.4f,\"staged\":%" PRIu64 ",\"refused\":%" PRIu64
+           ",\"sent\":{%s},\"received\":{%s},\"native\":{"
+           "\"items_posted\":%" PRIu64 ",\"bytes_posted\":%" PRIu64 ",\"items_released\":%" PRIu64
+           ",\"credits_sent\":%" PRIu64 ",\"writes_completed\":%" PRIu64 ",\"window_waits\":%" PRIu64
+           ",\"window_wait_max_ns\":%" PRIu64 ",\"window_max_unacked_bytes\":%" PRIu64 ",\"proven_bytes\":%" PRIu64
+           ",\"abort_from_rank\":%d}}",
+           c ? "true" : "false", peers, e->shared.p2p_slots, e->shared.p2p_slot_bytes, e->shared.p2p_blocks,
+           e->shared.p2p_threads, e->shared.p2p_unroll, e->shared.p2p_chunk, e->p2p_bytes, windows,
+           e->p2p_check_ns / 1e9, atomic_load(&e->p2p_staged), atomic_load(&e->p2p_refused), flows[1], flows[0],
+           c ? t->stat(c, 0) : 0,
+           c ? t->stat(c, 1) : 0, c ? t->stat(c, 2) : 0, c ? t->stat(c, 3) : 0, c ? t->stat(c, 4) : 0,
+           c ? t->stat(c, 5) : 0, c ? t->stat(c, 7) : 0, c ? t->stat(c, 8) : 0, c ? t->stat(c, 9) : 0,
+           c ? (int)t->stat(c, P2P_STAT_ABORT_FROM) - 1 : -1);
 }
 
 size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
@@ -3299,8 +4127,9 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
     bused += (size_t)snprintf(by_blocks + bused, sizeof by_blocks - bused, "%s\"%d\":%" PRIu64, bused ? "," : "", b, n);
     if (bused >= sizeof by_blocks) bused = sizeof by_blocks - 1;
   }
-  char health[900] = {0}, health_json[1000];
+  char health[900] = {0}, health_json[1000], channels[3072];
   ncclResult_t status = sccl_engine_async_error(e, health, sizeof health);
+  p2p_receipt(e, channels, sizeof channels);
   json_string(health_json, sizeof health_json, status == ncclSuccess ? NULL : health);
   return (size_t)snprintf(
       out, len,
@@ -3327,7 +4156,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "},\"forward_windows\":{\"lanes\":%u,\"chunk_bytes\":%u,\"chunks_posted\":%" PRIu64
       ",\"ring_window_bytes\":%u,\"ring_window_chunks\":%" PRIu64
       "},\"point_to_point\":{\"sends\":%" PRIu64 ",\"receives\":%" PRIu64 ",\"exchanges\":%" PRIu64
-      ",\"ops\":%" PRIu64 ",\"bytes_sent\":%" PRIu64 ",\"bytes_received\":%" PRIu64 "},\"refused\":{\"op\":%" PRIu64 ",\"capture_stream\":%" PRIu64
+      ",\"ops\":%" PRIu64 ",\"bytes_sent\":%" PRIu64 ",\"bytes_received\":%" PRIu64 "},\"channels\":%s,\"refused\":{\"op\":%" PRIu64 ",\"capture_stream\":%" PRIu64
       "},\"forwarded\":0,\"native\":{\"ops_posted\":%" PRIu64 ",\"writes_completed\":%" PRIu64
       ",\"phases_posted\":%" PRIu64 "},\"healthy\":%s,\"error\":%s}",
       (int)getpid(), e->receipt_id, e->rank, e->world, e->position, e->lanes, e->device,
@@ -3357,7 +4186,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       e->forward_lanes, e->forward_chunk, e->proxy ? e->transport->stat(e->proxy, 10) : 0, e->ring_window,
       e->proxy ? e->transport->stat(e->proxy, 24) : 0, atomic_load(&e->p2p_sends),
       atomic_load(&e->p2p_recvs), atomic_load(&e->p2p_exchanges), atomic_load(&e->p2p_ops),
-      atomic_load(&e->p2p_bytes_sent), atomic_load(&e->p2p_bytes_received),
+      atomic_load(&e->p2p_bytes_sent), atomic_load(&e->p2p_bytes_received), channels,
       atomic_load(&e->refused_op),
       atomic_load(&e->refused_capture), e->proxy ? e->transport->stat(e->proxy, 0) : 0,
       e->proxy ? e->transport->stat(e->proxy, 1) : 0, e->proxy ? e->transport->stat(e->proxy, 5) : 0,
@@ -3524,6 +4353,7 @@ void sccl_engine_teardown_stop(sccl_engine *e) {
   }
   e->stop_ns = realtime_ns();
   if (e->proxy) e->transport->stop(e->proxy);
+  if (e->p2p) e->p2p_transport->stop(e->p2p);
   e->stopped_ns = realtime_ns();
   e->stopped = 1;
 }
@@ -3543,18 +4373,36 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
       cu->StreamSynchronize(e->last_stream);
     }
   }
+  for (int d = 0; pushed && d < 2; ++d)
+    for (int p = 0; p < e->world && p < MAX_WORLD; ++p) {
+      sccl_CUstream channel = e->p2p_ch[d][p].stream;
+      if (!channel) continue;
+      if (abort)
+        idle = idle && cu->StreamQuery(channel) == SCCL_CUDA_SUCCESS;
+      else if (!stopped)
+        cu->StreamSynchronize(channel);
+    }
   if (!stopped) {
     dump_links(e, "destroy", pushed && idle);
     e->stop_ns = realtime_ns();
     if (e->proxy) e->transport->stop(e->proxy);
+    if (e->p2p) e->p2p_transport->stop(e->p2p);
     e->stopped_ns = realtime_ns();
+  }
+  /* The channels first: their arena, streams and staging stay allocated when a verbs object survived, or
+   * after an abort with a channel kernel still running. */
+  int p2p_unreleased = p2p_close(e, pushed && idle);
+  if (p2p_unreleased) {
+    result = ncclSystemError;
+    put_error(err, len, "rank %d: releasing the point-to-point channels' queue pairs or registrations failed (%d "
+              "verbs calls); their arena stays allocated", e->rank, p2p_unreleased);
   }
   /* A queue pair, completion queue or registration whose release failed may still be live: the arena
    * and device memory stay allocated (quarantined) until the process exits. */
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
-  int released = unreleased == 0;
-  if (!released) {
+  int released = unreleased == 0 && p2p_unreleased == 0;
+  if (unreleased) {
     result = ncclSystemError;
     put_error(err, len, "rank %d: releasing the native transport's queue pairs or registrations failed (%d verbs "
               "calls); the arena stays allocated", e->rank, unreleased);

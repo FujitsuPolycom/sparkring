@@ -184,6 +184,7 @@ record links preserve configuration evidence when the guide selects a different 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP4 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |
+| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8-dcp1](../profiles/glm53-nvfp4-tp8-dcp1/README.md) |
 
 </details>
 

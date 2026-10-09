@@ -52,10 +52,15 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
   and scatter kernels ported to CUDA C++ (`sircl_kernels.cu`); the fold pack, a local rank-ordered
   reduction of gathered rows for every NCCL datatype and built-in op (`sircl_fold.cu`); and the link
   pack, SIRCL's chain all-reduce and link collectives (chain and ring all-gather and reduce-scatter, ring
-  all-reduce) for groups whose ranks form a chain of cable neighbors (`sircl_links.cu`). All three are
-  compiled ahead of time for `sm_120` and `sm_121`, embedded as fatbins (`kernels/prebuilt/`, each
-  checked by SHA-256) and launched from C through the CUDA driver API. `KERNEL_ROUTE.md` records why the
-  kernels are CUDA C++ rather than extracted DSL output.
+  all-reduce) for groups whose ranks form a chain of cable neighbors (`sircl_links.cu`); and the
+  point-to-point pack, the send and receive kernels of SIRCL's point-to-point channels (`sircl_p2p.cu`).
+  All four are compiled ahead of time for `sm_120` and `sm_121`, embedded as fatbins (`kernels/prebuilt/`,
+  each checked by SHA-256) and launched from C through the CUDA driver API. `KERNEL_ROUTE.md` records why
+  the kernels are CUDA C++ rather than extracted DSL output.
+- **Point-to-point channels** (communicators of three or more ranks created with
+  `LIBSIRCL_P2P_CHANNELS=on`): SIRCL's point-to-point native library (`src/transport/sircl_p2p_proxy.c`, a
+  byte-identical copy of SIRCL's `p2p/_p2p_proxy.c`, its SHA-256 recorded beside it and checked by the
+  build) with an arena, queue pairs and a progress thread of its own (below).
 - **Transport**: libibverbs (`LIBSIRCL_TRANSPORT=verbs`, the default), loaded at run time; or the
   shared-memory verbs stand-in (`LIBSIRCL_TRANSPORT=emulation`), with which several processes act as
   the ranks of a group on one GPU.
@@ -63,8 +68,46 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
 Collectives carried, for every NCCL datatype: `ncclAllReduce`, `ncclReduceScatter` and `ncclReduce`
 (the all-reduce, kept on the root) with `ncclSum`, `ncclProd`, `ncclMax`, `ncclMin` and `ncclAvg`;
 `ncclAllGather`, `ncclBroadcast`, `ncclBcast`, `ncclAlltoAll`, `ncclGather` and `ncclScatter`;
-`ncclSend` and `ncclRecv` between the two ranks of a two-rank communicator (and from a rank to itself on
-any communicator), inside and outside groups; `ncclCommSplit`.
+`ncclSend` and `ncclRecv` between the two ranks of a two-rank communicator, between any two ranks of a
+larger communicator that has point-to-point channels (below), and from a rank to itself on any
+communicator, inside and outside groups; `ncclCommSplit`.
+
+Pipeline parallelism runs on two-rank communicators. torch's ProcessGroupNCCL, initialized lazily (without
+`device_id`, as vLLM initializes it), gives an unbatched send or receive on a group of more than two ranks
+a two-rank communicator of its own pair, so vLLM's pipeline exchange (`isend_tensor_dict` and
+`irecv_tensor_dict`, one send or receive per tensor to the next or from the previous stage) reaches the
+library as two-rank point-to-point at any pipeline depth; a pipeline group of two ranks (TP 4 x PP 2 on a
+ring of eight: positions i and i + 4) is itself such a communicator. Point-to-point between two ranks of a
+larger communicator (PyNccl's `send` and `recv` on such a group; torch initialized eagerly, which issues its
+sends and receives on the group's communicator) runs on that communicator's point-to-point channels, and is
+refused with `ncclInvalidUsage` on a communicator created without them.
+
+Point-to-point channels: a communicator of three or more ranks created with `LIBSIRCL_P2P_CHANNELS=on` on
+every rank carries `ncclSend` and `ncclRecv` between its ranks on SIRCL's point-to-point channels. Every
+ordered pair of ranks with a channel is first in, first out: the k-th send from rank a to rank b matches
+b's k-th receive from a, and a receive must name the byte count of the matching send (a mismatch is an
+asynchronous error on every rank). A message of n bytes is one launch of the point-to-point pack carrying
+max(1, ceil(n rounded up to 16 bytes / slot bytes)) items of the channel through `SIRCL_P2P_SLOTS` slots of
+`SIRCL_P2P_SLOT_BYTES` (8 of 512 KiB) on both ends, paced by credits; nothing depends on the collective
+session's sequence, so pairs proceed independently while other ranks idle. Each direction of each channel
+has a stream of its own, so a receive waiting for its peer holds back only later items of its own channel;
+a group's sends are queued before its receives, each channel stream starts after the caller's stream reached
+the group, and the caller's stream then waits for every channel stream the group used. A buffer that is
+not 16-byte aligned, or a size that is not whole 16-byte packs, goes through staging. Channel items are not
+captured in CUDA graphs (a replay would reuse item numbers fixed at enqueue): such a call is refused with
+`ncclInvalidUsage`. A pair has a channel when every lane between them in both directions is direct or
+has a point-to-point window (`LIBSIRCL_P2P_WINDOWS`, which `tools/site_routes.py` prints from SIRCL's
+point-to-point budget): relayed lanes post within their windows, and a pair without one is refused on both
+ranks, naming the lane. A kernel that times out or meets a message of another size, or a failure to enqueue
+a channel op, poisons the channels, and the channels' progress thread stops every rank's channels (an
+abort notice naming the origin): an asynchronous error of the communicator on every rank, so
+`LIBSIRCL_FAIL_STOP` ends every process. The channels are created with the communicator, inside its setup
+exchanges, not at the first send or receive: connecting them is collective (every rank's connection record
+is validated against every other's and every rank connects every lane of its channels), and a first
+`ncclSend` involves two ranks only. A communicator with channels holds an arena of 4 KiB plus one block of
+2 x slots x slot bytes (and lines) per rank, 32 MiB for four ranks and 64 MiB for eight at the defaults,
+pinned and registered with every RDMA device, a queue pair per lane of every channel and one more progress
+thread; off (the default), it holds none of them.
 
 - float16, bfloat16 and float32 sums run in the transport kernels: the float32 sum in rank order rounded
   once, equal to the SIRCL Python session's one-shot and two-shot bits. Under the chain and ring schedules
@@ -88,8 +131,10 @@ may still use them. Under capture, a call that needs more staging than the commu
 graph allocation on the capturing stream (`cuMemAllocAsync`), freed on that stream when the call returns,
 so the graph owns its staging; such a graph contains memory allocation and free nodes, and CUDA's rules
 for those apply (for example, one executable instance of the graph at a time). Whether the driver and
-device have stream-ordered allocation is agreed at setup; without it, such a capture is refused with
-`ncclInvalidUsage` on the rank that needs the staging until one eager call of that size has run there.
+device have stream-ordered allocation is agreed at setup (`LIBSIRCL_STREAM_ORDERED_ALLOC=off` declines it);
+without it, such a capture is refused with `ncclInvalidUsage` on the rank that needs the staging until one
+eager call of that size has run there. Point-to-point channel messages stage through a stream-ordered
+allocation on their channel's stream where there is one, else through their channel's own staging buffer.
 
 Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready communicator of two or more ranks wait
 for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
@@ -131,8 +176,12 @@ make check              # CPU suites; no GPU, RDMA device or CUDA toolkit
 ```
 
 The library loads without CUDA or libibverbs; it resolves both at communicator creation.
-`make kernels NVCC=<nvcc>` regenerates the three kernel packs and `make kernels-check` proves the
-prebuilt fatbins match the sources. GPU emulation and the hardware runs are in `RUNBOOK.md`.
+`make kernels NVCC=<nvcc>` regenerates the four kernel packs and `make kernels-check` proves the
+prebuilt fatbins match the sources. The build refuses a copy of SIRCL's point-to-point library whose
+SHA-256 differs from `src/transport/sircl_p2p_proxy.c.sha256`. `make P2P_FEATURES=1` also compiles the
+setup check of the library's local feature word (`p2p_local_features` bit 0: `p2p_destroy` counts the verbs
+calls that failed); it needs a vendored copy that defines the word (SIRCL change LF) and refuses one that
+does not. GPU emulation and the hardware runs are in `RUNBOOK.md`.
 
 ## Settings
 
@@ -151,7 +200,7 @@ prebuilt fatbins match the sources. GPU emulation and the hardware runs are in `
 | `SIRCL_LARGE_SCHEDULE` | large float16, bfloat16 and float32 all-reduces: `pieces` (ops of `SIRCL_LARGE_PIECE_BYTES`), `chain` (one chain op for the 16-byte-aligned body), `auto` (chain from `SIRCL_CHAIN_MIN_BYTES`) or `ring` (one ring op for the largest prefix of W equal chunks, from `SIRCL_RING_MIN_BYTES`; below it as `auto`). Unset: `pieces` on groups of three or more ranks, the pair default (below) on two |
 | `SIRCL_GATHER_SCHEDULE`, `SIRCL_SCATTER_SCHEDULE` | all-gathers of 16-byte-multiple shards and float16, bfloat16 and float32 reduce-scatters of 16-byte-multiple chunks: `pieces` (default: tiles and scatter ops), `chain`, `auto` or `ring`, as above |
 | `SIRCL_CHAIN_MIN_BYTES`, `SIRCL_RING_MIN_BYTES` | one minimum for all three collectives (all-reduce message, all-gather output, reduce-scatter input); unset, SIRCL's: chain 8, 8 and 4 MiB, ring 4, 8 and 4 MiB |
-| `LIBSIRCL_CHAIN_ORDER` | positions in chain order (cable neighbors); unset, the ranks by position |
+| `LIBSIRCL_CHAIN_ORDER` | positions in chain order (cable neighbors), the layout's; a communicator of some of its positions (a split child, a two-rank communicator) takes its members in the listed order, the other positions skipped; unset, the ranks by position |
 | `SIRCL_CHAIN_SLOTS`, `SIRCL_CHAIN_SLOT_BYTES`, `SIRCL_CHAIN_CHUNK_BYTES`, `SIRCL_CHAIN_BLOCKS`, `SIRCL_CHAIN_UNROLL` | the chain all-reduce's area and kernel geometry, SIRCL's names and defaults (4 slots of 1 MiB, chunks of 512 KiB, 4 blocks per role, unroll 4) |
 | `SIRCL_LINK_SLOTS`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_CHUNK_BYTES`, `SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`, `SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER` | the link area and link kernels, SIRCL's names and defaults (2 W slots, 8 to 32; slots of 512 KiB growing to the largest configured piece up to 1 MiB; pieces of 512 KiB; 4 blocks per role; unroll 4; staggers of one round when the slots hold them) |
 | `LIBSIRCL_REDUCE_LINK_BLOCKS`, `LIBSIRCL_GATHER_LINK_BLOCKS`, `LIBSIRCL_SCATTER_LINK_BLOCKS` (or SIRCL's `SIRCL_REDUCE_LINK_BLOCKS`, `SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS`) | blocks per link role (1-64) of every chain and ring link op of that collective (pair exchanges count as all-gathers); unset, `SIRCL_LINK_BLOCKS` when set, else the pair plan's on a pair, else 4. The chain all-reduce's blocks are `SIRCL_CHAIN_BLOCKS`. Ops of one kernel type may use different blocks: a launch's last block is the one whose arrival completes its own grid |
@@ -159,10 +208,15 @@ prebuilt fatbins match the sources. GPU emulation and the hardware runs are in `
 | `LIBSIRCL_LINK_BLOCKS_CYCLE` | a test hook: `<n>[,<n>...]` gives successive link ops these blocks per role in turn, to exercise launches of one kernel type with different grids |
 | `LIBSIRCL_RING_REDUCE_PASSES` | the ring all-reduce's relay: `2` (default) stores each pack of its finished piece to link 3's slot, then copies the slot to the output; `1` stores both in one pass (the same bytes and protocol, one read of the slot fewer; research-only, see `STATUS.md`); per rank |
 | `LIBSIRCL_LINK_TILE_BYTES` | bytes of every chunk one link reduce-scatter op carries (default 16 MiB); a call's chunks split into column tiles, which leave every element's arithmetic unchanged |
-| `LIBSIRCL_RING_WINDOW` | the ring plan: set on every rank when the ring that closes the chain can run, to the bytes this rank's ring lanes keep unacknowledged through relays (0 for cables); the ring schedules need it. |
+| `LIBSIRCL_RING_WINDOW` | the ring plan: set on every rank when the ring that closes the chain can run, to the bytes this rank's ring lanes keep unacknowledged through relays (0 for cables); the ring schedules need it. One value per process serves every communicator it joins: a communicator whose ring next is reached through relays (a forward window toward it) while this gives 0, such as a pipeline pair of positions i and i + 4 of a ring of eight, keeps the smallest forward window toward that rank in flight on its ring lanes (the receipt's `ring_window_bytes`) |
 | `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES` | forward windows of relayed lanes: `<position>=<bytes>[/<bytes>],...` per lane, 0 for a direct lane, and the chunk a windowed stripe posts in (default 32,768) |
+| `LIBSIRCL_P2P_CHANNELS` | `off` (default) or `on`, the same on every rank: a communicator of three or more ranks created with `on` has point-to-point channels and carries `ncclSend` and `ncclRecv` between its ranks on them (above); without them such a call is refused |
+| `SIRCL_P2P_SLOTS`, `SIRCL_P2P_SLOT_BYTES`, `SIRCL_P2P_BLOCKS`, `SIRCL_P2P_THREADS`, `SIRCL_P2P_UNROLL`, `SIRCL_P2P_CHUNK_BYTES` | the channels' geometry, SIRCL's names and defaults, agreed at setup: 8 slots (a power of two, 2-32) of 512 KiB (a multiple of 4096) per channel end, 4 blocks per launch (each taking every fourth item), 512 threads per block (a multiple of 32 from 64 to 512; SIRCL's kernels allow 1024), 4 packs per thread per pass, and a windowed stripe posted in chunks of 32,768 bytes |
+| `LIBSIRCL_P2P_WINDOWS` | windows of this process's channel lanes through relays: `<position>=<bytes>[/<bytes>],...` per lane, 0 or a multiple of 16 holding 1 to 120 chunks; a lane counts as relayed when `LIBSIRCL_FORWARD_WINDOWS` gives it a window, and a pair with a relayed lane in either direction without one has no channel. `tools/site_routes.py` prints them from SIRCL's point-to-point budget: `--p2p-reserve session` (the default, SIRCL's rule) leaves the collective session's forward windows, and with `--ring-schedules` (the site runs the ring schedules) its ring windows, their room in every relay queue first; `--session-share F` (default 1) sizes the session against F of every queue's share, so the channels get the rest; `none` sizes the channels as the only relayed traffic. On ring:8 the session's forward windows at the default share leave no relayed pair a channel; windows are whole 32 KiB chunks, so any share below 1 (0.95 to 0.05 checked) takes at least one chunk from every relayed session lane (at 0.95: 64-128 KiB become 32-96 KiB) and gives all 40 relayed ordered pairs a channel, as does `--max-window 32768` (every session lane one chunk) |
+| `SIRCL_P2P_PROGRESS_CPU` | read by the channels' progress thread, as in SIRCL: a CPU list that pins it; unset, it runs where `LIBSIRCL_CPU_POLICY` places the transport's progress thread |
+| `LIBSIRCL_STREAM_ORDERED_ALLOC` | `auto` (default): staging uses stream-ordered allocation (`cuMemAllocAsync`) where the driver and device have it; `off` declines it (the communicator's own staging buffers; captured calls that need more are refused), the same on every rank, for comparisons and tests |
 | `SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`, `LIBSIRCL_WAIT_REGIME` | flag-wait limits and the regime a communicator starts in (`startup`, default, or `serving`); `sirclSetWaitRegime` switches it |
-| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` a watcher thread checks every communicator of two or more ranks every 5 ms for an asynchronous error (a flag wait that timed out, a failed progress thread) and at the first one writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> ...` with the error) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls then keeps a failed collective's output at most for the wait limit plus one poll; a read of the output within that poll after its stream wait returns is not prevented. Destroy and abort take a communicator off the watch before releasing it |
+| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` a watcher thread checks every communicator of two or more ranks every 5 ms for an asynchronous error (a flag wait that timed out, a failed progress thread) and at the first one writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> (Unix time; CLOCK_MONOTONIC <seconds> s) ...` with the error) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls then keeps a failed collective's output at most for the wait limit plus one poll; a read of the output within that poll after its stream wait returns is not prevented. Destroy and abort take a communicator off the watch before releasing it |
 | `SIRCL_POST_ORDER`, `SIRCL_PROGRESS_CPU`, `SIRCL_FORWARD_PROOF` | read by the native progress thread, as in SIRCL; `SIRCL_PROGRESS_CPU` pins it to a CPU list |
 | `LIBSIRCL_CPU_POLICY` | where the progress thread runs without `SIRCL_PROGRESS_CPU`: `performance` (default: on the fastest CPU class the creating thread may use, the Cortex-X925 cores of a GB10, found by `/proc/cpuinfo` part numbers or sysfs `cpu_capacity`) or `none` (where the scheduler puts it). The library never changes the affinity of the application's own threads; receipts name the progress thread's CPUs (`progress_cpus`) |
 | `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`, `NCCL_SOCKET_IFNAME` | the root's LAN address; a rank contacts a non-loopback root only when one is set |

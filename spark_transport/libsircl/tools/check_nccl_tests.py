@@ -12,8 +12,11 @@ Reads, in each rank's output directory of ``tools/nccl_tests_pair.sh run``, the 
 - every job completed: one rank's log (nccl-tests prints on its main rank only) has data rows, its sweep
   reached its largest size (a row at least ``-e`` divided by ``-f``), "Out of bounds values : 0 OK" and the
   footer "Collective test concluded";
-- every data row has ``#wrong`` 0, out of place and in place; an in-place ``N/A`` of ``alltoall_perf``
-  (nccl-tests runs no in-place all-to-all) is counted as not covered, never as passed or wrong;
+- every data row has ``#wrong`` 0, out of place and in place. The tests that define no in-place result
+  (``NO_IN_PLACE``: ``alltoall_perf``, ``alltoallv_perf`` and ``sendrecv_perf``, whose in-place ``#wrong``
+  nccl-tests v2.21.1 prints as ``N/A`` on every row) have their in-place ``N/A`` counted as not covered,
+  never as passed or wrong; their out-of-place ``#wrong`` must be 0 and an in-place count other than
+  ``N/A`` must be 0. An in-place ``N/A`` of any other test is wrong;
 - every receipt has ``"forwarded":0``, no refusals, ``"healthy":true``, and all-reduce ops (transport,
   fold, chain and ring) covering its all-reduce calls;
 - the eager out-of-place time of the 8192-byte rows is at or below ``--eager-limit-us`` (20);
@@ -32,6 +35,14 @@ import sys
 from pathlib import Path
 
 ROW = re.compile(r"^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(-?\d+)\s+(.*)$")
+# nccl-tests binaries without an in-place result: their in-place column has times but "N/A" for #wrong.
+NO_IN_PLACE = frozenset({"alltoall_perf", "alltoallv_perf", "sendrecv_perf"})
+
+
+def binary(job: str) -> str:
+    """The nccl-tests binary of a job ("<binary> <arguments>"), without its directory."""
+    words = job.split()
+    return Path(words[0]).name if words else ""
 
 
 def number(text: str):
@@ -130,17 +141,20 @@ def main(argv=None) -> int:
             incomplete.append(job)
     verdict(not incomplete, f"{len(jobs) - len(incomplete)} of {len(jobs)} jobs completed their sweep"
             + (f"; incomplete: {incomplete[:10]}" if incomplete else ""))
-    every = [(path, r) for logs in data.values() for path, found in logs for r in found]
-    wrong, uncovered = [], 0
-    for path, r in every:
-        in_na = r["in_wrong"] == "N/A" and path.name.startswith("alltoall_perf")
-        uncovered += in_na
+    every = [(job, path, r) for job, logs in data.items() for path, found in logs for r in found]
+    wrong, uncovered = [], {}
+    for job, path, r in every:
+        in_na = r["in_wrong"] == "N/A" and binary(job) in NO_IN_PLACE
+        if in_na:
+            uncovered[binary(job)] = uncovered.get(binary(job), 0) + 1
         if r["out_wrong"] != "0" or (r["in_wrong"] != "0" and not in_na):
-            wrong.append((path.name, r["size"]))
-    verdict(not wrong, f"#wrong 0 on {len(every)} rows" + (f"; wrong: {wrong[:10]}" if wrong else ""))
+            wrong.append((path.name, r["size"], r["out_wrong"], r["in_wrong"]))
+    verdict(not wrong, f"#wrong 0 on {len(every)} rows"
+            + (f"; wrong (log, size, out of place, in place): {wrong[:10]}" if wrong else ""))
     if uncovered:
-        verdicts.append(f"INFO {uncovered} in-place all-to-all rows N/A: not covered (nccl-tests runs no in-place "
-                        "all-to-all)")
+        counts = ", ".join(f"{name} {count}" for name, count in sorted(uncovered.items()))
+        verdicts.append(f"INFO {sum(uncovered.values())} in-place rows N/A ({counts}): not covered (these tests "
+                        "have no in-place result)")
     receipts = sorted(p for directory in args.outputs for p in directory.glob("receipt.rank*.json"))
     bad = []
     for path in receipts:

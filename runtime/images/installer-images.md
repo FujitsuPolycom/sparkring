@@ -146,8 +146,9 @@ inherited SHA-256 `None`, and the parent receipt must not record it.
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
 [derive_glm53_plugins.py](derive_glm53_plugins.py) adds the GLM-5.3 vLLM
-general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 with
-their dist-info directories and names both in `Layer.plugins`.
+general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 and
+`glm_dcp_decode_comm` 2.0.0 with their dist-info directories and names all
+three in `Layer.plugins`.
 
 The derived lock has its parent lock's schema. A parent with a
 `sparkring-installer-image/v3` lock, such as the SIRCL or libsircl image, gives

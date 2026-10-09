@@ -2,11 +2,11 @@
 
 The layer stacks on the kraken serving image whose vLLM and B12X Python
 sources read the GLM-5.3-Flash CSF checkpoint
-(``sparkring-dev/kraken:csf-sircl-libsircl-20261008``). It adds two vLLM
+(``sparkring-dev/kraken:csf-sircl-libsircl-20261008``). It adds three vLLM
 general plugins to the serving interpreter's site-packages, each with a
 dist-info directory whose entry point registers it in ``vllm.general_plugins``;
 vLLM loads a plugin only when ``VLLM_PLUGINS`` names it, and each plugin is
-off until its own environment flag selects it:
+off until its own environment flags select it:
 
 - ``glm_dsa_indexer_split`` 1.1.0
   (``integrations/vllm/glm_dsa_indexer_split``): each decode context parallel
@@ -16,22 +16,32 @@ off until its own environment flag selects it:
 - ``glm53full_speedups`` 1.1.0 (``integrations/vllm/glm53full_speedups``):
   the fused ``q_a``/``kv_a`` latent projection is column-parallel over TP8
   with one all-gather (``GLM53FULL_LATENT_SHARD=1``) and the MTP ``eh_proj``
-  is row-parallel (``GLM53FULL_EH_PROJ_TP=1``).
+  is row-parallel (``GLM53FULL_EH_PROJ_TP=1``);
+- ``glm_dcp_decode_comm`` 2.0.0 (``integrations/vllm/glm_dcp_decode_comm``):
+  exact changes to the DSA attention's decode context parallel collectives on
+  a SIRCL DCP session, five items behind the ``GLM_DCP_DECODE_*`` flags (the
+  query pack, the communication-stream overlap, the indexer ``wk`` overlap,
+  the selection reuse and the fused all-to-all combine), with an audit mode
+  that counts differing words against the image's computation
+  (``GLM_DCP_DECODE_AUDIT=1``). Besides the image's ``vllm`` and ``b12x``
+  files it pins the SIRCL files it relies on to SIRCL 0.3.1: on a parent
+  whose SIRCL layer is another build it serves with its items off and
+  refuses at startup when an item flag is on.
 
 Every plugin wraps image functions at load time and refuses to run on any
-other file version: it pins the SHA-256 of every ``vllm`` or ``b12x`` file it
-edits or relies on to the value it records for this image, so no ``vllm`` or
-``b12x`` file changes and the image's ``verify`` keeps passing. The layer
+other file version: it pins the SHA-256 of every ``vllm``, ``b12x`` or SIRCL
+file it edits or relies on to the value it records for this image, so no image
+file changes and the image's ``verify`` keeps passing. The layer
 records every added file in the image's external-base receipt, so ``verify``
 checks the plugins' bytes too, and writes the provenance receipt
 ``/opt/sparkring/receipts/derived-glm53-plugins.json``.
 
-The layer declares both plugins with their versions (``PLUGINS``, read from
-the dist-info files it adds). From the parent's v3 lock (the lock the libsircl
-layer wrote, ``runtime/images/libsircl_layer.py``) it derives a v3 lock that
-keeps the parent's SIRCL and libsircl layers unchanged and lists the two
-plugins in ``vllm_plugins``; ``sparkring install`` refuses a profile whose
-``VLLM_PLUGINS`` names them on an image whose lock does not
+The layer declares the three plugins with their versions (``PLUGINS``, read
+from the dist-info files it adds). From the parent's v3 lock (the lock the
+libsircl layer wrote, ``runtime/images/libsircl_layer.py``) it derives a v3
+lock that keeps the parent's SIRCL and libsircl layers unchanged and lists the
+three plugins in ``vllm_plugins``; ``sparkring install`` refuses a profile
+whose ``VLLM_PLUGINS`` names them on an image whose lock does not
 (``runtime/common/image_lock.py``, ``plugin_problem``). From a v1 or v2 parent
 lock it derives a lock of that schema, which cannot list the plugins.
 
@@ -47,10 +57,11 @@ Actions (none pushes or publishes an image):
   parent, build, then record.
 
 Status: research-only. The plugins' CPU tests run against the image's own
-sources. One image built from this layer (``af06e272``) served the settings of
-profile ``glm53-nvfp4-tp8`` on one eight-Spark ring
-(``profiles/glm53-nvfp4-tp8/README.md``); no installation from a lock that
-``record`` wrote has run.
+sources. One image built from this layer with the first two plugins only
+(``af06e272``) served the settings of profile ``glm53-nvfp4-tp8`` on one
+eight-Spark ring (``profiles/glm53-nvfp4-tp8/README.md``); no image with all
+three plugins has been built, and no installation from a lock that ``record``
+wrote has run.
 """
 from __future__ import annotations
 
@@ -66,6 +77,9 @@ from runtime.images.derived_layer import Layer, main, sha  # noqa: E402
 SITE = "/usr/local/lib/python3.12/dist-packages/"
 SPLIT = "integrations/vllm/glm_dsa_indexer_split/"
 SPEEDUPS = "integrations/vllm/glm53full_speedups/"
+DCP = "integrations/vllm/glm_dcp_decode_comm/"
+DCP_MODULES = ("__init__.py", "_scatter_pack_cute.py", "kernels.py", "layout.py", "reference.py", "runtime.py")
+DCP_DIST_INFO = "glm_dcp_decode_comm-2.0.0.dist-info/"
 
 # Every added file: the site-packages path, its repository source and the
 # SHA-256 of the repository bytes (the layer pins each result; additions have
@@ -87,6 +101,9 @@ ADDED = {
     + "dist-info/glm53full_speedups-1.1.0.dist-info/entry_points.txt",
     SITE + "glm53full_speedups-1.1.0.dist-info/top_level.txt": SPEEDUPS
     + "dist-info/glm53full_speedups-1.1.0.dist-info/top_level.txt",
+    **{SITE + "glm_dcp_decode_comm/" + name: DCP + "glm_dcp_decode_comm/" + name for name in DCP_MODULES},
+    **{SITE + DCP_DIST_INFO + name: DCP + "dist-info/" + DCP_DIST_INFO + name
+       for name in ("METADATA", "entry_points.txt", "top_level.txt")},
 }
 
 
@@ -115,7 +132,8 @@ PLUGINS = plugins()
 
 LAYER = Layer(
     name="glm53-plugins",
-    purpose="the glm_dsa_indexer_split and glm53full_speedups vLLM general plugins for GLM-5.3 at TP8",
+    purpose="the glm_dsa_indexer_split, glm53full_speedups and glm_dcp_decode_comm vLLM general plugins for "
+            "GLM-5.3 at TP8",
     replace=replace,
     provenance="/opt/sparkring/receipts/derived-glm53-plugins.json",
     pins={target: (None, sha((ROOT / source).read_bytes())) for target, source in ADDED.items()},

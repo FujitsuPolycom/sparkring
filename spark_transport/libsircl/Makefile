@@ -11,23 +11,24 @@ CFLAGS ?= -O2 -g
 CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
 
 # The library: API layer, bootstrap, fabric arithmetic, session engine, CUDA
-# driver loader and the embedded kernel pack, plus SIRCL's native proxy twice:
-# over the real libibverbs (loaded at run time) and over the shared-memory
-# verbs stand-in (emulation).
+# driver loader and the embedded kernel packs, plus SIRCL's native proxy and
+# SIRCL's point-to-point native library, each twice: over the real libibverbs
+# (loaded at run time) and over the shared-memory verbs stand-in (emulation).
 SOURCES = src/api.c src/bootstrap.c src/stubs.c src/aliases.c src/device_api.c src/fabric.c src/engine.c src/cuda_api.c \
           src/kernelpack.c
-TRANSPORT_HW = src/transport/proxy_hw.c src/transport/verbs_dl.c
-TRANSPORT_EMU = src/transport/proxy_emu.c src/transport/shm_verbs.c
+TRANSPORT_HW = src/transport/proxy_hw.c src/transport/p2p_hw.c src/transport/verbs_dl.c
+TRANSPORT_EMU = src/transport/proxy_emu.c src/transport/p2p_emu.c src/transport/shm_verbs.c
 OBJECTS = $(SOURCES:src/%.c=$(BUILD)/%.o) $(TRANSPORT_HW:src/transport/%.c=$(BUILD)/transport/%.o) \
           $(TRANSPORT_EMU:src/transport/%.c=$(BUILD)/transport/%.o) $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o \
-          $(BUILD)/links_fatbin.o
+          $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o
 -include $(OBJECTS:.o=.d)
 
-# Three kernel packs, CUDA C++ compiled ahead of time for GB10 (sm_121) and
+# Four kernel packs, CUDA C++ compiled ahead of time for GB10 (sm_121) and
 # the workstation's RTX 5090 (sm_120): the transport pack (all-reduce,
 # all-gather, reduce-scatter and all-to-all over the ring session), the fold
-# pack (the local rank-ordered reduction of every other datatype and op) and the
-# link pack (the chain all-reduce and the link collectives). Each fatbin is
+# pack (the local rank-ordered reduction of every other datatype and op), the
+# link pack (the chain all-reduce and the link collectives) and the
+# point-to-point pack (the channel send and receive kernels). Each fatbin is
 # prebuilt in kernels/prebuilt/ with its SHA-256, so building the library needs
 # no CUDA toolkit; `make kernels` regenerates them with nvcc and `make
 # kernels-check` proves the prebuilt files are what the sources and pinned
@@ -38,6 +39,17 @@ FOLD_SOURCES = kernels/sircl_fold.cu
 FOLD_FATBIN = kernels/prebuilt/sircl_fold.fatbin
 LINKS_SOURCES = kernels/sircl_links.cu
 LINKS_FATBIN = kernels/prebuilt/sircl_links.fatbin
+P2P_SOURCES = kernels/sircl_p2p.cu
+P2P_FATBIN = kernels/prebuilt/sircl_p2p.fatbin
+# SIRCL's point-to-point native library is vendored byte-identical (src/transport/sircl_p2p_proxy.c, SHA-256
+# in its .sha256 file); the build refuses a copy of other contents. P2P_FEATURES=1 additionally compiles the
+# engine's check of the library's local feature word (p2p_local_features bit 0: p2p_destroy counts failed
+# verbs calls), which needs a copy that defines it (SIRCL change LF); the build refuses a copy without it.
+P2P_PROXY = src/transport/sircl_p2p_proxy.c
+P2P_FEATURES ?= 0
+ifeq ($(P2P_FEATURES),1)
+CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
+endif
 NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
 
 .PHONY: all check clean generate kernels kernels-check emulation-tools mpi-shim
@@ -53,6 +65,17 @@ $(BUILD)/transport/verbs_dl.o: src/transport/verbs_dl.c | $(BUILD)/transport
 	$(CC) $(CFLAGS) -c $< -o $@
 $(BUILD)/transport/proxy_emu.o: src/transport/proxy_emu.c src/transport/sircl_roce_proxy.c | $(BUILD)/transport
 	$(CC) -Isrc/transport/fake_verbs $(CFLAGS) -c $< -o $@
+$(BUILD)/p2p_source.ok: $(P2P_PROXY) $(P2P_PROXY).sha256 | $(BUILD)
+	test "$$(sha256sum $(P2P_PROXY) | cut -d' ' -f1)" = "$$(cat $(P2P_PROXY).sha256)" || \
+	  { echo "$(P2P_PROXY) differs from the vendored SIRCL source recorded in $(P2P_PROXY).sha256"; exit 1; }
+	if [ "$(P2P_FEATURES)" = 1 ] && ! grep -q 'p2p_local_features' $(P2P_PROXY); then \
+	  echo "P2P_FEATURES=1: $(P2P_PROXY) predates SIRCL change LF (no p2p_local_features); vendor SIRCL's"; \
+	  echo "p2p/_p2p_proxy.c after LF lands, or build without P2P_FEATURES"; exit 1; fi
+	touch $@
+$(BUILD)/transport/p2p_hw.o: src/transport/p2p_hw.c src/transport/p2p_names.h $(BUILD)/p2p_source.ok | $(BUILD)/transport
+	$(CC) $(CFLAGS) -c $< -o $@
+$(BUILD)/transport/p2p_emu.o: src/transport/p2p_emu.c src/transport/p2p_names.h $(BUILD)/p2p_source.ok | $(BUILD)/transport
+	$(CC) -Isrc/transport/fake_verbs $(CFLAGS) -c $< -o $@
 $(BUILD)/transport/shm_verbs.o: src/transport/shm_verbs.c | $(BUILD)/transport
 	$(CC) -Isrc/transport/fake_verbs -Isrc/transport $(CFLAGS) -c $< -o $@
 $(BUILD)/kernels_fatbin.c: $(FATBIN) $(FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
@@ -61,7 +84,9 @@ $(BUILD)/fold_fatbin.c: $(FOLD_FATBIN) $(FOLD_FATBIN).sha256 tools/embed_fatbin.
 	$(PYTHON) tools/embed_fatbin.py $(FOLD_FATBIN) $@ --check-sha256 $(FOLD_FATBIN).sha256 --symbol sccl_fold_fatbin
 $(BUILD)/links_fatbin.c: $(LINKS_FATBIN) $(LINKS_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
 	$(PYTHON) tools/embed_fatbin.py $(LINKS_FATBIN) $@ --check-sha256 $(LINKS_FATBIN).sha256 --symbol sccl_links_fatbin
-$(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o: $(BUILD)/%.o: $(BUILD)/%.c
+$(BUILD)/p2p_fatbin.c: $(P2P_FATBIN) $(P2P_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(P2P_FATBIN) $@ --check-sha256 $(P2P_FATBIN).sha256 --symbol sccl_p2p_fatbin
+$(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o: $(BUILD)/%.o: $(BUILD)/%.c
 	$(CC) -fPIC -O0 -c $< -o $@
 # The file is libsircl.so.<version>; its SONAME is the interface name libnccl.so.2, which the dynamic linker
 # and ctypes.CDLL("libnccl.so.2") resolve. libsircl.so is a development link to it.
@@ -78,7 +103,7 @@ $(BUILD)/fake-cuda/libcuda.so.1: tests/fake_cuda.c | $(BUILD)
 	mkdir -p $(BUILD)/fake-cuda
 	$(CC) -std=c11 -O2 -fPIC -Wall -Wextra -Werror -fvisibility=hidden -shared -Wl,-soname,libcuda.so.1 -o $@ $<
 $(BUILD)/check_entries: tests/check_entries.c $(BUILD)/kernelpack.o $(BUILD)/cuda_api.o $(BUILD)/kernels_fatbin.o \
-                        $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o
+                        $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -ldl
 $(BUILD)/entries.ok: $(BUILD)/check_entries $(BUILD)/fake-cuda/libcuda.so.1
 	LD_LIBRARY_PATH=$(abspath $(BUILD)/fake-cuda) $(BUILD)/check_entries $(ARCHITECTURES)
@@ -91,6 +116,8 @@ kernels:
 	sha256sum $(FOLD_FATBIN) | cut -d' ' -f1 > $(FOLD_FATBIN).sha256
 	$(NVCC) $(NVCCFLAGS) -fatbin -o $(LINKS_FATBIN) $(LINKS_SOURCES)
 	sha256sum $(LINKS_FATBIN) | cut -d' ' -f1 > $(LINKS_FATBIN).sha256
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(P2P_FATBIN) $(P2P_SOURCES)
+	sha256sum $(P2P_FATBIN) | cut -d' ' -f1 > $(P2P_FATBIN).sha256
 kernels-check: | $(BUILD)
 	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check.fatbin $(KERNEL_SOURCES)
 	test "$$(sha256sum $(BUILD)/check.fatbin | cut -d' ' -f1)" = "$$(cat $(FATBIN).sha256)"
@@ -101,13 +128,16 @@ kernels-check: | $(BUILD)
 	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-links.fatbin $(LINKS_SOURCES)
 	test "$$(sha256sum $(BUILD)/check-links.fatbin | cut -d' ' -f1)" = "$$(cat $(LINKS_FATBIN).sha256)"
 	@echo "prebuilt link pack matches the sources: $$(cat $(LINKS_FATBIN).sha256)"
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-p2p.fatbin $(P2P_SOURCES)
+	test "$$(sha256sum $(BUILD)/check-p2p.fatbin | cut -d' ' -f1)" = "$$(cat $(P2P_FATBIN).sha256)"
+	@echo "prebuilt point-to-point pack matches the sources: $$(cat $(P2P_FATBIN).sha256)"
 
 # GPU-emulation tools: the kernel pack's test entry points for the mixed-group check.
 emulation-tools: $(BUILD)/libsirclkp_test.so
 $(BUILD)/libsirclkp_test.so: tests/emulation/kp_shim.c src/kernelpack.c src/cuda_api.c $(BUILD)/kernels_fatbin.o \
-                            $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o
+                            $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o
 	$(CC) $(CFLAGS) -Isrc -fvisibility=hidden -shared -o $@ tests/emulation/kp_shim.c src/kernelpack.c \
-	  src/cuda_api.c $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o -ldl
+	  src/cuda_api.c $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o -ldl
 
 # A launcher-free MPI subset for nccl-tests (MPI=1 MPI_HOME=$(BUILD)/mpi-shim); see RUNBOOK.md.
 mpi-shim: $(BUILD)/mpi-shim/lib/libmpi.so
@@ -126,6 +156,8 @@ check: all $(BUILD)/test_fabric
 	$(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so)
 	$(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so)
 	$(PYTHON) tests/test_shm_verbs.py
+	$(PYTHON) tests/test_p2p_native.py
+	$(PYTHON) tests/test_site_routes.py
 	$(PYTHON) tests/test_mpi_shim.py
 	$(PYTHON) tests/test_check_nccl_tests.py
 	$(PYTHON) tests/test_kernel_entries.py --build $(BUILD)

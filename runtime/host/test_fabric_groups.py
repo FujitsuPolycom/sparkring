@@ -264,7 +264,8 @@ def test_glm53_at_tp8_needs_an_image_that_carries_its_vllm_plugins(ring8, capsys
     plain = image_lock_file(tmp_path, plugins=False)
     assert install(ring8, "--profile", GLM_FULL, lock=plain) == 3
     refused = result(capsys)
-    assert "glm53-nvfp4-tp8 loads the vLLM plugins glm_dsa_indexer_split, glm53full_speedups" in refused["message"]
+    assert ("glm53-nvfp4-tp8 loads the vLLM plugins glm_dsa_indexer_split, glm53full_speedups, glm_dcp_decode_comm"
+            in refused["message"])
     assert ops(ring8) == []
 
 

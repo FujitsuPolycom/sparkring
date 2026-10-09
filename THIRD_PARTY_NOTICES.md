@@ -493,8 +493,8 @@ preserve both.
 
 ## 18. libsircl, SIRCL's NCCL-compatible C library (included)
 
-`spark_transport/libsircl/` vendors libsircl snapshot `db529218` (tree digest
-`db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0`, version
+`spark_transport/libsircl/` vendors libsircl snapshot `a3477af2` (tree digest
+`a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302`, version
 0.6.0; [vendored copy](docs/architecture/libsircl.md#source-placement)).
 libsircl is SparkRing's own work under the Apache License, Version 2.0
 (`spark_transport/libsircl/LICENSE` and `NOTICE`). It is an independent
@@ -506,8 +506,8 @@ sponsored or endorsed by NVIDIA. It contains:
   `LICENSE.txt` in `vendor/`. Copyright (c) 2015-2026 NVIDIA CORPORATION &
   AFFILIATES, licensed under the Apache License, Version 2.0. No NCCL
   implementation source is included.
-- Copies of SIRCL files (`src/transport/sircl_roce_proxy.c`, the verbs-subset
-  header) and CUDA C++ ports of SIRCL's kernels, which derive in part from
+- Copies of SIRCL files (`src/transport/sircl_roce_proxy.c`,
+  `src/transport/sircl_p2p_proxy.c`, the verbs-subset header) and CUDA C++ ports of SIRCL's kernels, which derive in part from
   RoCEnante by Local Inference Lab and its contributors (Section 17);
   `vendor/SIRCL-NOTICE` reproduces SIRCL's notice.
 - Code from rdma-core's `<infiniband/verbs.h>` inline functions, used under

@@ -83,7 +83,7 @@ SITE_ROUTES = ROOT / SITE_ROUTES_TOOL
 SIRCL_ROOT = ROOT / "spark_transport" / "sircl"
 # The routing settings site_routes.py prints for a rank.
 ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_FORWARD_WINDOWS",
-                   "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW")
+                   "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES")
 LIBRARY_VARIABLE = "SPARKRING_LIBSIRCL_LIBRARY"
 DIGEST_VARIABLE = "SPARKRING_LIBSIRCL_SHA256"
 # Every communicator's receipt, <prefix>.rank<r>.<pid>.c<n>.json, in the deployment's receipt directory.

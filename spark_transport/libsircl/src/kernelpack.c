@@ -1,6 +1,7 @@
 /* Kernel pack loading and launches (kernelpack.h). The fatbins are embedded by
- * the build (tools/embed_fatbin.py) as sccl_kernels_fatbin (transport pack)
- * and sccl_fold_fatbin (fold pack). */
+ * the build (tools/embed_fatbin.py) as sccl_kernels_fatbin (transport pack),
+ * sccl_fold_fatbin (fold pack), sccl_links_fatbin (link pack) and
+ * sccl_p2p_fatbin (point-to-point pack). */
 #define _GNU_SOURCE
 #include "kernelpack.h"
 
@@ -15,11 +16,13 @@ extern const unsigned char sccl_fold_fatbin[];
 extern const char sccl_fold_fatbin_sha256[];
 extern const unsigned char sccl_links_fatbin[];
 extern const char sccl_links_fatbin_sha256[];
+extern const unsigned char sccl_p2p_fatbin[];
+extern const char sccl_p2p_fatbin_sha256[];
 
 enum { MAX_CONTEXTS = 16 };
 typedef struct {
   sccl_CUcontext ctx;
-  sccl_CUmodule module, fold_module, links_module;
+  sccl_CUmodule module, fold_module, links_module, p2p_module;
   sccl_CUfunction fn[SCCL_K_COUNT][SCCL_DT_COUNT][SCCL_KP_MAX_WORLD + 1];
   sccl_CUfunction fold[SCCL_FOLD_DTYPES][SCCL_FOLD_OPS];
   sccl_CUfunction chain[SCCL_DT_COUNT][SCCL_CHAIN_MAX_UNROLL + 1];
@@ -27,6 +30,7 @@ typedef struct {
   sccl_CUfunction ring_reduce_two_pass[SCCL_DT_COUNT][SCCL_CHAIN_MAX_UNROLL + 1];
   sccl_CUfunction ring_exchange[SCCL_CHAIN_MAX_UNROLL + 1];
   sccl_CUfunction ring_exchange_reduce[SCCL_DT_COUNT][SCCL_CHAIN_MAX_UNROLL + 1];
+  sccl_CUfunction p2p[2][SCCL_P2P_MAX_UNROLL + 1];
 } loaded_pack;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -46,6 +50,7 @@ const char *sccl_kp_error(void) { return error_text; }
 const char *sccl_kp_hash(void) { return sccl_kernels_fatbin_sha256; }
 const char *sccl_kp_fold_hash(void) { return sccl_fold_fatbin_sha256; }
 const char *sccl_kp_links_hash(void) { return sccl_links_fatbin_sha256; }
+const char *sccl_kp_p2p_hash(void) { return sccl_p2p_fatbin_sha256; }
 
 static loaded_pack *find(sccl_CUcontext ctx) {
   for (int i = 0; i < npacks; ++i)
@@ -169,6 +174,23 @@ int sccl_kp_load(sccl_CUcontext ctx) {
         snprintf(error_text, sizeof error_text, "link pack has no entry %s: %s", name, sccl_cuda_result_text(r));
       }
     }
+  if (!failed) {
+    r = cu->ModuleLoadData(&p->p2p_module, sccl_p2p_fatbin);
+    failed = r != SCCL_CUDA_SUCCESS;
+    if (failed) snprintf(error_text, sizeof error_text, "loading the point-to-point pack: %s", sccl_cuda_result_text(r));
+  }
+  for (int s = 0; !failed && s < 2; ++s)
+    for (int u = 1; !failed && u <= SCCL_P2P_MAX_UNROLL; ++u) {
+      char name[64];
+      snprintf(name, sizeof name, "sircl_p2p_%s_u%d", s ? "send" : "recv", u);
+      r = cu->ModuleGetFunction(&p->p2p[s][u], p->p2p_module, name);
+      if (r != SCCL_CUDA_SUCCESS) {
+        failed = 1;
+        snprintf(error_text, sizeof error_text, "point-to-point pack has no entry %s: %s", name,
+                 sccl_cuda_result_text(r));
+      }
+    }
+  if (failed && p->p2p_module) cu->ModuleUnload(p->p2p_module);
   if (failed && p->links_module) cu->ModuleUnload(p->links_module);
   if (failed && p->fold_module) cu->ModuleUnload(p->fold_module);
   if (failed && p->module) cu->ModuleUnload(p->module);
@@ -312,6 +334,30 @@ sccl_CUresult sccl_kp_launch_link(sccl_CUfunction function, const sccl_link_args
                                   unsigned threads, sccl_CUstream stream) {
   const sccl_cuda *cu = sccl_cuda_get();
   sccl_link_args a = *args;
+  void *params[] = {&a};
+  return cu->LaunchKernel(function, grid, 1, 1, threads, 1, 1, 0, stream, params, NULL);
+}
+
+int sccl_kp_p2p_function(sccl_CUcontext ctx, int send, int unroll, sccl_CUfunction *out) {
+  if (unroll < 1 || unroll > SCCL_P2P_MAX_UNROLL) {
+    snprintf(error_text, sizeof error_text, "no point-to-point kernel for unroll %d", unroll);
+    return -1;
+  }
+  pthread_mutex_lock(&lock);
+  loaded_pack *p = find(ctx);
+  if (p) *out = p->p2p[send ? 1 : 0][unroll];
+  pthread_mutex_unlock(&lock);
+  if (!p) {
+    snprintf(error_text, sizeof error_text, "the kernel packs are not loaded in this context");
+    return -1;
+  }
+  return 0;
+}
+
+sccl_CUresult sccl_kp_launch_p2p(sccl_CUfunction function, const sccl_p2p_args *args, unsigned grid,
+                                 unsigned threads, sccl_CUstream stream) {
+  const sccl_cuda *cu = sccl_cuda_get();
+  sccl_p2p_args a = *args;
   void *params[] = {&a};
   return cu->LaunchKernel(function, grid, 1, 1, threads, 1, 1, 0, stream, params, NULL);
 }

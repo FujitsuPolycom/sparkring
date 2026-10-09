@@ -8,14 +8,18 @@ once (the enqueue returns 0), waits for its stream as a caller that only checks 
 output and calls the library no more. Rank 0's flag wait times out at the wait limit.
 
 - exit (``LIBSIRCL_FAIL_STOP=1``): the library's watcher writes the fail-stop line, naming the timed-out wait
-  and the time, and ends rank 0's process with exit status 70. Passes when both the line's time and the
-  process's end are within the wait limit plus ``--margin-s`` of the enqueue and rank 0 never finished
-  holding its output.
+  and the time, and ends rank 0's process with exit status 70. Passes when the line's time is at least 0.95
+  of the wait limit after the enqueue (the wait ran its limit) and both the line and the process's end are
+  within the wait limit plus ``--margin-s`` of it, and rank 0 never finished holding its output.
 - abort (``LIBSIRCL_FAIL_STOP=abort``): the same line within the same bound, and the process ends by SIGABRT
   (after the system's core-dump handling, which this case does not bound).
-- control (``LIBSIRCL_FAIL_STOP=0``): rank 0's stream wait returns at the wait limit with a wrong output and
-  no error from any call it made, and the process is still running past the bound: the silent wrong result
-  that fail-stop ends.
+- control (``LIBSIRCL_FAIL_STOP=0``): rank 0's stream wait returns at the wait limit (at least 0.95 of it)
+  with a wrong output and no error from any call it made, and the process is still running past the bound:
+  the silent wrong result that fail-stop ends.
+
+Every time is CLOCK_MONOTONIC (Python's time.monotonic, the line's second time): a VM's wall clock may be
+stepped by its time synchronization while a rank waits (WSL2's moves back by over a second about every
+30 s), which would make a full wait look short.
 
 The runner ends rank 1 (and the control's rank 0) once rank 0's outcome is known: rank 1's own late
 all-reduce can complete, since rank 0 sent its values before its wait timed out.
@@ -39,6 +43,7 @@ HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 FAIL_STOP_LINE = "LIBSIRCL_FAIL_STOP: ending the process at "
+MONOTONIC_MARK = "CLOCK_MONOTONIC "
 FAIL_STOP_STATUS = 70
 MODES = {"exit": "1", "abort": "abort", "control": "0"}
 
@@ -64,7 +69,10 @@ def run_rank(args) -> int:
     out: dict = {"rank": rank}
 
     def save():
-        Path(args.out).write_text(json.dumps(out))
+        # Replaced whole: fail-stop may end the process during a write, which must leave the previous result.
+        partial = Path(args.out + ".partial")
+        partial.write_text(json.dumps(out))
+        os.replace(partial, args.out)
 
     uid = unique_id.share(lib, rank, world, args.id_file, "")
     comm = ctypes.c_void_p()
@@ -92,7 +100,7 @@ def run_rank(args) -> int:
     save()
     if rank == args.late_rank:
         time.sleep(args.late_s)
-    out["launched_at"] = time.time()
+    out["launched_at"] = time.monotonic()
     save()
     rc, y, want = all_reduce(9501)
     out["enqueue_result"] = rc
@@ -100,7 +108,7 @@ def run_rank(args) -> int:
     # A caller that checks only enqueue codes: it waits for its stream, keeps the output and calls the library
     # no more.
     torch.cuda.synchronize()
-    out["consumed_at"] = time.time()
+    out["consumed_at"] = time.monotonic()
     out["consumed_exact"] = same_bits(torch, y.cpu(), want)
     save()
     time.sleep(args.hold_s)
@@ -139,10 +147,10 @@ def run_case(args, work: Path, tag: str) -> list[str]:
     deadline = time.monotonic() + args.timeout
     while time.monotonic() < deadline:
         if processes[0].poll() is not None:
-            ended = time.time()
+            ended = time.monotonic()
             break
         launched = result(0).get("launched_at")
-        if tag == "control" and launched and time.time() > launched + bound + 2:
+        if tag == "control" and launched and time.monotonic() > launched + bound + 2:
             break
         time.sleep(0.02)
     for process in processes:
@@ -175,6 +183,9 @@ def run_case(args, work: Path, tag: str) -> list[str]:
             problems.append(f"{tag}: rank 0 ended {ended - launched:.2f} s after its enqueue, exit {code}")
         if "consumed_at" not in data[0] or data[0].get("consumed_exact"):
             problems.append(f"{tag}: rank 0 did not keep a wrong output: {data[0]}")
+        elif launched and data[0]["consumed_at"] - launched < 0.95 * args.wait_s:
+            problems.append(f"{tag}: rank 0's wait ended {data[0]['consumed_at'] - launched:.3f} s after the "
+                            f"enqueue, before the {args.wait_s} s wait limit")
         if line:
             problems.append(f"{tag}: the fail-stop line without fail-stop")
         waited = data[0]["consumed_at"] - launched if launched and "consumed_at" in data[0] else None
@@ -185,12 +196,13 @@ def run_case(args, work: Path, tag: str) -> list[str]:
     stamp = None
     if line:
         try:
-            stamp = float(line.split(FAIL_STOP_LINE, 1)[1].split(" ", 1)[0])
+            stamp = float(line.split(MONOTONIC_MARK, 1)[1].split(" ", 1)[0])
         except ValueError:
             stamp = None
     said = stamp - launched if stamp is not None and launched else None
-    if said is None or said > bound:
-        problems.append(f"{tag}: fail-stop line {said} s after the enqueue (bound {bound} s): {line[:200]!r}")
+    if said is None or said > bound or said < 0.95 * args.wait_s:
+        problems.append(f"{tag}: fail-stop line {said} s after the enqueue (between {0.95 * args.wait_s:.2f} and "
+                        f"{bound} s): {line[:200]!r}")
     if "timed out" not in line:
         problems.append(f"{tag}: the fail-stop line does not name the timed-out wait")
     if data[0].get("held"):
