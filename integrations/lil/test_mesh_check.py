@@ -1,4 +1,4 @@
-"""Mesh checks compare the proposed trial to installed state without real SSH."""
+"""Mesh checks compare the proposed deployment to installed state without real SSH."""
 
 import importlib.util
 import json

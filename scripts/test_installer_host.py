@@ -202,7 +202,7 @@ def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch)
     monkeypatch.setattr(host, "admit_image", lambda lock: {})
     monkeypatch.setattr(host, "verify_model", lambda *a, **k: None)
     monkeypatch.setattr(host, "check_runtime_binding", lambda *a, **k: None)
-    monkeypatch.setattr(host.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(host.toolchain_profiles, "verify_model_paths", lambda *a: None)
     monkeypatch.setattr(compose, "check_project_containers", lambda *a, **k: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
     assert host.perform("start", lock, 0) == {"ok": True}

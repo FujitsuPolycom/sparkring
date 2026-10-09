@@ -96,7 +96,7 @@ def load_site(path):
         "Unknown qualification site schema",
     )
     require(
-        re.fullmatch(r"[a-z][a-z0-9-]{0,30}", site["name"]), "Invalid model trial name"
+        re.fullmatch(r"[a-z][a-z0-9-]{0,30}", site["name"]), "Invalid qualification site name"
     )
     require(
         len(site["hosts"]) == len(site["snapshots"]) == len(site["hostnames"]) == 2,

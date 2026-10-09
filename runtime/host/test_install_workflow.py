@@ -707,6 +707,21 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
     assert result["image_id"] == lock["image_runtime"]["image_id"] and lock["backend"] == "compose"
 
 
+def test_an_alias_installs_the_deployment_of_its_profile_id(machine, sparks, monkeypatch, capsys):
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                              "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    assert sparkring.main(["install", "--profile", "glm53-flash-tp4", "--yes", "--json"]) == 0
+    aliased = json.loads(capsys.readouterr().out)
+    from runtime.common import installer
+    assert installer.load(aliased["deployment"])["selection"]["profile"] == "glm53-flash-nvfp4-spark-tp4"
+    assert sparkring.main(["install", "--profile", "glm53-flash-nvfp4-spark-tp4", "--yes", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == aliased["deployment"]
+
+
 @pytest.mark.parametrize("checkpoint, repository", [("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4"),
                                                     ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4")])
 def test_a_ring_installs_a_listed_checkpoint_of_another_repository(machine, sparks, monkeypatch, capsys,

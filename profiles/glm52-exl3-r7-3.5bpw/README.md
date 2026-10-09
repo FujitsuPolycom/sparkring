@@ -119,7 +119,7 @@ cp scripts/config/exl3-r7-candidate.example.json \
   .sparkring/exl3-r7/candidate.json
 $EDITOR .sparkring/exl3-r7/candidate.json
 
-python scripts/glm35_profile.py plan --execute \
+python scripts/glm52_exl3_profile.py plan --execute \
   --site .sparkring/exl3-r7/site.yaml \
   --template .sparkring/exl3-r7/candidate.json \
   --transport-library build/sircl-tiered/libspark_transport_capi.so \
@@ -149,20 +149,20 @@ Prepare a source tree, preserve it with its receipt, and adapt a separate copy:
 ```bash
 python runtime/exl3-r7/prepare_context.py .sparkring/exl3-r7/prepared-sources
 cp -a .sparkring/exl3-r7/prepared-sources/vllm .sparkring/exl3-r7/q40-source
-python scripts/glm35_q40/prepare_q40_overlay_inputs.py .sparkring/exl3-r7/q40-source
-python scripts/glm35_q40/q40_exact_state_overlay.py \
+python scripts/glm52_exl3_q40/prepare_q40_overlay_inputs.py .sparkring/exl3-r7/q40-source
+python scripts/glm52_exl3_q40/q40_exact_state_overlay.py \
   --source .sparkring/exl3-r7/q40-source/vllm/model_executor/layers/quantization/exl3.py \
   --output .sparkring/exl3-r7/q40-overlay/exl3.py
 IMAGE_REF=REPLACE_WITH_BUILT_IMAGE_REFERENCE
 image_id="$(docker image inspect "$IMAGE_REF" --format '{{.Id}}')"
-python scripts/glm35_q40/q40_exact_state_attestation_overlay.py \
+python scripts/glm52_exl3_q40/q40_exact_state_attestation_overlay.py \
   --source .sparkring/exl3-r7/q40-source/vllm/v1/worker/gpu/model_runner.py \
   --output .sparkring/exl3-r7/q40-overlay/model_runner.py \
   --image-id "$image_id"
 base_sha="$(sha256sum .sparkring/exl3-r7/pre-q40-profile.json | cut -d ' ' -f 1)"
 runner_sha="$(sha256sum .sparkring/exl3-r7/q40-overlay/model_runner.py | cut -d ' ' -f 1)"
 
-python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
+python scripts/glm52_exl3_q40/prepare_q40_exact_state_serving.py \
   --base-profile .sparkring/exl3-r7/pre-q40-profile.json \
   --expected-base-profile-sha256 "$base_sha" \
   --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \
@@ -258,14 +258,14 @@ cp .sparkring/exl3-r7/site.yaml "$restart_dir/site.yaml"
 cp .sparkring/exl3-r7/candidate.json "$restart_dir/candidate.json"
 $EDITOR "$restart_dir/site.yaml" "$restart_dir/candidate.json"
 # Set paths.jit_cache_dir in site.yaml and jit_cache_host_path in candidate.json.
-python scripts/glm35_profile.py plan --execute \
+python scripts/glm52_exl3_profile.py plan --execute \
   --site "$restart_dir/site.yaml" --template "$restart_dir/candidate.json" \
   --output-dir "$restart_dir" \
   --transport-library build/sircl-tiered/libspark_transport_capi.so \
   --backend spark_transport/integrations/vllm/spark_tp4_backend.py \
   --port-namespace spark_transport/integrations/vllm/spark_tp4_port_namespace.py
 base_sha="$(sha256sum "$restart_dir/pre-q40-profile.json" | cut -d ' ' -f 1)"
-python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
+python scripts/glm52_exl3_q40/prepare_q40_exact_state_serving.py \
   --base-profile "$restart_dir/pre-q40-profile.json" \
   --expected-base-profile-sha256 "$base_sha" \
   --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \

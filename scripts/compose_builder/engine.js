@@ -78,7 +78,7 @@ const SparkRingEngine = (() => {
     return Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  // ---- Site validation (compose.site_settings, qwen_flash_next.site_inputs and container_spec,
+  // ---- Site validation (compose.site_settings, toolchain_profiles.site_inputs and container_spec,
   // qwen_mesh.validate_site_reference), in the generator's order ---------------------------
   const isInt = v => typeof v === 'number' && Number.isInteger(v);
   const IPV4 = /^(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])(?:\.(?:25[0-5]|2[0-4][0-9]|1[0-9][0-9]|[1-9]?[0-9])){3}$/;

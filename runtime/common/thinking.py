@@ -128,8 +128,8 @@ def model(profile_id, checkpoint=None, root=ROOT):
     configuration = profiles.read_json(profiles.local_path(source["path"], root))
     if configuration.get("image_extension") != "toolchain":
         return None
-    from runtime.common import qwen_flash_next
-    served = qwen_flash_next.checkpoint_settings(configuration, checkpoint)["model"]
+    from runtime.common import toolchain_profiles
+    served = toolchain_profiles.checkpoint_settings(configuration, checkpoint)["model"]
     return f"{served['repository']}@{served['revision']}"
 
 

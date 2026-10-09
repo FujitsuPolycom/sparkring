@@ -1,4 +1,11 @@
-"""Render Qwen Flash-Next pair and ring deployments from canonical profiles.
+"""Plan and render the rank containers of the serving profiles that run on the shared toolchain image.
+
+The profiles are those of TOOLCHAIN_CONFIGS and fabric_configs(): GLM-5.3-Flash,
+GLM-5.3, DeepSeek-V4.1-Flash, MiMo-V2.6-Flash-MOPD, Swift-1.5 and
+Qwen3.8-Flash-Next on a pair, a ring of four or a ring of eight, plus the
+Qwen3.8-Flash-Next native-image and SparkCache configurations under
+CONFIG_ROOT and TP4_CONFIG. The installer, Compose and each profile's
+`launcher` read it.
 
 This adapter does not provision networking or enable GLM cache contracts.
 Model shard identity must be verified before selecting an existing snapshot.

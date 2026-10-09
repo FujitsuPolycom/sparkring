@@ -18,7 +18,7 @@
   ],
   "launcher": {
     "kind": "bash",
-    "path": "scripts/qwen38_dgx2_serve.sh",
+    "path": "scripts/qwen38_pair_serve.sh",
     "actions": [
       "--check",
       "--run"

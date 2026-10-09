@@ -1,7 +1,7 @@
 """Per-rank container commands of each arm, from one base container per rank.
 
 The base of rank ``r`` is the installer's own container for the profile
-(:func:`runtime.common.qwen_flash_next.render`, a ``docker create`` command), so Compose
+(:func:`runtime.common.toolchain_profiles.render`, a ``docker create`` command), so Compose
 exports are not needed and research-only profiles render the same way. Every arm applies the
 same site substitutions (:func:`common`) and then only its own transport part:
 

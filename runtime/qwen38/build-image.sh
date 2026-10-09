@@ -39,6 +39,8 @@ observed_base="$("${engine}" image inspect --format '{{.Id}}' "${base_image}" 2>
 
 tracked_inputs=(
   runtime/qwen38
+  scripts/qwen38_pair_serve.sh
+  scripts/qwen38_ring4_serve.sh
   scripts/qwen38_dgx2_serve.sh
   scripts/qwen38_dgx4_serve.sh
   spark_transport/nccl/nccl-2.30.7-skip-tree-pat.patch

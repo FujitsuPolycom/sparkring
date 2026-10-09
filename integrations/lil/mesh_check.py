@@ -19,10 +19,10 @@ def verify_installed_mesh(expected):
     config, site, topology, _, identity = managed_service.load_config(config_path)
     rank = expected["rank"]
     if config["rank"] != rank or config["container_image"] != expected["image"]:
-        raise ValueError("Installed mesh rank/image differs from the proposed trial")
+        raise ValueError("Installed mesh rank/image differs from the proposed deployment")
     node = topology.rank(rank)
     if node.ssh_alias != expected["host"]:
-        raise ValueError("Installed mesh host differs from the proposed trial")
+        raise ValueError("Installed mesh host differs from the proposed deployment")
     actual = {
         "HOST_IP": site["management_addresses"][rank],
         "MASTER_ADDR": site["management_addresses"][0],
@@ -56,7 +56,7 @@ def verify_installed_mesh(expected):
             actual[prefix + f"GID{slot}"] = "3"
     if actual != expected["network"]:
         raise ValueError(
-            "Installed mesh addresses/devices/GIDs differ from the proposed trial"
+            "Installed mesh addresses/devices/GIDs differ from the proposed deployment"
         )
     container = json.loads(
         subprocess.check_output(

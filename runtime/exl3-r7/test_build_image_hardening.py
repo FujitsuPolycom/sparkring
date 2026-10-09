@@ -28,8 +28,8 @@ def _shell_path(path: Path) -> str:
 
 @pytest.mark.skipif(shutil.which("bash") is None, reason="Bash is unavailable")
 @pytest.mark.parametrize("dependency", [
-    "scripts/glm35_q40/prepare_q40_overlay_inputs.py",
-    "scripts/glm35_q40/q40_v2_route_capture.patch",
+    "scripts/glm52_exl3_q40/prepare_q40_overlay_inputs.py",
+    "scripts/glm52_exl3_q40/q40_v2_route_capture.patch",
 ])
 @pytest.mark.parametrize("damage", ["dirty", "untracked"])
 def test_q40_dependency_drift_blocks_before_engine_or_preparation(tmp_path, dependency, damage):

@@ -43,7 +43,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, image_lock, installer_image, profiles, qwen_flash_next, setup
+from runtime.common import compose, image_lock, installer_image, profiles, toolchain_profiles, setup
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -149,11 +149,11 @@ def _changes(entry):
 
 def _checkpoints(profile_id, configuration, site, options):
     """The default checkpoint first, then every other listed one, with the command facts each selects."""
-    default, names = qwen_flash_next.checkpoint_names(configuration)
+    default, names = toolchain_profiles.checkpoint_names(configuration)
     aliases = configuration.get("checkpoint_aliases") or {}
     rows = []
     for name in ([default, *sorted(n for n in names if n != default)] if default else [None]):
-        model = qwen_flash_next.checkpoint_settings(configuration, name).get("model") or {}
+        model = toolchain_profiles.checkpoint_settings(configuration, name).get("model") or {}
         specs, _ = compose.specifications(profile_id, site, checkpoint=None if name == default else name, **options)
         command = list(specs[0].command)
         entry = (configuration.get("checkpoints") or {}).get(name, {})
@@ -311,7 +311,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     and `sparkring compose render --checkpoint` refuse it elsewhere.
     """
     metadata, _ = profiles.load(profile_id)
-    configuration = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    configuration = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
     example = example_site(profile_id)
     runtime = image_runtime or compose.installer_image_runtime(profile_id)
     options = {"image_runtime": runtime} if runtime is not None else {}

@@ -23,8 +23,8 @@ def test_container_preserves_architecture_split_and_workspace_layout() -> None:
     assert "CMAKE_CUDA_ARCHITECTURES=121" not in text
     assert "COPY bundle/sources/vllm /ws/src/vllm-gg" in text
     assert "COPY bundle/sources/exllamav3 /ws/src/exllamav3" in text
-    assert "COPY bundle/runtime/qwen38_dgx2_serve.sh /ws/qwen38_dgx2_serve.sh" in text
-    assert "COPY bundle/runtime/qwen38_dgx4_serve.sh /ws/qwen38_dgx4_serve.sh" in text
+    for name in ("qwen38_pair_serve.sh", "qwen38_ring4_serve.sh", "qwen38_dgx2_serve.sh", "qwen38_dgx4_serve.sh"):
+        assert f"COPY bundle/runtime/{name} /ws/{name}" in text
     # Runtime images contain code/dependencies, not downloaded checkpoints or
     # the separately hydrated EXL3 model directory.
     assert "huggingface" not in text.lower()

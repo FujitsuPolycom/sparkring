@@ -47,3 +47,9 @@ def test_images_refuses_a_name_that_is_not_an_installer_profile(capsys):
     with pytest.raises(SystemExit):
         images.main(["--profile", "qwen"])
     assert "not an installer profile" in capsys.readouterr().err
+
+
+def test_images_selects_a_profile_by_its_alias(capsys):
+    assert images.main(["--profile", "glm53-flash-tp4", "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert listed and all("glm53-flash-nvfp4-spark-tp4" in row["profiles"] for row in listed)

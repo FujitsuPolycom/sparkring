@@ -56,14 +56,14 @@ GROUPS = {
     "Transport": [
         ('Collective transport (TP)', None, 'tp_collective_transport'),
         ('SIRCL version (TP)', None, 'tp_sircl_version'),
-        ('RoCEnante available (TP)', 'VLLM_ENABLE_ROCE_ALLREDUCE', 'tp_rocenante_enabled'),
+        ('RoCE all-reduce adapter (B12X) available (TP)', 'VLLM_ENABLE_ROCE_ALLREDUCE', 'tp_rocenante_enabled'),
         ('RoCE all-reduce size limit', 'VLLM_ROCE_ALLREDUCE_MAX_SIZE', 'tp_roce_allreduce_max_bytes'),
         ('RoCE all-gather shard size limit', 'VLLM_ROCE_ALLGATHER_MAX_SIZE', 'tp_roce_allgather_max_bytes'),
         ('NCCL runtime version (TP)', None, 'tp_nccl_version'),
         ('NCCL library name (TP)', None, 'tp_nccl_library_path'),
-        ('RoCEnante selected HCAs', 'B12X_ROCE_HCA', 'tp_roce_hcas'),
-        ('RoCEnante GID index', None, 'tp_roce_gid_index'),
-        ('RoCEnante PCI domains', None, 'tp_roce_pci_domains'),
+        ('Selected HCAs (RoCE adapter)', 'B12X_ROCE_HCA', 'tp_roce_hcas'),
+        ('GID index (RoCE adapter)', None, 'tp_roce_gid_index'),
+        ('PCI domains (RoCE adapter)', None, 'tp_roce_pci_domains'),
         ('PCI-domain routing preference', 'NCCL_IB_PRESERVE_PCI_DOMAIN', None),
         ('NCCL subnet-routing override', 'NCCL_IB_SUBNET_AWARE_ROUTING', None),
         ('NCCL algorithm override', 'NCCL_ALGO', None),
@@ -167,9 +167,14 @@ GROUPS['Decode and speculation'] += [
 # Launch arguments that only the API server reads. Workers have no copy, so
 # their rows show no per-worker comparison.
 API_SERVER_ONLY = {'tool_call_parser', 'default_chat_template_kwargs'}
+# The RoCE adapter is B12X's RoCE all-reduce communicator (b12x.comm.roce), which the image's
+# transport bundle provides; SIRCL's vLLM integration takes its all-reduce slot when it is enabled.
+SIRCL_SLOT = ("When SIRCL is enabled it replaces the RoCE adapter's all-reduce slot; Collective "
+              "transport (TP) names what carries the collectives, and the SIRCL rows report its sessions.")
 GROUP_NOTES = {
     'Chat and tools': 'Each request can set thinking with chat_template_kwargs or reasoning_effort. '
                       'Request values take precedence over these defaults.',
+    'Transport': 'Rows that name the RoCE adapter describe the RoCE all-reduce adapter (B12X). ' + SIRCL_SLOT,
 }
 SAVE_CPU_WINDOW_S = 0.002  # runtime/common/serving.py SWITCHES["save_cpu"]
 
@@ -193,7 +198,17 @@ def template_defaults(record):
 
 
 # Settings whose values read better with a fixed phrase; None falls back to display().
-PHRASES = {'SPARKRING_SHM_BUSY_LOOP_S': shm_window, 'default_chat_template_kwargs': template_defaults}
+# Plain names of tp_collective_transport values; the status document keeps the values themselves.
+TRANSPORT_NAMES = {'sircl': 'SIRCL', 'rocenante': 'RoCE all-reduce adapter (B12X)', 'nccl': 'NCCL'}
+
+
+def transport_name(record):
+    """The plain name of a known collective transport, or None to show the value itself."""
+    return TRANSPORT_NAMES.get(record['value']) if known(record) else None
+
+
+PHRASES = {'SPARKRING_SHM_BUSY_LOOP_S': shm_window, 'default_chat_template_kwargs': template_defaults,
+           'tp_collective_transport': transport_name}
 
 
 def clean(value):
@@ -619,8 +634,9 @@ def detail_sections(doc, view):
         ('Rank', 'Package', 'Version'), package_rows, False)
     section('communicators', 'Communication groups',
         'What each group can use and its size limits. Available does not mean a request used it. '
-        'NCCL does not report its algorithm, protocol or channel count here.',
-        ('Rank', 'Group', 'Size', 'RoCEnante available', 'NCCL available', 'All-reduce limit', 'All-gather shard limit', 'Selected HCAs'), group_rows)
+        + SIRCL_SLOT + ' NCCL does not report its algorithm, protocol or channel count here.',
+        ('Rank', 'Group', 'Size', 'RoCE all-reduce adapter (B12X) available', 'NCCL available', 'All-reduce limit',
+         'All-gather shard limit', 'Selected HCAs'), group_rows)
     if singleton_rows:
         section('singleton-groups', 'Single-worker groups',
             'These groups have one worker, so they need no network link. This is expected, not a network fault.',
@@ -630,7 +646,8 @@ def detail_sections(doc, view):
         'of the PCI address. Interfaces with the same PCI device key share one physical link; do not add their rates.',
         ('Rank', 'HCA', 'PCI address', 'Interface', 'State', 'Link rate', 'PCIe link', 'MTU'), nic_rows)
     section('addresses', 'Network adapter addresses',
-        'Only the adapters RoCEnante selected are listed. IP addresses are not collected.',
+        'Only the network adapters that the RoCE all-reduce adapter (B12X) selected are listed. '
+        'IP addresses are not collected.',
         ('Rank', 'Interface', 'MAC', 'IP addresses', 'PCI device key'), address_rows, False)
     section('rdma-counters', 'RDMA port traffic',
         'Running totals for the whole host, not only this model. This page runs no bandwidth or latency test.',

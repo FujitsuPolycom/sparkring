@@ -308,12 +308,12 @@ def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_
 
 
 def test_a_preferred_checkpoint_is_one_that_only_some_vllm_builds_read():
-    from runtime.common import profiles, qwen_flash_next, setup
+    from runtime.common import profiles, toolchain_profiles, setup
     preferring = []
     pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
     for profile in sorted({*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY}):
         card = setup.selection(profile)
-        name = qwen_flash_next.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
+        name = toolchain_profiles.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
         if name is None:
             assert image_lock.preferred_checkpoint(pinned, profile) is None
             continue

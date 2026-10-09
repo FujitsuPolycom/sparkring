@@ -13,7 +13,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-import glm35_profile as profile  # noqa: E402
+import glm52_exl3_profile as profile  # noqa: E402
 
 
 def source_mtp4_profile() -> dict:

@@ -38,7 +38,7 @@ installs a profile on it ([Another image](install-reference.md#another-image)).
 | `eugr/spark-vllm-b12x` nightly-20261001 base | Torch 2.13.0 for CUDA 13.0, FlashInfer 0.7.1 and vLLM's compiled extensions, built for GB10 (SM121a) |
 | vLLM and [B12X](https://github.com/local-inference-lab/b12x) sources | Local Inference Lab's Karmic Kraken beta branches (`integration/karmic-kraken-beta`) merged with SparkRing's changes: branches `sparkring/kraken-beta-20261004` of [FujitsuPolycom/vllm](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261004) and [FujitsuPolycom/b12x](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261004) |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
-| Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives; a send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
+| Prepared B12X RoCE transport bundle (`tp2-rocenante-adaptive-prepared`) | Collectives over RoCE through B12X's RoCE communication package (`b12x.comm.roce`, called RoCEnante), on profiles of two and four Sparks alike: the `tp2-` name is kept for compatibility, and when SIRCL is loaded it replaces this bundle's all-reduce slot. A send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
 | RoCE GID index per port | Each HCA uses the RoCE GID index of its fabric address, read at startup. NCCL still uses index 3, which the installer restores before a model starts ([RoCE GID index 3](install-reference.md#roce-gid-index-3)). Ranks of images with proxy ABI 5 and 6 refuse to connect, so all Sparks must run the same image ([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)) |
 | Runtime-status dashboard 0.3.4 | [Status dashboard](dashboard.md) at `/v1/sparkring/status/view` on the model API port: settings, memory, transport and versions, with only the rows to check colored. The settings include the reasoning and tool-call parsers, the default chat template arguments and the shared-memory reader window |
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10; the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
@@ -65,8 +65,8 @@ checkpoint by default
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that
 allows `io_uring` (`runtime/common/loader-seccomp.json`). Run it with
-`sparkring install` or [Compose](compose.md); the manual Qwen launcher,
-`runtime/common/qwen_flash_next.py`, refuses it.
+`sparkring install` or [Compose](compose.md); the manual profile launcher,
+`runtime/common/toolchain_profiles.py`, refuses it.
 
 ## Shared 2026.09.3 image
 

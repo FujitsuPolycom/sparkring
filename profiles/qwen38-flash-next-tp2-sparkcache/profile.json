@@ -14,7 +14,7 @@
   "overrides": [],
   "launcher": {
     "kind": "python",
-    "path": "runtime/common/qwen_flash_next.py",
+    "path": "runtime/common/toolchain_profiles.py",
     "actions": [
       "plan",
       "check",

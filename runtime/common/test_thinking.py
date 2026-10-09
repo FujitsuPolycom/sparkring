@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from runtime.common import installer, profiles, qwen_flash_next, thinking
+from runtime.common import installer, profiles, toolchain_profiles, thinking
 
 
 def served_checkpoints():
@@ -14,7 +14,7 @@ def served_checkpoints():
         configuration = profiles.read_json(installer.ROOT / installer.setup.selection(profile)["configuration"])
         names = sorted(configuration.get("checkpoints") or {}) or [None]
         for name in names:
-            model = qwen_flash_next.checkpoint_settings(configuration, name)["model"]
+            model = toolchain_profiles.checkpoint_settings(configuration, name)["model"]
             result[profile, name] = f"{model['repository']}@{model['revision']}"
     return result
 

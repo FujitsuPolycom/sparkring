@@ -281,7 +281,7 @@ def test_source_drift_and_existing_output_are_rejected(site, tmp_path, monkeypat
     with pytest.raises(FileExistsError):
         compose.render(compose.SUPPORTED[0], site, directory)
     inventory = copy.deepcopy(compose.source_inventory(compose.SUPPORTED[0]))
-    inventory["runtime/common/qwen_flash_next.py"] = "0" * 64
+    inventory["runtime/common/toolchain_profiles.py"] = "0" * 64
     monkeypatch.setattr(compose, "source_inventory", lambda _: inventory)
     with pytest.raises(ValueError, match="inputs changed"):
         compose.load_deployment(directory)

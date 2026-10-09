@@ -1,7 +1,7 @@
 {
   "schema": "sparkring-deployment/v1",
   "id": "glm53-flash-nvfp4-spark-tp4",
-  "title": "GLM-5.3-Flash on four Sparks",
+  "title": "GLM-5.3-Flash on four Sparks (CSF checkpoint, or NVFP4-Spark on an image that cannot read CSF)",
   "recommendation": "recommended",
   "status": "implemented",
   "configuration": {
@@ -14,7 +14,7 @@
   "overrides": [],
   "launcher": {
     "kind": "python",
-    "path": "runtime/common/qwen_flash_next.py",
+    "path": "runtime/common/toolchain_profiles.py",
     "actions": [
       "plan"
     ],

@@ -373,7 +373,9 @@ when a group failed or stayed pending, and 2 when it could not run.
 quantization and topology) and marks those `sparkring install` supports. For
 each installer profile it also shows what the model does with thinking when a
 request doesn't say, such as `on · xhigh`, and the effort levels it accepts
-([thinking](install-reference.md#thinking)).
+([thinking](install-reference.md#thinking)), the checkpoint it installs and the
+others `--checkpoint` takes, and any other name that selects it, such as
+`glm53-flash-tp4`.
 
 ## images
 

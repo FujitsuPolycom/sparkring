@@ -34,8 +34,8 @@ build_inputs=(
   runtime/build-public-overlay.py
   runtime/public-overlay-files.json
   spark_transport
-  scripts/glm35_q40/prepare_q40_overlay_inputs.py
-  scripts/glm35_q40/q40_v2_route_capture.patch
+  scripts/glm52_exl3_q40/prepare_q40_overlay_inputs.py
+  scripts/glm52_exl3_q40/q40_v2_route_capture.patch
 )
 if ! git -C "${repo_root}" diff --quiet HEAD -- "${build_inputs[@]}"; then
   fatal "builder inputs differ from SparkRing revision ${sparkring_revision}"
@@ -70,7 +70,7 @@ fi
 # overlay-input preparation to the build-context copy so both gates hold: the
 # original prepared tree stays receipt-clean, and the tree entering the image
 # carries the state the bake requires.
-python3 "${repo_root}/scripts/glm35_q40/prepare_q40_overlay_inputs.py" \
+python3 "${repo_root}/scripts/glm52_exl3_q40/prepare_q40_overlay_inputs.py" \
   "${context}/sources/vllm"
 
 cp "${here}/Containerfile" "${context}/Containerfile"

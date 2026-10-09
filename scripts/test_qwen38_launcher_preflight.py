@@ -12,7 +12,7 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-LAUNCHER = ROOT / "scripts" / "qwen38_dgx4_serve.sh"
+LAUNCHER = ROOT / "scripts" / "qwen38_ring4_serve.sh"
 
 VLLM_COMMIT = "229effc810ee6b8112f661472f6aace4eb8c787d"
 EXLLAMAV3_COMMIT = "5f3c537ca9d89893d771256f5c43c93656553fbb"

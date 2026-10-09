@@ -8,7 +8,7 @@ import shutil
 
 import pytest
 
-from runtime.common import compose, qwen_flash_next as adapter, source_candidate as source
+from runtime.common import compose, toolchain_profiles as adapter, source_candidate as source
 from runtime.common.container_spec import docker_create
 from runtime.common.test_compose import compose_cli as compose_cli
 from scripts import sparkring_compose as coordinator

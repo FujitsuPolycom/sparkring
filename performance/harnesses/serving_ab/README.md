@@ -36,7 +36,7 @@ WSL when the keys live on the Windows side).
 ## Arms
 
 Every rank's base is the installer's container for the profile: the profile
-adapter's specification (`runtime/common/qwen_flash_next.py`), adapted to the
+adapter's specification (`runtime/common/toolchain_profiles.py`), adapted to the
 image lock (`--image-lock`) as the installer runs it on a host
 (`runtime/common/compose.py`, `installer_container`: the toolchain entrypoint,
 CUDA 13.4 and NCCL 2.32.3 library paths, the runtime-status plugin,

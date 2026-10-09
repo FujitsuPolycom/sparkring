@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from runtime.common import installer, installer_image, profiles, qwen_flash_next
+from runtime.common import installer, installer_image, profiles, toolchain_profiles
 from runtime.host import checkpoint_place as place
 from runtime.host import checkpoints, storage
 from runtime.host.test_checkpoints import REVISION, SLUG, WEIGHT, adopt, tree_state, user_copy, write_json
@@ -446,8 +446,8 @@ def test_disk_use_stops_at_its_time_limit(tmp_path):
 def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     from runtime.common.test_compose_installer import install_site
     metadata, _ = profiles.load(profile)
-    configuration = qwen_flash_next.read(profiles.ROOT / metadata["configuration"]["path"])
-    _, names = qwen_flash_next.checkpoint_names(configuration)
+    configuration = toolchain_profiles.read(profiles.ROOT / metadata["configuration"]["path"])
+    _, names = toolchain_profiles.checkpoint_names(configuration)
     used = set()
     for variant in names or [None]:
         # Every rank uses the cluster's checkpoint directory, as installations do; a derived checkpoint needs it.
