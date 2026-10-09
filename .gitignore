@@ -102,3 +102,6 @@ CMakeFiles/
 .omp-task.md
 .omp-error.log
 .omp-output.log
+
+# Untracked list of the site's host names and MAC addresses for check_release_safety.py.
+scripts/config/site-values.txt

@@ -27,7 +27,12 @@ run this workflow. Jobs use read-only repository permissions.
 - `release safety` scans tracked nonbinary files for configured site-address
   and credential shapes. It prints only path, line number, and rule identifier.
   Findings exit with status 1; scan failures exit with status 2. The rule file
-  itself is excluded. This bounded pattern scan is not a security certification.
+  itself is excluded. Shapes include local Windows user paths. On an
+  operator's machine the scan also reports the site's own host names and MAC
+  addresses (with their IPv6 link-local forms), read from the untracked file
+  `scripts/config/site-values.txt` (one value per line) or `--site-values
+  FILE`; CI has no such file. This bounded pattern scan is not a security
+  certification.
 
 Run the documentation and release checks locally from the repository root:
 
