@@ -233,12 +233,12 @@ def relay_check(card, missing, held, layers, allowance):
 
 def cache_names(card, image_id):
     """Directory names the deployment's containers use in the cache root, for the card's checkpoint."""
-    from runtime.common import profiles, qwen_flash_next
+    from runtime.common import profiles, toolchain_profiles
     from runtime.host import storage
-    configuration = qwen_flash_next.read(profiles.ROOT / card["configuration"])
+    configuration = toolchain_profiles.read(profiles.ROOT / card["configuration"])
     if configuration.get("checkpoints"):
-        configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
-    toolchain = qwen_flash_next.image_policy(configuration)["kind"] == "toolchain"
+        configuration = toolchain_profiles.checkpoint_settings(configuration, card["target_variant"])
+    toolchain = toolchain_profiles.image_policy(configuration)["kind"] == "toolchain"
     return storage.cache_names(configuration, image_id, toolchain=toolchain)
 
 

@@ -40,7 +40,7 @@ from types import SimpleNamespace
 import urllib.request
 
 from runtime.common import (compose, derived_checkpoint, glm_native_candidate, installer, native_candidate, ports,
-                            profiles, qwen_flash_next, setup)
+                            profiles, toolchain_profiles, setup)
 from runtime.common.container_spec import expected_inspection
 from runtime.host import checkpoint_place as place
 from scripts import deploy_engine
@@ -2138,8 +2138,8 @@ def perform(operation, lock, number):
             else:
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
-                profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
-                qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
+                profile = toolchain_profiles.checkpoint_settings(profile, card.get("target_variant"))
+                toolchain_profiles.verify_model_paths(profile, Path(served), Path(row["cache"]))
             if transport.session_backend(lock) and "fabric" in row:
                 from runtime.host import native_mesh
                 native_mesh.group_operation("ring-check", lock, number)

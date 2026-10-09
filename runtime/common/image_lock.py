@@ -287,9 +287,9 @@ def preferred_checkpoint(value, profile):
     what every other image installs, so a profile whose admitted images differ keeps one installable
     default on each of them.
     """
-    from runtime.common import qwen_flash_next, setup
+    from runtime.common import toolchain_profiles, setup
     card = setup.selection(profile)
-    name = qwen_flash_next.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
+    name = toolchain_profiles.preferred_checkpoint(profiles.read_json(profiles.local_path(card["configuration"])))
     if name is None:
         return None
     return None if checkpoint_problem(value, setup.selection(profile, name)) else name

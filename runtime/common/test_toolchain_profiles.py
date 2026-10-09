@@ -8,8 +8,8 @@ from pathlib import Path
 import sys
 
 import pytest
-from runtime.common.qwen_flash_next import ROOT, render, publication
-from runtime.common import qwen_flash_next as adapter
+from runtime.common.toolchain_profiles import ROOT, render, publication
+from runtime.common import toolchain_profiles as adapter
 from runtime.common import installer, native_candidate
 
 
@@ -497,7 +497,7 @@ def test_toolchain_image_profiles_offer_only_the_plan_action():
     toolchain = []
     for profile_id, path in profiles.catalog().items():
         record = profiles.read_json(path)
-        if (record['launcher'].get('path') == 'runtime/common/qwen_flash_next.py'
+        if (record['launcher'].get('path') == 'runtime/common/toolchain_profiles.py'
                 and adapter.read(ROOT / record['configuration']['path']).get('image_extension') == 'toolchain'):
             toolchain.append(profile_id)
             assert record['launcher']['actions'] == ['plan'], profile_id

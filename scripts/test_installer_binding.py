@@ -126,7 +126,7 @@ def test_create_finalizes_binding_before_start_and_missing_binding_blocks_start(
     monkeypatch.setattr(host, "require_idle", lambda: None)
     monkeypatch.setattr(host, "release_host_memory", lambda: events.append("release memory"))
     monkeypatch.setattr(host, "ensure_gpu_cdi_spec", lambda: events.append("gpu cdi"))
-    monkeypatch.setattr(host.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(host.toolchain_profiles, "verify_model_paths", lambda *a: None)
     monkeypatch.setattr(qwen_mesh, "check", lambda *a: None)
     monkeypatch.setattr(compose, "check_project_containers", lambda *a, **kw: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **kw: None)

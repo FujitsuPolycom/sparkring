@@ -4,7 +4,7 @@ from pathlib import PurePosixPath
 
 import yaml
 
-from runtime.common import compose, loader_policy, profiles, qwen_flash_next, setup, tp2
+from runtime.common import compose, loader_policy, profiles, toolchain_profiles, setup, tp2
 
 SUPPORTED = ("glm53-flash-spark-tp2-dcp1-sparkcache", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache")
 
@@ -42,7 +42,7 @@ def specifications(profile_id, variant=None):
         if profile_id in compose.SUPPORTED:
             definition, _ = profiles.load(profile_id)
             profile = profiles.read_json(profiles.local_path(definition["configuration"]["path"]))
-            spec = qwen_flash_next.container_spec(profile, rank=rank, remote=True, **values)
+            spec = toolchain_profiles.container_spec(profile, rank=rank, remote=True, **values)
             if lock is not None:
                 # An installer profile runs the installer's container. Compose
                 # reads the relative seccomp path from the project directory.

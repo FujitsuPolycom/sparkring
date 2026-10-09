@@ -1,7 +1,7 @@
 """Per-deployment serving settings that replace a profile's vLLM argument values.
 
 A profile's serving configuration stays the checked-in file that its evidence
-describes (qwen_flash_next.canonical). A deployment may name other values for
+describes (toolchain_profiles.canonical). A deployment may name other values for
 a few settings; the deployment lock records them, so a deployment with other
 settings is another deployment, and installer.specifications writes them into
 every rank's container command. A setting that is not named keeps the

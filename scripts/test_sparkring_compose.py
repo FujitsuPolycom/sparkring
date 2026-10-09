@@ -397,13 +397,13 @@ def test_preflight_checks_idle_gpu_for_every_stopped_owner(deployment, tmp_path,
         path.mkdir()
         rank[name] = str(path)
     metadata, _ = coordinator.profiles.load(manifest["profile"])
-    profile = coordinator.qwen_flash_next.read(coordinator.ROOT / metadata["configuration"]["path"])
+    profile = coordinator.toolchain_profiles.read(coordinator.ROOT / metadata["configuration"]["path"])
     present = inspected(spec, manifest) if state is not None else None
     if present:
         present["State"].update(Running=state == "running", Status=state)
     monkeypatch.setattr(coordinator.sys, "platform", "linux")
     monkeypatch.setattr(coordinator, "container", lambda _: present)
-    monkeypatch.setattr(coordinator.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(coordinator.toolchain_profiles, "verify_model_paths", lambda *a: None)
     monkeypatch.setattr(coordinator.ports, "check_tcp_bind", lambda *a: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
     path_type = type(tmp_path)

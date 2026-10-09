@@ -10,7 +10,7 @@ import subprocess
 
 import yaml
 
-from runtime.common import profiles, qwen_flash_next
+from runtime.common import profiles, toolchain_profiles
 from runtime.common import serving as serving_settings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -150,7 +150,7 @@ def site_settings(site, *, nodes=2):
                     raise ValueError(
                         "Model, cache, repository and deployment roots must be disjoint"
                     )
-        qwen_flash_next.site_inputs(
+        toolchain_profiles.site_inputs(
             number,
             site["master"],
             rank["host_ip"],
@@ -181,7 +181,7 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/container_spec.py",
         "runtime/common/ports.py",
         "runtime/common/process_lock.py",
-        "runtime/common/qwen_flash_next.py",
+        "runtime/common/toolchain_profiles.py",
         "runtime/common/derived_checkpoint.py",
         "runtime/common/profiles.py",
         "runtime/common/candidate.py",
@@ -199,8 +199,8 @@ def source_inventory(profile_id, *, local_source_extension=None):
     metadata, release = profiles.load(profile_id)
     paths.update(item["path"] for item in release["inputs"])
     paths.add(metadata["configuration"]["path"])
-    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
-    policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
+    profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
+    policy = toolchain_profiles.image_policy(profile, local_source_extension=local_source_extension)
     if policy["kind"] == "native":
         paths.add("runtime/common/native_candidate.py")
         paths.add(f"runtime/releases/{policy['native_release']}/publication.json")
@@ -306,8 +306,8 @@ def installer_image_runtime(profile_id):
     in their release.
     """
     metadata, _ = profiles.load(profile_id)
-    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
-    if qwen_flash_next.image_policy(profile)["kind"] != "toolchain":
+    profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
+    if toolchain_profiles.image_policy(profile)["kind"] != "toolchain":
         return None
     from runtime.common import installer_image
     return installer_image.for_profile(profile_id)
@@ -341,9 +341,9 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             + "; use its profile quickstart"
         )
     metadata, release = profiles.load(profile_id)
-    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
-    site_settings(site, nodes=qwen_flash_next.node_count(profile))
-    policy = qwen_flash_next.image_policy(profile, local_source_extension=local_source_extension)
+    profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
+    site_settings(site, nodes=toolchain_profiles.node_count(profile))
+    policy = toolchain_profiles.image_policy(profile, local_source_extension=local_source_extension)
     if image_runtime is not None:
         if policy["kind"] != "toolchain":
             raise ValueError("Only profiles on the shared toolchain image select an installer image lock")
@@ -353,7 +353,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         from runtime.common import source_candidate
         publication = source_candidate.release_publication(release, policy["source_extension"])
     else:
-        publication = qwen_flash_next.read(ROOT / release["inputs"][0]["path"])
+        publication = toolchain_profiles.read(ROOT / release["inputs"][0]["path"])
     local = publication.get("schema") == "sparkring-local-image-build/v1"
     image = publication["image_tag"] if local else publication["image_reference"]
     image_id = publication["image_id"]
@@ -387,7 +387,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         image = image_runtime["image_reference"]
     specs = []
     for rank in site["ranks"]:
-        spec = qwen_flash_next.container_spec(
+        spec = toolchain_profiles.container_spec(
             profile,
             rank=rank["rank"],
             master=site["master"],
@@ -432,10 +432,10 @@ def checkpoint_selection(profile_id, name):
     if name is None:
         return None
     metadata, _ = profiles.load(profile_id)
-    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
-    default, _ = qwen_flash_next.checkpoint_names(profile)
-    name = qwen_flash_next.checkpoint_name(profile, name)
-    qwen_flash_next.checkpoint_settings(profile, name)
+    profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
+    default, _ = toolchain_profiles.checkpoint_names(profile)
+    name = toolchain_profiles.checkpoint_name(profile, name)
+    toolchain_profiles.checkpoint_settings(profile, name)
     return None if name == default else name
 
 
@@ -640,7 +640,7 @@ def serving_warnings(manifest):
 
 def load_deployment(output):
     output = Path(output)
-    manifest = qwen_flash_next.read(output / "deployment.json")
+    manifest = toolchain_profiles.read(output / "deployment.json")
     expected, files = build(manifest["profile"], manifest["site"], **selection_options(manifest))
     if manifest != expected:
         raise ValueError(

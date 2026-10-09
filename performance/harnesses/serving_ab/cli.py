@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from performance.harnesses.serving_ab import measure, remote, report, setlock, spec, verify  # noqa: E402
-from runtime.common import compose, image_lock, qwen_flash_next  # noqa: E402
+from runtime.common import compose, image_lock, toolchain_profiles  # noqa: E402
 from runtime.common.container_spec import docker_create  # noqa: E402
 from scripts import check_enhancements  # noqa: E402
 
@@ -63,7 +63,7 @@ def order_of(text: str) -> list[tuple[str, str, bool]]:
 def profile_config(profile_id: str) -> tuple[dict, Path]:
     deployment = json.loads((ROOT / "profiles" / profile_id / "profile.json").read_text(encoding="utf-8"))
     path = ROOT / deployment["configuration"]["path"]
-    return qwen_flash_next.canonical(qwen_flash_next.read(path)), path
+    return toolchain_profiles.canonical(toolchain_profiles.read(path)), path
 
 
 def arg_value(arguments: list[str], flag: str) -> str:
@@ -180,7 +180,7 @@ def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) ->
     Returns it, for the checkpoint search and the plan, and the deviations. The containers render from the
     unchanged profile (the adapter refuses any other) with ``checkpoint`` passed on, which applies that entry
     of the profile's checkpoint table as the installer's ``--checkpoint`` does
-    (qwen_flash_next.checkpoint_settings: its model and pinned settings). ``model_of`` (``PROFILE`` or
+    (toolchain_profiles.checkpoint_settings: its model and pinned settings). ``model_of`` (``PROFILE`` or
     ``PROFILE:CHECKPOINT``) takes only the pinned model (repository, revision, config and index digests) of
     another profile or of an entry of its checkpoint table: the containers mount that checkpoint copy, and
     the arguments it needs are given with --set-arg and --set-env.
@@ -188,12 +188,12 @@ def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) ->
     deviations = []
     if checkpoint:
         default = profile.get("checkpoint")
-        profile = qwen_flash_next.checkpoint_settings(profile, checkpoint)
+        profile = toolchain_profiles.checkpoint_settings(profile, checkpoint)
         deviations.append(f"checkpoint {checkpoint} (the profile's default: {default})")
     if model_of:
         name, _, entry = model_of.partition(":")
         other, _ = profile_config(name)
-        model = qwen_flash_next.checkpoint_settings(other, entry)["model"] if entry else other["model"]
+        model = toolchain_profiles.checkpoint_settings(other, entry)["model"] if entry else other["model"]
         before = profile["model"]
         profile = dict(profile, model=dict(model))
         deviations.append(f"model {model['repository']}@{model['revision'][:12]} of {model_of} "
@@ -285,7 +285,7 @@ def build_plan(args) -> dict:
     arms = list(dict.fromkeys(arm for _, arm, _ in order_of(args.order)))
     profile, config_path = profile_config(args.profile)
     served, chosen = choose_model(profile, args.checkpoint, args.model_of)
-    world = qwen_flash_next.node_count(profile)
+    world = toolchain_profiles.node_count(profile)
     if world != len(positions):
         raise SystemExit(f"{args.profile} runs {world} ranks; --positions names {len(positions)}")
     sparks = [site.sparks[p] for p in positions]
@@ -321,7 +321,7 @@ def build_plan(args) -> dict:
     # B12X loader's io_uring seccomp policy under source_root, health timing), without the per-rank runtime
     # binding only the installer can write (runtime/common/compose.py, installer_container).
     bases = [docker_create(compose.installer_container(
-                 qwen_flash_next.container_spec(profile, rank=r, master=master, host_ip=spark.lan_address,
+                 toolchain_profiles.container_spec(profile, rank=r, master=master, host_ip=spark.lan_address,
                                                 interface=site.lan_interface, image=view["image_id"],
                                                 model=checkpoints[r]["chosen"]["path"], cache=CACHE_PLACEHOLDER,
                                                 remote=True, checkpoint=args.checkpoint),

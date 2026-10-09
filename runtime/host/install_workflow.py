@@ -431,10 +431,10 @@ def _select_mesh(site, cluster, profile, hint, **options):
 
 def profile_arguments(card):
     """The vLLM arguments of the card's profile with the card's checkpoint settings."""
-    from runtime.common import qwen_flash_next
+    from runtime.common import toolchain_profiles
     configuration = profiles.read_json(installer.ROOT / card["configuration"])
     if "checkpoints" in configuration:
-        configuration = qwen_flash_next.checkpoint_settings(configuration, card["target_variant"])
+        configuration = toolchain_profiles.checkpoint_settings(configuration, card["target_variant"])
     return configuration.get("vllm_args", [])
 
 

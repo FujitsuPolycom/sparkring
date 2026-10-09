@@ -165,12 +165,12 @@ def test_every_public_example_resolves_to_its_specification(profile, tmp_path):
 
 @pytest.mark.parametrize("profile", installer_image.SIRCL_ONLY)
 def test_an_eight_spark_profile_renders_for_the_installer_and_has_no_compose_export(profile):
-    from runtime.common import qwen_flash_next
-    configuration = qwen_flash_next.read(compose.ROOT / "profiles" / profile / "config.json")
-    assert qwen_flash_next.canonical(configuration) is configuration
-    assert qwen_flash_next.node_count(configuration) == 8 and configuration["topology"] == "direct-cycle-8"
+    from runtime.common import toolchain_profiles
+    configuration = toolchain_profiles.read(compose.ROOT / "profiles" / profile / "config.json")
+    assert toolchain_profiles.canonical(configuration) is configuration
+    assert toolchain_profiles.node_count(configuration) == 8 and configuration["topology"] == "direct-cycle-8"
     with pytest.raises(ValueError, match="Select an unchanged canonical serving configuration"):
-        qwen_flash_next.canonical(dict(configuration, topology="direct-cycle-4"))
+        toolchain_profiles.canonical(dict(configuration, topology="direct-cycle-4"))
     site = {"schema": "sparkring-compose-site/v1", "name": "eight", "master": "192.0.2.20", "ranks": [
         {"rank": rank, "host": f"spark{rank}", "host_ip": f"192.0.2.{20 + rank}", "interface": "enP7s7",
          "hcas": ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"], "gid": 3,

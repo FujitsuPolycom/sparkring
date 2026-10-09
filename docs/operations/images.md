@@ -65,8 +65,8 @@ checkpoint by default
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that
 allows `io_uring` (`runtime/common/loader-seccomp.json`). Run it with
-`sparkring install` or [Compose](compose.md); the manual Qwen launcher,
-`runtime/common/qwen_flash_next.py`, refuses it.
+`sparkring install` or [Compose](compose.md); the manual profile launcher,
+`runtime/common/toolchain_profiles.py`, refuses it.
 
 ## Shared 2026.09.3 image
 

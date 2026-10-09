@@ -175,12 +175,12 @@ def profile_configuration(profile_id: str, root: Path = ROOT) -> tuple[dict, dic
 
 
 def with_checkpoint(config: dict, checkpoint: str | None) -> dict:
-    """The configuration with ``checkpoint``'s pinned settings applied (``qwen_flash_next.checkpoint_settings``)."""
+    """The configuration with ``checkpoint``'s pinned settings applied (``toolchain_profiles.checkpoint_settings``)."""
     if checkpoint is None:
         return config
-    from runtime.common import qwen_flash_next
+    from runtime.common import toolchain_profiles
     try:
-        return qwen_flash_next.checkpoint_settings(config, checkpoint)
+        return toolchain_profiles.checkpoint_settings(config, checkpoint)
     except ValueError as error:
         raise CatalogError(str(error)) from None
 

@@ -9,7 +9,7 @@ import zipfile
 
 import pytest
 
-from runtime.common import compose, installer, installer_image, profiles, qwen_flash_next, setup
+from runtime.common import compose, installer, installer_image, profiles, toolchain_profiles, setup
 from runtime.common.test_installer import site
 from runtime.host import controller, models
 
@@ -347,7 +347,7 @@ def test_release_lock_lists_every_installer_profile_on_one_image():
     assert lock["schema"] == installer_image.SCHEMA and tuple(lock["profiles"]) == SHARED
     assert installer.INSTALLABLE == frozenset(SHARED) | frozenset(SIRCL_ONLY)
     assert installer_image.SIRCL_ONLY == SIRCL_ONLY == compose.FABRIC_PROFILES
-    assert tuple(path.parent.name for path in qwen_flash_next.fabric_configs()) == SIRCL_ONLY
+    assert tuple(path.parent.name for path in toolchain_profiles.fabric_configs()) == SIRCL_ONLY
     # Read from the research catalog, as research-only profiles.
     assert set(profiles.research_catalog()) == set(SIRCL_ONLY)
     assert "qwen38-flash-next-qad-tp8" in installer_image.QWEN4_EXP and not (

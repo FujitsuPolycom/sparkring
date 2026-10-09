@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from runtime.common import derived_checkpoint, installer, mxfp8_attention, qwen_flash_next, setup
+from runtime.common import derived_checkpoint, installer, mxfp8_attention, toolchain_profiles, setup
 from runtime.common.test_compose_installer import install_site
 
 NAME = "qad-step5500-mxfp8-attention"
@@ -188,9 +188,9 @@ def test_a_derived_checkpoint_needs_its_base_in_a_sparkring_checkpoint_directory
 
 
 def test_the_checkpoint_table_refuses_malformed_derived_entries():
-    profile = qwen_flash_next.read(installer.ROOT / "profiles/qwen38-flash-next-tp2/config.json")
-    assert NAME in qwen_flash_next.checkpoint_names(profile)[1]
-    settings = qwen_flash_next.checkpoint_settings(profile, NAME)
+    profile = toolchain_profiles.read(installer.ROOT / "profiles/qwen38-flash-next-tp2/config.json")
+    assert NAME in toolchain_profiles.checkpoint_names(profile)[1]
+    settings = toolchain_profiles.checkpoint_settings(profile, NAME)
     assert settings["model"] == profile["checkpoints"][NAME]["model"]
     # The derived checkpoint keeps the profile's settings; only the served name differs.
     assert settings["environment"] == profile["environment"]
@@ -200,15 +200,15 @@ def test_the_checkpoint_table_refuses_malformed_derived_entries():
         changed = copy.deepcopy(profile)
         changed["checkpoints"][NAME]["derived"] = change
         with pytest.raises(ValueError, match="Derived checkpoint"):
-            qwen_flash_next.checkpoint_names(changed)
+            toolchain_profiles.checkpoint_names(changed)
     changed = copy.deepcopy(profile)
     changed["checkpoints"][NAME]["model"]["repository"] = REPOSITORY
     with pytest.raises(ValueError, match="Derived checkpoint"):
-        qwen_flash_next.checkpoint_names(changed)
+        toolchain_profiles.checkpoint_names(changed)
     changed = copy.deepcopy(profile)
     del changed["checkpoints"][NAME]["derived"]
     with pytest.raises(ValueError, match="without a derived object"):
-        qwen_flash_next.checkpoint_names(changed)
+        toolchain_profiles.checkpoint_names(changed)
 
 
 def test_the_manifest_file_is_the_one_the_entry_names():

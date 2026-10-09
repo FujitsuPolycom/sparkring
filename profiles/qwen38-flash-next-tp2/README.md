@@ -124,7 +124,7 @@ MASTER_ADDR=198.18.20.1
 HOST_IP=198.18.20.1
 INTERFACE=enp1s0f0np0
 launch_rank() {
-  python3 runtime/common/qwen_flash_next.py "$1" \
+  python3 runtime/common/toolchain_profiles.py "$1" \
     --profile "$PROFILE" --rank "$RANK" \
     --master "$MASTER_ADDR" --host-ip "$HOST_IP" --interface "$INTERFACE" \
     --image "$IMAGE_ID" --model "$MODEL_DIR" --cache "$CACHE_DIR"

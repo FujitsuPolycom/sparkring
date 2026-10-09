@@ -2,7 +2,7 @@
 import argparse
 import json
 
-from runtime.common import installer, profiles, qwen_flash_next, thinking
+from runtime.common import installer, profiles, toolchain_profiles, thinking
 
 THINKING_FIELDS = ("default", "level", "levels", "range", "effort", "off")
 # Other names that select an installer profile. A deployment, its records and its status keep the
@@ -31,10 +31,10 @@ def checkpoints(definition):
     if source["format"] != "serving-profile":
         return None
     configuration = profiles.read_json(profiles.local_path(source["path"]))
-    default, names = qwen_flash_next.checkpoint_names(configuration)
+    default, names = toolchain_profiles.checkpoint_names(configuration)
     if default is None:
         return None
-    preferred = qwen_flash_next.preferred_checkpoint(configuration)
+    preferred = toolchain_profiles.preferred_checkpoint(configuration)
     return {"default": default, "preferred": preferred,
             "others": [name for name in names if name not in (default, preferred)]}
 
