@@ -67,6 +67,32 @@ release there therefore changes the default image and transport of every new
 installation; record the rollback image, normally the v2 release it derives
 from, in the release notes.
 
+Installer image release names read
+`dev-DATE-CHANGE-cudaNNNN-ncclNNNN-statusNNN`. `dev` marks SparkRing's
+development image series; a GitHub release tag such as `2026.10.1` publishes
+one of them through
+[installer-releases.json](../../runtime/releases/installer-releases.json), and
+the image keeps its name. DATE is the day the image was composed. CHANGE,
+where present, names what the image adds over its parent, such as `spinwait`
+or `mimovision`, or its image line: `kraken` is the line built on Local Inference Lab's
+`karmic-kraken-beta` vLLM and B12X branches, which a v3 lock records as
+`line`. `cudaNNNN` and `ncclNNNN` are the CUDA and NCCL releases the image's
+toolchain layer selects (`cuda1342` is CUDA 13.4.2, `nccl2323` NCCL 2.32.3),
+and `statusNNN` is the runtime-status dashboard version, recorded as the
+lock's `status_version` (`status034` is 0.3.4). New names spell CUDA
+`cudaNNNN`; the published image
+`dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034` spells
+CUDA 13.4.2 `cu1342` and keeps that name. Names are identities, not
+descriptions: an image whose inputs change takes a new name. Earlier images
+and guides use Local Inference Lab's own release numbers: R33, R35 and R37
+are releases of its Jovian Judgement vLLM line, `jovian-r33` is SparkRing's
+ARM64 rebuild of the R33 composition, and `Jovian Judgement Community R10` is
+a separate community release; the `r8` of `sparkring-glm53-jj-r8-gb10`
+numbers that builder's interface, not a release. LIL abbreviates Local
+Inference Lab in composition names such as `lil-r37-shared`, which build on
+R37; `lil` alone names a separate launcher tool
+([lil integration](../../integrations/lil/README.md)).
+
 The default tuning table's rows are the accepted defaults until a
 measurement replaces them: the `pair`, `path-4` and `cycle-8` rows' settings
 are measured, each row names its evidence, and other group sizes, such as
