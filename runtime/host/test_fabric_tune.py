@@ -611,8 +611,10 @@ def test_a_stale_table_gives_way_to_the_default_and_says_why(cycle4, change, rea
     elif change == "image":
         image_value = dict(image_value, image_id="sha256:" + "9" * 64, name="another-image")
     elif change == "sircl":
-        block = dict(image_value["sircl"], version="0.3.0", tuning_key=dict(image_value["sircl"]["tuning_key"],
-                                                                          sircl="0.3.0/abi9"))
+        # A SIRCL build other than the package's, which the harness measured.
+        other = "9.9.9"
+        block = dict(image_value["sircl"], version=other, tuning_key=dict(image_value["sircl"]["tuning_key"],
+                                                                        sircl=f"{other}/abi{image_value['sircl']['abi_version']}"))
         image_value = dict(image_value, sircl=block)
     elif change == "driver":
         drivers = {0: {"gpu": "590.10.01", "kernel": KERNEL}}

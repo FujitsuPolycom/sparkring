@@ -75,9 +75,10 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     assert table["source"] == "defaults" and table["fabric"] is None and table["tables"] == []
     for row in table["layouts"].values():
         assert set(row["settings"]) <= set(transport.SETTINGS)
-    from spark_transport.sircl.sparkring_sircl import __version__
+    # The default table names the SIRCL build its rows were measured with. A session of another build of the same
+    # ABI takes SIRCL's own rules instead of the rows (``section``'s ``applies``).
     from spark_transport.sircl.sparkring_sircl.oneshot._proxy import ABI_VERSION
-    assert table["sircl"] == {"version": __version__, "abi_version": ABI_VERSION}
+    assert set(table["sircl"]) == {"version", "abi_version"} and table["sircl"]["abi_version"] == ABI_VERSION
 
 
 @pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path"), ("cycle", 8, "cycle-8"),
@@ -472,9 +473,10 @@ def ring_document(image, group, *, session=TUNE_SESSION, piece=1 << 20, link=Tru
     return sircl_tuning.build_document(key, rows, session=session)
 
 
-def repository_tables(tmp_path, documents):
+def repository_tables(tmp_path, documents, image=None):
     """``documents`` (name -> SIRCL table) written in the repository ``tmp_path``, their paths, and the default
-    table naming them."""
+    table naming them; with ``image``, the default table is keyed to the image's SIRCL build, as a default table
+    released with that build is."""
     paths, entries = {}, []
     for name, value in documents.items():
         path = tmp_path / f"runtime/tables/{name}.json"
@@ -483,6 +485,9 @@ def repository_tables(tmp_path, documents):
         paths[name] = path
         entries.append({"path": f"runtime/tables/{name}.json", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     table = dict(transport.load_tuning(), tables=entries)
+    if image is not None:
+        sircl = image_lock.sircl(image)
+        table["sircl"] = {"version": sircl["version"], "abi_version": sircl["abi_version"]}
     transport.validate_tuning(table, root=tmp_path)
     return paths, table
 
@@ -491,7 +496,7 @@ def ring_table(tmp_path, image):
     """A measured SIRCL table for the four-Spark ring that chooses a ring all-reduce at 8 MiB, written in the
     repository ``tmp_path``, and the default table naming it."""
     measured = ring_document(image, transport.group_topology("ring:4", [0, 1, 2, 3]))
-    paths, table = repository_tables(tmp_path, {"cycle4": measured})
+    paths, table = repository_tables(tmp_path, {"cycle4": measured}, image)
     return measured, paths["cycle4"], table
 
 
@@ -588,7 +593,7 @@ def dcp_tables(tmp_path, image):
     documents = {"cycle8": ring_document(image, tensor, piece=512 << 10,
                                          session=dict(TUNE_SESSION, link_slot_bytes=512 << 10)),
                  "dcp4": ring_document(image, decode, session=dict(TUNE_SESSION, link_slots=8))}
-    paths, table = repository_tables(tmp_path, documents)
+    paths, table = repository_tables(tmp_path, documents, image)
     return documents, paths, table
 
 
