@@ -22,7 +22,10 @@ lock v3, [SIRCL layer](../../runtime/images/installer-images.md#sircl-layer))
 and `sparkring setup` recorded the fabric with its relay table; elsewhere it
 uses the `prepared` RoCEnante transport and patched NCCL
 ([transport and receipts](../operations/install-reference.md#transport-and-receipts)).
-The published installer images carry no SIRCL layer. The serve and bundle
+Image `1a8c10354eb0`, the image of release 2026.10.2
+([release record](../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)),
+carries SIRCL 0.3.2, libsircl 0.6.0 and the three GLM-5.3 vLLM plugins; the
+installer images of releases up to 2026.10.1 carry no SIRCL layer. The serve and bundle
 launchers also run ring sessions outside the installer ([serve and bundle
 runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md)).
 [libsircl](libsircl.md), SIRCL's NCCL-compatible C library on the same wire

@@ -105,9 +105,14 @@ deployment, and none is serving qualification.
 - Record: [GLM-5.3 TP8 speculation arms](../../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md).
   The profile guide records a second run on the same image
   ([glm53-nvfp4-tp8](../../../profiles/glm53-nvfp4-tp8/README.md#evidence-and-open-items)).
-- **Pending (`glm53-tp8-release-image`):** a GLM-5.3 TP8 run on the release
-  image `1a8c10354eb0`. No record of one is in the repository; add it, or
-  keep the scope above.
+- **Pending record (`glm53-tp8-release-image`, installer round 1 on
+  1a8c1035):** installer round 1 on the eight-Spark ring installed
+  `glm53-nvfp4-tp8` with `sudo sparkring install` on the release image. The
+  values to confirm against its record when it merges: ready after 661 s;
+  47.7 output tok/s at one stream and 16K context, 2.47 accepted tokens per
+  step, 19.4 steps/s, against 44.2 tok/s and 19.5 steps/s on `27e9f75c0d09`
+  above; 3 of 3 known-answer checks; `sparkring check` passed. Replace this
+  item with the record's link and scope.
 
 ### Two and four Sparks on SIRCL ring sessions
 
@@ -152,19 +157,36 @@ deployment, and none is serving qualification.
   libsircl's all-reduce, all-gather and reduce-scatter took 0.19 to 0.69 of
   NCCL's time. Broadcast reached 1.94 GB/s against NCCL's 24.22 GB/s.
 - Record: [libsircl status](../../../spark_transport/libsircl/STATUS.md#hardware-the-path-of-four-at-positions-4-7-and-the-cycle-of-eight-snapshot-a3477af2).
-- **Pending (`libsircl-ring8-release-image`):** the eight-Spark gate of the
-  libsircl 0.6.0 that the release image carries, whose cycle plan runs ring
-  all-reduces, all-gathers and reduce-scatters from 8 MiB by default.
-  libsircl's status lists that plan as not run on Sparks. Commit the gate's
-  outputs and verdicts, then state its default-schedule and small-message
-  results here.
+
+### libsircl of the release image on the cycle of eight Sparks
+
+- Lane **public-functional**. Status **implemented**. Maturity
+  **live-validated** with nccl-tests v2.21.1 and libsircl's bit-exact check
+  and timing sweep; no serving measurement.
+- Hardware: the eight-Spark ring as a cycle of eight; one rank per Spark.
+- Configuration: the image's `libsircl.so.0.6.0` (SHA-256 `8b180879…`, source
+  tree `dbf36074`) on every rank; no NCCL arm, so NCCL's figures are those of
+  the `a3477af2` gate above.
+- Result: every verdict passed. The bit-exact check and every collective and
+  point-to-point line are exact, and the two arms that must be refused were.
+  Every eight-rank communicator without a schedule setting took the cycle
+  plan, and from 8 MiB the default all-reduce ran within 1.15 times the ring
+  schedules. All-reduce of 256 MiB: 19.3 ms in the timing sweep and in
+  nccl-tests (24.3 GB/s bus bandwidth) against NCCL's 23.6 GB/s; 4 KiB:
+  18.2 µs in the timing sweep, 29.1 µs in nccl-tests against NCCL's 120.3 µs.
+  Broadcast stays at 1.9 GB/s.
+- Record: [libsircl of the release image on eight Sparks](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md).
 
 ### Clean-room acceptance audit
 
-- **Pending (`clean-room-audit`):** the acceptance audit of SIRCL 0.3.2, the
-  three GLM-5.3 plugins and libsircl 0.6.0 against SparkRing's clean-room
-  rule. Its report is not in the repository; commit it, with its inputs,
-  result and the lines it asks to rewrite, before publication.
+- Verdicts: SIRCL 0.3.2 (`spark_transport/sircl` at `1273183e`, the image's
+  tree) PASS with 0 lines to rewrite and 522 counted idioms; the three GLM-5.3
+  plugins PASS at `cf478504` (`glm_dcp_decode_comm` 2.0.1 differs from the
+  audited tree only in its version strings); libsircl 0.6.0 PASS with 0 lines
+  to rewrite. The report stays outside the repository because it quotes
+  excluded-origin text.
+- Record: [clean-room acceptance audit](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md).
+  It does not name the libsircl tree the audit covered.
 
 ## Qualification
 
@@ -179,10 +201,11 @@ deployment, and none is serving qualification.
 | `ring4-benchmark`: the TP4 benchmark on a ring of four | **pending** | — |
 | `ring4-sircl-tune`: `sudo sparkring fabric tune` for the `cycle-4` group shape and its promotion to the default table | **pending** | — |
 | `ring4-libsircl-gate`: the libsircl gate on a cycle of four | **pending** | — |
-| `libsircl-ring8-release-image`: the libsircl gate on the release image | **pending** | — |
-| `clean-room-audit`: the clean-room acceptance audit | **pending** | — |
+| `glm53-tp8-release-image`: GLM-5.3 TP8 installed on the release image (installer round 1 on 1a8c1035) | **pending record** | — |
+| `libsircl-ring8-release-image`: the libsircl gate on the release image | passed | [record](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md) |
+| `clean-room-audit`: the clean-room acceptance audit | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
 | `relay-marker`: the relay marker binary of source `c64c74535c06` published as a release asset and named in [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json), which names none; package builds without a compiler, `install.sh` among them, stop until it does | **pending** | — |
-| `compose-v3`: Compose rendering and the Install Builder (`python scripts/generate_compose_builder.py --verify`) on this release's lock. [releases.md](../../../docs/development/releases.md) states that they use a v3 image through its v2 fields; `compose.build` passes the lock to `installer_image.for_profile`, which accepts v1 and v2 locks only. The Install Builder's default card is a profile's own checkpoint, while on this image the GLM-5.3-Flash profiles install their preferred CSF checkpoint | **pending** | — |
+| `compose-v3`: Compose rendering and the Install Builder on this release's lock: `compose.runtime_lock` renders a v3 lock on its v2 fields, and the page's Default card is the checkpoint `sparkring install` installs on the image (`install_default`). With this release's publication records and a stand-in digest in a scratch checkout, `python scripts/generate_compose_builder.py --verify --cases 20` passed every case of 15 images | passed | [compose.py](../../common/compose.py), [compose-builder.md](../../../docs/operations/compose-builder.md#model-and-checkpoint) |
 | `publication`: registry push, anonymous manifest and configuration check, and the publication records | **pending** | — |
 
 A measured `cycle-4` row changes `sircl-tuning-defaults.json`, and therefore

@@ -127,10 +127,16 @@ runner rather than `sparkring install`; two measured starts each, temperature
   ring schedules took 19.3 ms (24.3 GB/s bus bandwidth) against NCCL's
   19.9 ms (23.6 GB/s)
   ([libsircl status](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/spark_transport/libsircl/STATUS.md)).
-- **Pending:** GLM-5.3 on eight Sparks with the release image.
-- **Pending:** the libsircl gate of the release image on the ring of eight.
-- **Pending:** the clean-room acceptance audit of SIRCL 0.3.2, the GLM-5.3
-  plugins and libsircl.
+- libsircl 0.6.0 of the release image on the ring of eight, without NCCL in
+  the same gate: every check exact; the cycle plan runs ring schedules from
+  8 MiB by default; a 256 MiB all-reduce took 19.3 ms (24.3 GB/s) and a 4 KiB
+  one 18.2 µs; broadcast stays at 1.9 GB/s
+  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md)).
+- The clean-room acceptance audit passed SIRCL 0.3.2 and libsircl 0.6.0
+  with no line to rewrite, and the three GLM-5.3 plugins
+  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/repository/clean-room-acceptance-audit-20261009.md)).
+- **Pending (installer round 1 on 1a8c1035):** GLM-5.3 on eight Sparks
+  installed with `sparkring install` on the release image.
 - **Pending:** installer qualification on the eight-Spark ring.
 - **Pending:** four-Spark rings: setup with `--re-form`, TP4 installations,
   the TP4 benchmark, SIRCL's `cycle-4` tuning row and the libsircl gate on a

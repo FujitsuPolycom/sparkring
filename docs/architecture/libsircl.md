@@ -20,7 +20,7 @@ installer prints that status in every plan that selects it.
 |---|---|---|
 | Source of record | [`spark_transport/libsircl/`](../../spark_transport/libsircl/README.md) | implemented |
 | vLLM general plugin `libsircl` | [`integrations/vllm/libsircl/`](../../integrations/vllm/libsircl/README.md) | research-only |
-| Image layer `installer-libsircl-layer` | [`runtime/images/libsircl_layer.py`](../../runtime/images/libsircl_layer.py) | research-only; no image built |
+| Image layer `installer-libsircl-layer` | [`runtime/images/libsircl_layer.py`](../../runtime/images/libsircl_layer.py) | research-only; image `1a8c10354eb0`, release 2026.10.2's, carries libsircl 0.6.0 that it built from source tree `dbf36074` ([release record](../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md), [gate on eight Sparks](../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md)) |
 | Installer transport `libsircl` | [`runtime/common/libsircl.py`](../../runtime/common/libsircl.py) | research-only |
 | Stock-image option | [`runtime/common/stock_image.py`](../../runtime/common/stock_image.py), [`runtime/host/stock_install.py`](../../runtime/host/stock_install.py) | research-only; plans and checks only |
 

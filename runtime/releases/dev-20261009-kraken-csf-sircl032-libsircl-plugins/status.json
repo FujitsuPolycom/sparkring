@@ -161,6 +161,17 @@
       "scope": "libsircl snapshot a3477af2 built in the image; nccl-tests v2.21.1; NVIDIA NCCL 2.32.3 from the image as the baseline",
       "result": "every row #wrong 0; 256 MiB all-reduce under ring schedules 19,305 us (24.33 GB/s bus) against NCCL's 19,940 us (23.56 GB/s); broadcast 1.94 GB/s against NCCL's 24.22 GB/s",
       "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-ring8-release-image",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "the eight-Spark ring as a cycle of eight, one rank per Spark",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "the image's libsircl.so.0.6.0 (source tree dbf36074) on every rank; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
+      "result": "every verdict passed; the cycle plan in every eight-rank default communicator, within 1.15x of the ring schedules from 8 MiB; 256 MiB all-reduce 19,288 us eager, nccl-tests 19,314 us (24.32 GB/s bus); 4 KiB 18.23 us eager; broadcast 1.94 GB/s",
+      "record": "performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md"
     }
   ],
   "gates": [
@@ -185,20 +196,20 @@
     {
       "id": "glm53-tp8-release-image",
       "result": "pending",
-      "scope": "GLM-5.3 TP8 serving on the release image 1a8c10354eb0",
+      "scope": "installer round 1 on 1a8c1035: glm53-nvfp4-tp8 installed with sparkring install on the release image; its record is to be merged from the integration branch",
       "record": null
     },
     {
       "id": "libsircl-ring8-release-image",
-      "result": "pending",
+      "result": "passed",
       "scope": "the libsircl 0.6.0 gate of the release image on the eight-Spark ring, its cycle plan included",
-      "record": null
+      "record": "performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md"
     },
     {
       "id": "clean-room-audit",
-      "result": "pending",
-      "scope": "acceptance audit of SIRCL 0.3.2, the three GLM-5.3 plugins and libsircl 0.6.0 against the clean-room rule",
-      "record": null
+      "result": "passed",
+      "scope": "acceptance audit of SIRCL 0.3.2 (1273183e, 0 lines to rewrite, 522 counted idioms), the three GLM-5.3 plugins (cf478504) and libsircl 0.6.0 (0 lines to rewrite); the record does not name the audited libsircl tree",
+      "record": "performance/records/repository/clean-room-acceptance-audit-20261009.md"
     },
     {
       "id": "ring8-installer",
@@ -244,9 +255,9 @@
     },
     {
       "id": "compose-v3",
-      "result": "pending",
-      "scope": "Compose rendering and the Install Builder (generate_compose_builder.py --verify) on this release's v3 lock; compose.build passes the lock to installer_image.for_profile, which accepts v1 and v2 locks only; the Install Builder's default card is a profile's own checkpoint, while on this image the GLM-5.3-Flash profiles install their preferred CSF checkpoint",
-      "record": null
+      "result": "passed",
+      "scope": "compose.runtime_lock renders a v3 lock on its v2 fields and the Install Builder's Default card is the install default; with the publication records and a stand-in digest in a scratch checkout, generate_compose_builder.py --verify --cases 20 passed every case of 15 images",
+      "record": "runtime/common/compose.py"
     },
     {
       "id": "publication",

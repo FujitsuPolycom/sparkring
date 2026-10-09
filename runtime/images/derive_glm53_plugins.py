@@ -1,8 +1,9 @@
 """Add the GLM-5.3 model-side speedup plugins to a kraken-line image as one layer.
 
-The layer stacks on the kraken serving image whose vLLM and B12X Python
-sources read the GLM-5.3-Flash CSF checkpoint
-(``sparkring-dev/kraken:csf-sircl-libsircl-20261008``). It adds three vLLM
+The layer stacks on a kraken serving image with the SIRCL and libsircl
+layers whose vLLM and B12X Python sources read the GLM-5.3-Flash CSF
+checkpoint, such as ``sparkring-dev/kraken:csf-sircl032-libsircl-20261009``
+(SIRCL 0.3.2, libsircl 0.6.0 built from ``spark_transport/libsircl``). It adds three vLLM
 general plugins to the serving interpreter's site-packages, each with a
 dist-info directory whose entry point registers it in ``vllm.general_plugins``;
 vLLM loads a plugin only when ``VLLM_PLUGINS`` names it, and each plugin is
@@ -57,11 +58,14 @@ Actions (none pushes or publishes an image):
   parent, build, then record.
 
 Status: research-only. The plugins' CPU tests run against the image's own
-sources. One image built from this layer with the first two plugins only
-(``af06e272``) served the settings of profile ``glm53-nvfp4-tp8`` on one
-eight-Spark ring (``profiles/glm53-nvfp4-tp8/README.md``); no image with all
-three plugins has been built, and no installation from a lock that ``record``
-wrote has run.
+sources. Two images carry all three plugins: ``27e9f75c0d09`` (SIRCL 0.3.1,
+libsircl snapshot ``a3477af2``, ``glm_dcp_decode_comm`` 2.0.0) and
+``1a8c10354eb0``, the image of release 2026.10.2 (SIRCL 0.3.2, libsircl 0.6.0
+from source tree ``dbf36074``, ``glm_dcp_decode_comm`` 2.0.1;
+``runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins``).
+Profile ``glm53-nvfp4-tp8`` served on both on one eight-Spark ring
+(``profiles/glm53-nvfp4-tp8/README.md`` and the release record); an image with
+the first two plugins only, ``af06e272``, served it before them.
 """
 from __future__ import annotations
 
