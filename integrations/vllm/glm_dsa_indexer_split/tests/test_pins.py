@@ -8,7 +8,6 @@ like a hardware test without the hardware.
 from __future__ import annotations
 
 import shutil
-from pathlib import Path
 
 import pytest
 from glm_dsa_indexer_split import (

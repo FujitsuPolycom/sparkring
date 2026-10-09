@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 import torch
-import _env
+import speedups_image_env
 import glm53full_speedups as plugin
 
 HIDDEN = 8
@@ -38,21 +38,21 @@ def test_helper_builds_the_replicated_linear_outside_tp8(monkeypatch):
 
 
 def test_every_rank_loads_its_columns_and_reduces_exactly(checkpoint):
-    _env.build_group()
+    speedups_image_env.build_group()
     weight, x = checkpoint
 
     def body(rank: int) -> dict:
         helper = plugin.HELPERS[plugin.EH_PROJ_HELPER]
         layer = helper(HIDDEN, "model.mtp", torch.nn.Linear)
-        assert layer.weight.shape == (HIDDEN, INPUT // _env.TP)
+        assert layer.weight.shape == (HIDDEN, INPUT // speedups_image_env.TP)
         layer.weight_loader(layer.weight, weight)
-        assert torch.equal(layer.weight.data, weight[:, rank * (INPUT // _env.TP):
-                                                    (rank + 1) * (INPUT // _env.TP)]), (
+        assert torch.equal(layer.weight.data, weight[:, rank * (INPUT // speedups_image_env.TP):
+                                                    (rank + 1) * (INPUT // speedups_image_env.TP)]), (
             f"rank {rank}: weight columns differ from the checkpoint's block")
         output = layer(x)
         return {"output": output}
 
-    results = _env.run_ranks(body)
+    results = speedups_image_env.run_ranks(body)
     reference = torch.nn.functional.linear(x, weight)
     for rank, result in enumerate(results):
         assert torch.allclose(result["output"], reference, rtol=1e-5, atol=1e-5), (

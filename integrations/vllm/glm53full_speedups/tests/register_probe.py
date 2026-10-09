@@ -3,7 +3,7 @@
 Prints one JSON line with the plugin's registration state. Any refusal exits
 non-zero with its message. The image's modules are not imported here: the
 speedups patches run on their first import in the serving process, and the
-pin replay in ``_env`` covers the file checks.
+pin replay in ``speedups_image_env`` covers the file checks.
 """
 
 import json
@@ -12,12 +12,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-import _env
+import speedups_image_env
 import glm53full_speedups
 
 
 def main() -> int:
-    _env.stub_packages()
+    speedups_image_env.stub_packages()
     glm53full_speedups.register()
     state = glm53full_speedups.status()
     print(json.dumps({

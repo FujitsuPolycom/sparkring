@@ -8,7 +8,7 @@ import hook, as in a worker. The refusals run in fresh interpreters
 
 import atexit
 
-import _env  # noqa: F401  (must precede every vllm import; loads the image's modules)
+import split_image_env  # noqa: F401  (must precede every vllm import; loads the image's modules)
 import glm_dsa_indexer_split
 import pytest
 from glm_dsa_indexer_split import runtime
@@ -21,5 +21,5 @@ atexit.unregister(runtime._log_at_exit)
 
 @pytest.fixture(scope="session")
 def image_sources() -> "object":
-    """The directory of the target image's Python sources (``_env.ROOT``)."""
-    return _env.ROOT
+    """The directory of the target image's Python sources (``split_image_env.ROOT``)."""
+    return split_image_env.ROOT

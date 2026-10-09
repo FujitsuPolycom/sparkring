@@ -5,7 +5,7 @@ Prints one JSON line with the plugin's registration state and whether
 non-zero with its message.
 """
 
-import _env  # noqa: F401  (must precede every vllm import)
+import split_image_env  # noqa: F401  (must precede every vllm import)
 import json
 import os
 import sys

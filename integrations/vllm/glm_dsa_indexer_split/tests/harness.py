@@ -37,7 +37,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from types import ModuleType, SimpleNamespace
 
-import _env  # noqa: F401  (must precede every vllm import)
+import split_image_env  # noqa: F401  (must precede every vllm import)
 import torch
 import vllm.distributed.parallel_state as parallel_state
 import vllm.v1.attention.backends.mla.b12x_indexer as bi

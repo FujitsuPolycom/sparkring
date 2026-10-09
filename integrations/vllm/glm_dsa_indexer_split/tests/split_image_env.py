@@ -55,16 +55,20 @@ def _digest(path: Path) -> str:
 
 
 def _module(name: str, **attributes) -> types.ModuleType:
-    module = types.ModuleType(name)
-    for key, value in attributes.items():
-        setattr(module, key, value)
-    if "__path__" in attributes:  # a stand-in package: find_spec works on it
-        from importlib.machinery import ModuleSpec
+    """Register a stand-in module, keeping names another suite's stand-ins set."""
+    module = sys.modules.get(name)
+    if module is None:
+        module = types.ModuleType(name)
+        if "__path__" in attributes:  # a stand-in package: find_spec works on it
+            from importlib.machinery import ModuleSpec
 
-        spec = ModuleSpec(name, None, is_package=True)
-        spec.submodule_search_locations = list(attributes["__path__"])
-        module.__spec__ = spec
-    sys.modules[name] = module
+            spec = ModuleSpec(name, None, is_package=True)
+            spec.submodule_search_locations = list(attributes["__path__"])
+            module.__spec__ = spec
+        sys.modules[name] = module
+    for key, value in attributes.items():
+        if not hasattr(module, key):
+            setattr(module, key, value)
     return module
 
 
@@ -74,9 +78,11 @@ def _triton_jit(function=None, **_kwargs):
 
 
 def _stub_environ() -> None:
-    """Register ``vllm`` and the names the two image files import."""
-    if "vllm" in sys.modules:
-        return
+    """Register ``vllm`` and the names the two image files import.
+
+    Names another test suite's stand-ins already set are kept; every missing
+    one is added, so the environment is order-independent.
+    """
     vllm = _module("vllm", __path__=[str(ROOT / "vllm")])
     _module("b12x", __path__=[str(ROOT / "b12x")])
     envs = _module("vllm.envs", VLLM_SPARSE_INDEXER_MAX_LOGITS_MB=4 * 2200,

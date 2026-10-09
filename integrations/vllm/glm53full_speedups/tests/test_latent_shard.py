@@ -11,9 +11,9 @@ from __future__ import annotations
 
 import pytest
 import torch
-import _env
+import speedups_image_env
 import glm53full_speedups as plugin
-from _env import fused_qkv_a_proj_class
+from speedups_image_env import fused_qkv_a_proj_class
 
 INPUT = 16
 Q_ROWS = 16  # q_a_proj
@@ -51,12 +51,12 @@ def test_helper_builds_the_image_layer_outside_tp8(monkeypatch):
 
 
 def test_every_rank_loads_its_contiguous_block_and_gathers_exactly(checkpoint):
-    _env.build_group()
+    speedups_image_env.build_group()
     q_a, kv_a, fused, x = checkpoint
 
     def body(rank: int) -> dict:
         layer = build_layer("model.layers.0.self_attn.fused_qkv_a_proj")
-        assert layer.local_width == (Q_ROWS + KV_ROWS) // _env.TP
+        assert layer.local_width == (Q_ROWS + KV_ROWS) // speedups_image_env.TP
         assert layer.local_start == rank * layer.local_width
         layer.weight_loader(layer.weight, q_a, 0)
         layer.weight_loader(layer.weight, kv_a, 1)
@@ -66,7 +66,7 @@ def test_every_rank_loads_its_contiguous_block_and_gathers_exactly(checkpoint):
         gathered = layer(x)[0] if isinstance(layer(x), tuple) else layer(x)
         return {"weight": mine, "output": gathered}
 
-    results = _env.run_ranks(body)
+    results = speedups_image_env.run_ranks(body)
     # Every rank holds the same gathered output: the fused output's column order.
     reference = torch.nn.functional.linear(x, fused)
     for rank, result in enumerate(results):
@@ -78,7 +78,7 @@ def test_every_rank_loads_its_contiguous_block_and_gathers_exactly(checkpoint):
 
 def test_loader_refuses_rows_off_a_scale_block_or_an_unexpected_shard(checkpoint):
     """The loader checks the parameter's output dimension and the shard ids."""
-    _env.build_group()
+    speedups_image_env.build_group()
     q_a, kv_a, _, _ = checkpoint
 
     def body(rank: int) -> object:
@@ -92,4 +92,4 @@ def test_loader_refuses_rows_off_a_scale_block_or_an_unexpected_shard(checkpoint
             layer.weight_loader(layer.weight, q_a, 2)
         return None
 
-    _env.run_ranks(body)
+    speedups_image_env.run_ranks(body)
