@@ -1,5 +1,5 @@
 {
- "generated_at": "cf47850492eab70f1593de45349d0b77ecb2705e",
+ "generated_at": "3a00820ddd4b57e02a0ce07f2ca10c78da2a25d4",
  "plans": {
   "prepared": {
    "printed": [
@@ -16,7 +16,7 @@
     "",
     "Node 0 spark-10 -> /srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
     "    from /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da",
-    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by code",
+    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by operator",
     "        53 of 53 files identified by SparkRing's earlier checksums",
     "    hard-link 41 weight files (no copy, no extra space); copy 12 other files (56.1 MB)",
     "    needs 4.1 GiB free on /: 89.2 MB for checkpoint files, 4 GiB for the compile cache; 300 GiB free",
@@ -175,7 +175,7 @@
     "",
     "Node 0 spark-10 -> /srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
     "    from /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da",
-    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by code",
+    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by operator",
     "        53 of 53 files identified by SparkRing's earlier checksums",
     "    hard-link 41 weight files (no copy, no extra space); copy 12 other files (56.1 MB)",
     "    needs 4.1 GiB free on /: 89.2 MB for checkpoint files, 4 GiB for the compile cache; 300 GiB free",
