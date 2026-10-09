@@ -49,7 +49,6 @@ import hashlib
 import json
 import os
 from pathlib import Path
-import re
 import shlex
 import subprocess
 import sys
@@ -66,7 +65,7 @@ PLUGIN = ROOT / "integrations" / "vllm" / "libsircl" / "sparkring_libsircl.py"
 NATIVES_SCHEMA = "sparkring-libsircl-natives/v1"
 PLAN_SCHEMA = "sparkring-libsircl-layer-plan/v1"
 PACKS = ("sircl_kernels", "sircl_fold", "sircl_links")
-NCCL_API_VERSION = 22705
+NCCL_API_VERSION = libsircl.NCCL_API_VERSION
 BUILD_PATH = "/tmp/libsircl"
 SOURCE_MOUNT = "/libsircl-src"
 OUTPUT_MOUNT = "/libsircl-out"
@@ -86,9 +85,14 @@ info = json.loads(handle.sirclGetInfo().decode())
 os.environ.update(SPARKRING_LIBSIRCL_LIBRARY=library, SPARKRING_LIBSIRCL_SHA256=digest)
 import sparkring_libsircl
 sparkring_libsircl.register()
+try:
+    import torch
+    torch_nccl = list(torch.cuda.nccl.version())
+except Exception as error:
+    torch_nccl = repr(error)
 print("LIBSIRCL-LAYER-PROBE " + json.dumps({"entry_points": points, "nccl_get_version": [code, version.value],
       "library": info.get("library"), "version": info.get("version"), "selected": os.environ.get("VLLM_NCCL_SO_PATH"),
-      "plugin_file": sparkring_libsircl.__file__}))
+      "plugin_file": sparkring_libsircl.__file__, "torch_nccl_version": torch_nccl}))
 '''
 
 
@@ -130,11 +134,7 @@ def kernel_packs(files):
 
 def architectures(files):
     """The GPU architectures of the kernel packs, from the Makefile's ``NVCCFLAGS`` (``code=sm_<n>``)."""
-    flags = re.search(r"^NVCCFLAGS\s*=(.*)$", files["Makefile"].decode(), re.M)
-    require(flags is not None, "the tree's Makefile names no NVCCFLAGS")
-    found = sorted(set(re.findall(r"code=(sm_[0-9]+)", flags.group(1))))
-    require(found, "the tree's Makefile names no kernel pack architecture")
-    return found
+    return libsircl.pack_architectures(files["Makefile"].decode())
 
 
 # The library build.
@@ -247,7 +247,8 @@ def layer_files(lock, natives, site, *, tree=TREE):
     receipt = {"schema": libsircl.LAYER_SCHEMA, "version": version, "snapshot": summary["tree_digest"],
                "library": {"path": libsircl.library_path(version), "sha256": digest(library),
                            "soname": libsircl.SONAME},
-               "nccl_api_version": NCCL_API_VERSION, "kernel_packs": record["kernel_packs"],
+               "nccl_api_version": NCCL_API_VERSION, "fail_stop": libsircl.has_fail_stop(library),
+               "kernel_packs": record["kernel_packs"],
                "architectures": record["architectures"],
                "plugin": {"name": libsircl.PLUGIN_NAME, "path": plugin, "sha256": digest(payloads[plugin])},
                "compiler": record["compiler"], "build": record["build"], "parent_image_id": lock["image_id"],
@@ -315,7 +316,8 @@ def libsircl_block(plan):
     layer = plan["layer"]
     return {"version": layer["version"], "snapshot": layer["snapshot"],
             "library": {"path": layer["library"]["path"], "sha256": layer["library"]["sha256"]},
-            "nccl_api_version": layer["nccl_api_version"], "plugin": dict(layer["plugin"]),
+            "nccl_api_version": layer["nccl_api_version"], "fail_stop": layer["fail_stop"],
+            "plugin": dict(layer["plugin"]),
             "receipt": {"path": image_lock.LIBSIRCL_RECEIPT, "sha256": plan["layer_sha256"]}}
 
 
@@ -352,8 +354,9 @@ def probe_problems(record, block):
 
 
 def probe_image(image_id, block, *, run=_run):
-    command = ["docker", "run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--entrypoint",
-               "python3", image_id, "-I", "-c", PROBE, block["library"]["path"], block["library"]["sha256"]]
+    command = ["docker", "run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--tmpfs", "/tmp",
+               "--entrypoint", "python3", image_id, "-I", "-c", PROBE, block["library"]["path"],
+               block["library"]["sha256"]]
     return parse_probe(run(command).stdout)
 
 
@@ -371,7 +374,8 @@ def record(context, image_id, name, output, *, run=_run, profiles=None):
             raise ValueError("The parent image already has an added path: " + target) from error
     image = json.loads(run(["docker", "image", "inspect", image_id]).stdout)[0]
     lock = v3_lock(plan, image, name, profiles)
-    problems = probe_problems(probe_image(image["Id"], lock["libsircl"], run=run), lock["libsircl"])
+    probed = probe_image(image["Id"], lock["libsircl"], run=run)
+    problems = probe_problems(probed, lock["libsircl"])
     require(not problems, "The built image's libsircl probe found: " + "; ".join(problems))
     libsircl.check_layer(lock["image_id"], lock["parent_receipt_sha256"], lock["libsircl"], run=run)
     view = image_lock.v2_view(lock)
@@ -380,8 +384,9 @@ def record(context, image_id, name, output, *, run=_run, profiles=None):
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
     return {"lock": str(output), "image_id": lock["image_id"], "libsircl": lock["libsircl"]["version"],
-            "nccl_api_version": lock["libsircl"]["nccl_api_version"], "library": lock["libsircl"]["library"],
-            "transports": lock["transports"], "serving_qualified": False}
+            "nccl_api_version": lock["libsircl"]["nccl_api_version"], "fail_stop": lock["libsircl"]["fail_stop"],
+            "library": lock["libsircl"]["library"], "transports": lock["transports"],
+            "torch_nccl_version": probed.get("torch_nccl_version"), "serving_qualified": False}
 
 
 def build(context, tag, name, output, *, run=_run, profiles=None):

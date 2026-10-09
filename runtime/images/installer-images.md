@@ -368,8 +368,10 @@ v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
   deployments are unchanged;
 - `/opt/sparkring/receipts/libsircl-layer.json` (`sparkring-libsircl-layer/v1`):
   version, snapshot, library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
-  level, kernel packs and architectures, plugin, compiler, build commands and
-  every installed file with its SHA-256.
+  level, whether the library has the fail-stop mode (its bytes name
+  `LIBSIRCL_FAIL_STOP`; the transport requires it), kernel packs and
+  architectures, plugin, compiler, build commands and every installed file
+  with its SHA-256.
 
 Every added file is recorded in the external-base receipt, whose
 `capabilities.libsircl` names the layer receipt, so the image's `verify`

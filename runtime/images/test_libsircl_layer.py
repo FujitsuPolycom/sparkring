@@ -137,7 +137,7 @@ def test_the_context_installs_the_library_notices_plugin_and_receipt_and_records
     assert (context / "Dockerfile").read_text() == derived_layer.dockerfile()
 
 
-def test_the_installed_plugin_registers_its_entry_point_and_selects_the_library(tmp_path, monkeypatch):
+def test_the_installed_plugin_registers_its_entry_point_and_selects_the_library(tmp_path):
     files = libsircl_layer.plugin_files("/site/", "0.6.0")
     root = tmp_path / "site"
     for path, data in files.items():
@@ -149,8 +149,8 @@ def test_the_installed_plugin_registers_its_entry_point_and_selects_the_library(
     assert points == [libsircl.PLUGIN_ENTRY_POINT]
     library = tmp_path / "libsircl.so.0.6.0"
     library.write_bytes(b"library")
-    probe = ("import os, sys; sys.path.insert(0, sys.argv[1]); import sparkring_libsircl as p; p.register(); "
-             "print(os.environ['VLLM_NCCL_SO_PATH'])")
+    # The installed module selects the checked file; its load as libsircl needs the real library.
+    probe = ("import os, sys; sys.path.insert(0, sys.argv[1]); import sparkring_libsircl as p; print(p.selected())")
     environment = {"SPARKRING_LIBSIRCL_LIBRARY": str(library),
                    "SPARKRING_LIBSIRCL_SHA256": hashlib.sha256(b"library").hexdigest(), "SYSTEMROOT": "C:\\Windows"}
     done = subprocess.run([sys.executable, "-I", "-c", probe, str(root)], capture_output=True, text=True, check=True,

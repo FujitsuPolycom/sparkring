@@ -546,6 +546,10 @@ def transport_choice(args, cluster, state_root, image, placement, profile=None):
                     "explicit": requested_backend is not None}
         hosts = cluster["plan"]["spec"]["hosts"]
         positions = list(placement) if placement is not None else list(range(len(hosts)))
+        if backend == transports.LIBSIRCL:
+            from runtime.common import libsircl
+            section = libsircl.section(image, document, positions, dcp=transports.profile_dcp(profile or args.profile))
+            return {"section": section, "backend": backend, "reason": None, "notes": [], "explicit": True}
         from runtime.host import fabric_tune
         # A measured table binds Node A's GPU driver and kernel among the Sparks' (sparkring fabric tune).
         tuning, notes = transports.tuning_in_effect(state_root, document, image, host_root=fabric_tune.HOST_ROOT,
@@ -640,7 +644,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         request["placement"] = list(placement)
     if checkpoint is not None:
         request["checkpoint"] = checkpoint
-    if choice["section"] is not None:
+    if choice["section"] is not None and choice["section"].get("backend") == transports.LIBSIRCL:
+        from runtime.common import libsircl
+        request["transport"] = libsircl.request_identity(choice["section"])
+    elif choice["section"] is not None:
         section = choice["section"]
         request["transport"] = {"backend": "sircl", "nccl": section["nccl"], "fabric": section["fabric"]["id"],
                                 "tuning": section["tuning"]["sha256"]}
@@ -1053,6 +1060,9 @@ def transport_summary(lock, choice):
     if not value:
         choice = choice or {}
         return {"backend": "prepared", "reason": choice.get("reason")}
+    if value.get("backend") == transports.LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.summary(value)
     from runtime.host import transport_receipts
     return {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
             "positions": value["group"]["positions"], "fabric": value["fabric"]["id"],
@@ -1088,6 +1098,9 @@ def save_result(directory, result):
 def transport_card_line(result):
     """The summary card's Transport line from the result's ``transport`` field."""
     value = result.get("transport") or {}
+    if value.get("backend") == transports.LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.card_text(value)
     if value.get("backend") != "sircl":
         return "prepared" if value else None
     from runtime.host import transport_receipts
@@ -1486,8 +1499,9 @@ def main(argv=None):
                              "the model")
     parser.add_argument("--transport", choices=transports.BACKENDS,
                         help="the collective transport: sircl (SIRCL ring sessions; the default on an image that "
-                             "carries them and a fabric recorded by sparkring setup) or prepared (the prepared "
-                             "transport with NCCL)")
+                             "carries them and a fabric recorded by sparkring setup), prepared (the prepared "
+                             "transport with NCCL) or libsircl (vLLM's PyNccl on libsircl, research-only, on an "
+                             "image that carries it)")
     parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
                         help="NCCL on a SIRCL deployment: never (default) keeps NCCL off every collective; auto lets "
                              "NCCL carry what the cabling allows (every collective on a pair, the ring algorithm on "

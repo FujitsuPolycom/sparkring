@@ -25,6 +25,9 @@ uses the `prepared` RoCEnante transport and patched NCCL
 The published installer images carry no SIRCL layer. The serve and bundle
 launchers also run ring sessions outside the installer ([serve and bundle
 runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md)).
+[libsircl](libsircl.md), SIRCL's NCCL-compatible C library on the same wire
+protocol, serves vLLM's PyNccl in place of NCCL with `--transport libsircl`
+(research-only).
 
 ## Ring sessions
 

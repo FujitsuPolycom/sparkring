@@ -482,12 +482,13 @@ images that run that profile.
 
 ### Transport and receipts
 
-A deployment's collectives run on one of two transports:
+A deployment's collectives run on one of these transports:
 
 | Transport | Where it runs | NCCL |
 |---|---|---|
 | `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
 | `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+| `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
 
 `sudo sparkring install` chooses `sircl` wherever it can run and says so
 before it asks: `Transport: sircl on every collective, NCCL off (...)`, or
@@ -496,6 +497,14 @@ the transports each image carries.
 
 - `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
   with the reason where it cannot run; nothing changes.
+- `--transport libsircl` runs vLLM's PyNccl on libsircl, SIRCL's
+  NCCL-compatible C library, with SIRCL's adapter and RoCEnante off. It is
+  research-only and never the default; it runs on pairs, paths and whole
+  cycles of up to eight Sparks, without decode-context parallelism, on an
+  image whose libsircl has the fail-stop mode, and stops with the reason
+  elsewhere. The installer does not judge libsircl's
+  receipts, so the transport verdict is `unknown`
+  ([design](../architecture/libsircl.md)).
 - `--nccl auto` lets NCCL carry the collectives the cabling allows: every
   collective on a pair, NCCL's ring algorithm on a whole cycle, none across
   relays. `--nccl never` is the default; `topology` is another name for

@@ -33,8 +33,10 @@ adds the third:
   libsircl layer (``runtime/images/libsircl_layer.py``): the library version,
   the vendored snapshot's tree digest, the library under
   ``/opt/sparkring/libsircl/lib`` with its SHA-256, the NCCL API level it
-  reports, the vLLM plugin module that selects it with its SHA-256, and the
-  layer receipt ``/opt/sparkring/receipts/libsircl-layer.json``. A v3 lock
+  reports, whether it has the fail-stop mode (it reads
+  ``LIBSIRCL_FAIL_STOP``), the vLLM plugin module that selects it with its
+  SHA-256, and the layer receipt
+  ``/opt/sparkring/receipts/libsircl-layer.json``. A v3 lock
   without the layer has no such field, so it validates as it did before the
   field existed.
 
@@ -60,7 +62,7 @@ V3_FIELDS = (installer_image.FIELDS[installer_image.SCHEMA] - {"schema"}) | {
 # Where the libsircl layer installs the library and its receipt.
 LIBSIRCL_LIBRARY_DIRECTORY = "/opt/sparkring/libsircl/lib"
 LIBSIRCL_RECEIPT = "/opt/sparkring/receipts/libsircl-layer.json"
-LIBSIRCL_FIELDS = {"version", "snapshot", "library", "nccl_api_version", "plugin", "receipt"}
+LIBSIRCL_FIELDS = {"version", "snapshot", "library", "nccl_api_version", "fail_stop", "plugin", "receipt"}
 # Where the SIRCL layer puts its prebuilt native libraries and its receipt.
 LIBRARY_DIRECTORY = "/opt/sparkring/sircl/lib"
 LAYER_RECEIPT = "/opt/sparkring/receipts/sircl-layer.json"
@@ -132,6 +134,7 @@ def validate_libsircl(value):
              "The libsircl layer records its snapshot's tree digest")
     _require(type(value["nccl_api_version"]) is int and value["nccl_api_version"] > 0,
              "The libsircl layer records the NCCL API level its library reports")
+    _require(type(value["fail_stop"]) is bool, "The libsircl layer records whether its library has the fail-stop mode")
     library = value["library"]
     _require(isinstance(library, dict) and set(library) == {"path", "sha256"}
              and library["path"] == f"{LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.{version}"

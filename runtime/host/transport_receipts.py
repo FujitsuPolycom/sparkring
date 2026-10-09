@@ -349,7 +349,14 @@ def latest(directory):
 
 
 def check(directory, lock, runner, *, now=time.time):
-    """Gather, evaluate and record a SIRCL deployment's receipts; the recorded verdict."""
+    """Gather, evaluate and record a SIRCL deployment's receipts; the recorded verdict.
+
+    A libsircl deployment's receipts are not judged; its verdict is
+    ``unknown`` with that reason (``libsircl.unjudged_verdict``).
+    """
+    if lock["transport"].get("backend") == transport.LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.unjudged_verdict(lock, now=now())
     reports = gather(runner, lock)
     return record(directory, reports, evaluate(lock, reports, now=now), now=now)
 
@@ -358,6 +365,9 @@ def text(verdict):
     """One line for the summary card and ``sparkring status``."""
     if verdict is None:
         return None
+    if verdict.get("backend") == transport.LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.verdict_text(verdict)
     if verdict["verdict"] == "unknown":
         return (f"Transport: sircl; receipts could not be read from every Spark ({verdict['problems'][0]}); "
                 "sudo sparkring check repeats the check")

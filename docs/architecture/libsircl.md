@@ -138,7 +138,9 @@ The lock is the parent's v3 lock with the built image's identity, the two
 re-recorded receipt digests, `libsircl` added to `transports` and a
 `libsircl` block ([image_lock.py](../../runtime/common/image_lock.py)):
 version, snapshot tree digest, library path and SHA-256, NCCL API level,
-plugin module path and SHA-256, and layer receipt path and SHA-256. A v3 lock
+whether the library has the fail-stop mode (its bytes name
+`LIBSIRCL_FAIL_STOP`), plugin module path and SHA-256, and layer receipt
+path and SHA-256. A v3 lock
 without libsircl has no `libsircl` field, so every existing lock validates
 unchanged.
 
@@ -148,12 +150,14 @@ vLLM's PyNccl (`vllm/distributed/device_communicators/pynccl_wrapper.py`)
 loads its NCCL with `ctypes.CDLL(path)` where `path` is
 `vllm.utils.nccl.find_nccl_library()`: `VLLM_NCCL_SO_PATH` when set, else
 `libnccl.so.2`. It binds every function of its list and fails on a missing
-one, except functions it marks optional; `vllm.envs` reads variables when
-they are used, until `enable_envs_cache()` after a worker's
-`init_device`. Verified in the source of Local Inference Lab's
-`integration/karmic-kraken-beta` at `57a80980bb`, the branch the image's vLLM
-(`d51b4181`, `bc9ea774`) merges; the image's own files were not read, and the
-CSF merge's [source manifest](../../runtime/images/compositions/kraken-csf-sources-20261007/sources.json)
+one, except functions it marks optional; when that load or binding fails,
+PyNccl disables itself and vLLM's device communicator falls back to torch's
+own NCCL. `vllm.envs` reads variables when they are used, until
+`enable_envs_cache()` after a worker's `init_device`. Verified in the source
+of Local Inference Lab's `integration/karmic-kraken-beta` at `57a80980bb`, the
+branch the image's vLLM (`d51b4181`, `bc9ea774`) merges; the image's own files
+were not read, and the CSF merge's
+[source manifest](../../runtime/images/compositions/kraken-csf-sources-20261007/sources.json)
 does not change `pynccl_wrapper.py` or `vllm/utils/nccl.py`.
 
 The installer image's verified entrypoint,
@@ -167,9 +171,12 @@ cannot select libsircl in that image. The layer's vLLM general plugin does
 ([sparkring_libsircl.py](../../integrations/vllm/libsircl/sparkring_libsircl.py)):
 with `libsircl` in `VLLM_PLUGINS`, vLLM calls its `register` in every
 process before that process creates a PyNccl communicator (workers load
-general plugins in `init_worker`, before `init_device`); `register` checks
-the file `SPARKRING_LIBSIRCL_LIBRARY` against `SPARKRING_LIBSIRCL_SHA256` and
-sets `VLLM_NCCL_SO_PATH` to it, and fails the process when either is wrong.
+general plugins in `init_worker`, before `init_device`). `register` checks
+the file `SPARKRING_LIBSIRCL_LIBRARY` against `SPARKRING_LIBSIRCL_SHA256`,
+loads it as PyNccl will and requires it to identify itself as libsircl
+(`sirclGetInfo`) and to export every function PyNccl binds, then sets
+`VLLM_NCCL_SO_PATH` to it. Any failure ends the process, so PyNccl cannot
+silently fall back to torch's NCCL for a load or binding reason.
 
 libsircl links with `-Bsymbolic-functions` and exports only `nccl*`,
 `pnccl*` and its three `sircl*` functions, so loading it by path beside the
@@ -179,31 +186,36 @@ on a cabled pair loaded it that way in this image's parent
 
 ### PyTorch's ProcessGroupNCCL
 
-- Inferred, not verified: the image's PyTorch binds NCCL dynamically as
-  `libnccl.so.2`. The toolchain layer selects one NCCL "for both PyTorch and
-  vLLM" with `LD_PRELOAD` and an `nvidia/nccl/lib` alias in its Python search
-  namespace, and its GPU smoke requires exactly one mapped `libnccl`; neither
-  would be needed for a statically linked NCCL. The `NEEDED` entries of the
-  image's `libtorch_cuda.so` were not read. The stock-image probe reads them
-  (`torch_nccl` below); for the installer image:
-  `docker run --rm --pull never --network none --entrypoint python3 IMAGE
-  /dev/stdin < runtime/common/stock_image_probe.py`.
+- Inferred, not verified: the installer image's PyTorch binds NCCL
+  dynamically as `libnccl.so.2`. The toolchain layer selects one NCCL "for
+  both PyTorch and vLLM" with `LD_PRELOAD` and an `nvidia/nccl/lib` alias in
+  its Python search namespace, and its GPU smoke requires exactly one mapped
+  `libnccl`; neither would be needed for a statically linked NCCL. The
+  `NEEDED` entries of the image's `libtorch_cuda.so` were not read. The layer
+  builder's probe records `torch.cuda.nccl.version()` in the built image
+  (`torch_nccl_version` of `record`'s summary): 2.32.3 means torch bound the
+  image's NVIDIA NCCL. The stock-image probe reads the `NEEDED` entries
+  (below).
 - Consequence in the installer image: torch's collectives cannot be pointed
   at libsircl without changing the sealed toolchain entrypoint, which forces
   NVIDIA NCCL first in `LD_PRELOAD`. Only vLLM's PyNccl uses libsircl. The
   collectives vLLM sends through PyNccl (all-reduce, all-gather,
   reduce-scatter, broadcast and point-to-point of its device communicators)
-  run on libsircl; a `torch.distributed` collective on a vLLM device group
-  would run on NVIDIA NCCL. The transport refuses the settings known to issue
-  them (below), and the containers log NCCL's initialization
-  (`NCCL_DEBUG=INFO`, `NCCL_DEBUG_SUBSYS=INIT`) so a communicator NVIDIA NCCL
-  creates is visible in the model log.
+  run on libsircl; a `torch.distributed` collective on a vLLM device group,
+  such as `GroupCoordinator.broadcast` of a GPU tensor, runs on NVIDIA NCCL.
+  On a pair or a whole cycle NVIDIA NCCL can connect the ranks; on a path it
+  cannot connect ranks that share no cable, and the plan says so. The
+  transport refuses the settings known to issue such collectives (below),
+  and the containers log NCCL's initialization (`NCCL_DEBUG=INFO`,
+  `NCCL_DEBUG_SUBSYS=INIT`), so a communicator NVIDIA NCCL creates is visible
+  in the model log.
 - In a stock image whose entrypoint does not rewrite loader settings and whose
   PyTorch needs `libnccl.so.2`, `LD_PRELOAD` of libsircl redirects torch's
   ProcessGroupNCCL too: the dynamic linker resolves the `libnccl.so.2`
   dependency to the preloaded object with that SONAME. libsircl's evidence for
   this is GPU emulation with torch 2.10.0+cu128 (STATUS.md, "PyTorch
-  ProcessGroupNCCL, unmodified, through LD_PRELOAD"), not a Spark.
+  ProcessGroupNCCL, unmodified, through LD_PRELOAD"), not a Spark. The
+  stock-image preflight checks which library each caller bound (below).
 
 ## Installer transport
 
@@ -216,7 +228,8 @@ to it.
 
 It runs where all of these hold, and refuses with the reason otherwise:
 
-- the image lock lists `libsircl` among its transports;
+- the image lock lists `libsircl` among its transports, and its library has
+  the fail-stop mode (below);
 - `sudo sparkring setup` recorded a fabric document that lists `sircl` among
   its transports (the relay table is installed where the fabric has relays)
   and whose Sparks name their fabric devices alike;
@@ -232,19 +245,39 @@ settings of `tools/site_routes.py`; cycles of up to eight, the whole ring
 included. On Sparks only a cabled pair has run (positions 0-1); paths and
 cycles ran in GPU emulation and SIRCL's emulation harness.
 
+### Fail-stop
+
+vLLM's PyNccl checks only that each call was queued. A libsircl wait that
+times out poisons its communicator and can let the step whose output it
+spoiled complete; the error surfaces at a later call, or, in a replayed CUDA
+graph, at none. The transport therefore sets `LIBSIRCL_FAIL_STOP=1`, with
+which the library ends the process on a recorded asynchronous error, and
+requires a library that has the mode: the layer records `fail_stop` in the
+lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`.
+Snapshot `ba5a337b` does not have the mode, so the transport refuses an image
+built from it, naming the reason, until a snapshot whose library reads
+`LIBSIRCL_FAIL_STOP` is synced and the layer rebuilt.
+
+### Container settings
+
 Each rank's container gets the profile's settings with these changes
 ([`libsircl.adapt`](../../runtime/common/libsircl.py)):
 
-| Variables | Values |
+| Settings | Values |
 |---|---|
 | `VLLM_PLUGINS` | the image's plugins and `libsircl`, never `sircl` |
 | `SPARKRING_LIBSIRCL_LIBRARY`, `SPARKRING_LIBSIRCL_SHA256` | the lock's library path and SHA-256, which the plugin checks |
+| `LIBSIRCL_FAIL_STOP` | `1` |
+| `LIBSIRCL_NCCL_API_VERSION` | `22705`, libsircl's default: it passes vLLM's and torch's feature gates without opening newer ones |
 | `LIBSIRCL_TRANSPORT` | `verbs` |
 | `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW` | the rank's routing settings, recorded per rank in the deployment lock |
+| `SIRCL_BOOTSTRAP_ADDR` | the rank's `VLLM_HOST_IP`, the address it publishes in the unique id of a communicator it roots |
 | `SIRCL_GID_INDEX` | the profile's `NCCL_IB_GID_INDEX`, else 3, as for SIRCL deployments |
 | `LIBSIRCL_RECEIPT` | `/run/sparkring/sircl/receipts/libsircl`: one receipt file per communicator in the deployment's receipt directory on each Spark |
+| `VLLM_DISABLE_PYNCCL`, `VLLM_ALLREDUCE_USE_SYMM_MEM`, `VLLM_USE_NCCL_SYMM_MEM`, `VLLM_ALLREDUCE_USE_FLASHINFER`, `VLLM_ALLREDUCE_USE_FLASHINFER_PCIE_IPC`, `VLLM_ENABLE_PCIE_ALLREDUCE` | `0`, replacing the profile's: PyNccl on; torch and NCCL symmetric memory off, and with NCCL's the optional `ncclMemAlloc` allocator, whose callers ignore its errors; FlashInfer all-reduce and B12X PCIe all-reduce off |
 | `VLLM_ENABLE_ROCE_ALLREDUCE`, `SPARKRING_TRANSPORT_PROFILE`, `SPARKRING_TRANSPORT_MANIFEST_SHA256`, `SPARK_TP4_ENABLED`, `VLLM_SPARK_TP4_MODE`, `VLLM_SPARK_TP4_VOCAB_MODE` | SIRCL's `DISABLED_TRANSPORTS`: RoCEnante and SIRCL's four-rank adapter off |
 | `NCCL_DEBUG`, `NCCL_DEBUG_SUBSYS` | `INFO`, `INIT` |
+| vLLM arguments | `--disable-custom-all-reduce` added: vLLM's custom all-reduce, which covers NVLink and PCIe peer copies, stays off |
 
 The routing settings come from libsircl's own tool,
 [`tools/site_routes.py`](../../spark_transport/libsircl/tools/site_routes.py),
@@ -256,14 +289,27 @@ SIRCL's `describe_group`), passes the group's explicit layout
 maps use the device names setup discovered, and records the tool's lines in
 the lock's `transport.routes`. Rank `r` of the group is libsircl position `r`.
 
-Refused profile settings, because their collectives would bypass PyNccl and
-reach NVIDIA NCCL, or because libsircl's communicators need one issuing
-order: those of SIRCL's `nccl_free_problems` (`--load-format instanttensor`,
-`--enable-eplb`, `VLLM_DISTRIBUTED_USE_SPLIT_GROUP`) and `relay_conflicts`
-(GEMM-communication and all-reduce-RMSNorm fusion passes,
-`--enable-batch-sharded-sampling`, all-to-all backends other than `naive`
-and `allgather_reducescatter`), vLLM micro-batching, a true
-`VLLM_DISABLE_PYNCCL`, and any variable the adapter sets.
+### Refusals
+
+A profile is refused, naming each reason, when:
+
+- its collectives would bypass PyNccl and reach torch's NCCL, or libsircl's
+  communicators would lose their one issuing order: SIRCL's
+  `nccl_free_problems` (`--load-format instanttensor`, `--enable-eplb`,
+  `VLLM_DISTRIBUTED_USE_SPLIT_GROUP`), SIRCL's `relay_conflicts`
+  (GEMM-communication and all-reduce-RMSNorm fusion passes,
+  `--enable-batch-sharded-sampling`, all-to-all backends that connect every
+  pair of ranks themselves) and vLLM micro-batching;
+- it needs what libsircl does not carry (`libsircl.capability_problems`):
+  `--enable-sleep-mode` (libsircl exports `ncclCommSuspend` and
+  `ncclCommResume` only as refusals); pipeline parallelism above 2
+  (libsircl carries point-to-point only between the two ranks of a two-rank
+  communicator); data parallelism; expert parallelism with an all-to-all
+  backend other than `allgather_reducescatter`; and the sequence-parallelism
+  pass (`pass_config.enable_sp`);
+- it sets a variable the adapter owns or any `LIBSIRCL_*` variable.
+
+### Lock, admission and receipts
 
 The deployment lock's `transport` section (`sparkring-transport/v1`,
 `backend: libsircl`) records the status, the image, the fabric document's
@@ -282,8 +328,10 @@ The plan says what runs and that it is research-only, for example:
 ```text
 Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on libsircl 0.6.0; SIRCL's adapter and RoCEnante are off
   libsircl group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane
-  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot ba5a337b
+  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot ba5a337b; fail-stop on (LIBSIRCL_FAIL_STOP=1)
+  Off: vLLM's custom all-reduce, torch and NCCL symmetric memory, FlashInfer all-reduce and B12X PCIe all-reduce, so PyNccl carries the device collectives
   Research-only: no serving A/B has measured libsircl; torch.distributed's own collectives stay on the image's NCCL
+  Note: torch.distributed's NVIDIA NCCL cannot connect this group's ranks that share no cable; a collective vLLM sends through torch instead of PyNccl would wait at NCCL's connection setup
 ```
 
 ## Stock-image option

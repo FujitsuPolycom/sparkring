@@ -1,6 +1,6 @@
 """A deployment's collective transport, and the adapter that runs its containers on SIRCL ring sessions.
 
-Every ``sparkring install`` deployment runs on one of two transports:
+Every ``sparkring install`` deployment runs on one of these transports:
 
 - ``sircl``: SIRCL ring sessions (``spark_transport/sircl``) carry every
   collective of the tensor-parallel group. The image must carry the SIRCL
@@ -12,6 +12,10 @@ Every ``sparkring install`` deployment runs on one of two transports:
 - ``prepared``: the prepared RoCEnante transport of the installer images,
   with NCCL. A lock without a ``transport`` section uses it, so every
   deployment made before this module behaves as it did.
+- ``libsircl``: vLLM's PyNccl on libsircl, SIRCL's NCCL-compatible C
+  library, chosen only by name (research-only). ``runtime/common/libsircl.py``
+  owns it; the functions of this module that take a deployment's section
+  pass a section whose ``backend`` is ``libsircl`` to it.
 
 ``choose`` makes ``sircl`` the default wherever it can run. NCCL is off on a
 SIRCL deployment (``nccl: never``) unless the operator opts in with
@@ -110,7 +114,8 @@ BINDING_FIELDS = frozenset({"image", "tuning_key", "drivers", "defaults_sha256",
 # which carries the ConnectX (mlx5) driver. None where a Spark did not report it.
 DRIVER_FIELDS = ("gpu", "kernel")
 DRIVER_LABELS = {"gpu": "GPU driver", "kernel": "kernel"}
-BACKENDS = ("sircl", "prepared")
+BACKENDS = ("sircl", "prepared", "libsircl")
+LIBSIRCL = "libsircl"
 # SIRCL's NCCL modes and their other names (sparkring_sircl.vllm.settings NCCL_MODES and NCCL_MODE_ALIASES),
 # kept here for the commands' --nccl choices; test_transport.py compares the two.
 NCCL_MODES = ("never", "auto")
@@ -504,6 +509,9 @@ def choose(image_value, document, *, backend=None, nccl=None):
     explicit ``--transport sircl`` that cannot run, and ``--nccl`` with the
     prepared transport, are refused.
     """
+    if backend == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.choose(image_value, document, nccl=nccl_mode(nccl))
     _require(backend in (None, *BACKENDS), f"--transport takes sircl or prepared, not {backend!r}")
     nccl = nccl_mode(nccl)
     reason = unavailable(image_value, document)
@@ -583,6 +591,9 @@ def section(image_value, document, positions, *, nccl, tuning, dcp=1, root=ROOT,
 
 def validate_section(value, card, image_runtime):
     """The ``transport`` section of a deployment lock after checking it against the lock's selection."""
+    if isinstance(value, dict) and value.get("backend") == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.validate_section(value, card, image_runtime)
     _require(isinstance(value, dict) and value.get("schema") == SECTION_SCHEMA and value.get("backend") == "sircl",
              f"A deployment's transport section is a {SECTION_SCHEMA} SIRCL section")
     _require(set(value) == {"schema", "backend", "nccl", "image", "fabric", "group", "devices", "tuning", "sircl"},
@@ -907,6 +918,9 @@ def dcp_interleave(lock, arguments):
 def adapt(specs, lock):
     """Each rank's container with SIRCL in front of every collective (the lock's ``transport`` section)."""
     value = lock["transport"]
+    if value.get("backend") == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.adapt(specs, lock)
     plan, _, _ = _sircl()
     rows = lock["site"]["ranks"]
     _require(len(specs) == len(rows) == len(value["devices"]), "one container per rank of the transport group")
@@ -943,6 +957,9 @@ def adapt(specs, lock):
 
 def plan_lines(value, notes=()):
     """What ``sparkring install`` prints about a SIRCL deployment's transport before it asks."""
+    if value.get("backend") == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.plan_lines(value, notes)
     tuning = value["tuning"]
     row = tuning["row"]
     # A measured table's row for a shape it did not measure is the default table's row.
@@ -1007,6 +1024,9 @@ def admit_layer(lock, *, run):
     receipt, the wheel's installed files and both libraries with the SHA-256
     the lock records, so the verification covered them.
     """
+    if lock["transport"].get("backend") == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.admit_layer(lock, run=run)
     from runtime.common import installer_image
     value = lock["transport"]
     sircl = value["sircl"]
@@ -1045,6 +1065,9 @@ def admit_layer(lock, *, run):
 def check_host_document(value, *, root="/"):
     """Raise TransportError unless this Spark's fabric document has the deployment's identity and the Spark
     holds every measured tuning table the deployment mounts from ``HOST_TABLES``, byte for byte."""
+    if value.get("backend") == LIBSIRCL:
+        from runtime.common import libsircl
+        return libsircl.check_host_document(value, root=root)
     path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
     try:
         document = fabric_document.load(path)

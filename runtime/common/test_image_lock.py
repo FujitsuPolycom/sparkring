@@ -193,7 +193,7 @@ SITE = "/usr/local/lib/python3.12/dist-packages/"
 
 
 def libsircl_block(version="0.6.0"):
-    return {"version": version, "snapshot": "b" * 64, "nccl_api_version": 22705,
+    return {"version": version, "snapshot": "b" * 64, "nccl_api_version": 22705, "fail_stop": True,
             "library": {"path": f"{image_lock.LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.{version}", "sha256": "7" * 64},
             "plugin": {"name": "libsircl", "path": SITE + "sparkring_libsircl.py", "sha256": "8" * 64},
             "receipt": {"path": image_lock.LIBSIRCL_RECEIPT, "sha256": "9" * 64}}
@@ -235,6 +235,7 @@ def test_a_v3_lock_whose_libsircl_fields_disagree_is_refused(change, message):
     (lambda block: block.update(version="0.7.0"), "library is"),
     (lambda block: block.update(snapshot="ba5a337b"), "tree digest"),
     (lambda block: block.update(nccl_api_version="22705"), "NCCL API level"),
+    (lambda block: block.update(fail_stop="yes"), "fail-stop mode"),
     (lambda block: block["plugin"].update(name="sircl"), "vLLM plugin libsircl"),
     (lambda block: block["receipt"].update(path="/tmp/receipt.json"), "receipt is"),
     (lambda block: block.pop("plugin"), "records"),
