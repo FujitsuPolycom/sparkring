@@ -82,3 +82,11 @@ def test_site_values_from_an_untracked_file_are_findings(tmp_path):
     for text in ("spark-zz990", "my-spark-zz99-copy", "02:00:00:12:34:57", "fe80::ff:fe12:3457"):
         assert (1, "site-value") not in findings(text, site), text
     assert list(findings("ssh spark-zz99")) == []
+
+
+def test_the_site_value_allowlist_names_only_frozen_inputs():
+    from check_release_safety import SITE_VALUE_ALLOWED
+    from pathlib import Path
+    frozen = (Path(__file__).resolve().parents[1] / "runtime/releases/preserved-inputs.json").read_text(encoding="utf-8")
+    for path, lines in SITE_VALUE_ALLOWED.items():
+        assert f'"{path}"' in frozen and all(isinstance(line, int) and reason for line, reason in lines.items())

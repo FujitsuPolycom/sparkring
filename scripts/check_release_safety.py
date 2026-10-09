@@ -33,6 +33,12 @@ RULES = {
 EXCLUDES = {"scripts/check_release_safety.py"}
 # The untracked file of site values (.gitignore lists it).
 SITE_VALUES = Path("scripts/config/site-values.txt")
+# Lines that keep a site value on purpose: path -> {line: reason}. A file listed here is bound by SHA-256
+# elsewhere, so editing it would change a frozen input.
+SITE_VALUE_ALLOWED = {
+    "performance/records/transport/eager-width-validation-20260817.md": {
+        182: "frozen preserved input (runtime/releases/preserved-inputs.json)"},
+}
 _MAC = re.compile(r"[0-9a-f]{2}(?::[0-9a-f]{2}){5}")
 
 
@@ -136,7 +142,10 @@ def main(root, site_values=None):
             data = (root / relative).read_bytes()
             if b"\0" in data:
                 continue
+            allowed = SITE_VALUE_ALLOWED.get(relative, {})
             for line, rule in findings(data.decode("utf-8", errors="replace"), site):
+                if rule == "site-value" and line in allowed:
+                    continue
                 # JSON escapes control characters in paths, preventing log injection.
                 print(json.dumps({"path": relative, "line": line, "rule": rule}))
                 count += 1
