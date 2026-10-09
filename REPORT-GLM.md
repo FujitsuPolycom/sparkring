@@ -5,7 +5,7 @@ Target image `sparkring-dev/kraken:csf-sircl-libsircl-20261008`
 (`sha256:816c6d6a…`), whose Python sources are vLLM `bc9ea774` over the
 compiled build `0.1.dev21553+gab86b7073` and B12X `cc36aa6f`. Every image
 file named below was read from that image only through the read-only
-`docker run` on `192.168.0.157`, and every SHA-256 quoted was computed inside
+`docker run` on one Spark that holds it, and every SHA-256 quoted was computed inside
 it. No run touched a GPU; no running container was touched; SIRCL was not
 edited; nothing outside `glm53full-clean` was read from the earlier
 workspace.
