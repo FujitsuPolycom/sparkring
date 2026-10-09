@@ -112,6 +112,19 @@ def test_ssh_hops_resolve_link_scope_on_the_jump_host_and_keep_key_local(tmp_pat
     assert nested[nested.index("-i") + 1] == str(tmp_path / "private")
 
 
+def test_the_controller_key_is_offered_before_the_accounts_own_default_keys(tmp_path):
+    """A Spark whose account trusts Node A's own key signs in before setup installs the controller key."""
+    route = [{"user": "operator", "address": "192.0.2.10", "interface": None, "port": 22}]
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    for name in ("id_ed25519", "id_rsa"):
+        (home / ".ssh" / name).write_text("key")
+    command = bootstrap.ssh_argv(route, tmp_path, identity=tmp_path / "private", home=home)
+    keys = [command[index + 1] for index, token in enumerate(command) if token == "-i"]
+    assert keys == [str(tmp_path / "private"), str(home / ".ssh" / "id_ed25519"), str(home / ".ssh" / "id_rsa")]
+    assert bootstrap.default_identities(tmp_path / "nobody") == []
+
+
 def test_bootstrap_does_not_invent_an_identity_file_when_using_existing_ssh_auth(tmp_path):
     route = [{"user": "root", "address": "fe80::1", "interface": "port0", "port": 22}]
     assert "-i" not in bootstrap.ssh_argv(route, tmp_path)

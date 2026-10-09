@@ -179,13 +179,28 @@ def validate_hop(hop):
     return hop
 
 
-def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=False):
+# The invoking account's own SSH keys, in OpenSSH's default order. OpenSSH offers them only when no
+# identity is given on the command line, so a command that names SparkRing's controller key adds them.
+DEFAULT_IDENTITIES = ("id_ed25519", "id_ecdsa", "id_rsa")
+
+
+def default_identities(home=None):
+    """The invoking account's default private keys that exist (``~/.ssh/id_ed25519`` and so on)."""
+    directory = Path(home if home is not None else Path.home()) / ".ssh"
+    return [directory / name for name in DEFAULT_IDENTITIES if (directory / name).is_file()]
+
+
+def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=False, home=None):
     """Every hop authenticates from Node A; no private key is sent to a worker.
 
     An interactive login asks about an unknown host key, or with ``trust_new``
     records it on first contact. New keys go to a SparkRing-owned file in
     ``directory``, unhashed, so setup can print what it trusted; keys already
     in the user's known_hosts are still honored.
+
+    With ``identity`` (SparkRing's controller key) the command also offers the
+    invoking account's own default keys after it, so a Spark whose account
+    already trusts Node A's key signs in before setup has installed its own.
     """
     if not route or len(route) > MAX_HOPS:
         raise ValueError(f"Bootstrap SSH route requires one through {MAX_HOPS} hops")
@@ -199,7 +214,7 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
                "-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=" + str(Path(directory) / socket_id),
                "-p", str(hop["port"])]
     if len(route) > 1:
-        jump = ssh_argv(route[:-1], directory, identity=identity)
+        jump = ssh_argv(route[:-1], directory, identity=identity, home=home)
         # The final zone belongs to the jump host, which resolves -W's target.
         jump[-1:-1] = ["-W", f"[{hop['address']}%{hop['interface']}]:{hop['port']}"]
         # ssh expands % tokens in ProxyCommand before the shell sees it. Each
@@ -207,6 +222,8 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
         command += ["-o", "ProxyCommand=" + shlex.join(jump).replace("%", "%%")]
     if identity is not None:
         command += ["-i", str(identity)]
+        for path in default_identities(home):
+            command += ["-i", str(path)]
     command.append(hop["user"] + "@" + hop["address"] + ("" if hop["interface"] is None else "%" + hop["interface"]))
     return command
 
