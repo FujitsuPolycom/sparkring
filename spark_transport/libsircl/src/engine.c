@@ -43,7 +43,8 @@
   int sccl_##tag##_roce_link_layout(int, int, uint64_t, uint64_t *);                                    \
   int sccl_##tag##_roce_set_links(void *, int, int, int, int, int, uint32_t, int, uint64_t, uint64_t);     \
   int sccl_##tag##_roce_set_trace(void *, uint32_t);                                                    \
-  int64_t sccl_##tag##_roce_trace_take(void *, uint64_t *, uint64_t, uint64_t *);
+  int64_t sccl_##tag##_roce_trace_take(void *, uint64_t *, uint64_t, uint64_t *);                       \
+  unsigned sccl_##tag##_roce_local_features(void);
 PROXY_DECLARE(hw)
 PROXY_DECLARE(emu)
 
@@ -73,7 +74,15 @@ typedef struct {
    * and taking the records written since the last take (two words each). */
   int (*set_trace)(void *, uint32_t);
   int64_t (*trace_take)(void *, uint64_t *, uint64_t, uint64_t *);
+  /* The proxy's local feature word (SIRCL change LF), which the setup checks: see ROCE_FEATURES_NEEDED. */
+  unsigned (*local_features)(void);
 } transport_ops;
+
+/* The local features of SIRCL's native proxy this library relies on: bit 0, roce_destroy returns the number
+ * of verbs calls that failed (a failed release keeps the arena allocated); bit 1, link op word bit 24 makes
+ * the proxy post the op's own items as their flags only (the pair exchange with no input). */
+enum { ROCE_FEATURE_DESTROY_COUNT = 1u, ROCE_FEATURE_OWN_FLAGS = 2u,
+       ROCE_FEATURES_NEEDED = ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS };
 
 #define PROXY_OPS(tag, label)                                                                          \
   {label, sccl_##tag##_roce_abi_version, sccl_##tag##_roce_layout, sccl_##tag##_roce_blob_bytes,         \
@@ -82,7 +91,7 @@ typedef struct {
    sccl_##tag##_roce_error, sccl_##tag##_roce_stat, sccl_##tag##_roce_destroy,                           \
    sccl_##tag##_roce_chain_layout, sccl_##tag##_roce_set_chain, sccl_##tag##_roce_set_forward,           \
    sccl_##tag##_roce_link_layout, sccl_##tag##_roce_set_links, sccl_##tag##_roce_set_trace,               \
-   sccl_##tag##_roce_trace_take}
+   sccl_##tag##_roce_trace_take, sccl_##tag##_roce_local_features}
 static const transport_ops verbs_ops = PROXY_OPS(hw, "verbs");
 static const transport_ops emulation_ops = PROXY_OPS(emu, "emulation");
 
@@ -110,8 +119,9 @@ int sccl_verbs_available(void);
 P2P_DECLARE(hw)
 P2P_DECLARE(emu)
 /* The local feature word of SIRCL change LF (p2p_local_features; bit 0: p2p_destroy returns the number of
- * verbs calls that failed). Built only with P2P_FEATURES=1 (Makefile), which needs a vendored source that
- * defines it; otherwise the build's SHA-256 check of the vendored copy stands for the feature. */
+ * verbs calls that failed, which decides whether the channels' arena may be freed). The setup check is
+ * compiled by default (Makefile P2P_FEATURES=1, CMake LIBSIRCL_P2P_FEATURES), which needs a vendored source
+ * that defines the word; a build with the option off relies on the build's SHA-256 check of the copy. */
 #ifdef SCCL_P2P_LOCAL_FEATURES
 unsigned sccl_hw_p2p_local_features(void);
 unsigned sccl_emu_p2p_local_features(void);
@@ -167,7 +177,7 @@ enum {
   MAX_WORLD = 8,
   MAX_POSITIONS = 64,
   RECORD_MAGIC = 0x4343534cu, /* "LSCC" */
-  RECORD_VERSION = 1,
+  RECORD_VERSION = 2,
 };
 #define DEFAULT_CAPACITY (2u << 20)
 #define DEFAULT_LARGE_PIECE (4u << 20)
@@ -213,6 +223,15 @@ static const uint64_t default_chain_mins[COLLECTIVES] = {8u << 20, 8u << 20, 4u 
 #define PAIR_RING_MIN_BYTES (2u << 20)
 #define PAIR_GATHER_RING_MIN_BYTES (2u << 20)
 #define PAIR_SCATTER_RING_MIN_BYTES (4u << 20)
+/* The cycle plan (STATUS.md, "the path of four ... and the cycle of eight"): a communicator of three or more
+ * ranks without SIRCL_LARGE_SCHEDULE, given a ring plan (LIBSIRCL_RING_WINDOW), whose ring in chain order
+ * closes over cables only (no rank of a ring edge reaches the other through relays, by every rank's
+ * LIBSIRCL_FORWARD_WINDOWS, exchanged at setup), runs all-reduces (message bytes), all-gathers (output bytes)
+ * and reduce-scatters (input bytes) from CYCLE_RING_MIN_BYTES as one ring op each with the ring's default
+ * geometry, and the pieces below. On the cycle of eight Sparks the ring overtakes the pieces between 4 and
+ * 8 MiB for all three. Every variable set in the environment keeps its value; paths, pairs and groups
+ * without a ring plan keep their schedules. */
+#define CYCLE_RING_MIN_BYTES (8u << 20)
 typedef struct {
   uint64_t from;
   uint32_t piece, blocks;
@@ -296,6 +315,8 @@ typedef struct {
    * coll_blocks[c] from LIBSIRCL_<collective>_LINK_BLOCKS (0: unset), blocks_set when SIRCL_LINK_BLOCKS
    * sets link_blocks; pair_plan when the pair plan chooses the rest by size. */
   uint32_t chunk_set[COLLECTIVES], coll_blocks[COLLECTIVES], blocks_set, pair_plan;
+  /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies. */
+  uint32_t cycle_plan, cycle_reserved;
   /* Point-to-point channels: on (LIBSIRCL_P2P_CHANNELS on a communicator of three or more ranks), the native
    * library's ABI, SIRCL's channel geometry (SIRCL_P2P_*) and the point-to-point pack. */
   uint32_t p2p_on, p2p_abi, p2p_slots, p2p_blocks, p2p_threads, p2p_unroll, p2p_chunk, p2p_reserved;
@@ -340,6 +361,9 @@ typedef struct {
 struct sccl_engine {
   int world, rank, lanes, device, position;
   int positions[MAX_WORLD];
+  /* Every rank's relayed positions (bit p: LIBSIRCL_FORWARD_WINDOWS gives that rank a nonzero window toward
+   * position p), from the first setup exchange; the cycle plan reads them. */
+  uint64_t relayed[MAX_WORLD];
   /* The chain schedule: on when chain_on; this rank's chain index and neighbors (-1 at an end), the
    * chain area's offset in the arena and the chain op counters (4 device words). */
   int chain_on, chain_index, chain_prev, chain_next;
@@ -416,9 +440,10 @@ struct sccl_engine {
   unsigned long long capture_id;
   sccl_CUstream capture_stream;
   int serving;
-  /* Fail-stop (LIBSIRCL_FAIL_STOP): FAIL_STOP_EXIT or FAIL_STOP_ABORT when this communicator is on the
-   * watcher's list, and the next one on it. */
+  /* Fail-stop (LIBSIRCL_FAIL_STOP): FAIL_STOP_EXIT or FAIL_STOP_ABORT when this communicator asks for it;
+   * whether it is on the watcher's list (under watch_lock), and the next one on it. */
   int fail_stop;
+  int watched;
   struct sccl_engine *watch_next;
   /* Point-to-point channels (see "point-to-point channels" below): the native library and context, the
    * arena (host and device addresses, bytes, p2p_layout words, control line), every rank's p2p_out mask and
@@ -671,6 +696,31 @@ static int link_settings(sccl_engine *e, shared_settings *s, int pair_plan, char
   return 0;
 }
 
+/* The first setup exchange's record: the rank's position and its relayed positions. */
+typedef struct {
+  int32_t position;
+  uint32_t reserved;
+  uint64_t relayed;
+} position_record;
+
+/* The positions LIBSIRCL_FORWARD_WINDOWS gives a nonzero window toward (reached through relays), as bits;
+ * a malformed entry counts as none here (forward_windows() reports it). */
+static uint64_t relayed_positions(void) {
+  const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
+  uint64_t mask = 0;
+  if (!text || !*text) return 0;
+  char copy[1024];
+  snprintf(copy, sizeof copy, "%s", text);
+  for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
+    char *equals = strchr(entry, '='), *end;
+    long position = strtol(entry, &end, 10);
+    if (!equals || end != equals || position < 0 || position >= MAX_POSITIONS) continue;
+    for (char *save2 = NULL, *value = strtok_r(equals + 1, "/", &save2); value; value = strtok_r(NULL, "/", &save2))
+      if (strtoul(value, NULL, 10)) mask |= 1ull << position;
+  }
+  return mask;
+}
+
 /* Whether LIBSIRCL_FORWARD_WINDOWS gives a nonzero window on some lane toward rank `peer` (the peer is
  * reached through relays). A malformed value counts as none here; forward_windows() reports it. */
 static int relayed_toward(const sccl_engine *e, int peer) {
@@ -856,6 +906,9 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
    * pieces schedule unless configured. */
   int pair_plan = 0;
   const char *large = sccl_env("SIRCL_LARGE_SCHEDULE");
+  const char *ring_plan = sccl_env("LIBSIRCL_RING_WINDOW");
+  int cycle_candidate = (!large || !*large) && e->world >= 3 && ring_plan && *ring_plan &&
+                        s->threads >= SCCL_LINK_MIN_THREADS;
   if ((!large || !*large) && e->world == 2 && s->threads >= SCCL_LINK_MIN_THREADS) {
     const char *ring = sccl_env("LIBSIRCL_RING_WINDOW"), *ring_min = sccl_env("SIRCL_RING_MIN_BYTES");
     const char *gather = sccl_env("SIRCL_GATHER_SCHEDULE"), *scatter = sccl_env("SIRCL_SCATTER_SCHEDULE");
@@ -935,6 +988,27 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   e->chain_next = e->chain_index < e->world - 1 ? order[e->chain_index + 1] : -1;
   e->ring_prev = s->ring_on ? order[(e->chain_index + e->world - 1) % e->world] : -1;
   e->ring_next = s->ring_on ? order[(e->chain_index + 1) % e->world] : -1;
+  /* The cycle plan (see CYCLE_RING_MIN_BYTES): every rank decides it from the same exchanged data. */
+  int cycle = cycle_candidate && s->ring_on;
+  for (int i = 0; cycle && i < e->world; ++i) {
+    int a = order[i], b = order[(i + 1) % e->world];
+    if (e->relayed[a] >> e->positions[b] & 1u || e->relayed[b] >> e->positions[a] & 1u) cycle = 0;
+  }
+  if (cycle) {
+    const char *gather = sccl_env("SIRCL_GATHER_SCHEDULE"), *scatter = sccl_env("SIRCL_SCATTER_SCHEDULE");
+    const char *ring_min = sccl_env("SIRCL_RING_MIN_BYTES"), *chain_min = sccl_env("SIRCL_CHAIN_MIN_BYTES");
+    s->cycle_plan = 1;
+    s->large_schedule = SCHEDULE_RING;
+    if (!gather || !*gather) s->gather_schedule = SCHEDULE_RING;
+    if (!scatter || !*scatter) s->scatter_schedule = SCHEDULE_RING;
+    if (!ring_min || !*ring_min)
+      for (int c = 0; c < COLLECTIVES; ++c) s->ring_mins[c] = CYCLE_RING_MIN_BYTES;
+    /* Below the ring minimum the pieces stay, not the chain (whose minimums are at or below it). */
+    if (!chain_min || !*chain_min)
+      for (int c = 0; c < COLLECTIVES; ++c)
+        if (s->chain_mins[c] < s->ring_mins[c]) s->chain_mins[c] = s->ring_mins[c];
+    e->link_on = 1;
+  }
   e->chain_on = e->world > 1 && s->large_schedule != SCHEDULE_PIECES;
   int classes = 0;
   uint32_t largest = s->blocks > s->large_blocks ? s->blocks : s->large_blocks;
@@ -980,6 +1054,7 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(link_blocks, "SIRCL_LINK_BLOCKS");
   SAME(blocks_set, "SIRCL_LINK_BLOCKS");
   SAME(pair_plan, "the pair plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
+  SAME(cycle_plan, "the cycle plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
   SAME(p2p_on, "LIBSIRCL_P2P_CHANNELS");
   SAME(p2p_abi, "point-to-point native ABI");
   SAME(p2p_slots, "SIRCL_P2P_SLOTS");
@@ -1744,38 +1819,48 @@ static void start_receipts(sccl_engine *e);
 
 /* -- fail-stop ----------------------------------------------------------------------------------- */
 
-/* LIBSIRCL_FAIL_STOP=1 (or abort): one watcher thread per process checks every watched communicator of two
- * or more ranks for an asynchronous error (a flag wait that timed out, a failed progress thread) every
- * FAIL_STOP_POLL_MS, and at the first one writes it to stderr and ends the process: with 1 at once with exit
- * status FAIL_STOP_STATUS (_exit: no atexit handlers, no core dump, so the end is bounded), with abort by
- * abort() (SIGABRT; the system's core-dump handling may delay the end). A caller that only checks the codes
- * of enqueue calls then cannot keep using a failed collective's output beyond the wait limit plus one poll,
- * whether or not it calls the library again; one that reads the output within that poll after its stream
- * wait returns can still read it. A communicator joins the list when its creation succeeds and leaves it
- * before destroy or abort releases anything (under watch_lock, which every check holds); library unload
- * stops the watcher first. */
+/* LIBSIRCL_FAIL_STOP=1 (or abort) ends the process at the first asynchronous error (a flag wait that timed
+ * out, a failed progress thread, a failed point-to-point channel) of any watched communicator of two or more
+ * ranks: it writes the error to stderr and the communicator's receipt, then ends the process, with 1 at once
+ * with exit status FAIL_STOP_STATUS (_exit: no atexit handlers, no core dump, so the end is bounded), with
+ * abort by abort() (SIGABRT; the system's core-dump handling may delay the end). The error is found by
+ * whichever comes first:
+ *  - the watcher thread, which checks every watched communicator every LIBSIRCL_FAIL_STOP_POLL_MS (default
+ *    FAIL_STOP_POLL_MS), so a caller that only checks the codes of enqueue calls cannot keep using a failed
+ *    collective's output beyond the wait limit plus one poll;
+ *  - a library call through which the caller would learn of it: ncclCommGetAsyncError and the checks of
+ *    collective and point-to-point enqueues and of ncclCommFinalize (sccl_engine_async_error), and
+ *    ncclCommDestroy and ncclCommAbort (watch_remove checks once more before the communicator leaves the
+ *    list). A caller that reads the error and destroys the communicator within one poll still ends here.
+ * A caller that reads the output within one poll after its stream wait returns, without calling the
+ * library, can still read it. A communicator joins the list when its creation succeeds and leaves it before
+ * destroy or abort releases anything (under watch_lock, which every check holds); library unload stops the
+ * watcher first. Receipts (sccl_engine_receipt) read the error without ending the process. */
 enum { FAIL_STOP_POLL_MS = 5, FAIL_STOP_STATUS = 70 };
 static pthread_mutex_t watch_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t watch_wake; /* on CLOCK_MONOTONIC; initialized by watch_cond_init */
 static sccl_engine *watch_list;
 static pthread_t watcher;
 static int watcher_started;
 static atomic_int watcher_stop;
+static atomic_int watch_poll_ms = FAIL_STOP_POLL_MS;
 static void write_receipt(sccl_engine *e);
 static uint64_t realtime_ns(void);
 static uint64_t monotonic_ns(void);
+static ncclResult_t session_error(sccl_engine *e, char *message, size_t len);
 
 /* The line names the time twice: the wall clock for logs, and CLOCK_MONOTONIC (the clock of the host's own
  * timeouts and of Python's time.monotonic), which a stepped wall clock (a VM's time synchronization) does
- * not move. */
-static void fail_stop(sccl_engine *e, const char *message) {
+ * not move; and what found the error. */
+static void fail_stop(sccl_engine *e, const char *found_by, const char *message) {
   char line[1200];
   uint64_t now = realtime_ns(), mono = monotonic_ns();
   int n = snprintf(line, sizeof line,
                    "libsircl: LIBSIRCL_FAIL_STOP: ending the process at %" PRIu64 ".%03u (Unix time; "
                    "CLOCK_MONOTONIC %" PRIu64 ".%03u s) on an asynchronous error of communicator %d (rank %d of "
-                   "%d): %s\n",
+                   "%d, found by %s): %s\n",
                    now / 1000000000u, (unsigned)(now % 1000000000u / 1000000u), mono / 1000000000u,
-                   (unsigned)(mono % 1000000000u / 1000000u), e->receipt_id, e->rank, e->world, message);
+                   (unsigned)(mono % 1000000000u / 1000000u), e->receipt_id, e->rank, e->world, found_by, message);
   if (n < 0) n = 0;
   if (n > (int)sizeof line - 1) n = (int)sizeof line - 1;
   if (write(STDERR_FILENO, line, (size_t)n) < 0) {
@@ -1786,37 +1871,65 @@ static void fail_stop(sccl_engine *e, const char *message) {
   _exit(FAIL_STOP_STATUS);
 }
 
+/* With watch_lock held: ends the process when the watched communicator has an asynchronous error. */
+static void fail_stop_check_locked(sccl_engine *e, const char *found_by) {
+  char message[900];
+  if (e->watched && session_error(e, message, sizeof message) != ncclSuccess) fail_stop(e, found_by, message);
+}
+
 static void *fail_stop_watch(void *unused) {
   (void)unused;
-  const struct timespec pause = {0, FAIL_STOP_POLL_MS * 1000000L};
+  pthread_mutex_lock(&watch_lock);
   while (!atomic_load(&watcher_stop)) {
-    nanosleep(&pause, NULL);
-    pthread_mutex_lock(&watch_lock);
-    for (sccl_engine *e = watch_list; e && !atomic_load(&watcher_stop); e = e->watch_next) {
-      char message[900];
-      if (sccl_engine_async_error(e, message, sizeof message) != ncclSuccess) fail_stop(e, message);
+    struct timespec until;
+    clock_gettime(CLOCK_MONOTONIC, &until);
+    long ms = atomic_load(&watch_poll_ms);
+    until.tv_sec += ms / 1000;
+    until.tv_nsec += (ms % 1000) * 1000000L;
+    if (until.tv_nsec >= 1000000000L) {
+      until.tv_sec += 1;
+      until.tv_nsec -= 1000000000L;
     }
-    pthread_mutex_unlock(&watch_lock);
+    /* Returns at the poll period, or at once when unload stops the watcher. */
+    pthread_cond_timedwait(&watch_wake, &watch_lock, &until);
+    for (sccl_engine *e = watch_list; e && !atomic_load(&watcher_stop); e = e->watch_next)
+      fail_stop_check_locked(e, "the watcher");
   }
+  pthread_mutex_unlock(&watch_lock);
   return NULL;
+}
+
+static void watch_cond_init(void) {
+  pthread_condattr_t attr;
+  pthread_condattr_init(&attr);
+  pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+  pthread_cond_init(&watch_wake, &attr);
+  pthread_condattr_destroy(&attr);
 }
 
 /* A forked child has no watcher thread and none of the parent's communicators (they are invalid there):
  * it starts empty, and its first communicator that asks for fail-stop starts its own watcher. */
 static void watch_after_fork(void) {
   pthread_mutex_init(&watch_lock, NULL);
+  watch_cond_init();
   watch_list = NULL;
   watcher_started = 0;
 }
 
-static void fork_handler_install(void) { pthread_atfork(NULL, NULL, watch_after_fork); }
+static void watch_once(void) {
+  watch_cond_init();
+  pthread_atfork(NULL, NULL, watch_after_fork);
+}
 
 /* The watcher, started by the first communicator that asks for it, before the setup verdict (so a rank
- * that cannot start it fails setup with every other rank). */
+ * that cannot start it fails setup with every other rank). LIBSIRCL_FAIL_STOP_POLL_MS sets its period. */
 static int watch_start(char *err, size_t len) {
-  static pthread_once_t fork_handler = PTHREAD_ONCE_INIT;
-  pthread_once(&fork_handler, fork_handler_install);
+  uint64_t poll;
+  if (env_u64("LIBSIRCL_FAIL_STOP_POLL_MS", FAIL_STOP_POLL_MS, 1, 3600000, &poll, err, len)) return -1;
+  static pthread_once_t once = PTHREAD_ONCE_INIT;
+  pthread_once(&once, watch_once);
   pthread_mutex_lock(&watch_lock);
+  atomic_store(&watch_poll_ms, (int)poll);
   int rc = watcher_started || atomic_load(&watcher_stop) ? 0 : pthread_create(&watcher, NULL, fail_stop_watch, NULL);
   if (!rc) watcher_started = 1;
   pthread_mutex_unlock(&watch_lock);
@@ -1828,17 +1941,30 @@ static void watch_add(sccl_engine *e) {
   pthread_mutex_lock(&watch_lock);
   e->watch_next = watch_list;
   watch_list = e;
+  e->watched = 1;
   pthread_mutex_unlock(&watch_lock);
 }
 
+/* Before destroy or abort releases anything: an asynchronous error that arose while the communicator was
+ * watched ends the process here even when the watcher has not polled since. */
 static void watch_remove(sccl_engine *e) {
   if (!e->fail_stop) return;
   pthread_mutex_lock(&watch_lock);
+  fail_stop_check_locked(e, "ncclCommDestroy or ncclCommAbort");
   for (sccl_engine **at = &watch_list; *at; at = &(*at)->watch_next)
     if (*at == e) {
       *at = e->watch_next;
       break;
     }
+  e->watched = 0;
+  pthread_mutex_unlock(&watch_lock);
+}
+
+/* A library call that reports the asynchronous error to its caller ends the process first. */
+static void fail_stop_observed(sccl_engine *e, const char *message) {
+  if (!e->fail_stop) return;
+  pthread_mutex_lock(&watch_lock);
+  if (e->watched) fail_stop(e, "a library call", message);
   pthread_mutex_unlock(&watch_lock);
 }
 
@@ -1846,7 +1972,9 @@ void sccl_engine_fail_stop_shutdown(void) {
   pthread_mutex_lock(&watch_lock);
   int started = watcher_started;
   atomic_store(&watcher_stop, 1);
+  for (sccl_engine *e = watch_list; e; e = e->watch_next) e->watched = 0;
   watch_list = NULL;
+  if (started) pthread_cond_signal(&watch_wake);
   pthread_mutex_unlock(&watch_lock);
   if (started) pthread_join(watcher, NULL);
 }
@@ -1867,16 +1995,20 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   e->positions[0] = position;
   pthread_mutex_init(&e->lock, NULL);
   char local[400] = {0};
-  /* Exchange 0: every rank's position, which keys the route map (SIRCL_PEER_ROUTES). */
+  /* Exchange 0: every rank's position, which keys the route map (SIRCL_PEER_ROUTES), and the positions it
+   * reaches through relays (LIBSIRCL_FORWARD_WINDOWS), which the cycle plan reads. */
   if (nranks > 1 && nranks <= MAX_WORLD) {
-    int32_t mine = position;
-    int32_t *all = exchange(bootstrap, &mine, sizeof mine, nranks, cancelled, err, err_len);
+    position_record mine = {position, 0, relayed_positions()};
+    position_record *all = exchange(bootstrap, &mine, sizeof mine, nranks, cancelled, err, err_len);
     if (!all) {
       pthread_mutex_destroy(&e->lock);
       free(e);
       return ncclRemoteError;
     }
-    for (int r = 0; r < nranks; ++r) e->positions[r] = all[r];
+    for (int r = 0; r < nranks; ++r) {
+      e->positions[r] = all[r].position;
+      e->relayed[r] = all[r].relayed;
+    }
     free(all);
     for (int r = 0; r < nranks && !local[0]; ++r)
       for (int q = 0; q < r; ++q)
@@ -1917,6 +2049,15 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     if (nranks == 1) e->fail_stop = 0;
     if (e->fail_stop && watch_start(local, sizeof local)) break;
     e->shared.proxy_abi = (uint32_t)e->transport->abi_version();
+    /* Before the setup verdict, so a rank whose native proxy lacks a feature fails setup with every rank. */
+    unsigned features = e->transport->local_features();
+    if ((features & ROCE_FEATURES_NEEDED) != ROCE_FEATURES_NEEDED) {
+      put_error(local, sizeof local,
+                "the native proxy's local feature word is 0x%x and this library needs 0x%x (bit 0: roce_destroy "
+                "counts failed verbs calls; bit 1: flags-only own items)",
+                features, (unsigned)ROCE_FEATURES_NEEDED);
+      break;
+    }
     if (e->shared.p2p_on) e->shared.p2p_abi = (uint32_t)e->p2p_transport->abi_version();
     /* LIBSIRCL_STREAM_ORDERED_ALLOC=off keeps the staging of a driver without stream-ordered allocation
      * (the communicator's own staging buffers; captured calls that need more are refused), for comparisons
@@ -2274,7 +2415,7 @@ static ncclResult_t p2p_health(sccl_engine *e, char *message, size_t len) {
 /* A failed native progress thread is reported ahead of a timed-out wait, and both when both hold: a progress
  * thread that stopped leaves the flags its peers and its own kernels wait for unwritten, so the timeout is
  * usually its consequence and never hides it. */
-ncclResult_t sccl_engine_async_error(sccl_engine *e, char *message, size_t len) {
+static ncclResult_t session_error(sccl_engine *e, char *message, size_t len) {
   if (!e || e->world == 1) return ncclSuccess;
   int failed = e->proxy && e->transport->failed(e->proxy);
   char waited[400] = {0};
@@ -2291,6 +2432,14 @@ ncclResult_t sccl_engine_async_error(sccl_engine *e, char *message, size_t len) 
     return ncclRemoteError;
   }
   return p2p_health(e, message, len);
+}
+
+/* The asynchronous error as the caller learns of it (ncclCommGetAsyncError, the checks of enqueues and of
+ * teardown): under fail-stop, a watched communicator's error ends the process instead (see "fail-stop"). */
+ncclResult_t sccl_engine_async_error(sccl_engine *e, char *message, size_t len) {
+  ncclResult_t result = session_error(e, message, len);
+  if (result != ncclSuccess) fail_stop_observed(e, message);
+  return result;
 }
 
 static sccl_CUresult copy_async(sccl_engine *e, sccl_CUdeviceptr dst, sccl_CUdeviceptr src, size_t bytes,
@@ -4128,7 +4277,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
     if (bused >= sizeof by_blocks) bused = sizeof by_blocks - 1;
   }
   char health[900] = {0}, health_json[1000], channels[3072];
-  ncclResult_t status = sccl_engine_async_error(e, health, sizeof health);
+  ncclResult_t status = session_error(e, health, sizeof health);
   p2p_receipt(e, channels, sizeof channels);
   json_string(health_json, sizeof health_json, status == ncclSuccess ? NULL : health);
   return (size_t)snprintf(
@@ -4140,7 +4289,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "\"slot_bytes\":%" PRIu64
       ",\"capacity\":%" PRIu64
       ",\"large_piece_bytes\":%" PRIu64 ",\"oneshot_max_bytes\":%" PRIu64 ",\"wait_regime\":\"%s\",\"fail_stop\":%s,"
-      "\"progress_cpus\":\"%s\",\"pair_exchange\":{\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64 "},\"pair_plan\":%s,\"link_blocks\":{\"session\":%u,\"reduce\":%u,"
+      "\"progress_cpus\":\"%s\",\"pair_exchange\":{\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64 "},\"pair_plan\":%s,\"cycle_plan\":%s,\"link_blocks\":{\"session\":%u,\"reduce\":%u,"
       "\"gather\":%u,\"scatter\":%u,\"ops_by_blocks\":{%s}},"
       "\"all_reduce\":{\"calls\":%" PRIu64 ",\"captured_calls\":%" PRIu64 ",\"bytes\":%" PRIu64
       ",\"ops\":{%s},\"padded_tails\":%" PRIu64 ",\"unaligned_staged\":%" PRIu64 ",\"local_copies\":%" PRIu64
@@ -4167,7 +4316,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       e->serving ? "serving" : "startup", e->fail_stop ? "true" : "false",
       e->progress_cpus[0] ? e->progress_cpus : "none",
       atomic_load(&e->exchange_ops), atomic_load(&e->exchange_bytes),
-      e->shared.pair_plan ? "true" : "false", e->shared.link_blocks, e->shared.coll_blocks[COLL_REDUCE],
+      e->shared.pair_plan ? "true" : "false", e->shared.cycle_plan ? "true" : "false", e->shared.link_blocks, e->shared.coll_blocks[COLL_REDUCE],
       e->shared.coll_blocks[COLL_GATHER], e->shared.coll_blocks[COLL_SCATTER], by_blocks,
       atomic_load(&e->calls), atomic_load(&e->captured_calls),
       atomic_load(&e->bytes), ops, atomic_load(&e->padded_tails), atomic_load(&e->staged_unaligned),

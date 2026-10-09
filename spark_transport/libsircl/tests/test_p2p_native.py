@@ -8,7 +8,8 @@ progress thread) and every rank sends every channel peer messages of 0 to 40,000
 8,192 bytes, so messages of several items wait for credits; every byte is checked. Further cases: channels
 between ring neighbors only with two ranks exchanging while the others idle, windowed lanes, and a size
 mismatch that one rank records, after which every rank's progress thread stops naming that rank. The probe
-also checks that p2p_layout equals SIRCL's p2p/protocol.py layout. No GPU is used.
+also checks that p2p_layout equals SIRCL's p2p/protocol.py layout and that the library's local feature word
+(p2p_local_features, SIRCL change LF) has bit 0, p2p_destroy counting failed verbs calls. No GPU is used.
 """
 import os
 import subprocess

@@ -2,8 +2,14 @@
 """One rank of an all-reduce timing sweep through libsircl's NCCL API, in the manner of nccl-tests.
 
 For every dtype and message size (``--min`` to ``--max`` bytes, multiplied by ``--factor``) the rank
-checks one out-of-place ``ncclAllReduce`` (sum) bit for bit against the rank-order reference of seeded
-inputs (sizes up to ``--check-max``), then times it two ways on one stream with CUDA events:
+checks one out-of-place ``ncclAllReduce`` (sum) bit for bit against the library's own result for its
+schedule (sizes up to ``--check-max``; library_rank.allreduce_reference, which reads the schedule settings
+from the environment as the library does): the rank-order float32 sum rounded once for the pieces
+schedule, the per-hop rounding in ring order for a ring op and in chain order for a chain op. The ring and
+chain order is LIBSIRCL_CHAIN_ORDER read as ranks (every rank at its own position, as the gates and
+RUNBOOK.md place them), or the ranks in order. The check row also records whether the output equals the
+rank-order reference, which differs from a ring or chain op's on more than two ranks. Then the rank times
+the call two ways on one stream with CUDA events:
 
 - eager: ``--warmup`` calls, then ``--iters`` calls back to back; time per call;
 - graph: ``--graph`` calls captured in one CUDA graph, the graph replayed until ``--iters`` calls have
@@ -24,6 +30,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -96,6 +103,16 @@ def main(argv=None) -> int:
             all_reduce(token, token, 7)
         torch.cuda.synchronize()
 
+    from library_rank import allreduce_reference, note_cycle_plan, receipt_of, reference
+
+    note_cycle_plan(receipt_of(lib, comm), args.world)
+
+    position = os.environ.get("LIBSIRCL_POSITION")
+    if position and int(position) != args.rank:
+        raise SystemExit(f"LIBSIRCL_POSITION={position} on rank {args.rank}: the check models the chain order for "
+                         "ranks placed at their own position")
+    chain = os.environ.get("LIBSIRCL_CHAIN_ORDER")
+    order = [int(item) for item in chain.split(",")] if chain else list(range(args.world))
     rows, checks = [], []
     bus = 2.0 * (args.world - 1) / args.world
     for dtype_name in args.dtypes.split(","):
@@ -109,16 +126,16 @@ def main(argv=None) -> int:
             if count * item <= args.check_max:
                 values = [torch.randn(count, generator=torch.Generator().manual_seed(7919 * count + r)).to(dtype)
                           for r in range(args.world)]
-                acc = values[0].float().clone()
-                for value in values[1:]:
-                    acc += value.float()
+                want = allreduce_reference(torch, values, order)
                 x.copy_(values[args.rank].cuda())
                 together()
                 with torch.cuda.stream(stream):
                     all_reduce(x, y, NCCL_DTYPES[dtype_name])
                 torch.cuda.synchronize()
-                good = torch.equal(y.cpu().view(torch.uint8), acc.to(dtype).view(torch.uint8))
+                got = y.cpu()
+                good = torch.equal(got.view(torch.uint8), want.view(torch.uint8))
                 row["correct"] = bool(good)
+                row["rank_order_sum"] = bool(torch.equal(got.view(torch.uint8), reference(torch, values).view(torch.uint8)))
                 checks.append((f"all-reduce {dtype_name} {count * item} B", bool(good)))
             start, end = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
             together()

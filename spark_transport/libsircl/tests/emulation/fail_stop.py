@@ -16,6 +16,12 @@ output and calls the library no more. Rank 0's flag wait times out at the wait l
 - control (``LIBSIRCL_FAIL_STOP=0``): rank 0's stream wait returns at the wait limit (at least 0.95 of it)
   with a wrong output and no error from any call it made, and the process is still running past the bound:
   the silent wrong result that fail-stop ends.
+- observe, destroy, commabort (``LIBSIRCL_FAIL_STOP=1`` with ``LIBSIRCL_FAIL_STOP_POLL_MS=600000``, so the
+  watcher does not poll during the case): right after its stream wait rank 0 calls ncclCommGetAsyncError,
+  ncclCommDestroy or ncclCommAbort, as a caller that reads the error and tears the communicator down at once
+  does. The call must end the process with exit status 70 and the fail-stop line, naming the timed-out wait
+  and saying that a library call found it (ncclCommAbort: "found by ncclCommDestroy or ncclCommAbort"),
+  within the same bound; the call never returns to rank 0.
 
 Every time is CLOCK_MONOTONIC (Python's time.monotonic, the line's second time): a VM's wall clock may be
 stepped by its time synchronization while a rank waits (WSL2's moves back by over a second about every
@@ -45,7 +51,13 @@ sys.path.insert(0, str(HERE))
 FAIL_STOP_LINE = "LIBSIRCL_FAIL_STOP: ending the process at "
 MONOTONIC_MARK = "CLOCK_MONOTONIC "
 FAIL_STOP_STATUS = 70
-MODES = {"exit": "1", "abort": "abort", "control": "0"}
+MODES = {"exit": "1", "abort": "abort", "control": "0", "observe": "1", "destroy": "1", "commabort": "1"}
+# The cases in which a library call, not the watcher, must find the error: the watcher's poll is longer than
+# the case, and the call rank 0 makes right after its stream wait.
+CALLS = {"observe": "ncclCommGetAsyncError", "destroy": "ncclCommDestroy", "commabort": "ncclCommAbort"}
+# ncclCommDestroy's teardown asks for the error before the engine's own check at release.
+FOUND_BY = {"observe": "found by a library call", "destroy": "found by a library call",
+            "commabort": "found by ncclCommDestroy or ncclCommAbort"}
 
 
 def run_rank(args) -> int:
@@ -65,6 +77,9 @@ def run_rank(args) -> int:
                                      ctypes.c_int]
     lib.sirclGetReceipt.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                                     ctypes.POINTER(ctypes.c_size_t)]
+    lib.ncclCommGetAsyncError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    lib.ncclCommDestroy.argtypes = [ctypes.c_void_p]
+    lib.ncclCommAbort.argtypes = [ctypes.c_void_p]
     world, rank, count = 2, args.rank, 4096
     out: dict = {"rank": rank}
 
@@ -106,8 +121,18 @@ def run_rank(args) -> int:
     out["enqueue_result"] = rc
     save()
     # A caller that checks only enqueue codes: it waits for its stream, keeps the output and calls the library
-    # no more.
+    # no more; or (--after) one that reads the error or tears the communicator down right after the wait.
     torch.cuda.synchronize()
+    if args.after:
+        out["call_at"] = time.monotonic()
+        save()
+        if args.after == "ncclCommGetAsyncError":
+            state = ctypes.c_int(0)
+            rc = lib.ncclCommGetAsyncError(comm, ctypes.byref(state))
+            out["call_returned"] = {"result": rc, "async_error": state.value}
+        else:
+            out["call_returned"] = {"result": getattr(lib, args.after)(comm)}
+        save()
     out["consumed_at"] = time.monotonic()
     out["consumed_exact"] = same_bits(torch, y.cpu(), want)
     save()
@@ -127,11 +152,15 @@ def run_case(args, work: Path, tag: str) -> list[str]:
         "CUDA_DEVICE_MAX_CONNECTIONS": env.get("CUDA_DEVICE_MAX_CONNECTIONS", "32"),
         "SIRCL_STARTUP_WAIT_S": str(args.wait_s), "LIBSIRCL_FAIL_STOP": MODES[tag],
     })
+    if tag in CALLS:
+        env["LIBSIRCL_FAIL_STOP_POLL_MS"] = "600000"
     processes, logs = [], []
     for rank in range(2):
         command = [args.python, str(Path(__file__).resolve()), "--rank", str(rank), "--library", args.library,
                    "--late-rank", "1", "--late-s", str(args.late_s), "--hold-s", str(args.hold_s),
                    "--id-file", str(case / "unique-id"), "--out", str(case / f"rank{rank}.json")]
+        if tag in CALLS and rank == 0:
+            command += ["--after", CALLS[tag]]
         log = open(case / f"rank{rank}.log", "w")
         logs.append(log)
         processes.append(subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT))
@@ -207,8 +236,15 @@ def run_case(args, work: Path, tag: str) -> list[str]:
         problems.append(f"{tag}: the fail-stop line does not name the timed-out wait")
     if data[0].get("held"):
         problems.append(f"{tag}: rank 0 held its output to the end")
+    if tag in CALLS:
+        if "call_at" not in data[0]:
+            problems.append(f"{tag}: rank 0 ended before it called {CALLS[tag]} (the watcher's poll is 600 s)")
+        if "call_returned" in data[0]:
+            problems.append(f"{tag}: {CALLS[tag]} returned {data[0]['call_returned']} to rank 0")
+        if FOUND_BY[tag] not in line:
+            problems.append(f"{tag}: the fail-stop line does not say {FOUND_BY[tag]!r}")
     gone = ended - launched if ended is not None and launched else None
-    if tag == "exit":
+    if tag == "exit" or tag in CALLS:
         if code != FAIL_STOP_STATUS:
             problems.append(f"{tag}: rank 0 exit {code}, not {FAIL_STOP_STATUS}")
         if gone is None or gone > bound:
@@ -230,10 +266,12 @@ def main(argv=None) -> int:
     parser.add_argument("--margin-s", type=float, default=3.0, help="allowed beyond the wait limit")
     parser.add_argument("--hold-s", type=float, default=30.0, help="how long rank 0 keeps running after its output")
     parser.add_argument("--timeout", type=float, default=180)
-    parser.add_argument("--cases", default="exit,abort,control", help="a comma list of exit, abort, control")
+    parser.add_argument("--cases", default="exit,abort,control,observe,destroy,commabort",
+                        help="a comma list of exit, abort, control, observe, destroy, commabort")
     parser.add_argument("--work", default="")
     parser.add_argument("--rank", type=int, default=-1, help=argparse.SUPPRESS)
     parser.add_argument("--late-rank", type=int, default=1, help=argparse.SUPPRESS)
+    parser.add_argument("--after", default="", help=argparse.SUPPRESS)
     parser.add_argument("--id-file", default="", help=argparse.SUPPRESS)
     parser.add_argument("--out", default="", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)

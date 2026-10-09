@@ -10,7 +10,12 @@ Every rank generates every rank's inputs from the case seed (SplitMix64, the sam
 it computes the reference itself: the float32 sum in rank order, rounded once to the dtype, which is
 what SIRCL's one-shot and two-shot all-reduce produce. With ``--golden DIR`` it also compares each
 output with the bytes the SIRCL Python session produced for the same inputs (``sircl_golden.py``), or
-with their SHA-256 digests (``--golden FILE.json``, for hosts that do not hold the bytes).
+with their SHA-256 digests (``--golden FILE.json``, for hosts that do not hold the bytes). Under the
+library's cycle plan (the receipt's ``cycle_plan``: the ring schedules from 8 MiB on a ring that closes over
+cables) the cases the plan runs as a ring op are compared with the ring session's digests instead
+(``--golden-ring FILE.json``, by default the ``-ring`` sibling of ``--golden``, ``w8.json`` ->
+``w8-ring.json``). ``LIBRARY_RANK_EXPECT_CYCLE_PLAN=1`` (or ``0``) adds a check that the receipt's
+``cycle_plan`` is that value.
 
 Checks: ncclAllReduce of float16, bfloat16 and float32 sums at sizes from one element to several
 large-message pieces (tails below 16 bytes, unaligned buffers, in place), consecutive calls alternating
@@ -98,17 +103,65 @@ CHAIN_MINS = {"reduce": 8 << 20, "gather": 8 << 20, "scatter": 4 << 20}
 RING_MINS = {"reduce": 4 << 20, "gather": 8 << 20, "scatter": 4 << 20}
 
 
-def _minimum(name: str, collective: str, defaults) -> int:
-    text = os.environ.get(name)
-    return int(text) if text else defaults[collective]
+# The library's cycle plan (src/engine.c, CYCLE_RING_MIN_BYTES): a communicator of three or more ranks
+# without SIRCL_LARGE_SCHEDULE, given a ring plan, whose ring closes over cables only, runs the ring
+# schedules from this size (all-reduce message, all-gather output, reduce-scatter input), the pieces below.
+CYCLE_RING_MIN_BYTES = 8 << 20
+# The cycle plan as the library decided it, by communicator size, from a receipt's "cycle_plan"
+# (note_cycle_plan, which the harnesses call after creating the communicator they check). Without a note,
+# cycle_plan() models the decision from this process's settings, which is exact when every rank has the
+# same settings (the emulation's runs); on a fabric each rank's forward windows differ, so the harnesses
+# note the receipt's decision.
+CYCLE_PLANS: dict = {}
 
 
-def _schedule(name: str, nbytes: int, collective: str) -> str:
+def note_cycle_plan(receipt: dict, world: int) -> bool:
+    CYCLE_PLANS[world] = bool(receipt.get("cycle_plan"))
+    return CYCLE_PLANS[world]
+
+
+def cycle_plan(world: int) -> bool:
+    if world in CYCLE_PLANS:
+        return CYCLE_PLANS[world]
+    if world < 3 or os.environ.get("SIRCL_LARGE_SCHEDULE"):
+        return False
+    if not (os.environ.get("LIBSIRCL_RING_WINDOW") or os.environ.get("SIRCL_CCL_RING_WINDOW")):
+        return False
+    windows = os.environ.get("LIBSIRCL_FORWARD_WINDOWS") or os.environ.get("SIRCL_CCL_FORWARD_WINDOWS") or ""
+    return not any(int(value or 0) for entry in windows.split(",") if "=" in entry
+                   for value in entry.split("=", 1)[1].split("/"))
+
+
+def setting(name: str, world: int = 0):
+    """A schedule setting as the library runs it: the environment's value, or under the cycle plan its
+    values for the unset ones (the ring schedules from CYCLE_RING_MIN_BYTES)."""
+    value = os.environ.get(name)
+    if value or not world or not cycle_plan(world):
+        return value
+    if name in ("SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE"):
+        return "ring"
+    if name == "SIRCL_RING_MIN_BYTES":
+        return str(CYCLE_RING_MIN_BYTES)
+    return value
+
+
+def _minimum(name: str, collective: str, defaults, world: int = 0) -> int:
+    text = setting(name, world)
+    if text:
+        return int(text)
+    value = defaults[collective]
+    if defaults is CHAIN_MINS and world and cycle_plan(world):
+        # Under the cycle plan the chain minimums rise to the ring minimum: the pieces stay below it.
+        value = max(value, _minimum("SIRCL_RING_MIN_BYTES", collective, RING_MINS, world))
+    return value
+
+
+def _schedule(name: str, nbytes: int, collective: str, world: int = 0) -> str:
     """The schedule variable `name` as the library runs it for a collective of `nbytes`: ring runs as auto
     without the ring plan (LIBSIRCL_RING_WINDOW) or below SIRCL_RING_MIN_BYTES."""
-    schedule = os.environ.get(name) or "pieces"
+    schedule = setting(name, world) or "pieces"
     if schedule == "ring" and (not (os.environ.get("LIBSIRCL_RING_WINDOW") or os.environ.get("SIRCL_CCL_RING_WINDOW"))
-                               or nbytes < _minimum("SIRCL_RING_MIN_BYTES", collective, RING_MINS)):
+                               or nbytes < _minimum("SIRCL_RING_MIN_BYTES", collective, RING_MINS, world)):
         return "auto"
     return schedule
 
@@ -136,7 +189,7 @@ def large_plan(nbytes: int, world: int) -> tuple[str, int]:
     largest prefix of W equal chunks of whole packs), ("chain", the 16-byte-aligned body) or ("pieces", 0).
     Sizes and settings decide it, not the buffers' alignment."""
     body = nbytes // 16 * 16
-    configured = os.environ.get("SIRCL_LARGE_SCHEDULE")
+    configured = setting("SIRCL_LARGE_SCHEDULE", world)
     pair = pair_default(world)
     if world < 2 or not body or (pair or configured or "pieces") == "pieces":
         return "pieces", 0
@@ -144,11 +197,11 @@ def large_plan(nbytes: int, world: int) -> tuple[str, int]:
         ring_min = int(os.environ.get("SIRCL_RING_MIN_BYTES") or PAIR_RING_MIN_BYTES)
         schedule = "ring" if nbytes >= ring_min else "auto"
     else:
-        schedule = pair or _schedule("SIRCL_LARGE_SCHEDULE", nbytes, "reduce")
+        schedule = pair or _schedule("SIRCL_LARGE_SCHEDULE", nbytes, "reduce", world)
     if schedule == "ring":
         ring_bytes = body // (16 * world) * 16 * world
         return ("ring", ring_bytes) if ring_bytes and ring_bytes // world < 1 << 31 else ("pieces", 0)
-    if schedule == "chain" or body >= _minimum("SIRCL_CHAIN_MIN_BYTES", "reduce", CHAIN_MINS):
+    if schedule == "chain" or body >= _minimum("SIRCL_CHAIN_MIN_BYTES", "reduce", CHAIN_MINS, world):
         return "chain", body
     return "pieces", 0
 
@@ -162,10 +215,10 @@ def scatter_path(chunk_bytes: int, world: int):
         # The pair plan: the ring from 4 MiB of input (SIRCL_RING_MIN_BYTES overrides it), pieces below.
         minimum = int(os.environ.get("SIRCL_RING_MIN_BYTES") or (4 << 20))
         return "ring" if chunk_bytes * world >= minimum else None
-    schedule = _schedule("SIRCL_SCATTER_SCHEDULE", chunk_bytes * world, "scatter")
+    schedule = _schedule("SIRCL_SCATTER_SCHEDULE", chunk_bytes * world, "scatter", world)
     if schedule in ("ring", "pieces"):
         return None if schedule == "pieces" else "ring"
-    if schedule == "chain" or chunk_bytes * world >= _minimum("SIRCL_CHAIN_MIN_BYTES", "scatter", CHAIN_MINS):
+    if schedule == "chain" or chunk_bytes * world >= _minimum("SIRCL_CHAIN_MIN_BYTES", "scatter", CHAIN_MINS, world):
         return "chain"
     return None
 
@@ -1598,6 +1651,8 @@ def main(argv=None) -> int:
                         "several hosts, for example a cabled pair of Sparks)")
     parser.add_argument("--out", required=True)
     parser.add_argument("--golden", default="")
+    parser.add_argument("--golden-ring", default="", help="the ring session's digests, for the cases the cycle "
+                        "plan runs as a ring op (default: the -ring sibling of --golden)")
     parser.add_argument("--seed-base", type=int, default=5000)
     args = parser.parse_args(argv)
 
@@ -1647,6 +1702,14 @@ def main(argv=None) -> int:
     # A directory of the SIRCL session's output bytes, or a JSON file of their SHA-256 digests
     # ({"caseNNN/rank<r>": hex}, written by ``sircl_golden.py --digests``) that travels to other hosts.
     digests = json.loads(golden.read_text()) if golden is not None and golden.is_file() else None
+    cycle = note_cycle_plan(receipt_of(lib, comm), args.world)
+    expected_cycle = os.environ.get("LIBRARY_RANK_EXPECT_CYCLE_PLAN")
+    if expected_cycle:
+        report("the receipt's cycle plan", cycle == (expected_cycle == "1"), f"cycle_plan {cycle}")
+    ring_golden = Path(args.golden_ring) if args.golden_ring else (
+        golden.with_name(golden.stem + "-ring.json") if golden is not None and golden.is_file() else None)
+    ring_digests = (json.loads(ring_golden.read_text())
+                    if cycle and ring_golden is not None and ring_golden.is_file() else None)
 
     def all_reduce(src, dst, stream):
         dtype = NCCL_DTYPES[str(src.dtype).split(".")[-1]]
@@ -1658,14 +1721,18 @@ def main(argv=None) -> int:
         detail = "" if ok else "differs from the rank-order reference"
         if ok and golden is not None and case_key is not None:
             mine = got.cpu().contiguous().view(torch.uint8).numpy().tobytes()
-            if digests is not None:
-                expected = digests.get(f"{case_key}/rank{args.rank}")
+            table = digests
+            if ring_digests is not None and inputs is not None and \
+                    large_plan(inputs[0].numel() * inputs[0].element_size(), args.world)[0] == "ring":
+                table = ring_digests  # the cycle plan runs this case as a ring op
+            if table is not None:
+                expected = table.get(f"{case_key}/rank{args.rank}")
                 same = expected is not None and hashlib.sha256(mine).hexdigest() == expected
             else:
                 path = golden / case_key / f"rank{args.rank}.bin"
                 expected = path.read_bytes() if path.exists() else None
                 same = expected is not None and mine == expected
-            recorded = digests.get(f"{case_key}/inputs") if digests is not None else None
+            recorded = table.get(f"{case_key}/inputs") if table is not None else None
             if expected is None:
                 detail = "no SIRCL session bytes for this case"
             elif not same and recorded and inputs is not None and inputs_digest(torch, inputs) != recorded:
@@ -1932,9 +1999,9 @@ def main(argv=None) -> int:
                                                   else 0),
            json.dumps({k: receipt[k] for k in ("refused", "channels", "all_reduce", "all_gather", "reduce_scatter",
                                                "all_to_all", "fold")}))
-    if any((os.environ.get(name) or "pieces") != "pieces"
+    if any((setting(name, world) or "pieces") != "pieces"
            for name in ("SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE")) or \
-            os.environ.get("SIRCL_LARGE_SCHEDULE") == "ring" or pair_default(world) == "ring":
+            setting("SIRCL_LARGE_SCHEDULE", world) == "ring" or pair_default(world) == "ring":
         links = receipt.get("links", {})
         report("link collectives ran", links.get("on") and links.get("ops") and links.get("native_ops", 0) > 0,
                json.dumps(links))

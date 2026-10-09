@@ -52,7 +52,7 @@ field and adds:
 | `sircl` | The SIRCL layer: package version, native ABI, wheel name and SHA-256, the two prebuilt libraries (path, SHA-256, source digest), the layer receipt, the tuning key a measured table must match, and the pinned vLLM builds the image's vLLM matches |
 | `tuning_defaults_sha256` | The SHA-256 of [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json) at the image's build |
 | `archived` | `true` for an archived release, which `--image` still selects and which is never the default |
-| `libsircl` | Present only when `transports` lists `libsircl`: the [libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)'s version, snapshot tree digest, library path and SHA-256, NCCL API level, whether the library has the fail-stop mode, vLLM plugin path and SHA-256, and layer receipt |
+| `libsircl` | Present only when `transports` lists `libsircl`: the [libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)'s version, the git tree id of the libsircl source it was built from (`source_tree`; a layer built from a vendored libsircl snapshot records the snapshot's tree digest as `snapshot` instead), library path and SHA-256, NCCL API level, whether the library has the fail-stop mode, vLLM plugin path and SHA-256, and layer receipt |
 | `vllm_plugins` | Present only when a [derived layer](../../runtime/images/installer-images.md#derived-layers) added vLLM general plugins: each plugin's entry-point name and version, other than the images' own `b12x_loader`, `sparkring_status`, `sircl` and `libsircl`. `sparkring install` runs a profile whose `VLLM_PLUGINS` names another plugin only on a lock that lists it |
 
 v1 and v2 locks keep validating, and published releases keep their v2 lock

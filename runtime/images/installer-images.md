@@ -373,10 +373,11 @@ v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
 **research-only**; no release lists it. The layer holds:
 
 - `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, built by libsircl's
-  own Makefile from the vendored [snapshot](../../spark_transport/libsircl/README.md)
+  own Makefile from its committed [source](../../spark_transport/libsircl/README.md)
   (`make -j BUILD=build`, then `make check`) in a network-less container of
   the parent image, at the fixed path `/tmp/libsircl` and with `LD_PRELOAD`
-  unset. The build embeds the prebuilt kernel packs and needs no nvcc;
+  unset. The build compiles the four kernel packs with the parent image's
+  nvcc and embeds them;
 - libsircl's notices under `/opt/sparkring/libsircl`: `LICENSE`, `NOTICE`,
   `vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE` and `LICENSES/`;
 - the vLLM general plugin `libsircl`
@@ -385,10 +386,10 @@ v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
   loads it only when `VLLM_PLUGINS` names `libsircl`, so the image's other
   deployments are unchanged;
 - `/opt/sparkring/receipts/libsircl-layer.json` (`sparkring-libsircl-layer/v1`):
-  version, snapshot, library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
+  version, the source's git tree id (`source_tree`), library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
   level, whether the library has the fail-stop mode (its bytes name
   `LIBSIRCL_FAIL_STOP`; the transport requires it), kernel packs and
-  architectures, plugin, compiler, build commands and every installed file
+  architectures, plugin, compiler, nvcc, build commands and every installed file
   with its SHA-256.
 
 Every added file is recorded in the external-base receipt, whose
@@ -401,8 +402,9 @@ python3 runtime/images/libsircl_layer.py prepare --parent-lock PARENT_LOCK --nat
 python3 runtime/images/libsircl_layer.py build --context CONTEXT --tag sparkring:libsircl   --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
 ```
 
-`natives` first checks the vendored tree against its manifest
-(`scripts/sync_libsircl.py check`) and needs the parent image on the build
+`natives` builds the files git tracks under `spark_transport/libsircl` at
+`HEAD`, refuses to start while tracked files there have changes not
+committed, and needs the parent image on the build
 host; `prepare` is offline given copied receipts. `record` (run by `build`)
 confirms that the parent has none of the added paths, probes the built image
 (the plugin's entry point, `ncclGetVersion` 22705, `sirclGetInfo` naming

@@ -1,6 +1,7 @@
 """Installer image lock schema v3 and the image ``sparkring install`` uses by default; offline."""
 import copy
 import json
+from pathlib import Path
 
 import pytest
 
@@ -193,7 +194,7 @@ SITE = "/usr/local/lib/python3.12/dist-packages/"
 
 
 def libsircl_block(version="0.6.0"):
-    return {"version": version, "snapshot": "b" * 64, "nccl_api_version": 22705, "fail_stop": True,
+    return {"version": version, "source_tree": "b" * 40, "nccl_api_version": 22705, "fail_stop": True,
             "library": {"path": f"{image_lock.LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.{version}", "sha256": "7" * 64},
             "plugin": {"name": "libsircl", "path": SITE + "sparkring_libsircl.py", "sha256": "8" * 64},
             "receipt": {"path": image_lock.LIBSIRCL_RECEIPT, "sha256": "9" * 64}}
@@ -233,7 +234,8 @@ def test_a_v3_lock_whose_libsircl_fields_disagree_is_refused(change, message):
 @pytest.mark.parametrize("edit, message", [
     (lambda block: block["library"].update(path="/opt/elsewhere/libsircl.so.0.6.0"), "library is"),
     (lambda block: block.update(version="0.7.0"), "library is"),
-    (lambda block: block.update(snapshot="ba5a337b"), "tree digest"),
+    (lambda block: block.update(source_tree="ba5a337b"), "git tree id"),
+    (lambda block: block.update(source_tree="b" * 41), "git tree id"),
     (lambda block: block.update(nccl_api_version="22705"), "NCCL API level"),
     (lambda block: block.update(fail_stop="yes"), "fail-stop mode"),
     (lambda block: block["plugin"].update(name="sircl"), "vLLM plugin libsircl"),
@@ -245,6 +247,33 @@ def test_a_libsircl_layer_that_disagrees_with_itself_is_refused(edit, message):
     edit(block)
     with pytest.raises(ValueError, match=message):
         image_lock.validate_libsircl(block)
+
+
+def test_a_libsircl_layer_names_its_source_by_git_tree_id_or_by_vendored_snapshot():
+    block = libsircl_block()
+    assert image_lock.libsircl_source(block) == ("source_tree", "b" * 40)
+    vendored = {key: item for key, item in block.items() if key != "source_tree"} | {"snapshot": "a" * 64}
+    assert image_lock.validate_libsircl(vendored) is vendored
+    assert image_lock.libsircl_source(vendored) == ("snapshot", "a" * 64)
+    with pytest.raises(ValueError, match="snapshot's tree digest"):
+        image_lock.validate_libsircl(vendored | {"snapshot": "a3477af2"})
+    # Exactly one source: both, or neither, is refused.
+    for value in (block | {"snapshot": "a" * 64}, {key: item for key, item in block.items() if key != "source_tree"}):
+        with pytest.raises(ValueError, match="its source: source_tree or snapshot"):
+            image_lock.validate_libsircl(value)
+
+
+RECORDED = (Path(__file__).resolve().parents[2] / "performance" / "records" / "images"
+            / "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009")
+
+
+@pytest.mark.parametrize("name", ["installer-image-68934e24.json", "installer-image-ddcd1ae6.json"])
+def test_the_recorded_locks_of_a_layer_built_from_a_vendored_snapshot_validate_for_every_profile(name):
+    value = json.loads((RECORDED / name).read_text(encoding="utf-8"))
+    assert image_lock.libsircl_source(image_lock.libsircl(value)) == (
+        "snapshot", "a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302")
+    for profile in value["profiles"]:
+        assert image_lock.validate(value, profile)
 
 
 CSF_PINS = ["lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"]

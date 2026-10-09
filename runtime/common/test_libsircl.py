@@ -254,8 +254,11 @@ def test_two_pipeline_stages_and_expert_parallelism_on_grouped_all_gathers_pass(
 def test_a_library_without_the_fail_stop_mode_is_refused():
     value = image()
     value["libsircl"]["fail_stop"] = False
-    with pytest.raises(transport.TransportError, match=r"the image's libsircl \(snapshot [0-9a-f]{8}\) has no fail-stop mode .LIBSIRCL_FAIL_STOP."):
+    with pytest.raises(transport.TransportError, match=r"the image's libsircl \(source tree [0-9a-f]{12}\) has no fail-stop mode .LIBSIRCL_FAIL_STOP."):
         transport.choose(value, document("pair", 2), backend="libsircl")
+    # A layer built from a vendored snapshot is named by that snapshot.
+    vendored = {key: item for key, item in value["libsircl"].items() if key != "source_tree"} | {"snapshot": "a" * 64}
+    assert libsircl.image_library(vendored) == "the image's libsircl (snapshot aaaaaaaa)"
     _, section = deployment(TP2, "pair", 2, [0, 1])
     section["libsircl"]["fail_stop"] = False
     with pytest.raises(transport.TransportError, match="no fail-stop mode"):
@@ -317,8 +320,8 @@ def test_the_plan_says_what_carries_the_collectives_and_that_it_is_research_only
     assert lines[0] == ("Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on libsircl 0.6.0; "
                         "SIRCL's adapter and RoCEnante are off")
     assert lines[1] == "  libsircl group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane"
-    assert lines[2] == (f"  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 {'7' * 12}, snapshot "
-                        "bbbbbbbb; fail-stop on (LIBSIRCL_FAIL_STOP=1)")
+    assert lines[2] == (f"  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 {'7' * 12}, source tree "
+                        "bbbbbbbbbbbb; fail-stop on (LIBSIRCL_FAIL_STOP=1)")
     assert lines[3].startswith("  Off: vLLM's custom all-reduce, torch and NCCL symmetric memory")
     assert lines[4].startswith("  Research-only: no serving A/B has measured libsircl")
     # On a path, torch's NVIDIA NCCL cannot connect the ends, which share no cable.
@@ -332,7 +335,8 @@ class Image:
 
     def __init__(self, section):
         block = section["libsircl"]
-        layer = {"schema": libsircl.LAYER_SCHEMA, "version": block["version"], "snapshot": block["snapshot"],
+        field, source = image_lock.libsircl_source(block)
+        layer = {"schema": libsircl.LAYER_SCHEMA, "version": block["version"], field: source,
                  "nccl_api_version": block["nccl_api_version"],
                  "fail_stop": block["fail_stop"], "library": {**block["library"], "soname": "libnccl.so.2"},
                  "plugin": block["plugin"],
@@ -356,6 +360,27 @@ def test_the_libsircl_layer_is_admitted_only_when_the_images_verification_covers
     assert transport.admit_layer(lock, run=built)["files_verified"] == 2
     lock["transport"]["libsircl"]["plugin"]["sha256"] = "0" * 64
     with pytest.raises(transport.TransportError, match="vLLM plugin"):
+        transport.admit_layer(lock, run=built)
+
+
+def test_a_layer_built_from_a_vendored_snapshot_is_planned_and_admitted_by_that_snapshot():
+    lock, _ = deployment(TP2, "pair", 2, [0, 1])
+    lock = copy.deepcopy(lock)
+    block = lock["transport"]["libsircl"]
+    del block["source_tree"]
+    block["snapshot"] = "a3477af2" + "0" * 56
+    built = Image(lock["transport"])
+    lock["image_runtime"]["parent_receipt_sha256"] = hashlib.sha256(built.base).hexdigest()
+    assert transport.admit_layer(lock, run=built)["snapshot"] == block["snapshot"]
+    assert any("snapshot a3477af2; fail-stop on" in line for line in transport.plan_lines(lock["transport"]))
+    # A receipt that names its source otherwise describes another build.
+    layer = json.loads(built.layer)
+    layer["source_tree"] = layer.pop("snapshot")[:40]
+    built.layer = json.dumps(layer).encode()
+    block["receipt"]["sha256"] = hashlib.sha256(built.layer).hexdigest()
+    built.base = json.dumps({"files": {**layer["files"], image_lock.LIBSIRCL_RECEIPT: block["receipt"]["sha256"]}}).encode()
+    lock["image_runtime"]["parent_receipt_sha256"] = hashlib.sha256(built.base).hexdigest()
+    with pytest.raises(transport.TransportError, match="another libsircl build"):
         transport.admit_layer(lock, run=built)
 
 

@@ -15,14 +15,15 @@ Safety classes, as in SIRCL's ring runbook:
 
 ## 1. Build (OFFLINE)
 
-Requirements: Linux (x86_64 or aarch64), a C11 compiler, make, Python 3 and the rdma-core
-development headers (`infiniband/verbs.h`; the serving image has them, since SIRCL builds its native
-layer there). No CUDA toolkit: the four kernel packs are prebuilt (`kernels/prebuilt/`, each checked by
-SHA-256). The build also checks the vendored copy of SIRCL's point-to-point library
-(`src/transport/sircl_p2p_proxy.c`) against its recorded SHA-256.
+Requirements: Linux (x86_64 or aarch64), a C11 compiler, make, Python 3, the rdma-core development
+headers (`infiniband/verbs.h`; the serving image has them, since SIRCL builds its native layer there)
+and nvcc of CUDA 13.3 or later (`NVCC=<nvcc>`, by default `nvcc` on the path), which compiles the four
+kernel packs into `build/packs/` before the library embeds them. The build also checks the vendored
+copies of SIRCL's native libraries (`src/transport/sircl_roce_proxy.c`, `src/transport/sircl_p2p_proxy.c`)
+against their recorded SHA-256.
 
 ```sh
-make -j BUILD=build              # build/libsircl.so, SONAME libnccl.so.2
+make -j BUILD=build              # build/libsircl.so, SONAME libnccl.so.2, and build/packs/*.fatbin
 make check BUILD=build           # CPU suites: ABI, API, bootstrap, lifecycle, engine refusals,
                                  # shared-memory verbs across processes, SIRCL's point-to-point
                                  # library across processes, MPI shim, fabric vectors
@@ -32,18 +33,23 @@ make emulation-tools mpi-shim BUILD=build
 `SIRCL_PACKAGE=<directory holding sparkring_sircl> make check` also runs the route planner's tests
 (`tests/test_site_routes.py`, skipped without it).
 
-`make kernels NVCC=<nvcc>` regenerates the transport, fold, link and point-to-point packs (CUDA 13.3 or
-later for `sm_121`); `make kernels-check NVCC=<nvcc>` rebuilds all four and fails unless each hash equals
-its prebuilt file's. `make P2P_FEATURES=1` adds the setup check of SIRCL's `p2p_local_features` word; the
-build refuses it until the vendored point-to-point library defines that word (SIRCL change LF). Before it links the library, the build runs the kernel-entry check
+`make kernels` builds the transport, fold, link and point-to-point packs alone. With nvcc 13.3.73 (the
+CUDA pip packages that CI's `libsircl` job installs) the packs have the SHA-256 values `STATUS.md` names
+(transport `c2e6e5a1...`, fold `66da585d...`, link `dc9dd167...`, point-to-point `0f39a3b9...`); another
+nvcc version may give other bytes, and the setup agreement refuses ranks whose packs differ. The default build (`P2P_FEATURES=1`) compiles the channels' setup check of SIRCL's
+`p2p_local_features` word (SIRCL change LF) and refuses a vendored point-to-point library without it;
+`P2P_FEATURES=0` leaves the check out. Before it links the library, the build runs the kernel-entry check
 (`tests/check_entries.c`): the library's pack loader resolves every entry it names in the embedded packs
 through a stand-in CUDA driver that reads their cubins offline (`tests/fake_cuda.c`), so a loader that
 names an entry some architecture's cubin lacks stops the build with that entry's name.
 
 ## 2. GPU emulation on the workstation (EMULATION)
 
-Every command runs inside WSL under the shared GPU lock. `REF` is the SIRCL reference tree's
-`spark_transport/sircl` directory; `LOCK` is the script of that GPU lock.
+Every command runs inside WSL under the workstation's GPU lock. `REF` is this repository's
+`spark_transport/sircl` directory (SIRCL's package, which the emulation imports). `LOCK` is the
+workstation's GPU-lock wrapper: a script that takes an owner name and a command and runs the command while
+it holds the one lock that every GPU job on the workstation takes (here, the owner `sircl-ccl`); a
+workstation with one GPU user can run the commands without it.
 `CUDA_DEVICE_MAX_CONNECTIONS=32` keeps ranks that share one process from serializing on
 the GPU's default eight hardware queues.
 
@@ -92,8 +98,13 @@ bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/lib
 bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/libsircl.so --world 4 --rounds 2 \
     --slow-ns 0 --expect close-error --env SIRCL_EMU_FAIL_DEREG=1
 # Fail-stop: with LIBSIRCL_FAIL_STOP=1 (and abort) a late rank's peer ends its process within the 2 s wait limit
-# plus 3 s; without it the peer keeps a wrong output. Expected: "fail-stop: 0 problems".
+# plus 3 s; without it the peer keeps a wrong output; with the watcher's poll set past the case, the peer's
+# ncclCommGetAsyncError, ncclCommDestroy or ncclCommAbort right after its stream wait ends it. Expected:
+# "fail-stop: 0 problems". Then four ranks with rank 3 late, as the fabric gates run it: every other rank
+# ends with status 70.
 bash $LOCK sircl-ccl python tests/emulation/fail_stop.py --library build/libsircl.so
+bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/libsircl.so --world 4 --rounds 1 \
+    --expect fail-stop --late-rank 3 --late-s 8 --env LIBSIRCL_FAIL_STOP=1 --env SIRCL_STARTUP_WAIT_S=2
 # Point-to-point channels (LIBSIRCL_P2P_CHANNELS=on) on four and eight ranks: every ordered pair at once, a
 # subset of pairs while the other ranks idle, a pipeline chain, the sendrecv ring; ring:8 under the route
 # planner's settings (relayed pairs refused under SIRCL's budget; with --layout ring8-alone, windowed); a
@@ -217,8 +228,8 @@ bytes`.
 
 `tests/emulation/perf_rank.py` sweeps `ncclAllReduce` the way `all_reduce_perf` does (bf16, fp16 and
 fp32, 8 B to 256 MiB doubling, out of place, 50 timed calls after 10 warm-up calls, and the same in
-CUDA graphs of 20 calls), checks each size up to 64 MiB bit for bit, and prints time per call and bus
-bandwidth. It needs nothing beyond the image. Rank `<r>` with its route map as in 3.2:
+CUDA graphs of 20 calls), checks each size up to 64 MiB bit for bit against the library's result for
+its schedule (4.2), and prints time per call and bus bandwidth. It needs nothing beyond the image. Rank `<r>` with its route map as in 3.2:
 
 ```sh
 python3 tests/emulation/perf_rank.py --library $LIB --world 2 --rank <r> --id-server $LAN0:29713 \
@@ -291,9 +302,12 @@ result); `tools/check_nccl_tests.py` counts those rows as not covered and requir
 The pieces schedule runs a message as two-shot ops of `SIRCL_LARGE_PIECE_BYTES`; within one op the GPU
 stages the whole piece into the arena, the NIC sends it, and the peer reduces it, one after another, so the
 fabric idles while the GPUs stage and reduce. The chain and ring schedules move a message as one op in
-pieces that cycle through the link slots, so staging, sending and reducing overlap. On two ranks their sums
-equal the rank-order sum bit for bit (a chain or ring of two adds two values once), so `perf_rank.py`
-checks every size under each schedule.
+pieces that cycle through the link slots, so staging, sending and reducing overlap. Their sums round to
+the dtype at every hop, in chain or ring order: on two ranks that equals the rank-order sum bit for bit (a
+chain or ring of two adds two values once), on more ranks it does not. `perf_rank.py` checks every size
+against the library's own result for the schedule the environment sets (`library_rank.py`'s
+`allreduce_reference`), so its checks hold under each schedule and on any number of ranks placed at their
+own positions.
 
 The pair plan (README.md, "Pair default") rests on two measurements of SIRCL's ring harness, eager calls,
 each rank's period per call (the nccl-tests time metric), NVIDIA NCCL 2.32.3 on the same pairs in the same

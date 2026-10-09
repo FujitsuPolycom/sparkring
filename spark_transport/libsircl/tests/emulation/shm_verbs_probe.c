@@ -18,6 +18,7 @@
 #include "shm_verbs.h"
 
 int sccl_emu_roce_layout(int, uint64_t, uint64_t *);
+unsigned sccl_emu_roce_local_features(void);
 uint64_t sccl_emu_roce_blob_bytes(void);
 void *sccl_emu_roce_create(int, int, const char *const *, int, const int *, int, const int *, int, void *, uint64_t,
                            uint64_t, char *, uint64_t);
@@ -64,6 +65,8 @@ int main(int argc, char **argv) {
   const char *dir = argv[5];
   char err[512] = {0};
   if (sccl_emu_attach(err, sizeof err)) fail("attach", err);
+  /* SIRCL change LF: bit 0 (roce_destroy counts failed verbs calls) and bit 1 (flags-only own items). */
+  if ((sccl_emu_roce_local_features() & 3u) != 3u) fail("local features (roce_local_features bits 0 and 1)", NULL);
   const uint64_t slot = 65536;
   uint64_t layout[7];
   if (sccl_emu_roce_layout(world, slot, layout)) fail("layout", NULL);

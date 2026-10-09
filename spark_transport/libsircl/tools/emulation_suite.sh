@@ -40,7 +40,7 @@ else
   note "FAIL build or CPU checks (build.log, check.log)"
   exit 1
 fi
-note "library $(sha256sum "$(readlink -f "$LIB")" | cut -d' ' -f1); link pack $(cat kernels/prebuilt/sircl_links.fatbin.sha256)"
+note "library $(sha256sum "$(readlink -f "$LIB")" | cut -d' ' -f1); link pack $(sha256sum build/packs/sircl_links.fatbin | cut -d' ' -f1)"
 
 # 2. Library runs: library <tag> <world> <lanes> <golden> [NAME=VALUE ...]
 library() {
@@ -81,6 +81,13 @@ library pieces 8 2 "$G/w8.json"
 [ -f "$G/w8-chain.json" ] && library chain 8 2 "$G/w8-chain.json" $CHAIN
 [ -f "$G/w8-ring.json" ] && library ring 8 2 "$G/w8-ring.json" $RING
 library windows 4 2 "$G/w4.json" $WINDOWS
+# The cycle plan (no schedule setting, a ring plan, a ring that closes over cables): the ring schedules from
+# 8 MiB, checked against the pieces digests below it and the ring digests from it (library_rank.py
+# --golden-ring); off when the closing edge crosses relays, and when a schedule is set.
+library cycle 4 2 "$G/w4.json" LIBSIRCL_RING_WINDOW=0 LIBRARY_RANK_EXPECT_CYCLE_PLAN=1
+library cycle 8 2 "$G/w8.json" LIBSIRCL_RING_WINDOW=0 LIBRARY_RANK_EXPECT_CYCLE_PLAN=1
+library cycle-relayed 4 2 "$G/w4.json" $WINDOWS LIBSIRCL_RING_WINDOW=393216 LIBRARY_RANK_EXPECT_CYCLE_PLAN=0
+library cycle-pieces 4 2 "$G/w4.json" LIBSIRCL_RING_WINDOW=0 SIRCL_LARGE_SCHEDULE=pieces LIBRARY_RANK_EXPECT_CYCLE_PLAN=0
 [ -f "$G/w4-ring.json" ] && library ring-windows 4 2 "$G/w4-ring.json" $WINDOWS LIBSIRCL_RING_WINDOW=393216 \
   SIRCL_LARGE_SCHEDULE=ring SIRCL_GATHER_SCHEDULE=ring SIRCL_SCATTER_SCHEDULE=ring SIRCL_RING_MIN_BYTES=0
 
@@ -114,6 +121,14 @@ timeout 900 "$PY" tests/emulation/fail_stop.py --library "$LIB" --python "$PY" -
 code=$?
 if [ $code -eq 0 ]; then note "PASS fail-stop: $(tail -1 "$OUT/fail-stop.log")"; else
   note "FAIL fail-stop (exit $code): $(tail -1 "$OUT/fail-stop.log"); $OUT/fail-stop.log"; failures=$((failures + 1)); fi
+# Fail-stop on four ranks with a late rank, as the fabric gates run it: every other rank ends with status 70.
+timeout 900 "$PY" tests/emulation/teardown_race.py --library "$LIB" --python "$PY" --world 4 --rounds 1 \
+  --expect fail-stop --late-rank 3 --late-s 8 --env LIBSIRCL_FAIL_STOP=1 --env SIRCL_STARTUP_WAIT_S=2 \
+  --timeout 120 --work "$OUT/fail-stop-w4" > "$OUT/fail-stop-w4.log" 2>&1
+code=$?
+if [ $code -eq 0 ]; then note "PASS fail-stop w4: $(tail -1 "$OUT/fail-stop-w4.log")"; else
+  note "FAIL fail-stop w4 (exit $code): $(tail -1 "$OUT/fail-stop-w4.log"); $OUT/fail-stop-w4.log"
+  failures=$((failures + 1)); fi
 # Point-to-point channels on communicators of more than two ranks (LIBSIRCL_P2P_CHANNELS=on): the library run
 # of four ranks with channels on (collectives as without them), then every case of p2p_channels.py: four and
 # eight ranks with every ordered pair at once, a subset of pairs while the other ranks idle, a pipeline chain
@@ -136,6 +151,7 @@ channels w4-own-staging --world 4 --rounds 2 --env LIBSIRCL_STREAM_ORDERED_ALLOC
 channels w8 --world 8 --rounds 2
 channels ring8 --layout ring8 --rounds 2
 channels ring8-alone --layout ring8-alone --rounds 2
+channels path4 --layout path4 --rounds 2
 channels size --case size
 channels gone --case gone
 channels setup --case setup
@@ -250,7 +266,7 @@ if [ -n "${SIRCL_PACKAGE:-}" ] && want mixed; then
   mixed ring-path_0-1 path:0-1 1 $RINGM
   mixed links-path_0-1 path:0-1 1 -- --suite sircl-links
   mixed links-path_0-3 path:0-3 2 -- --suite sircl-links
-  if grep -q sircl_ring_reduce_two_pass kernels/prebuilt/sircl_links.fatbin; then
+  if grep -q sircl_ring_reduce_two_pass build/packs/sircl_links.fatbin; then
     mixed two-pass-links-path_0-1 path:0-1 1 LIBSIRCL_RING_REDUCE_PASSES=2 -- --suite sircl-links
   fi
   [ "${MIXED_RING8:-0}" = 1 ] && mixed links-ring_8 ring:8 2 -- --suite sircl-links

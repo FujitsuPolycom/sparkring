@@ -3,7 +3,7 @@
  * C++ from SIRCL's CuTe DSL kernels (sparkring_sircl/p2p/_kernels.py) and speaking their protocol with the
  * native progress thread of SIRCL's point-to-point library (src/transport/sircl_p2p_proxy.c). SIRCL
  * specializes each kernel on its threads, lanes, slots and slot bytes at compile time; these entries take
- * them, and the block offsets the native layer reports (p2p_layout), as launch parameters, so one prebuilt
+ * them, and the block offsets the native layer reports (p2p_layout), as launch parameters, so one compiled
  * entry per direction and unroll serves every geometry.
  *
  * Channel. Every ordered pair of a group's ranks with a channel has `slots` slots of `slot_bytes` bytes on

@@ -1,7 +1,7 @@
 {
- "description": "Reference copy of the SIRCL clean-room implementation tree used by libsircl. The copy is byte-identical to the selected source at capture time, excluding build outputs (.build, .pytest_tmp) and caches. This copy of the record leaves the reference tree's run results out of its file list.",
+ "description": "SHA-256 and size of every file of the SIRCL implementation tree that libsircl's recorded evidence (STATUS.md) was taken against, captured at captured_utc, with paths relative to the tree's root, whose layout follows this repository's (SIRCL's package is spark_transport/sircl). Build outputs (.build, .pytest_tmp), caches and the outputs of SIRCL's ring harness runs are excluded; 200 files.",
  "sources": {
-  "reference": "SIRCL's clean-room implementation tree (its local path is not vendored)"
+  "reference": "the SIRCL implementation tree of libsircl's development workspace (its local path is not recorded)"
  },
  "selected": "reference",
  "captured_utc": "2026-10-08T06:00:23Z",

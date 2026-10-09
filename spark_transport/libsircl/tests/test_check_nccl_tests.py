@@ -42,10 +42,11 @@ def log_name(job: str) -> str:
     return Path(name).name + "".join("_" + word for word in rest) + ".log"
 
 
-def sweep(name: str, sizes, in_wrong="0", stop=False, out_wrong="0") -> str:
+def sweep(name: str, sizes, in_wrong="0", stop=False, out_wrong="0", redop="sum") -> str:
+    """nccl-tests' rows; ``redop=""`` leaves the column blank, as tests without a reduction op print it."""
     text = HEADER
     for size in sizes:
-        text += (f"{size:12d}  {size // 4:12d}     float     sum      -1     9.0    0.00    0.00    {out_wrong:>4}"
+        text += (f"{size:12d}  {size // 4:12d}     float  {redop:>6}      -1     9.0    0.00    0.00    {out_wrong:>4}"
                  f"     9.0    0.00    0.00    {in_wrong}\n")
     return text if stop else text + FOOTER.format(name=name)
 
@@ -159,10 +160,32 @@ class CheckNcclTests(unittest.TestCase):
 
     def test_in_place_na_of_hypercube_is_wrong(self):
         # nccl-tests v2.21.1's hypercube_perf reports an in-place #wrong, so N/A there is not an exemption.
-        code, out = check(*self.pair([HYPERCUBE], logs={HYPERCUBE: sweep("hypercube_perf", [8, 16], in_wrong="N/A")}))
+        logs = {HYPERCUBE: sweep("hypercube_perf", [8, 16], in_wrong="N/A", redop="")}
+        code, out = check(*self.pair([HYPERCUBE], logs=logs))
         self.assertEqual(code, 1)
         self.assertIn("FAIL #wrong 0 on 2 rows", out)
         self.assertNotIn("INFO", out)
+
+    def test_rows_without_a_reduction_op_are_checked(self):
+        # hypercube_perf leaves the reduction op column blank; its rows parse, complete the sweep and count.
+        logs = {HYPERCUBE: sweep("hypercube_perf", [0, 8, 16], redop="")}
+        code, out = check(*self.pair([HYPERCUBE], logs=logs))
+        self.assertEqual(code, 0, out)
+        self.assertIn("PASS 1 of 1 jobs completed their sweep", out)
+        self.assertIn("PASS #wrong 0 on 3 rows", out)
+        logs = {HYPERCUBE: sweep("hypercube_perf", [8, 16], redop="", out_wrong="4")}
+        self.root = Path(self.temporary.name) / "wrong"
+        code, out = check(*self.pair([HYPERCUBE], logs=logs))
+        self.assertEqual(code, 1)
+        self.assertIn(f"('{log_name(HYPERCUBE)}', 8, '4', '0')", out)
+
+    def test_a_data_row_that_does_not_parse_fails(self):
+        logs = dict(self.logs)
+        logs[ALL_REDUCE] = sweep("all_reduce_perf", [8, 16, 32]).replace(
+            "      32             8     float     sum      -1     9.0", "      32             8     float     sum")
+        code, out = check(*self.pair([ALL_REDUCE], logs=logs))
+        self.assertEqual(code, 1, out)
+        self.assertIn("1 data rows not parsed", out)
 
 
 if __name__ == "__main__":

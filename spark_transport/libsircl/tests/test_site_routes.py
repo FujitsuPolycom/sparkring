@@ -17,7 +17,8 @@ Cases, two lanes each:
 - in every case, no relay hairpin queue holds more than its share (75 % of 512 KiB): the session's windows
   through it (forward windows, and with ``--ring-schedules`` the ring windows) plus the channels' windows;
   and, as the check's negative control, ``--p2p-reserve none`` on ring:8 overfills some queue;
-- the ring:8 files of tests/data equal the tool's output (default, and ``--p2p-reserve none``).
+- the files of tests/data equal the tool's output (ring:8 by default and with ``--p2p-reserve none``,
+  path:0-3 by default; the channel emulation test runs every rank with them).
 """
 from __future__ import annotations
 
@@ -161,12 +162,13 @@ class SiteRoutesP2PTests(unittest.TestCase):
                 self.assertEqual(process.returncode, 2)
                 self.assertIn("--session-share", process.stderr)
 
-    def test_the_ring_of_eight_data_files_are_the_tools_output(self):
-        for name, arguments in (("site_routes_ring8_l2.json", ()),
-                                ("site_routes_ring8_l2_p2p_alone.json", ("--p2p-reserve", "none"))):
+    def test_the_data_files_are_the_tools_output(self):
+        for name, arguments in (("site_routes_ring8_l2.json", ("--layout", "ring:8")),
+                                ("site_routes_ring8_l2_p2p_alone.json", ("--layout", "ring:8", "--p2p-reserve", "none")),
+                                ("site_routes_path0-3_l2.json", ("--layout", "path:0-3"))):
             with self.subTest(file=name):
                 recorded = json.loads((ROOT / "tests" / "data" / name).read_text())
-                self.assertEqual(recorded, plan("--layout", "ring:8", "--lanes", "2", *arguments))
+                self.assertEqual(recorded, plan(*arguments, "--lanes", "2"))
 
 
 if __name__ == "__main__":

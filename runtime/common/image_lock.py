@@ -31,14 +31,18 @@ adds the third:
   selectable by name;
 - ``libsircl``, present only when ``transports`` lists ``libsircl``: the
   libsircl layer (``runtime/images/libsircl_layer.py``): the library version,
-  the vendored snapshot's tree digest, the library under
+  the source it was built from, the library under
   ``/opt/sparkring/libsircl/lib`` with its SHA-256, the NCCL API level it
   reports, whether it has the fail-stop mode (it reads
   ``LIBSIRCL_FAIL_STOP``), the vLLM plugin module that selects it with its
   SHA-256, and the layer receipt
-  ``/opt/sparkring/receipts/libsircl-layer.json``. A v3 lock
-  without the layer has no such field, so it validates as it did before the
-  field existed;
+  ``/opt/sparkring/receipts/libsircl-layer.json``. The source is named by
+  exactly one field: ``source_tree``, the git tree id of
+  ``spark_transport/libsircl`` at the commit the layer built, or, in a lock
+  of a layer built while this repository vendored libsircl snapshots (such
+  as image ``27e9f75c0d09``'s), ``snapshot``, that snapshot's tree digest.
+  A v3 lock without the layer has no such field, so it validates as it did
+  before the field existed;
 - ``vllm_plugins``, present only when a derived layer added vLLM general
   plugins to the image (``runtime/images/derived_layer.py``, ``Layer.plugins``):
   each plugin's entry-point name in ``vllm.general_plugins`` and its
@@ -75,7 +79,12 @@ V3_FIELDS = (installer_image.FIELDS[installer_image.SCHEMA] - {"schema"}) | {
 # Where the libsircl layer installs the library and its receipt.
 LIBSIRCL_LIBRARY_DIRECTORY = "/opt/sparkring/libsircl/lib"
 LIBSIRCL_RECEIPT = "/opt/sparkring/receipts/libsircl-layer.json"
-LIBSIRCL_FIELDS = {"version", "snapshot", "library", "nccl_api_version", "fail_stop", "plugin", "receipt"}
+LIBSIRCL_FIELDS = {"version", "library", "nccl_api_version", "fail_stop", "plugin", "receipt"}
+# The fields that can name a libsircl layer's source, one per block, and the form of each: the git tree id
+# of spark_transport/libsircl (SHA-1 or SHA-256 repositories), or the tree digest of a vendored libsircl
+# snapshot (the SHA-256 of its FILES.sha256 list), which layers built before the source moved into this
+# repository record.
+LIBSIRCL_SOURCES = {"source_tree": re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}"), "snapshot": re.compile(r"[0-9a-f]{64}")}
 # Where the SIRCL layer puts its prebuilt native libraries and its receipt.
 LIBRARY_DIRECTORY = "/opt/sparkring/sircl/lib"
 LAYER_RECEIPT = "/opt/sparkring/receipts/sircl-layer.json"
@@ -145,12 +154,16 @@ def validate_sircl(value):
 
 def validate_libsircl(value):
     """The ``libsircl`` block of a v3 lock after checking its fields; ValueError otherwise."""
-    _require(isinstance(value, dict) and set(value) == LIBSIRCL_FIELDS,
-             "The libsircl layer records " + ", ".join(sorted(LIBSIRCL_FIELDS)))
+    sources = set(value) & set(LIBSIRCL_SOURCES) if isinstance(value, dict) else set()
+    _require(isinstance(value, dict) and len(sources) == 1 and set(value) - sources == LIBSIRCL_FIELDS,
+             "The libsircl layer records " + ", ".join(sorted(LIBSIRCL_FIELDS)) + " and its source: source_tree "
+             "or snapshot")
     version = value["version"]
     _require(isinstance(version, str) and _VERSION.fullmatch(version), "The libsircl layer records its version")
-    _require(isinstance(value["snapshot"], str) and _SHA256.fullmatch(value["snapshot"]),
-             "The libsircl layer records its snapshot's tree digest")
+    field = sources.pop()
+    _require(isinstance(value[field], str) and LIBSIRCL_SOURCES[field].fullmatch(value[field]),
+             "The libsircl layer records the git tree id of its source (spark_transport/libsircl)"
+             if field == "source_tree" else "The libsircl layer records its snapshot's tree digest")
     _require(type(value["nccl_api_version"]) is int and value["nccl_api_version"] > 0,
              "The libsircl layer records the NCCL API level its library reports")
     _require(type(value["fail_stop"]) is bool, "The libsircl layer records whether its library has the fail-stop mode")
@@ -318,6 +331,12 @@ def sircl(value):
 def libsircl(value):
     """The libsircl layer of ``value``, or None."""
     return value.get("libsircl") if schema(value) == SCHEMA_V3 else None
+
+
+def libsircl_source(block):
+    """``(field, value)`` naming the source of a validated libsircl block: ``source_tree`` or ``snapshot``."""
+    field = "source_tree" if "source_tree" in block else "snapshot"
+    return field, block[field]
 
 
 def vllm_plugins(value):

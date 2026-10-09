@@ -60,6 +60,9 @@ image builder under `runtime/glm53-flash/` uses only
 `patches/nccl.patch`, described in Section 14. For the lines added by the two
 skip-tree patches, see Section 2.
 
+NCCL's public header, copied with marked changes into libsircl, is described
+in Section 18.
+
 ## 2. josephdrose/nccl-spark-switchless (approach credit)
 
 The switchless skip-Tree/skip-PAT approach reproduced by
@@ -326,6 +329,10 @@ Apache-2.0 license is retained as `third_party/b12x_roce/LICENSE`, and
 copyright notices remain in the source files. Distribution must preserve
 those notices and that license.
 
+SIRCL's native proxy (`spark_transport/sircl/sparkring_sircl/oneshot/_roce_proxy.c`,
+Section 17) and libsircl's byte-identical copy of it (Section 18) follow this
+package's per-peer path posting.
+
 `runtime/releases/glm53-spark-mtp3-managed-mesh-tp4/compatibility-sources.tar.gz`
 retains the matching C proxy and SparkRing adapter, with provenance and the
 published bundle manifest, for source reproduction. These sources retain the
@@ -489,13 +496,13 @@ follows the layout of b12x's PCIe fused all-reduce. The derived files and the
 blobs they derive from are listed in `spark_transport/sircl/PROVENANCE.md`.
 The package keeps the Apache-2.0 license text as `spark_transport/sircl/LICENSE`
 and its attribution in `spark_transport/sircl/NOTICE`; distribution must
-preserve both.
+preserve both. libsircl carries copies of two of the package's native sources
+and CUDA C++ ports of its kernels, with that attribution (Section 18).
 
 ## 18. libsircl, SIRCL's NCCL-compatible C library (included)
 
-`spark_transport/libsircl/` vendors libsircl snapshot `a3477af2` (tree digest
-`a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302`, version
-0.6.0; [vendored copy](docs/architecture/libsircl.md#source-placement)).
+`spark_transport/libsircl/` is libsircl's source (version 0.6.0;
+[source placement](docs/architecture/libsircl.md#source-placement)).
 libsircl is SparkRing's own work under the Apache License, Version 2.0
 (`spark_transport/libsircl/LICENSE` and `NOTICE`). It is an independent
 implementation of NCCL's C interface; it is not NVIDIA NCCL and is not
@@ -508,14 +515,15 @@ sponsored or endorsed by NVIDIA. It contains:
   implementation source is included.
 - Copies of SIRCL files (`src/transport/sircl_roce_proxy.c`,
   `src/transport/sircl_p2p_proxy.c`, the verbs-subset header) and CUDA C++ ports of SIRCL's kernels, which derive in part from
-  RoCEnante by Local Inference Lab and its contributors (Section 17);
+  RoCEnante by Local Inference Lab and its contributors (Sections 11 and 17);
   `vendor/SIRCL-NOTICE` reproduces SIRCL's notice.
 - Code from rdma-core's `<infiniband/verbs.h>` inline functions, used under
   the OpenIB.org BSD license; the notices are in
   `LICENSES/rdma-core-verbs.txt`.
-- Prebuilt kernel packs (`kernels/prebuilt/*.fatbin`) compiled with the NVIDIA
-  CUDA Toolkit 13.3. Their object code is generated from CUDA Toolkit headers
-  and is distributed under the
+- CUDA C++ kernel sources (`kernels/`) that the library's build compiles with
+  the NVIDIA CUDA Toolkit's nvcc into kernel packs embedded in the library;
+  the repository holds no compiled pack. In a built library the packs' object
+  code, generated from CUDA Toolkit headers, is distributed under the
   [NVIDIA CUDA Toolkit End User License Agreement](https://docs.nvidia.com/cuda/eula/),
   not the Apache License; `LICENSES/CUDA-NOTICE.txt` reproduces the notices
   the CUDA floating-point headers require.

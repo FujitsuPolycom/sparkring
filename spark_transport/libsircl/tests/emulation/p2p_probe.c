@@ -28,6 +28,7 @@
 #include "shm_verbs.h"
 
 int sccl_emu_p2p_abi_version(void);
+unsigned sccl_emu_p2p_local_features(void);
 int sccl_emu_p2p_layout(int, int, int, uint64_t, uint64_t *);
 uint64_t sccl_emu_p2p_blob_bytes(void);
 void *sccl_emu_p2p_create(int, int, const char *const *, int, const int *, int, const int *, int, const int *, void *,
@@ -227,6 +228,8 @@ int main(int argc, char **argv) {
   if (world < 2 || world > MAX_WORLD || lanes < 1 || lanes > 2) return 2;
   char err[512] = {0};
   if (sccl_emu_p2p_abi_version() != 1) fail("ABI", NULL);
+  /* SIRCL change LF: bit 0, p2p_destroy returns the number of verbs calls that failed. */
+  if (!(sccl_emu_p2p_local_features() & 1u)) fail("local features (p2p_local_features bit 0)", NULL);
   if (sccl_emu_attach(err, sizeof err)) fail("attach", err);
   if (sccl_emu_p2p_layout(world, lanes, SLOTS, SLOT_BYTES, layout)) fail("layout", NULL);
   /* The layout of SIRCL's p2p/protocol.py. */

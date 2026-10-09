@@ -1,8 +1,8 @@
 """The libsircl image layer: its build, build context, probe and v3 lock; offline.
 
-A fixture snapshot, synced like the vendored one, stands in for libsircl's
-tree; the parent image is represented by its two receipts and the built
-library by stand-in bytes.
+A fixture git repository whose commit holds a small ``spark_transport/libsircl``
+stands in for libsircl's source; the parent image is represented by its two
+receipts and the built library by stand-in bytes.
 """
 import hashlib
 import importlib.metadata
@@ -16,28 +16,33 @@ import pytest
 from runtime.common import image_lock, installer_image, libsircl
 from runtime.common.test_image_lock import sircl_lock
 from runtime.images import derived_layer, libsircl_layer
-from scripts import sync_libsircl
-from scripts.test_sync_libsircl import snapshot
 
 SITE = "/usr/local/lib/python3.12/dist-packages/"
 MAKEFILE = (b"BUILD ?= build\nNVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 "
             b"-gencode arch=compute_121,code=sm_121\n")
 
 
+def git(repository, *args):
+    return subprocess.run(["git", "-C", str(repository), "-c", "user.name=test", "-c", "user.email=test@example.com",
+                           "-c", "core.autocrlf=false", *args], capture_output=True, check=True, text=True).stdout
+
+
 def fixture_tree(tmp_path):
-    """A vendored tree of one fixture snapshot, as scripts/sync_libsircl.py writes it."""
+    """``(repository, source tree id)``: a git repository whose one commit holds a small libsircl source."""
     files = {"VERSION": b"0.6.0\n", "Makefile": MAKEFILE, "README.md": b"# libsircl\n",
-             "verification/hardware/run.log": b"evidence\n"}
+             "kernels/sircl_kernels.cu": b"// kernels\n"}
     for name in libsircl.NOTICES:
         files[name] = f"notice {name}\n".encode()
-    for pack in libsircl_layer.PACKS:
-        data = pack.encode() * 64
-        files[f"kernels/prebuilt/{pack}.fatbin"] = data
-        files[f"kernels/prebuilt/{pack}.fatbin.sha256"] = (hashlib.sha256(data).hexdigest() + "\n").encode()
-    directory, digest = snapshot(tmp_path / "snapshot", files)
-    tree = tmp_path / "tree"
-    sync_libsircl.sync(directory, digest, tree)
-    return tree, digest
+    repository = tmp_path / "repository"
+    for path, data in files.items():
+        target = repository / libsircl_layer.SOURCE / path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    (repository / "unrelated.txt").write_text("outside libsircl\n")
+    git(repository.parent, "init", "-q", str(repository))
+    git(repository, "add", "-A")
+    git(repository, "commit", "-q", "-m", "fixture")
+    return repository, git(repository, "rev-parse", f"HEAD:{libsircl_layer.SOURCE}").strip()
 
 
 def parent(**changes):
@@ -67,10 +72,14 @@ def natives(tmp_path, lock, tree, *, library=b"\x7fELF libsircl 0.6.0"):
         (output / "check.log").write_text("9 suites OK\n")
         (output / "build.log").write_text("cc ...\n")
         (output / "compiler.txt").write_text("gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\n")
+        (output / "nvcc.txt").write_text("Build cuda_13.4.r13.4/compiler.36836380_0\n")
+        (output / "packs").mkdir()
+        for pack in libsircl_layer.PACKS:
+            (output / "packs" / f"{pack}.fatbin").write_bytes(pack.encode() * 64)
         run.calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
     run.calls = []
-    result = libsircl_layer.build_natives(lock["image_id"], directory, tree=tree, run=run)
+    result = libsircl_layer.build_natives(lock["image_id"], directory, repository=tree, run=run)
     return directory, result, run.calls
 
 
@@ -78,7 +87,7 @@ def prepared(tmp_path):
     tree, digest = fixture_tree(tmp_path)
     lock, read, base = parent()
     directory, _, _ = natives(tmp_path, lock, tree)
-    result = libsircl_layer.prepare(lock, read, directory, tmp_path / "context", tree=tree)
+    result = libsircl_layer.prepare(lock, read, directory, tmp_path / "context", repository=tree)
     return tree, digest, lock, base, result
 
 
@@ -92,20 +101,37 @@ def test_the_library_builds_in_a_network_less_container_of_the_parent_with_libsi
                                                for item in command)
     script = command[-1]
     assert f"cd {libsircl_layer.BUILD_PATH}" in script and "unset LD_PRELOAD" in script
-    assert "make -j BUILD=build" in script and "make check BUILD=build" in script
-    assert result["snapshot"] == digest and result["version"] == "0.6.0"
+    assert 'make -j BUILD=build NVCC="$NVCC"' in script and 'make check BUILD=build NVCC="$NVCC"' in script
+    assert "command -v nvcc || echo /usr/local/cuda/bin/nvcc" in script and "cp build/packs/*.fatbin" in script
+    assert result["source_tree"] == digest and result["version"] == "0.6.0"
     assert result["library"] == {"name": "libsircl.so.0.6.0",
                                  "sha256": hashlib.sha256(b"\x7fELF libsircl 0.6.0").hexdigest()}
-    assert result["architectures"] == ["sm_120", "sm_121"] and set(result["kernel_packs"]) == set(libsircl_layer.PACKS)
+    assert result["architectures"] == ["sm_120", "sm_121"]
+    # The packs the build compiled, by SHA-256, and the nvcc that compiled them.
+    assert result["kernel_packs"] == {pack: hashlib.sha256(pack.encode() * 64).hexdigest()
+                                      for pack in libsircl_layer.PACKS}
+    assert result["nvcc"] == "Build cuda_13.4.r13.4/compiler.36836380_0"
     assert json.loads((directory / "natives.json").read_text()) == result
 
 
-def test_a_tree_that_differs_from_its_snapshot_is_not_built(tmp_path):
+def test_a_source_with_uncommitted_changes_is_not_built(tmp_path):
     tree, _ = fixture_tree(tmp_path)
-    (tree / "Makefile").write_bytes(MAKEFILE + b"# edited\n")
-    with pytest.raises(sync_libsircl.SnapshotError, match="differ from the snapshot"):
-        libsircl_layer.build_natives("sha256:" + "5" * 64, tmp_path / "natives", tree=tree,
+    (tree / libsircl_layer.SOURCE / "Makefile").write_bytes(MAKEFILE + b"# edited\n")
+    with pytest.raises(ValueError, match="not committed"):
+        libsircl_layer.build_natives("sha256:" + "5" * 64, tmp_path / "natives", repository=tree,
                                      run=lambda *a, **k: None)
+
+
+def test_the_build_reads_the_committed_files_of_the_source_only(tmp_path):
+    tree, digest = fixture_tree(tmp_path)
+    summary, files = libsircl_layer.tree_facts(tree)
+    assert summary == {"source_tree": digest, "version": "0.6.0", "files": len(files)}
+    assert "unrelated.txt" not in files and files["Makefile"] == MAKEFILE
+    # An untracked file beside the source (a build output) is neither built nor a reason to refuse.
+    (tree / libsircl_layer.SOURCE / "build").mkdir()
+    (tree / libsircl_layer.SOURCE / "build" / "libsircl.so").write_bytes(b"old")
+    libsircl_layer.require_committed(tree)
+    assert "build/libsircl.so" not in libsircl_layer.tree_facts(tree)[1]
 
 
 def test_the_context_installs_the_library_notices_plugin_and_receipt_and_records_them(tmp_path):
@@ -117,9 +143,10 @@ def test_the_context_installs_the_library_notices_plugin_and_receipt_and_records
     library = "/opt/sparkring/libsircl/lib/libsircl.so.0.6.0"
     assert layer["library"] == {"path": library, "sha256": hashlib.sha256(b"\x7fELF libsircl 0.6.0").hexdigest(),
                                 "soname": "libnccl.so.2"}
-    assert layer["snapshot"] == digest and layer["nccl_api_version"] == 22705 and layer["site_packages"] == SITE
+    assert layer["source_tree"] == digest and layer["nccl_api_version"] == 22705 and layer["site_packages"] == SITE
     for name in libsircl.NOTICES:
-        assert (context / "files" / f"opt/sparkring/libsircl/{name}").read_bytes() == (tree / name).read_bytes()
+        assert ((context / "files" / f"opt/sparkring/libsircl/{name}").read_bytes()
+                == (tree / libsircl_layer.SOURCE / name).read_bytes())
     assert layer["plugin"]["path"] == SITE + "sparkring_libsircl.py"
     assert SITE + "sparkring_libsircl-0.6.0.dist-info/entry_points.txt" in layer["files"]
     # Every added file, the layer receipt included, is in the receipt the image's verify checks.
@@ -127,7 +154,7 @@ def test_the_context_installs_the_library_notices_plugin_and_receipt_and_records
     for path in plan["added"]:
         assert derived["files"][path] == hashlib.sha256((context / "files" / path.lstrip("/")).read_bytes()).hexdigest()
     assert derived["files"][SITE + "vllm/__init__.py"] == base["files"][SITE + "vllm/__init__.py"]
-    assert derived["capabilities"]["libsircl"] == {"version": "0.6.0", "snapshot": digest,
+    assert derived["capabilities"]["libsircl"] == {"version": "0.6.0", "source_tree": digest,
                                                    "receipt": image_lock.LIBSIRCL_RECEIPT,
                                                    "receipt_sha256": plan["layer_sha256"]}
     # The parent's SIRCL capability stays.
@@ -169,7 +196,7 @@ def test_the_v3_lock_adds_the_libsircl_transport_and_layer_to_the_parents(tmp_pa
         assert image_lock.validate(value, profile) is value
     assert value["transports"] == ["libsircl", "prepared", "sircl"] and value["sircl"] == lock["sircl"]
     block = image_lock.libsircl(value)
-    assert block["snapshot"] == digest and block["library"]["path"] == "/opt/sparkring/libsircl/lib/libsircl.so.0.6.0"
+    assert block["source_tree"] == digest and block["library"]["path"] == "/opt/sparkring/libsircl/lib/libsircl.so.0.6.0"
     assert block["receipt"] == {"path": image_lock.LIBSIRCL_RECEIPT, "sha256": plan["layer_sha256"]}
     assert value["download_bytes"] == lock["download_bytes"] + plan["payload_bytes"]
     assert value["parent_receipt_sha256"] == plan["receipts"][derived_layer.BASE_RECEIPT]
@@ -180,7 +207,7 @@ def test_the_v3_lock_adds_the_libsircl_transport_and_layer_to_the_parents(tmp_pa
     ("v2", "derives from a v3 image lock"),
     ("libsircl", "without a libsircl layer"),
     ("recorded", "already records"),
-    ("natives", "another libsircl snapshot"),
+    ("natives", "another libsircl source tree"),
 ])
 def test_a_parent_or_natives_that_do_not_fit_are_refused(tmp_path, change, message):
     tree, _ = fixture_tree(tmp_path)
@@ -196,9 +223,9 @@ def test_a_parent_or_natives_that_do_not_fit_are_refused(tmp_path, change, messa
                                       "/opt/sparkring/libsircl/lib/libsircl.so.0.6.0": "b" * 64})
     else:
         record = json.loads((directory / "natives.json").read_text())
-        (directory / "natives.json").write_text(json.dumps(dict(record, snapshot="0" * 64)))
+        (directory / "natives.json").write_text(json.dumps(dict(record, source_tree="0" * 40)))
     with pytest.raises(ValueError, match=message):
-        libsircl_layer.prepare(lock, read, directory, tmp_path / "context", tree=tree)
+        libsircl_layer.prepare(lock, read, directory, tmp_path / "context", repository=tree)
 
 
 class BuiltImage:
@@ -282,24 +309,25 @@ def test_the_host_library_names_its_content_addressed_host_path(tmp_path):
     def run(argv, text=True):
         output = Path(next(item.split("src=")[1].split(",")[0] for item in argv
                            if f"dst={libsircl_layer.OUTPUT_MOUNT}" in item))
-        for name, data in (("libsircl.so.0.6.0", b"lib"), ("check.log", b""), ("compiler.txt", b"gcc 13\n")):
+        for name, data in (("libsircl.so.0.6.0", b"lib"), ("check.log", b""), ("compiler.txt", b"gcc 13\n"),
+                           ("nvcc.txt", b"Build cuda_13.4\n")):
             (output / name).write_bytes(data)
+        (output / "packs").mkdir()
+        for pack in libsircl_layer.PACKS:
+            (output / "packs" / f"{pack}.fatbin").write_bytes(pack.encode())
         return subprocess.CompletedProcess(argv, 0, "", "")
-    result = libsircl_layer.host_library("sha256:" + "4" * 64, tmp_path / "host", tree=tree, run=run)
+    result = libsircl_layer.host_library("sha256:" + "4" * 64, tmp_path / "host", repository=tree, run=run)
     assert result["builder_image_id"] == "sha256:" + "4" * 64
     assert result["install"]["path"] == f"/var/lib/sparkring/libsircl/{hashlib.sha256(b'lib').hexdigest()}/libsircl.so.0.6.0"
 
 
-def test_the_vendored_tree_names_the_kernel_packs_and_architectures_the_layer_records():
+def test_the_committed_source_holds_the_pack_sources_and_architectures_the_layer_records():
     summary, files = libsircl_layer.tree_facts()
     assert summary["version"] == "0.6.0"
     assert libsircl_layer.architectures(files) == ["sm_120", "sm_121"]
-    packs = libsircl_layer.kernel_packs(files)
-    assert packs["sircl_kernels"] == "c2e6e5a1f3c2d6bf8af3bcdb62fece9684ab062980f2bfdedd233d82be4eaa25"
-    assert packs["sircl_links"] == "dc9dd167b44c5c6ff32fa2cc07eddceb0a0f45aa72b287fe336d67a9900f6410"
-    # The point-to-point channels' kernels, which snapshot a3477af2 adds as a fourth pack.
-    assert packs["sircl_p2p"] == "0f39a3b90dbf12be834f2cf431ea1d2d44617b3039a0857da1b8b9eabc9bbc3a"
-    assert set(packs) == set(libsircl_layer.PACKS)
+    # Every pack is built from its CUDA C++ source; the source holds no compiled pack.
+    assert {f"kernels/{pack}.cu" for pack in libsircl_layer.PACKS} <= set(files)
+    assert not [path for path in files if path.endswith(".fatbin")]
     # The fail-stop mode the transport requires: the engine reads LIBSIRCL_FAIL_STOP, so a library built from
     # the tree names it, NUL-terminated, among its strings (libsircl.has_fail_stop).
     assert b'sccl_env("LIBSIRCL_FAIL_STOP")' in files["src/engine.c"]
