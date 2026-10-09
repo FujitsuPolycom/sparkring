@@ -48,12 +48,17 @@ def label(path):
     return lock["selection"]["profile"] + ("@" + "-".join(map(str, where)) if where else "")
 
 
-def image_lock_file(tmp_path, *, pins=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774")):
+def image_lock_file(tmp_path, *, pins=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"),
+                    plugins=True):
     """A v3 lock listing every installer profile, the eight-Spark ones included; its image's vLLM matches the
-    pinned builds ``pins``, by default the image's and the build that reads the CSF checkpoint."""
+    pinned builds ``pins``, by default the image's and the build that reads the CSF checkpoint, and, with
+    ``plugins``, the image carries the GLM-5.3 plugin layer (runtime/images/derive_glm53_plugins.py)."""
+    from runtime.images import derive_glm53_plugins
     profiles = sorted({*installer_image.default_lock()["profiles"], *installer_image.SIRCL_ONLY})
-    path = tmp_path / ("sircl-image-" + "-".join(pins) + ".json")
-    path.write_text(json.dumps(sircl_lock(profiles=profiles, sircl=dict(sircl_block(), vllm_pins=sorted(pins)))))
+    path = tmp_path / ("sircl-image-" + "-".join(pins) + ("-plugins" if plugins else "") + ".json")
+    added = {"vllm_plugins": dict(derive_glm53_plugins.PLUGINS)} if plugins else {}
+    path.write_text(json.dumps(sircl_lock(profiles=profiles, sircl=dict(sircl_block(), vllm_pins=sorted(pins)),
+                                          **added)))
     return path
 
 
@@ -252,6 +257,15 @@ def test_glm53_at_tp8_gives_each_decode_context_parallel_group_its_own_session(r
     command = list(specs[0].command)
     assert command[command.index("--decode-context-parallel-size") + 1] == "4"
     assert command[command.index("--quantization") + 1] == "modelopt_fp4"
+    assert {spec.environment["SIRCL_FUSED_NORM"] for spec in specs} == {"1"}
+
+
+def test_glm53_at_tp8_needs_an_image_that_carries_its_vllm_plugins(ring8, capsys, tmp_path):
+    plain = image_lock_file(tmp_path, plugins=False)
+    assert install(ring8, "--profile", GLM_FULL, lock=plain) == 3
+    refused = result(capsys)
+    assert "glm53-nvfp4-tp8 loads the vLLM plugins glm_dsa_indexer_split, glm53full_speedups" in refused["message"]
+    assert ops(ring8) == []
 
 
 def test_the_csf_checkpoint_needs_an_image_whose_vllm_reads_it(ring8, capsys, tmp_path):

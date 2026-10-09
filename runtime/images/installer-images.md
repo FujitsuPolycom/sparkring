@@ -145,6 +145,23 @@ Python file under the descriptor rules: `pins` names the added path with
 inherited SHA-256 `None`, and the parent receipt must not record it.
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
+[derive_glm53_plugins.py](derive_glm53_plugins.py) adds the GLM-5.3 vLLM
+general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 with
+their dist-info directories and names both in `Layer.plugins`.
+
+The derived lock has its parent lock's schema. A parent with a
+`sparkring-installer-image/v3` lock, such as the SIRCL or libsircl image, gives
+a v3 lock that keeps the parent's image line, transports, default tuning table
+digest and `sircl` and `libsircl` blocks unchanged, is not archived, and lists
+the layer's plugins with the parent's in `vllm_plugins`. Its `record` also
+requires that the built image registers each listed plugin at its version in
+`vllm.general_plugins` and that the built image's external-base receipt still
+covers the kept SIRCL and libsircl layers (`transport.check_layer`,
+`libsircl.check_layer`), and runs admission through the lock's v2 fields. A v1
+or v2 parent gives the same context and lock as before, without plugins:
+`sparkring install` refuses a profile whose `VLLM_PLUGINS` names an added
+plugin on an image whose lock does not list it
+([image_lock.py](../common/image_lock.py), `plugin_problem`).
 
 The peer-wait layer's build takes the parent lock and reads the parent's
 installed bundle from the local parent image:

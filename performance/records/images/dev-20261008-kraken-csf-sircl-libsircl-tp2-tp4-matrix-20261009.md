@@ -13,12 +13,10 @@ campaign set the same SIRCL session settings, called the ring-schedule settings 
 | `SIRCL_LINK_SLOT_BYTES` | `1048576` |
 | `SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES` | `1048576` |
 
-The profiles `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `qwen38-flash-next-tp2`,
-`qwen38-flash-next-qad-tp4` and `deepseek-v41-flash-tp4` carry these settings in their environment, and
-the measured settings each campaign adds are folded into its profile as listed under Conclusion.
-`swift15-qwen38-flash-next-tp4` carries them from an earlier path-of-four measurement (catalog entry
-`sircl-ring-schedules-path4` in [performance/enhancements.json](../../enhancements.json)); no campaign
-here ran it.
+These are SIRCL session settings: an installer deployment takes them only from SparkRing's SIRCL tuning
+table ([runtime/common/sircl-tuning-defaults.json](../../../runtime/common/sircl-tuning-defaults.json)),
+never from a profile. The other settings each campaign adds are folded into its profile as listed under
+Conclusion.
 
 ## Conditions
 
@@ -90,27 +88,27 @@ Every start passed the runner's arm checks. Output fingerprints identical betwee
 ## Conclusion
 
 On this image and hardware, each listed configuration served and measured as above with the ring-schedule
-settings. The profiles take them as follows:
+settings, which are a SIRCL tuning table's to set for pair and path-of-four groups. The profiles take the
+other settings as follows:
 
-- `glm53-flash-nvfp4-spark-tp4`: the ring-schedule settings, and `B12X_W4A16_SMALL_M_OCCUPANCY=2` in
-  the `csf` checkpoint's settings (the other checkpoints keep the image default, 1). The rest of
+- `glm53-flash-nvfp4-spark-tp4`: `B12X_W4A16_SMALL_M_OCCUPANCY=2` in the `csf` checkpoint's settings (the other checkpoints keep the image default, 1). The rest of
   `mx-csf-tp4` is the `csf` checkpoint's existing settings, which an image whose lock lists the pinned
   vLLM build installs without `--checkpoint`.
 - `mx-csf-tp2-b` against `mx-csf-tp2-a`, the same image in the same session: time to first token 14 %
   lower at 8K and 4 % lower at 32K, decode steps within 3 % in every cell but one, where one start of
   `mx-csf-tp2-b` fell to 26.63 steps/s at 32K context and 8 streams; the campaign's operator attributes
   that cell to an underfilled measurement. `glm53-flash-nvfp4-spark-tp2` therefore takes
-  `mx-csf-tp2-b`: the ring-schedule settings and `--async-scheduling` for every checkpoint (a flag a
+  `mx-csf-tp2-b`: `--async-scheduling` for every checkpoint (a flag a
   checkpoint entry cannot add), and in the `csf` checkpoint's settings `B12X_W4A16_SMALL_M_OCCUPANCY=2`,
   `VLLM_B12X_KDA_PREFILL_COALESCING=1` (`0`, the image default, for the other checkpoints) and the draft
   keys `draft_tensor_parallel_size` 2, `kv_cache_dtype` auto, `draft_sample_method` probabilistic and
   `rejection_sample_method` standard.
-- `qwen38-flash-next-tp2` and `qwen38-flash-next-qad-tp4`: the ring-schedule settings. On a pair the
+- `qwen38-flash-next-tp2` and `qwen38-flash-next-qad-tp4`: nothing besides the ring-schedule settings. On a pair the
   `qad-step-4000` and `qad-step5500-mxfp8-attention` checkpoints measured within 1-6 % of each other,
   on two different pairs. Both profiles keep their default checkpoint, `qad-step5500-ple1000`, which no
   campaign ran; both measured checkpoints stay selectable with `--checkpoint`, and the installer-derived
   `qad-step5500-mxfp8-attention` cannot be a checkpoint table's default.
-- `deepseek-v41-flash-tp4`: the ring-schedule settings and `SIRCL_FUSED_NORM=1`, as the `S+` arm ran.
+- `deepseek-v41-flash-tp4`: `SIRCL_FUSED_NORM=1`, as the `S+` arm ran; a profile may pin that switch.
 
 ## Limitations
 
@@ -123,8 +121,7 @@ settings. The profiles take them as follows:
   of four. A four-Spark cycle (a four-Spark cluster) runs them unmeasured.
 - The serving A/B runner ran the installer's container settings without the installer: no `sparkring
   install` run, functional check or correctness screen is part of this record.
-- The checkpoints other than the measured ones in each profile run the ring-schedule settings
-  unmeasured, and the GLM-5.3-Flash pair's other checkpoints run `--async-scheduling` unmeasured.
+- The GLM-5.3-Flash pair's checkpoints other than `csf` run `--async-scheduling` unmeasured.
 - `mx-qwen-tp2` and `mx-qwen-tp2-s4000` ran on different pairs; their difference includes the
   pair-to-pair spread.
 - Temperature 0, 30 s cells, two measured starts; output fingerprints differ between starts, as greedy

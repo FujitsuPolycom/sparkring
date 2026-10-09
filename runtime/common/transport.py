@@ -89,7 +89,12 @@ marks of where NCCL measured faster route no call. Two tables exist:
 container (``installer_image.adapt``): the environment the SIRCL launcher's
 ``serve.plan.build_plan`` sets, built from the same helpers and checked by
 the same rules (``test_transport.py`` compares the two variable for
-variable), with these differences, which the image layer makes possible:
+variable). A profile may pin SIRCL's fused-norm and column-gather switches
+in its own environment (``serve.plan.profile_settings``), which no tuning row
+sets; they reach every container unchanged, and the SIRCL launcher's
+``bundle --profile`` and the serving A/B runner read the same values from the
+profile. The containers differ from the launcher's in these points, which the
+image layer makes possible:
 
 - SIRCL is installed in the image's site-packages, so no source tree is
   mounted and ``PYTHONPATH`` keeps the image's own;
@@ -969,6 +974,13 @@ def environment(value, profile_environment, arguments):
     """
     plan, _, _ = _sircl()
     from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    try:
+        # The SIRCL switches a profile pins in its environment (serve.plan.profile_settings), checked as the
+        # SIRCL launcher's bundle --profile checks them; they reach the containers unchanged. Any other SIRCL_*
+        # variable of a profile is refused, so the tuning row's settings cannot be overwritten unseen.
+        plan.profile_settings(profile_environment)
+    except plan.ServePlanError as error:
+        raise TransportError(str(error)) from None
     settings = value["tuning"]["settings"]
     taken = table_settings(value)
     topology = group_topology(value["group"]["layout"], value["group"]["positions"])
@@ -1072,11 +1084,6 @@ def environment(value, profile_environment, arguments):
         _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {session_table(value)['hash']}, "
                                 f"whose choices need more than the tuning row {value['tuning']['row']} sets: "
                                 + ", ".join(conflicts))
-        # The profile's own SIRCL settings reach the session as well, where the row leaves them unset.
-        own = {key: item for key, item in profile_environment.items() if key.startswith("SIRCL_") and key not in common}
-        conflicts = sircl_tuning.settings_conflicts(taken, own)
-        _require(not conflicts, f"the tensor-parallel session takes SIRCL tuning table {session_table(value)['hash']}, "
-                                "whose choices need more than the profile's environment sets: " + ", ".join(conflicts))
     return common, effective
 
 
@@ -1271,15 +1278,23 @@ def admit_layer(lock, *, run):
     if lock["transport"].get("backend") == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.admit_layer(lock, run=run)
+    return check_layer(lock["selection"]["image_id"], lock["image_runtime"]["parent_receipt_sha256"],
+                       lock["transport"]["sircl"], run=run)
+
+
+def check_layer(image, parent_receipt_sha256, sircl, *, run):
+    """Verify image ``image``'s SIRCL layer against an image lock's ``sircl`` block (``admit_layer``).
+
+    ``parent_receipt_sha256`` is the SHA-256 of the external-base receipt that
+    the image's lock records. The image-layer builders call it on a derived
+    image that keeps its parent's SIRCL layer.
+    """
     from runtime.common import installer_image
-    value = lock["transport"]
-    sircl = value["sircl"]
-    image = lock["selection"]["image_id"]
     isolated = ["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--network", "none",
                 "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--entrypoint", "/bin/cat",
                 image]
     raw = run([*isolated, installer_image.PARENT_RECEIPT], text=False).stdout
-    _require(hashlib.sha256(raw).hexdigest() == lock["image_runtime"]["parent_receipt_sha256"],
+    _require(hashlib.sha256(raw).hexdigest() == parent_receipt_sha256,
              "The image's external-base receipt differs from its lock")
     files = json.loads(raw)["files"]
     layer_raw = run([*isolated, image_lock.LAYER_RECEIPT], text=False).stdout

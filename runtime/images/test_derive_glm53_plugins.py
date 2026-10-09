@@ -67,3 +67,11 @@ def re_fullmatch(value: str) -> bool:
     import re
 
     return re.fullmatch(r"[0-9a-f]{64}", value) is not None
+
+
+def test_the_layer_declares_each_plugin_at_its_dist_info_version():
+    """The derived v3 lock lists exactly the entry points and versions the layer's dist-info files register."""
+    assert derive_glm53_plugins.PLUGINS == {"glm53full_speedups": "1.1.0", "glm_dsa_indexer_split": "1.1.0"}
+    assert derive_glm53_plugins.LAYER.plugins == derive_glm53_plugins.PLUGINS
+    for name, version in derive_glm53_plugins.PLUGINS.items():
+        assert SITE + f"{name}-{version}.dist-info/entry_points.txt" in derive_glm53_plugins.ADDED

@@ -178,7 +178,9 @@ def test_glm53_tp8_profile_on_its_release_image_and_on_the_libsircl_image(catalo
     assert row(released, "glm53-ckv-gather")["status"] == "needs-port"
     assert row(released, "glm53-dsa-b12x-attention-fix")["status"] == "needs-port"
     built = ce.evaluate(catalog, ce.deployment("glm53-nvfp4-tp8", catalog=catalog, image=LIBSIRCL_IMAGE))
-    assert row(built, "glm53-ckv-gather")["status"] == "missing"
+    # The profile turns the CKV gather on; the image's key gather for DSA prefill stays off.
+    assert row(built, "glm53-ckv-gather")["status"] == "enabled"
+    assert row(built, "glm53-dcp-indexer-key-gather")["status"] == "missing"
     assert row(built, "glm53-dsa-b12x-attention-fix")["status"] == "enabled"
     assert row(built, "sircl-cycle8-tuning-row")["status"] == "enabled"
     assert row(built, "glm53-indexer-prefill-split")["status"] == "needs-port"
@@ -222,7 +224,10 @@ def test_plan_input_reads_the_arm_command_and_the_image(tmp_path, catalog):
     environment = dict(config["environment"], SIRCL_FUSED_NORM="1", VLLM_B12X_MLA_CKV_GATHER="1",
                        VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS="589824")
     tokens = ["docker", "create"] + [part for key, value in environment.items() for part in ("--env", f"{key}={value}")]
-    tokens += [LIBSIRCL_IMAGE_ID, "serve", "/models/target"] + config["vllm_args"] + [
+    # The arm's command without the profile's --linear-backend, so the catalog's check warns.
+    arguments = list(config["vllm_args"])
+    del arguments[arguments.index("--linear-backend"):arguments.index("--linear-backend") + 2]
+    tokens += [LIBSIRCL_IMAGE_ID, "serve", "/models/target"] + arguments + [
         "--quantization-config", '{"linear":"mxfp8","ignore":["*kv_b_proj"]}']
     plan = {"schema": "serving-ab-plan/v1", "profile": "glm53-nvfp4-tp8", "model": config["model"],
             "image": LIBSIRCL_IMAGE_ID, "arms": ["S+"], "commands": {"S+": [tokens]}}
@@ -286,3 +291,13 @@ def test_command_line(capsys):
     assert ce.main(["no-such-profile"]) == 2
     assert ce.main(["glm53-nvfp4-tp8", "--enabled", "no-such-entry"]) == 2
     assert ce.main(["--validate"]) == 0
+
+
+def test_glm53_tp8_profile_on_the_plugin_layer_image_enables_the_plugin_set(catalog):
+    report = ce.evaluate(catalog, ce.deployment("glm53-nvfp4-tp8", catalog=catalog, image="glm53-plugins-af06e272"))
+    for entry in ("glm53-indexer-prefill-split", "glm53-latent-shard", "glm53-mtp-eh-proj-tp", "b12x-linear-backend"):
+        assert row(report, entry)["status"] == "enabled", entry
+    assert row(report, "b12x-linear-backend")["gain_percent"] == 61
+    # The plugins' parent image does not carry them.
+    parent = ce.evaluate(catalog, ce.deployment("glm53-nvfp4-tp8", catalog=catalog, image=LIBSIRCL_IMAGE))
+    assert row(parent, "glm53-latent-shard")["status"] == "needs-port"

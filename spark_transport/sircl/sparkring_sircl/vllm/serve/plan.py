@@ -368,6 +368,14 @@ OPTION_VARIABLES = {
     RING_GATHER_STAGGER_VARIABLE: "--ring-gather-stagger",
     "SIRCL_TUNING_TABLE": "--tuning-table",
 }
+# SIRCL adapter switches that a serving profile's environment may pin, with the option that sets each: the
+# fused all-reduce + RMSNorm and the column gathers. No tuning row or table sets them. The launcher's bundle
+# (--profile), the serving A/B runner and SparkRing's installer (runtime/common/transport.py) read them from
+# the profile through profile_settings. A profile sets no other SIRCL_* variable but the four-rank adapter's
+# switch, which installer containers set off: session sizes such as the link slots come from the launcher's
+# options or the installer's tuning row and tables, which also check them against a measured table's needs.
+PROFILE_VARIABLES = {"SIRCL_FUSED_NORM": "--fused-norm", "SIRCL_COLUMN_GATHER": "--column-gather"}
+PROFILE_OTHER = ("SIRCL_ENABLED",)
 
 
 class ServePlanError(ValueError):
@@ -1015,6 +1023,54 @@ def ring_gather_stagger_environment(stagger: int | None) -> dict[str, str]:
     if not 0 <= stagger <= protocol.MAX_RING_STAGGER:
         raise ServePlanError(f"--ring-gather-stagger must be 0 to {protocol.MAX_RING_STAGGER}, got {stagger}")
     return {RING_GATHER_STAGGER_VARIABLE: str(stagger)}
+
+
+# The option attribute of each PROFILE_VARIABLES switch.
+PROFILE_ATTRIBUTES = {"SIRCL_FUSED_NORM": "fused_norm", "SIRCL_COLUMN_GATHER": "column_gather"}
+
+
+def profile_settings(environment: Mapping[str, str]) -> dict[str, bool]:
+    """The SIRCL switches a serving profile's environment pins (:data:`PROFILE_VARIABLES`), as option values
+    (``fused_norm``, ``column_gather``), each only when the profile sets it, to 0 or 1 as the adapter reads
+    them. Any other SIRCL_* variable but :data:`PROFILE_OTHER` is refused, because the launcher or SIRCL's
+    adapter owns it."""
+    owned = sorted(key for key in environment if key.startswith("SIRCL_")
+                   and key not in PROFILE_VARIABLES and key not in PROFILE_OTHER)
+    if owned:
+        raise ServePlanError(f"the profile sets {owned}; a profile pins only {', '.join(PROFILE_VARIABLES)}, and the "
+                             "launcher or SIRCL's adapter sets the other SIRCL_* variables")
+    settings = {}
+    for variable, attribute in PROFILE_ATTRIBUTES.items():
+        if variable in environment:
+            raw = str(environment[variable]).strip()
+            if raw not in ("0", "1"):
+                raise ServePlanError(f"the profile sets {variable}={raw!r}; it takes 0 or 1")
+            settings[attribute] = raw == "1"
+    return settings
+
+
+def profile_settings_environment(settings: Mapping[str, bool]) -> dict[str, str]:
+    """The SIRCL_* variables of :func:`profile_settings` ``settings``, as the profile writes them."""
+    return {variable: "1" if settings[attribute] else "0" for variable, attribute in PROFILE_ATTRIBUTES.items()
+            if attribute in settings}
+
+
+def with_profile_settings(options: Any, settings: Mapping[str, bool]) -> Any:
+    """``options`` (a bundle's options) with the profile's SIRCL switches where the options leave them unset.
+    An option the command line gives with another value than the profile's is refused, so a launch either runs
+    the profile's setting or names no profile. Options without a field for a switch (the serve launcher's:
+    the profile's environment carries the switch into the containers) are returned unchanged."""
+    changes = {}
+    for variable, attribute in PROFILE_ATTRIBUTES.items():
+        if attribute not in settings or not hasattr(options, attribute):
+            continue
+        given = getattr(options, attribute)
+        if given is None:
+            changes[attribute] = settings[attribute]
+        elif given != settings[attribute]:
+            raise ServePlanError(f"{PROFILE_VARIABLES[variable]} {'on' if given else 'off'} differs from the "
+                                 f"profile's {variable}={'1' if settings[attribute] else '0'}; leave the option out")
+    return dataclasses.replace(options, **changes) if changes else options
 
 
 def link_values(args: object) -> dict[str, int]:
@@ -2428,6 +2484,9 @@ def parse_env(values: Sequence[str]) -> dict[str, str]:
 def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options, *, staged_digest: str,
                library: str) -> ServePlan:
     options = dataclasses.replace(options, nccl_mode=nccl_mode_value(options.nccl_mode))   # topology: auto
+    # The SIRCL switches a profile pins reach the containers through its environment; they are checked here
+    # as the bundle and the installer check them.
+    profile_settings(profile.recipe_environment)
     serve_site = site if isinstance(site, ServeSite) else ServeSite.of(site)
     ring = serve_site.site
     positions = tuple(options.positions)

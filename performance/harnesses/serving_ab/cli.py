@@ -74,7 +74,8 @@ def bundle(site_path: str, positions: list[int], run_id: str, nccl: str, args, s
     if dcp > 1:
         command += ["--session-groups", ",".join(serve_plan.SESSION_GROUPS_DCP), "--dcp-size", str(dcp)]
     if nccl == "never":
-        command += ["--require-no-nccl"]
+        # The SIRCL switches the profile pins (serve.plan.profile_settings), as the installer applies them.
+        command += ["--require-no-nccl", "--repository", str(ROOT), "--profile", args.profile]
         for flag in ("capacity", "dispatch"):
             if getattr(args, flag):
                 command += [f"--{flag}", str(getattr(args, flag))]
@@ -226,6 +227,10 @@ def build_plan(args) -> dict:
         # Research only: the lock's profiles are those the installer admitted when it recorded the image; a
         # profile it did not admit can still be rendered and served here, and the plan says so.
         unlisted.append(f"profile {args.profile} is not admitted by image lock {lock['name']} (--unlisted-profile)")
+    # The vLLM plugins the profile loads must be in the image, as sparkring install requires.
+    problem = image_lock.plugin_problem(lock, args.profile)
+    if problem:
+        raise SystemExit(problem)
     source_root = f"{site.remote_dir}/serving-ab/source"
     # The installer's container: the profile adapter's specification, adapted to the image lock as the installer
     # runs it on a host (entrypoint, CUDA and NCCL library selection, status plugin, image-scoped caches, the

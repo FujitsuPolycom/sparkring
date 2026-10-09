@@ -375,6 +375,30 @@ def _check_rank(container: RankContainer, *, rank: int, served: str, arguments: 
         raise ProfileError(f"{relative}: expected bind mounts at /models/target and /cache, found {sorted(targets)}")
 
 
+def serving_environment(repository: str | Path, profile_id: str) -> tuple[dict[str, str], dict[str, str]]:
+    """``(environment, sources)``: the environment of the serving configuration that
+    ``profiles/<id>/profile.json`` names, and the SHA-256 of each file read.
+
+    Unlike :func:`load` it needs no Compose files, so it reads every serving
+    profile, including those of eight Sparks that only SIRCL ring sessions
+    run; the bundle takes the profile's SIRCL settings from it (``--profile``).
+    """
+    root = Path(repository)
+    sources: dict[str, str] = {}
+    if not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,80}", profile_id):
+        raise ProfileError(f"profile id {profile_id!r} is not a profile directory name")
+    deployment = _json(root, f"profiles/{profile_id}/profile.json", sources)
+    configuration = deployment.get("configuration") if isinstance(deployment, dict) else None
+    if (not isinstance(configuration, dict) or configuration.get("format") != "serving-profile"
+            or not configuration.get("path")):
+        raise ProfileError(f"profiles/{profile_id}/profile.json names no serving-profile configuration")
+    config = _json(root, str(configuration["path"]), sources)
+    if not isinstance(config, dict) or config.get("schema") != "sparkring-serving-profile/v1" \
+            or not isinstance(config.get("environment"), dict):
+        raise ProfileError(f"{configuration['path']} is not a serving profile with an environment")
+    return {str(key): str(value) for key, value in config["environment"].items()}, sources
+
+
 def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingProfile:
     root = Path(repository)
     sources: dict[str, str] = {}

@@ -8,7 +8,6 @@ launcher plan from the installer's own containers and compare variable for
 variable.
 """
 import copy
-from dataclasses import replace
 import hashlib
 import json
 from pathlib import Path
@@ -516,10 +515,8 @@ def test_a_measured_table_that_matches_the_group_is_mounted_named_and_its_settin
     spec = installer.specifications(lock)[0]
     assert spec.environment["SIRCL_TUNING_TABLE"] == f"{transport.TABLE_TARGET}/{digest}.json"
     assert any(mount.target == f"{transport.TABLE_TARGET}/{digest}.json" and mount.read_only for mount in spec.mounts)
-    # The session applies the table's settings itself where neither the row nor the profile sets them: the row
-    # sets none, and the profile's ring-schedule settings give the table's own 1 MiB link slot.
-    assert "SIRCL_LINK_SLOTS" not in spec.environment
-    assert spec.environment["SIRCL_LINK_SLOT_BYTES"] == str(1 << 20) == spec_profile_value(TP4, "SIRCL_LINK_SLOT_BYTES")
+    # The session applies the table's settings itself; the row sets none.
+    assert "SIRCL_LINK_SLOTS" not in spec.environment and "SIRCL_LINK_SLOT_BYTES" not in spec.environment
     assert (f"  SIRCL tuning table {digest} for the tensor-parallel session: the measured algorithm, schedule, "
             "piece and launch grid per collective and size; its sessions apply SIRCL_LINK_SLOTS=16, "
             "SIRCL_LINK_SLOT_BYTES=1048576 where the row leaves them unset") in transport.plan_lines(section)
@@ -532,29 +529,6 @@ def test_a_measured_table_that_matches_the_group_is_mounted_named_and_its_settin
                                transport=section)
     with pytest.raises(transport.TransportError, match="more than the tuning row cycle sets: SIRCL_LINK_SLOTS=8"):
         installer.specifications(lock)
-
-
-def spec_profile_value(profile, key):
-    """The value the installer profile ``profile`` sets for ``key`` in its environment."""
-    from runtime.common import profiles
-    metadata, _ = profiles.load(profile)
-    return profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))["environment"].get(key)
-
-
-def test_a_profile_setting_below_a_measured_tables_need_is_refused(tmp_path):
-    image = sircl_lock()
-    _, _, table = ring_table(tmp_path, image)
-    section = transport.section(image, document("cycle", 4), [0, 1, 2, 3], nccl="never", tuning=table, root=tmp_path)
-    lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64, image_runtime=image_lock.v2_view(image),
-                               transport=section)
-    specs = installer.specifications(lock)
-    # The profile's ring-schedule settings reach the session where the row leaves them unset; a link slot below
-    # the table's 1 MiB would leave the table's ring choices unable to run.
-    smaller = [replace(spec, environment=dict(spec.environment, SIRCL_LINK_SLOT_BYTES=str(512 << 10)))
-               for spec in specs]
-    with pytest.raises(transport.TransportError, match="more than the profile's environment sets: "
-                                                       "SIRCL_LINK_SLOT_BYTES=524288"):
-        transport.environment(section, smaller[0].environment, smaller[0].command)
 
 
 def test_a_session_on_a_measured_table_gets_the_settings_the_sircl_launcher_gives_it(tmp_path):
@@ -947,3 +921,25 @@ def test_a_profile_that_only_sircl_runs_needs_its_transport_section_and_its_posi
     with pytest.raises(ValueError, match="one half of a four-Spark ring.*on the prepared transport"):
         installer.make_lock(TP4, install_site(4, placement=[4, 5, 6, 7]), "1" * 40, "2" * 64,
                             image_runtime=image_lock.v2_view(image))
+
+
+
+def test_the_sircl_switches_a_profile_pins_reach_every_rank_beside_the_tuning_rows_settings():
+    from runtime.common import profiles
+    path = profiles.local_path(profiles.load("glm53-nvfp4-tp8")[0]["configuration"]["path"])
+    pinned = {key: value for key, value in profiles.read_json(path)["environment"].items() if key.startswith("SIRCL_")}
+    assert pinned == {"SIRCL_FUSED_NORM": "1", "SIRCL_COLUMN_GATHER": "1"}
+    tuning = transport.load_tuning()
+    tuning["layouts"]["cycle-8"]["settings"].update(link_slots=12, link_slot=1 << 20)
+    for table, slots in ((transport.load_tuning(), ("16", "524288")), (tuning, ("12", "1048576"))):
+        lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), tuning=table,
+                                         image=eight_spark_image())
+        for spec in installer.specifications(lock):
+            assert {key: spec.environment[key] for key in pinned} == pinned
+            # The link settings stay the tuning row's.
+            assert (spec.environment["SIRCL_LINK_SLOTS"], spec.environment["SIRCL_LINK_SLOT_BYTES"]) == slots
+    plain = installer.specifications({key: value for key, value in lock.items() if key != "transport"}, only_rank=0)[0]
+    for extra, message in (({"SIRCL_SPIN_LIMIT": "5"}, "pins only"), ({"SIRCL_LINK_SLOTS": "16"}, "pins only"),
+                           ({"SIRCL_FUSED_NORM": "on"}, "SIRCL_FUSED_NORM='on'; it takes 0 or 1")):
+        with pytest.raises(transport.TransportError, match=message):
+            transport.environment(section, {**plain.environment, **extra}, plain.command)

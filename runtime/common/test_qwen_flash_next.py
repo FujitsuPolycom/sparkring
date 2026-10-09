@@ -276,11 +276,6 @@ def test_the_nvidia_checkpoint_runs_modelopt_nvfp4_with_the_safetensors_loader()
     assert worker.command[-1] == "--headless" and worker.name == "glm53-flash-nvfp4-spark-tp4-r3"
 
 
-# SIRCL's ring-schedule session settings that the Qwen and GLM-5.3-Flash two- and four-Spark profiles carry.
-SIRCL_RING_SCHEDULES = {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring",
-                        "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576",
-                        "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
-                        "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
 CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
              "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
              "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
@@ -288,16 +283,6 @@ CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QA
 GLM_TP8 = ROOT / "profiles/glm53-flash-csf-tp8/config.json"
 CACHE_VARIABLES = {"XDG_CACHE_HOME", "VLLM_CACHE_ROOT", "TRITON_CACHE_DIR", "B12X_COMPILE_CACHE_DIR",
                    "CUTE_DSL_CACHE_DIR", "TORCHINDUCTOR_CACHE_DIR"}
-
-
-@pytest.mark.parametrize("profile", ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "qwen38-flash-next-tp2",
-                                     "qwen38-flash-next-qad-tp4", "swift15-qwen38-flash-next-tp4",
-                                     "deepseek-v41-flash-tp4"])
-def test_two_and_four_spark_profiles_carry_sircls_ring_schedules(profile):
-    """The measured ring-schedule settings take effect only where the deployment runs SIRCL ring sessions: the
-    nccl transport and libsircl drop every SIRCL_* variable, and the prepared transport reads none."""
-    environment = adapter.read(ROOT / "profiles" / profile / "config.json")["environment"]
-    assert {key: environment.get(key) for key in SIRCL_RING_SCHEDULES} == SIRCL_RING_SCHEDULES
 
 
 @pytest.mark.parametrize("path, nodes, kv_gib", [(GLM_TP4, 4, 37), (GLM_TP2, 2, 10)])
@@ -704,10 +689,6 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
         # Two Sparks cannot keep the 95.4 GiB BF16 PLE table resident beside the other weights and KV.
         del expected["VLLM_PLE_CPU_OFFLOAD"]
         expected["VLLM_PLE_TABLE_MEMORY"] = "disk"
-        # SIRCL's ring-schedule settings: no Swift measurement on a pair supports them (catalog entry
-        # sircl-ring-schedules-pair); on four Sparks they were measured (sircl-ring-schedules-path4).
-        for key in SIRCL_RING_SCHEDULES:
-            del expected[key]
     assert swift["environment"] == expected
     args, expected_args = list(swift["vllm_args"]), list(qwen["vllm_args"])
     expected_args[expected_args.index("--master-port") + 1] = master_port

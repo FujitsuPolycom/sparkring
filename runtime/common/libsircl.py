@@ -102,9 +102,9 @@ INDEPENDENT_TRANSPORTS_OFF = {
     "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
 }
 CUSTOM_ALL_REDUCE_OFF = "--disable-custom-all-reduce"
-# A profile's SIRCL_* variables tune SIRCL's own ring sessions (schedules, link sizes, the one-shot limit, the
-# fused norm). libsircl reads several of the same variables, and no libsircl measurement ran with them, so its
-# containers do not take them; SIRCL_ENABLED, which the prepared images read, stays as the profile sets it.
+# A profile's SIRCL_* switches (serve.plan.profile_settings: the fused norm and the column gathers) configure
+# SIRCL's own adapter, which a libsircl container does not run, so its containers do not take them;
+# SIRCL_ENABLED, which the prepared images read, stays as the profile sets it.
 PROFILE_SIRCL_KEPT = ("SIRCL_ENABLED",)
 SECTION_FIELDS = {"schema", "backend", "status", "image", "fabric", "group", "devices", "routes", "planner",
                   "libsircl"}

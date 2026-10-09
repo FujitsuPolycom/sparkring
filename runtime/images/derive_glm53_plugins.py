@@ -26,21 +26,36 @@ records every added file in the image's external-base receipt, so ``verify``
 checks the plugins' bytes too, and writes the provenance receipt
 ``/opt/sparkring/receipts/derived-glm53-plugins.json``.
 
+The layer declares both plugins with their versions (``PLUGINS``, read from
+the dist-info files it adds). From the parent's v3 lock (the lock the libsircl
+layer wrote, ``runtime/images/libsircl_layer.py``) it derives a v3 lock that
+keeps the parent's SIRCL and libsircl layers unchanged and lists the two
+plugins in ``vllm_plugins``; ``sparkring install`` refuses a profile whose
+``VLLM_PLUGINS`` names them on an image whose lock does not
+(``runtime/common/image_lock.py``, ``plugin_problem``). From a v1 or v2 parent
+lock it derives a lock of that schema, which cannot list the plugins.
+
 Actions (none pushes or publishes an image):
 
 - ``prepare --parent-lock LOCK --output CONTEXT``: write the Docker build
-  context from the parent's v3 lock and receipts (or the local parent image).
+  context from the parent's lock and receipts (or the local parent image).
 - ``record --context CONTEXT --image ID --name NAME --output LOCK``: probe the
-  built image, check the layer as installation does, admit it for every
-  profile of the parent lock and write the derived lock.
+  built image (each plugin's entry point and version; for a v3 lock, also the
+  SIRCL and libsircl layers it keeps), check the layer as installation does,
+  admit it for every profile of the parent lock and write the derived lock.
 - ``build --context CONTEXT --tag TAG --name NAME --output LOCK``: tag the
   parent, build, then record.
 
-Status: research-only; the plugins' CPU tests run against the image's own
-sources, and no image built from this layer has been measured.
+Status: research-only. The plugins' CPU tests run against the image's own
+sources. One image built from this layer (``af06e272``) served the settings of
+profile ``glm53-nvfp4-tp8`` on one eight-Spark ring
+(``profiles/glm53-nvfp4-tp8/README.md``); no installation from a lock that
+``record`` wrote has run.
 """
 from __future__ import annotations
 
+import configparser
+from email.parser import BytesParser
 from pathlib import Path
 import sys
 
@@ -79,12 +94,32 @@ def replace(read, receipt):
     return {target: (ROOT / source).read_bytes() for target, source in ADDED.items()}
 
 
+def plugins():
+    """Each added plugin's ``vllm.general_plugins`` entry-point name -> the version of its distribution,
+    read from the dist-info files the layer adds."""
+    found = {}
+    for target, source in ADDED.items():
+        if not target.endswith(".dist-info/entry_points.txt"):
+            continue
+        points = configparser.ConfigParser(interpolation=None)
+        points.optionxform = str
+        points.read_string((ROOT / source).read_text(encoding="utf-8"))
+        metadata = BytesParser().parsebytes((ROOT / source).with_name("METADATA").read_bytes())
+        for name in points["vllm.general_plugins"]:
+            found[name] = metadata["Version"]
+    return dict(sorted(found.items()))
+
+
+PLUGINS = plugins()
+
+
 LAYER = Layer(
     name="glm53-plugins",
     purpose="the glm_dsa_indexer_split and glm53full_speedups vLLM general plugins for GLM-5.3 at TP8",
     replace=replace,
     provenance="/opt/sparkring/receipts/derived-glm53-plugins.json",
     pins={target: (None, sha((ROOT / source).read_bytes())) for target, source in ADDED.items()},
+    plugins=PLUGINS,
 )
 
 if __name__ == "__main__":

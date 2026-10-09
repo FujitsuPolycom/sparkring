@@ -32,7 +32,7 @@ run only on SIRCL ring sessions.
 |---|---|
 | `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | The parent's profiles, on either transport |
 | `glm53-flash-csf-tp8` | Reads the CSF checkpoint with the merged sources |
-| `deepseek-v41-flash-tp8`, `glm53-nvfp4-tp8` | Eight-Spark research profiles; `glm53-nvfp4-tp8` needs the merged vLLM's B12X DSA attention ([open items](../../../profiles/glm53-nvfp4-tp8/README.md#evidence-and-open-items)) |
+| `deepseek-v41-flash-tp8`, `glm53-nvfp4-tp8` | Eight-Spark research profiles; `glm53-nvfp4-tp8` also needs the GLM-5.3 plugin layer, which this image lacks, so the installer refuses it on this lock ([image](../../../profiles/glm53-nvfp4-tp8/README.md#image)) |
 
 The lock's `sircl.vllm_pins` names the vLLM build that reads the CSF
 checkpoint, so `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`

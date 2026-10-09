@@ -584,6 +584,15 @@ every Spark, with progress on standard error.
 - `--reasoning-effort LEVEL` with `--repository` and `--checkpoint
   REPOSITORY@REVISION` (or `--thinking-behaviour NAME`) gives global rank 0
   the `--default-chat-template-kwargs` value to add.
+- `--profile ID` with `--repository` takes the SIRCL switches that SparkRing
+  profile pins in its serving configuration's environment
+  (`plan.PROFILE_VARIABLES`: `SIRCL_FUSED_NORM` and `SIRCL_COLUMN_GATHER`) as
+  the defaults of `--fused-norm` and `--column-gather`, and refuses an option
+  given with another value. SparkRing's installer and its serving A/B runner
+  read the same switches from the profile, and `start` and `plan` carry them
+  in the profile's environment. A profile that sets any other `SIRCL_*`
+  variable is refused: session sizes come from the options and tuning
+  tables. The bundle's `profile` field records the profile and its switches.
 - `--text` prints the group map, sessions and carriers instead of the JSON.
 
 `bundle-check` takes the bundle's `--nccl`, `--session-groups`, `--dcp-size`,

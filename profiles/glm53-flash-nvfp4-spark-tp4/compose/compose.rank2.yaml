@@ -154,14 +154,6 @@ services:
       OMP_NUM_THREADS: '16'
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SIRCL_ENABLED: '0'
-      SIRCL_GATHER_LINK_CHUNK_BYTES: '1048576'
-      SIRCL_GATHER_SCHEDULE: ring
-      SIRCL_LARGE_SCHEDULE: ring
-      SIRCL_LINK_SLOT_BYTES: '1048576'
-      SIRCL_ONESHOT_MAX_BYTES: '65536'
-      SIRCL_REDUCE_LINK_CHUNK_BYTES: '1048576'
-      SIRCL_SCATTER_LINK_CHUNK_BYTES: '1048576'
-      SIRCL_SCATTER_SCHEDULE: ring
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
@@ -199,7 +191,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: 22d0748e64c503c6956d6f3b5522bf7f5ecb6b0a60d3e46f4453339899a4b2b9
+      io.sparkring.deployment: 703aa2a837b156d60ca95693ec0daac20d52ca09f128c06f2a8de152af93f363
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host
