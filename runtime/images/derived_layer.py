@@ -1,7 +1,8 @@
 """Derive an installer image by adding or replacing receipt-recorded files in one layer.
 
-An installer image lock (``runtime/releases/<release>/installer-image.json``)
-pins the image and the SHA-256 of two receipts inside it. The external-base
+An installer image lock (``runtime/releases/<release>/installer-image.json``,
+schema ``sparkring-installer-image/v1``, ``/v2`` or ``/v3``) pins the image
+and the SHA-256 of two receipts inside it. The external-base
 receipt, ``/opt/sparkring/receipts/external-base-installed.json``, maps every
 installed file that the image's ``verify`` checks to its SHA-256. The toolchain
 receipt, ``/opt/sparkring/toolchain/installed.json``, records the external-base
@@ -23,6 +24,18 @@ A layer is defined in one of two ways:
   once, and may pin each replaced file's inherited and resulting SHA-256 and
   edit other receipt fields. It may also add site-packages Python files under
   the descriptor rules; each addition is pinned with inherited SHA-256 ``None``.
+  A layer that adds vLLM general plugins names each with its version
+  (``Layer.plugins``).
+
+The derived lock has the parent lock's schema. From a v1 or v2 parent it is
+the parent's contract bound to the built image. From a v3 parent
+(``runtime/common/image_lock.py``) it also keeps the parent's image line,
+transports, default tuning table digest and its ``sircl`` and ``libsircl``
+blocks unchanged, records the layer's added plugins in ``vllm_plugins`` beside
+the parent's, and is not archived; ``record`` then checks that the built
+image's receipts still cover the SIRCL and libsircl layers and that the built
+image registers every added plugin at its version. A v1 or v2 lock cannot list
+added plugins, so a profile that loads them runs only on the derived v3 lock.
 
 Replacing the runtime-status package also rewrites the receipt fields the
 image's ``verify`` and the installer's admission read: the owned Python root
@@ -35,7 +48,8 @@ receipts; a code layer also reads the parent files it edits, from the local
 image through a network-less container or from an exported root filesystem.
 ``record`` inspects the built image, runs the installer's admission for every
 profile of the lock (``runtime/common/installer_image.py``, including the
-image's isolated ``verify``) and writes the derived lock. ``build`` tags the
+image's isolated ``verify``; a v3 lock through its v2 view) and writes the
+derived lock. ``build`` tags the
 parent, builds the context and then records. No action pushes, publishes or
 selects an image for a profile.
 """
@@ -63,7 +77,7 @@ import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 from integrations.vllm.rocenante_prepared.sparkring_transport_selector import HOST_SOURCE_FILES  # noqa: E402
-from runtime.common import installer_image  # noqa: E402
+from runtime.common import image_lock, installer_image  # noqa: E402
 from runtime.images.feature_extension import pinned_bytes  # noqa: E402
 
 SCHEMA = "sparkring-derived-layer-descriptor/v1"
@@ -131,7 +145,10 @@ class Layer:
     ``update_receipt(receipt, replaced)`` edits receipt fields other than file
     hashes and returns fields to set in the derived lock. ``pins`` maps a
     path to its required (inherited, resulting) SHA-256. Without
-    ``provenance`` the layer writes no provenance receipt.
+    ``provenance`` the layer writes no provenance receipt. ``plugins`` maps
+    the entry-point name in ``vllm.general_plugins`` of each vLLM plugin the
+    layer adds to its distribution version; a derived v3 lock lists them in
+    ``vllm_plugins``.
     """
     name: str
     purpose: str
@@ -139,6 +156,7 @@ class Layer:
     provenance: str | None = None
     update_receipt: Callable[[dict, dict], dict] | None = None
     pins: dict = field(default_factory=dict)
+    plugins: dict = field(default_factory=dict)
 
 
 # Readers of parent files.
@@ -253,11 +271,25 @@ def descriptor(path):
     return record
 
 
+def is_v3(lock):
+    return image_lock.schema(lock) == image_lock.SCHEMA_V3
+
+
+def validate_lock(lock):
+    """Validate a lock of any schema for every profile it lists: v3 by ``image_lock``, v1 and v2 by
+    ``installer_image``."""
+    if is_v3(lock):
+        for profile in image_lock.profiles_of(lock):
+            image_lock.validate(lock, profile)
+    else:
+        for profile in installer_image.profiles_of(lock):
+            installer_image.validate(lock, profile)
+    return lock
+
+
 def load_lock(path):
     """Read an installer image lock and validate it for every profile it lists."""
-    lock = json.loads(Path(path).read_text(encoding="utf-8"))
-    for profile in installer_image.profiles_of(lock):
-        installer_image.validate(lock, profile)
+    lock = validate_lock(json.loads(Path(path).read_text(encoding="utf-8")))
     require(IMAGE_ID.fullmatch(lock["image_id"]), "The parent lock must name a local image ID")
     return lock
 
@@ -466,8 +498,14 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
         raise ValueError("Toolchain receipt does not record the external-base receipt")
     if base.get("capabilities", {}).get("runtime_status", {}).get("version") != lock["status_version"]:
         raise ValueError("Parent receipt's status version differs from its lock")
+    plugins = {}
     if isinstance(layer, Layer):
         name, purpose, provenance_path = layer.name, layer.purpose, layer.provenance
+        if layer.plugins and is_v3(lock):
+            # Only a v3 lock lists added plugins; a v1 or v2 derived lock keeps its parent's fields.
+            plugins = dict(image_lock.validate_vllm_plugins(dict(layer.plugins)))
+            listed = sorted(set(plugins) & set(image_lock.vllm_plugins(lock)))
+            require(not listed, "The parent image already carries the vLLM plugins " + ", ".join(listed))
         entries = _layer_entries(layer, read, base)
     else:
         name, purpose, provenance_path = layer["id"], layer["purpose"], layer["provenance"]
@@ -518,6 +556,8 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
     }
     if descriptor_sha256 is not None:
         plan["descriptor_sha256"] = descriptor_sha256
+    if plugins:
+        plan["plugins"] = plugins
     (output / "plan.json").write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
     return {"context": str(output), "files": len(payloads), "removed": len(removed),
             "status_version": status_version, "receipts": receipts,
@@ -549,6 +589,9 @@ def derived_lock(plan, image, name, profiles=None):
     ``image_reference`` is the local configuration ID until a registry digest
     exists. ``download_bytes`` adds the layer's uncompressed payload to the
     parent's download, an upper bound until the registry reports the layer.
+    A v3 lock keeps the parent's v3 fields, with ``sircl`` and ``libsircl``
+    unchanged, adds the layer's plugins to ``vllm_plugins`` and is not
+    archived.
     """
     lock = dict(plan["parent_lock"])
     lock.update(plan.get("lock_fields", {}))
@@ -557,11 +600,49 @@ def derived_lock(plan, image, name, profiles=None):
                 parent_receipt_sha256=plan["receipts"][BASE_RECEIPT],
                 toolchain_receipt_sha256=plan["receipts"][TOOLCHAIN_RECEIPT],
                 status_version=plan.get("status_version", lock["status_version"]))
+    if is_v3(lock):
+        lock["archived"] = False
+        if plan.get("plugins"):
+            lock["vllm_plugins"] = dict(sorted({**image_lock.vllm_plugins(lock), **plan["plugins"]}.items()))
     if profiles:
         lock["profiles"] = sorted(profiles)
-    for profile in installer_image.profiles_of(lock):
-        installer_image.validate(lock, profile)
-    return lock
+    return validate_lock(lock)
+
+
+# Run in the built image: every vllm.general_plugins entry point with its distribution's version.
+PLUGIN_PROBE = ("import importlib.metadata, json\n"
+                "print(json.dumps(sorted([point.name, point.dist.version if point.dist else None] for point in "
+                "importlib.metadata.entry_points(group='vllm.general_plugins'))))\n")
+
+
+def probe_plugins(image_id, plugins, run=None):
+    """Require that image ``image_id`` registers every plugin of ``plugins`` (name -> version), once, at that
+    version; returns the registered ``[name, version]`` pairs."""
+    run = run or _run
+    command = ["docker", "run", "--rm", "--pull", "never", "--network", "none", "--read-only", "--entrypoint",
+               "python3", image_id, "-I", "-c", PLUGIN_PROBE]
+    try:
+        registered = json.loads(run(command).stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raise ValueError("The built image's vLLM plugin probe printed no list") from None
+    for name, version in sorted(plugins.items()):
+        found = [item[1] for item in registered if item[0] == name]
+        require(found == [version], f"The built image registers the vLLM plugin {name} at {found or 'no version'}, "
+                                    f"expected {version}")
+    return registered
+
+
+def check_carried_layers(lock, run):
+    """Require that a derived v3 image's receipts still cover the SIRCL and libsircl layers its lock carries."""
+    from runtime.common import libsircl, transport
+    checked = {}
+    if image_lock.sircl(lock):
+        checked["sircl"] = transport.check_layer(lock["image_id"], lock["parent_receipt_sha256"], lock["sircl"],
+                                                 run=run)
+    if image_lock.libsircl(lock):
+        checked["libsircl"] = libsircl.check_layer(lock["image_id"], lock["parent_receipt_sha256"],
+                                                   lock["libsircl"], run=run)
+    return checked
 
 
 def _run(command, text=True):
@@ -583,12 +664,19 @@ def record(context, image_id, name, output, run=_run, profiles=None):
             raise ValueError("The parent image already has an added path: " + target) from error
     image = json.loads(run(["docker", "image", "inspect", image_id]).stdout)[0]
     lock = derived_lock(plan, image, name, profiles)
-    for profile in installer_image.profiles_of(lock):
-        installer_image.admit(lock, run=run, profile=profile)
+    summary = {}
+    if is_v3(lock):
+        if plan.get("plugins"):
+            probe_plugins(lock["image_id"], plan["plugins"], run=run)
+            summary["vllm_plugins"] = lock["vllm_plugins"]
+        summary["carried_layers"] = sorted(check_carried_layers(lock, run))
+    view = image_lock.v2_view(lock)
+    for profile in installer_image.profiles_of(view):
+        installer_image.admit(view, run=run, profile=profile)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(lock, indent=2, sort_keys=True) + "\n")
     return {"lock": str(output), "image_id": lock["image_id"], "profiles": lock["profiles"],
-            "status_version": lock["status_version"], "serving_qualified": False}
+            "status_version": lock["status_version"], **summary, "serving_qualified": False}
 
 
 def build(context, tag, name, output, run=_run, profiles=None):

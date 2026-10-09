@@ -53,6 +53,7 @@ field and adds:
 | `tuning_defaults_sha256` | The SHA-256 of [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json) at the image's build |
 | `archived` | `true` for an archived release, which `--image` still selects and which is never the default |
 | `libsircl` | Present only when `transports` lists `libsircl`: the [libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)'s version, snapshot tree digest, library path and SHA-256, NCCL API level, whether the library has the fail-stop mode, vLLM plugin path and SHA-256, and layer receipt |
+| `vllm_plugins` | Present only when a [derived layer](../../runtime/images/installer-images.md#derived-layers) added vLLM general plugins: each plugin's entry-point name and version, other than the images' own `b12x_loader`, `sparkring_status`, `sircl` and `libsircl`. `sparkring install` runs a profile whose `VLLM_PLUGINS` names another plugin only on a lock that lists it |
 
 v1 and v2 locks keep validating, and published releases keep their v2 lock
 bytes. Compose exports and the Install Builder use a v3 image through its v2

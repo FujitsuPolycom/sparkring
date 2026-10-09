@@ -38,7 +38,20 @@ adds the third:
   SHA-256, and the layer receipt
   ``/opt/sparkring/receipts/libsircl-layer.json``. A v3 lock
   without the layer has no such field, so it validates as it did before the
-  field existed.
+  field existed;
+- ``vllm_plugins``, present only when a derived layer added vLLM general
+  plugins to the image (``runtime/images/derived_layer.py``, ``Layer.plugins``):
+  each plugin's entry-point name in ``vllm.general_plugins`` and its
+  distribution version, which the layer's build probed in the built image.
+  The plugins every installer image or its transport layers carry
+  (``BUILT_IN_PLUGINS``) are not listed. A lock without added plugins has no
+  such field.
+
+A profile whose serving environment's ``VLLM_PLUGINS`` names a plugin outside
+``BUILT_IN_PLUGINS`` runs only on an image whose lock lists that plugin in
+``vllm_plugins`` (``plugin_problem``). vLLM loads only the named plugins it
+finds installed and skips the others without an error, so ``for_profile``
+refuses such an image instead of serving without the plugin.
 
 ``v2_view`` gives ``installer_image`` the v2 fields of a v3 lock, so image
 admission, the deployment lock's ``image_runtime`` and storage planning stay
@@ -68,6 +81,12 @@ LIBRARY_DIRECTORY = "/opt/sparkring/sircl/lib"
 LAYER_RECEIPT = "/opt/sparkring/receipts/sircl-layer.json"
 LIBRARY_STEMS = {"native": "roce_proxy", "p2p": "p2p_proxy"}
 SIRCL_FIELDS = {"version", "abi_version", "wheel", "native", "p2p", "receipt", "tuning_key", "vllm_pins"}
+# Optional fields of a v3 lock.
+OPTIONAL_FIELDS = ("libsircl", "vllm_plugins")
+# vLLM general plugins that a lock's vllm_plugins does not list: the installer images' own
+# (installer_image.PLUGINS), SIRCL's (the SIRCL layer) and libsircl's (the libsircl layer).
+BUILT_IN_PLUGINS = (*installer_image.PLUGINS, "sircl", "libsircl")
+_PLUGIN = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _SHORT = re.compile(r"[0-9a-f]{16}")
 _VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
@@ -153,9 +172,19 @@ def validate_libsircl(value):
     return value
 
 
+def validate_vllm_plugins(value):
+    """The ``vllm_plugins`` block of a v3 lock after checking it; ValueError otherwise."""
+    _require(isinstance(value, dict) and value
+             and all(isinstance(name, str) and _PLUGIN.fullmatch(name) and name not in BUILT_IN_PLUGINS
+                     and isinstance(version, str) and _VERSION.fullmatch(version) for name, version in value.items()),
+             "The image's added vLLM plugins map each entry-point name, other than "
+             + ", ".join(BUILT_IN_PLUGINS) + ", to its version")
+    return value
+
+
 def validate_v3(value, profile):
     """A v3 lock after checking its v3 fields and, through ``v2_view``, its v2 fields for ``profile``."""
-    _require(isinstance(value, dict) and set(value) in (V3_FIELDS, V3_FIELDS | {"libsircl"}),
+    _require(isinstance(value, dict) and V3_FIELDS <= set(value) <= V3_FIELDS | set(OPTIONAL_FIELDS),
              f"Expected a complete {SCHEMA_V3} lock")
     _require(value["line"] in LINES, "A v3 image lock names its image line: " + ", ".join(LINES))
     transports = value["transports"]
@@ -174,6 +203,8 @@ def validate_v3(value, profile):
         validate_libsircl(value["libsircl"])
     else:
         _require("libsircl" not in value, "A v3 image lock without the libsircl transport records no libsircl layer")
+    if "vllm_plugins" in value:
+        validate_vllm_plugins(value["vllm_plugins"])
     _digest(value["tuning_defaults_sha256"], "the default tuning table")
     _require(type(value["archived"]) is bool, "A v3 image lock says whether it is archived")
     installer_image.validate(v2_view(value), profile)
@@ -242,6 +273,34 @@ def sircl(value):
 def libsircl(value):
     """The libsircl layer of ``value``, or None."""
     return value.get("libsircl") if schema(value) == SCHEMA_V3 else None
+
+
+def vllm_plugins(value):
+    """The vLLM general plugins a derived layer added to the image of ``value``: name -> version; {} for none."""
+    return dict(value.get("vllm_plugins") or {}) if schema(value) == SCHEMA_V3 else {}
+
+
+def required_plugins(profile, environment=None):
+    """The plugins ``profile``'s ``VLLM_PLUGINS`` names beyond ``BUILT_IN_PLUGINS``, in its order.
+
+    ``environment`` is the profile's serving environment; it defaults to its configuration's.
+    """
+    if environment is None:
+        environment = installer_image.profile_environment(profile)
+    names = [name.strip() for name in environment.get("VLLM_PLUGINS", "").split(",") if name.strip()]
+    return [name for name in dict.fromkeys(names) if name not in BUILT_IN_PLUGINS]
+
+
+def plugin_problem(value, profile, environment=None):
+    """Why the image of lock ``value`` cannot run ``profile``'s vLLM plugins, or None."""
+    carried = vllm_plugins(value)
+    missing = [name for name in required_plugins(profile, environment) if name not in carried]
+    if not missing:
+        return None
+    listed = ", ".join(f"{name} {version}" for name, version in sorted(carried.items())) or "no added vLLM plugin"
+    return (f"{profile} loads the vLLM plugins {', '.join(missing)} (VLLM_PLUGINS of its configuration), which image "
+            f"{value.get('name')} does not carry: its lock lists {listed}. Select an image lock {SCHEMA_V3} whose "
+            "vllm_plugins lists them")
 
 
 def line(value):
@@ -321,7 +380,10 @@ def lock_path(name):
 
 
 def for_profile(profile, explicit=None):
-    """The image lock (any schema) for one installer profile: ``explicit``, else the install default."""
+    """The image lock (any schema) for one installer profile: ``explicit``, else the install default.
+
+    A lock whose image lacks a vLLM plugin the profile loads is refused (``plugin_problem``).
+    """
     replaced = profiles.replacement_message(profile)
     if replaced:
         raise ValueError(replaced)
@@ -335,12 +397,18 @@ def for_profile(profile, explicit=None):
         _require(not sircl_only(value), f"{', '.join(sircl_only(value))} run only on SIRCL ring sessions; only an "
                                         f"image lock {SCHEMA_V3} whose image carries the SIRCL layer lists them")
         # v1 and v2 locks keep installer_image's selection, refusals and messages.
-        return installer_image.for_profile(profile, explicit)
+        selected = installer_image.for_profile(profile, explicit)
+        problem = plugin_problem(selected, profile)
+        _require(problem is None, problem)
+        return selected
     try:
-        return validate(value, profile)
+        selected = validate(value, profile)
     except ValueError as error:
         if explicit is None or schema(value) not in (installer_image.SCHEMA, SCHEMA_V3) \
                 or profile in value.get("profiles", ()):
             raise
         others = [row["name"] for row in catalog() if profile in profiles_of(row["lock"])]
         raise ValueError(f"{error}; images that run it: {', '.join(others) or 'none'}") from None
+    problem = plugin_problem(selected, profile)
+    _require(problem is None, problem)
+    return selected

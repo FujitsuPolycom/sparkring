@@ -16,7 +16,7 @@ import zipfile
 
 import pytest
 
-from runtime.common import installer_image
+from runtime.common import image_lock, installer_image
 from runtime.images import derive_mimo_vision, derive_spin_wait, derive_staging_fix, derive_tool_choice_contract, derive_tp2_hc
 from runtime.images import derive_transport_peer_wait, derive_transport_port_gid, derive_transport_window
 from runtime.images import derived_layer as layer
@@ -573,6 +573,157 @@ def test_build_tags_the_parent_and_records_the_image(tmp_path, monkeypatch):
     assert written["profiles"] == ["glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp4"]
     assert written["image_id"] == summary["image_id"] == built and written["image_bytes"] == 123
     assert written["parent_receipt_sha256"] == result["receipts"][layer.BASE_RECEIPT]
+
+
+# Parents with a v3 lock (runtime/common/image_lock.py): the SIRCL image and the SIRCL and libsircl image.
+
+PLUGIN = layer.SITE + "fixture_plugin/__init__.py"
+PLUGIN_POINTS = layer.SITE + "fixture_plugin-1.2.0.dist-info/entry_points.txt"
+
+
+def v3_parent(tmp_path, files, **changes):
+    """``code_parent`` with a v3 lock that carries the SIRCL and libsircl layers and an eight-Spark profile."""
+    from runtime.common.test_image_lock import libsircl_block, sircl_block
+    root, lock = code_parent(tmp_path, files)
+    lock = dict(lock, schema=image_lock.SCHEMA_V3, line="kraken", transports=["libsircl", "prepared", "sircl"],
+                sircl=sircl_block(), libsircl=libsircl_block(), tuning_defaults_sha256="e" * 64, archived=True,
+                profiles=["glm53-flash-nvfp4-spark-tp2", "glm53-nvfp4-tp8"])
+    lock.update(changes)
+    return root, lock
+
+
+def plugin_layer(**changes):
+    """A code layer that adds one vLLM general plugin, its entry points and declares it."""
+    def replace(read, receipt):
+        return {"/opt/app/a.py": read("/opt/app/a.py") + b"# changed\n", PLUGIN: b"def register():\n    pass\n",
+                PLUGIN_POINTS: b"[vllm.general_plugins]\nfixture_plugin = fixture_plugin:register\n"}
+    data = replace(lambda path: b"a\n", {})
+    code = simple_layer(replace=replace, pins={path: (None, sha(data[path])) for path in (PLUGIN, PLUGIN_POINTS)},
+                        plugins={"fixture_plugin": "1.2.0"})
+    return dataclasses.replace(code, **changes)
+
+
+def plan_of(result):
+    return json.loads((Path(result["context"]) / "plan.json").read_text())
+
+
+def test_a_v3_parent_derives_a_v3_lock_that_keeps_its_sircl_and_libsircl_layers(tmp_path):
+    root, parent_lock = v3_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    result = layer.prepare_layer(simple_layer(), parent_lock, layer.root_reader(root), tmp_path / "context")
+    lock = layer.derived_lock(plan_of(result), {"Id": "sha256:" + "9" * 64, "Size": 1234}, "dev-derived")
+    assert lock["schema"] == image_lock.SCHEMA_V3
+    for field in ("line", "transports", "sircl", "libsircl", "tuning_defaults_sha256", "profiles",
+                  "composition_sha256", "transport_profile", "transport_manifest_sha256", "status_version"):
+        assert lock[field] == parent_lock[field], field
+    # The derived image is a release of its own, which is not archived.
+    assert lock["archived"] is False and "vllm_plugins" not in lock
+    assert lock["image_id"] == lock["image_reference"] == "sha256:" + "9" * 64
+    assert lock["parent_receipt_sha256"] == result["receipts"][layer.BASE_RECEIPT]
+    assert lock["download_bytes"] == 500 + plan_of(result)["payload_bytes"]
+    for profile in lock["profiles"]:
+        assert image_lock.validate(lock, profile) is lock
+
+
+def test_load_lock_reads_a_v3_parent_and_refuses_one_whose_layers_disagree(tmp_path):
+    from runtime.common.test_image_lock import sircl_block
+    _, lock = v3_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    path = tmp_path / "parent-lock.json"
+    path.write_text(json.dumps(lock))
+    assert layer.load_lock(path) == lock
+    path.write_text(json.dumps(dict(lock, sircl=dict(sircl_block(), vllm_pins=["b", "a"]))))
+    with pytest.raises(ValueError, match="pinned vLLM builds"):
+        layer.load_lock(path)
+    path.write_text(json.dumps(dict(lock, transports=["prepared", "sircl"])))
+    with pytest.raises(ValueError, match="records no libsircl layer"):
+        layer.load_lock(path)
+
+
+def test_a_layers_plugins_join_the_parents_in_the_derived_v3_lock(tmp_path):
+    root, parent_lock = v3_parent(tmp_path, {"/opt/app/a.py": b"a\n"}, vllm_plugins={"other_plugin": "2.0.0"})
+    result = layer.prepare_layer(plugin_layer(), parent_lock, layer.root_reader(root), tmp_path / "context")
+    plan = plan_of(result)
+    assert plan["plugins"] == {"fixture_plugin": "1.2.0"} and plan["added"] == sorted([PLUGIN, PLUGIN_POINTS])
+    lock = layer.derived_lock(plan, {"Id": "sha256:" + "9" * 64, "Size": 1}, "dev-derived")
+    assert lock["vllm_plugins"] == {"fixture_plugin": "1.2.0", "other_plugin": "2.0.0"}
+    assert image_lock.vllm_plugins(lock) == lock["vllm_plugins"]
+    listed = dict(parent_lock, vllm_plugins={"fixture_plugin": "1.1.0"})
+    with pytest.raises(ValueError, match="already carries the vLLM plugins fixture_plugin"):
+        layer.prepare_layer(plugin_layer(), listed, layer.root_reader(root), tmp_path / "again")
+    with pytest.raises(ValueError, match="entry-point name"):
+        layer.prepare_layer(plugin_layer(plugins={"sircl": "1.0.0"}), parent_lock, layer.root_reader(root),
+                            tmp_path / "builtin")
+
+
+def test_a_v1_or_v2_parent_keeps_its_plan_and_lock_whether_or_not_the_layer_declares_plugins(tmp_path):
+    """A v2 lock cannot list plugins: declaring them changes neither the build context nor the derived lock."""
+    outputs = []
+    for name, code in (("declared", plugin_layer()), ("undeclared", plugin_layer(plugins={}))):
+        root, lock = code_parent(tmp_path / name, {"/opt/app/a.py": b"a\n"})
+        result = layer.prepare_layer(code, lock, layer.root_reader(root), tmp_path / name / "context")
+        context = Path(result["context"])
+        files = {str(path.relative_to(context)): path.read_bytes() for path in sorted(context.rglob("*"))
+                 if path.is_file()}
+        derived = layer.derived_lock(plan_of(result), {"Id": "sha256:" + "9" * 64, "Size": 1}, "dev-derived")
+        outputs.append((files, json.dumps(derived, sort_keys=True)))
+        assert "plugins" not in plan_of(result)
+        assert set(derived) == installer_image.FIELDS[installer_image.SCHEMA]
+    assert outputs[0] == outputs[1]
+
+
+def v3_record_run(commands, probe):
+    def run(command, text=True):
+        commands.append(command)
+        if command[1:3] == ["image", "inspect"]:
+            return subprocess.CompletedProcess(command, 0, json.dumps([{"Id": "sha256:" + "9" * 64, "Size": 7}]))
+        if "python3" in command and layer.PLUGIN_PROBE in command:
+            return subprocess.CompletedProcess(command, 0, json.dumps(probe) + "\n")
+        return subprocess.CompletedProcess(command, 0, "")
+    return run
+
+
+def test_record_of_a_v3_lock_probes_its_plugins_checks_the_kept_layers_and_admits_the_v2_view(tmp_path,
+                                                                                             monkeypatch):
+    from runtime.common import libsircl, transport
+    root, parent_lock = v3_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    context = Path(layer.prepare_layer(plugin_layer(), parent_lock, layer.root_reader(root),
+                                       tmp_path / "context")["context"])
+    commands, admitted, checked = [], [], []
+    monkeypatch.setattr(installer_image, "admit",
+                        lambda value, *, run, profile: admitted.append((value["schema"], value["name"], profile)))
+    monkeypatch.setattr(transport, "check_layer",
+                        lambda image, receipt, block, *, run: checked.append(("sircl", image, receipt, block)))
+    monkeypatch.setattr(libsircl, "check_layer",
+                        lambda image, receipt, block, *, run: checked.append(("libsircl", image, receipt, block)))
+    output = tmp_path / "lock.json"
+    run = v3_record_run(commands, [["fixture_plugin", "1.2.0"], ["sparkring_status", "0.3.4"]])
+    summary = layer.record(context, "sha256:" + "9" * 64, "dev-derived", output, run=run)
+    written = json.loads(output.read_text())
+    assert written["schema"] == image_lock.SCHEMA_V3 and written["vllm_plugins"] == {"fixture_plugin": "1.2.0"}
+    assert written["sircl"] == parent_lock["sircl"] and written["libsircl"] == parent_lock["libsircl"]
+    assert summary["vllm_plugins"] == {"fixture_plugin": "1.2.0"} and summary["carried_layers"] == ["libsircl", "sircl"]
+    # Admission reads the v2 fields of the lock, for every profile it lists.
+    assert admitted == [(installer_image.SCHEMA, "dev-derived", profile) for profile in parent_lock["profiles"]]
+    # The kept layers are checked against the built image's own external-base receipt.
+    assert [(kind, image, receipt) for kind, image, receipt, _ in checked] == [
+        ("sircl", written["image_id"], written["parent_receipt_sha256"]),
+        ("libsircl", written["image_id"], written["parent_receipt_sha256"])]
+    assert summary["serving_qualified"] is False
+
+
+@pytest.mark.parametrize("probe, message", [
+    ([["sparkring_status", "0.3.4"]], "fixture_plugin at no version"),
+    ([["fixture_plugin", "1.1.0"]], r"fixture_plugin at \['1.1.0'\], expected 1.2.0"),
+    ([["fixture_plugin", "1.2.0"], ["fixture_plugin", "1.2.0"]], "expected 1.2.0"),
+])
+def test_record_refuses_a_v3_image_that_does_not_register_a_declared_plugin(tmp_path, monkeypatch, probe, message):
+    root, parent_lock = v3_parent(tmp_path, {"/opt/app/a.py": b"a\n"})
+    context = Path(layer.prepare_layer(plugin_layer(), parent_lock, layer.root_reader(root),
+                                       tmp_path / "context")["context"])
+    monkeypatch.setattr(installer_image, "admit", lambda value, *, run, profile: None)
+    output = tmp_path / "lock.json"
+    with pytest.raises(ValueError, match=message):
+        layer.record(context, "sha256:" + "9" * 64, "dev-derived", output, run=v3_record_run([], probe))
+    assert not output.exists()
 
 
 def transport_fixture(tmp_path, proxy=b"// paced proxy\n"):

@@ -1027,15 +1027,23 @@ def admit_layer(lock, *, run):
     if lock["transport"].get("backend") == LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.admit_layer(lock, run=run)
+    return check_layer(lock["selection"]["image_id"], lock["image_runtime"]["parent_receipt_sha256"],
+                       lock["transport"]["sircl"], run=run)
+
+
+def check_layer(image, parent_receipt_sha256, sircl, *, run):
+    """Verify image ``image``'s SIRCL layer against an image lock's ``sircl`` block (``admit_layer``).
+
+    ``parent_receipt_sha256`` is the SHA-256 of the external-base receipt that
+    the image's lock records. The image-layer builders call it on a derived
+    image that keeps its parent's SIRCL layer.
+    """
     from runtime.common import installer_image
-    value = lock["transport"]
-    sircl = value["sircl"]
-    image = lock["selection"]["image_id"]
     isolated = ["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--network", "none",
                 "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--entrypoint", "/bin/cat",
                 image]
     raw = run([*isolated, installer_image.PARENT_RECEIPT], text=False).stdout
-    _require(hashlib.sha256(raw).hexdigest() == lock["image_runtime"]["parent_receipt_sha256"],
+    _require(hashlib.sha256(raw).hexdigest() == parent_receipt_sha256,
              "The image's external-base receipt differs from its lock")
     files = json.loads(raw)["files"]
     layer_raw = run([*isolated, image_lock.LAYER_RECEIPT], text=False).stdout

@@ -245,3 +245,47 @@ def test_a_libsircl_layer_that_disagrees_with_itself_is_refused(edit, message):
     edit(block)
     with pytest.raises(ValueError, match=message):
         image_lock.validate_libsircl(block)
+
+
+# vLLM general plugins a derived layer added, an optional block of a v3 lock.
+
+PLUGINS = {"glm53full_speedups": "1.1.0", "glm_dsa_indexer_split": "1.1.0"}
+
+
+def test_a_v3_lock_lists_its_added_plugins_and_v1_v2_locks_list_none():
+    value = libsircl_lock(vllm_plugins=dict(PLUGINS))
+    assert image_lock.validate(value, "qwen38-flash-next-tp2") is value
+    assert image_lock.vllm_plugins(value) == PLUGINS and set(image_lock.v2_view(value)) == installer_image.FIELDS[
+        installer_image.SCHEMA]
+    assert image_lock.vllm_plugins(sircl_lock()) == {} and "vllm_plugins" not in sircl_lock()
+    assert image_lock.vllm_plugins(installer_image.default_lock()) == {}
+
+
+@pytest.mark.parametrize("plugins", [{}, {"sircl": "0.3.0"}, {"b12x_loader": "1.0.0"}, {"glm53full_speedups": "1.1"},
+                                     {"Glm-Split": "1.0.0"}, ["glm53full_speedups"]])
+def test_a_v3_lock_whose_added_plugins_are_malformed_or_built_in_is_refused(plugins):
+    with pytest.raises(ValueError, match="added vLLM plugins"):
+        image_lock.validate(sircl_lock(vllm_plugins=plugins), "qwen38-flash-next-tp2")
+
+
+def test_a_profile_that_loads_added_plugins_runs_only_on_a_lock_that_lists_them(monkeypatch):
+    environment = {"VLLM_PLUGINS": "b12x_loader,sparkring_status,sircl,glm_dsa_indexer_split,glm53full_speedups"}
+    monkeypatch.setattr(installer_image, "profile_environment", lambda profile: environment)
+    assert image_lock.required_plugins(TP8) == ["glm_dsa_indexer_split", "glm53full_speedups"]
+    carried = with_eight_spark_profiles(vllm_plugins=dict(PLUGINS))
+    assert image_lock.plugin_problem(carried, TP8) is None and image_lock.for_profile(TP8, carried) is carried
+    partial = with_eight_spark_profiles(vllm_plugins={"glm_dsa_indexer_split": "1.1.0"})
+    with pytest.raises(ValueError, match=f"{TP8} loads the vLLM plugins glm53full_speedups .* its lock lists "
+                                         "glm_dsa_indexer_split 1.1.0"):
+        image_lock.for_profile(TP8, partial)
+    with pytest.raises(ValueError, match="glm_dsa_indexer_split, glm53full_speedups .* no added vLLM plugin"):
+        image_lock.for_profile(TP8, with_eight_spark_profiles())
+    # A v1 or v2 lock lists no added plugin, so the shared image is refused as well.
+    with pytest.raises(ValueError, match="qwen38-flash-next-tp2 loads the vLLM plugins"):
+        image_lock.for_profile("qwen38-flash-next-tp2")
+
+
+def test_profiles_that_load_only_built_in_plugins_need_no_added_plugin():
+    for profile in (*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY):
+        if not image_lock.required_plugins(profile):
+            assert image_lock.plugin_problem(sircl_lock(), profile) is None
