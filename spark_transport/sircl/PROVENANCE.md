@@ -28,7 +28,7 @@ Blob ids below are `git rev-parse <commit>:<path>` of the origin file.
 
 | File | Origin |
 |---|---|
-| `__init__.py`, `env.py`, `protocol.py`, `routes.py`, `agreement.py`, `build.py`, `pieces.py`, `cpus.py`, `references.py`, `bounds.py` | new |
+| `__init__.py`, `env.py`, `protocol.py`, `routes.py`, `agreement.py`, `build.py`, `pieces.py`, `cpus.py`, `references.py`, `bounds.py`, `teardown.py` | new |
 | `groups.py` | new; reproduces vLLM's rank layout (read from vLLM `distributed/parallel_state.py`) |
 | `roce_gid.py` | new; imports SparkRing's resolver `integrations/vllm/spark_roce_gid.py` and re-exports it, so the package carries no copy of it |
 | `oneshot/__init__.py`, `oneshot/_compile.py` | new; `make_pointer` prefers b12x's runtime pointer wrapper (`b12x/_lib/utils.py`) when b12x is installed |
