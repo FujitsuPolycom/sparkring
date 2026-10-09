@@ -7,6 +7,12 @@ links to the exact measured configurations.
 serving and transport. Each record identifies the measured configuration;
 the [profile catalog](../profiles/README.md) lists deployment options.
 
+The [enhancement catalog](enhancements.json) lists every speed, memory and
+startup enhancement once, with the models and sizes it applies to, how to
+enable it, the images that carry it and its measured gain with evidence;
+[enhancements.md](enhancements.md) is its generated per-model view. Check a
+deployment against it with `python scripts/check_enhancements.py PROFILE`.
+
 Public model-throughput summaries link to their evidence records. Normalized
 profile records support qualified summaries; explicitly labeled single-run
 records may support research-only observations. Functional checks alone do not establish throughput. Each summary must
@@ -16,6 +22,7 @@ identify the measurements supporting it.
 
 | Path | Purpose |
 |---|---|
+| `enhancements.json` | Enhancement catalog (`sparkring-enhancements/v1`); `scripts/generate_enhancements.py` renders `enhancements.md` from it |
 | `harnesses/acceptance/` | Installer profile acceptance: optional installation, functional checks, correctness screen, throughput, and a drafted evidence record |
 | `harnesses/bench/` | Python programs and tests for roofline, collective-attribution, and expert-bitwidth accounting |
 | `harnesses/q2r_phase_timing/` | CUDA-event phase timing and the optional Q-to-route probe bridge |

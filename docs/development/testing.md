@@ -13,10 +13,11 @@ python scripts/check_markdown_links.py .
 python scripts/check_release_safety.py .
 ```
 
-The structural check validates profiles, generated exports, references, frozen
-release bytes, locked source-image profile assets (including Markdown),
-image-builder paths, managed-service source dependencies and
-maintained imports. It does not need Docker, a GPU, network access or model files.
+The structural check validates profiles, generated exports, references, the
+[enhancement catalog](../../performance/enhancements.json) and its generated
+view (`python scripts/generate_enhancements.py --check`), frozen release
+bytes, locked source-image profile assets (including Markdown), image-builder
+paths, managed-service source dependencies and maintained imports. It does not need Docker, a GPU, network access or model files.
 The link and secret scanners inspect tracked files; stage intended additions
 before running them. Review prose meaning manually using the
 [writing policy](writing.md); CI does not enforce a prose-quality score or

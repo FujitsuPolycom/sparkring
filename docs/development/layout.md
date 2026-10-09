@@ -17,7 +17,7 @@
 | `docs/operations/` | Shared host prerequisites, deployment and validation procedures |
 | `docs/development/` | Contribution, configuration, testing and maintenance contracts |
 | `docs/history/` | Explicitly retired deployment guides |
-| `performance/` | Harnesses, methodology, immutable receipts and measured findings |
+| `performance/` | Harnesses, methodology, immutable receipts and measured findings, including the [enhancement catalog](../../performance/enhancements.json) of every enhancement's settings and measured gain |
 | `experiments/` | Prototype index and admission boundary |
 | `third_party/` | Vendored source, licenses and provenance |
 | `scripts/` | User/developer entry points and existing deployment adapters |

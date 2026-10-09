@@ -22,6 +22,9 @@ Find the page for what you want to do.
 - [Install reference](operations/install-reference.md): serving settings,
   checkpoints, [two models on one ring](operations/install-reference.md#two-models-on-one-ring),
   storage and security.
+- [Enhancements by model](../performance/enhancements.md): every speed
+  enhancement, how to enable it and its measured gain; check a deployment
+  with `python scripts/check_enhancements.py PROFILE`.
 
 ## Troubleshoot
 
