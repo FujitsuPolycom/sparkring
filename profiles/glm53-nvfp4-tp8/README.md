@@ -38,8 +38,10 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer and lists the vLLM plugins
 `glm_dsa_indexer_split`, `glm53full_speedups` and `glm_dcp_decode_comm` in
-`vllm_plugins`. No lock in this package does. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
-adds the three plugins to the SIRCL 0.3.0 and libsircl image and writes such a
+`vllm_plugins`. The package carries two such locks, of the SIRCL 0.3.1, libsircl
+and GLM-5.3 plugin image `27e9f75c0d09` ([image record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md)), for
+Sparks that hold that image. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
+adds the three plugins to a SIRCL and libsircl image and writes such a
 lock from that image's v3 lock
 ([derived layers](../../runtime/images/installer-images.md#derived-layers)).
 `sparkring install` refuses a lock without the plugins, because vLLM would
