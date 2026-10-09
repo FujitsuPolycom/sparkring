@@ -2895,3 +2895,21 @@ def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported
     result = json.loads(out.out)
     assert (result["recovery"], result["auto_recover"]) == (expected, False)
     assert "  Recovery:    " + line in out.err
+
+
+def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatch):
+    """The catalog's checks run on rank 0's rendered container (catalog_warnings), so a configuration the
+    catalog names as slow is printed before the installation starts."""
+    from runtime.common.container_spec import ContainerSpec
+    rendered = {"command": ("serve", "/models/target", "--quantization-config", '{"linear":"mxfp8"}')}
+
+    def specifications(lock, *, only_rank=None, **kwargs):
+        return [ContainerSpec(name="rank0", image_id="sha256:" + "a" * 64, entrypoint=("vllm",),
+                              command=rendered["command"], environment={"VLLM_PLUGINS": "b12x_loader"}, mounts=())]
+    monkeypatch.setattr(installer, "specifications", specifications)
+    lock = {"backend": "compose"}
+    warnings = flow.catalog_warnings(lock)
+    assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit: MXFP8 or NVFP4 dense linears")
+    rendered["command"] += ("--linear-backend", "b12x")
+    assert flow.catalog_warnings(lock) == []
+    assert flow.catalog_warnings({"backend": "glm-mesh"}) == [] and flow.catalog_warnings(None) == []

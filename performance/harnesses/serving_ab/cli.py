@@ -17,6 +17,7 @@ if str(ROOT) not in sys.path:
 from performance.harnesses.serving_ab import measure, remote, report, setlock, spec, verify  # noqa: E402
 from runtime.common import compose, image_lock, qwen_flash_next  # noqa: E402
 from runtime.common.container_spec import docker_create  # noqa: E402
+from scripts import check_enhancements  # noqa: E402
 
 SIRCL = ROOT / "spark_transport" / "sircl"
 if str(SIRCL) not in sys.path:
@@ -239,6 +240,17 @@ def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) 
     return deviations, applied
 
 
+def catalog_warnings(commands: dict) -> list[str]:
+    """The enhancement catalog's check warnings (scripts/check_enhancements.py) on each arm's rank-0 command,
+    such as MXFP8 or NVFP4 dense linears without --linear-backend, which run on a slow default kernel."""
+    found = set()
+    for ranks in commands.values():
+        tokens = ranks[0]
+        found.update(check_enhancements.setting_warnings(spec.environment(tokens),
+                                                         tokens[spec.image_index(tokens) + 1:]))
+    return sorted(found)
+
+
 def build_plan(args) -> dict:
     site = remote.load_site(args.site)
     positions = positions_of(args.positions)
@@ -310,6 +322,7 @@ def build_plan(args) -> dict:
                                      positions=positions, roce_slot=args.roce_slot, extra_env=extra)
                 for arm in arms}
     arguments = list(profile["vllm_args"])
+    warnings = catalog_warnings(commands)
     return {"schema": "serving-ab-plan/v1", "profile": args.profile, "config": str(config_path.relative_to(ROOT)),
             "model": served["model"], "served_model_name": served["served_model_name"], "image": view["image_id"],
             "image_lock": {"path": args.image_lock, "name": lock["name"],
@@ -317,7 +330,7 @@ def build_plan(args) -> dict:
             "positions": positions, "sparks": [s.name for s in sparks], "api": f"http://{master}:{arg_value(arguments, '--port')}",
             "port": int(arg_value(arguments, "--port")), "context_limit": int(arg_value(arguments, "--max-model-len")),
             "order": [list(item) for item in order_of(args.order)], "metrics": args.metrics, "arms": arms,
-            "dcp": dcp, "deviations": deviations, "arm_notes": notes, "overrides": applied,
+            "dcp": dcp, "deviations": deviations, "arm_notes": notes, "warnings": warnings, "overrides": applied,
             "checkpoints": checkpoints, "caches": caches, "seccomp": {"path": seccomp, "sha256": seccomp_sha}, "sircl_env": extra, "roce_slot": args.roce_slot,
             "bundles": {arm: {"run_id": b["run_id"], "nccl": b["nccl"], "tuning": b.get("tuning"),
                               "remote": b["remote"]} for arm, b in bundles.items()},
@@ -333,6 +346,8 @@ def print_plan(plan: dict) -> None:
         print(f"deviation from the profile: {deviation}")
     for note in plan.get("arm_notes", ()):
         print(f"arm note: {note}")
+    for warning in plan.get("warnings", ()):
+        print(f"WARNING: {warning}")
     print("checkpoints:")
     for c in plan["checkpoints"]:
         chosen = c["chosen"]

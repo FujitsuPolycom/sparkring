@@ -579,6 +579,18 @@ def transport_lines(lock, choice):
     return [transports.prepared_line(choice.get("reason"), choice.get("explicit"))]
 
 
+def catalog_warnings(lock):
+    """The enhancement catalog's check warnings for rank 0's rendered container (performance/enhancements.json
+    ``checks``, read by scripts/check_enhancements.py), such as MXFP8 or NVFP4 dense linears without
+    --linear-backend, which run on a slow default kernel. The plan prints them before anything starts; a lock
+    that the Compose backend does not render has none."""
+    if lock is None or lock.get("backend") != "compose":
+        return []
+    from scripts import check_enhancements
+    rank0 = installer.specifications(lock, only_rank=0)[0]
+    return check_enhancements.setting_warnings(rank0.environment, list(rank0.command))
+
+
 def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None):
     """Choose the deployment for this request, survey every Spark and plan its checkpoint.
 
@@ -1243,6 +1255,8 @@ def execute(args):
             print(line)
         for line in transport_lines(lock, choice):
             print(line)
+        for line in catalog_warnings(lock):
+            print("Warning: " + line)
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
                                                             else "start the selected model."))
         if lock is not None and lock.get("serving"):

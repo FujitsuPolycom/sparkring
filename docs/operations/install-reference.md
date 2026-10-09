@@ -146,6 +146,13 @@ port it uses ([API endpoint](#api-endpoint)); Enter keeps both. Setup
 signs in to each Spark once; that Spark's inventory identifies its other
 fabric functions and return paths.
 
+Before it asks, the plan prints a `Warning:` line for each check of the
+[enhancement catalog](../../performance/enhancements.md) (`checks` in
+`performance/enhancements.json`) that rank 0's rendered container meets, such
+as MXFP8 or NVFP4 dense linears without `--linear-backend`, which run on a
+slow default kernel. No catalog profile meets one; a warning names a changed
+setting to review before approving.
+
 ### What a run does
 
 It updates workers from Node A's package through a bundle of the package and

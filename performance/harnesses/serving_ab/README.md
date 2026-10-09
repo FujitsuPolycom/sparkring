@@ -83,7 +83,10 @@ full values under `overrides`.
 
 `plan` prints every rank's command of every arm and, for a SIRCL arm against
 `N`, the difference of rank 0's commands: the environment variables, mounts and
-any other token that differs.
+any other token that differs. It also prints a `WARNING:` line, and `plan.json`
+keeps it under `warnings`, for each check of the enhancement catalog
+(`checks` in `performance/enhancements.json`) that an arm's rank-0 command
+meets, such as MXFP8 or NVFP4 dense linears without `--linear-backend`.
 
 ## Memory before every start
 

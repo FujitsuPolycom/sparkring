@@ -306,3 +306,10 @@ def test_the_plan_states_that_arm_s_runs_a_fused_norm_the_profile_pins():
     assert cli.fused_norm_notes(glm["environment"], ["S+", "N"]) == []
     qwen, _ = cli.profile_config("qwen38-flash-next-tp2")
     assert cli.fused_norm_notes(qwen["environment"], ["S", "S+"]) == []
+
+
+def test_the_plan_warns_of_quantized_linears_without_a_linear_backend():
+    quantized = base(0) + ["--quantization-config", '{"linear":"mxfp8"}']
+    warnings = cli.catalog_warnings({"S+": [quantized], "N": [quantized]})
+    assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit:")
+    assert cli.catalog_warnings({"S+": [quantized + ["--linear-backend", "b12x"]]}) == []
