@@ -371,6 +371,9 @@ def text(verdict):
     if verdict.get("backend") == transport.LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.verdict_text(verdict)
+    if verdict.get("backend") == "nccl":
+        # The nccl transport writes no SIRCL receipts; its verdict names the backend only.
+        return "Transport: nccl"
     if verdict["verdict"] == "unknown":
         return (f"Transport: sircl; receipts could not be read from every Spark ({verdict['problems'][0]}); "
                 "sudo sparkring check repeats the check")

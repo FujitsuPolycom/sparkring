@@ -99,8 +99,9 @@ def run(on=None, *, client=None, say=print):
             checked = {"ok": False, "error": str(error), "checks": [], "passed": 0, "failed": 0, "skipped": 0}
             say(f"  functional checks could not run: {error}")
         verdict = transport_check(directory, lock, cache=cache)
-        if verdict.get("backend") == "prepared":
-            say("  Transport: prepared")
+        if verdict.get("backend") in ("prepared", "nccl"):
+            # Neither transport writes receipts, so there is no receipt verdict to judge.
+            say(f"  Transport: {verdict['backend']}")
         else:
             say("  " + (transport_receipts.text({"problems": ["no detail"], **verdict}) or "Transport: sircl"))
         ok = checked.get("ok", False) and verdict.get("verdict", "as-expected") == "as-expected"
