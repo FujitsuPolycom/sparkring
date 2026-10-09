@@ -424,7 +424,7 @@ serving image, pinned by the
 | Tag | `dev-20261004-kraken-cuda1342-nccl2323-status034` |
 | Configuration | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Base image | `eugr/spark-vllm-b12x` nightly-20261001, `sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052` |
-| vLLM and B12X | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
+| vLLM and B12X (Local Inference Lab's GB10 kernel library) | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
 
 The image adds two layers to that base: SparkRing's vLLM and B12X sources
 with its transports, features, SparkCache assets and runtime-status dashboard
@@ -460,11 +460,11 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, the default image among them | MTP3 |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, the default image among them | MTP, three tokens (MTP3) |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-csf-tp8` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef` | MTP3 |
+| `glm53-flash-csf-tp8` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef` | MTP, three tokens (MTP3) |
 | `glm53-nvfp4-tp8` | GLM-5.3 NVFP4, revision `b472e4ee53f6` | MTP, two tokens, probabilistic drafting |
 | `deepseek-v41-flash-tp8` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `qwen38-flash-next-qad-tp8` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` | MTP, three tokens, probabilistic drafting |
@@ -492,8 +492,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
   adds; it needs an image whose lock lists all three in `vllm_plugins`, and
   the installer refuses it on any other image.
-- All installer profiles run with SparkCache off and vLLM's native prefix
-  cache on.
+- All installer profiles run with vLLM's native prefix cache on and
+  SparkCache off. SparkCache is the external connector that keeps the prefix
+  KV cache on disk across restarts.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
   eight-Spark ring and only on SIRCL ring sessions. No image lock this
   package carries lists them: they install with `--image-lock FILE`, a

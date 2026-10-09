@@ -65,7 +65,9 @@ Thinking is the default for requests that don't set it: *on* (a request can
 turn it off) or *always*, and its effort. `--reasoning-effort LEVEL` and
 `--thinking off` change it per install ([details](docs/operations/install-reference.md#thinking)).
 
-SparkCache variants and models the installer doesn't cover have their own
+SparkCache variants, which keep the prefix KV cache on disk across restarts
+through the external SparkCache connector, and models the installer doesn't
+cover have their own
 guides in the [profile catalog](profiles/README.md).
 
 ## Documentation

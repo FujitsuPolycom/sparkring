@@ -51,7 +51,9 @@ and the shared memory-guard, private-input and launch steps in that quickstart.
 Use `CACHE_ARGS=(--sparkcache)` for cache on or `CACHE_ARGS=()` for cache off.
 Keep the R35 receipt; the primary quickstart otherwise selects R37.
 
-Both R35 modes use TP2/DCP1, MTP3, 1M context, mHC and two OMP threads.
+Both R35 modes use TP2/DCP1, three-token multi-token prediction (MTP3), 1M
+context, manifold-constrained hyper-connection (mHC) sharding and two OMP
+threads.
 The GLM-incompatible GDN decode selector is omitted. Cache on uses B12X loading,
 7.5 GiB KV and KDA coalescing; cache off uses InstantTensor, 8.75 GiB KV and
 no coalescing. See the [bounded cache-on evidence](../../performance/records/glm53-flash/r35-tp2-sparkcache.md)
