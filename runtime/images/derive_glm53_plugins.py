@@ -24,7 +24,7 @@ off until its own environment flags select it:
   the selection reuse and the fused all-to-all combine), with an audit mode
   that counts differing words against the image's computation
   (``GLM_DCP_DECODE_AUDIT=1``). Besides the image's ``vllm`` and ``b12x``
-  files it pins the SIRCL files it relies on to SIRCL 0.3.1: on a parent
+  files it pins the SIRCL files it relies on to SIRCL 0.3.2: on a parent
   whose SIRCL layer is another build it serves with its items off and
   refuses at startup when an item flag is on.
 

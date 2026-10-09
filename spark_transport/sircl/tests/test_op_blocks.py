@@ -153,6 +153,64 @@ def test_tune_candidates_cross_pieces_with_blocks_per_role():
         assert all("blocks" not in choice for choice, *_ in plain.tune_candidates("all_reduce", 8 << 20))
 
 
+class _TuneSession(_Session):
+    """``_Session`` with the calls the tune makes before its cases: ``prepare`` recorded."""
+
+    def __init__(self) -> None:
+        self.prepared: list[dict] = []
+
+    def prepare(self, dtypes, **keywords) -> None:
+        self.prepared.append({"dtypes": list(dtypes), **keywords})
+
+
+def test_the_tune_compiles_every_candidates_blocks_before_its_first_case(monkeypatch):
+    """A graph case captures its ops, and a launcher that is not compiled at the case's blocks per role refuses
+    the capture ("SIRCL chain all-reduce for torch.bfloat16 was not prepared before CUDA graph capture"): the
+    tune's first chain candidate on the cycle of eight runs at 1 block per role, and the session's own count is 4."""
+    from types import SimpleNamespace
+
+    events: list = []
+    session = _TuneSession()
+    tuned = harness(tune_collectives=["all_reduce", "all_gather", "reduce_scatter"], tune_modes=["graph"],
+                    tune_sizes=[262144, 1 << 20], tune_link_blocks=[1, 2, 4], tune_chain_blocks=[1, 2, 4],
+                    tune_prune=1.5, tune_prune_from=1 << 30)
+    tuned.session, tuned.nccl, tuned.process_group, tuned.devices, tuned.result = session, None, None, [], {"runs": []}
+    tuned.torch = SimpleNamespace(bfloat16="bfloat16")
+    tuned.dist = SimpleNamespace(barrier=lambda group=None: events.append("barrier"))
+
+    def run_case(name, mode, shape, dim, case, large=False, variant=None):
+        blocks = (variant or {}).get("chain_blocks") or (variant or {}).get("link_blocks")
+        if blocks:
+            kernel = worker.variant_kernel(name, variant)
+            prepared = {count for keywords in session.prepared
+                        for count in (keywords.get("op_blocks") or {}).get(kernel, ())}
+            events.append(("case", kernel, blocks, blocks in prepared, "barrier" in events))
+        return {"p50_us": 1.0}
+
+    monkeypatch.setattr(tuned, "run_case", run_case)
+    monkeypatch.setattr(tuned, "_group_p50", lambda record: 1.0)
+    monkeypatch.setattr(worker.counters, "snapshot", lambda devices: {})
+    monkeypatch.setattr(worker.counters, "delta", lambda before, after: {})
+    monkeypatch.setattr(worker.counters, "key_deltas", lambda delta: {})
+    tuned._run_tune()
+    cases = [event for event in events if isinstance(event, tuple)]
+    assert {(kernel, blocks) for _, kernel, blocks, _, _ in cases} == {
+        (kernel, blocks) for kernel in ("chain_reduce", "ring_reduce", "chain_gather", "ring_gather", "chain_scatter",
+                                        "ring_scatter") for blocks in (1, 2, 4)}
+    unprepared = [(kernel, blocks) for _, kernel, blocks, ready, _ in cases if not ready]
+    assert not unprepared, f"cases ran at blocks prepare was not given: {unprepared}"
+    assert all(after_barrier for *_, after_barrier in cases)
+    assert len(session.prepared) == 1 and session.prepared[0]["links"] is True
+    assert session.prepared[0]["op_blocks"] == tuned.tune_op_blocks()
+    # No candidate sets blocks: nothing to prepare, and no barrier.
+    plain = harness(tune_collectives=["all_reduce"], tune_sizes=[262144], tune_link_blocks=[0],
+                    tune_chain_blocks=[0])
+    plain.session = _TuneSession()
+    assert plain.tune_op_blocks() == {}
+    plain._prepare_tune()
+    assert plain.session.prepared == []
+
+
 def test_rotated_windows_stay_within_their_memory():
     rotated = harness(rotate_buffers=8)
     assert rotated._windows((1 << 19,), [1 << 19]) == 8                 # 2 MiB per window

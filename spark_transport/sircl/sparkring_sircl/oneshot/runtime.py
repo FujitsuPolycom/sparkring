@@ -1002,9 +1002,9 @@ class RoceOneshotAllReduce:
     def set_op_blocks(self, kernel: str, blocks: Optional[int]) -> None:
         """Blocks per role of later ops of one kernel (a link kernel of ``protocol.LINK_BLOCK_KERNELS``, or
         ``chain_reduce``, the chain all-reduce), over the session's and the environment's; None returns the
-        kernel to the session's. For a caller that fixes an op's blocks (the ring harness's forced rows and
-        ``tune`` candidates); every rank sets the same value before the same op, and an op in a CUDA graph
-        capture needs its launcher compiled before the capture."""
+        kernel to the session's. For a caller that fixes an op's blocks (the ring harness's ``tune``
+        candidates); every rank sets the same value before the same op, and an op in a CUDA graph capture needs
+        its launcher compiled at those blocks before the capture (``prepare(op_blocks=...)``)."""
         if kernel not in set(self.link_blocks) | {"chain_reduce"}:
             raise ValueError(f"kernels are {', '.join([*self.link_blocks, 'chain_reduce'])}, not {kernel!r}")
         if blocks is None:
@@ -1615,11 +1615,19 @@ class RoceOneshotAllReduce:
     # -- compilation --------------------------------------------------------------------
 
     def prepare(self, dtypes: Sequence[torch.dtype] = (torch.bfloat16,), *, padded_gather: bool = False,
-                algorithms: Optional[Sequence[str]] = None, scatter: bool = False, links: bool = False) -> None:
+                algorithms: Optional[Sequence[str]] = None, scatter: bool = False, links: bool = False,
+                op_blocks: Optional[Mapping[str, Sequence[int]]] = None) -> None:
         """Compile every launcher this session can need and allocate scratch, outside any capture.
 
         ``links`` also compiles the link collectives the configured schedules do not select (the chain
         all-gather and, with ``scatter``, the chain reduce-scatter), for schedules switched at run time.
+
+        A launcher is compiled for one number of blocks per role, and an op inside a CUDA graph capture
+        finds its launcher compiled or raises. The session's own blocks and every block count a tuning
+        table's choices run with are compiled here. ``op_blocks`` names the other counts a caller sets with
+        :meth:`set_op_blocks` before ops it captures (kernel -> counts; the kernels :meth:`set_op_blocks`
+        takes, the counts 1 to 64): every named kernel this session can run is compiled at each count, for
+        every dtype of ``dtypes`` it reduces in. The ring harness's tune passes the blocks of its candidates.
 
         The two-shot launcher is compiled for every dtype whenever the two-shot
         all-reduce is available, because ``all_reduce_large`` uses it at any
@@ -1627,6 +1635,7 @@ class RoceOneshotAllReduce:
         """
         if torch.cuda.is_current_stream_capturing():
             raise RuntimeError("SIRCL prepare() is refused inside a CUDA graph capture")
+        requested = self._requested_blocks(op_blocks)
         unknown = sorted(set(algorithms or ()) - set(ALGORITHMS))
         if unknown:
             raise ValueError(f"unknown all-reduce algorithms {unknown}")
@@ -1671,6 +1680,16 @@ class RoceOneshotAllReduce:
                 finally:
                     self._op_blocks.clear()
                     self._op_blocks.update(saved_blocks)
+            # And every block count the caller will set before ops it captures.
+            for kernel, counts in requested.items():
+                for blocks in counts:
+                    saved_blocks = dict(self._op_blocks)
+                    self._op_blocks[kernel] = blocks
+                    try:
+                        self._prepare_kernel(kernel, dtypes)
+                    finally:
+                        self._op_blocks.clear()
+                        self._op_blocks.update(saved_blocks)
             if scatter and self.scatter_available:
                 _scatter_ops.prepare(self, dtypes)
             if self.poll_rate_per_s is None:
@@ -1740,6 +1759,44 @@ class RoceOneshotAllReduce:
                     self._ring_launcher("scatter", dtype, capturing=False)
             if self.max_gather_bytes > 0:
                 self._ring_launcher("gather", None, capturing=False)
+
+    def _requested_blocks(self, op_blocks: Optional[Mapping[str, Sequence[int]]]) -> dict[str, tuple[int, ...]]:
+        """``prepare``'s ``op_blocks`` checked: kernel -> its distinct counts, increasing; ValueError for a kernel
+        :meth:`set_op_blocks` does not take or a count outside 1 to 64."""
+        kernels = (*self.link_blocks, "chain_reduce")
+        found: dict[str, tuple[int, ...]] = {}
+        for kernel, counts in (op_blocks or {}).items():
+            if kernel not in kernels:
+                raise ValueError(f"op_blocks names kernels of {', '.join(kernels)}, not {kernel!r}")
+            if isinstance(counts, (int, str)) or any(isinstance(b, bool) or not isinstance(b, int) or not 1 <= b <= 64
+                                                     for b in counts):
+                raise ValueError(f"op_blocks of {kernel} are counts of blocks per role from 1 to 64, got {counts!r}")
+            found[kernel] = tuple(sorted(set(counts)))
+        return found
+
+    def _prepare_kernel(self, kernel: str, dtypes: Sequence[torch.dtype]) -> None:
+        """Compile ``kernel``'s launchers (``chain_reduce``, or a link kernel of ``link_blocks``) at the current
+        blocks, for every dtype of ``dtypes`` it reduces in; a kernel this session cannot run needs none."""
+        if kernel == "chain_reduce":
+            if self.chain_available:
+                for dtype in dtypes:
+                    self._chain_launcher(dtype, capturing=False)
+            return
+        schedule, collective = kernel.split("_", 1)
+        if not (self.link_available if schedule == "chain" else self.ring_available):
+            return
+        if collective == "gather":
+            if self.max_gather_bytes > 0:
+                if schedule == "chain":
+                    self._gather_chain_launcher(capturing=False)
+                else:
+                    self._ring_launcher("gather", None, capturing=False)
+            return
+        for dtype in dtypes:
+            if schedule == "chain":
+                self._scatter_chain_launcher(dtype, capturing=False)
+            else:
+                self._ring_launcher(collective, dtype, capturing=False)
 
     def _table_block_overrides(self) -> list[dict[str, int]]:
         """The distinct op blocks the tuning table's choices set (``_choice_blocks``), for ``prepare``."""

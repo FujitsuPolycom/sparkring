@@ -76,7 +76,7 @@ flags (`GLM_DCP_DECODE_QUERY_PACK`, `GLM_DCP_DECODE_OVERLAP`,
 `GLM_DCP_DECODE_WK_OVERLAP`, `GLM_DCP_DECODE_SELECTION_REUSE` and
 `GLM_DCP_DECODE_A2A_FUSED`) to `0`; with every item off, its registration
 patches nothing. Turning the items on is research-only: the plugin pins
-SIRCL 0.3.1 and refuses at startup on any other SIRCL build, its
+SIRCL 0.3.2 and refuses at startup on any other SIRCL build, its
 qualification is a run with the five flags and `GLM_DCP_DECODE_AUDIT=1`, and
 no measurement of its effect on this profile exists.
 

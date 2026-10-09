@@ -25,8 +25,8 @@ and on a package that differs from this one in its SIRCL pins, the import
 hook's recursion guard (`PatchOnImport.find_spec`), one refusal message and
 documentation, with check scripts that differ in module names and in the
 loader's lookup of the image sources. The CPU suite covers both package code
-changes and passes against SIRCL 0.3.1 ("Pins" lists what that release
-changes in the pinned files). No measurement of the plugin's effect on decode
+changes and passes against SIRCL 0.3.2 ("Pins" lists what 0.3.1 and 0.3.2
+change in the pinned files). No measurement of the plugin's effect on decode
 step time exists.
 
 ## Requirements
@@ -135,19 +135,23 @@ registration order.
 The pins describe two builds:
 
 - the image's vLLM and b12x files: serving image `816c6d6a7e96`;
-- SIRCL: package version 0.3.1, SparkRing's
+- SIRCL: package version 0.3.2, SparkRing's
   [`spark_transport/sircl/sparkring_sircl`](../../../spark_transport/sircl/sparkring_sircl)
-  at commit `694b94c2` (Git tree `e21f5f3b587a` of `sparkring_sircl`;
-  ring-session tree `ed8209a3a698` by the SIRCL sync tool's digest).
+  (Git tree `7b40507046a3` of `sparkring_sircl`; ring-session tree
+  `7e63930d15a6` by the SIRCL sync tool's digest).
 
 Against SIRCL 0.3.0 (image `816c6d6a7e96`), 0.3.1 changes five of the 17
 pinned files: the version in `__init__.py`; aligned working buffers around
 the public ops of `oneshot/runtime.py` and `oneshot/_scatter_ops.py` for a
 rank whose pointers are not 16-byte aligned; the library's local feature
-identity in `oneshot/_roce_proxy.c`; and a comment in `vllm/executor.py`. No
-attribute the plugin reads, no statement its kernel restates and no op code
-it relies on changes (`tests/test_dcp_decode_interfaces.py` reads them from
-the pinned source).
+identity in `oneshot/_roce_proxy.c`; and a comment in `vllm/executor.py`.
+0.3.2 changes three: the version in `__init__.py`; `oneshot/runtime.py`,
+whose `prepare` also compiles the blocks per role a caller names
+(`op_blocks`); and `vllm/adapter.py`, which reads the tensor-parallel slot's
+limits from its `size_limits` record. In neither release does an attribute
+the plugin reads, a statement its kernel restates or an op code it relies on
+change (`tests/test_dcp_decode_interfaces.py` reads them from the pinned
+source).
 
 The CPU suite checks the SIRCL pins against this checkout's SIRCL tree when
 that tree's version is `SIRCL_VERSION`, so a change to a pinned file of that

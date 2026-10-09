@@ -1319,6 +1319,156 @@ def _launcher_at(session: Any, kernel: str, blocks: int, dtype: Any) -> None:
         session.set_op_blocks(kernel, None)
 
 
+def _tune_harness(group: EmulatedGroup, options: dict, rank: int = 0):
+    """Rank ``rank``'s ``ring.worker.Harness`` with ``options`` on the emulated group, built without its setup."""
+    from ..ring import worker
+
+    session = group.sessions[rank]
+    harness = worker.Harness.__new__(worker.Harness)
+    harness.__dict__.update(
+        session=session, world=group.world, rank=rank, global_rank=rank, group_index=0, tp_session=None,
+        tp_world=group.world, devices=[], dist=None, process_group=None, nccl=None, swing_through=None,
+        scatter_through="session" if session.scatter_available else None, torch=group.torch, device=session.device,
+        options=options, result={"runs": []}, _adapter=None, _adapter_times=[], mismatches=0)
+    return harness
+
+
+def _tune_capture_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
+    """The ring harness's tune candidates in CUDA graphs, as its graph cases run them.
+
+    The tune sets each chain and ring candidate's blocks per role with ``set_op_blocks`` and captures its ops, and a
+    launcher compiled at other blocks refuses the capture. Rank 0's harness names the blocks its candidates set
+    (``Harness.tune_op_blocks``: the all-reduce, the all-gather and, with the scatter collectives, the
+    reduce-scatter at 256 KiB per rank, blocks per role 1, 2 and 4 as far as :func:`resident_role_cap` keeps
+    every rank's grid resident). First, before any preparation at those blocks, a capture-time lookup of a
+    launcher at a count none compiled raises (on the cycle of eight the tune's first chain candidate runs at 1
+    block per role, and the session's own count is 4); a count compiled already (the session's own, or an
+    earlier check's) is skipped. Then every
+    session is prepared with them (``prepare(op_blocks=...)``, as ``Harness._prepare_tune`` does), and per kernel
+    and blocks every session runs the kernel's collective under the schedule that selects it, captured one rank
+    after another and replayed for two inputs, every output bit for bit against its reference."""
+    torch = group.torch
+    session0 = group.sessions[0]
+    world, order, bf16 = group.world, session0.chain_order, torch.bfloat16
+    if not (session0.chain_available or session0.link_available or session0.ring_available):
+        return [("tune candidates in CUDA graphs", True, "no chain or ring kernel here")]
+    multiprocessors = torch.cuda.get_device_properties(0).multi_processor_count
+    counts = [b for b in (1, 2, 4) if b <= resident_role_cap(world, multiprocessors)]
+    collectives = ["all_reduce", "all_gather"] + (["reduce_scatter"] if session0.scatter_available else [])
+    options = {"tune_collectives": collectives, "tune_sizes": [256 << 10], "tune_grids": [], "tune_pieces": [65536],
+               "tune_staggers": [0], "tune_large_from": 65536, "tune_link_blocks": counts, "tune_chain_blocks": counts}
+    blocks = _tune_harness(group, options).tune_op_blocks()
+    results = []
+
+    def lookup(session, kernel: str) -> None:
+        if kernel == "chain_reduce":
+            session._chain_launcher(bf16, True)
+        elif kernel == "chain_gather":
+            session._gather_chain_launcher(True)
+        elif kernel == "chain_scatter":
+            session._scatter_chain_launcher(bf16, True)
+        else:
+            mode = kernel.split("_", 1)[1]
+            session._ring_launcher(mode, None if mode == "gather" else bf16, True)
+
+    refused, skipped = [], []
+    for kernel, wanted in blocks.items():
+        for count in wanted:
+            session0.set_op_blocks(kernel, count)
+            try:
+                lookup(session0, kernel)
+                skipped.append(f"{kernel} {count}")
+            except RuntimeError as error:
+                refused.append(f"{kernel} {count}: {error}")
+            finally:
+                session0.set_op_blocks(kernel, None)
+    first = next((line for line in refused if line.startswith("chain_reduce ")), refused[0] if refused else "")
+    results.append(("tune candidates in CUDA graphs: a capture at blocks prepare was not given refuses",
+                    all("was not prepared before CUDA graph capture" in line for line in refused),
+                    f"{len(refused)} refused, e.g. {first}" + (f"; compiled already: {', '.join(skipped)}"
+                                                                if skipped else "")))
+    for rank, session in enumerate(group.sessions):
+        with torch.cuda.stream(group.streams[rank]):
+            session.prepare((bf16,), links=True, op_blocks=blocks)
+    group.load_modules([bf16])
+    cases = {
+        "chain_reduce": ("reduce", {"large_schedule": "chain"}, ((256 << 10) // 2 + world * 8,)),
+        "ring_reduce": ("reduce", {"large_schedule": "ring"}, ((world * 16 * 1024 + world * 16 * 3),)),
+        "chain_gather": ("gather", {"gather_schedule": "chain"}, (64, 1024)),
+        "ring_gather": ("gather", {"gather_schedule": "ring"}, (64, 1024)),
+        "chain_scatter": ("scatter", {"scatter_schedule": "chain"}, (world * 32, 1024)),
+        "ring_scatter": ("scatter", {"scatter_schedule": "ring"}, (world * 32, 1024)),
+    }
+    names = ("large_schedule", "gather_schedule", "scatter_schedule")
+
+    def operation(kind: str):
+        def call(session, x):
+            if kind == "reduce":
+                return session.all_reduce_large(x)
+            if kind == "gather":
+                return session.all_gather_large(x, dim=0)
+            return session.reduce_scatter(x)
+        return call
+
+    for seed, (kernel, wanted) in enumerate(blocks.items(), start=3300):
+        kind, schedule, shape = cases[kernel]
+        for count in wanted:
+            label = f"tune candidates in CUDA graphs: {kernel} at {count} blocks per role {list(shape)}"
+            saved = [{name: getattr(session, name) for name in names} for session in group.sessions]
+            graphs, wrong = [], []
+            try:
+                with contextlib.ExitStack() as stack:
+                    for session in group.sessions:
+                        stack.enter_context(session.untuned())
+                        for name, value in schedule.items():
+                            setattr(session, name, value)
+                        session.set_op_blocks(kernel, count)
+                    # Captures run one rank after another (see _graph_check).
+                    for rank, session in enumerate(group.sessions):
+                        with torch.cuda.stream(group.streams[rank]):
+                            x = torch.zeros(shape, dtype=bf16, device=session.device)
+                            graph = torch.cuda.CUDAGraph()
+                            with session.capture():
+                                with torch.cuda.graph(graph, stream=group.streams[rank]):
+                                    y = operation(kind)(session, x)
+                        graphs.append((x, y, graph))
+                    for replay_seed in (seed * 10, seed * 10 + 1):
+                        inputs = _inputs(torch, world, shape, bf16, replay_seed)
+                        if kind == "reduce":
+                            plan = session0.large_reduce_plan(inputs[0].numel() * 2)
+                            want = [references.large_all_reduce(torch, inputs, plan, order)] * world
+                        elif kind == "gather":
+                            want = [torch.cat(inputs, dim=0)] * world
+                        else:
+                            build = (references.ring_reduce_scatter if kernel == "ring_scatter"
+                                     else references.chain_reduce_scatter)
+                            want = [row.reshape((shape[0] // world, *shape[1:])) for row in build(torch, inputs, order)]
+                        placed = _on_device(group, inputs)
+
+                        def replay(rank: int, session, placed=placed) -> None:
+                            graphs[rank][0].copy_(placed[rank])
+                            graphs[rank][2].replay()
+
+                        group.each(replay)
+                        timed_out = _timed_out(group)
+                        if timed_out:
+                            wrong.append(timed_out)
+                            break
+                        differ = [rank for rank in range(world)
+                                  if not _same_bits(torch, graphs[rank][1].cpu(), want[rank])]
+                        if differ:
+                            wrong.append(f"seed {replay_seed}: ranks {differ} differ")
+            except Exception as error:  # noqa: BLE001 - reported as a failed check
+                wrong.append(f"{type(error).__name__}: {error}")
+            finally:
+                for session, values in zip(group.sessions, saved):
+                    session.set_op_blocks(kernel, None)
+                    for name, value in values.items():
+                        setattr(session, name, value)
+            results.append((label, not wrong, "; ".join(wrong[:3]) if wrong else "2 replays, exact"))
+    return results
+
+
 def _mixed_blocks_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     """Consecutive ops of one kernel at different blocks per role (``set_op_blocks``, as a tuning table's
     choices run them): every chain and ring kernel this group has, ops back to back with the blocks changing
@@ -2062,12 +2212,13 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
                report: Callable[[tuple[str, bool, str]], None] | None = None,
                event_trace: int = 0,
                path_latency: tuple[int, int, int, int] | None = None,
-               column_gather_only: bool = False, alignment_only: bool = False) -> list[tuple[str, bool, str]]:
+               column_gather_only: bool = False, alignment_only: bool = False,
+               tune_capture_only: bool = False) -> list[tuple[str, bool, str]]:
     """Every collective of the session, eager and captured, against host references; with
     ``event_trace`` records, every session keeps an event trace (``SIRCL_EVENT_TRACE``, the traced
     chain kernel runs every chain op) and :func:`_trace_checks` checks one chain all-reduce's. With
-    ``column_gather_only`` or ``alignment_only``, only the column-gather or the alignment checks run after
-    preparing."""
+    ``column_gather_only``, ``alignment_only`` or ``tune_capture_only``, only the column-gather, the alignment or
+    the tune-capture checks run after preparing."""
     import torch
 
     if library is None:
@@ -2112,6 +2263,12 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
             return checks
         if alignment_only:
             for check in _alignment_checks(group):
+                checks.append(check)
+            healthy = [not session.poisoned for session in group.sessions]
+            checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
+            return checks
+        if tune_capture_only:
+            for check in _tune_capture_checks(group):
                 checks.append(check)
             healthy = [not session.poisoned for session in group.sessions]
             checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
@@ -2170,6 +2327,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         for check in _builtin_plan_checks(group):
             checks.append(check)
         for check in _mixed_blocks_checks(group):
+            checks.append(check)
+        for check in _tune_capture_checks(group):
             checks.append(check)
         for check in _stagger_checks(group):
             checks.append(check)
@@ -2374,10 +2533,45 @@ TUNE_PIECES = (65536, 131072)
 TUNE_LINK_SLOTS = 12
 
 
+class _RankCuda:
+    """``torch.cuda`` for one emulated rank's harness, with ``synchronize`` waiting for the rank's current stream."""
+
+    def __init__(self, cuda) -> None:
+        self._cuda = cuda
+
+    def __getattr__(self, name: str):
+        return getattr(self._cuda, name)
+
+    def synchronize(self, device=None) -> None:
+        self._cuda.current_stream().synchronize()
+
+
+class _RankTorch:
+    """``torch`` for one emulated rank's ``ring.worker.Harness``: everything is torch's, except that
+    ``torch.cuda.synchronize()`` waits for the rank's own stream.
+
+    On the ring a rank's GPU runs only that rank's work, so the harness's device synchronizations (after each
+    checked call, around the barrier before the timed calls) wait for the rank's own ops. Here every rank's ops
+    run on one GPU: a device synchronization in one rank's thread also waits for the collectives its peers
+    already launched, and those wait for this rank's next launch, which comes after the synchronization: neither
+    proceeds until the collective's wait limit poisons the session. A rank whose thread runs late after the
+    barrier before the timed calls meets this when its peers have already launched their first timed call."""
+
+    def __init__(self, torch) -> None:
+        self._torch = torch
+        self.cuda = _RankCuda(torch.cuda)
+
+    def __getattr__(self, name: str):
+        return getattr(self._torch, name)
+
+
 def _harness_tune(group: EmulatedGroup, options: dict) -> list[dict]:
     """Every rank's ``ring.worker.Harness._run_tune`` with ``options`` on the emulated group, eager (CUDA graph
     capture is per process, and these ranks share one), its ``torch.distributed`` calls among the threads;
-    each rank's result as the ring harness writes it (runs, families, the session's stats fields)."""
+    each rank's result as the ring harness writes it (runs, families, the session's stats fields). Rank 0 prints a
+    ``STEP tune`` line as it starts each case, and a failure names every rank's last case."""
+    import json
+
     from ..ring import worker
 
     torch = group.torch
@@ -2404,15 +2598,37 @@ def _harness_tune(group: EmulatedGroup, options: dict) -> list[dict]:
         harness.__dict__.update(
             session=session, world=group.world, rank=rank, global_rank=rank, group_index=0, tp_session=None,
             tp_world=group.world, devices=[], dist=dist, process_group=None, nccl=None, swing_through=None,
-            scatter_through=None, torch=torch, device=session.device, options=options, result={"runs": []},
-            _adapter=None, _adapter_times=[], mismatches=0)
+            scatter_through=None, torch=_RankTorch(torch), device=session.device, options=options,
+            result={"runs": []}, _adapter=None, _adapter_times=[], mismatches=0)
         harnesses.append(harness)
+
+    started = time.perf_counter()
+    current: list[str] = ["no case yet"] * group.world
+
+    def reporting(rank: int, run_case):
+        def run(name, mode, shape, dim, case, large=False, variant=None):
+            nbytes = 2
+            for extent in shape:
+                nbytes *= int(extent)
+            current[rank] = (f"case {case}: {name} {mode} {nbytes} B "
+                             f"{json.dumps(variant, sort_keys=True) if variant else 'at the session settings'}")
+            if rank == 0:
+                print(f"STEP tune {current[rank]} ({time.perf_counter() - started:.1f} s)", flush=True)
+            return run_case(name, mode, shape, dim, case, large=large, variant=variant)
+        return run
+
+    for rank, harness in enumerate(harnesses):
+        harness.run_case = reporting(rank, harness.run_case)
 
     def tune(rank: int) -> None:
         local.rank = rank
         harnesses[rank]._run_tune()
 
-    group._threads(tune, timeout=3000.0)
+    try:
+        group._threads(tune, timeout=3000.0)
+    except Exception as error:
+        raise RuntimeError(f"{error}; each rank's last case: "
+                           + "; ".join(f"rank {rank} {case}" for rank, case in enumerate(current))) from error
     fields = ("max_size", "large_piece_bytes", "chain_slot_bytes", "link_slots", "link_slot_bytes", "chain_order")
     results = []
     for harness, session in zip(harnesses, group.sessions):
@@ -2468,18 +2684,25 @@ def tune_checks(layout_text: str = "ring:8", lanes: int = 2, *, library: str | o
     group = EmulatedGroup(layout_text, lanes, max_size=max_size, max_gather_bytes=max_gather_bytes, library=library,
                           environment={**base, "SIRCL_LINK_SLOTS": str(TUNE_LINK_SLOTS)})
     world = group.world
+    resident = resident_role_cap(world, torch.cuda.get_device_properties(0).multi_processor_count)
+    counts = tuple(b for b in (1, 2, 4) if b <= resident)
     options = dataclasses.asdict(plan_mod.Options(
         tune=True, tune_collectives=("all_reduce", "all_gather"), tune_modes=("eager",), tune_sizes=TUNE_SIZES,
         tune_grids=(), tune_pieces=TUNE_PIECES, tune_staggers=(0, 1), tune_large_from=65536,
+        tune_link_blocks=counts, tune_chain_blocks=counts,
         tune_prune_from=1 << 20, correctness_iterations=1, eager_iterations=5, graph_iterations=5,
         large_iterations=3, warmup_iterations=1, post_barrier_warmup=0))
     try:
         started = time.perf_counter()
+        # The tune's own first step compiles its candidates' blocks (Harness._prepare_tune); its ranks are threads
+        # here, and compilation is not a collective, so they are compiled one rank after another first.
+        blocks = _tune_harness(group, options).tune_op_blocks()
         for rank, session in enumerate(group.sessions):
             with torch.cuda.stream(group.streams[rank]):
-                session.prepare((bf16,), padded_gather=True, links=True)
+                session.prepare((bf16,), padded_gather=True, links=True, op_blocks=blocks)
         group.load_modules([bf16])
-        checks.append(("prepare (tune sessions)", True, f"{time.perf_counter() - started:.1f} s"))
+        checks.append(("prepare (tune sessions)", True, f"{time.perf_counter() - started:.1f} s, candidates' blocks "
+                       + ", ".join(f"{kernel} {counts}" for kernel, counts in blocks.items())))
         started = time.perf_counter()
         results = _harness_tune(group, options)
         elapsed = time.perf_counter() - started
@@ -2612,6 +2835,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--alignment-only", action="store_true",
                         help="after preparing, run only the alignment checks (rank 0's buffers not 16-byte "
                              "aligned while its peers' are)")
+    parser.add_argument("--tune-capture-only", action="store_true",
+                        help="after preparing, run only the tune-capture checks (the ring harness's tune candidates "
+                             "at their blocks per role, captured in CUDA graphs)")
     parser.add_argument("--tune", action="store_true",
                         help="run tune_checks (the ring harness's tune command and sessions that take its table) "
                              "instead of run_checks")
@@ -2632,7 +2858,7 @@ def main(argv: list[str] | None = None) -> int:
         checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
                             dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,
                             path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only,
-                            alignment_only=args.alignment_only)
+                            alignment_only=args.alignment_only, tune_capture_only=args.tune_capture_only)
     failed = sum(1 for _, ok, _ in checks if not ok)
     print(f"{len(checks)} checks, {failed} failed")
     sys.stdout.flush()
