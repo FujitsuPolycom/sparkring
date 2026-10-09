@@ -46,6 +46,7 @@ from dataclasses import replace
 import datetime
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import subprocess
@@ -82,6 +83,9 @@ SITE_ROUTES_TOOL = "spark_transport/libsircl/tools/site_routes.py"
 SITE_ROUTES = ROOT / SITE_ROUTES_TOOL
 SIRCL_ROOT = ROOT / "spark_transport" / "sircl"
 # The routing settings site_routes.py prints for a rank.
+# The kernel packs every libsircl build carries (runtime/images/libsircl_layer.py builds each from its CUDA
+# source); a layer receipt that records another set describes another libsircl build.
+KERNEL_PACKS = ("sircl_kernels", "sircl_fold", "sircl_links", "sircl_p2p")
 ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_FORWARD_WINDOWS",
                    "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES")
 LIBRARY_VARIABLE = "SPARKRING_LIBSIRCL_LIBRARY"
@@ -196,6 +200,11 @@ def check_layer(image_id, parent_receipt_sha256, block, *, run):
              and (layer.get("library") or {}).get("sha256") == block["library"]["sha256"]
              and layer.get("plugin") == block["plugin"],
              "The image's libsircl layer receipt describes another libsircl build")
+    packs = layer.get("kernel_packs")
+    _require(isinstance(packs, dict) and sorted(packs) == sorted(KERNEL_PACKS)
+             and all(isinstance(digest, str) and re.fullmatch(r"[0-9a-f]{64}", digest) for digest in packs.values()),
+             "The image's libsircl layer receipt does not record the kernel packs " + ", ".join(KERNEL_PACKS)
+             + f" (it records {', '.join(sorted(packs)) if isinstance(packs, dict) else 'none'})")
     installed = layer.get("files")
     _require(isinstance(installed, dict) and installed and all(files.get(path) == digest
                                                                for path, digest in installed.items()),

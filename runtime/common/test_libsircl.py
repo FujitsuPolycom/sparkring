@@ -339,7 +339,7 @@ class Image:
         layer = {"schema": libsircl.LAYER_SCHEMA, "version": block["version"], field: source,
                  "nccl_api_version": block["nccl_api_version"],
                  "fail_stop": block["fail_stop"], "library": {**block["library"], "soname": "libnccl.so.2"},
-                 "plugin": block["plugin"],
+                 "plugin": block["plugin"], "kernel_packs": {pack: "c" * 64 for pack in libsircl.KERNEL_PACKS},
                  "files": {block["library"]["path"]: block["library"]["sha256"],
                            block["plugin"]["path"]: block["plugin"]["sha256"]}}
         self.layer = json.dumps(layer).encode()
@@ -360,6 +360,22 @@ def test_the_libsircl_layer_is_admitted_only_when_the_images_verification_covers
     assert transport.admit_layer(lock, run=built)["files_verified"] == 2
     lock["transport"]["libsircl"]["plugin"]["sha256"] = "0" * 64
     with pytest.raises(transport.TransportError, match="vLLM plugin"):
+        transport.admit_layer(lock, run=built)
+
+
+def test_a_layer_receipt_without_all_four_kernel_packs_is_refused():
+    lock, _ = deployment(TP2, "pair", 2, [0, 1])
+    lock = copy.deepcopy(lock)
+    built = Image(lock["transport"])
+    layer = json.loads(built.layer)
+    del layer["kernel_packs"]["sircl_p2p"]
+    built.layer = json.dumps(layer).encode()
+    lock["transport"]["libsircl"]["receipt"]["sha256"] = hashlib.sha256(built.layer).hexdigest()
+    built.base = json.dumps({"files": {**layer["files"],
+                                       image_lock.LIBSIRCL_RECEIPT: hashlib.sha256(built.layer).hexdigest()}}).encode()
+    lock["image_runtime"]["parent_receipt_sha256"] = hashlib.sha256(built.base).hexdigest()
+    with pytest.raises(transport.TransportError, match="does not record the kernel packs sircl_kernels, sircl_fold, "
+                                                       "sircl_links, sircl_p2p .it records sircl_fold"):
         transport.admit_layer(lock, run=built)
 
 
