@@ -127,6 +127,36 @@ def decode_context(profile: dict, bases: list[list[str]], requested: int | None)
     return deviations, dcp
 
 
+def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) -> tuple[list[str], dict]:
+    """Apply ``--set-arg FLAG=VALUE`` and ``--set-env KEY=VALUE`` to every rank's base command.
+
+    A value ``@PATH`` is read from that file (for JSON such as ``--hf-overrides``). Every arm then runs the
+    changed command. Returns one deviation line per change, against the profile's own value, and the full
+    values for the plan.
+    """
+    def value_of(text: str) -> str:
+        return Path(text[1:]).read_text(encoding="utf-8").strip() if text.startswith("@") else text
+    deviations, applied = [], {"vllm_arguments": {}, "environment": {}}
+    for item in set_args:
+        flag, value = item.split("=", 1)
+        if not flag.startswith("--"):
+            raise SystemExit(f"--set-arg {item!r}: the flag must start with --")
+        value = value_of(value)
+        old = [spec.set_arg(tokens, flag, value) for tokens in bases][0]
+        applied["vllm_arguments"][flag] = value
+        deviations.append(f"{flag} {value if len(value) <= 160 else value[:160] + '...'} "
+                          f"(the profile's: {old if old is not None else 'unset'})")
+    for item in set_envs:
+        key, value = item.split("=", 1)
+        value = value_of(value)
+        old = spec.environment(bases[0]).get(key)
+        for tokens in bases:
+            spec.set_env(tokens, key, value)
+        applied["environment"][key] = value
+        deviations.append(f"{key}={value} (the profile's: {old if old is not None else 'unset'})")
+    return deviations, applied
+
+
 def build_plan(args) -> dict:
     site = remote.load_site(args.site)
     positions = positions_of(args.positions)
@@ -166,6 +196,8 @@ def build_plan(args) -> dict:
                  view, profile_id=args.profile, source_root=source_root))
              for r, spark in enumerate(sparks)]
     deviations, dcp = decode_context(profile, bases, args.dcp_size)
+    changed, applied = overrides(bases, args.set_arg, args.set_env)
+    deviations += changed
     run = args.run_id
     bundles = {arm: bundle(args.site, positions, f"{run}-{spec.slug(arm)}", "never", args, fused_norm=arm == "S+",
                            dcp=dcp)
@@ -191,7 +223,7 @@ def build_plan(args) -> dict:
             "positions": positions, "sparks": [s.name for s in sparks], "api": f"http://{master}:{arg_value(arguments, '--port')}",
             "port": int(arg_value(arguments, "--port")), "context_limit": int(arg_value(arguments, "--max-model-len")),
             "order": [list(item) for item in order_of(args.order)], "metrics": args.metrics, "arms": arms,
-            "dcp": dcp, "deviations": deviations,
+            "dcp": dcp, "deviations": deviations, "overrides": applied,
             "checkpoints": checkpoints, "caches": caches, "seccomp": {"path": seccomp, "sha256": seccomp_sha}, "sircl_env": extra, "roce_slot": args.roce_slot,
             "bundles": {arm: {"run_id": b["run_id"], "nccl": b["nccl"], "tuning": b.get("tuning"),
                               "remote": b["remote"]} for arm, b in bundles.items()},
@@ -226,8 +258,60 @@ def print_plan(plan: dict) -> None:
         print(json.dumps(spec.diff(plan["commands"][sircl][0], plan["commands"]["N"][0]), indent=1))
 
 
+MEMORY = "awk '/^MemTotal:|^MemAvailable:/ {print $2}' /proc/meminfo"
+DROP_CACHES = "sync; echo 3 > /proc/sys/vm/drop_caches"
+SETTLE_SECONDS, SETTLE_STEP, STABLE_KIB = 180, 5, 256 * 1024
+
+
+def settle_memory(plan: dict, site: remote.Site, arm: str, out: Path) -> list[dict]:
+    """Free the previous start's page cache and wait for memory to settle before a start.
+
+    On GB10's unified memory the page cache of the previous start's checkpoint reads and its teardown count
+    against the free memory vLLM checks at startup (``--gpu-memory-utilization`` of the total). Every Spark of
+    the set must have no container of the campaign left; each then writes back dirty pages and drops the page,
+    dentry and inode caches (``drop_caches`` frees caches only and changes no setting), and the runner polls
+    ``MemAvailable`` until two readings 5 s apart differ by less than 256 MiB on every Spark, for at most
+    180 s. Returns, per Spark, the total and the settled available memory and the share vLLM asks for.
+    """
+    sparks = [site.sparks[p] for p in plan["positions"]]
+    for spark in sparks:
+        left = remote.run(spark, remote.sudo(f"docker ps -aq --filter label=serving-ab={plan['run_id']} | wc -l"),
+                          check=False).strip()
+        if left not in ("", "0"):
+            raise RuntimeError(f"{spark.name}: {left} containers of run {plan['run_id']} are left before arm {arm}")
+    for spark in sparks:
+        remote.run(spark, remote.sudo(DROP_CACHES), timeout=300)
+
+    def reading() -> list[tuple[int, int]]:
+        values = []
+        for spark in sparks:
+            total, available = remote.run(spark, remote.sudo(MEMORY)).split()
+            values.append((int(total), int(available)))
+        return values
+    utilization = spec.arg(plan["commands"][arm][0], "--gpu-memory-utilization")
+    previous, deadline = reading(), time.monotonic() + SETTLE_SECONDS
+    while True:
+        time.sleep(SETTLE_STEP)
+        current = reading()
+        stable = all(abs(a[1] - b[1]) < STABLE_KIB for a, b in zip(previous, current))
+        previous = current
+        if stable or time.monotonic() > deadline:
+            break
+    rows = [{"position": p, "total_gib": round(total / 2**20, 2), "available_gib": round(available / 2**20, 2),
+             "vllm_asks_gib": round(float(utilization) * total / 2**20, 2) if utilization else None}
+            for p, (total, available) in zip(plan["positions"], current)]
+    asks = (f"--gpu-memory-utilization {utilization}" if utilization
+            else "no --gpu-memory-utilization in the profile, vLLM's default applies")
+    log(f"memory before arm {arm} ({'settled' if stable else 'not settled after 180 s'}; {asks}): " + ", ".join(
+            f"Spark {r['position']} {r['available_gib']:.2f} GiB available"
+            + (f" (asks {r['vllm_asks_gib']:.2f})" if r["vllm_asks_gib"] else "") for r in rows), out)
+    return rows
+
+
 def start(plan: dict, site: remote.Site, arm: str, out: Path) -> None:
     sparks = [site.sparks[p] for p in plan["positions"]]
+    (out / "memory-before.json").write_text(json.dumps(settle_memory(plan, site, arm, out.parent), indent=1),
+                                            encoding="utf-8")
     for spark, tokens in zip(sparks, plan["commands"][arm]):
         remote.run(spark, remote.sudo(f"mkdir -p {plan['caches'][arm]}"))
         remote.run(spark, "bash -s", stdin=("set -e\n" + spec.shell(tokens) + "\n").encode())
@@ -376,6 +460,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lock-host", type=int, default=0, help="site position of the lock host (default 0)")
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
+    parser.add_argument("--set-arg", action="append", default=[], metavar="FLAG=VALUE",
+                        help="set a vLLM argument in every arm, recorded as a deviation from the profile "
+                             "(VALUE @PATH reads a file)")
+    parser.add_argument("--set-env", action="append", default=[], metavar="KEY=VALUE",
+                        help="set a container variable in every arm, recorded as a deviation from the profile")
     parser.add_argument("--tuning-table", help="SIRCL tuning table for the S arms (bundle --tuning-table)")
     parser.add_argument("--capacity", type=int, help="SIRCL all-reduce capacity of the S arms (bundle --capacity)")
     parser.add_argument("--dispatch", type=int, help="SIRCL dispatch ceiling of the S arms (bundle --dispatch)")

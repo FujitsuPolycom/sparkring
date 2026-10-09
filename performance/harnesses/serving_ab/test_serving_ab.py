@@ -182,3 +182,49 @@ def test_set_arg_replaces_or_appends_after_the_image():
     assert spec.set_arg(tokens, "--node-rank", "3") == "0" and spec.arg(tokens, "--node-rank") == "3"
     assert spec.set_arg(tokens, "--decode-context-parallel-size", "2") is None
     assert tokens[-2:] == ["--decode-context-parallel-size", "2"]
+
+
+def test_memory_settles_after_dropping_caches_and_refuses_leftover_containers(tmp_path, monkeypatch):
+    from performance.harnesses.serving_ab import remote
+
+    sparks = tuple(remote.Spark(p, f"spark{p}", f"host{p}", f"192.0.2.{p}", ("docker",)) for p in (0, 1))
+    site = remote.Site("site.json", "lan0", "/srv/run", sparks)
+    tokens = base(0)
+    spec.set_arg(tokens, "--gpu-memory-utilization", "0.5")
+    plan = {"positions": [0, 1], "run_id": "run", "commands": {"S": [tokens, tokens]}}
+    calls, available, left = [], iter([100, 200, 300, 300, 300, 300]), {"count": "0"}
+
+    def fake_run(spark, command, **_):
+        calls.append((spark.position, command))
+        if "docker ps" in command:
+            return left["count"] + "\n"
+        if "meminfo" in command:
+            return f"1048576 {next(available) * 1024}\n"
+        return ""
+    monkeypatch.setattr(remote, "run", fake_run)
+    monkeypatch.setattr(cli.time, "sleep", lambda _: None)
+    rows = cli.settle_memory(plan, site, "S", tmp_path)
+    assert [r["available_gib"] for r in rows] == [0.29, 0.29] and rows[0]["vllm_asks_gib"] == 0.5
+    assert sum("drop_caches" in c for _, c in calls) == 2
+    assert "memory before arm S (settled" in (tmp_path / "campaign.log").read_text()
+    left["count"] = "2"
+    with pytest.raises(RuntimeError, match="containers of run run are left"):
+        cli.settle_memory(plan, site, "S", tmp_path)
+
+
+def test_decode_cells_without_speculation_take_one_token_per_request_and_step():
+    plain = {"aggregate_tps": 60.0, "server_steps_per_s": 0.0, "server_spec_accept_length": 0.0,
+             "server_spec_drafts": 0, "server_gen_throughput": 59.0, "avg_running_reqs": 4}
+    assert report.decode_cell(plain) == (60.0, 60.0, 1.0)
+    assert report.arm_of("W-S+") == "S+" and report.arm_of("N2") == "N"
+
+
+def test_overrides_change_every_rank_and_record_the_profile_value(tmp_path):
+    bases = [base(0), base(1)]
+    (tmp_path / "spec.json").write_text('{"method":"mtp","num_speculative_tokens":3}')
+    changed, applied = cli.overrides(bases, [f"--speculative-config=@{tmp_path / 'spec.json'}", "--node-rank=5"],
+                                     ["VLLM_B12X_KDA_PREFILL_COALESCING=0"])
+    assert all(spec.arg(t, "--speculative-config") == '{"method":"mtp","num_speculative_tokens":3}' for t in bases)
+    assert spec.environment(bases[1])["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
+    assert changed[0].endswith("(the profile's: unset)") and changed[1].endswith("(the profile's: 0)")
+    assert applied["environment"] == {"VLLM_B12X_KDA_PREFILL_COALESCING": "0"}

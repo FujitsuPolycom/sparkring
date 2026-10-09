@@ -30,7 +30,7 @@ WSL when the keys live on the Windows side).
 | Command | Class |
 |---|---|
 | `plan` | READ-ONLY REMOTE: `sudo -n` reads on the Sparks to find the checkpoint (none with `--model-path` for every position) |
-| `run` | MUTATES HOST: the loader seccomp policy under `<remote_dir>/serving-ab/source`, the SIRCL arms' staged tree, native library, tuning tables and run directories under the site's `remote_dir`; one cache directory per arm; containers labelled `serving-ab=<run>`. Loads the GPUs and the fabric of the chosen Sparks |
+| `run` | MUTATES HOST: the loader seccomp policy under `<remote_dir>/serving-ab/source`, the SIRCL arms' staged tree, native library, tuning tables and run directories under the site's `remote_dir`; one cache directory per arm; containers labelled `serving-ab=<run>`; before every start, `sync` and `drop_caches` on every chosen Spark (frees the page, dentry and inode caches; changes no setting). Loads the GPUs and the fabric of the chosen Sparks |
 | `report` | OFFLINE |
 
 ## Arms
@@ -67,9 +67,28 @@ admits mHC prefill row ownership at the sizes (`mhc_dcp_problem`),
 `VLLM_GLM53_MHC_PREFILL_SHARD=0`. `plan` prints each such change as a deviation
 from the profile. Without the option every arm runs the profile's own size.
 
+`--set-arg FLAG=VALUE` sets a vLLM argument and `--set-env KEY=VALUE` a
+container variable in every arm's command; `VALUE` given as `@PATH` is read from
+that file (for JSON such as `--speculative-config` or `--hf-overrides`). Each
+is applied to every rank's base before the arms' parts and printed as a
+deviation from the profile with the profile's own value; `plan.json` keeps the
+full values under `overrides`.
+
 `plan` prints every rank's command of every arm and, for a SIRCL arm against
 `N`, the difference of rank 0's commands: the environment variables, mounts and
 any other token that differs.
+
+## Memory before every start
+
+vLLM checks at startup that the free memory covers `--gpu-memory-utilization`
+of the total, and on GB10's unified memory the page cache of the previous
+start's checkpoint reads and its teardown count against that free memory. Before
+every start the runner therefore requires that no container of the run is left
+on any chosen Spark, drops the caches there (`sync; echo 3 >
+/proc/sys/vm/drop_caches` under `sudo -n`), and polls `MemAvailable` until two
+readings 5 s apart differ by less than 256 MiB on every Spark, for at most
+180 s. The campaign log and the start's `memory-before.json` record each
+Spark's settled available memory beside the share vLLM asks for.
 
 ## Checks before measuring
 
@@ -112,7 +131,7 @@ reported against the same-arm restarts, not as a pass or fail.
 ## Outputs
 
 `DIR/plan.json`; per start `DIR/<label>/` with the containers' logs and
-`docker inspect`, `ready.json`, `evidence.json`, `measure.json`, `decode.json`,
+`docker inspect`, `memory-before.json`, `ready.json`, `evidence.json`, `measure.json`, `decode.json`,
 `prefill.jsonl`, `fingerprint.json`, `logprobs.json` (and `fused-after.json` for
 `S+`); after the run `DIR/summary.json` and `DIR/tables.txt`
 ([`report.py`](report.py)): decode engine steps/s per cell and arm with ranges

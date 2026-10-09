@@ -2,8 +2,8 @@
 
 ``python -m performance.harnesses.serving_ab.report RESULTS_DIR LABEL [LABEL ...]`` prints them for the named
 starts (directories of RESULTS_DIR); :func:`summary` returns the same as JSON. A label's arm is its prefix:
-``S+`` for labels starting ``S+``, otherwise the first letter (``S``, ``N``, ``P``). Ratios are against arm
-``N`` when the starts include it.
+``S+`` for labels starting ``S+``, otherwise the first letter (``S``, ``N``, ``P``); a warm-up label ``W-<arm>``
+counts as its arm. Ratios are against arm ``N`` when the starts include it.
 """
 
 from __future__ import annotations
@@ -15,7 +15,22 @@ from pathlib import Path
 
 
 def arm_of(label: str) -> str:
+    """The arm of a start label: ``S+2`` and the warm-up ``W-S+`` are ``S+``, ``N1`` is ``N``."""
+    label = label.removeprefix("W-")
     return "S+" if label.startswith("S+") else label[0]
+
+
+def decode_cell(r: dict) -> tuple[float, float | None, float | None]:
+    """Aggregate tok/s, engine steps/s and accept length of one decode cell.
+
+    The benchmark's steps/s is aggregate: the tokens per second of all streams over the accept length, from
+    the server's speculative-decoding counters. A model served without speculation reports no drafts; one
+    step then emits one token per request, so steps/s is the aggregate tok/s and the accept length is 1.
+    """
+    steps, accept = r.get("server_steps_per_s"), r.get("server_spec_accept_length")
+    if not steps and not r.get("server_spec_drafts"):
+        steps, accept = r["aggregate_tps"], 1.0
+    return r["aggregate_tps"], steps, accept
 
 
 def load(root: Path, label: str) -> dict:
@@ -24,9 +39,7 @@ def load(root: Path, label: str) -> dict:
     ready = d / "ready.json"
     out["ready_s"] = json.loads(ready.read_text())["ready_seconds"] if ready.exists() else None
     decode = json.loads((d / "decode.json").read_text())
-    out["decode"] = {(r["context_tokens"], r["concurrency"]): (r["aggregate_tps"], r.get("server_steps_per_s"),
-                                                             r.get("server_spec_accept_length"))
-                     for r in decode["results"]}
+    out["decode"] = {(r["context_tokens"], r["concurrency"]): decode_cell(r) for r in decode["results"]}
     out["ttft"] = {}
     for line in (d / "prefill.jsonl").read_text().splitlines():
         record = json.loads(line)
