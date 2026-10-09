@@ -46,8 +46,9 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
   or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup.
 - **Session engine** (`src/engine.c`): settings agreed across ranks, the pinned arena, device counters,
   SIRCL's native progress thread (`src/transport/sircl_roce_proxy.c`, a byte-identical copy of SIRCL's
-  `_roce_proxy.c`), queue-pair connection and the lane check, stream ordering, CUDA graph capture rules
-  and receipts.
+  `oneshot/_roce_proxy.c` with change LF, its SHA-256 checked by the build and its local feature word,
+  bits 0 and 1, at setup), queue-pair connection and the lane check, stream ordering, CUDA graph capture
+  rules and receipts.
 - **Kernel packs** (`kernels/`): the transport pack, SIRCL's one-shot and two-shot all-reduce, all-gather
   and scatter kernels ported to CUDA C++ (`sircl_kernels.cu`); the fold pack, a local rank-ordered
   reduction of gathered rows for every NCCL datatype and built-in op (`sircl_fold.cu`); and the link
@@ -178,10 +179,10 @@ make check              # CPU suites; no GPU, RDMA device or CUDA toolkit
 The library loads without CUDA or libibverbs; it resolves both at communicator creation.
 `make kernels NVCC=<nvcc>` regenerates the four kernel packs and `make kernels-check` proves the
 prebuilt fatbins match the sources. The build refuses a copy of SIRCL's point-to-point library whose
-SHA-256 differs from `src/transport/sircl_p2p_proxy.c.sha256`. `make P2P_FEATURES=1` also compiles the
-setup check of the library's local feature word (`p2p_local_features` bit 0: `p2p_destroy` counts the verbs
-calls that failed); it needs a vendored copy that defines the word (SIRCL change LF) and refuses one that
-does not. GPU emulation and the hardware runs are in `RUNBOOK.md`.
+SHA-256 differs from `src/transport/sircl_p2p_proxy.c.sha256`. By default (`P2P_FEATURES=1`; CMake
+`LIBSIRCL_P2P_FEATURES=ON`) the build also compiles the channels' setup check of the library's local
+feature word (`p2p_local_features` bit 0: `p2p_destroy` counts the verbs calls that failed, SIRCL change
+LF), and refuses a vendored copy that does not define the word; `P2P_FEATURES=0` builds without the check. GPU emulation and the hardware runs are in `RUNBOOK.md`.
 
 ## Settings
 
@@ -197,9 +198,9 @@ does not. GPU emulation and the hardware runs are in `RUNBOOK.md`.
 | `SIRCL_ONESHOT_MAX_BYTES` | largest one-shot all-reduce (default 131072); larger ops are two-shot |
 | `SIRCL_ALLREDUCE_ALGORITHM` | `auto`, `oneshot` or `twoshot` |
 | `SIRCL_THREADS`, `SIRCL_BLOCKS`, `SIRCL_LARGE_BLOCKS`, `SIRCL_PACKS_PER_THREAD`, `SIRCL_FLAG_POLLERS`, `SIRCL_SPIN_LIMIT` | kernel geometry and polling, as in SIRCL; the link pack's kernels run at most 512 threads per block |
-| `SIRCL_LARGE_SCHEDULE` | large float16, bfloat16 and float32 all-reduces: `pieces` (ops of `SIRCL_LARGE_PIECE_BYTES`), `chain` (one chain op for the 16-byte-aligned body), `auto` (chain from `SIRCL_CHAIN_MIN_BYTES`) or `ring` (one ring op for the largest prefix of W equal chunks, from `SIRCL_RING_MIN_BYTES`; below it as `auto`). Unset: `pieces` on groups of three or more ranks, the pair default (below) on two |
+| `SIRCL_LARGE_SCHEDULE` | large float16, bfloat16 and float32 all-reduces: `pieces` (ops of `SIRCL_LARGE_PIECE_BYTES`), `chain` (one chain op for the 16-byte-aligned body), `auto` (chain from `SIRCL_CHAIN_MIN_BYTES`) or `ring` (one ring op for the largest prefix of W equal chunks, from `SIRCL_RING_MIN_BYTES`; below it as `auto`). Unset: the pair default (below) on two ranks, the cycle default (below) on three or more whose ring closes over cables, `pieces` otherwise |
 | `SIRCL_GATHER_SCHEDULE`, `SIRCL_SCATTER_SCHEDULE` | all-gathers of 16-byte-multiple shards and float16, bfloat16 and float32 reduce-scatters of 16-byte-multiple chunks: `pieces` (default: tiles and scatter ops), `chain`, `auto` or `ring`, as above |
-| `SIRCL_CHAIN_MIN_BYTES`, `SIRCL_RING_MIN_BYTES` | one minimum for all three collectives (all-reduce message, all-gather output, reduce-scatter input); unset, SIRCL's: chain 8, 8 and 4 MiB, ring 4, 8 and 4 MiB |
+| `SIRCL_CHAIN_MIN_BYTES`, `SIRCL_RING_MIN_BYTES` | one minimum for all three collectives (all-reduce message, all-gather output, reduce-scatter input); unset, SIRCL's: chain 8, 8 and 4 MiB, ring 4, 8 and 4 MiB (the pair and cycle defaults set their own) |
 | `LIBSIRCL_CHAIN_ORDER` | positions in chain order (cable neighbors), the layout's; a communicator of some of its positions (a split child, a two-rank communicator) takes its members in the listed order, the other positions skipped; unset, the ranks by position |
 | `SIRCL_CHAIN_SLOTS`, `SIRCL_CHAIN_SLOT_BYTES`, `SIRCL_CHAIN_CHUNK_BYTES`, `SIRCL_CHAIN_BLOCKS`, `SIRCL_CHAIN_UNROLL` | the chain all-reduce's area and kernel geometry, SIRCL's names and defaults (4 slots of 1 MiB, chunks of 512 KiB, 4 blocks per role, unroll 4) |
 | `SIRCL_LINK_SLOTS`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_CHUNK_BYTES`, `SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`, `SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER` | the link area and link kernels, SIRCL's names and defaults (2 W slots, 8 to 32; slots of 512 KiB growing to the largest configured piece up to 1 MiB; pieces of 512 KiB; 4 blocks per role; unroll 4; staggers of one round when the slots hold them) |
@@ -216,7 +217,8 @@ does not. GPU emulation and the hardware runs are in `RUNBOOK.md`.
 | `SIRCL_P2P_PROGRESS_CPU` | read by the channels' progress thread, as in SIRCL: a CPU list that pins it; unset, it runs where `LIBSIRCL_CPU_POLICY` places the transport's progress thread |
 | `LIBSIRCL_STREAM_ORDERED_ALLOC` | `auto` (default): staging uses stream-ordered allocation (`cuMemAllocAsync`) where the driver and device have it; `off` declines it (the communicator's own staging buffers; captured calls that need more are refused), the same on every rank, for comparisons and tests |
 | `SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`, `LIBSIRCL_WAIT_REGIME` | flag-wait limits and the regime a communicator starts in (`startup`, default, or `serving`); `sirclSetWaitRegime` switches it |
-| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` a watcher thread checks every communicator of two or more ranks every 5 ms for an asynchronous error (a flag wait that timed out, a failed progress thread) and at the first one writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> (Unix time; CLOCK_MONOTONIC <seconds> s) ...` with the error) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls then keeps a failed collective's output at most for the wait limit plus one poll; a read of the output within that poll after its stream wait returns is not prevented. Destroy and abort take a communicator off the watch before releasing it |
+| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` the process ends at the first asynchronous error (a flag wait that timed out, a failed progress thread, a failed point-to-point channel) of any communicator of two or more ranks. The error is found by a watcher thread that checks every such communicator every `LIBSIRCL_FAIL_STOP_POLL_MS`, or by the first library call that would report it to the caller (`ncclCommGetAsyncError`, a collective or point-to-point enqueue, `ncclCommFinalize`, `ncclCommDestroy`, `ncclCommAbort`), whichever comes first. The library writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> (Unix time; CLOCK_MONOTONIC <seconds> s) on an asynchronous error of communicator <n> (rank <r> of <w>, found by <the watcher, a library call, or ncclCommDestroy or ncclCommAbort>): <error>`) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls keeps a failed collective's output at most for the wait limit plus one poll, and a caller that reads the error and tears the communicator down never returns from that call; a read of the output within one poll after its stream wait returns, without a library call, is not prevented. Receipts read the error without ending the process |
+| `LIBSIRCL_FAIL_STOP_POLL_MS` | the fail-stop watcher's period, 1 to 3,600,000 ms (default 5); the tests set it long to show that the library calls alone end the process |
 | `SIRCL_POST_ORDER`, `SIRCL_PROGRESS_CPU`, `SIRCL_FORWARD_PROOF` | read by the native progress thread, as in SIRCL; `SIRCL_PROGRESS_CPU` pins it to a CPU list |
 | `LIBSIRCL_CPU_POLICY` | where the progress thread runs without `SIRCL_PROGRESS_CPU`: `performance` (default: on the fastest CPU class the creating thread may use, the Cortex-X925 cores of a GB10, found by `/proc/cpuinfo` part numbers or sysfs `cpu_capacity`) or `none` (where the scheduler puts it). The library never changes the affinity of the application's own threads; receipts name the progress thread's CPUs (`progress_cpus`) |
 | `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`, `NCCL_SOCKET_IFNAME` | the root's LAN address; a rank contacts a non-loopback root only when one is set |
@@ -254,6 +256,19 @@ keeps its value and takes precedence over the plan: `SIRCL_GATHER_SCHEDULE`, `SI
 `SIRCL_CHAIN_MIN_BYTES`, the link chunk variables (the piece of every op of that collective), the link
 block variables (below) and `LIBSIRCL_RING_WINDOW`. RUNBOOK.md section 3.6 gives the measurement behind the
 plan.
+
+Cycle default (the cycle plan): a communicator of three or more ranks without `SIRCL_LARGE_SCHEDULE`,
+given a ring plan (`LIBSIRCL_RING_WINDOW`), whose ring in chain order closes over cables only (no rank of a
+ring edge reaches the other through relays, by every rank's `LIBSIRCL_FORWARD_WINDOWS`, exchanged with the
+ranks' positions before the settings, so every rank decides alike) runs every all-reduce (message bytes), all-gather (output
+bytes) and float16, bfloat16 and float32 reduce-scatter (input bytes) from 8 MiB as one ring op each, with
+the ring's general geometry, and the pieces below (the chain minimums rise to 8 MiB). `tools/site_routes.py`'s
+`ring:8` lines make the eight-Spark cycle such a communicator; `path:0-3`'s closing edge crosses relays and
+keeps the pieces, and so does a split child whose ring closes through relays. Variables set in the
+environment take precedence as for the pair plan; the receipt's `cycle_plan` says whether the plan applies.
+The ring rounds to the dtype at every hop in ring order, so on more than two ranks its sums differ from the
+pieces' rank-order sum in the last bit; both are exact for their schedule. STATUS.md ("the path of four ...
+and the cycle of eight") gives the measurement behind the plan.
 
 What the plan's settings reach: setting `SIRCL_LARGE_SCHEDULE` to any value, `ring` included, turns the
 pair plan off, so its ring minima, pieces and blocks no longer apply and the schedule runs with the general

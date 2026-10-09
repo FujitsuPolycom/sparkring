@@ -42,11 +42,12 @@ LINKS_FATBIN = kernels/prebuilt/sircl_links.fatbin
 P2P_SOURCES = kernels/sircl_p2p.cu
 P2P_FATBIN = kernels/prebuilt/sircl_p2p.fatbin
 # SIRCL's point-to-point native library is vendored byte-identical (src/transport/sircl_p2p_proxy.c, SHA-256
-# in its .sha256 file); the build refuses a copy of other contents. P2P_FEATURES=1 additionally compiles the
-# engine's check of the library's local feature word (p2p_local_features bit 0: p2p_destroy counts failed
-# verbs calls), which needs a copy that defines it (SIRCL change LF); the build refuses a copy without it.
+# in its .sha256 file); the build refuses a copy of other contents. P2P_FEATURES=1 (the default) compiles the
+# engine's setup check of the library's local feature word (p2p_local_features bit 0: p2p_destroy counts
+# failed verbs calls), which needs a copy that defines it (SIRCL change LF); the build refuses a copy without
+# it. P2P_FEATURES=0 builds without the check.
 P2P_PROXY = src/transport/sircl_p2p_proxy.c
-P2P_FEATURES ?= 0
+P2P_FEATURES ?= 1
 ifeq ($(P2P_FEATURES),1)
 CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
 endif
@@ -59,18 +60,38 @@ $(BUILD) $(BUILD)/transport:
 	mkdir -p $@
 $(BUILD)/%.o: src/%.c include/nccl.h src/internal.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
-$(BUILD)/transport/proxy_hw.o: src/transport/proxy_hw.c src/transport/sircl_roce_proxy.c | $(BUILD)/transport
+# SIRCL's native proxy is vendored byte-identical as well (src/transport/sircl_roce_proxy.c, SHA-256 in its
+# .sha256 file); the build refuses a copy of other contents. The engine checks its local feature word
+# (roce_local_features) at setup. Both vendored copies carry LF line endings, the bytes SIRCL's release
+# builds its natives from; a copy with carriage returns is refused even when its .sha256 was recorded.
+ROCE_PROXY = src/transport/sircl_roce_proxy.c
+$(BUILD)/roce_source.ok: $(ROCE_PROXY) $(ROCE_PROXY).sha256 | $(BUILD)
+	test "$$(sha256sum $(ROCE_PROXY) | cut -d' ' -f1)" = "$$(cat $(ROCE_PROXY).sha256)" || \
+	  { echo "$(ROCE_PROXY) differs from the vendored SIRCL source recorded in $(ROCE_PROXY).sha256"; exit 1; }
+	! grep -q "$$(printf '\r')" $(ROCE_PROXY) || \
+	  { echo "$(ROCE_PROXY) has CRLF line endings; vendor the LF bytes of SIRCL's oneshot/_roce_proxy.c"; exit 1; }
+	grep -q 'roce_local_features' $(ROCE_PROXY) || \
+	  { echo "$(ROCE_PROXY) predates SIRCL change LF (no roce_local_features); vendor SIRCL's oneshot/_roce_proxy.c with LF"; exit 1; }
+	touch $@
+$(BUILD)/transport/proxy_hw.o: src/transport/proxy_hw.c src/transport/sircl_roce_proxy.c $(BUILD)/roce_source.ok | $(BUILD)/transport
 	$(CC) $(CFLAGS) -c $< -o $@
 $(BUILD)/transport/verbs_dl.o: src/transport/verbs_dl.c | $(BUILD)/transport
 	$(CC) $(CFLAGS) -c $< -o $@
-$(BUILD)/transport/proxy_emu.o: src/transport/proxy_emu.c src/transport/sircl_roce_proxy.c | $(BUILD)/transport
+$(BUILD)/transport/proxy_emu.o: src/transport/proxy_emu.c src/transport/sircl_roce_proxy.c $(BUILD)/roce_source.ok | $(BUILD)/transport
 	$(CC) -Isrc/transport/fake_verbs $(CFLAGS) -c $< -o $@
-$(BUILD)/p2p_source.ok: $(P2P_PROXY) $(P2P_PROXY).sha256 | $(BUILD)
+# A stamp named for the P2P_FEATURES value, so changing it rebuilds the engine and repeats the source check.
+$(BUILD)/p2p_features-%.stamp: | $(BUILD)
+	rm -f $(BUILD)/p2p_features-*.stamp
+	touch $@
+$(BUILD)/engine.o: $(BUILD)/p2p_features-$(P2P_FEATURES).stamp
+$(BUILD)/p2p_source.ok: $(P2P_PROXY) $(P2P_PROXY).sha256 $(BUILD)/p2p_features-$(P2P_FEATURES).stamp | $(BUILD)
 	test "$$(sha256sum $(P2P_PROXY) | cut -d' ' -f1)" = "$$(cat $(P2P_PROXY).sha256)" || \
 	  { echo "$(P2P_PROXY) differs from the vendored SIRCL source recorded in $(P2P_PROXY).sha256"; exit 1; }
+	! grep -q "$$(printf '\r')" $(P2P_PROXY) || \
+	  { echo "$(P2P_PROXY) has CRLF line endings; vendor the LF bytes of SIRCL's p2p/_p2p_proxy.c"; exit 1; }
 	if [ "$(P2P_FEATURES)" = 1 ] && ! grep -q 'p2p_local_features' $(P2P_PROXY); then \
 	  echo "P2P_FEATURES=1: $(P2P_PROXY) predates SIRCL change LF (no p2p_local_features); vendor SIRCL's"; \
-	  echo "p2p/_p2p_proxy.c after LF lands, or build without P2P_FEATURES"; exit 1; fi
+	  echo "p2p/_p2p_proxy.c with LF, or build with P2P_FEATURES=0"; exit 1; fi
 	touch $@
 $(BUILD)/transport/p2p_hw.o: src/transport/p2p_hw.c src/transport/p2p_names.h $(BUILD)/p2p_source.ok | $(BUILD)/transport
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -156,6 +177,7 @@ check: all $(BUILD)/test_fabric
 	$(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so)
 	$(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so)
 	$(PYTHON) tests/test_shm_verbs.py
+	$(PYTHON) tests/test_vendored_sources.py
 	$(PYTHON) tests/test_p2p_native.py
 	$(PYTHON) tests/test_site_routes.py
 	$(PYTHON) tests/test_mpi_shim.py

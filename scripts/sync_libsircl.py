@@ -76,6 +76,8 @@ REWRITES = (
     ("STATUS.md", rb" \(`requests/README\.md`\)", b" (kept with the libsircl snapshot, not vendored)"),
     ("STATUS.md", rb"naming the lead implementation tree's `spark_transport/sircl`",
      b"naming the SIRCL reference tree's `spark_transport/sircl`"),
+    ("STATUS.md", rb"The lead implementation tree holds the same\ntext with CRLF endings\. ",
+     b"This repository's SIRCL package (`spark_transport/sircl`) holds the same\nbytes. "),
     ("RUNBOOK.md", rb"`REF` is the SIRCL reference tree\n\(`\.\./sircl-current/spark_transport/sircl`\); `LOCK` is "
                    rb"`ring8/cleanroom/impl/\.build/gpu-lock\.sh` of the\nlead workspace\. ",
      b"`REF` is the SIRCL reference tree's\n`spark_transport/sircl` directory; `LOCK` is the script of that GPU lock.\n"),

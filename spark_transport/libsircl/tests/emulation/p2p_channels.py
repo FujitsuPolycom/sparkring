@@ -62,7 +62,12 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 DATA = HERE.parent / "data"
-LAYOUTS = {"ring8": DATA / "site_routes_ring8_l2.json", "ring8-alone": DATA / "site_routes_ring8_l2_p2p_alone.json"}
+LAYOUTS = {"ring8": DATA / "site_routes_ring8_l2.json", "ring8-alone": DATA / "site_routes_ring8_l2_p2p_alone.json",
+           "path4": DATA / "site_routes_path0-3_l2.json"}
+# The library's cycle plan per layout (the receipt's "cycle_plan"): ring:8 closes over cables on every
+# rank's settings, path:0-3's closing edge (position 3 to 0) crosses relays, and without a layout no rank
+# has a ring plan.
+CYCLE_PLAN = {"ring8": True, "ring8-alone": True, "path4": False, "none": False}
 U8, F32 = 1, 7
 SLOT_BYTES = 512 << 10
 INVALID_USAGE = 5
@@ -366,6 +371,8 @@ def run_rank(args) -> int:
                json.dumps(channels["windows"]))
     report("receipt: the refused calls counted", channels["refused"] == len(refused), f"refused {channels['refused']}")
     report("receipt: healthy", receipt["healthy"], json.dumps(receipt.get("error")))
+    report(f"receipt: the cycle plan {'on' if CYCLE_PLAN[args.layout] else 'off'} for layout {args.layout}",
+           receipt.get("cycle_plan") is CYCLE_PLAN[args.layout], f"cycle_plan {receipt.get('cycle_plan')}")
     report("ncclCommDestroy", lib.ncclCommDestroy(comm) == 0, last_error())
     save()
     return 0 if all(ok for _, ok, _ in checks) else 1
@@ -373,7 +380,7 @@ def run_rank(args) -> int:
 
 def run_group(args, extra_env=None, label="") -> int:
     layout = json.loads(LAYOUTS[args.layout].read_text()) if args.layout in LAYOUTS else None
-    world = 8 if layout else args.world
+    world = len(layout["ranks"]) if layout else args.world
     work = Path(args.work) / label if args.work else Path(tempfile.mkdtemp(prefix=f"sircl-p2p-{args.case}-"))
     work.mkdir(parents=True, exist_ok=True)
     base = dict(os.environ)
@@ -477,7 +484,7 @@ def main(argv=None) -> int:
     parser.add_argument("--python", default=sys.executable)
     parser.add_argument("--world", type=int, default=4)
     parser.add_argument("--lanes", type=int, default=2)
-    parser.add_argument("--layout", choices=("none", "ring8", "ring8-alone"), default="none")
+    parser.add_argument("--layout", choices=("none", "ring8", "ring8-alone", "path4"), default="none")
     parser.add_argument("--case", choices=("traffic", "size", "gone", "setup"), default="traffic")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=1200)

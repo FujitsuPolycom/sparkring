@@ -25,6 +25,12 @@ flag waits time out (--late-rank R --late-s S: rank R starts its all-reduce S se
 SIRCL_STARTUP_WAIT_S below S) or when releasing the transport fails (--env SIRCL_EMU_FAIL_DEREG=1: the
 stand-in fails every deregistration, and destroy keeps the arena allocated).
 
+With --expect fail-stop (and --env LIBSIRCL_FAIL_STOP=1, a late rank and SIRCL_STARTUP_WAIT_S below its
+delay) the rounds run as with exact, and the runner checks fail-stop instead: every rank but the late one
+must end with exit status 70 and the fail-stop line of a timed-out wait, whether the watcher or the library
+call the rank makes right after its stream wait (ncclCommGetAsyncError, then ncclCommDestroy) found the
+error; the late rank is not judged. The fabric gates run this on every rank of a path of four.
+
 With --rank (and --id-server HOST:PORT, as library_rank.py takes it) one rank runs alone, on any transport
 and host: started on every rank of a fabric group with that group's route-map settings, the ranks run the
 same rounds without a delayed rank, and each prints one summary line and writes its JSON result.
@@ -56,7 +62,7 @@ def run_rank(args) -> int:
     import torch
 
     import unique_id
-    from library_rank import allreduce_reference, inputs_for, same_bits
+    from library_rank import allreduce_reference, inputs_for, note_cycle_plan, receipt_of, same_bits
 
     torch.cuda.set_device(0)
     torch.zeros(1, device="cuda")
@@ -72,6 +78,8 @@ def run_rank(args) -> int:
     lib.ncclCommDestroy.argtypes = [ctypes.c_void_p]
     lib.ncclCommFinalize.argtypes = [ctypes.c_void_p]
     lib.ncclCommGetAsyncError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
+    lib.sirclGetReceipt.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
+                                    ctypes.POINTER(ctypes.c_size_t)]
     world, rank = args.world, args.rank
     rounds: list[dict] = []
     out = {"rank": rank, "rounds": rounds}
@@ -97,6 +105,8 @@ def run_rank(args) -> int:
             entry.update(ok=False, detail=f"split: result {code}: {lib.ncclGetLastError(None).decode()}")
             rounds.append(entry)
             break
+        # The child's reference follows the library's cycle plan for it (the ring schedules from 8 MiB).
+        note_cycle_plan(receipt_of(lib, child), world)
         values = inputs_for(torch, world, count, torch.bfloat16, 9100 + 37 * k)
         want = allreduce_reference(torch, [values[world - 1 - c] for c in range(world)],
                                    order=list(range(world - 1, -1, -1)))
@@ -205,6 +215,20 @@ def run_group(args) -> int:
     if fabric.exists():
         fabric.unlink()
     failed_rounds, problems = set(), []
+    if args.expect == "fail-stop":
+        for rank in range(args.world):
+            if rank == args.late_rank:
+                continue
+            text = (work / f"rank{rank}.log").read_text(errors="replace")
+            line = next((row for row in text.splitlines() if "LIBSIRCL_FAIL_STOP: ending the process" in row), "")
+            if codes[rank] != 70 or "timed out" not in line:
+                problems.append(f"rank {rank}: exit {codes[rank]}, not 70 with the fail-stop line of a timed-out "
+                                f"wait: {line[:200]!r}; log {work / f'rank{rank}.log'}")
+        for line in problems:
+            print(f"FAIL {line}")
+        print(f"teardown race, fail-stop: {args.world} ranks, rank {args.late_rank} {args.late_s} s late, exit "
+              f"statuses {codes}, {len(problems)} problems, {time.perf_counter() - started:.1f} s; work {work}")
+        return 1 if problems else 0
     for rank in range(args.world):
         path = work / f"rank{rank}.json"
         if not path.exists():
@@ -251,7 +275,7 @@ def main(argv=None) -> int:
     parser.add_argument("--slow-rank", type=int, default=0)
     parser.add_argument("--slow-ns", type=int, default=5_000_000)
     parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--expect", choices=("exact", "close-error"), default="exact")
+    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop"), default="exact")
     parser.add_argument("--late-rank", type=int, default=-1, help="the rank that starts each all-reduce late")
     parser.add_argument("--late-s", type=float, default=0.0)
     parser.add_argument("--env", action="append", default=[], help="NAME=VALUE for every rank")

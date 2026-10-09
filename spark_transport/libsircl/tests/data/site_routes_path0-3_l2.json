@@ -1,0 +1,70 @@
+{
+ "layout": "path:0-3",
+ "lanes": 2,
+ "chain_order": [
+  0,
+  1,
+  2,
+  3
+ ],
+ "ring_problems": [],
+ "p2p_reserve": "session",
+ "ring_schedules": false,
+ "session_share": 1.0,
+ "p2p_relayed_pairs": 6,
+ "p2p_unavailable": [],
+ "ranks": [
+  {
+   "rank": 0,
+   "env": {
+    "LIBSIRCL_POSITION": "0",
+    "SIRCL_PEER_ROUTES": "1=rocep1s0f0/roceP2p1s0f0,2=rocep1s0f0/roceP2p1s0f0,3=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3",
+    "LIBSIRCL_FORWARD_WINDOWS": "2=131072/131072,3=131072/131072",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0",
+    "LIBSIRCL_P2P_WINDOWS": "2=65536/65536,3=65536/65536",
+    "SIRCL_P2P_CHUNK_BYTES": "32768"
+   }
+  },
+  {
+   "rank": 1,
+   "env": {
+    "LIBSIRCL_POSITION": "1",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,2=rocep1s0f0/roceP2p1s0f0,3=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3",
+    "LIBSIRCL_FORWARD_WINDOWS": "3=131072/131072",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0",
+    "LIBSIRCL_P2P_WINDOWS": "3=65536/65536",
+    "SIRCL_P2P_CHUNK_BYTES": "32768"
+   }
+  },
+  {
+   "rank": 2,
+   "env": {
+    "LIBSIRCL_POSITION": "2",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,1=rocep1s0f1/roceP2p1s0f1,3=rocep1s0f0/roceP2p1s0f0",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=131072/131072",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "0",
+    "LIBSIRCL_P2P_WINDOWS": "0=65536/65536",
+    "SIRCL_P2P_CHUNK_BYTES": "32768"
+   }
+  },
+  {
+   "rank": 3,
+   "env": {
+    "LIBSIRCL_POSITION": "3",
+    "SIRCL_PEER_ROUTES": "0=rocep1s0f1/roceP2p1s0f1,1=rocep1s0f1/roceP2p1s0f1,2=rocep1s0f1/roceP2p1s0f1",
+    "LIBSIRCL_CHAIN_ORDER": "0,1,2,3",
+    "LIBSIRCL_FORWARD_WINDOWS": "0=131072/131072,1=131072/131072",
+    "SIRCL_FORWARD_CHUNK_BYTES": "32768",
+    "LIBSIRCL_RING_WINDOW": "393216",
+    "LIBSIRCL_P2P_WINDOWS": "0=65536/65536,1=65536/65536",
+    "SIRCL_P2P_CHUNK_BYTES": "32768"
+   }
+  }
+ ]
+}

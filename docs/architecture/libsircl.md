@@ -31,17 +31,20 @@ A snapshot is a directory that libsircl's own workspace writes: `tree/` with
 the library's files, `FILES.sha256` (one `<sha256>  ./<path>` line per file)
 and `MANIFEST`. The SHA-256 of `FILES.sha256` is the snapshot's tree digest,
 and its first eight hexadecimal digits name the snapshot. The vendored copy
-is snapshot `a3477af2` (tree digest
-`a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302`,
+is snapshot `e31abc5c` (tree digest
+`e31abc5ca510f592cd0e2d895d2134a70f26625fe23fe75cf2dffcde3c447cf1`,
 library version 0.6.0), which has the fail-stop mode
-([Fail-stop](#fail-stop)), four kernel packs and SIRCL's point-to-point
+([Fail-stop](#fail-stop)), the ring schedules from 8 MiB on a communicator
+whose ring closes over cables (the cycle plan), SIRCL 0.3.1's native
+sources, four kernel packs and SIRCL's point-to-point
 channels between two ranks of a larger communicator
 (`LIBSIRCL_P2P_CHANNELS=on`, off by default). Its route planner
 (`tools/site_routes.py`) also prints each rank's point-to-point windows
 (`LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES`). Status of that snapshot
 in this repository: **hardware-unverified**. Its STATUS.md records GPU
-emulation on one RTX 5090 workstation and runs on a cabled pair of Sparks
-for its library sources. The installer's libsircl transport
+emulation on one RTX 5090 workstation and runs of earlier snapshots on
+Sparks (cabled pairs, a path of four and the cycle of eight); the cycle plan
+has not run on Sparks. The installer's libsircl transport
 (`runtime/common/libsircl.py`) carries six routing variables per rank and
 refuses a planner row with others. For a group of four consecutive Sparks (a
 path of four, or four positions of the ring of eight) this snapshot's planner
@@ -291,7 +294,7 @@ which the library ends the process on a recorded asynchronous error, and
 requires a library that has the mode: the layer records `fail_stop` in the
 lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`,
 and the stock-image preflight reads the same mark from the host library. The
-vendored snapshot `a3477af2` reads the variable (`src/engine.c`), so a layer
+vendored snapshot `e31abc5c` reads the variable (`src/engine.c`), so a layer
 or host library built from it passes the gate; a library built from a
 snapshot without the mode is refused, naming the reason.
 
@@ -496,7 +499,7 @@ PARENT_LOCK=$W/sircl-lock.json
 PARENT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' $PARENT_LOCK)
 RELEASE=dev-20261008-kraken-csf-sircl-libsircl-cuda1342-nccl2323-status034
 
-# 1. The vendored tree matches its snapshot. Expect "files": 128, "snapshot": "a3477af2".
+# 1. The vendored tree matches its snapshot. Expect "files": 124, "snapshot": "e31abc5c".
 python3 scripts/sync_libsircl.py check
 
 # 2. Build libsircl in the parent image. Expect libsircl.so.0.6.0, make check passed and the image's gcc line.

@@ -34,8 +34,9 @@ make emulation-tools mpi-shim BUILD=build
 
 `make kernels NVCC=<nvcc>` regenerates the transport, fold, link and point-to-point packs (CUDA 13.3 or
 later for `sm_121`); `make kernels-check NVCC=<nvcc>` rebuilds all four and fails unless each hash equals
-its prebuilt file's. `make P2P_FEATURES=1` adds the setup check of SIRCL's `p2p_local_features` word; the
-build refuses it until the vendored point-to-point library defines that word (SIRCL change LF). Before it links the library, the build runs the kernel-entry check
+its prebuilt file's. The default build (`P2P_FEATURES=1`) compiles the channels' setup check of SIRCL's
+`p2p_local_features` word (SIRCL change LF) and refuses a vendored point-to-point library without it;
+`P2P_FEATURES=0` leaves the check out. Before it links the library, the build runs the kernel-entry check
 (`tests/check_entries.c`): the library's pack loader resolves every entry it names in the embedded packs
 through a stand-in CUDA driver that reads their cubins offline (`tests/fake_cuda.c`), so a loader that
 names an entry some architecture's cubin lacks stops the build with that entry's name.
@@ -92,8 +93,13 @@ bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/lib
 bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/libsircl.so --world 4 --rounds 2 \
     --slow-ns 0 --expect close-error --env SIRCL_EMU_FAIL_DEREG=1
 # Fail-stop: with LIBSIRCL_FAIL_STOP=1 (and abort) a late rank's peer ends its process within the 2 s wait limit
-# plus 3 s; without it the peer keeps a wrong output. Expected: "fail-stop: 0 problems".
+# plus 3 s; without it the peer keeps a wrong output; with the watcher's poll set past the case, the peer's
+# ncclCommGetAsyncError, ncclCommDestroy or ncclCommAbort right after its stream wait ends it. Expected:
+# "fail-stop: 0 problems". Then four ranks with rank 3 late, as the fabric gates run it: every other rank
+# ends with status 70.
 bash $LOCK sircl-ccl python tests/emulation/fail_stop.py --library build/libsircl.so
+bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/libsircl.so --world 4 --rounds 1 \
+    --expect fail-stop --late-rank 3 --late-s 8 --env LIBSIRCL_FAIL_STOP=1 --env SIRCL_STARTUP_WAIT_S=2
 # Point-to-point channels (LIBSIRCL_P2P_CHANNELS=on) on four and eight ranks: every ordered pair at once, a
 # subset of pairs while the other ranks idle, a pipeline chain, the sendrecv ring; ring:8 under the route
 # planner's settings (relayed pairs refused under SIRCL's budget; with --layout ring8-alone, windowed); a
@@ -217,8 +223,8 @@ bytes`.
 
 `tests/emulation/perf_rank.py` sweeps `ncclAllReduce` the way `all_reduce_perf` does (bf16, fp16 and
 fp32, 8 B to 256 MiB doubling, out of place, 50 timed calls after 10 warm-up calls, and the same in
-CUDA graphs of 20 calls), checks each size up to 64 MiB bit for bit, and prints time per call and bus
-bandwidth. It needs nothing beyond the image. Rank `<r>` with its route map as in 3.2:
+CUDA graphs of 20 calls), checks each size up to 64 MiB bit for bit against the library's result for
+its schedule (4.2), and prints time per call and bus bandwidth. It needs nothing beyond the image. Rank `<r>` with its route map as in 3.2:
 
 ```sh
 python3 tests/emulation/perf_rank.py --library $LIB --world 2 --rank <r> --id-server $LAN0:29713 \
@@ -291,9 +297,12 @@ result); `tools/check_nccl_tests.py` counts those rows as not covered and requir
 The pieces schedule runs a message as two-shot ops of `SIRCL_LARGE_PIECE_BYTES`; within one op the GPU
 stages the whole piece into the arena, the NIC sends it, and the peer reduces it, one after another, so the
 fabric idles while the GPUs stage and reduce. The chain and ring schedules move a message as one op in
-pieces that cycle through the link slots, so staging, sending and reducing overlap. On two ranks their sums
-equal the rank-order sum bit for bit (a chain or ring of two adds two values once), so `perf_rank.py`
-checks every size under each schedule.
+pieces that cycle through the link slots, so staging, sending and reducing overlap. Their sums round to
+the dtype at every hop, in chain or ring order: on two ranks that equals the rank-order sum bit for bit (a
+chain or ring of two adds two values once), on more ranks it does not. `perf_rank.py` checks every size
+against the library's own result for the schedule the environment sets (`library_rank.py`'s
+`allreduce_reference`), so its checks hold under each schedule and on any number of ranks placed at their
+own positions.
 
 The pair plan (README.md, "Pair default") rests on two measurements of SIRCL's ring harness, eager calls,
 each rank's period per call (the nccl-tests time metric), NVIDIA NCCL 2.32.3 on the same pairs in the same

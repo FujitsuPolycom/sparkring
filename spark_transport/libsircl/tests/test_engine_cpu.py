@@ -161,6 +161,20 @@ print(json.dumps({"before": before, "after": state()}))
             self.skipTest(f"the interpreter alone initializes CUDA before the library loads: {record}")
         self.assertEqual(after["status"], before["status"], f"CUDA was initialized after the load: {record}")
 
+    def test_channel_setup_checks_the_native_feature_word(self):
+        """The default build compiles the point-to-point channels' setup check of the native library's local
+        feature word (Makefile P2P_FEATURES=1, CMake LIBSIRCL_P2P_FEATURES): its refusal text is in the
+        library only when the check is compiled."""
+        text = b"does not count failed verbs calls (p2p_local_features bit 0)"
+        self.assertIn(text, LIBRARY.read_bytes(), f"{LIBRARY} was built without the feature check")
+
+    def test_setup_checks_the_native_proxy_feature_word(self):
+        """Every build checks the native proxy's local feature word (roce_local_features, SIRCL change LF) at
+        communicator setup: bits 0 and 1, whose refusal names both."""
+        text = (b"this library needs 0x%x (bit 0: roce_destroy counts failed verbs calls; bit 1: flags-only own "
+                b"items)")
+        self.assertIn(text, LIBRARY.read_bytes())
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

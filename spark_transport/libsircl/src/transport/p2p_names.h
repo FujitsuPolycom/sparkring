@@ -3,8 +3,7 @@
  * collective proxy: the library compiles once against the real libibverbs (tag hw, sccl_hw_p2p_*) and once
  * against the shared-memory verbs stand-in (tag emu, sccl_emu_p2p_*, with SCCL_RENAME_VERBS), and neither
  * copy exports an unprefixed p2p_* symbol that could bind to SIRCL's own build of the library in the same
- * process. p2p_local_features is named for the source that defines it (SIRCL change LF); the copy vendored
- * here predates it, so the name is unused until that source is vendored. */
+ * process, p2p_local_features (SIRCL change LF) included. */
 #ifndef SCCL_P2P_NAMES_H
 #define SCCL_P2P_NAMES_H
 #include "proxy_names.h"

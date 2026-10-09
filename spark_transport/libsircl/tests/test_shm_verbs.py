@@ -5,6 +5,7 @@ Each rank is a process running SIRCL's native proxy (the library's emulation bui
 in shared memory; the host plays the one-shot kernel's part (tests/emulation/shm_verbs_probe.c). The
 group sets up exactly as a communicator does (connection records, queue-pair connection, lane check,
 progress thread) and runs ops of 16 B to 64 KiB, alternating slots, with every peer's bytes checked.
+The probe first checks the proxy's local feature word (roce_local_features, SIRCL change LF): bits 0 and 1.
 No GPU is used.
 """
 import os

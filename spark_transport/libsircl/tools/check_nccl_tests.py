@@ -16,7 +16,9 @@ Reads, in each rank's output directory of ``tools/nccl_tests_pair.sh run``, the 
   (``NO_IN_PLACE``: ``alltoall_perf``, ``alltoallv_perf`` and ``sendrecv_perf``, whose in-place ``#wrong``
   nccl-tests v2.21.1 prints as ``N/A`` on every row) have their in-place ``N/A`` counted as not covered,
   never as passed or wrong; their out-of-place ``#wrong`` must be 0 and an in-place count other than
-  ``N/A`` must be 0. An in-place ``N/A`` of any other test is wrong;
+  ``N/A`` must be 0. An in-place ``N/A`` of any other test is wrong. Rows of tests without a reduction op
+  (``hypercube_perf``) have that column blank; a line that starts like a data row (size and count) but does
+  not parse as one fails this criterion, so no row passes unchecked;
 - every receipt has ``"forwarded":0``, no refusals, ``"healthy":true``, and all-reduce ops (transport,
   fold, chain and ring) covering its all-reduce calls;
 - the eager out-of-place time of the 8192-byte rows is at or below ``--eager-limit-us`` (20);
@@ -34,7 +36,11 @@ import shlex
 import sys
 from pathlib import Path
 
-ROW = re.compile(r"^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(-?\d+)\s+(.*)$")
+# A data row starts with the size and the element count; the columns after them are the type, the reduction
+# op (blank in tests without one, such as hypercube_perf), the root, and four out-of-place and four in-place
+# columns (time, algorithm and bus bandwidth, #wrong).
+DATA = re.compile(r"^\s*\d+\s+\d+\s")
+INTEGER = re.compile(r"-?\d+")
 # nccl-tests binaries without an in-place result: their in-place column has times but "N/A" for #wrong.
 NO_IN_PLACE = frozenset({"alltoall_perf", "alltoallv_perf", "sendrecv_perf"})
 
@@ -52,17 +58,35 @@ def number(text: str):
         return None
 
 
+def parse_row(line: str):
+    """The fields of one data row, or None when the line is not one."""
+    if not DATA.match(line):
+        return None
+    words = line.split()
+    if len(words) < 12:
+        return None
+    if INTEGER.fullmatch(words[3]):  # no reduction op: the root follows the type
+        op, root, rest = "", words[3], words[4:]
+    else:
+        op, root, rest = words[3], words[4], words[5:]
+    if not INTEGER.fullmatch(root) or len(rest) < 8:
+        return None
+    return {"size": int(words[0]), "type": words[2], "op": op,
+            "out_us": number(rest[0]), "out_wrong": rest[3], "in_us": number(rest[4]), "in_wrong": rest[7]}
+
+
 def rows(log: Path):
     """(size, type, op, out-of-place time, out wrong, in-place time, in wrong) of each data row."""
     for line in log.read_text(errors="replace").splitlines():
-        match = ROW.match(line)
-        if not match:
-            continue
-        rest = match.group(6).split()
-        if len(rest) < 8:
-            continue
-        yield {"size": int(match.group(1)), "type": match.group(3), "op": match.group(4),
-               "out_us": number(rest[0]), "out_wrong": rest[3], "in_us": number(rest[4]), "in_wrong": rest[7]}
+        row = parse_row(line)
+        if row is not None:
+            yield row
+
+
+def unread(log: Path) -> list[str]:
+    """Lines that start like a data row (size and count) but do not parse as one: never passed unchecked."""
+    return [line.strip() for line in log.read_text(errors="replace").splitlines()
+            if DATA.match(line) and parse_row(line) is None]
 
 
 def manifest(directory: Path):
@@ -119,7 +143,7 @@ def main(argv=None) -> int:
     bad_exit = [(str(d), job, status) for d, m in present.items() for job, _, status in m if status != 0]
     verdict(not bad_exit, f"every job exited 0 on every rank ({sum(len(m) for m in present.values())} runs)"
             + (f"; failed: {bad_exit[:10]}" if bad_exit else ""))
-    data, texts = {}, {}
+    data, texts, unparsed = {}, {}, []
     for directory, m in present.items():
         for job, log, _ in m:
             path = directory / log
@@ -127,6 +151,8 @@ def main(argv=None) -> int:
             found = list(rows(path)) if path.exists() else []
             if found:
                 data.setdefault(job, []).append((path, found))
+            if path.exists():
+                unparsed += [(path.name, line) for line in unread(path)]
             texts.setdefault(job, []).append(text)
     incomplete = []
     for job in jobs:
@@ -149,8 +175,9 @@ def main(argv=None) -> int:
             uncovered[binary(job)] = uncovered.get(binary(job), 0) + 1
         if r["out_wrong"] != "0" or (r["in_wrong"] != "0" and not in_na):
             wrong.append((path.name, r["size"], r["out_wrong"], r["in_wrong"]))
-    verdict(not wrong, f"#wrong 0 on {len(every)} rows"
-            + (f"; wrong (log, size, out of place, in place): {wrong[:10]}" if wrong else ""))
+    verdict(not wrong and not unparsed, f"#wrong 0 on {len(every)} rows"
+            + (f"; wrong (log, size, out of place, in place): {wrong[:10]}" if wrong else "")
+            + (f"; {len(unparsed)} data rows not parsed: {unparsed[:5]}" if unparsed else ""))
     if uncovered:
         counts = ", ".join(f"{name} {count}" for name, count in sorted(uncovered.items()))
         verdicts.append(f"INFO {sum(uncovered.values())} in-place rows N/A ({counts}): not covered (these tests "
