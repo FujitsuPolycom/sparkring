@@ -37,7 +37,7 @@ def test_replace_returns_only_the_pinned_files():
 
 @pytest.mark.parametrize("plugin,package,version", [("glm_dsa_indexer_split", "glm-dsa-indexer-split", "1.1.0"),
                                                     ("glm53full_speedups", "glm53full-speedups", "1.1.0"),
-                                                    ("glm_dcp_decode_comm", "glm-dcp-decode-comm", "2.0.0")])
+                                                    ("glm_dcp_decode_comm", "glm-dcp-decode-comm", "2.0.1")])
 def test_dist_info_registers_the_plugin_in_vllm_general_plugins(plugin, package, version):
     root = Path(derive_glm53_plugins.ROOT)
     metadata = (root / "integrations/vllm" / plugin / "dist-info"
@@ -72,7 +72,7 @@ def re_fullmatch(value: str) -> bool:
 
 def test_the_layer_declares_each_plugin_at_its_dist_info_version():
     """The derived v3 lock lists exactly the entry points and versions the layer's dist-info files register."""
-    assert derive_glm53_plugins.PLUGINS == {"glm53full_speedups": "1.1.0", "glm_dcp_decode_comm": "2.0.0",
+    assert derive_glm53_plugins.PLUGINS == {"glm53full_speedups": "1.1.0", "glm_dcp_decode_comm": "2.0.1",
                                             "glm_dsa_indexer_split": "1.1.0"}
     assert derive_glm53_plugins.LAYER.plugins == derive_glm53_plugins.PLUGINS
     for name, version in derive_glm53_plugins.PLUGINS.items():

@@ -144,7 +144,8 @@ Open items:
   checkpoint.
 - The default SIRCL tuning table's `cycle-8` row (1 MiB all-reduce capacity
   and dispatch ceiling, 28 KiB one-shot limit, 16 link slots of 512 KiB)
-  applies to SIRCL 0.3.1 sessions. The measured runs above gave the same
+  applies to SIRCL 0.3.2 sessions and, as a compatible build the table
+  lists, to SIRCL 0.3.1 sessions such as those of image `27e9f75c0d09`. The measured runs above gave the same
   capacity, dispatch ceiling and link slots to the SIRCL bundle (`--capacity`,
   `--dispatch` and container variables) and left the one-shot limit to the
   session, which derives 28 KiB on eight ranks. On an image whose SIRCL layer

@@ -70,7 +70,12 @@ marks of where NCCL measured faster route no call. Two tables exist:
 
 - the default table, ``runtime/common/sircl-tuning-defaults.json``
   (``source: defaults``), bound to no fabric and no image; its ``tables``
-  are repository paths;
+  are repository paths. Its ``sircl`` names the SIRCL build of
+  ``spark_transport/sircl`` (version and ABI) and may list, under
+  ``compatible``, other builds of the same ABI whose sessions also take its
+  rows, each with the reason: its difference from the named build changes no
+  kernel, schedule or op that a row's settings choose. Sessions of any other
+  build take SIRCL's own rules (``tuning_builds``, ``tuning_applies``);
 - a measured table, ``/var/lib/sparkring/controller/sircl-tuning.json`` on
   Node A (``source: measured``), which ``sudo sparkring fabric tune``
   (``runtime/host/fabric_tune.py``) writes from ring-harness measurements on
@@ -228,6 +233,20 @@ def tuning_digest(document):
     return hashlib.sha256(encoded(document).encode()).hexdigest()
 
 
+def tuning_builds(document):
+    """The SIRCL builds, ``(version, ABI)``, whose sessions take a tuning table's rows: the build the table names
+    and each build its ``sircl.compatible`` lists. A compatible build is one whose difference from the named build
+    changes no kernel, schedule or op that a row's settings choose; each entry records that reason."""
+    sircl = document["sircl"]
+    return [(sircl["version"], sircl["abi_version"])] + [
+        (entry["version"], entry["abi_version"]) for entry in sircl.get("compatible", [])]
+
+
+def tuning_applies(document, sircl):
+    """Whether sessions of the SIRCL build ``sircl`` (``version`` and ``abi_version``) take ``document``'s rows."""
+    return (sircl["version"], sircl["abi_version"]) in tuning_builds(document)
+
+
 def _setting(name, value):
     if name in INTEGER_SETTINGS:
         return type(value) is int and value >= 0
@@ -278,9 +297,24 @@ def validate_tuning(document, *, root=ROOT, host_root="/"):
              "and a measured one also its binding")
     _require(document["source"] in ("defaults", "measured"), "a tuning table's source is defaults or measured")
     sircl = document["sircl"]
-    _require(isinstance(sircl, dict) and set(sircl) == {"version", "abi_version"}
+    _require(isinstance(sircl, dict) and set(sircl) in ({"version", "abi_version"},
+                                                        {"version", "abi_version", "compatible"})
              and isinstance(sircl["version"], str) and type(sircl["abi_version"]) is int,
-             "a tuning table names the SIRCL version and ABI it applies to")
+             "a tuning table names the SIRCL version and ABI it applies to (the default table may also list "
+             "compatible builds)")
+    compatible = sircl.get("compatible", [])
+    _require(not measured or "compatible" not in sircl,
+             "a measured tuning table applies to the SIRCL build it was measured with only")
+    _require(isinstance(compatible, list) and all(
+        isinstance(entry, dict) and set(entry) == {"version", "abi_version", "reason"}
+        and isinstance(entry["version"], str) and type(entry["abi_version"]) is int
+        and isinstance(entry["reason"], str) and entry["reason"].strip() for entry in compatible),
+        "each compatible SIRCL build of the default table names its version, ABI and the reason its sessions take "
+        "the rows")
+    _require(all(entry["abi_version"] == sircl["abi_version"] for entry in compatible),
+             "a compatible SIRCL build has the native ABI of the build the table names")
+    _require(len(tuning_builds(document)) == len(set(tuning_builds(document))),
+             "the default table lists each SIRCL build once")
     if measured:
         _require(isinstance(document["fabric"], str) and _FABRIC_ID.fullmatch(document["fabric"])
                  and isinstance(document["image_id"], str),
@@ -587,7 +621,7 @@ def section(image_value, document, positions, *, nccl, tuning, dcp=1, root=ROOT,
     shape, size = topology.fabric.kind, len(topology.members)
     name, row = tuning_row(tuning, shape, size)
     sircl = image_lock.sircl(image_value)
-    applies = tuning["sircl"] == {"version": sircl["version"], "abi_version": sircl["abi_version"]}
+    applies = tuning_applies(tuning, sircl)
     sessions = {"tp": topology}
     if dcp > 1:
         sessions["dcp"] = dcp_topologies(layout, positions, dcp)[0]

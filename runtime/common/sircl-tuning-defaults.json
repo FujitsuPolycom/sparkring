@@ -56,7 +56,14 @@
   "schema": "sparkring-sircl-tuning/v1",
   "sircl": {
     "abi_version": 9,
-    "version": "0.3.1"
+    "compatible": [
+      {
+        "abi_version": 9,
+        "reason": "SIRCL 0.3.2 differs from 0.3.1 in ways that change no kernel, schedule, op or launch grid that a row's settings choose, nor their timing: prepare() also compiles per-op block counts a caller requests before CUDA graph capture (op_blocks; the ring tune prepares its candidates' counts with it), the vLLM tensor-parallel slot reports its dispatch, capacity and gather limits as one size_limits record, and the slot's constant for SIRCL_PEER_ROUTES is named ENV_PEER_ROUTES. Sessions of 0.3.1, such as those of image 27e9f75c0d09, keep the rows.",
+        "version": "0.3.1"
+      }
+    ],
+    "version": "0.3.2"
   },
   "source": "defaults",
   "tables": []

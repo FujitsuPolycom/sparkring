@@ -75,10 +75,6 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     assert table["source"] == "defaults" and table["fabric"] is None and table["tables"] == []
     for row in table["layouts"].values():
         assert set(row["settings"]) <= set(transport.SETTINGS)
-    # The default table names the SIRCL build its rows were measured with. A session of another build of the same
-    # ABI takes SIRCL's own rules instead of the rows (``section``'s ``applies``).
-    from spark_transport.sircl.sparkring_sircl.oneshot._proxy import ABI_VERSION
-    assert set(table["sircl"]) == {"version", "abi_version"} and table["sircl"]["abi_version"] == ABI_VERSION
 
 
 def shipped_sircl_locks():
@@ -98,14 +94,25 @@ def shipped_sircl_locks():
     return found
 
 
-def test_every_shipped_sircl_lock_names_the_sircl_build_of_the_default_tuning_table():
-    # The default rows apply only to sessions of the SIRCL build the table names; an image of another build would
-    # run none of them, silently. Re-key the table (and its measured rows) before shipping a lock of another build.
+def test_the_default_tuning_table_is_keyed_to_the_shipped_sircl_build_and_covers_every_shipped_lock():
+    # The default rows apply only to sessions of the SIRCL builds the table names (``transport.tuning_builds``); a
+    # session of another build runs none of them, silently. The table names the build of spark_transport/sircl,
+    # which an image built from this tree carries, so a version or ABI change fails here until the table is re-keyed
+    # with the reason its rows still hold. Every shipped v3 lock's build is one the table names: the shipped build
+    # or a compatible one with its recorded reason.
+    import tomllib
+
+    from spark_transport.sircl.sparkring_sircl import __version__
+    from spark_transport.sircl.sparkring_sircl.oneshot._proxy import ABI_VERSION
+    project = tomllib.loads((transport.ROOT / "spark_transport/sircl/pyproject.toml").read_text(encoding="utf-8"))
+    assert project["project"]["version"] == __version__
     table = transport.load_tuning()
+    assert transport.tuning_builds(table)[0] == (__version__, ABI_VERSION)
+    assert transport.tuning_applies(table, {"version": __version__, "abi_version": ABI_VERSION})
     locks = shipped_sircl_locks()
     assert locks
     for path, lock in locks.items():
-        assert {key: lock["sircl"][key] for key in ("version", "abi_version")} == table["sircl"], path
+        assert transport.tuning_applies(table, lock["sircl"]), path
 
 
 @pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path-4"), ("path", 3, "path"),
@@ -177,6 +184,8 @@ def test_a_measured_table_applies_only_while_its_fabric_image_and_drivers_hold(t
     (lambda table: table.pop("binding"), "a measured one also its binding"),
     (lambda table: table["binding"].update(drivers={}), "GPU driver and kernel by position"),
     (lambda table: table["binding"]["tuning_key"].update(sircl="0.3.0/abi9"), "SIRCL tuning key"),
+    (lambda table: table["sircl"].update(compatible=transport.load_tuning()["sircl"]["compatible"]),
+     "the SIRCL build it was measured with only"),
     (lambda table: table["layouts"]["pair"].update(source="default:guessed"), "default:<source>"),
     (lambda table: table["tables"].append({"path": "/etc/sparkring/x.json", "sha256": "0" * 64}), "repository path"),
     (lambda table: table["tables"].append({"path": f"{transport.HOST_TABLES}/{'0' * 64}.json", "sha256": "0" * 64}),
@@ -296,6 +305,17 @@ def test_device_names_come_from_the_fabric_document():
         row["ports"]["0"]["functions"]["primary"]["rdma"] = "mlx5_0"
     section = transport.section(sircl_lock(), value, [0, 1], nccl="never", tuning=transport.load_tuning())
     assert section["devices"] == [["mlx5_0", "roceP2p1s0f0"]] * 2
+
+
+def test_a_compatible_sircl_build_takes_the_default_rows():
+    table = transport.load_tuning()
+    for version, abi in transport.tuning_builds(table):
+        image = sircl_lock(sircl=dict(sircl_lock()["sircl"], version=version, abi_version=abi,
+                                      wheel={"name": f"sparkring_sircl-{version}-py3-none-any.whl", "sha256": "1" * 64},
+                                      tuning_key={**sircl_lock()["sircl"]["tuning_key"], "sircl": f"{version}/abi{abi}"}))
+        _, section = sircl_deployment(TP2, "pair", 2, [0, 1], image=image)
+        assert section["tuning"]["applies"] is True and section["tuning"]["settings"] == table["layouts"]["pair"][
+            "settings"], version
 
 
 def test_a_default_table_for_another_sircl_build_leaves_the_rules_in_charge():
@@ -854,6 +874,11 @@ def test_a_path_fabric_runs_sircl_on_its_path_and_keeps_nccl_off_across_relays()
     (lambda table: table["layouts"]["pair"].update(source="guessed"), "measured, design, rules or inherited"),
     (lambda table: table["tables"].append({"path": "../outside.json", "sha256": "0" * 64}), "repository path"),
     (lambda table: table.update(sircl={"version": "0.2.0"}), "SIRCL version and ABI"),
+    (lambda table: table["sircl"]["compatible"][0].pop("reason"), "the reason its sessions take the rows"),
+    (lambda table: table["sircl"]["compatible"][0].update(reason=" "), "the reason its sessions take the rows"),
+    (lambda table: table["sircl"]["compatible"][0].update(abi_version=8), "native ABI of the build the table"),
+    (lambda table: table["sircl"]["compatible"][0].update(version=table["sircl"]["version"]), "each SIRCL build once"),
+    (lambda table: table["sircl"].update(compatible={}), "the reason its sessions take the rows"),
 ])
 def test_a_tuning_table_with_unstated_evidence_or_an_outside_table_is_refused(edit, message):
     table = transport.load_tuning()

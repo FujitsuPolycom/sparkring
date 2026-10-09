@@ -147,7 +147,7 @@ inherited SHA-256 `None`, and the parent receipt must not record it.
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
 [derive_glm53_plugins.py](derive_glm53_plugins.py) adds the GLM-5.3 vLLM
 general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 and
-`glm_dcp_decode_comm` 2.0.0 with their dist-info directories and names all
+`glm_dcp_decode_comm` 2.0.1 with their dist-info directories and names all
 three in `Layer.plugins`.
 
 The derived lock has its parent lock's schema. A parent with a

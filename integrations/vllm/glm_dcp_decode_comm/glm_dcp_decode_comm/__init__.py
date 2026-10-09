@@ -131,7 +131,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
 
 PLUGIN_NAME = "glm_dcp_decode_comm"
-PLUGIN_VERSION = "2.0.0"
+PLUGIN_VERSION = "2.0.1"
 MARKER = "__glm_dcp_decode_comm__"
 HELPER_PREFIX = "_glm_dcp_decode_comm_"
 IMAGE = "816c6d6a7e96"

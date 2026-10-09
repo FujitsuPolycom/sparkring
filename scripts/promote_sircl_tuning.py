@@ -19,10 +19,12 @@ becomes ``source: measured`` with the measured settings, the table is named in
 ``tables`` in place of any default table that serves the same groups, and
 ``measured_at`` becomes the later of the two dates.
 
-The default table names no fabric and no image. The promoted table keeps its
-key, which names the SIRCL build and the image it was measured with: sessions
-on another SIRCL build do not take it and keep SIRCL's rules for those
-choices. Record the evidence (fabric, image, driver, harness run) in the
+The default table names no fabric and no image. The measured table must be of
+the SIRCL version and ABI the default table names; a build the default table
+lists as ``compatible`` is refused, because the compatibility reason covers
+the default rows, not a new measurement. The promoted table keeps its key,
+which names the SIRCL build and the image it was measured with: sessions on
+another SIRCL build do not take it and keep SIRCL's rules for those choices. Record the evidence (fabric, image, driver, harness run) in the
 release's performance record before the release cites the row.
 """
 from __future__ import annotations
@@ -82,9 +84,11 @@ def promote(defaults, measured, row, tables, *, root=ROOT):
         transport.validate_tuning(measured, root=root, host_root=host)
     if measured["source"] != "measured":
         raise ValueError("--measured names a default table; it needs one sparkring fabric tune wrote")
-    if measured["sircl"] != defaults["sircl"]:
-        raise ValueError(f"The measured table is for SIRCL {measured['sircl']}, the default table for "
-                         f"{defaults['sircl']}; a promoted row would not apply")
+    named = transport.tuning_builds(defaults)[0]
+    if (measured["sircl"]["version"], measured["sircl"]["abi_version"]) != named:
+        raise ValueError(f"The measured table is for SIRCL {measured['sircl']['version']} (ABI "
+                         f"{measured['sircl']['abi_version']}), the default table for {named[0]} (ABI {named[1]}); "
+                         "promote a measurement of the build the default table names")
     measured_row = measured["layouts"].get(row)
     if measured_row is None or measured_row["source"] != "measured":
         raise ValueError(f"The measured table has no measured {row} row; it measured "
