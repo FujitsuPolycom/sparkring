@@ -34,8 +34,8 @@ More: [documentation](docs/README.md) · [commands](docs/operations/commands.md)
 |---|---|---|---|---|---|---|---|
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh | 46.5 / 119 / 165 / 230 | 3,590 |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh | 64.0 / 173 / 239 / 328 | 4,424 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 36.0 / 73 / 100 / 67\* | 2,460 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.1 / 133 / 200 / 231 | 3,500 |
+| GLM-5.3-Flash | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) where the image reads it, else [NVFP4 Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)†; Local Inference Lab | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 36.0 / 73 / 100 / 67\* | 2,460 |
+| GLM-5.3-Flash | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) where the image reads it, else [NVFP4 Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)†; Local Inference Lab | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.1 / 133 / 200 / 231 | 3,500 |
 | MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on | 30.2 / 76 / 120 / 182 | 2,806 |
 | MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on | 62.8 / 124 / 181 / 317 | 4,094 |
 | DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high | 57.0 / 135 / 201 / 275 | 4,396 |
@@ -48,10 +48,12 @@ with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-
 0.7.6 on installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`
 ([all results, 16K–128K](performance/records/images/dev-20261004-kraken-matrix-20261004.md)).
 \* The two-Spark GLM profile serves 8 requests at a time.
-On an image whose vLLM reads Local Inference Lab's
-[CSF checkpoint](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD),
-the GLM profiles install it instead; it has no measurements here
+† The GLM profiles install the CSF checkpoint on an image whose vLLM reads it
+and NVFP4 Spark on every other image, the default image among them. The
+measurements are NVFP4 Spark; CSF has none here
 ([default checkpoint by profile](profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+`--profile glm53-flash-tp2` and `--profile glm53-flash-tp4` select the same
+two profiles.
 
 Four Experimental profiles serve on all eight Sparks of an eight-Spark ring
 (`glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,

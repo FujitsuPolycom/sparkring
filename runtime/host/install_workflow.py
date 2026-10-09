@@ -1579,6 +1579,9 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
     args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    if args.profile:
+        # Every later step, and every record, uses the profile's ID (models.ALIASES).
+        args.profile = models.canonical(args.profile)
     from runtime.common import stock_image
     stock = args.image is not None and stock_image.is_reference(args.image)
     if vllm_arguments and not stock:

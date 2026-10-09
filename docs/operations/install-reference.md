@@ -466,6 +466,11 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   install it without `--checkpoint`; on every other image, including the
   default image, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
   the CSF checkpoint, and the installer refuses it on any other image.
+- `glm53-flash-tp2` and `glm53-flash-tp4` are other names of
+  `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`, whose IDs
+  name the checkpoint they install where CSF cannot be read. `install
+  --profile`, `up`, `status`, `down` and `images --profile` accept them; the
+  deployment, its records and its status keep the profile ID.
 - `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
   `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
   off), which the GLM-5.3 plugin layer

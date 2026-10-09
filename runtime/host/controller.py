@@ -547,6 +547,10 @@ def lifecycle(argv):
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
+    if args.profile:
+        # A deployment's directory, records and status name the profile's ID (models.ALIASES).
+        from runtime.host import models
+        args.profile = models.canonical(args.profile)
     settings = serving.from_arguments(args)
     if settings and (args.operation != "up" or not args.profile):
         raise ValueError("Serving settings apply to up with an exact profile")

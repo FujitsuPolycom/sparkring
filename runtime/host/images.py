@@ -31,6 +31,9 @@ def main(argv=None):
     parser.add_argument("--profile", help="only images that run this installer profile")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.profile is not None:
+        from runtime.host import models
+        args.profile = models.canonical(args.profile)
     if args.profile is not None and args.profile not in installer_image.SUPPORTED:
         replaced = profiles.replacement_message(args.profile)
         parser.error(replaced if replaced else f"{args.profile} is not an installer profile; sparkring models lists them")

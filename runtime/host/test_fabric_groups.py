@@ -474,3 +474,12 @@ def test_a_group_with_the_end_of_a_line_checks_only_that_sparks_cabled_functions
     # The container's prepared-transport device variables keep the four functions; SIRCL names the devices.
     specs = installer.specifications(lock)
     assert specs[0].environment["B12X_ROCE_HCA"] == ",".join(installer.RING_HCAS)
+
+
+def test_up_by_an_alias_creates_the_deployment_of_the_profile_id(tmp_path, monkeypatch):
+    simulated = up_ring(tmp_path, monkeypatch)
+    assert controller.lifecycle(["up", "glm53-flash-tp2", "--on", "0,1", "--image-lock", str(simulated.lock),
+                                 "--plan"]) == 0
+    directory = controller.deployment_directory(GLM_TP2, placement.instance_label((0, 1)))
+    assert installer.read(directory / "deployment.lock.json")["selection"]["target_variant"] == "csf"
+    assert not controller.deployment_directory("glm53-flash-tp2", placement.instance_label((0, 1))).exists()
