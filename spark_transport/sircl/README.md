@@ -2,7 +2,7 @@
 
 SIRCL, SparkRing's Switchless Inference RDMA Collective Layer, carries
 tensor-parallel and decode-context-parallel (DCP) collectives between DGX
-Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.2.0
+Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.3.0
 (path `spark_transport/sircl`, import name `sparkring_sircl`), holds its ring
 sessions: collectives for groups of 2 to 8 Sparks cabled as a ring, a path of
 consecutive Sparks, a pair or a triangle, for several independent groups on

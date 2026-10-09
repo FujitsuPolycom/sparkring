@@ -25,10 +25,11 @@ SITE = "/usr/local/lib/python3.12/dist-packages/"
 def test_the_wheel_is_the_same_bytes_every_time_and_records_every_file(tmp_path):
     first = sircl_layer.write_wheel(tmp_path / "a")
     second = sircl_layer.write_wheel(tmp_path / "b")
-    assert first["sha256"] == second["sha256"] and first["name"] == "sparkring_sircl-0.2.0-py3-none-any.whl"
+    version = sircl_layer.version()
+    assert first["sha256"] == second["sha256"] and first["name"] == f"sparkring_sircl-{version}-py3-none-any.whl"
     with zipfile.ZipFile(first["wheel"]) as archive:
         names = archive.namelist()
-        info = "sparkring_sircl-0.2.0.dist-info/"
+        info = f"sparkring_sircl-{version}.dist-info/"
         assert names == sorted(names) and "spark_roce_gid.py" in names and "sparkring_sircl/__init__.py" in names
         assert "sparkring_sircl/oneshot/_roce_proxy.c" in names and "sparkring_sircl/p2p/_p2p_proxy.c" in names
         assert not any("__pycache__" in name or name.startswith("tests/") for name in names)

@@ -319,9 +319,9 @@ receipt.
 ```bash
 python3 runtime/images/sircl_layer.py wheel --output WHEELS
 python3 runtime/images/sircl_layer.py natives --parent-lock PARENT_LOCK \
-  --wheel WHEELS/sparkring_sircl-0.2.0-py3-none-any.whl --output NATIVES
+  --wheel WHEELS/sparkring_sircl-0.3.0-py3-none-any.whl --output NATIVES
 python3 runtime/images/sircl_layer.py prepare --parent-lock PARENT_LOCK \
-  --wheel WHEELS/sparkring_sircl-0.2.0-py3-none-any.whl --natives NATIVES \
+  --wheel WHEELS/sparkring_sircl-0.3.0-py3-none-any.whl --natives NATIVES \
   [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
 python3 runtime/images/sircl_layer.py build --context CONTEXT --tag sparkring:sircl \
   --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
