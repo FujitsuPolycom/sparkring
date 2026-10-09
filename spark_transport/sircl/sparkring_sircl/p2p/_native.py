@@ -64,7 +64,29 @@ def _declare(lib: ctypes.CDLL) -> ctypes.CDLL:
     native = lib.p2p_abi_version()
     if native != ABI_VERSION:
         raise RuntimeError(f"unexpected point-to-point native ABI version {native}; this binding expects {ABI_VERSION}")
+    features = local_features(lib)
+    if features is None or features & REQUIRED_FEATURES != REQUIRED_FEATURES:
+        found = "no local feature identity (p2p_local_features)" if features is None else f"local features {features:#x}"
+        raise RuntimeError(f"the point-to-point native library has {found}; this binding requires "
+                           f"{REQUIRED_FEATURES:#x} (a failed-verbs count from p2p_destroy): it was built from an earlier "
+                           f"source of ABI {ABI_VERSION}; rebuild it or unset SIRCL_P2P_NATIVE_LIBRARY")
     return lib
+
+
+# Local features (p2p_local_features): what a library offers this process apart from the wire contract of
+# ABI_VERSION; the binding requires REQUIRED_FEATURES of every library it loads.
+FEATURE_DESTROY_COUNT = 1      # p2p_destroy returns the number of verbs calls that failed
+REQUIRED_FEATURES = FEATURE_DESTROY_COUNT
+
+
+def local_features(lib) -> int | None:
+    """The library's local feature bits (``p2p_local_features``), or None for a library without the identity."""
+    function = getattr(lib, "p2p_local_features", None)
+    if function is None:
+        return None
+    function.restype = ctypes.c_uint
+    function.argtypes = []
+    return int(function())
 
 
 def load(path: str | os.PathLike | None = None) -> ctypes.CDLL:

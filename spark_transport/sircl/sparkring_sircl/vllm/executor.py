@@ -177,8 +177,8 @@ def _gather_columns(session, inp: torch.Tensor, dim: int, world: int, out_shape:
     output (``outer`` rows precede ``dim``; ``inner`` is the bytes from ``dim`` on)."""
     src = inp.contiguous()
     if src.data_ptr() % PACK:
-        # The session runs a link all-gather only between 16-byte-aligned pointers, a fact of each rank's
-        # memory; a fresh allocation makes it hold on every rank.
+        # A fresh allocation is 16-byte aligned: the session's link kernels then read the shard in place
+        # (the session would otherwise stage it itself, "Pointer alignment" in the package README).
         src = src.clone()
     nbytes = src.numel() * src.element_size()
     staging = column_gather.staging(world * nbytes, src.device)

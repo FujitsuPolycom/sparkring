@@ -2,7 +2,7 @@
 
 SIRCL, SparkRing's Switchless Inference RDMA Collective Layer, carries
 tensor-parallel and decode-context-parallel (DCP) collectives between DGX
-Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.3.0
+Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.3.1
 (path `spark_transport/sircl`, import name `sparkring_sircl`), holds its ring
 sessions: collectives for groups of 2 to 8 Sparks cabled as a ring, a path of
 consecutive Sparks, a pair or a triangle, for several independent groups on
@@ -114,8 +114,15 @@ and flags, forwards chain and ring traffic between neighbours without the
 kernel, and records failures in the command ring. `sparkring_sircl.build`
 compiles it into the build cache as `roce_proxy-<16 hex digits of the
 source's SHA-256>.so`, so each source revision has its own library; the
-binding `oneshot/_proxy.py` checks the native ABI version (9) when it loads
-the library. `SIRCL_PROGRESS_CPU` or `progress_cpu=` pins the thread.
+binding `oneshot/_proxy.py` checks the native ABI version (9, the wire
+contract peers compare) and the library's local feature identity
+(`roce_local_features`: bit 0, `roce_destroy` returns the number of verbs
+calls that failed; bit 1, link op word bit 24, a rank's own items as flags
+only) when it loads the library. It refuses a library whose features lack
+`REQUIRED_FEATURES` (bit 0), whether the source build, a path or
+`SIRCL_NATIVE_LIBRARY` names it, such as an earlier build; the point-to-point
+binding checks `p2p_local_features` the same way. `SIRCL_PROGRESS_CPU` or
+`progress_cpu=` pins the thread.
 
 Kernels are written in the CUTLASS CuTe DSL and compiled per dtype, group
 size, rank, lane count and geometry. Every op is one kernel launch that
@@ -249,7 +256,7 @@ streams.
 | Collective | Accepts |
 |---|---|
 | `all_reduce(inp, *, out=None, stream=None, algorithm=None)` | contiguous float16, bfloat16 or float32, a multiple of 16 bytes up to `max_size`, as one one-shot or two-shot launch; `auto` runs one-shot up to `oneshot_max_bytes`, two-shot above. A tuning table's or built-in plan's ring or chain choice for the size belongs to `all_reduce_large` and is neither applied nor counted here |
-| `all_reduce_large(inp, *, out=None, stream=None)` | float16, bfloat16 or float32 of any size; `large_reduce_plan(nbytes)` names its ops; a tail below 16 bytes travels zero-padded |
+| `all_reduce_large(inp, *, out=None, stream=None)` | float16, bfloat16 or float32 of any size; `large_reduce_plan(nbytes)` names its ops, the same on every rank whatever each rank's pointer alignment ([Pointer alignment](#pointer-alignment)); a tail below 16 bytes travels zero-padded |
 | `all_gather(inp, *, dim=-1, out=None, stream=None)` | any plain dtype along dimension 0 or the last, shards up to `max_gather_bytes`; unaligned shapes take a padded path |
 | `all_gather_large(inp, *, dim=-1, out=None, stream=None)` | any dense tensor, any dimension, any size; shapes that are not 16-byte rows on 16-byte-aligned tensors need `prepare(padded_gather=True)` before a capture |
 | `reduce_scatter(inp, *, out=None, stream=None, chunk_bytes=None, src_stride_bytes=None)` | `W` chunks, contiguous or strided; stores chunk `rank` of the sum |
@@ -258,7 +265,7 @@ streams.
 | Group | Methods |
 |---|---|
 | eligibility (the same answer on every rank) | `should_allreduce`, `should_all_gather`, `should_reduce_scatter`, `should_all_to_all` |
-| decisions (`mode=` `eager` or `graph`, the call's mode when omitted) | `select_algorithm(nbytes)`, `large_reduce_plan(nbytes, aligned=True)`, `gather_uses_chain(inp, dim)`, `gather_uses_ring(inp, dim)`, `scatter_uses_chain(inp)`, `scatter_uses_ring(inp)` |
+| decisions (`mode=` `eager` or `graph`, the call's mode when omitted) | `select_algorithm(nbytes)`, `large_reduce_plan(nbytes)`, `large_reduce_staging(nbytes, input_aligned, output_aligned)`, `gather_uses_chain(inp, dim)`, `gather_uses_ring(inp, dim)`, `scatter_uses_chain(inp)`, `scatter_uses_ring(inp)` |
 | preparation and capture | `prepare(dtypes=(torch.bfloat16,), *, padded_gather=False, algorithms=None, scatter=False, links=False)` (`scatter`: the reduce-scatter kernels; `links`: every chain and ring kernel, for schedules changed at run time); `capture(stream=None)`, a context around a CUDA graph capture |
 | health and regimes | `check_health()`, `poisoned`, `enter_startup()`, `enter_serving()`, `startup()`, `wait_limit_s` |
 | close | `close(*, abort=False)`, collective over the exchange group ([Close](#close)); `close_result`, the result a later call returns |
@@ -296,7 +303,9 @@ a healthy close, else this rank's failure, the first failed peer's note
 (`rank <i>: ...`) or the round that did not complete; the session logs it as a
 warning. A round that did not complete marks the exchange group unusable for
 teardown rounds in the process, and later closes on it stop and destroy
-without rounds. `roce_destroy` returns the number of verbs calls that failed;
+without rounds. `roce_destroy` returns the number of verbs calls that failed,
+and the binding refuses a native library whose local feature identity does
+not promise that count ([Progress thread and kernels](#progress-thread-and-kernels));
 when it is not zero, or after a failed device or stream synchronization, the
 registered arena stays allocated for the rest of the process
 (`teardown.RETAINED`), since a queue pair, a registration or a kernel may
@@ -355,7 +364,7 @@ agreed settings only, so every rank takes the same one.
   at least 64 threads per block. `chain_available` covers the all-reduce and
   `link_available` the all-gather and reduce-scatter. A chain all-gather also
   needs a shard that lands in one piece of the output (`dim` is the first
-  dimension above size 1), 16-byte multiple and aligned.
+  dimension above size 1) and is a multiple of 16 bytes.
 - Ring: closes the chain by its last rank's lanes to its first, over the
   closing cable of a cycle or through relays on a path. On a path each relay
   hairpin queue may carry at most one ring lane (`routes.ring_window`).
@@ -365,6 +374,23 @@ agreed settings only, so every rank takes the same one.
   piece (`SIRCL_RING_GATHER_STAGGER`, `D3`) leaves `D` rounds after its input
   arrived, so a link keeps several items in flight. Staggers change timing,
   never bits.
+
+### Pointer alignment
+
+A collective's ops follow its shared arguments only: the message size, shape,
+dtype and the session's agreed settings. A rank's pointer alignment is a fact
+of its own memory and changes no op, so every rank runs the same ring, chain,
+scatter or transport ops whatever its tensors' alignment. The ring and chain
+kernels and the scatter ops need 16-byte aligned pointers, so a rank whose
+input or output is not 16-byte aligned runs the same ops on aligned working
+buffers (`oneshot/_aligned.py`: a copy of the input, an output copied back) in
+`all_reduce_large`, `all_gather_large`, `reduce_scatter` and `all_to_all`;
+the one-shot, two-shot and all-gather transport ops stage their own pieces.
+The working buffers are fresh allocations, from the graph's private pool
+inside a CUDA graph capture, so a captured op replays its staging copies.
+`large_reduce_plan(nbytes)` gives the ops, the same on every rank, and
+`large_reduce_staging(nbytes, input_aligned, output_aligned)` adds whether
+this rank stages its input and its output.
 
 ### Tuning tables
 

@@ -54,6 +54,24 @@ def test_the_native_layout_is_the_protocol_layout(p2p_library):
             _native.layout(world, lanes, slots, slot_bytes, library=lib)
 
 
+def test_a_legacy_point_to_point_override_is_refused(tmp_path, monkeypatch):
+    from native_stub import NativeStub
+
+    monkeypatch.setattr(_native, "_LIBRARIES", {}, raising=False)
+    legacy = NativeStub("p2p", _native.ABI_VERSION, None)
+    monkeypatch.setattr(_native.ctypes, "CDLL", lambda path, use_errno=True: legacy)
+    with pytest.raises(RuntimeError, match="no local feature identity"):
+        _native.load(tmp_path / "legacy.so")
+    with pytest.raises(RuntimeError, match="local features 0x0; this binding requires 0x1"):
+        _native._declare(NativeStub("p2p", _native.ABI_VERSION, 0))
+    complete = NativeStub("p2p", _native.ABI_VERSION, _native.FEATURE_DESTROY_COUNT)
+    assert _native._declare(complete) is complete
+
+
+def test_the_point_to_point_source_build_reports_its_local_features(p2p_library):
+    assert _native.local_features(_native.load(p2p_library)) == _native.FEATURE_DESTROY_COUNT
+
+
 def test_a_library_of_another_abi_is_refused(p2p_library, monkeypatch):
     monkeypatch.setattr(_native, "ABI_VERSION", proto.ABI_VERSION + 1)
     monkeypatch.setattr(_native, "_LIBRARIES", {}, raising=False)
