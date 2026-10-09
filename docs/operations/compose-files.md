@@ -30,6 +30,10 @@ path; it also prepares the network, image and checkpoint the files expect.
 - Installer profiles run the installer image lock's image; SparkCache variants
   run release `shared-2026.09.3`'s image. Files name images by registry digest.
 - Qwen SparkCache variants use their base profile's site example.
+- `SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared` selects the
+  image's prepared B12X RoCE transport bundle on profiles of two and four
+  Sparks; the `tp2-` name is kept for compatibility
+  ([transport bundle](compose.md#what-each-input-controls)).
 - Each installer-profile rank is the container `sparkring install` runs, with
   the same image and serving settings but no per-rank runtime-binding file.
   The status plugin then reports worker identity as `binding_not_configured`;

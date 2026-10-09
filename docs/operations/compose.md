@@ -56,6 +56,13 @@ A site cannot change serving settings or select another image.
 | Site file | SSH targets, rank addresses, bootstrap interface, HCA order, GID index, and model, cache, repository and deployment paths; TP4 adds the prepared fabric reference |
 | Generated container specification | Effective arguments, environment, entrypoint, mounts, GPU/RDMA access, limits and health checks |
 
+Each installer profile's ranks set
+`SPARKRING_TRANSPORT_PROFILE=tp2-rocenante-adaptive-prepared`: the prepared
+B12X RoCE transport bundle that the image carries. The `tp2-` name is kept
+for compatibility; profiles of two and four Sparks select the same bundle.
+When SIRCL is loaded it replaces this bundle's all-reduce slot; Compose files
+run the image on the prepared transport, without SIRCL.
+
 The site schema is `sparkring-compose-site/v1`, with only `schema`, `name`,
 `master` and `ranks`. `name` is lowercase, at most 40 characters; containers
 are named `sr-<name>-r<rank>`. `master` must be rank 0's `host_ip`.
