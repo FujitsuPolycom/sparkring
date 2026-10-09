@@ -13,9 +13,13 @@ NCCL interface header
   and reproduce its function declarations.
 
 SIRCL components
-  src/transport/sircl_roce_proxy.c and src/transport/fake_verbs/infiniband/verbs.h are copies of
-  SIRCL files. The kernels in kernels/sircl_kernels.cu, kernels/sircl_common.cuh and
-  kernels/sircl_links.cu are CUDA C++ ports of SIRCL's kernels. SIRCL's one-shot and all-gather
+  src/transport/sircl_roce_proxy.c, src/transport/sircl_p2p_proxy.c and
+  src/transport/fake_verbs/infiniband/verbs.h are copies of SIRCL files. The kernels in
+  kernels/sircl_kernels.cu, kernels/sircl_common.cuh, kernels/sircl_links.cu and kernels/sircl_p2p.cu
+  are CUDA C++ ports of SIRCL's kernels. The four bf16 and fp16 conversions in
+  kernels/sircl_common.cuh are b12x's CuTe intrinsics from b12x/comm/roce/_cute_intrinsics.py (the
+  copy in the SparkRing repository's third_party/b12x_roce, upstream base commit
+  ffb7442d04a9f50b950df1fb17280acad881b7d5), written as CUDA inline PTX. SIRCL's one-shot and all-gather
   kernels, device intrinsics and progress-thread protocol derive from RoCEnante, the b12x one-shot
   RoCE collectives by Local Inference Lab and its contributors (https://github.com/local-inference-lab,
   b12x commit 236ddff04a5f5064084b46464800b70b34ec7d8c), licensed under the Apache License,

@@ -5,6 +5,15 @@
  * float32 pack arithmetic. Every kernel of sircl_kernels.cu is built from
  * these, so all of them follow one protocol (kernels/sircl_kernels.cu
  * describes it).
+ *
+ * The four bf16 and fp16 conversions of the pack arithmetic (unpack_bf16x2,
+ * unpack_f16x2, pack_bf16x2, pack_f16x2) are b12x's CuTe intrinsics
+ * unpack_bf16x2, unpack_f16x2, pack_f32x2_to_bf16x2 and pack_f32x2_to_f16x2
+ * from b12x/comm/roce/_cute_intrinsics.py (local-inference-lab/b12x,
+ * Apache-2.0; this repository's copy is
+ * third_party/b12x_roce/b12x/comm/roce/_cute_intrinsics.py), written as
+ * CUDA inline PTX with the same instructions, operand order and register
+ * names.
  */
 #ifndef SIRCL_COMMON_CUH
 #define SIRCL_COMMON_CUH
@@ -112,24 +121,51 @@ __device__ __forceinline__ uint32_t spin_until_eq_or_poison_gpu(uint64_t addr, u
 
 /* -- the arithmetic of one 16-byte pack: float32 accumulation, one rounding */
 
-__device__ __forceinline__ void unpack_bf16x2(uint32_t w, float &lo, float &hi) {
-  asm("{\n\t.reg .b16 l, h;\n\tmov.b32 {l, h}, %2;\n\tcvt.f32.bf16 %0, l;\n\tcvt.f32.bf16 %1, h;\n\t}"
-      : "=f"(lo), "=f"(hi) : "r"(w));
+/* A packed bf16 pair as two float32 values, the low half first (b12x unpack_bf16x2). */
+__device__ __forceinline__ void unpack_bf16x2(uint32_t value, float &lo, float &hi) {
+  asm("{\n"
+      "    .reg .b16 lo, hi;\n"
+      "    mov.b32 {lo, hi}, %2;\n"
+      "    cvt.f32.bf16 %0, lo;\n"
+      "    cvt.f32.bf16 %1, hi;\n"
+      "}"
+      : "=f"(lo), "=f"(hi)
+      : "r"(value));
 }
-__device__ __forceinline__ void unpack_f16x2(uint32_t w, float &lo, float &hi) {
-  asm("{\n\t.reg .b16 l, h;\n\tmov.b32 {l, h}, %2;\n\tcvt.f32.f16 %0, l;\n\tcvt.f32.f16 %1, h;\n\t}"
-      : "=f"(lo), "=f"(hi) : "r"(w));
+
+/* A packed fp16 pair as two float32 values, the low half first (b12x unpack_f16x2). */
+__device__ __forceinline__ void unpack_f16x2(uint32_t value, float &lo, float &hi) {
+  asm("{\n"
+      "    .reg .b16 lo, hi;\n"
+      "    mov.b32 {lo, hi}, %2;\n"
+      "    cvt.f32.f16 %0, lo;\n"
+      "    cvt.f32.f16 %1, hi;\n"
+      "}"
+      : "=f"(lo), "=f"(hi)
+      : "r"(value));
 }
+
+/* Two float32 values rounded to nearest into a packed bf16 pair, `lo` in the low half, without
+ * saturation, as two scalar __float2bfloat16 conversions give (b12x pack_f32x2_to_bf16x2). */
 __device__ __forceinline__ uint32_t pack_bf16x2(float lo, float hi) {
-  uint32_t r;
-  asm("{\n\t.reg .b16 l, h;\n\tcvt.rn.bf16.f32 l, %1;\n\tcvt.rn.bf16.f32 h, %2;\n\tmov.b32 %0, {l, h};\n\t}"
-      : "=r"(r) : "f"(lo), "f"(hi));
-  return r;
+  uint32_t value;
+  asm("{\n"
+      "    .reg .b16 blo, bhi;\n"
+      "    cvt.rn.bf16.f32 blo, %1;\n"
+      "    cvt.rn.bf16.f32 bhi, %2;\n"
+      "    mov.b32 %0, {blo, bhi};\n"
+      "}"
+      : "=r"(value)
+      : "f"(lo), "f"(hi));
+  return value;
 }
+
+/* Two float32 values rounded to nearest into a packed fp16 pair, `lo` in the low half
+ * (b12x pack_f32x2_to_f16x2). */
 __device__ __forceinline__ uint32_t pack_f16x2(float lo, float hi) {
-  uint32_t r;
-  asm("cvt.rn.f16x2.f32 %0, %2, %1;" : "=r"(r) : "f"(lo), "f"(hi));
-  return r;
+  uint32_t value;
+  asm("cvt.rn.f16x2.f32 %0, %2, %1;" : "=r"(value) : "f"(lo), "f"(hi));
+  return value;
 }
 __device__ __forceinline__ uint32_t word_of(const uint4 &v, int i) {
   return i == 0 ? v.x : i == 1 ? v.y : i == 2 ? v.z : v.w;
