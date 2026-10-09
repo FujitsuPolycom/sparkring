@@ -129,6 +129,12 @@
 /* SIRCL's own native ABI counter; changes with the record, layout, ring words,
  * op codes or any exported signature. */
 #define ROCE_ABI_VERSION 9
+/* Local features: what this library offers its own process's binding and kernels, apart from the wire contract
+ * of ROCE_ABI_VERSION, which peers compare in their connection records. A binding checks the bits it relies on, so
+ * a library built from an earlier source of the same wire ABI is refused when it lacks them. */
+#define ROCE_FEATURE_DESTROY_COUNT 1u /* roce_destroy returns the number of verbs calls that failed */
+#define ROCE_FEATURE_OWN_FLAGS 2u     /* link op word bit 24: the op's own items go out as their flags only */
+#define ROCE_LOCAL_FEATURES (ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS)
 /* First word of every connection record ("SRCL" in byte order). */
 #define ROCE_RECORD_MAGIC 0x4c435253u
 #define ROCE_MAX_PEERS 16
@@ -523,6 +529,7 @@ static void chunk_range(uint32_t packs, int world, int chunk, uint32_t *first, u
 }
 
 int roce_abi_version(void) { return ROCE_ABI_VERSION; }
+unsigned int roce_local_features(void) { return ROCE_LOCAL_FEATURES; }
 
 /* out = {recv_off, flag_off, send_off, ctrl_off, total_bytes, flag_stride, slots} */
 int roce_layout(int world, uint64_t slot_bytes, uint64_t *out) {

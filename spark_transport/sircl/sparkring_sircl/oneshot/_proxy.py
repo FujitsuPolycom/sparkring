@@ -2,8 +2,13 @@
 
 :func:`load` builds the library when no cached build of the same source
 exists (:mod:`sparkring_sircl.build`), declares the C signatures and checks
-the native ABI. ``SIRCL_NATIVE_LIBRARY`` names a prebuilt library to load
-instead (for example one built against the CPU simulator's verbs stand-in).
+the native ABI (the wire contract peers compare) and the library's local
+features (``roce_local_features``: what it offers this process's binding and
+kernels), refusing a library that lacks :data:`REQUIRED_FEATURES`.
+``SIRCL_NATIVE_LIBRARY`` names a prebuilt library to load instead (for
+example one built against the CPU simulator's verbs stand-in); a prebuilt
+library of the same ABI from an earlier source fails the feature check before
+any context exists.
 :class:`Layout` reports the arena offsets; :class:`Proxy` owns one rank's
 native context: devices, registered arena, queue pairs and progress thread.
 
@@ -23,6 +28,13 @@ from pathlib import Path
 from .. import build
 
 ABI_VERSION = 9
+# Local features (roce_local_features): what a library offers this process apart from the wire contract of
+# ABI_VERSION, which peers compare. The binding requires REQUIRED_FEATURES of every library it loads (the source
+# build, an explicit path or SIRCL_NATIVE_LIBRARY); a library of the same wire ABI built from earlier sources lacks
+# the identity or its bits and is refused before any context exists.
+FEATURE_DESTROY_COUNT = 1      # roce_destroy returns the number of verbs calls that failed (an arena kept on failure)
+FEATURE_OWN_FLAGS = 2          # link op word bit 24 (protocol.ring_op_word(own_flags=True)) is accepted
+REQUIRED_FEATURES = FEATURE_DESTROY_COUNT
 _LOCK = threading.Lock()
 _LIBRARIES: dict[str, ctypes.CDLL] = {}
 
@@ -64,7 +76,23 @@ def _declare(lib: ctypes.CDLL) -> ctypes.CDLL:
     native = lib.roce_abi_version()
     if native != ABI_VERSION:
         raise RuntimeError(f"unexpected native ABI version {native}; this binding expects {ABI_VERSION}")
+    features = local_features(lib)
+    if features is None or features & REQUIRED_FEATURES != REQUIRED_FEATURES:
+        found = "no local feature identity (roce_local_features)" if features is None else f"local features {features:#x}"
+        raise RuntimeError(f"the native library has {found}; this binding requires {REQUIRED_FEATURES:#x} (a "
+                           f"failed-verbs count from roce_destroy): it was built from an earlier source of ABI "
+                           f"{ABI_VERSION}; rebuild it (sircl-prepare) or unset SIRCL_NATIVE_LIBRARY")
     return lib
+
+
+def local_features(lib) -> int | None:
+    """The library's local feature bits (``roce_local_features``), or None for a library without the identity."""
+    function = getattr(lib, "roce_local_features", None)
+    if function is None:
+        return None
+    function.restype = ctypes.c_uint
+    function.argtypes = []
+    return int(function())
 
 
 def load(path: str | os.PathLike | None = None) -> ctypes.CDLL:
@@ -357,5 +385,5 @@ class Proxy:
             self.close()
 
 
-__all__ = ["ABI_VERSION", "Layout", "Proxy", "chain_layout", "link_layout", "load", "stand_in_library",
-           "traffic_class"]
+__all__ = ["ABI_VERSION", "FEATURE_DESTROY_COUNT", "FEATURE_OWN_FLAGS", "Layout", "Proxy", "REQUIRED_FEATURES",
+           "chain_layout", "link_layout", "load", "local_features", "stand_in_library", "traffic_class"]

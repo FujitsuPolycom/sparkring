@@ -67,6 +67,10 @@
 /* Native ABI of the point-to-point library; changes with the record, the layout, the control words
  * or any exported signature. */
 #define P2P_ABI_VERSION 1
+/* Local features: what this library offers its own process's binding, apart from the wire contract of
+ * P2P_ABI_VERSION, which peers compare in their connection records. */
+#define P2P_FEATURE_DESTROY_COUNT 1u  /* p2p_destroy returns the number of verbs calls that failed */
+#define P2P_LOCAL_FEATURES P2P_FEATURE_DESTROY_COUNT
 /* First word of every connection record ("SP2P" in byte order). */
 #define P2P_RECORD_MAGIC 0x50325053u
 #define P2P_MAX_PEERS 16
@@ -211,6 +215,7 @@ static void lane_split(uint32_t packs, int lanes, int lane, uint32_t *first, uin
 }
 
 int p2p_abi_version(void) { return P2P_ABI_VERSION; }
+unsigned int p2p_local_features(void) { return P2P_LOCAL_FEATURES; }
 
 /* out = {control bytes, block bytes, recv, send, flag, desc, ready, consumed, sent, credit, total} */
 int p2p_layout(int world, int lanes, int slots, uint64_t slot_bytes, uint64_t *out) {

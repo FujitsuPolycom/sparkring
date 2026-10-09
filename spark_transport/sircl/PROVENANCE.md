@@ -28,7 +28,7 @@ Blob ids below are `git rev-parse <commit>:<path>` of the origin file.
 
 | File | Origin |
 |---|---|
-| `__init__.py`, `env.py`, `protocol.py`, `routes.py`, `agreement.py`, `build.py`, `pieces.py`, `cpus.py`, `references.py`, `bounds.py` | new |
+| `__init__.py`, `env.py`, `protocol.py`, `routes.py`, `agreement.py`, `build.py`, `pieces.py`, `cpus.py`, `references.py`, `bounds.py`, `teardown.py` | new |
 | `groups.py` | new; reproduces vLLM's rank layout (read from vLLM `distributed/parallel_state.py`) |
 | `roce_gid.py` | new; imports SparkRing's resolver `integrations/vllm/spark_roce_gid.py` and re-exports it, so the package carries no copy of it |
 | `oneshot/__init__.py`, `oneshot/_compile.py` | new; `make_pointer` prefers b12x's runtime pointer wrapper (`b12x/_lib/utils.py`) when b12x is installed |
@@ -42,7 +42,7 @@ Blob ids below are `git rev-parse <commit>:<path>` of the origin file.
 | `oneshot/_chain_cute.py` | new; the pack arithmetic and the fence, flag and counter patterns follow `oneshot/_oneshot_cute.py` |
 | `oneshot/_links_cute.py` | new; the fence, flag, timed-wait and counter patterns follow `oneshot/_chain_cute.py` |
 | `oneshot/_timed_wait.py` | new; the inline-assembly helper follows b12x `_cute_intrinsics.py` (blob `1e0ac9db`) |
-| `oneshot/_fast_launch.py` | new |
+| `oneshot/_fast_launch.py`, `oneshot/_aligned.py` | new |
 | `oneshot/_scatter_cute.py` | SparkRing: the reduce-scatter and all-to-all kernel written for SparkRing's eight-Spark serving and first published here, with this package's compile and timed-wait calls; its dtype pack arithmetic and stage, doorbell, wait and epoch steps follow b12x `_oneshot_cute.py` (blob `92fe911c`) |
 | `oneshot/_swing_cute.py` | SparkRing: the Swing all-reduce kernel written for SparkRing's eight-Spark serving and first published here, with the schedule of `swing_plan.py` and this package's compile and timed-wait calls; pack arithmetic after b12x `_oneshot_cute.py` (blob `92fe911c`) |
 | `oneshot/_cute_batch.py` | SparkRing: the batched-load intrinsic written for SparkRing's eight-Spark serving and first published here; the inline-assembly call follows b12x `_cute_intrinsics.py` (blob `1e0ac9db`) |

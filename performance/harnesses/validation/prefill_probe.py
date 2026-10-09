@@ -157,7 +157,8 @@ def main():
                     cell = measure(endpoint, args.model, target, args.context_limit, args.temperature,
                                    os.environ.get(args.api_key_env, ''), args.timeout)
                 except Exception as error:
-                    cell = {'target_tokens': target, 'valid': False, 'error': type(error).__name__}
+                    cell = {'target_tokens': target, 'valid': False, 'error': type(error).__name__,
+                            'detail': str(error)[:500]}
                 cell['repeat'] = repeat
                 stream.write(json.dumps(cell) + '\n')
                 stream.flush()

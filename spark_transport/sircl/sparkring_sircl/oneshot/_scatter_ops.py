@@ -25,7 +25,8 @@ Contract (``sparkring_sircl.scatter_plan`` states the geometry rules):
   rounded once to the dtype, into ``out`` (one chunk; allocated when omitted:
   the chunk's shape for contiguous chunks of whole rows, else flat);
   ``all_to_all`` stores the chunk from rank ``s`` at ``s * dst_stride_bytes``
-  of ``out`` unchanged. Input and output pointers must be 16-byte aligned;
+  of ``out`` unchanged. A rank whose input or output pointer is not 16-byte
+  aligned runs the same ops on aligned working buffers (:mod:`._aligned`);
 - every op carries the same byte range of every chunk (a strided scatter),
   so the split changes no bit: each element is the rank-ordered sum of its
   own inputs, as in the session's all-reduce. With the session's relay-safe
@@ -47,7 +48,7 @@ import torch
 from .. import protocol as proto
 from .. import scatter_plan as sp
 from ..protocol import PACK_BYTES
-from . import _scatter_cute
+from . import _aligned, _scatter_cute
 
 REDUCE_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _DTYPE_NAMES = {torch.float16: "float16", torch.bfloat16: "bfloat16", torch.float32: "float32"}
@@ -160,8 +161,6 @@ def reduce_scatter(session: Any, inp: torch.Tensor, *, out: Optional[torch.Tenso
         geometry = _geometry(session, inp, chunk_bytes, src_stride_bytes)
         if geometry is None:
             raise ValueError("input is not eligible for the SIRCL reduce-scatter")
-        if inp.data_ptr() % PACK_BYTES:
-            raise ValueError("the SIRCL reduce-scatter needs a 16-byte aligned input pointer")
         chunk = geometry.chunk_bytes
         world = session.world_size
         if out is None:
@@ -170,9 +169,13 @@ def reduce_scatter(session: Any, inp: torch.Tensor, *, out: Optional[torch.Tenso
             else:
                 out = torch.empty(chunk // inp.element_size(), dtype=inp.dtype, device=inp.device)
         if (out.dtype != inp.dtype or out.device != inp.device or not out.is_contiguous()
-                or out.numel() * out.element_size() != chunk or out.data_ptr() % PACK_BYTES):
-            raise ValueError("out must be a 16-byte aligned contiguous tensor of one chunk in the input's dtype")
-        _ops(session, "reduce", inp.dtype, inp, out, geometry, chunk, stream)
+                or out.numel() * out.element_size() != chunk):
+            raise ValueError("out must be a contiguous tensor of one chunk in the input's dtype")
+        context = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
+        with torch.cuda.device(session.device), context:
+            work_in, work_out = _aligned.aligned_input(inp), _aligned.aligned_output(out)
+            _ops(session, "reduce", inp.dtype, work_in, work_out, geometry, chunk, None)
+            _aligned.copy_back(work_out, out)
         return out
 
 
@@ -185,15 +188,19 @@ def all_to_all(session: Any, inp: torch.Tensor, out: torch.Tensor, *, stream: ob
         geometry = _geometry(session, inp, chunk_bytes, src_stride_bytes)
         if geometry is None or inp.is_complex():
             raise ValueError("input is not eligible for the SIRCL all-to-all")
-        if (not out.is_cuda or out.device != inp.device or not out.is_contiguous()
-                or inp.data_ptr() % PACK_BYTES or out.data_ptr() % PACK_BYTES):
-            raise ValueError("input and out must be 16-byte aligned contiguous tensors on the session's device")
+        if not out.is_cuda or out.device != inp.device or not out.is_contiguous():
+            raise ValueError("out must be a contiguous tensor on the session's device")
         try:
             dst_stride = sp.destination_stride(geometry.chunk_bytes, session.world_size,
                                                out.numel() * out.element_size(), dst_stride_bytes)
         except sp.ScatterError as error:
             raise ValueError(str(error)) from None
-        _ops(session, "copy", torch.uint8, inp, out, geometry, dst_stride, stream)
+        context = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
+        with torch.cuda.device(session.device), context:
+            # The op leaves the bytes between chunks unchanged: a working output starts as a copy of ``out``.
+            work_in, work_out = _aligned.aligned_input(inp), _aligned.aligned_output(out, keep=True)
+            _ops(session, "copy", torch.uint8, work_in, work_out, geometry, dst_stride, None)
+            _aligned.copy_back(work_out, out)
         return out
 
 

@@ -125,7 +125,7 @@ from .. import roce_gid
 from .. import routes as routes_mod
 from .. import teardown as teardown_mod
 from .. import tuning as tuning_mod
-from . import _allgather_cute, _chain_cute, _links_cute, _oneshot_cute, _scatter_ops, _timed_wait, _twoshot_cute
+from . import _aligned, _allgather_cute, _chain_cute, _links_cute, _oneshot_cute, _scatter_ops, _timed_wait, _twoshot_cute
 from ._proxy import ABI_VERSION, Layout, Proxy
 from ._proxy import chain_layout as _proxy_chain_layout
 from ._proxy import link_layout as _proxy_link_layout
@@ -1870,15 +1870,16 @@ class RoceOneshotAllReduce:
             self.check_health()
             geometry = self._scatter_geometry(inp, chunk_bytes, src_stride_bytes)
             chunk = geometry.chunk_bytes
-            if inp.data_ptr() % PACK_BYTES:
-                raise ValueError("the SIRCL reduce-scatter needs a 16-byte aligned input pointer")
             out = self._scatter_output(inp, out, chunk, chunk_bytes)
             context = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
             with torch.cuda.device(self.device), context:
                 capturing = torch.cuda.is_current_stream_capturing()
                 launcher = self._ring_launcher("scatter", inp.dtype, capturing)
-                self._launch_ring(launcher, inp, out, chunk, geometry.src_stride_bytes, capturing,
+                # The ring kernel needs aligned pointers; a rank whose buffers are not aligned works on copies.
+                work_in, work_out = _aligned.aligned_input(inp), _aligned.aligned_output(out)
+                self._launch_ring(launcher, work_in, work_out, chunk, geometry.src_stride_bytes, capturing,
                                   self.link_chunk_for("scatter"))
+                _aligned.copy_back(work_out, out)
             if not capturing:
                 self.check_health()
             return out
@@ -1892,8 +1893,8 @@ class RoceOneshotAllReduce:
                                    device=inp.device)
             return torch.empty(chunk // inp.element_size(), dtype=inp.dtype, device=inp.device)
         if (out.dtype != inp.dtype or out.device != inp.device or not out.is_contiguous()
-                or out.numel() * out.element_size() != chunk or out.data_ptr() % PACK_BYTES):
-            raise ValueError("out must be a 16-byte aligned contiguous tensor of one chunk in the input's dtype")
+                or out.numel() * out.element_size() != chunk):
+            raise ValueError("out must be a contiguous tensor of one chunk in the input's dtype")
         return out
 
     def scatter_uses_chain(self, inp: torch.Tensor, *, chunk_bytes: Optional[int] = None,
@@ -1937,17 +1938,7 @@ class RoceOneshotAllReduce:
             geometry = _scatter_plan.scatter_geometry(inp.numel() * inp.element_size(), self.world_size, None,
                                                       chunk_bytes, src_stride_bytes)
             chunk = geometry.chunk_bytes
-            if inp.data_ptr() % PACK_BYTES:
-                raise ValueError("the SIRCL reduce-scatter needs a 16-byte aligned input pointer")
-            if out is None:
-                if chunk_bytes is None and inp.shape[0] % self.world_size == 0:
-                    out = torch.empty((inp.shape[0] // self.world_size, *inp.shape[1:]), dtype=inp.dtype,
-                                      device=inp.device)
-                else:
-                    out = torch.empty(chunk // inp.element_size(), dtype=inp.dtype, device=inp.device)
-            if (out.dtype != inp.dtype or out.device != inp.device or not out.is_contiguous()
-                    or out.numel() * out.element_size() != chunk or out.data_ptr() % PACK_BYTES):
-                raise ValueError("out must be a 16-byte aligned contiguous tensor of one chunk in the input's dtype")
+            out = self._scatter_output(inp, out, chunk, chunk_bytes)
             context = torch.cuda.stream(stream) if stream is not None else contextlib.nullcontext()
             with torch.cuda.device(self.device), context:
                 capturing = torch.cuda.is_current_stream_capturing()
@@ -1955,12 +1946,15 @@ class RoceOneshotAllReduce:
                 # The partial from the higher chain indices of a middle rank's own chunk waits here
                 # until the other partial arrives.
                 scratch = torch.empty(chunk, dtype=torch.uint8, device=self.device)
+                # The chain kernel needs aligned pointers; a rank whose buffers are not aligned works on copies.
+                work_in, work_out = _aligned.aligned_input(inp), _aligned.aligned_output(out)
                 self._order_stream(capturing)
-                launcher(inp.data_ptr(), out.data_ptr(), scratch.data_ptr(), chunk // PACK_BYTES,
+                launcher(work_in.data_ptr(), work_out.data_ptr(), scratch.data_ptr(), chunk // PACK_BYTES,
                          geometry.src_stride_bytes // PACK_BYTES, self.link_chunk_for("scatter") // PACK_BYTES,
                          self._region.data_ptr() + self._link_offset, self._link_counters.data_ptr(),
                          self._piece_counters.data_ptr(), self._ctrl_base, self._poison_address, self.spin_limit)
                 self._mark_stream(capturing)
+                _aligned.copy_back(work_out, out)
             if not capturing:
                 self.check_health()
             return out
@@ -1969,8 +1963,8 @@ class RoceOneshotAllReduce:
         """Whether ``all_gather_large(inp, dim=dim)`` runs as one chain all-gather (the same on every rank
         for the same shape): the chain links exist, the schedule allows it, every rank's shard lands in one
         piece of the output (``dim`` is the first dimension of size above 1), and the shard is a multiple of
-        16 bytes on a 16-byte-aligned tensor; with the tuning table's choice for ``mode`` applied as the op
-        applies it."""
+        16 bytes; with the tuning table's choice for ``mode`` applied as the op applies it. A rank whose
+        tensors are not 16-byte aligned runs it on aligned copies (:mod:`._aligned`)."""
         with self._tuned_op("all_gather", inp.numel() * inp.element_size(), mode=mode, count=False):
             return self._gather_uses_chain(inp, dim)
 
@@ -2019,20 +2013,29 @@ class RoceOneshotAllReduce:
                  self._poison_address, self.spin_limit)
         self._mark_stream(capturing)
 
-    def large_reduce_plan(self, nbytes: int, *, aligned: bool = True,
-                          mode: Optional[str] = None) -> tuple[pieces.ReducePiece, ...]:
-        """The ops ``all_reduce_large`` runs for a message of ``nbytes`` (16-byte-aligned tensors
-        unless ``aligned`` is False) in ``mode`` (the current one when None), the tuning table's choice
-        applied as the op applies it; the same on every rank."""
+    def large_reduce_plan(self, nbytes: int, *, mode: Optional[str] = None) -> tuple[pieces.ReducePiece, ...]:
+        """The ops ``all_reduce_large`` runs for a message of ``nbytes`` in ``mode`` (the current one when None),
+        the tuning table's choice applied as the op applies it: they follow the size and the session's agreed
+        settings only, so they are the same on every rank whatever each rank's pointer alignment."""
         with self._tuned_op("all_reduce", int(nbytes), mode=mode, count=False):
-            return self._large_reduce_plan(int(nbytes), aligned)
+            return self._large_reduce_plan(int(nbytes))
 
-    def _large_reduce_plan(self, nbytes: int, aligned: bool) -> tuple[pieces.ReducePiece, ...]:
+    def large_reduce_staging(self, nbytes: int, input_aligned: bool, output_aligned: bool, *,
+                             mode: Optional[str] = None) -> tuple[tuple[pieces.ReducePiece, ...], bool, bool]:
+        """``(ops, stage input, stage output)`` of ``all_reduce_large`` for a message of ``nbytes`` on this rank:
+        the ops of :meth:`large_reduce_plan` (the same on every rank), and whether this rank copies its input into
+        and its output out of an aligned working buffer, which it does for a pointer that is not 16-byte aligned
+        when an op is a ring or chain op (one-shot and two-shot ops stage their own pieces)."""
+        plan = self.large_reduce_plan(nbytes, mode=mode)
+        links = any(piece.ring or piece.chain for piece in plan)
+        return plan, links and not input_aligned, links and not output_aligned
+
+    def _large_reduce_plan(self, nbytes: int) -> tuple[pieces.ReducePiece, ...]:
         chain_from = ring_from = None
         schedule = self._schedule(self.large_schedule, int(nbytes), "reduce")
-        if aligned and schedule == "ring":
+        if schedule == "ring":
             ring_from = PACK_BYTES * self.world_size
-        elif self.chain_available and aligned and schedule != "pieces":
+        elif self.chain_available and schedule != "pieces":
             chain_from = PACK_BYTES if schedule == "chain" else max(PACK_BYTES, self.chain_min_for("reduce"))
         return pieces.reduce_plan(int(nbytes), self.large_piece_bytes, chain_from, ring_from=ring_from,
                                   ring_world=self.world_size)
@@ -2252,17 +2255,24 @@ class RoceOneshotAllReduce:
                          stream: object = None) -> torch.Tensor:
         """Sum a message of any size over the session's ranks.
 
-        :meth:`large_reduce_plan` names the ops. On a chain of cable neighbors
-        (``chain_available``) a message from ``chain_min_for("reduce")`` on
-        (``SIRCL_LARGE_SCHEDULE``: ``auto``; ``chain`` always, ``pieces`` never)
-        is one chain op: every rank stores identical bits, half A summed in
-        chain order and half B in reverse chain order with one rounding per hop
-        (they can differ in the last place from the one-shot result). Otherwise
-        ops of at most ``large_piece_bytes`` (default the larger of 4 MiB and the
-        capacity), each the algorithm ``select_algorithm`` names for its size,
-        with the one-shot bits. A tail of fewer than 16 bytes travels
-        zero-padded as a one-shot op. Capturable on one stream after
-        ``prepare``.
+        :meth:`large_reduce_plan` names the ops; they follow the message size and
+        the agreed settings only, so every rank runs the same ops, and a rank
+        whose input or output is not 16-byte aligned runs ring and chain ops on
+        aligned working buffers (:meth:`large_reduce_staging`). Under the ring
+        schedule (``SIRCL_LARGE_SCHEDULE=ring``, or a tuning table's or built-in
+        plan's ring choice for the size) the largest prefix of whole
+        ``16 W``-byte groups is one ring op, each element summed in ring order
+        with one rounding per hop, and the remainder is an op of the rules below.
+        On a chain of cable neighbors (``chain_available``) a message from
+        ``chain_min_for("reduce")`` on (``SIRCL_LARGE_SCHEDULE``: ``auto``;
+        ``chain`` always, ``pieces`` never) is one chain op: every rank stores
+        identical bits, half A summed in chain order and half B in reverse chain
+        order with one rounding per hop (they can differ in the last place from
+        the one-shot result). Otherwise ops of at most ``large_piece_bytes``
+        (default the larger of 4 MiB and the capacity), each the algorithm
+        ``select_algorithm`` names for its size, with the one-shot bits. A tail
+        of fewer than 16 bytes travels zero-padded as a one-shot op. Capturable
+        on one stream after ``prepare``.
         """
         with self._lock:
             self.check_health()
@@ -2280,8 +2290,12 @@ class RoceOneshotAllReduce:
                 if out is None:
                     out = torch.empty_like(src, memory_format=torch.contiguous_format)
                 item = src.element_size()
-                aligned = src.data_ptr() % PACK_BYTES == 0 and out.data_ptr() % PACK_BYTES == 0
-                plan = self.large_reduce_plan(src.numel() * item, aligned=aligned)
+                plan, stage_in, stage_out = self.large_reduce_staging(
+                    src.numel() * item, _aligned.aligned(src), _aligned.aligned(out))
+                if stage_in:
+                    src = _aligned.aligned_input(src)
+                # The whole message's working output (the padded tail below has scratch of its own).
+                work_out = _aligned.aligned_output(out) if stage_out else out
                 launchers = {}
                 for piece in plan:
                     if piece.chain:
@@ -2294,7 +2308,7 @@ class RoceOneshotAllReduce:
                     name = self.select_algorithm(size)
                     if name not in launchers:
                         launchers[name] = self._reduce_launcher(name, src.dtype, capturing)
-                flat_in, flat_out = src.reshape(-1), out.view(-1)
+                flat_in, flat_out = src.reshape(-1), work_out.view(-1)
                 for piece in plan:
                     first, count = piece.offset // item, piece.nbytes // item
                     if piece.chain:
@@ -2318,6 +2332,7 @@ class RoceOneshotAllReduce:
                     else:
                         self._launch_reduce(name, launchers[name], flat_in[first:first + count],
                                             flat_out[first:first + count], capturing)
+                _aligned.copy_back(work_out, out)
             if not capturing:
                 self.check_health()
             return out
@@ -2480,16 +2495,21 @@ class RoceOneshotAllReduce:
                 outer, inner = pieces.gather_view(tuple(src.shape), dim, src.element_size())
                 if outer * inner == 0:
                     return out
-                links_aligned = src.data_ptr() % PACK_BYTES == 0 and out.data_ptr() % PACK_BYTES == 0
-                if self.gather_uses_ring(src, dim) and links_aligned:
+                # The ring and chain routes follow the shape only, the same on every rank; their kernels need
+                # aligned pointers, so a rank whose tensors are not aligned works on copies.
+                if self.gather_uses_ring(src, dim):
                     shard = src.numel() * src.element_size()
-                    self._launch_ring(self._ring_launcher("gather", None, capturing), src, out, shard, shard,
-                                      capturing, self.link_chunk_for("gather"))
+                    work_in, work_out = _aligned.aligned_input(src), _aligned.aligned_output(out)
+                    self._launch_ring(self._ring_launcher("gather", None, capturing), work_in, work_out, shard,
+                                      shard, capturing, self.link_chunk_for("gather"))
+                    _aligned.copy_back(work_out, out)
                     if not capturing:
                         self.check_health()
                     return out
-                if self.gather_uses_chain(src, dim) and links_aligned:
-                    self._launch_gather_chain(src, out, capturing)
+                if self.gather_uses_chain(src, dim):
+                    work_in, work_out = _aligned.aligned_input(src), _aligned.aligned_output(out)
+                    self._launch_gather_chain(work_in, work_out, capturing)
+                    _aligned.copy_back(work_out, out)
                     if not capturing:
                         self.check_health()
                     return out

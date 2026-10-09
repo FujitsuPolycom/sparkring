@@ -40,6 +40,22 @@ issues: [`SURVEY.md`](SURVEY.md). Serving procedure: [`RUNBOOK.md`](RUNBOOK.md).
   `vllm_c` provider; its bit-identity is checked in GPU emulation, not on GB10.
 - **`SIRCL_*` variables** set outside the launcher or the bundle reach the
   tensor-parallel session unchecked.
+- **Teardown rounds on the CPU group.** A close's teardown round that did not
+  complete (a peer later than the flag-wait limit plus 5 s, or a rank that
+  closed without rounds) stays pending on the group's CPU group and can pair
+  with the next collective vLLM issues there. It arises only after a
+  failure; the group is then marked unusable for teardown rounds, so no
+  later SIRCL close adds another, and it must not carry further sessions or
+  collectives: the worker's CPU group is recreated or its processes end, as
+  at shutdown.
+- **Collectives outside a serving step.** Startup collectives the adapter
+  carries (online quantization's weight `amax` reductions through the
+  tripwire carrier, warm-up and profiling runs) have no failure check after
+  the op, and a timed-out op's outputs are not results. Local work can
+  consume one such result; the failure raises at the group's next
+  collective, at the latest at the first step's start-of-step check, before
+  the process serves. They run in the startup flag-wait regime
+  (`SIRCL_STARTUP_WAIT_S`, 600 s).
 - **Not part of the package:** restoring relay plans after a Spark reboots
   (the relay plan installer installs and removes them; nothing restores them
   at boot), SparkRing installer integration, and `sparkring fabric tune`

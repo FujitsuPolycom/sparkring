@@ -9,6 +9,8 @@ from sparkring_sircl import routes
 from sparkring_sircl.oneshot import _proxy
 from sparkring_sircl.testing import fabric
 
+from native_stub import NativeStub
+
 
 def test_abi_and_layout_agree_with_the_protocol(simulator_library):
     lib = _proxy.load(simulator_library)
@@ -21,6 +23,31 @@ def test_abi_and_layout_agree_with_the_protocol(simulator_library):
     for world, slot in ((1, 4096), (17, 4096), (4, 1000), (4, 0)):
         with pytest.raises(ValueError, match=f"world size {world}"):
             _proxy.Layout(world, slot, library=lib)
+
+
+def test_legacy_abi9_override_requires_destroy_count_contract(tmp_path, monkeypatch):
+    # A library of wire ABI 9 built from an earlier source: no local feature identity, so no promise that
+    # roce_destroy returns a failed-verbs count. Loading it as an override is refused before any context exists.
+    monkeypatch.setattr(_proxy, "_LIBRARIES", {})
+    legacy = NativeStub("roce", _proxy.ABI_VERSION, None)
+    monkeypatch.setattr(_proxy.ctypes, "CDLL", lambda path, use_errno=True: legacy)
+    with pytest.raises(RuntimeError, match="no local feature identity"):
+        _proxy.load(tmp_path / "legacy.so")
+    monkeypatch.setenv("SIRCL_NATIVE_LIBRARY", str(tmp_path / "legacy-env.so"))
+    with pytest.raises(RuntimeError, match="no local feature identity"):
+        _proxy.load()
+
+
+def test_a_library_without_the_destroy_count_feature_is_refused():
+    with pytest.raises(RuntimeError, match="local features 0x2; this binding requires 0x1"):
+        _proxy._declare(NativeStub("roce", _proxy.ABI_VERSION, _proxy.FEATURE_OWN_FLAGS))
+    complete = NativeStub("roce", _proxy.ABI_VERSION, _proxy.FEATURE_DESTROY_COUNT | _proxy.FEATURE_OWN_FLAGS)
+    assert _proxy._declare(complete) is complete
+
+
+def test_the_source_build_reports_its_local_features(simulator_library):
+    lib = _proxy.load(simulator_library)
+    assert _proxy.local_features(lib) == _proxy.FEATURE_DESTROY_COUNT | _proxy.FEATURE_OWN_FLAGS
 
 
 def test_a_mismatched_library_is_refused(simulator_library, monkeypatch):

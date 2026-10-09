@@ -127,6 +127,7 @@ all-reduce backends and receipt lines.
 | `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s, temperature 0, at most 1,024 tokens | 8k and 32k, three samples | as above |
 | `phase2` | as `phase1` | 2k, 8k, 32k and 128k, three samples | as above |
 | `phase1-16k` | as `phase1`, at contexts 0, 16k and 32k | 8k, 16k and 32k, three samples | as above |
+| `c16` | contexts 0 and 16k, 1, 2, 4, 8 and 16 streams, 30 s cells | 8k, 16k and 32k, three samples | as above |
 | `none` | none: the start becomes ready, passes its checks and is profiled or stopped | none | none |
 
 Decode runs llm-inference-bench's `llm_decode_bench.py` (`--bench-dir`) through
