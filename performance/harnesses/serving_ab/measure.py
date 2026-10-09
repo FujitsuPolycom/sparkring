@@ -27,6 +27,11 @@ LOGPROBS = ROOT / "performance/records/qwen38-flash-next/decode-ab-20260925/logp
 METRICS = {
     "warmup": {"concurrency": "1,8", "duration": "10", "ttft": "8k,32k", "repeats": "1"},
     "phase1": {"concurrency": "1,2,4,8", "duration": "30", "ttft": "8k,32k", "repeats": "3"},
+    # No measurement: the start only becomes ready and passes its checks (for a profile capture).
+    "none": {},
+    # phase1 plus decode at 16k context and TTFT at 16k, for comparisons recorded at 16K.
+    "phase1-16k": {"concurrency": "1,2,4,8", "duration": "30", "ttft": "8k,16k,32k", "repeats": "3",
+                   "contexts": "0,16k,32k"},
     "phase2": {"concurrency": "1,2,4,8", "duration": "30", "ttft": "2k,8k,32k,128k", "repeats": "3"},
 }
 
@@ -35,6 +40,8 @@ def measure(out: Path, *, host: str, port: int, model: str, context_limit: int, 
             python: str = sys.executable) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     m = METRICS[metrics]
+    if not m:
+        return {}
     base = f"http://{host}:{port}"
     steps = [
         ("fingerprint", [python, "-m", "performance.harnesses.serving_ab.fingerprint", base + "/v1",
@@ -42,7 +49,7 @@ def measure(out: Path, *, host: str, port: int, model: str, context_limit: int, 
         ("logprobs", [python, str(LOGPROBS), base + "/v1", str(out / "logprobs.json")]),
         ("decode", [python, "-m", "performance.harnesses.serving_ab.bench_run", bench_dir, "--host", host,
                     "--port", str(port), "--model", model, "--no-hw-monitor", "--display-mode", "plain",
-                    "--no-resume", "--skip-prefill", "--contexts", "0,32k", "--concurrency", m["concurrency"],
+                    "--no-resume", "--skip-prefill", "--contexts", m.get("contexts", "0,32k"), "--concurrency", m["concurrency"],
                     "--token-targeting", "exact", "--temperature", "0", "--max-tokens", "1024",
                     "--duration", m["duration"], "--decode-warmup-seconds", "10",
                     "--cell-warmup-timeout-seconds", "900", "--output", str(out / "decode.json")]),

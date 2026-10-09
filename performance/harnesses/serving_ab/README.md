@@ -67,9 +67,16 @@ admits mHC prefill row ownership at the sizes (`mhc_dcp_problem`),
 `VLLM_GLM53_MHC_PREFILL_SHARD=0`. `plan` prints each such change as a deviation
 from the profile. Without the option every arm runs the profile's own size.
 
+`--checkpoint NAME` serves another checkpoint of the profile's table with its
+pinned settings, as the installer's `--checkpoint` does; `--model-of PROFILE`
+serves another profile's pinned model with this profile's settings. Both are
+printed as deviations from the profile, and the checkpoint search uses the
+model chosen.
+
 `--set-arg FLAG=VALUE` sets a vLLM argument and `--set-env KEY=VALUE` a
 container variable in every arm's command; `VALUE` given as `@PATH` is read from
-that file (for JSON such as `--speculative-config` or `--hf-overrides`). Each
+that file (for JSON such as `--speculative-config` or `--hf-overrides`), and
+`--set-arg FLAG` alone adds a bare flag such as `--async-scheduling`. Each
 is applied to every rank's base before the arms' parts and printed as a
 deviation from the profile with the profile's own value; `plan.json` keeps the
 full values under `overrides`.
@@ -88,7 +95,8 @@ on any chosen Spark, drops the caches there (`sync; echo 3 >
 /proc/sys/vm/drop_caches` under `sudo -n`), and polls `MemAvailable` until two
 readings 5 s apart differ by less than 256 MiB on every Spark, for at most
 180 s. The campaign log and the start's `memory-before.json` record each
-Spark's settled available memory beside the share vLLM asks for.
+Spark's settled available memory beside the share vLLM asks for, and a Spark
+below that share refuses the start, since vLLM would refuse it at startup.
 
 ## Checks before measuring
 
@@ -118,6 +126,8 @@ all-reduce backends and receipt lines.
 | `warmup` | contexts 0 and 32k, 1 and 8 streams, 10 s | 8k and 32k, once | fingerprints, prompt logprobs |
 | `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s, temperature 0, at most 1,024 tokens | 8k and 32k, three samples | as above |
 | `phase2` | as `phase1` | 2k, 8k, 32k and 128k, three samples | as above |
+| `phase1-16k` | as `phase1`, at contexts 0, 16k and 32k | 8k, 16k and 32k, three samples | as above |
+| `none` | none: the start becomes ready, passes its checks and is profiled or stopped | none | none |
 
 Decode runs llm-inference-bench's `llm_decode_bench.py` (`--bench-dir`) through
 [`bench_run.py`](bench_run.py), which turns off its self-update check. TTFT runs
@@ -127,6 +137,18 @@ are four greedy 96-token answers compared token by token; prompt logprobs run
 [`logprob_probe.py`](../../records/qwen38-flash-next/decode-ab-20260925/logprob_probe.py).
 Restarts of one arm need not give identical tokens, so output agreement is
 reported against the same-arm restarts, not as a pass or fail.
+
+## Profiling
+
+`--profile-label LABEL` captures vLLM's torch profiler after that start's
+measurement: one untimed 32-token request, `/start_profile`, one one-stream completion of
+`--profile-tokens` tokens (default 60), `/stop_profile`. The containers need
+the profiler enabled with its folder under the cache mount, for example
+`--set-arg=--profiler-config={"profiler":"torch","torch_profiler_dir":"/cache/torch-profile"}`
+(or `VLLM_TORCH_PROFILER_DIR` in a vLLM that reads it), so the traces land in the
+arm's cache directory; rank 0's Spark's traces are copied into the start's
+`torch-profile-r0.tar`, with `profile.json` (the request's usage, the wall
+time and the trace folder's listing).
 
 ## Outputs
 

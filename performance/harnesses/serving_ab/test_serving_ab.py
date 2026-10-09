@@ -184,13 +184,13 @@ def test_set_arg_replaces_or_appends_after_the_image():
     assert tokens[-2:] == ["--decode-context-parallel-size", "2"]
 
 
-def test_memory_settles_after_dropping_caches_and_refuses_leftover_containers(tmp_path, monkeypatch):
+def test_memory_settles_after_dropping_caches_and_refuses_leftovers_and_short_sparks(tmp_path, monkeypatch):
     from performance.harnesses.serving_ab import remote
 
     sparks = tuple(remote.Spark(p, f"spark{p}", f"host{p}", f"192.0.2.{p}", ("docker",)) for p in (0, 1))
     site = remote.Site("site.json", "lan0", "/srv/run", sparks)
     tokens = base(0)
-    spec.set_arg(tokens, "--gpu-memory-utilization", "0.5")
+    spec.set_arg(tokens, "--gpu-memory-utilization", "0.25")
     plan = {"positions": [0, 1], "run_id": "run", "commands": {"S": [tokens, tokens]}}
     calls, available, left = [], iter([100, 200, 300, 300, 300, 300]), {"count": "0"}
 
@@ -204,11 +204,16 @@ def test_memory_settles_after_dropping_caches_and_refuses_leftover_containers(tm
     monkeypatch.setattr(remote, "run", fake_run)
     monkeypatch.setattr(cli.time, "sleep", lambda _: None)
     rows = cli.settle_memory(plan, site, "S", tmp_path)
-    assert [r["available_gib"] for r in rows] == [0.29, 0.29] and rows[0]["vllm_asks_gib"] == 0.5
+    assert [r["available_gib"] for r in rows] == [0.29, 0.29] and rows[0]["vllm_asks_gib"] == 0.25
     assert sum("drop_caches" in c for _, c in calls) == 2
     assert "memory before arm S (settled" in (tmp_path / "campaign.log").read_text()
     left["count"] = "2"
     with pytest.raises(RuntimeError, match="containers of run run are left"):
+        cli.settle_memory(plan, site, "S", tmp_path)
+    left["count"] = "0"
+    spec.set_arg(tokens, "--gpu-memory-utilization", "0.9")
+    available = iter([100] * 6)
+    with pytest.raises(RuntimeError, match="below what vLLM asks on Spark 0"):
         cli.settle_memory(plan, site, "S", tmp_path)
 
 
@@ -222,9 +227,21 @@ def test_decode_cells_without_speculation_take_one_token_per_request_and_step():
 def test_overrides_change_every_rank_and_record_the_profile_value(tmp_path):
     bases = [base(0), base(1)]
     (tmp_path / "spec.json").write_text('{"method":"mtp","num_speculative_tokens":3}')
-    changed, applied = cli.overrides(bases, [f"--speculative-config=@{tmp_path / 'spec.json'}", "--node-rank=5"],
+    changed, applied = cli.overrides(bases, [f"--speculative-config=@{tmp_path / 'spec.json'}", "--node-rank=5",
+                                             "--async-scheduling"],
                                      ["VLLM_B12X_KDA_PREFILL_COALESCING=0"])
     assert all(spec.arg(t, "--speculative-config") == '{"method":"mtp","num_speculative_tokens":3}' for t in bases)
     assert spec.environment(bases[1])["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
     assert changed[0].endswith("(the profile's: unset)") and changed[1].endswith("(the profile's: 0)")
     assert applied["environment"] == {"VLLM_B12X_KDA_PREFILL_COALESCING": "0"}
+    assert all(t[-1] == "--async-scheduling" for t in bases) and changed[2] == "--async-scheduling (the profile's: unset)"
+
+
+def test_choose_model_takes_a_listed_checkpoint_or_another_profiles_model():
+    profile, _ = cli.profile_config("qwen38-flash-next-tp2")
+    chosen, deviations = cli.choose_model(profile, "qad-step5500-mxfp8-attention", None)
+    assert chosen["model"]["revision"].startswith("648b194a") and deviations[0].startswith("checkpoint qad-step5500")
+    glm, _ = cli.profile_config("glm53-flash-nvfp4-spark-tp4")
+    csf, deviations = cli.choose_model(glm, None, "glm53-flash-csf-tp8")
+    assert csf["model"]["revision"].startswith("dec48abd") and csf["vllm_args"] == glm["vllm_args"]
+    assert "of glm53-flash-csf-tp8" in deviations[0]
