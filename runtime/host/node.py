@@ -606,6 +606,24 @@ def relay_markers(*, root="/", popen=subprocess.Popen):
 
 
 RETIRED = "/var/lib/sparkring/retired"
+# The package's units that setup enables. A unit file of the same name in /etc/systemd/system takes precedence
+# over the package's (/usr/lib/systemd/system), so setup would start another program under that name.
+SETUP_UNITS = (FABRIC_UNIT, MARKER_UNIT, "sparkring-hairpin.service", "sparkring-agent.service")
+
+
+def unit_overrides(*, root="/"):
+    """The files in ``/etc/systemd/system`` that replace or change this package's ``SETUP_UNITS`` on this Spark:
+    a unit file of the same name, or a drop-in (``<unit>.d/*.conf``). An enable link is neither."""
+    found = []
+    for unit in SETUP_UNITS:
+        path = location(root, f"/etc/systemd/system/{unit}")
+        if path.is_file() and not path.is_symlink():
+            found.append(f"/etc/systemd/system/{unit}")
+        drop_ins = location(root, f"/etc/systemd/system/{unit}.d")
+        if drop_ins.is_dir():
+            found += [f"/etc/systemd/system/{unit}.d/{item.name}" for item in sorted(drop_ins.iterdir())
+                      if item.name.endswith(".conf")]
+    return found
 
 
 def retire_record(*, root="/", reason, now=None):

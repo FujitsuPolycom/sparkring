@@ -146,7 +146,9 @@ def test_setup_simulation_checks_every_host_and_completes_receipts(tmp_path, siz
     assert result["id"] == plan["id"]
     assert json.loads((tmp_path / "setup/setup.json").read_text())["complete"]
     operations = [argv[4] for _, argv in remote if argv[0] == "sudo"]
-    assert operations[:size] == ["verify"] * size
+    # Each Spark is first asked, read-only, whether it overrides SparkRing's units; then every Spark verifies.
+    assert operations[:size] == ["unit-overrides"] * size
+    assert operations[size:2 * size] == ["verify"] * size
     assert operations.count("configure") == size
     with pytest.raises(ValueError, match="receipt exists"):
         controller.apply(plan, tmp_path / "setup", run=runner, invoke=invoke)
@@ -164,7 +166,8 @@ def test_setup_unknown_outcome_stops_before_persistence(tmp_path):
 
     with pytest.raises(RuntimeError):
         controller.apply(plan, tmp_path, run=failed, invoke=lambda *a, **k: calls.append(a))
-    assert calls == []
+    # Only the read-only override check reached the Sparks.
+    assert [argv[3:5] for _, argv in calls] == [["node", "unit-overrides"]] * 2
     assert not json.loads((tmp_path / "setup.json").read_text())["complete"]
 
 

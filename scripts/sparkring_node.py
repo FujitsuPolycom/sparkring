@@ -12,7 +12,8 @@ from runtime.host import node
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring node")
     commands = parser.add_subparsers(dest="action", required=True)
-    for name in ("initialize", "verify", "configure", "restore", "control-key", "control-configure", "control-up"):
+    for name in ("initialize", "verify", "configure", "restore", "control-key", "control-configure", "control-up",
+                 "unit-overrides"):
         commands.add_parser(name)
     adopting = commands.add_parser("adopt")
     adopting.add_argument("--retire-existing", action="store_true",
@@ -133,6 +134,8 @@ def main(argv=None):
             result = storage.node(args.release, batch=args.release_batch)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
+        elif args.action == "unit-overrides":
+            result = {"overrides": node.unit_overrides()}
         elif args.action == "restore":
             result = node.restore(node.read("/", "/etc/sparkring/fabric.json"))
         elif args.action in ("verify", "configure", "adopt"):

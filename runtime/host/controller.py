@@ -143,6 +143,7 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     journal = directory / "setup.json"
     if journal.exists():
         raise ValueError("Setup receipt exists; inspect it and host state before recovery: " + str(journal))
+    refuse_unit_overrides(plan, invoke=invoke)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     record = {"schema": "sparkring-setup-receipt/v1", "complete": False, "plan_id": plan["id"], "steps": []}
     deploy_engine.save_receipt(journal, record)
@@ -213,6 +214,27 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     record.update(complete=True, final_plan_id=plan["id"], hardware_qualified=False)
     deploy_engine.save_receipt(journal, record)
     return plan
+
+
+def refuse_unit_overrides(plan, *, invoke=None):
+    """Refuse, before any change, a setup whose Sparks replace or change SparkRing's units in /etc/systemd/system.
+
+    Setup enables and starts the package's sparkring-fabric, sparkring-relay-marker, sparkring-hairpin and
+    sparkring-agent units by name; a unit file of the same name in /etc/systemd/system, left by another tool,
+    would run instead, and a drop-in would change what runs (``node.unit_overrides``)."""
+    invoke = invoke or discovery.ssh
+    found = {}
+    for host in plan["spec"]["hosts"]:
+        listed = json.loads(invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "unit-overrides"])
+                            or "{}").get("overrides") or []
+        if listed:
+            found[host["host"]] = listed
+    if found:
+        raise ValueError("These Sparks replace SparkRing's units with files in /etc/systemd/system, which would run "
+                         "instead of the package's: " + "; ".join(f"{host}: {', '.join(paths)}"
+                                                                 for host, paths in found.items())
+                         + ". Remove or rename those files (after checking what installed them), run sudo systemctl "
+                           "daemon-reload, then run setup again. Nothing has been changed.")
 
 
 def retire_cluster_record(plan, *, state=None, now=None):
@@ -327,6 +349,7 @@ def setup(argv=None):
         return topology.build_spec(found, head, name=args.name, fabric_cidr=args.fabric_cidr)
 
     if args.adopt:
+        refuse_unit_overrides(plan)
         retire_cluster_record(plan)
         document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"],
                                               marker=relays.marker_artifact(installer.ROOT))
