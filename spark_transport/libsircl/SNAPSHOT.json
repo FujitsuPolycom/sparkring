@@ -111,10 +111,10 @@
    }
   ]
  },
- "files": 111,
+ "files": 112,
  "manifest": "SNAPSHOT.sha256",
  "schema": "sparkring-libsircl-snapshot/v1",
- "snapshot": "ba5a337b",
- "tree_digest": "ba5a337b12f2e31df3526b2aa645bda803ba106f27319a445c23d9264cd23721",
+ "snapshot": "db529218",
+ "tree_digest": "db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0",
  "version": "0.6.0"
 }

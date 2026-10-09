@@ -31,9 +31,13 @@ A snapshot is a directory that libsircl's own workspace writes: `tree/` with
 the library's files, `FILES.sha256` (one `<sha256>  ./<path>` line per file)
 and `MANIFEST`. The SHA-256 of `FILES.sha256` is the snapshot's tree digest,
 and its first eight hexadecimal digits name the snapshot. The vendored copy
-is snapshot `ba5a337b` (tree digest
-`ba5a337b12f2e31df3526b2aa645bda803ba106f27319a445c23d9264cd23721`,
-library version 0.6.0).
+is snapshot `db529218` (tree digest
+`db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0`,
+library version 0.6.0), which has the fail-stop mode
+([Fail-stop](#fail-stop)). Status of that snapshot: **hardware-unverified**.
+It has run only in GPU emulation on one RTX 5090 workstation; its pair check
+on Sparks (its RUNBOOK section 3.2, with and without `LIBSIRCL_FAIL_STOP=1`)
+is staged and has not run.
 
 The directory holds the snapshot's files byte for byte, except two kinds that
 stay with the snapshot:
@@ -259,10 +263,11 @@ spoiled complete; the error surfaces at a later call, or, in a replayed CUDA
 graph, at none. The transport therefore sets `LIBSIRCL_FAIL_STOP=1`, with
 which the library ends the process on a recorded asynchronous error, and
 requires a library that has the mode: the layer records `fail_stop` in the
-lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`.
-Snapshot `ba5a337b` does not have the mode, so the transport refuses an image
-built from it, naming the reason, until a snapshot whose library reads
-`LIBSIRCL_FAIL_STOP` is synced and the layer rebuilt.
+lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`,
+and the stock-image preflight reads the same mark from the host library. The
+vendored snapshot `db529218` reads the variable (`src/engine.c`), so a layer
+or host library built from it passes the gate; a library built from a
+snapshot without the mode is refused, naming the reason.
 
 ### Container settings
 
@@ -334,7 +339,7 @@ The plan says what runs and that it is research-only, for example:
 ```text
 Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on libsircl 0.6.0; SIRCL's adapter and RoCEnante are off
   libsircl group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane
-  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot ba5a337b; fail-stop on (LIBSIRCL_FAIL_STOP=1)
+  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot db529218; fail-stop on (LIBSIRCL_FAIL_STOP=1)
   Off: vLLM's custom all-reduce, torch and NCCL symmetric memory, FlashInfer all-reduce and B12X PCIe all-reduce, so PyNccl carries the device collectives
   Research-only: no serving A/B has measured libsircl; torch.distributed's own collectives stay on the image's NCCL
   Note: torch.distributed's NVIDIA NCCL cannot connect this group's ranks that share no cable; a collective vLLM sends through torch instead of PyNccl would wait at NCCL's connection setup
@@ -464,7 +469,7 @@ PARENT_LOCK=$W/sircl-lock.json
 PARENT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' $PARENT_LOCK)
 RELEASE=dev-20261008-kraken-csf-sircl-libsircl-cuda1342-nccl2323-status034
 
-# 1. The vendored tree matches its snapshot. Expect "files": 111, "snapshot": "ba5a337b...".
+# 1. The vendored tree matches its snapshot. Expect "files": 112, "snapshot": "db529218".
 python3 scripts/sync_libsircl.py check
 
 # 2. Build libsircl in the parent image. Expect libsircl.so.0.6.0, make check passed and the image's gcc line.
@@ -474,7 +479,8 @@ python3 runtime/images/libsircl_layer.py natives --parent-lock $PARENT_LOCK --ou
 python3 runtime/images/libsircl_layer.py prepare --parent-lock $PARENT_LOCK \
   --natives $W/libsircl-natives --output $W/libsircl-context
 
-# 4. Build, probe and admit; writes the v3 lock. Expect "libsircl": "0.6.0", "nccl_api_version": 22705.
+# 4. Build, probe and admit; writes the v3 lock. Expect "libsircl": "0.6.0", "nccl_api_version": 22705,
+#    "fail_stop": true.
 python3 runtime/images/libsircl_layer.py build --context $W/libsircl-context \
   --tag sparkring-dev/kraken:csf-sircl-libsircl-20261008 --name $RELEASE --output $W/libsircl-lock.json
 

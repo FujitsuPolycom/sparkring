@@ -940,6 +940,7 @@ ncclResult_t ncclCommAbort(ncclComm_t comm) { return dispose(comm, 1); }
  * dlclose concurrent with API calls is outside the supported caller contract. */
 __attribute__((destructor)) static void shutdown_communicators(void) {
   if (!sccl_bootstrap_process_valid()) return;
+  sccl_engine_fail_stop_shutdown();
   pthread_mutex_lock(&registry_lock);
   struct ncclComm *comm = registry;
   registry = NULL;

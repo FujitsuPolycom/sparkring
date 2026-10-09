@@ -297,3 +297,6 @@ def test_the_vendored_tree_names_the_kernel_packs_and_architectures_the_layer_re
     packs = libsircl_layer.kernel_packs(files)
     assert packs["sircl_kernels"] == "c2e6e5a1f3c2d6bf8af3bcdb62fece9684ab062980f2bfdedd233d82be4eaa25"
     assert packs["sircl_links"] == "dc9dd167b44c5c6ff32fa2cc07eddceb0a0f45aa72b287fe336d67a9900f6410"
+    # The fail-stop mode the transport requires: the engine reads LIBSIRCL_FAIL_STOP, so a library built from
+    # the tree names it, NUL-terminated, among its strings (libsircl.has_fail_stop).
+    assert b'sccl_env("LIBSIRCL_FAIL_STOP")' in files["src/engine.c"]

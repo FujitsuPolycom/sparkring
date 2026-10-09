@@ -34,6 +34,7 @@
 #define roce_stat SCCL_PN(roce_stat)
 #define roce_hca_stat SCCL_PN(roce_hca_stat)
 #define roce_destroy SCCL_PN(roce_destroy)
+#define roce_local_features SCCL_PN(roce_local_features)
 #ifdef SCCL_RENAME_VERBS
 #define ibv_get_device_list sccl_emu_ibv_get_device_list
 #define ibv_free_device_list sccl_emu_ibv_free_device_list

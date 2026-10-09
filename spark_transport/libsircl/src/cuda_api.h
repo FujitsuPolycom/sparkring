@@ -23,6 +23,7 @@ enum {
   SCCL_CU_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR = 76,
   SCCL_CU_DEVICE_ATTRIBUTE_UNIFIED_ADDRESSING = 41,
   SCCL_CU_DEVICE_ATTRIBUTE_CAN_USE_HOST_POINTER_FOR_REGISTERED_MEM = 91,
+  SCCL_CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED = 115,
   SCCL_CU_MEMHOSTALLOC_PORTABLE = 1,
   SCCL_CU_MEMHOSTALLOC_DEVICEMAP = 2,
   SCCL_CU_MEMHOSTREGISTER_PORTABLE = 1,
@@ -70,6 +71,10 @@ typedef struct sccl_cuda {
   sccl_CUresult (*EventRecord)(sccl_CUevent, sccl_CUstream);
   sccl_CUresult (*EventDestroy)(sccl_CUevent);
   sccl_CUresult (*EventSynchronize)(sccl_CUevent);
+  /* Optional (NULL when the driver lacks them): stream-ordered allocation, which inside a CUDA graph
+   * capture adds allocation and free nodes to the graph. */
+  sccl_CUresult (*MemAllocAsync)(sccl_CUdeviceptr *, size_t, sccl_CUstream);
+  sccl_CUresult (*MemFreeAsync)(sccl_CUdeviceptr, sccl_CUstream);
 } sccl_cuda;
 
 /* The process's driver table, loaded once; NULL when libcuda.so.1 or one of

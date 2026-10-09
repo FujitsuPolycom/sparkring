@@ -493,8 +493,8 @@ preserve both.
 
 ## 18. libsircl, SIRCL's NCCL-compatible C library (included)
 
-`spark_transport/libsircl/` vendors libsircl snapshot `ba5a337b` (tree digest
-`ba5a337b12f2e31df3526b2aa645bda803ba106f27319a445c23d9264cd23721`, version
+`spark_transport/libsircl/` vendors libsircl snapshot `db529218` (tree digest
+`db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0`, version
 0.6.0; [vendored copy](docs/architecture/libsircl.md#source-placement)).
 libsircl is SparkRing's own work under the Apache License, Version 2.0
 (`spark_transport/libsircl/LICENSE` and `NOTICE`). It is an independent

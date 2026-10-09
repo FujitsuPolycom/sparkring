@@ -63,6 +63,12 @@ static void load(void) {
   SYM(EventDestroy, "cuEventDestroy_v2");
   SYM(EventSynchronize, "cuEventSynchronize");
 #undef SYM
+  *(void **)(&table.MemAllocAsync) = dlsym(handle, "cuMemAllocAsync");
+  *(void **)(&table.MemFreeAsync) = dlsym(handle, "cuMemFreeAsync");
+  if (!table.MemAllocAsync || !table.MemFreeAsync) {
+    table.MemAllocAsync = NULL;
+    table.MemFreeAsync = NULL;
+  }
   sccl_CUresult result = table.Init(0);
   if (result != SCCL_CUDA_SUCCESS) {
     snprintf(load_error, sizeof load_error, "cuInit failed: %d", result);

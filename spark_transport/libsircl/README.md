@@ -70,12 +70,26 @@ any communicator), inside and outside groups; `ncclCommSplit`.
   once, equal to the SIRCL Python session's one-shot and two-shot bits. Under the chain and ring schedules
   (below) large all-reduces and reduce-scatters round at every hop in chain or ring order instead, as
   SIRCL's chain and ring ops do; the schedule, not the buffers' alignment, decides which ops run, so
-  every rank of a call runs the same ops.
+  every rank of a call runs the same ops (op selection, below).
 - Every other datatype and op is an all-gather (all-reduce, reduce) or all-to-all (reduce-scatter) of the
   ranks' bytes, then the fold pack: the rank-ordered fold, integers in their own type with wrap-around,
   16-bit and 8-bit floats in float32 rounded once, float32 and float64 in their own type.
 - Every reduction gives identical bits on every rank, deterministically, independent of the message's
   split into ops.
+
+Op selection and staging: the ops of a call (schedule, op kinds and count, pieces, blocks per role and
+the link op words) follow from its shape, datatype, root and the settings agreed at setup, never from one
+rank's buffers, so every rank of a call launches ops that match its peers'. A rank whose buffers are not
+16-byte aligned, overlap where an op needs them apart, or whose output is discarded (`ncclReduce` and
+`ncclGather` off the root under the chain and ring schedules) copies through the transport kernels'
+scratch or a staging buffer around those same ops. Outside CUDA graph capture the staging buffer grows to
+the largest such call and keeps every earlier buffer until destroy, since queued work and captured graphs
+may still use them. Under capture, a call that needs more staging than the communicator holds takes a
+graph allocation on the capturing stream (`cuMemAllocAsync`), freed on that stream when the call returns,
+so the graph owns its staging; such a graph contains memory allocation and free nodes, and CUDA's rules
+for those apply (for example, one executable instance of the graph at a time). Whether the driver and
+device have stream-ordered allocation is agreed at setup; without it, such a capture is refused with
+`ncclInvalidUsage` on the rank that needs the staging until one eager call of that size has run there.
 
 Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready communicator of two or more ranks wait
 for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
@@ -148,6 +162,7 @@ prebuilt fatbins match the sources. GPU emulation and the hardware runs are in `
 | `LIBSIRCL_RING_WINDOW` | the ring plan: set on every rank when the ring that closes the chain can run, to the bytes this rank's ring lanes keep unacknowledged through relays (0 for cables); the ring schedules need it. |
 | `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES` | forward windows of relayed lanes: `<position>=<bytes>[/<bytes>],...` per lane, 0 for a direct lane, and the chunk a windowed stripe posts in (default 32,768) |
 | `SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`, `LIBSIRCL_WAIT_REGIME` | flag-wait limits and the regime a communicator starts in (`startup`, default, or `serving`); `sirclSetWaitRegime` switches it |
+| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` a watcher thread checks every communicator of two or more ranks every 5 ms for an asynchronous error (a flag wait that timed out, a failed progress thread) and at the first one writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> ...` with the error) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls then keeps a failed collective's output at most for the wait limit plus one poll; a read of the output within that poll after its stream wait returns is not prevented. Destroy and abort take a communicator off the watch before releasing it |
 | `SIRCL_POST_ORDER`, `SIRCL_PROGRESS_CPU`, `SIRCL_FORWARD_PROOF` | read by the native progress thread, as in SIRCL; `SIRCL_PROGRESS_CPU` pins it to a CPU list |
 | `LIBSIRCL_CPU_POLICY` | where the progress thread runs without `SIRCL_PROGRESS_CPU`: `performance` (default: on the fastest CPU class the creating thread may use, the Cortex-X925 cores of a GB10, found by `/proc/cpuinfo` part numbers or sysfs `cpu_capacity`) or `none` (where the scheduler puts it). The library never changes the affinity of the application's own threads; receipts name the progress thread's CPUs (`progress_cpus`) |
 | `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`, `NCCL_SOCKET_IFNAME` | the root's LAN address; a rank contacts a non-loopback root only when one is set |

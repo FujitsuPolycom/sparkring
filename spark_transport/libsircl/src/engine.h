@@ -99,6 +99,9 @@ void sccl_engine_teardown_stop(sccl_engine *e);
 int sccl_engine_wait_limit_ms(const sccl_engine *e);
 /* Stop the native threads only (library unload; CUDA may be gone). */
 void sccl_engine_shutdown(sccl_engine *engine);
+/* Stop the fail-stop watcher (LIBSIRCL_FAIL_STOP), first at library unload; later communicators are not
+ * watched. */
+void sccl_engine_fail_stop_shutdown(void);
 int sccl_engine_device(const sccl_engine *engine);
 /* "startup" or "serving": the flag-wait limit of later launches. */
 ncclResult_t sccl_engine_set_wait_regime(sccl_engine *engine, const char *regime);

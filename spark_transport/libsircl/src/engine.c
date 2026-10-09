@@ -163,6 +163,8 @@ static const char *const link_kind_names[SCCL_LINK_KINDS] = {"chain_gather", "ch
 static const unsigned link_roles[SCCL_LINK_KINDS] = {4, 2, 2, 2, 3};
 
 enum { ALG_AUTO = -1 };
+/* LIBSIRCL_FAIL_STOP's modes (see fail_stop). */
+enum { FAIL_STOP_EXIT = 1, FAIL_STOP_ABORT = 2 };
 
 /* Settings every rank must share; compared field by field at setup. */
 typedef struct {
@@ -170,7 +172,10 @@ typedef struct {
   uint64_t slot_bytes, capacity, large_piece, oneshot_max;
   uint32_t threads, blocks, large_blocks, packs_per_thread;
   uint32_t spin_limit, one_block, algorithm_plus_one, transport;
-  uint32_t startup_wait_us, serving_wait_us, proxy_abi, reserved;
+  /* graph_staging: a call under CUDA graph capture that needs more staging than the communicator holds
+   * takes a graph allocation (the driver and device support stream-ordered allocation). Agreed at setup,
+   * so every rank stages captured calls the same way. */
+  uint32_t startup_wait_us, serving_wait_us, proxy_abi, graph_staging;
   char kernel_pack[72], fold_pack[72], links_pack[72];
   /* The chain schedule: SIRCL_LARGE_SCHEDULE, geometry, and the chain order (ranks by chain index). */
   uint32_t large_schedule, chain_slots, chain_chunk, chain_blocks, chain_unroll, chain_reserved;
@@ -214,7 +219,8 @@ struct sccl_engine {
   /* The link collectives: on when link_on; the ring's neighbors and this rank's ring window; the link area's
    * offset, its counters (SCCL_LINK_COUNTER_WORDS device words), piece counters and decision words, the
    * reduce-scatter's partial scratch (one tile), and the staging buffers of unaligned link and chain ops
-   * (grown outside graph capture; earlier ones are kept until destroy, queued work may still use them). */
+   * (grown outside graph capture; earlier ones are kept until destroy, since queued work and captured
+   * graphs may still use them). */
   int link_on, ring_prev, ring_next;
   uint32_t ring_window;
   /* The CPUs the transport's progress thread may run on (a CPU list, or "unpinned"). */
@@ -225,9 +231,14 @@ struct sccl_engine {
   int ring_reduce_passes;
   uint64_t link_off;
   sccl_CUdeviceptr link_counters, piece_counters, link_scratch;
-  sccl_CUdeviceptr stage, retired_stage[16];
+  sccl_CUdeviceptr stage, *retired_stage;
   uint64_t stage_bytes;
-  int retired;
+  int retired, retired_room;
+  /* The graph allocation of the call in progress under capture (0: none), its bytes and the capturing
+   * stream; freed on that stream at the call's end, so the graph owns it. */
+  sccl_CUdeviceptr call_stage;
+  uint64_t call_stage_bytes;
+  sccl_CUstream call_stage_stream;
   sccl_CUfunction link_fn[SCCL_LINK_KINDS][SCCL_DT_COUNT];
   /* The link area's layout (the native layer's offsets: receive, own, flag lines, ready, consumed, sent,
    * credit, control, total) and whether its timed-out dump was written (LIBSIRCL_LINK_DUMP). */
@@ -273,6 +284,10 @@ struct sccl_engine {
   unsigned long long capture_id;
   sccl_CUstream capture_stream;
   int serving;
+  /* Fail-stop (LIBSIRCL_FAIL_STOP): FAIL_STOP_EXIT or FAIL_STOP_ABORT when this communicator is on the
+   * watcher's list, and the next one on it. */
+  int fail_stop;
+  struct sccl_engine *watch_next;
   /* receipts */
   _Atomic uint64_t ops[SCCL_ALG_COUNT][SCCL_DT_COUNT];
   _Atomic uint64_t gather_calls, gather_ops, gather_bytes, gather_padded;
@@ -283,7 +298,7 @@ struct sccl_engine {
   _Atomic uint64_t folds[SCCL_FOLD_DTYPES][SCCL_FOLD_OPS];
   _Atomic uint64_t p2p_sends, p2p_recvs, p2p_exchanges, p2p_ops, p2p_bytes_sent, p2p_bytes_received;
   _Atomic uint64_t chain_ops[SCCL_DT_COUNT], chain_bytes;
-  _Atomic uint64_t link_ops[SCCL_LINK_KINDS], link_bytes, link_staged;
+  _Atomic uint64_t link_ops[SCCL_LINK_KINDS], link_bytes, link_staged, graph_staged;
   _Atomic uint64_t calls, captured_calls, bytes, padded_tails, staged_unaligned, local_copies;
   _Atomic uint64_t refused_op, refused_capture;
   /* Receipt file: this communicator's number among the process's communicators (in the file name), the
@@ -590,6 +605,12 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   e->serving = regime && !strcmp(regime, "serving");
+  const char *stop = sccl_env("LIBSIRCL_FAIL_STOP");
+  if (stop && *stop && strcmp(stop, "0") && strcmp(stop, "1") && strcmp(stop, "abort")) {
+    put_error(err, len, "LIBSIRCL_FAIL_STOP=%s: 0, 1 or abort", stop);
+    return -1;
+  }
+  e->fail_stop = !stop || !*stop || !strcmp(stop, "0") ? 0 : !strcmp(stop, "1") ? FAIL_STOP_EXIT : FAIL_STOP_ABORT;
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
   e->ring_reduce_passes = (int)v;
   const char *policy = sccl_env("LIBSIRCL_CPU_POLICY");
@@ -673,7 +694,7 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   }
   /* Chain order: LIBSIRCL_CHAIN_ORDER lists positions in chain order; unset, the ranks by position (the
    * cable order of a path or cycle whose positions are ring positions). */
-  int order[MAX_WORLD], count = 0;
+  int order[MAX_WORLD] = {0}, count = 0;
   const char *text = sccl_env("LIBSIRCL_CHAIN_ORDER");
   if (text && *text) {
     char copy[256];
@@ -741,6 +762,8 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(startup_wait_us, "SIRCL_STARTUP_WAIT_S");
   SAME(serving_wait_us, "SIRCL_SERVING_WAIT_S");
   SAME(proxy_abi, "native proxy ABI");
+  SAME(graph_staging, "stream-ordered allocation (cuMemAllocAsync and the device's memory pools), which "
+                      "stages unaligned buffers under CUDA graph capture");
   SAME(large_schedule, "SIRCL_LARGE_SCHEDULE");
   SAME(chain_slots, "SIRCL_CHAIN_SLOTS");
   SAME(chain_slot_bytes, "SIRCL_CHAIN_SLOT_BYTES");
@@ -1220,8 +1243,10 @@ static void release_memory(sccl_engine *e) {
   if (e->link_scratch) cu->MemFree(e->link_scratch);
   if (e->stage) cu->MemFree(e->stage);
   for (int i = 0; i < e->retired; ++i) cu->MemFree(e->retired_stage[i]);
+  free(e->retired_stage);
+  e->retired_stage = NULL;
   e->link_counters = e->piece_counters = e->link_scratch = e->stage = 0;
-  e->retired = 0;
+  e->retired = e->retired_room = 0;
   for (int i = 0; i < 2; ++i)
     if (e->scratch[i]) cu->MemFree(e->scratch[i]);
   if (e->host) {
@@ -1282,6 +1307,110 @@ static int verdict(sccl_bootstrap *b, int world, int rank, int ok, const char *m
 }
 
 static void start_receipts(sccl_engine *e);
+
+/* -- fail-stop ----------------------------------------------------------------------------------- */
+
+/* LIBSIRCL_FAIL_STOP=1 (or abort): one watcher thread per process checks every watched communicator of two
+ * or more ranks for an asynchronous error (a flag wait that timed out, a failed progress thread) every
+ * FAIL_STOP_POLL_MS, and at the first one writes it to stderr and ends the process: with 1 at once with exit
+ * status FAIL_STOP_STATUS (_exit: no atexit handlers, no core dump, so the end is bounded), with abort by
+ * abort() (SIGABRT; the system's core-dump handling may delay the end). A caller that only checks the codes
+ * of enqueue calls then cannot keep using a failed collective's output beyond the wait limit plus one poll,
+ * whether or not it calls the library again; one that reads the output within that poll after its stream
+ * wait returns can still read it. A communicator joins the list when its creation succeeds and leaves it
+ * before destroy or abort releases anything (under watch_lock, which every check holds); library unload
+ * stops the watcher first. */
+enum { FAIL_STOP_POLL_MS = 5, FAIL_STOP_STATUS = 70 };
+static pthread_mutex_t watch_lock = PTHREAD_MUTEX_INITIALIZER;
+static sccl_engine *watch_list;
+static pthread_t watcher;
+static int watcher_started;
+static atomic_int watcher_stop;
+static void write_receipt(sccl_engine *e);
+static uint64_t realtime_ns(void);
+
+static void fail_stop(sccl_engine *e, const char *message) {
+  char line[1200];
+  uint64_t now = realtime_ns();
+  int n = snprintf(line, sizeof line,
+                   "libsircl: LIBSIRCL_FAIL_STOP: ending the process at %" PRIu64 ".%03u (Unix time) on an "
+                   "asynchronous error of communicator %d (rank %d of %d): %s\n",
+                   now / 1000000000u, (unsigned)(now % 1000000000u / 1000000u), e->receipt_id, e->rank, e->world,
+                   message);
+  if (n < 0) n = 0;
+  if (n > (int)sizeof line - 1) n = (int)sizeof line - 1;
+  if (write(STDERR_FILENO, line, (size_t)n) < 0) {
+    /* Nothing else can report it; the process ends either way. */
+  }
+  write_receipt(e);
+  if (e->fail_stop == FAIL_STOP_ABORT) abort();
+  _exit(FAIL_STOP_STATUS);
+}
+
+static void *fail_stop_watch(void *unused) {
+  (void)unused;
+  const struct timespec pause = {0, FAIL_STOP_POLL_MS * 1000000L};
+  while (!atomic_load(&watcher_stop)) {
+    nanosleep(&pause, NULL);
+    pthread_mutex_lock(&watch_lock);
+    for (sccl_engine *e = watch_list; e && !atomic_load(&watcher_stop); e = e->watch_next) {
+      char message[900];
+      if (sccl_engine_async_error(e, message, sizeof message) != ncclSuccess) fail_stop(e, message);
+    }
+    pthread_mutex_unlock(&watch_lock);
+  }
+  return NULL;
+}
+
+/* A forked child has no watcher thread and none of the parent's communicators (they are invalid there):
+ * it starts empty, and its first communicator that asks for fail-stop starts its own watcher. */
+static void watch_after_fork(void) {
+  pthread_mutex_init(&watch_lock, NULL);
+  watch_list = NULL;
+  watcher_started = 0;
+}
+
+static void fork_handler_install(void) { pthread_atfork(NULL, NULL, watch_after_fork); }
+
+/* The watcher, started by the first communicator that asks for it, before the setup verdict (so a rank
+ * that cannot start it fails setup with every other rank). */
+static int watch_start(char *err, size_t len) {
+  static pthread_once_t fork_handler = PTHREAD_ONCE_INIT;
+  pthread_once(&fork_handler, fork_handler_install);
+  pthread_mutex_lock(&watch_lock);
+  int rc = watcher_started || atomic_load(&watcher_stop) ? 0 : pthread_create(&watcher, NULL, fail_stop_watch, NULL);
+  if (!rc) watcher_started = 1;
+  pthread_mutex_unlock(&watch_lock);
+  if (rc) put_error(err, len, "LIBSIRCL_FAIL_STOP: starting the watcher thread: %s", strerror(rc));
+  return rc ? -1 : 0;
+}
+
+static void watch_add(sccl_engine *e) {
+  pthread_mutex_lock(&watch_lock);
+  e->watch_next = watch_list;
+  watch_list = e;
+  pthread_mutex_unlock(&watch_lock);
+}
+
+static void watch_remove(sccl_engine *e) {
+  if (!e->fail_stop) return;
+  pthread_mutex_lock(&watch_lock);
+  for (sccl_engine **at = &watch_list; *at; at = &(*at)->watch_next)
+    if (*at == e) {
+      *at = e->watch_next;
+      break;
+    }
+  pthread_mutex_unlock(&watch_lock);
+}
+
+void sccl_engine_fail_stop_shutdown(void) {
+  pthread_mutex_lock(&watch_lock);
+  int started = watcher_started;
+  atomic_store(&watcher_stop, 1);
+  watch_list = NULL;
+  pthread_mutex_unlock(&watch_lock);
+  if (started) pthread_join(watcher, NULL);
+}
 
 int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int position, sccl_CUcontext ctx,
                        const atomic_int *cancelled, sccl_engine **out, char *err, size_t err_len) {
@@ -1345,7 +1474,14 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     if (cuda_check(cu->CtxGetDevice(&device), "cuCtxGetDevice", local, sizeof local)) break;
     e->device = device;
     if (read_settings(e, emulation, local, sizeof local)) break;
+    if (nranks == 1) e->fail_stop = 0;
+    if (e->fail_stop && watch_start(local, sizeof local)) break;
     e->shared.proxy_abi = (uint32_t)e->transport->abi_version();
+    int pools = 0;
+    e->shared.graph_staging =
+        cu->MemAllocAsync &&
+        cu->DeviceGetAttribute(&pools, SCCL_CU_DEVICE_ATTRIBUTE_MEMORY_POOLS_SUPPORTED, device) == SCCL_CUDA_SUCCESS &&
+        pools == 1;
     if (nranks == 1) {
       e->shared.lanes = 0;
       break;
@@ -1515,6 +1651,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   }
   cu->CtxPopCurrent(&ctx);
   start_receipts(e);
+  if (e->fail_stop) watch_add(e);
   *out = e;
   return ncclSuccess;
 fail:;
@@ -1811,19 +1948,50 @@ static ncclResult_t launch_exchange(sccl_engine *e, sccl_CUdeviceptr input, sccl
 }
 
 /* A 16-byte-aligned staging buffer of at least `bytes` for a link or chain op whose buffers are not aligned
- * (or overlap where the op needs them apart). It grows outside graph capture only: a capture that needs
- * a larger one fails, after an eager call of that size has grown it the capture succeeds. */
-static ncclResult_t stage_buffer(sccl_engine *e, uint64_t bytes, int capturing, sccl_CUdeviceptr *out, char *err,
-                                 size_t len) {
-  if (bytes > e->stage_bytes) {
-    if (capturing) {
+ * (or overlap where the op needs them apart, or whose output is discarded). Whether a rank stages depends
+ * on its own buffers and role, so staging never decides whether a rank launches: outside capture the
+ * communicator's buffer grows (the earlier one kept, see retired_stage); under capture a call it cannot
+ * hold takes a graph allocation on the capturing stream, which end_call frees on that stream. Without
+ * stream-ordered allocation (shared.graph_staging, agreed at setup) such a capture is refused on the rank
+ * that needs the staging, until one eager call of that size has grown its buffer. */
+static ncclResult_t stage_buffer(sccl_engine *e, uint64_t bytes, int capturing, sccl_CUstream stream,
+                                 sccl_CUdeviceptr *out, char *err, size_t len) {
+  if (bytes > e->stage_bytes && capturing) {
+    if (!e->shared.graph_staging) {
       put_error(err, len, "a link or chain op on unaligned or overlapping buffers needs %" PRIu64 " bytes of "
-                "staging, allocated outside CUDA graph capture; issue one such call eagerly before capturing", bytes);
+                "staging, and this driver or device has no stream-ordered allocation for CUDA graph capture; "
+                "issue one such call eagerly before capturing", bytes);
       return ncclInvalidUsage;
     }
-    if (e->retired == (int)(sizeof e->retired_stage / sizeof e->retired_stage[0])) {
-      put_error(err, len, "too many staging buffer sizes");
-      return ncclInternalError;
+    if (e->call_stage && e->call_stage_bytes < bytes) {
+      if (cuda_check(cu->MemFreeAsync(e->call_stage, e->call_stage_stream), "freeing a graph staging allocation",
+                     err, len))
+        return ncclUnhandledCudaError;
+      e->call_stage = 0;
+    }
+    if (!e->call_stage) {
+      if (cuda_check(cu->MemAllocAsync(&e->call_stage, bytes, stream), "allocating graph staging", err, len)) {
+        e->call_stage = 0;
+        return ncclUnhandledCudaError;
+      }
+      e->call_stage_bytes = bytes;
+      e->call_stage_stream = stream;
+      atomic_fetch_add_explicit(&e->graph_staged, 1, memory_order_relaxed);
+    }
+    atomic_fetch_add_explicit(&e->link_staged, 1, memory_order_relaxed);
+    *out = e->call_stage;
+    return ncclSuccess;
+  }
+  if (bytes > e->stage_bytes) {
+    if (e->stage && e->retired == e->retired_room) {
+      int room = e->retired_room ? 2 * e->retired_room : 8;
+      sccl_CUdeviceptr *grown = realloc(e->retired_stage, (size_t)room * sizeof *grown);
+      if (!grown) {
+        put_error(err, len, "out of host memory for the staging buffer list");
+        return ncclSystemError;
+      }
+      e->retired_stage = grown;
+      e->retired_room = room;
     }
     uint64_t size = e->stage_bytes * 2 > bytes ? e->stage_bytes * 2 : bytes;
     sccl_CUdeviceptr fresh = 0;
@@ -1883,7 +2051,7 @@ static ncclResult_t gather_link(sccl_engine *e, int kind, sccl_CUdeviceptr src, 
   if (src % PACK == 0 && dst % PACK == 0)
     return launch_link(e, kind, 0, src, dst, shard, shard, piece, blocks, stream, err, len);
   sccl_CUdeviceptr stage;
-  ncclResult_t result = stage_buffer(e, shard + output, capturing, &stage, err, len);
+  ncclResult_t result = stage_buffer(e, shard + output, capturing, stream, &stage, err, len);
   if (result != ncclSuccess) return result;
   if (cuda_check(copy_async(e, stage, src, shard, stream), "staging the shard", err, len))
     return ncclUnhandledCudaError;
@@ -1906,7 +2074,7 @@ static ncclResult_t scatter_link(sccl_engine *e, int kind, int dtype, sccl_CUdev
   sccl_CUdeviceptr stage = 0;
   if (!direct) {
     uint64_t width = chunk < tile ? chunk : tile;
-    result = stage_buffer(e, width * (uint64_t)(e->world + 1), capturing, &stage, err, len);
+    result = stage_buffer(e, width * (uint64_t)(e->world + 1), capturing, stream, &stage, err, len);
   }
   for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
     uint64_t width = chunk - column < tile ? chunk - column : tile;
@@ -1941,7 +2109,7 @@ static ncclResult_t reduce_link(sccl_engine *e, int ring, int dtype, sccl_CUdevi
   /* A zero dst (ncclReduce off the root) or unaligned buffers: the op runs in place in the staging buffer
    * (a zero dst's result stays there, unread). */
   if (!dst || src % PACK || dst % PACK) {
-    result = stage_buffer(e, nbytes, capturing, &in, err, len);
+    result = stage_buffer(e, nbytes, capturing, stream, &in, err, len);
     if (result != ncclSuccess) return result;
     out = in;
     if (cuda_check(copy_async(e, in, src, nbytes, stream), "staging the message", err, len))
@@ -2066,12 +2234,24 @@ static ncclResult_t begin_call(sccl_engine *e, const char *what, sccl_CUstream s
   return result;
 }
 
+/* End a call begun by begin_call: the call's graph staging allocation is freed on the capturing stream
+ * (a free node after the call's ops), the receipt refreshed, the context restored and the communicator
+ * unlocked. Returns `result`, or the free's failure. */
 static void refresh_receipt(sccl_engine *e);
-static void end_call(sccl_engine *e, call_state *call) {
+static ncclResult_t end_call(sccl_engine *e, call_state *call, ncclResult_t result, char *err, size_t len) {
+  if (e->call_stage) {
+    sccl_CUresult freed = cu->MemFreeAsync(e->call_stage, e->call_stage_stream);
+    e->call_stage = 0;
+    if (freed != SCCL_CUDA_SUCCESS && result == ncclSuccess) {
+      put_error(err, len, "freeing a graph staging allocation: %s", sccl_cuda_result_text(freed));
+      result = ncclUnhandledCudaError;
+    }
+  }
   refresh_receipt(e);
   sccl_CUcontext popped;
   if (call->pushed) cu->CtxPopCurrent(&popped);
   pthread_mutex_unlock(&e->lock);
+  return result;
 }
 
 static ncclResult_t check_args(sccl_engine *e, const char *what, const void *sendbuff, void *recvbuff, size_t count,
@@ -2188,8 +2368,7 @@ ncclResult_t sccl_engine_allgather(sccl_engine *e, const void *sendbuff, void *r
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&e->gather_bytes, shard * (uint64_t)e->world, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 /* One scatter op over `piece` bytes (a multiple of 16) of every rank's chunk, input chunks `src_stride` bytes
@@ -2368,8 +2547,7 @@ ncclResult_t sccl_engine_reducescatter(sccl_engine *e, const void *sendbuff, voi
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&e->scatter_bytes, chunk * (uint64_t)e->world, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 /* The reduction of every rank's `count` elements into `recvbuff`, or discarded when `discard` is set
@@ -2421,7 +2599,7 @@ static ncclResult_t reduce_into(sccl_engine *e, const char *what, const void *se
     } else {
       sccl_CUdeviceptr own = src, out = dst, stage = 0;
       if (src % PACK || dst % PACK) {
-        result = stage_buffer(e, nbytes, capturing, &stage, err, len);
+        result = stage_buffer(e, nbytes, capturing, stream, &stage, err, len);
         if (result == ncclSuccess &&
             cuda_check(copy_async(e, stage, src, nbytes, stream), "staging the root's values", err, len))
           result = ncclUnhandledCudaError;
@@ -2477,8 +2655,7 @@ counted:
     if (capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&e->bytes, nbytes, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 ncclResult_t sccl_engine_allreduce(sccl_engine *e, const void *sendbuff, void *recvbuff, size_t count,
@@ -2552,8 +2729,7 @@ ncclResult_t sccl_engine_broadcast(sccl_engine *e, const void *sendbuff, void *r
     atomic_fetch_add_explicit(&e->broadcast_calls, 1, memory_order_relaxed);
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 static int overlaps(sccl_CUdeviceptr a, sccl_CUdeviceptr b, uint64_t bytes) { return a < b + bytes && b < a + bytes; }
@@ -2584,7 +2760,7 @@ ncclResult_t sccl_engine_alltoall(sccl_engine *e, const void *sendbuff, void *re
     int staged = src % PACK || dst % PACK || overlaps(src, dst, total);
     if (staged) {
       sccl_CUdeviceptr stage = 0;
-      result = stage_buffer(e, 2 * total, call.capturing, &stage, err, len);
+      result = stage_buffer(e, 2 * total, call.capturing, stream, &stage, err, len);
       if (result == ncclSuccess && cuda_check(copy_async(e, stage, src, total, stream), "staging the input", err, len))
         result = ncclUnhandledCudaError;
       in = stage;
@@ -2627,8 +2803,7 @@ ncclResult_t sccl_engine_alltoall(sccl_engine *e, const void *sendbuff, void *re
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&e->alltoall_bytes, total, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recvbuff, size_t count,
@@ -2665,7 +2840,7 @@ ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recv
     } else {
       sccl_CUdeviceptr own = src, out = dst, stage = 0;
       if (src % PACK || dst % PACK) {
-        result = stage_buffer(e, 3 * shard, call.capturing, &stage, err, len);
+        result = stage_buffer(e, 3 * shard, call.capturing, stream, &stage, err, len);
         if (result == ncclSuccess && src % PACK) {
           if (cuda_check(copy_async(e, stage + 2 * shard, src, shard, stream), "staging the root's shard", err, len))
             result = ncclUnhandledCudaError;
@@ -2685,7 +2860,7 @@ ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recv
       result = gather_link(e, link_kind, src, dst, shard, call.capturing, stream, err, len);
     } else {
       sccl_CUdeviceptr stage = 0, in = src;
-      result = stage_buffer(e, shard + shard * (uint64_t)e->world, call.capturing, &stage, err, len);
+      result = stage_buffer(e, shard + shard * (uint64_t)e->world, call.capturing, stream, &stage, err, len);
       if (result == ncclSuccess && src % PACK) {
         if (cuda_check(copy_async(e, stage, src, shard, stream), "staging the shard", err, len))
           result = ncclUnhandledCudaError;
@@ -2727,8 +2902,7 @@ ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recv
     atomic_fetch_add_explicit(&e->gather_root_calls, 1, memory_order_relaxed);
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 ncclResult_t sccl_engine_scatter(sccl_engine *e, const void *sendbuff, void *recvbuff, size_t count,
@@ -2791,8 +2965,7 @@ ncclResult_t sccl_engine_scatter(sccl_engine *e, const void *sendbuff, void *rec
     atomic_fetch_add_explicit(&e->scatter_root_calls, 1, memory_order_relaxed);
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 size_t sccl_engine_type_size(ncclDataType_t datatype) { return nccl_type_size(datatype); }
@@ -2833,7 +3006,7 @@ static ncclResult_t exchange_staged(sccl_engine *e, sccl_CUdeviceptr sent, sccl_
   ncclResult_t result = ncclSuccess;
   if (in % PACK || out % PACK) {
     sccl_CUdeviceptr stage = 0;
-    result = stage_buffer(e, 2 * chunk, capturing, &stage, err, len);
+    result = stage_buffer(e, 2 * chunk, capturing, stream, &stage, err, len);
     if (result == ncclSuccess && in % PACK) {
       if (cuda_check(copy_async(e, stage, sent, chunk, stream), "staging a send", err, len))
         result = ncclUnhandledCudaError;
@@ -3002,8 +3175,7 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
     }
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, count, memory_order_relaxed);
   }
-  end_call(e, &call);
-  return result;
+  return end_call(e, &call, result, err, len);
 }
 
 ncclResult_t sccl_engine_teardown_sync(sccl_engine *e) {
@@ -3138,7 +3310,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "\"transport\":\"%s\",\"kernel_pack\":\"%s\",\"fold_pack\":\"%s\",\"links_pack\":\"%s\","
       "\"slot_bytes\":%" PRIu64
       ",\"capacity\":%" PRIu64
-      ",\"large_piece_bytes\":%" PRIu64 ",\"oneshot_max_bytes\":%" PRIu64 ",\"wait_regime\":\"%s\","
+      ",\"large_piece_bytes\":%" PRIu64 ",\"oneshot_max_bytes\":%" PRIu64 ",\"wait_regime\":\"%s\",\"fail_stop\":%s,"
       "\"progress_cpus\":\"%s\",\"pair_exchange\":{\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64 "},\"pair_plan\":%s,\"link_blocks\":{\"session\":%u,\"reduce\":%u,"
       "\"gather\":%u,\"scatter\":%u,\"ops_by_blocks\":{%s}},"
       "\"all_reduce\":{\"calls\":%" PRIu64 ",\"captured_calls\":%" PRIu64 ",\"bytes\":%" PRIu64
@@ -3150,7 +3322,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "},\"gather\":{\"calls\":%" PRIu64 "},\"scatter\":{\"calls\":%" PRIu64 "},\"fold\":{\"ops\":{%s}"
       "},\"chain\":{\"on\":%s,\"index\":%d,\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64
       "},\"links\":{\"on\":%s,\"ring\":%s,\"ring_reduce_passes\":%d,\"ops\":{%s},\"bytes\":%" PRIu64
-      ",\"staged\":%" PRIu64
+      ",\"staged\":%" PRIu64 ",\"stage_buffers\":%d,\"graph_staging\":%s,\"graph_staged\":%" PRIu64
       ",\"native_ops\":%" PRIu64 ",\"native_items\":%" PRIu64
       "},\"forward_windows\":{\"lanes\":%u,\"chunk_bytes\":%u,\"chunks_posted\":%" PRIu64
       ",\"ring_window_bytes\":%u,\"ring_window_chunks\":%" PRIu64
@@ -3163,7 +3335,8 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       sccl_kp_hash(),
       sccl_kp_fold_hash(), sccl_kp_links_hash(),
       e->shared.slot_bytes, e->shared.capacity, e->shared.large_piece, e->shared.oneshot_max,
-      e->serving ? "serving" : "startup", e->progress_cpus[0] ? e->progress_cpus : "none",
+      e->serving ? "serving" : "startup", e->fail_stop ? "true" : "false",
+      e->progress_cpus[0] ? e->progress_cpus : "none",
       atomic_load(&e->exchange_ops), atomic_load(&e->exchange_bytes),
       e->shared.pair_plan ? "true" : "false", e->shared.link_blocks, e->shared.coll_blocks[COLL_REDUCE],
       e->shared.coll_blocks[COLL_GATHER], e->shared.coll_blocks[COLL_SCATTER], by_blocks,
@@ -3179,6 +3352,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       atomic_load(&e->chain_ops[0]) + atomic_load(&e->chain_ops[1]) + atomic_load(&e->chain_ops[2]),
       atomic_load(&e->chain_bytes), e->link_on ? "true" : "false", e->shared.ring_on && e->link_on ? "true" : "false",
       e->ring_reduce_passes, links, atomic_load(&e->link_bytes), atomic_load(&e->link_staged),
+      e->retired + (e->stage != 0), e->shared.graph_staging ? "true" : "false", atomic_load(&e->graph_staged),
       e->proxy ? e->transport->stat(e->proxy, 16) : 0, e->proxy ? e->transport->stat(e->proxy, 17) : 0,
       e->forward_lanes, e->forward_chunk, e->proxy ? e->transport->stat(e->proxy, 10) : 0, e->ring_window,
       e->proxy ? e->transport->stat(e->proxy, 24) : 0, atomic_load(&e->p2p_sends),
@@ -3356,6 +3530,7 @@ void sccl_engine_teardown_stop(sccl_engine *e) {
 
 ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t len) {
   if (!e) return ncclSuccess;
+  watch_remove(e);
   ncclResult_t result = ncclSuccess;
   int stopped = e->stopped;
   if (!stopped) write_receipt(e);

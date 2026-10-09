@@ -59,6 +59,11 @@ bash $LOCK sircl-ccl python tests/emulation/sircl_golden.py --out /tmp/golden/w2
 # The library end to end: one process per rank on one GPU, NCCL API, shared-memory verbs stand-in.
 bash $LOCK sircl-ccl python tests/emulation/run_library.py --library build/libsircl.so --world 2 \
     --lanes 1 --golden /tmp/golden/w2
+# A relayed pair given a ring plan: the pair plan's ring ops and pair exchanges (flags-only directions
+# included) through the ring window.
+bash $LOCK sircl-ccl python tests/emulation/run_library.py --library build/libsircl.so --world 2 --lanes 2 \
+    --golden tests/emulation/golden/w2.json --env LIBSIRCL_FORWARD_WINDOWS=0=65536/65536,1=65536/65536 \
+    --env LIBSIRCL_RING_WINDOW=393216
 # The same under the chain or ring schedules, against SIRCL sessions under the same schedules
 # (SIRCL_GOLDEN_{LARGE,GATHER,SCATTER}_SCHEDULE; tests/emulation/golden/w<W>-chain.json and -ring.json).
 SIRCL_GOLDEN_LARGE_SCHEDULE=ring SIRCL_GOLDEN_GATHER_SCHEDULE=ring SIRCL_GOLDEN_SCATTER_SCHEDULE=ring \
@@ -80,6 +85,9 @@ bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/lib
     --slow-ns 0 --expect close-error --late-rank 1 --late-s 4 --env SIRCL_STARTUP_WAIT_S=2
 bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/libsircl.so --world 4 --rounds 2 \
     --slow-ns 0 --expect close-error --env SIRCL_EMU_FAIL_DEREG=1
+# Fail-stop: with LIBSIRCL_FAIL_STOP=1 (and abort) a late rank's peer ends its process within the 2 s wait limit
+# plus 3 s; without it the peer keeps a wrong output. Expected: "fail-stop: 0 problems".
+bash $LOCK sircl-ccl python tests/emulation/fail_stop.py --library build/libsircl.so
 # PyTorch ProcessGroupNCCL through LD_PRELOAD, and communicator setup failures.
 bash $LOCK sircl-ccl python tests/emulation/torch_pg.py --launch --library build/libsircl.so --world 2
 bash $LOCK sircl-ccl python tests/emulation/setup_failures.py --library build/libsircl.so
@@ -89,8 +97,8 @@ bash $LOCK sircl-ccl python tests/emulation/setup_failures.py --library build/li
 
 `tools/emulation_suite.sh` runs, from the tree root, the build and CPU checks and then every
 library-level emulation run of section 2 that needs no SIRCL tree: two to eight ranks against the digests
-in `tests/emulation/golden/` under the pair plan, pieces, chain and ring schedules, a relayed pair and
-forward windows, PyTorch's `ProcessGroupNCCL`, the setup failures and the timing sweeps; with
+in `tests/emulation/golden/` under the pair plan, pieces, chain and ring schedules, a relayed pair with
+and without a ring plan and forward windows, fail-stop, PyTorch's `ProcessGroupNCCL`, the setup failures and the timing sweeps; with
 `NCCL_TESTS_BUILD` (nccl-tests v2.21.1 built against `build/mpi-shim`) also nccl-tests on two processes.
 It needs Python 3 with torch, make, a C compiler and one CUDA GPU (sm_120 or sm_121), so one Spark in the
 serving image runs it as well as the workstation. It writes only `build/` and its output directory and

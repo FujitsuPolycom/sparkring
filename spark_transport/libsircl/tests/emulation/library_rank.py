@@ -24,8 +24,12 @@ compared with the host model in ``fold_model.py``. ncclAlltoAll, ncclGather and 
 unaligned, in place, several ops per call, NULL buffers on the ranks that do not use them); one CUDA graph
 of a fold all-reduce, an all-to-all, a gather and a scatter, replayed. ncclSend and ncclRecv: on two ranks
 outside and inside groups, both directions, in-order matching, torch's all-to-all pattern and a graph; on
-more ranks, a send to another rank refused and a send to the rank itself carried. An op that is not built
-in refused and counted; the receipt, ncclCommGetAsyncError, finalize and destroy.
+more ranks, a send to another rank refused and a send to the rank itself carried. Rank-local staging: the
+collectives of every selection point with one rank's buffers unaligned or in place, eager and captured
+cold, launch and carry the same ops on every rank as with aligned buffers (receipt counts). On a pair,
+one-way exchanges whose empty direction alternates between the ranks across link-slot wrap, each round
+followed by two-way calls. An op that is not built in refused and counted; the receipt,
+ncclCommGetAsyncError, finalize and destroy.
 """
 from __future__ import annotations
 
@@ -554,10 +558,10 @@ CREATED = {"communicators": 1}
 
 def run_capture_staging_check(torch, lib, comm, world, rank, seed_base, report) -> None:
     """CUDA graph capture of an in-place ncclAlltoAll on a fresh split child. On a pair the overlapping
-    buffers go through the staging buffer, which grows only outside capture: captured cold, the call is
-    refused with ncclInvalidUsage and the staging message (the documented precondition), or, where no
-    staging is needed, captured and exact on replay. After one eager call of the same shape the capture
-    succeeds and two replays with new inputs are exact."""
+    buffers go through staging: captured cold, the call takes a graph allocation and is exact on replay
+    (a driver or device without stream-ordered allocation refuses it with ncclInvalidUsage and the staging
+    message, the same on every rank). After one eager call of the same shape the capture uses the
+    communicator's grown staging buffer and two replays with new inputs are exact."""
     lib.ncclAlltoAll.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_void_p,
                                  ctypes.c_void_p]
     name = "in-place all-to-all under graph capture on a fresh communicator, cold and after an eager call"
@@ -601,7 +605,10 @@ def run_capture_staging_check(torch, lib, comm, world, rank, seed_base, report) 
 
     try:
         cold, cold_message, cold_exact = captured_run((seed_base + 1901,))
-        cold_ok = (cold == 5 and "staging" in cold_message) or (cold == 0 and all(cold_exact))
+        if receipt_of(lib, child)["links"]["graph_staging"]:
+            cold_ok = cold == 0 and len(cold_exact) == 1 and all(cold_exact)
+        else:
+            cold_ok = (cold == 5 and "staging" in cold_message) or (cold == 0 and all(cold_exact))
         x.copy_(block(seed_base + 1902, rank).cuda())
         torch.cuda.synchronize()
         eager = lib.ncclAlltoAll(ctypes.c_void_p(x.data_ptr()), ctypes.c_void_p(x.data_ptr()), chunk, 1, child,
@@ -967,6 +974,604 @@ def run_alternating_grid_checks(torch, lib, comm, world, rank, stream, seed_base
     return calls
 
 
+# Receipt counters of the ops a rank launches and the transport carries. A collective whose shape, dtype and
+# settings match on every rank must give every rank the same engine counts whatever its buffers' alignment,
+# overlap or role; the native counts are compared per rank across runs of the same calls.
+ENGINE_COUNTS = (("pair_exchange", "ops"), ("pair_exchange", "bytes"), ("link_blocks", "ops_by_blocks"),
+                 ("all_reduce", "ops"), ("all_gather", "ops"), ("reduce_scatter", "ops"), ("all_to_all", "ops"),
+                 ("chain", "ops"), ("chain", "bytes"), ("links", "ops"), ("links", "bytes"),
+                 ("point_to_point", "ops"), ("point_to_point", "exchanges"))
+NATIVE_COUNTS = (("links", "native_ops"), ("links", "native_items"), ("native", "ops_posted"),
+                 ("native", "phases_posted"))
+# Counters of work a rank does locally around those ops (staging copies, padded tiles).
+LOCAL_COUNTS = (("links", "staged"), ("links", "graph_staged"), ("all_reduce", "unaligned_staged"),
+                ("all_reduce", "local_copies"), ("all_gather", "padded"), ("reduce_scatter", "padded"),
+                ("all_to_all", "padded"))
+
+
+def receipt_of(lib, comm) -> dict:
+    needed = ctypes.c_size_t(0)
+    lib.sirclGetReceipt(comm, None, 0, ctypes.byref(needed))
+    text = ctypes.create_string_buffer(needed.value)
+    lib.sirclGetReceipt(comm, text, needed.value, ctypes.byref(needed))
+    return json.loads(text.value.decode())
+
+
+def counts_of(receipt: dict, keys) -> dict:
+    return {f"{a}.{b}": receipt.get(a, {}).get(b, 0) for a, b in keys}
+
+
+def settled_receipt(lib, comm) -> dict:
+    """The receipt once the transport's counts stop moving (the progress thread posts a kernel's last
+    items after the kernel's own stream may already be idle)."""
+    last = None
+    for _ in range(60):
+        receipt = receipt_of(lib, comm)
+        now = counts_of(receipt, ENGINE_COUNTS + NATIVE_COUNTS)
+        if now == last:
+            return receipt
+        last = now
+        time.sleep(0.1)
+    return receipt
+
+
+def count_delta(after: dict, before: dict, keys) -> dict:
+    """after - before for each counter; a dict counter (ops by kind) keeps its nonzero entries."""
+    out = {}
+    for key, value in counts_of(after, keys).items():
+        old = counts_of(before, keys)[key]
+        if isinstance(value, dict):
+            entries = {k: value.get(k, 0) - (old or {}).get(k, 0) for k in value}
+            out[key] = {k: v for k, v in sorted(entries.items()) if v}
+        else:
+            out[key] = value - old
+    return out
+
+
+class Call:
+    """One collective prepared on device buffers: `launch(comm, stream_handle)` enqueues it and returns
+    the result code, `restore()` refills its inputs (in-place calls overwrite them), `poison()` fills its
+    outputs with 0x5A, `read()` returns the output bytes (b"" on a rank that keeps none)."""
+
+    def __init__(self, torch, name, launch, inputs, outputs, want):
+        self.torch, self.name, self._launch, self.inputs, self.outputs, self.want = (torch, name, launch, inputs,
+                                                                                      outputs, want)
+
+    def launch(self, comm, handle):
+        return self._launch(comm, handle)
+
+    def restore(self):
+        for view, pristine in self.inputs:
+            view.copy_(pristine)
+
+    def poison(self):
+        for view in self.outputs:
+            if all(view.data_ptr() != v.data_ptr() for v, _ in self.inputs):
+                view.fill_(0x5A)
+
+    def read(self) -> bytes:
+        return b"".join(view.cpu().numpy().tobytes() for view in self.outputs)
+
+
+def staging_calls(torch, lib, world, rank, seed_base, mode):
+    """The collectives of every selection point the library has (one-shot, pieces and padded tiles; the
+    chain, ring and link ops; pair exchanges of every root; ncclAlltoAll and, on two ranks, torch's
+    all-to-all and one-way point-to-point), each with rank 1's buffers in `mode` ("aligned", "unaligned":
+    1 to 4 elements off 16-byte alignment, or "inplace": the output inside the input) and every other
+    rank's aligned and apart. The shapes, dtypes and roots are the same in every mode."""
+    import numpy as np
+
+    mine = mode if rank == 1 else "aligned"
+    BF16, F32, U8 = 9, 7, 1
+
+    def raw(seed, source, size):
+        return np.random.default_rng(seed * 1013 + source).integers(0, 256, size, dtype=np.uint8).tobytes()
+
+    def tensor_bytes(t):
+        return t.contiguous().view(torch.uint8).numpy().tobytes()
+
+    def place(data: bytes, offset: int):
+        whole = torch.zeros(len(data) + offset + 32, dtype=torch.uint8, device="cuda")
+        view = whole[offset:offset + len(data)]
+        pristine = torch.frombuffer(bytearray(data), dtype=torch.uint8).cuda() if data else view.clone()
+        view.copy_(pristine)
+        return view, pristine
+
+    def ptr(view):
+        return ctypes.c_void_p(view.data_ptr() if view is not None else 0)
+
+    calls = []
+
+    def all_reduce(tag, dtype, enum, count, seed):
+        inputs = inputs_for(torch, world, count, dtype, seed)
+        want = tensor_bytes(allreduce_reference(torch, inputs))
+        item = inputs[0].element_size()
+        data = tensor_bytes(inputs[rank])
+        x, px = place(data, item if mine == "unaligned" else 0)
+        y = x if mine == "inplace" else place(b"\0" * len(want), 3 * item if mine == "unaligned" else 0)[0]
+        calls.append(Call(torch, f"all-reduce {tag}", lambda c, h: lib.ncclAllReduce(
+            ptr(x), ptr(y), count, enum, 0, c, h), [(x, px)], [y], want))
+
+    def all_gather(tag, dtype, enum, count, seed):
+        inputs = inputs_for(torch, world, count, dtype, seed)
+        want = b"".join(tensor_bytes(t) for t in inputs)
+        item, shard = inputs[0].element_size(), count * inputs[0].element_size()
+        data = tensor_bytes(inputs[rank])
+        if mine == "inplace":
+            y, _ = place(b"\0" * len(want), 0)
+            x = y[rank * shard:(rank + 1) * shard]
+            px = torch.frombuffer(bytearray(data), dtype=torch.uint8).cuda()
+        else:
+            x, px = place(data, item if mine == "unaligned" else 0)
+            y, _ = place(b"\0" * len(want), 3 * item if mine == "unaligned" else 0)
+        calls.append(Call(torch, f"all-gather {tag}", lambda c, h: lib.ncclAllGather(
+            ptr(x), ptr(y), count, enum, c, h), [(x, px)], [y], want))
+
+    def reduce_scatter(tag, dtype, enum, count, seed):
+        inputs = inputs_for(torch, world, world * count, dtype, seed)
+        want = tensor_bytes(scatter_reference(torch, inputs)[rank])
+        item, chunk = inputs[0].element_size(), count * inputs[0].element_size()
+        x, px = place(tensor_bytes(inputs[rank]), item if mine == "unaligned" else 0)
+        if mine == "inplace":
+            y = x[rank * chunk:(rank + 1) * chunk]
+        else:
+            y, _ = place(b"\0" * chunk, 3 * item if mine == "unaligned" else 0)
+        calls.append(Call(torch, f"reduce-scatter {tag}", lambda c, h: lib.ncclReduceScatter(
+            ptr(x), ptr(y), count, enum, 0, c, h), [(x, px)], [y], want))
+
+    def all_to_all(tag, chunk, seed):
+        sent = [raw(seed, s, world * chunk) for s in range(world)]
+        want = b"".join(sent[s][rank * chunk:(rank + 1) * chunk] for s in range(world))
+        x, px = place(sent[rank], 1 if mine == "unaligned" else 0)
+        y = x if mine == "inplace" else place(b"\0" * len(want), 3 if mine == "unaligned" else 0)[0]
+        calls.append(Call(torch, f"all-to-all {tag}", lambda c, h: lib.ncclAlltoAll(
+            ptr(x), ptr(y), chunk, U8, c, h), [(x, px)], [y], want))
+
+    def broadcast(tag, size, root, seed):
+        data = raw(seed, root, size)
+        if rank == root:
+            x, px = place(data, 1 if mine == "unaligned" else 0)
+            y = x if mine == "inplace" else place(b"\0" * size, 3 if mine == "unaligned" else 0)[0]
+            inputs = [(x, px)]
+        else:
+            x, inputs = None, []
+            y, _ = place(b"\0" * size, 3 if mine == "unaligned" else 0)
+        calls.append(Call(torch, f"broadcast {tag} from rank {root}", lambda c, h: lib.ncclBroadcast(
+            ptr(x), ptr(y), size, U8, root, c, h), inputs, [y], data))
+
+    def reduce(tag, count, root, seed):
+        inputs = inputs_for(torch, world, count, torch.bfloat16, seed)
+        x, px = place(tensor_bytes(inputs[rank]), 2 if mine == "unaligned" else 0)
+        if rank == root:
+            want = tensor_bytes(allreduce_reference(torch, inputs))
+            y = x if mine == "inplace" else place(b"\0" * len(want), 6 if mine == "unaligned" else 0)[0]
+            outputs = [y]
+        else:
+            want, y, outputs = b"", None, []
+        calls.append(Call(torch, f"reduce {tag} to rank {root}", lambda c, h: lib.ncclReduce(
+            ptr(x), ptr(y), count, BF16, 0, root, c, h), [(x, px)], outputs, want))
+
+    def gather(tag, shard, root, seed):
+        sent = [raw(seed, s, shard) for s in range(world)]
+        if rank == root:
+            if mine == "inplace":
+                y, _ = place(b"\0" * (world * shard), 0)
+                x = y[root * shard:(root + 1) * shard]
+                px = torch.frombuffer(bytearray(sent[rank]), dtype=torch.uint8).cuda()
+            else:
+                x, px = place(sent[rank], 1 if mine == "unaligned" else 0)
+                y, _ = place(b"\0" * (world * shard), 3 if mine == "unaligned" else 0)
+            outputs, want = [y], b"".join(sent)
+        else:
+            x, px = place(sent[rank], 1 if mine == "unaligned" else 0)
+            y, outputs, want = None, [], b""
+        calls.append(Call(torch, f"gather {tag} to rank {root}", lambda c, h: lib.ncclGather(
+            ptr(x), ptr(y), shard, U8, root, c, h), [(x, px)], outputs, want))
+
+    def scatter(tag, chunk, root, seed):
+        source = raw(seed, root, world * chunk)
+        if rank == root:
+            x, px = place(source, 1 if mine == "unaligned" else 0)
+            y = x[root * chunk:(root + 1) * chunk] if mine == "inplace" else place(
+                b"\0" * chunk, 3 if mine == "unaligned" else 0)[0]
+            inputs = [(x, px)]
+        else:
+            x, inputs = None, []
+            y, _ = place(b"\0" * chunk, 3 if mine == "unaligned" else 0)
+        calls.append(Call(torch, f"scatter {tag} from rank {root}", lambda c, h: lib.ncclScatter(
+            ptr(x), ptr(y), chunk, U8, root, c, h), inputs, [y], source[rank * chunk:(rank + 1) * chunk]))
+
+    def p2p_all_to_all(tag, part, seed):
+        sent = [raw(seed, s, world * part) for s in range(world)]
+        want = b"".join(sent[s][rank * part:(rank + 1) * part] for s in range(world))
+        x, px = place(sent[rank], 2 if mine == "unaligned" else 0)
+        y, _ = place(b"\0" * len(want), 6 if mine == "unaligned" else 0)
+
+        def launch(c, h):
+            codes = [lib.ncclGroupStart()]
+            for other in range(world):
+                codes.append(lib.ncclSend(ctypes.c_void_p(x.data_ptr() + other * part), part, U8, other, c, h))
+                codes.append(lib.ncclRecv(ctypes.c_void_p(y.data_ptr() + other * part), part, U8, other, c, h))
+            codes.append(lib.ncclGroupEnd())
+            return next((code for code in codes if code), 0)
+        calls.append(Call(torch, f"torch's all-to-all pattern {tag}", launch, [(x, px)], [y], want))
+
+    def one_way(tag, size, sender, seed):
+        data = raw(seed, sender, size)
+        if rank == sender:
+            x, px = place(data, 1 if mine == "unaligned" else 0)
+            calls.append(Call(torch, f"send {tag} from rank {sender}", lambda c, h: lib.ncclSend(
+                ptr(x), size, U8, 1 - sender, c, h), [(x, px)], [], b""))
+        else:
+            y, _ = place(b"\0" * size, 3 if mine == "unaligned" else 0)
+            calls.append(Call(torch, f"send {tag} from rank {sender}", lambda c, h: lib.ncclRecv(
+                ptr(y), size, U8, sender, c, h), [], [y], data))
+
+    s = seed_base + 2100
+    all_reduce("bfloat16 8 KiB", torch.bfloat16, BF16, 4096, s + 1)
+    all_reduce("bfloat16 6 MiB", torch.bfloat16, BF16, 3 << 20, s + 2)
+    all_reduce("float32 3 MiB + 20 B", torch.float32, F32, (3 << 20) // 4 + 5, s + 3)
+    all_gather("bfloat16 3 MiB shards", torch.bfloat16, BF16, 3 << 19, s + 4)
+    all_gather("bfloat16 6000 B shards", torch.bfloat16, BF16, 3000, s + 5)
+    reduce_scatter("float32 2 MiB chunks", torch.float32, F32, (2 << 20) // 4, s + 6)
+    reduce_scatter("float32 16 KiB chunks", torch.float32, F32, 4096, s + 7)
+    all_to_all("1 MiB chunks", 1 << 20, s + 8)
+    all_to_all("4 KiB chunks", 4096, s + 9)
+    for root in (0, 1):
+        broadcast("2 MiB", 2 << 20, root, s + 10 + root)
+        reduce("bfloat16 1 MiB", 1 << 19, root, s + 12 + root)
+        gather("1 MiB shards", 1 << 20, root, s + 14 + root)
+        scatter("1 MiB chunks", 1 << 20, 1 - root, s + 16 + root)
+    if world == 2:
+        p2p_all_to_all("of 1 MiB blocks", 1 << 20, s + 18)
+        one_way("1 MiB", 1 << 20, 0, s + 19)
+        one_way("1 MiB", 1 << 20, 1, s + 20)
+    return calls
+
+
+def run_rank_local_staging_checks(torch, lib, comm, world, rank, seed_base, report) -> None:
+    """A rank-local property of a call (its buffers' alignment, in place or apart, whether it keeps the
+    output) must not change which ops any rank launches: otherwise the ranks' kernels wait for transfers
+    that never come. On a fresh split child the collectives of staging_calls run three times eagerly: every
+    rank aligned, rank 1 unaligned, rank 1 in place; then, on a second fresh child whose staging has never
+    grown, they are captured cold into one CUDA graph with rank 1 unaligned and replayed twice. Each run's
+    receipt counts of launched and carried ops equal the aligned run's on every rank, every rank's engine
+    counts are the same, rank 1 staged locally, and every output is exact."""
+    for name in ("ncclSend", "ncclRecv"):
+        getattr(lib, name).argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+                                       ctypes.c_void_p]
+    lib.ncclAlltoAll.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_void_p,
+                                 ctypes.c_void_p]
+    for name in ("ncclGather", "ncclScatter"):
+        getattr(lib, name).argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int,
+                                       ctypes.c_void_p, ctypes.c_void_p]
+    child = ctypes.c_void_p()
+    code = lib.ncclCommSplit(comm, 0, rank, ctypes.byref(child), None)
+    title = "rank-local staging changes no rank's ops"
+    if code:
+        report(title, False, f"split: result {code}: {lib.ncclGetLastError(None).decode()}")
+        return
+    CREATED["communicators"] += 1
+    stream = torch.cuda.Stream()
+    handle = ctypes.c_void_p(stream.cuda_stream)
+    barrier = torch.zeros(16, dtype=torch.float32, device="cuda")
+
+    def barrier_then_receipt():
+        """Every rank past its previous calls (a small all-reduce), then this rank's settled receipt."""
+        lib.ncclAllReduce(ctypes.c_void_p(barrier.data_ptr()), ctypes.c_void_p(barrier.data_ptr()), 16, 7, 0, child,
+                          handle)
+        torch.cuda.synchronize()
+        return settled_receipt(lib, child)
+
+    def prepare(calls):
+        # Outputs first: an in-place call's input lies inside its output, or its output inside its input.
+        for call in calls:
+            call.poison()
+        for call in calls:
+            call.restore()
+        torch.cuda.synchronize()
+
+    def eager(calls):
+        bad = []
+        prepare(calls)
+        for call in calls:
+            rc = call.launch(child, handle)
+            torch.cuda.synchronize()
+            if rc:
+                bad.append(f"{call.name}: result {rc}: {lib.ncclGetLastError(child).decode(errors='replace')[:160]}")
+        return bad
+
+    def exactness(calls, outputs):
+        return [call.name for call, got in zip(calls, outputs) if got != call.want]
+
+    runs = {}
+    try:
+        for label, mode in (("aligned", "aligned"), ("unaligned", "unaligned"), ("in place", "inplace")):
+            calls = staging_calls(torch, lib, world, rank, seed_base, mode)
+            before = barrier_then_receipt()
+            bad = eager(calls)
+            after = settled_receipt(lib, child)
+            runs[label] = (count_delta(after, before, ENGINE_COUNTS), count_delta(after, before, NATIVE_COUNTS),
+                           count_delta(after, before, LOCAL_COUNTS), bad + exactness(calls, [c.read() for c in calls]))
+            del calls
+        # Captured cold on a second fresh child: its staging buffer has never grown.
+        cold = ctypes.c_void_p()
+        code = lib.ncclCommSplit(comm, 0, rank, ctypes.byref(cold), None)
+        if code:
+            raise RuntimeError(f"second split: result {code}")
+        CREATED["communicators"] += 1
+        calls = staging_calls(torch, lib, world, rank, seed_base, "unaligned")
+        prepare(calls)
+        capture = torch.cuda.Stream()
+        chandle = ctypes.c_void_p(capture.cuda_stream)
+        before = settled_receipt(lib, cold)
+        graph = torch.cuda.CUDAGraph()
+        torch.cuda.synchronize()
+        with torch.cuda.graph(graph, stream=capture):
+            codes = [call.launch(cold, chandle) for call in calls]
+        captured = settled_receipt(lib, cold)
+        capture_bad = [f"{call.name}: result {rc}: {lib.ncclGetLastError(cold).decode(errors='replace')[:160]}"
+                       for call, rc in zip(calls, codes) if rc]
+        replays = []
+        if not capture_bad:
+            for _ in range(2):
+                prepare(calls)
+                start = settled_receipt(lib, cold)
+                graph.replay()
+                torch.cuda.synchronize()
+                replays.append((count_delta(settled_receipt(lib, cold), start, NATIVE_COUNTS),
+                                exactness(calls, [c.read() for c in calls])))
+        graph_staging = bool(captured["links"].get("graph_staging"))
+        runs["captured"] = (count_delta(captured, before, ENGINE_COUNTS), None,
+                            count_delta(captured, before, LOCAL_COUNTS), capture_bad)
+        del graph, calls
+        torch.cuda.synchronize()
+        report("ncclCommDestroy of the cold capture child", lib.ncclCommDestroy(cold) == 0)
+
+        # Exact outputs: every run against the references (the transport's arithmetic does not depend on
+        # where a rank's buffers lie).
+        aligned_engine, aligned_native, aligned_local, aligned_bad = runs["aligned"]
+        report("rank-local staging: every call of the aligned run exact", not aligned_bad,
+               "; ".join(aligned_bad[:6]))
+        for label in ("unaligned", "in place"):
+            engine, native, local, bad = runs[label]
+            report(f"rank-local staging: every call with rank 1 {label} exact", not bad, "; ".join(bad[:6]))
+            same = engine == aligned_engine and native == aligned_native
+            report(f"rank-local staging: with rank 1 {label}, this rank launches and carries the aligned run's ops",
+                   same, "" if same else json.dumps({"aligned": [aligned_engine, aligned_native],
+                                                     label: [engine, native]})[:1500])
+            staged = sum(v for v in local.values() if isinstance(v, int)) > sum(
+                v for v in aligned_local.values() if isinstance(v, int))
+            report(f"rank-local staging: with rank 1 {label}, rank 1 staged locally", rank != 1 or staged,
+                   json.dumps({"aligned": aligned_local, label: local}))
+        engine, _, local, capture_bad = runs["captured"]
+        report("rank-local staging: captured cold with rank 1 unaligned, every rank captures every call",
+               not capture_bad and graph_staging, "; ".join(capture_bad[:4]) or
+               ("" if graph_staging else "no stream-ordered allocation on this driver or device"))
+        same = engine == aligned_engine
+        report("rank-local staging: the captured calls launch the aligned run's ops", same,
+               "" if same else json.dumps({"aligned": aligned_engine, "captured": engine})[:1500])
+        # The cold child's staging buffer never grew: every staged call under capture is a graph allocation.
+        report("rank-local staging: every call staged under the cold capture took a graph allocation",
+               not graph_staging or local.get("links.graph_staged", 0) == local.get("links.staged", 0),
+               json.dumps(local))
+        for index, (native, wrong) in enumerate(replays):
+            report(f"rank-local staging: replay {index + 1} of the cold capture exact, carrying the aligned run's "
+                   f"transfers", not wrong and native == aligned_native,
+                   "; ".join(wrong[:6]) + ("" if native == aligned_native else json.dumps(
+                       {"aligned": aligned_native, "replay": native})))
+        if not capture_bad and len(replays) != 2:
+            report("rank-local staging: replays of the cold capture", False, f"{len(replays)} replays")
+
+        # Every rank's engine counts of every run, compared across ranks (an all-gather of their digests).
+        digests = b"".join(hashlib.sha256(json.dumps(runs[label][0], sort_keys=True).encode()).digest()
+                           for label in ("aligned", "unaligned", "in place", "captured"))
+        mine = torch.frombuffer(bytearray(digests), dtype=torch.uint8).cuda()
+        every = torch.zeros(world * len(digests), dtype=torch.uint8, device="cuda")
+        torch.cuda.synchronize()
+        rc = lib.ncclAllGather(ctypes.c_void_p(mine.data_ptr()), ctypes.c_void_p(every.data_ptr()), len(digests),
+                               NCCL_DTYPES["uint8"], child, handle)
+        torch.cuda.synchronize()
+        rows = every.cpu().numpy().tobytes()
+        alike = rc == 0 and all(rows[r * len(digests):(r + 1) * len(digests)] == digests for r in range(world))
+        report("rank-local staging: every rank's engine counts of every run are the same", alike,
+               "" if alike else f"result {rc}; this rank's aligned counts {json.dumps(aligned_engine)[:800]}")
+    except Exception as error:  # noqa: BLE001
+        report(title, False, f"{type(error).__name__}: {error}")
+    finally:
+        torch.cuda.synchronize()
+        report("ncclCommDestroy of the rank-local staging child", lib.ncclCommDestroy(child) == 0)
+
+
+def run_staging_growth_check(torch, lib, comm, world, rank, seed_base, report) -> None:
+    """Eager all-gathers of shards from 16 bytes to 4 MiB, doubling, with rank 1's buffers unaligned, on a
+    fresh split child: where the schedule runs them as link ops (the chain or ring schedule from small
+    sizes), rank 1's staging buffer grows at every size and keeps every earlier one, nineteen buffers in
+    all, and no growth refuses a call its peers launch. Every output exact on every rank."""
+    import numpy as np
+
+    child = ctypes.c_void_p()
+    code = lib.ncclCommSplit(comm, 0, rank, ctypes.byref(child), None)
+    title = "all-gathers of doubling shards, rank 1 unaligned: the staging buffer grows at every size"
+    if code:
+        report(title, False, f"split: result {code}: {lib.ncclGetLastError(None).decode()}")
+        return
+    CREATED["communicators"] += 1
+    stream = torch.cuda.Stream()
+    handle = ctypes.c_void_p(stream.cuda_stream)
+    bad = []
+    try:
+        for k in range(19):
+            shard = 16 << k
+            sent = [np.random.default_rng((seed_base + 2500 + k) * 1031 + s).integers(0, 256, shard, dtype=np.uint8)
+                    .tobytes() for s in range(world)]
+            offset = 1 if rank == 1 else 0
+            x = torch.zeros(shard + 32, dtype=torch.uint8, device="cuda")[offset:offset + shard]
+            x.copy_(torch.frombuffer(bytearray(sent[rank]), dtype=torch.uint8).cuda())
+            y = torch.zeros(world * shard + 32, dtype=torch.uint8, device="cuda")[3 * offset:3 * offset + world * shard]
+            torch.cuda.synchronize()
+            rc = lib.ncclAllGather(ctypes.c_void_p(x.data_ptr()), ctypes.c_void_p(y.data_ptr()), shard,
+                                   NCCL_DTYPES["uint8"], child, handle)
+            torch.cuda.synchronize()
+            if rc or y.cpu().numpy().tobytes() != b"".join(sent):
+                bad.append(f"{shard} B shards: result {rc} "
+                           f"{lib.ncclGetLastError(child).decode(errors='replace')[:120] if rc else 'differs'}")
+        links = receipt_of(lib, child)["links"]
+        # Every call a staged link op (the chain or ring schedule from small sizes): one buffer per size.
+        grown = rank != 1 or links["staged"] != 19 or links["stage_buffers"] == 19
+        report(title, not bad and grown, "; ".join(bad[:4]) or f"{links['stage_buffers']} staging buffers, "
+                                                                f"{links['staged']} staged ops")
+    except Exception as error:  # noqa: BLE001
+        report(title, False, f"{type(error).__name__}: {error}")
+    finally:
+        torch.cuda.synchronize()
+        report("ncclCommDestroy of the staging growth child", lib.ncclCommDestroy(child) == 0)
+
+
+def run_flags_only_checks(torch, lib, comm, world, rank, seed_base, report) -> None:
+    """On a pair, the pair exchange of a call that sends one way marks the empty direction's items
+    flags-only (the transport writes their flags and no bytes). Absent directions alternate between the
+    ranks over consecutive one-way exchanges (broadcast, gather, scatter and reduce of both roots, sends
+    each way) of sizes that wrap the link slots at shifting places, and after each round a two-way
+    all-to-all and all-gather follow; every output is checked byte for byte. On a fresh split child, so
+    the slot positions start at zero. Under the pair plan the receipt shows every call as one pair
+    exchange; with a ring window (LIBSIRCL_RING_WINDOW) the lane carries them through its window."""
+    if world != 2:
+        return
+    import numpy as np
+
+    for name in ("ncclSend", "ncclRecv"):
+        getattr(lib, name).argtypes = [ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_void_p,
+                                       ctypes.c_void_p]
+    for name in ("ncclGather", "ncclScatter"):
+        getattr(lib, name).argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int,
+                                       ctypes.c_void_p, ctypes.c_void_p]
+    child = ctypes.c_void_p()
+    code = lib.ncclCommSplit(comm, 0, rank, ctypes.byref(child), None)
+    title = "flags-only directions alternating across slot wrap"
+    if code:
+        report(title, False, f"split: result {code}: {lib.ncclGetLastError(None).decode()}")
+        return
+    CREATED["communicators"] += 1
+    stream = torch.cuda.Stream()
+    h = ctypes.c_void_p(stream.cuda_stream)
+
+    def raw(seed, source, size):
+        return np.random.default_rng(seed * 1019 + source).integers(0, 256, size, dtype=np.uint8).tobytes()
+
+    def dev(data):
+        return torch.frombuffer(bytearray(data), dtype=torch.uint8).cuda()
+
+    def poisoned(size):
+        return torch.full((size,), 0x5A, dtype=torch.uint8, device="cuda")
+
+    def p(t):
+        return ctypes.c_void_p(t.data_ptr() if t is not None else 0)
+
+    def host(t):
+        return t.cpu().numpy().tobytes()
+
+    # Sizes: whole 16-byte packs of 1 MiB or more per rank (the pair exchange's range under the pair plan),
+    # 9 to 13 pieces each against 8 link slots, so every call wraps the slots and the wrap moves.
+    sizes = [(3 << 19), (9 << 17) + 4096, (11 << 18) + 16, (5 << 18) - 4096, (13 << 17)]
+    bad, exchanges, calls = [], 0, 0
+    try:
+        before = settled_receipt(lib, child)
+        for round_ in range(3):
+            for step in range(10):
+                size = sizes[(round_ * 3 + step) % len(sizes)]
+                seed = seed_base + 2300 + round_ * 16 + step
+                # The rank whose direction is empty alternates: step even, rank 1; step odd, rank 0.
+                empty = 1 if step % 2 == 0 else 0
+                kind = ("broadcast", "gather", "scatter", "reduce", "send")[step // 2]
+                rc, got, want = 0, b"", b""
+                if kind == "broadcast":
+                    root = 1 - empty
+                    data = raw(seed, root, size)
+                    x, y = (dev(data) if rank == root else None), poisoned(size)
+                    torch.cuda.synchronize()
+                    rc = lib.ncclBroadcast(p(x), p(y), size, 1, root, child, h)
+                    want, out = data, y
+                elif kind == "gather":
+                    root = empty  # the root sends nothing to the other rank
+                    sent = [raw(seed, s, size) for s in range(world)]
+                    x, y = dev(sent[rank]), (poisoned(world * size) if rank == root else None)
+                    torch.cuda.synchronize()
+                    rc = lib.ncclGather(p(x), p(y), size, 1, root, child, h)
+                    want, out = (b"".join(sent), y) if rank == root else (b"", None)
+                elif kind == "scatter":
+                    root = 1 - empty
+                    source = raw(seed, root, world * size)
+                    x, y = (dev(source) if rank == root else None), poisoned(size)
+                    torch.cuda.synchronize()
+                    rc = lib.ncclScatter(p(x), p(y), size, 1, root, child, h)
+                    want, out = source[rank * size:(rank + 1) * size], y
+                elif kind == "reduce":
+                    root = empty
+                    count = size // 2
+                    values = inputs_for(torch, world, count, torch.bfloat16, seed)
+                    x = values[rank].cuda()
+                    y = torch.full_like(x, 3.0) if rank == root else None
+                    torch.cuda.synchronize()
+                    rc = lib.ncclReduce(p(x), p(y), count, 9, 0, root, child, h)
+                    want = allreduce_reference(torch, values).contiguous().view(torch.uint8).numpy().tobytes() \
+                        if rank == root else b""
+                    out = y.view(torch.uint8) if y is not None else None
+                else:
+                    sender = 1 - empty
+                    data = raw(seed, sender, size)
+                    if rank == sender:
+                        x = dev(data)
+                        torch.cuda.synchronize()
+                        rc = lib.ncclSend(p(x), size, 1, 1 - sender, child, h)
+                        want, out = b"", None
+                    else:
+                        y = poisoned(size)
+                        torch.cuda.synchronize()
+                        rc = lib.ncclRecv(p(y), size, 1, sender, child, h)
+                        want, out = data, y
+                torch.cuda.synchronize()
+                got = host(out) if out is not None else b""
+                calls += 1
+                exchanges += 1
+                if rc or got != want:
+                    bad.append(f"round {round_} {kind} {size} B, rank {empty}'s direction empty: result {rc}"
+                               f"{'' if not rc else ' ' + lib.ncclGetLastError(child).decode(errors='replace')[:120]}")
+            # Two-way: an all-to-all (one pair exchange, both directions full) and an all-gather (the ring).
+            size = sizes[round_ % len(sizes)]
+            sent = [raw(seed_base + 2390 + round_, s, world * size) for s in range(world)]
+            x, y = dev(sent[rank]), poisoned(world * size)
+            torch.cuda.synchronize()
+            rc = lib.ncclAlltoAll(p(x), p(y), size, 1, child, h)
+            torch.cuda.synchronize()
+            if rc or host(y) != b"".join(sent[s][rank * size:(rank + 1) * size] for s in range(world)):
+                bad.append(f"round {round_} two-way all-to-all {size} B chunks: result {rc}")
+            shards = [raw(seed_base + 2395 + round_, s, size) for s in range(world)]
+            x, y = dev(shards[rank]), poisoned(world * size)
+            torch.cuda.synchronize()
+            rc = lib.ncclAllGather(p(x), p(y), size, 1, child, h)
+            torch.cuda.synchronize()
+            if rc or host(y) != b"".join(shards):
+                bad.append(f"round {round_} two-way all-gather {size} B shards: result {rc}")
+            exchanges += 1
+        after = settled_receipt(lib, child)
+        report(f"{title}: {calls} one-way calls of both empty directions and roots 0 and 1, each round followed "
+               f"by a two-way all-to-all and all-gather, every output exact", not bad, "; ".join(bad[:4]))
+        ran = after["pair_exchange"]["ops"] - before["pair_exchange"]["ops"]
+        report(f"{title}: under the pair plan every one-way call and all-to-all is one pair exchange",
+               not after["pair_plan"] or ran == exchanges, f"{ran} pair exchanges for {exchanges} calls")
+        windowed = after["forward_windows"]["ring_window_bytes"]
+        chunks = after["forward_windows"]["ring_window_chunks"] - before["forward_windows"]["ring_window_chunks"]
+        report(f"{title}: with a ring window the lane carried them through its window",
+               not windowed or not after["pair_plan"] or chunks > 0,
+               f"ring window {windowed} B, {chunks} window chunks")
+    except Exception as error:  # noqa: BLE001
+        report(title, False, f"{type(error).__name__}: {error}")
+    finally:
+        torch.cuda.synchronize()
+        report("ncclCommDestroy of the flags-only child", lib.ncclCommDestroy(child) == 0)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--library", required=True)
@@ -1270,6 +1875,9 @@ def main(argv=None) -> int:
     run_split_checks(torch, lib, comm, world, rank, stream_a, args.seed_base, report)
     run_abort_with_queued_send_check(torch, lib, comm, world, rank, stream_a, report)
     run_capture_staging_check(torch, lib, comm, world, rank, args.seed_base, report)
+    run_rank_local_staging_checks(torch, lib, comm, world, rank, args.seed_base, report)
+    run_staging_growth_check(torch, lib, comm, world, rank, args.seed_base, report)
+    run_flags_only_checks(torch, lib, comm, world, rank, args.seed_base, report)
 
     x = torch.ones(16, dtype=torch.int32, device="cuda")
     rc = lib.ncclAllReduce(ctypes.c_void_p(x.data_ptr()), ctypes.c_void_p(x.data_ptr()), 16, 2, 7, comm,

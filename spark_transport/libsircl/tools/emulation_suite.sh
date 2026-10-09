@@ -4,9 +4,9 @@
 # sm_120 or sm_121). It builds the tree and runs the CPU checks, then every library-level emulation run:
 # two to eight ranks as processes on the one GPU over the emulation transport, checked against the SIRCL
 # session digests in tests/emulation/golden/ under the default (pair default on two ranks), pieces,
-# chain and ring schedules, a relayed pair, forward windows, teardown right after a ring collective,
-# PyTorch's ProcessGroupNCCL, the setup-failure
-# cases and the timing sweeps. With NCCL_TESTS_BUILD (a directory of nccl-tests v2.21.1 binaries built
+# chain and ring schedules, a relayed pair with and without a ring window, forward windows, teardown
+# right after a ring collective, fail-stop (LIBSIRCL_FAIL_STOP), PyTorch's ProcessGroupNCCL, the
+# setup-failure cases and the timing sweeps. With NCCL_TESTS_BUILD (a directory of nccl-tests v2.21.1 binaries built
 # against this tree's build/mpi-shim) it also runs nccl-tests on two processes; with SIRCL_PACKAGE (the
 # directory holding SIRCL's sparkring_sircl package) the link pack's mixed groups against SIRCL's DSL
 # kernels. It writes only build/ and OUT (default /tmp/libsircl-emulation-<time>), never touches the fabric
@@ -63,6 +63,8 @@ library pair-default 2 1 "$G/w2.json"
 library pair-default 2 2 "$G/w2.json"
 library pieces 2 2 "$G/w2.json" SIRCL_LARGE_SCHEDULE=pieces
 library relayed-pair 2 2 "$G/w2.json" LIBSIRCL_FORWARD_WINDOWS=0=65536/65536,1=65536/65536
+# A relayed pair given a ring plan: the pair plan's ring ops and pair exchanges through the ring window.
+library windowed-pair 2 2 "$G/w2.json" LIBSIRCL_FORWARD_WINDOWS=0=65536/65536,1=65536/65536 LIBSIRCL_RING_WINDOW=393216
 [ -f "$G/w2-chain.json" ] && library chain 2 1 "$G/w2-chain.json" $CHAIN
 [ -f "$G/w2-ring.json" ] && library ring 2 1 "$G/w2-ring.json" $RING
 # Link ops of one kernel type alternating grids: every link op takes 1, 2, then 4 blocks per role.
@@ -91,6 +93,14 @@ teardown() {  # teardown <tag> [teardown_race.py arguments]
 }
 teardown w4 --world 4
 teardown w2-8MiB --world 2 --count 4194304
+# Fail-stop: the pair default with LIBSIRCL_FAIL_STOP=1 (no check may end the process); and a late rank's peer
+# ending its process within the wait limit (exit and abort), while without fail-stop it keeps a wrong output.
+library pair-fail-stop 2 2 "$G/w2.json" LIBSIRCL_FAIL_STOP=1
+timeout 900 "$PY" tests/emulation/fail_stop.py --library "$LIB" --python "$PY" --work "$OUT/fail-stop" \
+  > "$OUT/fail-stop.log" 2>&1
+code=$?
+if [ $code -eq 0 ]; then note "PASS fail-stop: $(tail -1 "$OUT/fail-stop.log")"; else
+  note "FAIL fail-stop (exit $code): $(tail -1 "$OUT/fail-stop.log"); $OUT/fail-stop.log"; failures=$((failures + 1)); fi
 fi
 
 # 3. PyTorch and setup failures.
