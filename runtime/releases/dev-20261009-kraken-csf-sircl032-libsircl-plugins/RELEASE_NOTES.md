@@ -69,8 +69,9 @@ has its identity, layers, evidence and gates.
 - **Distribution.** On a recorded fabric, the image and the checkpoint spread
   along the cables from Node A (implemented; tested with simulated Sparks).
 - **Existing rings.** `sudo sparkring setup --node ... --adopt` records a ring
-  that is already cabled and addressed, with its relay table, without changing
-  its network. `sudo sparkring setup --re-form` sets recabled Sparks up again.
+  that is already cabled and addressed and adds only the relay table's missing
+  routes, neighbors and filters; links, addresses and connections stay as they
+  are. `sudo sparkring setup --re-form` sets recabled Sparks up again.
 - **Warnings.** Install plans print the enhancement catalog's warnings, such as
   dense MXFP8 linears without `--linear-backend b12x`.
 
@@ -84,8 +85,9 @@ has its identity, layers, evidence and gates.
   measured no faster. `glm53-nvfp4-tp8-dcp1` drops decode-context
   parallelism for a 524,288-token context (research-only).
 - **GLM-5.3-Flash on two and four Sparks**: on the CSF checkpoint, two CTAs
-  per SM for small-batch W4A16 experts; on two Sparks also asynchronous
-  scheduling, KDA prefill coalescing and the four-Spark draft settings.
+  per SM for small-batch W4A16 experts. On two Sparks, asynchronous
+  scheduling for every checkpoint and, on CSF, KDA prefill coalescing and the
+  four-Spark profile's draft settings.
 - **DeepSeek-V4.1-Flash on four Sparks**: SIRCL's fused all-reduce and
   RMSNorm.
 - **Qwen3.8-Flash-Next** keeps QAD step 5500 as its default checkpoint.
