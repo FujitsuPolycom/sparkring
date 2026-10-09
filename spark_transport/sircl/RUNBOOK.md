@@ -167,6 +167,7 @@ same inputs; a bit that differs between the calls counts as a mismatch.
 | `--large-piece`, `--chain-chunks`, `--link-chunks`, `--gather-link-chunks`, `--scatter-link-chunks`, `--reduce-link-chunks` | op size of the two-shot pieces; chain chunks and link pieces swept (multiples of 16 bytes up to the slot; larger link pieces need `--session-env SIRCL_LINK_SLOT_BYTES=<bytes>`). A sweep option that applies to no case of a configuration fails the plan |
 | `--session-env SIRCL_RING_STAGGER=<s>`, `--session-env SIRCL_RING_GATHER_STAGGER=<s>` | ring stagger (0 to 4) of the partials and of the forwarded pieces; stagger `s` needs `s * (W - 1) + 2` link slots (`SIRCL_LINK_SLOTS`, default `2 W` and at least 8: 16 on the cycle of eight) |
 | `--large-blocks 4,8,16,32` | every two-shot and large-message case once per launch grid cap |
+| `--rotate-buffers N` | every timed case, NCCL's included, cycles through N input and output windows call by call (default 1; at most 4 GiB of windows per case), so a call reads and writes buffers the previous N-1 calls did not touch, as an application's freshly written activations are; the summary's first line names N |
 | `--baseline nccl`, `--nccl-library`, `--nccl-env NAME=VALUE` | NCCL's rows beside SIRCL's ([NCCL baseline](#nccl-baseline)) |
 | `--tuning-table PATH` | sessions decide from a measured table ([Tuning tables](#tuning-tables)) |
 | `--session-env NAME=VALUE` | any documented `SIRCL_*` variable on every rank (`python -m sparkring_sircl.env` lists them); variables the harness sets from its own options are refused |
@@ -292,7 +293,7 @@ faster), `posting orders`, `tuning, group G`, eager profiles, `warning:` and
 
 ### Tuning tables
 
-A tuning table (`sircl-tuning-table/v1`, format in
+A tuning table (`sircl-tuning-table/v2`; `v1` is read too; format in
 [`README.md`](README.md#tuning-tables)) holds the measured times of every
 candidate on one group shape and the decisions derived from them:
 
@@ -307,11 +308,16 @@ python -m sparkring_sircl.ring run --site "$SITE" --config ring8 --large \
 
 - `tune` runs a configuration's groups like `run` and times every candidate
   of the all-reduce, all-gather, reduce-scatter and all-to-all at every
-  per-rank size from 4 KiB to 128 MiB in powers of two (`--quick`: every
-  fourth), eager and in graph replay: one-shot and two-shot at each grid cap
-  (`--tune-grids`); from 256 KiB, pieces, tiles and scatter ops, the chain at
-  each piece (`--tune-pieces`), the ring at each piece and stagger
-  (`--tune-staggers`); Swing where the session offers it; NCCL with
+  per-rank size from 4 KiB to 128 MiB in powers of two and at 1.5, 3 and
+  6 MiB, where a pair's two-shot op and ring cross (`--quick`: every fourth
+  power of two), eager and in graph replay, every case cycling through
+  `--rotate-buffers` windows (default 8 for `tune`): one-shot and two-shot at
+  each grid cap (`--tune-grids`); from 256 KiB, pieces, tiles and scatter ops,
+  the chain at each piece (`--tune-pieces`), the ring at each piece and
+  stagger (`--tune-staggers`), every chain and ring candidate at each number
+  of blocks per role (`--tune-link-blocks` for the link kernels,
+  `--tune-chain-blocks` for the chain all-reduce, default 1, 2 and 4; 0 names
+  the session's own); Swing where the session offers it; NCCL with
   `--baseline nccl`. Candidates are ranked by the period of back-to-back
   calls ([Results](#results)). From 4 MiB, a candidate 1.5 times slower than
   the fastest at two sizes in a row stops (`--tune-prune-from`,

@@ -220,7 +220,7 @@ big = session.all_reduce_large(hidden)            # any size
 logits = session.all_gather_large(shard, dim=-1)  # any size, any dimension
 session.enter_serving()
 session.check_health()
-session.close()
+session.close()                          # collective; None after a healthy close ("Close")
 ```
 
 Module exports: `AllReduce` (also `RoceOneshotAllReduce`), `API_VERSION` (1),
@@ -248,7 +248,7 @@ streams.
 
 | Collective | Accepts |
 |---|---|
-| `all_reduce(inp, *, out=None, stream=None, algorithm=None)` | contiguous float16, bfloat16 or float32, a multiple of 16 bytes up to `max_size`; `auto` runs one-shot up to `oneshot_max_bytes`, two-shot above |
+| `all_reduce(inp, *, out=None, stream=None, algorithm=None)` | contiguous float16, bfloat16 or float32, a multiple of 16 bytes up to `max_size`, as one one-shot or two-shot launch; `auto` runs one-shot up to `oneshot_max_bytes`, two-shot above. A tuning table's or built-in plan's ring or chain choice for the size belongs to `all_reduce_large` and is neither applied nor counted here |
 | `all_reduce_large(inp, *, out=None, stream=None)` | float16, bfloat16 or float32 of any size; `large_reduce_plan(nbytes)` names its ops; a tail below 16 bytes travels zero-padded |
 | `all_gather(inp, *, dim=-1, out=None, stream=None)` | any plain dtype along dimension 0 or the last, shards up to `max_gather_bytes`; unaligned shapes take a padded path |
 | `all_gather_large(inp, *, dim=-1, out=None, stream=None)` | any dense tensor, any dimension, any size; shapes that are not 16-byte rows on 16-byte-aligned tensors need `prepare(padded_gather=True)` before a capture |
@@ -260,7 +260,8 @@ streams.
 | eligibility (the same answer on every rank) | `should_allreduce`, `should_all_gather`, `should_reduce_scatter`, `should_all_to_all` |
 | decisions (`mode=` `eager` or `graph`, the call's mode when omitted) | `select_algorithm(nbytes)`, `large_reduce_plan(nbytes, aligned=True)`, `gather_uses_chain(inp, dim)`, `gather_uses_ring(inp, dim)`, `scatter_uses_chain(inp)`, `scatter_uses_ring(inp)` |
 | preparation and capture | `prepare(dtypes=(torch.bfloat16,), *, padded_gather=False, algorithms=None, scatter=False, links=False)` (`scatter`: the reduce-scatter kernels; `links`: every chain and ring kernel, for schedules changed at run time); `capture(stream=None)`, a context around a CUDA graph capture |
-| health and regimes | `check_health()`, `poisoned`, `enter_startup()`, `enter_serving()`, `startup()`, `wait_limit_s`, `close()` (idempotent) |
+| health and regimes | `check_health()`, `poisoned`, `enter_startup()`, `enter_serving()`, `startup()`, `wait_limit_s` |
+| close | `close(*, abort=False)`, collective over the exchange group ([Close](#close)); `close_result`, the result a later call returns |
 | settings changed between ops, the same call on every rank | `set_chain_chunk_bytes(n)`, `set_link_chunk_bytes(n, collective=None)`, `link_chunk_for(collective)`, `set_ring_stagger(d)`, `set_ring_gather_stagger(d)`, `set_chain_min_bytes(n, collective=None)`, `set_ring_min_bytes(n, collective=None)`, `chain_min_for(collective)`, `ring_min_for(collective)` |
 | rank-local grid caps (a CUDA graph keeps its capture's grid) | `blocks`, `set_blocks(n)`, `large_blocks`, `set_large_blocks(n)` |
 | tuning tables | `tuning_facts()`, `tuned_choice(collective, nbytes, mode=None)`, `tuned_backend(collective, nbytes, mode=None)`, `untuned()` |
@@ -270,6 +271,52 @@ streams.
 regime, flag-poll rate, schedule settings, `chain_available`,
 `link_available`, `ring_available` with `ring_problem`, forward windows, the
 tuning table's decisions and the native counters.
+
+### Close
+
+`close(*, abort=False)` is collective over the exchange group: every rank
+calls it, and ranks close the sessions and point-to-point channel sets that
+share a group in the same order, because the group pairs collectives by the
+order in which each rank issues them. A close refuses further work,
+synchronizes the device and holds two teardown rounds
+(`sparkring_sircl.teardown`), each one all-gather of a 512-byte note per rank
+on the exchange group, run in a daemon thread and waited for at most the
+flag-wait limit plus 5 s (`teardown.SLACK_S`):
+
+1. round 1 carries the rank's own failure (a flag wait that timed out, a
+   stopped progress thread, a failed device synchronization) while every
+   progress thread still runs, so every write a rank owes its peers is posted
+   while their queue pairs exist;
+2. the rank stops its progress thread;
+3. round 2, held only when round 1 arrived, completes once every rank has
+   stopped, so no write targets the queue pairs and arena destroyed next.
+
+The result, kept as `close_result` and returned by later calls, is None after
+a healthy close, else this rank's failure, the first failed peer's note
+(`rank <i>: ...`) or the round that did not complete; the session logs it as a
+warning. A round that did not complete marks the exchange group unusable for
+teardown rounds in the process, and later closes on it stop and destroy
+without rounds. `roce_destroy` returns the number of verbs calls that failed;
+when it is not zero, or after a failed device or stream synchronization, the
+registered arena stays allocated for the rest of the process
+(`teardown.RETAINED`), since a queue pair, a registration or a kernel may
+still use it. An exception inside the teardown is part of the result; the
+native context is still stopped and destroyed exactly once, and a destroy that
+raised keeps the arena. An interrupted close records its failure, keeps the
+context and the arena and re-raises. `abort=True` holds no round; setup
+failures and garbage collection close that way.
+
+A note names its close (the object's kind, its ordinal among the rank's
+objects of the group, the round), so a round in which a rank closes another
+object, or another round, does not complete. An abandoned round stays pending
+on the group and pairs with the next collective another user issues there
+(vLLM's own collectives on its CPU group), which needs a failure first (a peer
+later than the round's limit, or a rank that closed without rounds). A group
+whose round did not complete must not carry further sessions, channel sets or
+collectives: recreate it, or end the processes that share it. The rounds order
+submissions, not completions: a write a progress thread submitted before it
+stopped (a final credit) may still be in flight when a peer destroys its queue
+pairs, which revokes it before the arena's memory region is deregistered.
 
 ### Algorithms and schedules
 
@@ -321,12 +368,16 @@ agreed settings only, so every rank takes the same one.
 
 ### Tuning tables
 
-A tuning table (`sparkring_sircl.tuning`, schema `sircl-tuning-table/v1`)
-holds the ring harness's measurements of every candidate on one group shape
+A tuning table (`sparkring_sircl.tuning`, schema `sircl-tuning-table/v2`;
+`v1` tables, which name no blocks and no conditions, are read too) holds the ring harness's measurements of every candidate on one group shape
 and build, and the decisions derived from them: per collective (`all_reduce`, `all_gather`,
 `reduce_scatter`, `all_to_all`) and mode (`eager`, `graph`), size intervals,
 each with the fastest SIRCL choice (algorithm or schedule, grid cap, piece,
-staggers) and whether NCCL measured faster there. At a measured size the
+staggers and, for a chain or ring schedule, the thread blocks per role of the
+kernel that runs it: `blocks`, 1 to 64) and whether NCCL measured faster
+there. A v2 table also records how its measurements were taken
+(`conditions`: `rotate_buffers`, the input and output windows each case cycled
+through). At a measured size the
 fastest candidate is the one with the shortest period of back-to-back calls
 (the ring harness's `period_us`: per rank the median over consecutive calls
 of their mean time, the slowest rank's); between measured sizes, each
@@ -342,7 +393,10 @@ measurements, decides. No table ships with the package.
   unmatched tables are listed in `stats()["tuning"]["unmatched"]`. The chosen
   table's hash joins the setup agreement.
 - Each op applies the table's choice for its collective, per-rank size and
-  mode, then restores the session's settings. A choice the session cannot run
+  mode, then restores the session's settings; a choice's `blocks` run that op
+  at those blocks per role unless `SIRCL_GATHER_LINK_BLOCKS`,
+  `SIRCL_SCATTER_LINK_BLOCKS`, `SIRCL_REDUCE_LINK_BLOCKS`, `SIRCL_LINK_BLOCKS`
+  or `SIRCL_CHAIN_BLOCKS` sets the collective's. A choice the session cannot run
   (among them an all-reduce algorithm for a message above the capacity) is
   counted as unusable, and the rules decide. An all-reduce algorithm's
   decisions end at the largest message it was measured at; larger messages
@@ -376,8 +430,16 @@ measurements, decides. No table ships with the package.
   16 MiB, the ring reduce-scatter in 256 KiB pieces from 8 MiB inputs and in
   512 KiB pieces from 64 MiB; below those sizes the rules decide. On two ranks
   the ring adds the same two values as the two-shot op and scatter ops,
-  rounded once, so the plan changes no result bit. A pair session with the
-  plan has a link area and compiles the ring launchers in `prepare()`.
+  rounded once, so the plan changes no result bit. The cycle of eight's plan,
+  measured the same way: the ring all-reduce from the first message above the
+  two-shot capacity (2 MiB) in 128 KiB pieces, in 256 KiB pieces from 4 MiB
+  and in 512 KiB pieces from 16 MiB; at 2 MiB the two-shot op and the ring tie
+  and the rules keep two-shot. On eight ranks the ring adds each element's
+  values in ring order, rounding at every hop, where the two-shot op adds them
+  in rank order and the chain in chain order: every rank's result is the same,
+  but its bits differ from those of the rules' schedules, which a tuning table
+  or `SIRCL_LARGE_SCHEDULE` keeps. A session with a plan has a link area and
+  compiles the ring launchers in `prepare()`.
 - Eager and graph modes may choose differently at one size, so an eager and
   a captured all-reduce of the same input can differ in the last place.
 - `python -m sparkring_sircl.ring tune` measures tables and `tune-table`
@@ -398,7 +460,8 @@ start a progress thread of their own (`p2p/_p2p_proxy.c`).
 | `send(tensor, peer)`, `recv(tensor, peer)` | as above, waited for at once |
 | `batch_isend_irecv([(kind, tensor, peer), ...])` | issues a batch, sends first |
 | `has_channel(peer)`, `channel_problem(peer)` | whether a pair has a channel, and why not |
-| `enter_startup()`, `enter_serving()`, `startup()`, `check_health()`, `stats()`, `close()` | as for sessions |
+| `enter_startup()`, `enter_serving()`, `startup()`, `check_health()`, `stats()` | as for sessions |
+| `close(*, abort=False)`, `close_result` | as a session's ([Close](#close)), after the channel set waited for its streams' work; `p2p_destroy` returns the number of verbs calls that failed |
 
 - Every ordered pair of `channels` (default every pair) is first-in
   first-out: the n-th receive from a peer takes the n-th message that peer
@@ -444,6 +507,7 @@ session = AllReduce(..., progress_cpu=placement.progress_cpu_list)
 |---|---|
 | `routes` | `Fabric`, `Layout`, `derive_lanes`, `derive_routes`, `parse_peer_routes`, `format_peer_routes`, `validate_route_map`, `check_complementary`, `relay_load`, `relay_queues`, `forward_windows`, `ring_window`, `chain_order`, `isolation_problems`, `load_roles`, `RouteError` |
 | `agreement` | `agreement_failures(statuses, layout)`: the setup verdict |
+| `teardown` | the teardown rounds of a close ([Close](#close)): `ordered_close`, `close_native`, `tensor_exchange`, `unusable`, `RETAINED` |
 | `build` | `build()`, `library_path()`, `cache_dir()` and `sircl-prepare` |
 | `roce_gid` | the resolver's interface, `resolve_device_gid_index(device)` among it, and `source_file()` |
 | `groups` | `tp_groups`, `dcp_groups`: vLLM's rank layout without importing vLLM |
@@ -498,12 +562,12 @@ algorithm, schedule, piece, stagger, grid cap and minimums to that op.
 | ring minimums (`SIRCL_RING_MIN_BYTES`) | all-reduce 4 MiB, all-gather output 8 MiB, reduce-scatter input 4 MiB | `ring` runs ring ops from them; the variable sets one size for all three |
 | chain geometry (`SIRCL_CHAIN_CHUNK_BYTES`, `SIRCL_CHAIN_SLOT_BYTES`, `SIRCL_CHAIN_SLOTS`, `SIRCL_CHAIN_BLOCKS`, `SIRCL_CHAIN_UNROLL`) | 512 KiB, 1 MiB, 4, 4, 4 | chunk a multiple of 16 up to the slot; slot a multiple of 4,096; 2 to 32 slots; unroll 1 to 8 packs per thread per pass; the chain area (4 streams × slots × slot bytes, twice) adds 32 MiB of pinned memory to a session on a chain |
 | link geometry (`SIRCL_LINK_CHUNK_BYTES`, `SIRCL_LINK_SLOT_BYTES`, `SIRCL_LINK_SLOTS`, `SIRCL_LINK_BLOCKS`, `SIRCL_LINK_UNROLL`) | 512 KiB, 512 KiB, `2 W` slots and at least 8 (16 on the cycle of eight, 8 on a path of four; `protocol.default_link_slots`), by group shape and link kernel ([link blocks](#link-blocks)), 4 | a tuning table's slot count and slot apply where these are unset; without `SIRCL_LINK_SLOT_BYTES` the slot holds the largest configured piece rounded up to 4 KiB, up to 1 MiB, or the table's slot when larger; the link area (4 links × slots × slot bytes, twice) adds 32 MiB to a session with 8 slots of 512 KiB, 64 MiB with 16 |
-| link blocks per collective (`SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS`, `SIRCL_REDUCE_LINK_BLOCKS`) | by group shape and link kernel: 1 for the ring all-reduce, all-gather and reduce-scatter on a cabled pair and for the ring all-reduce and all-gather on a path of four, 4 for every other kernel and shape (`protocol.LINK_BLOCKS_BY_SHAPE`) | blocks per role of one collective's link kernels under both its schedules, 1 to 64; `SIRCL_LINK_BLOCKS` sets every collective's without one; `stats()["link_blocks"]` names each kernel's |
+| link blocks per collective (`SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS`, `SIRCL_REDUCE_LINK_BLOCKS`) | by group shape and link kernel: 1 for the ring all-reduce, all-gather and reduce-scatter on a cabled pair and on the cycle of eight and for the ring all-reduce and all-gather on a path of four, 4 for every other kernel and shape (`protocol.LINK_BLOCKS_BY_SHAPE`) | blocks per role of one collective's link kernels under both its schedules, 1 to 64; `SIRCL_LINK_BLOCKS` sets every collective's without one; `stats()["link_blocks"]` names each kernel's |
 | link piece per collective (`SIRCL_GATHER_LINK_CHUNK_BYTES`, `SIRCL_SCATTER_LINK_CHUNK_BYTES`, `SIRCL_REDUCE_LINK_CHUNK_BYTES`) | the link piece | chain and ring all-gathers, chain and ring reduce-scatters, ring all-reduces; multiples of 16 up to the link slot |
 | ring staggers (`SIRCL_RING_STAGGER`, `SIRCL_RING_GATHER_STAGGER`) | `auto`: 1 when the link slots hold it, else 0 | 0 to 4 rounds; a stagger `D` needs `D (W - 1) + 2` link slots: 5 on a path of four, 9 on a ring of eight, so `auto` gives 1 on both with their default slots (8 and 16) |
 | event trace (`SIRCL_EVENT_TRACE`) | 0 (off) | records kept on each side, native and kernel; traced kernels compile apart from untraced ones |
 | tuning tables (`SIRCL_TUNING_TABLE`) | none | [Tuning tables](#tuning-tables); the same table on every rank |
-| built-in plan (`SIRCL_BUILTIN_PLAN`) | 1 | 0 turns off the built-in plan of a group shape that has one (a cabled pair; [Tuning tables](#tuning-tables)) |
+| built-in plan (`SIRCL_BUILTIN_PLAN`) | 1 | 0 turns off the built-in plan of a group shape that has one (a cabled pair, the cycle of eight; [Tuning tables](#tuning-tables)) |
 | flag-wait limits (`SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`) | 600 s, 20 s | GPU-clock seconds, up to 4,294. `SIRCL_SPIN_LIMIT` (20,000,000 polls) bounds a wait only when no time limit is set |
 
 ### Link blocks
@@ -518,8 +582,12 @@ in turn. A role's blocks share the GPU's path to pinned host memory, so more
 blocks split the same bandwidth into slower passes and lengthen every item's
 time from arrival to departure; the defaults are 1 block where the ring
 harness measured that faster and 4 elsewhere (table above). A session's
-blocks are fixed, because a link kernel's tail counter counts the arrivals of
-one grid, and join the setup agreement.
+blocks join the setup agreement. A tuning table's chain or ring choice may run
+one op at other blocks (its `blocks`; `set_op_blocks` for a caller that fixes
+an op's), except for a collective whose blocks the environment sets: every
+link kernel and the chain kernel find a launch's last block as the arrival
+that completes its grid on the kernel's tail word and return that word to 0,
+so consecutive launches may use different grids.
 
 ## Environment
 
