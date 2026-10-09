@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: glm53full-speedups
+Version: 1.1.0
+Summary: vLLM general plugin that shards GLM-5.3-NVFP4 replicated decode projections (fused q_a/kv_a latents, MTP eh_proj) over TP8 on image 816c6d6a7e96
+Requires-Python: >=3.12
