@@ -184,6 +184,17 @@ above:
 `runtime/common/test_installer_image.py` (`SIRCL_ONLY`) holds the three lists equal, and
 `runtime/common/test_transport.py` renders every such profile on SIRCL on an eight-Spark ring.
 
+SIRCL's fused-norm and column-gather switches that a profile measured with (`SIRCL_FUSED_NORM`,
+`SIRCL_COLUMN_GATHER`; `sparkring_sircl.vllm.serve.plan.PROFILE_VARIABLES`) go in its `environment`. The
+installer passes them to every rank, and the SIRCL launcher's `bundle --profile` and the serving A/B runner
+read the same values. Any other `SIRCL_*` variable in a profile is refused: SIRCL's session sizes come from
+the tuning row and tables (`runtime/common/sircl-tuning-defaults.json`, `sudo sparkring fabric tune`).
+
+A profile whose `VLLM_PLUGINS` names a vLLM plugin that an image layer adds, beyond `b12x_loader`,
+`sparkring_status`, `sircl` and `libsircl`, runs only on an image whose v3 lock lists that plugin in
+`vllm_plugins` (`image_lock.plugin_problem`); the layer declares it in `Layer.plugins`
+([derived layers](../../runtime/images/installer-images.md#derived-layers)). `glm53-nvfp4-tp8` is one.
+
 A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF checkpoint, is registered in
 `runtime/common/image_lock.py` `CHECKPOINT_BUILDS` with the pinned vLLM builds of
 `sparkring_sircl.vllm.pins` that read it; the installer refuses it on an image whose lock lists none of

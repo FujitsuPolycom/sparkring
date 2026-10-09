@@ -3804,3 +3804,69 @@ def test_the_ring_gather_stagger_reaches_the_tensor_parallel_session_and_is_chec
     for name in cli.COMMANDS:
         assert cli.parser().parse_args([name, "--site", "s", "--repository", "r", "--ring-gather-stagger",
                                         "1"]).ring_gather_stagger == 1
+
+
+
+# -- SIRCL switches a profile pins: the launcher, the bundle and SparkRing's installer read the same values --------
+
+PINNED_ENV = {"SIRCL_FUSED_NORM": "1", "SIRCL_COLUMN_GATHER": "1"}
+PINNED = Spec("example-pinned-tp4", "Example-Pinned-TP4", 4, 8015, 29775, "direct-cycle-4",
+              {**TP4.environment, **PINNED_ENV}, TP4.extra)
+
+
+def test_a_profiles_sircl_switches_are_read_as_option_values_and_other_sircl_variables_are_refused():
+    assert plan_mod.profile_settings(PINNED.environment) == {"fused_norm": True, "column_gather": True}
+    assert plan_mod.profile_settings_environment(plan_mod.profile_settings(PINNED.environment)) == PINNED_ENV
+    assert plan_mod.profile_settings({"SIRCL_COLUMN_GATHER": "0"}) == {"column_gather": False}
+    assert plan_mod.profile_settings(COMMON_ENV) == {}   # SIRCL_ENABLED is the four-rank adapter's switch
+    # Session sizes belong to the launcher's options and the installer's tuning rows, which check them.
+    for environment, message in (({"SIRCL_GROUPS": "tp"}, "pins only"), ({"SIRCL_LINK_SLOTS": "16"}, "pins only"),
+                                 ({"SIRCL_FUSED_NORM": "on"}, "0 or 1")):
+        with pytest.raises(ServePlanError, match=message):
+            plan_mod.profile_settings(environment)
+
+
+def test_the_bundle_takes_the_profiles_sircl_switches_and_refuses_an_option_that_differs(repository):
+    add_profile(repository, PINNED)
+    options = bundle.profile_options(bundle.BundleOptions(positions=(0, 1, 2, 3), nccl_mode="never",
+                                                          repository=str(repository)), PINNED.id)
+    assert (options.fused_norm, options.column_gather) == (True, True)
+    plan = bundle.build_bundle(ServeSite.from_json(SITE), options, staged_digest=staging.staged_tree().digest,
+                               library=staging.library_name())
+    for rank in plan.ranks:
+        assert {key: rank.environment[key] for key in PINNED_ENV} == PINNED_ENV
+    assert plan.to_json()["profile"] == {"id": PINNED.id, "sircl_settings": PINNED_ENV}
+    # An option equal to the profile's is accepted; another value is refused, as is a profile without a checkout.
+    same = bundle.BundleOptions(positions=(0, 1, 2, 3), repository=str(repository), fused_norm=True)
+    assert bundle.profile_options(same, PINNED.id).column_gather is True
+    for changes, message in (({"fused_norm": False}, "--fused-norm off differs from the profile's SIRCL_FUSED_NORM=1"),
+                             ({"column_gather": False}, "--column-gather off differs")):
+        with pytest.raises(ServePlanError, match=message):
+            bundle.profile_options(dataclasses.replace(same, **changes), PINNED.id)
+    with pytest.raises(ServePlanError, match="give both"):
+        bundle.profile_options(bundle.BundleOptions(positions=(0, 1, 2, 3)), PINNED.id)
+    # Without --profile the bundle keeps its own defaults.
+    unpinned = bundle.build_bundle(ServeSite.from_json(SITE), bundle.BundleOptions(positions=(0, 1, 2, 3)),
+                                   staged_digest=staging.staged_tree().digest, library=staging.library_name())
+    assert unpinned.ranks[0].environment["SIRCL_FUSED_NORM"] == "0" and unpinned.to_json()["profile"] is None
+    assert "SIRCL_COLUMN_GATHER" not in unpinned.ranks[0].environment
+
+
+def test_the_serve_launcher_keeps_a_profiles_sircl_switches_and_refuses_its_other_sircl_variables(repository):
+    add_profile(repository, PINNED)
+    for launch in make_plan(repository, spec=PINNED).ranks:
+        assert {key: launch.environment[key] for key in PINNED_ENV} == PINNED_ENV
+    sized = Spec("example-sized-tp4", "Example-Sized-TP4", 4, 8015, 29775, "direct-cycle-4",
+                 {**TP4.environment, "SIRCL_LINK_SLOTS": "16"}, TP4.extra)
+    add_profile(repository, sized)
+    with pytest.raises(ServePlanError, match=r"the profile sets \['SIRCL_LINK_SLOTS'\]; a profile pins only"):
+        make_plan(repository, spec=sized)
+
+
+@needs_checkout
+def test_the_bundle_reads_the_eight_spark_glm53_profiles_sircl_switches_from_the_repository():
+    options = bundle.profile_options(bundle.BundleOptions(positions=tuple(range(8)), repository=CHECKOUT,
+                                                          session_groups="tp,dcp", dcp_size=4), "glm53-nvfp4-tp8")
+    environment, _ = profile_mod.serving_environment(CHECKOUT, "glm53-nvfp4-tp8")
+    expected = {key: value for key, value in environment.items() if key in plan_mod.PROFILE_VARIABLES}
+    assert plan_mod.profile_settings_environment(options.profile_settings) == expected == PINNED_ENV

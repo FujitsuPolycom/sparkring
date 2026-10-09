@@ -423,7 +423,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-csf-tp8` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef` | MTP3 |
-| `glm53-nvfp4-tp8` | GLM-5.3 NVFP4, revision `b472e4ee53f6` | None |
+| `glm53-nvfp4-tp8` | GLM-5.3 NVFP4, revision `b472e4ee53f6` | MTP, two tokens, probabilistic drafting |
 | `deepseek-v41-flash-tp8` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `qwen38-flash-next-qad-tp8` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` | MTP, three tokens, probabilistic drafting |
 
@@ -434,6 +434,11 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   `glm53-flash-csf-tp8` needs an image whose vLLM is SIRCL's pinned build
   `sparkring-kraken-beta-20261007-bc9ea774`, listed in the lock's
   `sircl.vllm_pins`; the installer refuses it on any other image.
+  `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split` and
+  `glm53full_speedups`, which the GLM-5.3 plugin layer
+  ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
+  adds; it needs an image whose lock lists them in `vllm_plugins`, and the
+  installer refuses it on any other image.
 - All installer profiles run with SparkCache off and vLLM's native prefix
   cache on.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an

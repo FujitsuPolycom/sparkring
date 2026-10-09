@@ -228,3 +228,21 @@ def test_overrides_change_every_rank_and_record_the_profile_value(tmp_path):
     assert spec.environment(bases[1])["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
     assert changed[0].endswith("(the profile's: unset)") and changed[1].endswith("(the profile's: 0)")
     assert applied["environment"] == {"VLLM_B12X_KDA_PREFILL_COALESCING": "0"}
+
+
+def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(monkeypatch):
+    """The SIRCL arms' bundles read the SIRCL switches the profile pins (bundle --profile), as the installer does."""
+    from types import SimpleNamespace
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({"nccl": "none", "ranks": []}), "")
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    args = SimpleNamespace(capacity=None, dispatch=None, tuning_table=None, profile="glm53-nvfp4-tp8")
+    cli.bundle("site.json", list(range(8)), "run-s", "never", args, dcp=4)
+    cli.bundle("site.json", list(range(8)), "run-auto", "auto", args)
+    never, auto = seen
+    assert never[never.index("--repository") + 1] == str(cli.ROOT) and never[never.index("--profile") + 1] == (
+        "glm53-nvfp4-tp8")
+    assert "--profile" not in auto and "--fused-norm" not in never

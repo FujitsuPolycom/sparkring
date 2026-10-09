@@ -289,3 +289,15 @@ def test_profiles_that_load_only_built_in_plugins_need_no_added_plugin():
     for profile in (*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY):
         if not image_lock.required_plugins(profile):
             assert image_lock.plugin_problem(sircl_lock(), profile) is None
+
+
+def test_the_glm53_tp8_profile_runs_only_on_an_image_that_carries_the_glm53_plugin_layer():
+    from runtime.images import derive_glm53_plugins
+    profile = "glm53-nvfp4-tp8"
+    assert image_lock.required_plugins(profile) == ["glm_dsa_indexer_split", "glm53full_speedups"]
+    assert derive_glm53_plugins.PLUGINS == PLUGINS
+    with pytest.raises(ValueError, match=f"{profile} loads the vLLM plugins glm_dsa_indexer_split, "
+                                         "glm53full_speedups"):
+        image_lock.for_profile(profile, with_eight_spark_profiles())
+    carried = with_eight_spark_profiles(vllm_plugins=dict(derive_glm53_plugins.PLUGINS))
+    assert image_lock.for_profile(profile, carried) is carried

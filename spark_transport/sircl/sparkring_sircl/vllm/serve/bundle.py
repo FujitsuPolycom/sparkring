@@ -19,7 +19,12 @@ GLM-5.3 deployment on the whole ring) uses this module instead:
   ``/opt/sparkring-overlay`` and puts it before the staged tree on
   ``PYTHONPATH``; ``--vllm-arg``, ``--drop-vllm-arg`` and ``--speculative-set``
   list the vLLM argument changes every rank's command must make;
-  ``--b12x-cache-dir`` sets ``B12X_COMPILE_CACHE_DIR``. OFFLINE.
+  ``--b12x-cache-dir`` sets ``B12X_COMPILE_CACHE_DIR``. With ``--profile ID``
+  (and ``--repository``) the SIRCL switches that SparkRing profile's serving
+  configuration pins (``plan.profile_settings``: fused norm and column
+  gathers) are the defaults of ``--fused-norm`` and ``--column-gather``, as
+  the installer applies them; an option given with another value is refused.
+  OFFLINE.
 - ``bundle --stage`` also copies the package tree, creates the run
   directories and builds the native library in the serving image on every
   Spark, as ``stage`` does for a profile, after checking every rank's overlay
@@ -115,7 +120,7 @@ class BundleOptions:
     serving_wait: float = plan_mod.DEFAULT_SERVING_WAIT_S
     spin_limit: int | None = None
     gid_index: int | None = None              # None: the site's, else 3
-    fused_norm: bool = False                  # SIRCL_FUSED_NORM (research-only)
+    fused_norm: bool | None = None            # SIRCL_FUSED_NORM (research-only); None: off
     column_gather: bool | None = None         # SIRCL_COLUMN_GATHER; None: the adapter's default (on)
     large_schedule: str | None = None         # SIRCL_LARGE_SCHEDULE; None: the session's default
     gather_schedule: str | None = None        # SIRCL_GATHER_SCHEDULE
@@ -128,6 +133,8 @@ class BundleOptions:
     tuning_tables: tuple[str, ...] = ()       # --tuning-table PATH (SIRCL_TUNING_TABLE)
     reasoning_effort: str | None = None       # --reasoning-effort, checked against the checkpoint below
     repository: str | None = None             # --repository: the checkout holding profiles/thinking.json
+    profile: str | None = None                # --profile: the profile of --repository whose SIRCL settings apply
+    profile_settings: Mapping[str, bool] = dataclasses.field(default_factory=dict)  # the switches it pins
     checkpoint: str | None = None             # --checkpoint (--checkpoint-id) REPOSITORY@REVISION the launcher serves
     thinking_behaviour: str | None = None     # --thinking-behaviour NAME of profiles/thinking.json
     extra_env: Mapping[str, str] = dataclasses.field(default_factory=dict)
@@ -263,6 +270,9 @@ class BundlePlan:
             "nccl_mode": self.options.nccl_mode,
             "nccl_rule": plan_mod.NCCL_RULE,
             "session_groups": self.options.session_groups,
+            "profile": ({"id": self.options.profile,
+                         "sircl_settings": plan_mod.profile_settings_environment(self.options.profile_settings)}
+                        if self.options.profile else None),
             "session_defaults": {"oneshot_max": self.options.oneshot_max,
                                  "oneshot_max_derived": self.derived_oneshot_max,
                                  "post_order": plan_mod.DEFAULT_POST_ORDER},
@@ -541,7 +551,7 @@ def _reasoning(options: BundleOptions) -> tuple[profile_mod.ThinkingBehaviour | 
     if options.checkpoint is not None:
         name, revision = plan_mod.parse_checkpoint(options.checkpoint, "--checkpoint")
     if options.reasoning_effort is None and options.thinking_behaviour is None:
-        if options.repository:
+        if options.repository and not options.profile:
             raise ServePlanError("--repository gives the profiles/thinking.json --reasoning-effort and "
                                  "--thinking-behaviour read; give it with one of them")
         return None, "", None
@@ -768,16 +778,19 @@ def add_arguments(sub: argparse._SubParsersAction) -> None:
         plan_mod.add_minimum_arguments(command)
         plan_mod.add_link_arguments(command)
         plan_mod.add_reasoning_argument(command)
-        command.add_argument("--repository", help="with --reasoning-effort or --thinking-behaviour: the SparkRing "
-                                                  "checkout whose profiles/thinking.json gives the checkpoint's "
-                                                  "effort levels")
+        command.add_argument("--profile", help="a SparkRing profile of --repository: the SIRCL switches its "
+                                               "serving configuration pins (SIRCL_FUSED_NORM, SIRCL_COLUMN_GATHER) "
+                                               "are this bundle's, as the installer applies them")
+        command.add_argument("--repository", help="with --profile, --reasoning-effort or --thinking-behaviour: the "
+                                                  "SparkRing checkout whose profile and profiles/thinking.json "
+                                                  "(the checkpoint's effort levels) are read")
         plan_mod.add_checkpoint_arguments(command, checkpoint_flags=("--checkpoint", "--checkpoint-id"))
         plan_mod.add_vllm_arguments(command)
         plan_mod.add_b12x_cache_argument(command)
-        command.add_argument("--fused-norm", choices=("off", "on"), default="off",
+        command.add_argument("--fused-norm", choices=("off", "on"),
                              help="SIRCL_FUSED_NORM: on runs vLLM's post-all-reduce RMSNorm helper as one fused "
                                   "SIRCL kernel where it is bit-identical (research-only; setup refuses it "
-                                  "where it cannot be)")
+                                  "where it cannot be); default: the --profile's setting, else off")
         command.add_argument("--column-gather", dest="column_gather", choices=("off", "on"),
                              help="SIRCL_COLUMN_GATHER: on (the adapter's default when the option is absent) "
                                   "carries an all-gather along a dimension with rows in front of it on the "
@@ -808,7 +821,7 @@ def plan_from_args(args: argparse.Namespace) -> BundlePlan:
             ring_gather_stagger=args.ring_gather_stagger,
             large_allreduce=args.large_allreduce,
             startup_wait=args.startup_wait, serving_wait=args.serving_wait, spin_limit=args.spin_limit,
-            gid_index=args.gid_index, fused_norm=args.fused_norm == "on",
+            gid_index=args.gid_index, fused_norm=None if args.fused_norm is None else args.fused_norm == "on",
             column_gather=None if args.column_gather is None else args.column_gather == "on",
             large_schedule=args.large_schedule, gather_schedule=args.gather_schedule,
             scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
@@ -816,7 +829,24 @@ def plan_from_args(args: argparse.Namespace) -> BundlePlan:
             repository=args.repository, checkpoint=args.checkpoint_id, thinking_behaviour=args.thinking_behaviour,
             extra_env=plan_mod.parse_env(args.env or []), vllm_edits=plan_mod.edits_from_args(args),
             b12x_cache_dir=args.b12x_cache_dir)
+        options = profile_options(options, args.profile)
     return build_bundle(site, options, staged_digest=staging.staged_tree().digest, library=staging.library_name())
+
+
+def profile_options(options: BundleOptions, profile: str | None) -> BundleOptions:
+    """``options`` with the SIRCL switches that ``profile`` of ``options.repository`` pins
+    (``plan.profile_settings``), as defaults of the options left unset."""
+    if profile is None:
+        return options
+    if not options.repository:
+        raise ServePlanError("--profile names a profile of --repository, the SparkRing checkout; give both")
+    try:
+        environment, _ = profile_mod.serving_environment(options.repository, profile)
+    except profile_mod.ProfileError as error:
+        raise ServePlanError(str(error)) from None
+    settings = plan_mod.profile_settings(environment)
+    return dataclasses.replace(plan_mod.with_profile_settings(options, settings), profile=profile,
+                               profile_settings=settings)
 
 
 def _to_stderr(line: str) -> None:

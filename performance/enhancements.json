@@ -135,7 +135,7 @@
         {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "decode-step profile without --linear-backend and with MXFP8 linears: FlashInferCutlassMxfp8LinearKernel 51 of 93 ms per step, 828 GEMMs at 62 us each, M = 3 tokens", "evidence": "private record 2026-10-08: GLM-5.3 TP8 decode profile"}
       ],
       "evidence": ["private record 2026-10-08: GLM-5.3 TP8 decode profile"],
-      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
     },
     {
       "id": "b12x-selection-cache-reconciliation",
@@ -315,7 +315,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "1", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+2 % with the 128 KiB ceiling; with the 1 MiB ceiling 1-stream tok/s 46.8 -> 38.4 in that run", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 6"}
       ],
       "evidence": ["spark_transport/sircl/sparkring_sircl/vllm/shims.json", "spark_transport/sircl/STATUS.md", "private record 2026-10-07..08: SIRCL ring results"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "sircl-ring-large-allreduce-cycle8",
@@ -454,7 +454,7 @@
         {"image": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": "4-16", "context": "0", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "with adaptive verification and block rejection: 138.9 / 195.2 / 260.9 against 130.5 / 184.6 / 252.9 tok/s at 4 / 8 / 16 streams", "evidence": "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"}
       ],
       "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md", "private record 2026-09: Qwen3.8 session archive"],
-      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
     },
     {
       "id": "mxfp8-lm-head",
@@ -477,7 +477,7 @@
         {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "part of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone", "evidence": "private record 2026-10-08: serving A/B matrix definitions"}
       ],
       "evidence": ["performance/records/qwen38-flash-next/decode-ab-20260925.md", "profiles/labels.json"],
-      "profiles": ["qwen38-flash-next-qad-tp4:qad-step-4000", "qwen38-flash-next-tp2:qad-step-4000"]
+      "profiles": ["glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp4:qad-step-4000", "qwen38-flash-next-tp2:qad-step-4000"]
     },
     {
       "id": "b12x-w4a16-experts",
@@ -499,7 +499,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "4-bit activations decode 3-7 % slower than W4A16", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
       ],
       "evidence": ["profiles/glm53-flash-csf-tp8/README.md", "private record 2026-10-07..08: SIRCL ring results"],
-      "profiles": ["glm53-flash-csf-tp8"]
+      "profiles": ["glm53-flash-csf-tp8", "glm53-nvfp4-tp8"]
     },
     {
       "id": "b12x-w4a16-two-cta",
@@ -524,7 +524,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": "4-16", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "steps/s +3-6 % at 4-16 users (101.8 -> 107.5 at 16), tok/s 246.5 -> 268.1 at 16 users; prefill unchanged", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
       ],
       "evidence": ["source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/kernel.py (_w4a16_small_m_occupancy: MoE 4-8 % faster at 4-64 tokens on GLM-5.3 TP8)", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-06: GLM-5.3 TP8 session notes"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "b12x-w4a16-a4-prefill",
@@ -545,7 +545,7 @@
       "gain": {"percent": null, "summary": "part of every measured CSF configuration and of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone"},
       "measurements": [],
       "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "profiles/glm53-flash-csf-tp8/README.md", "source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/prefill_a4.py (a4_prefill_min_tokens)"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "b12x-w4a16-fp32-topk-weights",
@@ -585,7 +585,7 @@
       "gain": {"percent": null, "summary": "part of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone"},
       "measurements": [],
       "evidence": ["source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/kernel.py (_small_m_direct_host_barrier_reset_enabled)", "private record 2026-10-08: serving A/B matrix definitions"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "sparkcache-persistent-prefix",
@@ -656,7 +656,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": "4-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP2 10-11 % faster than MTP3 at 4-8 streams", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T1"}
       ],
       "evidence": ["runtime/common/glm_targets.py", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-08: serving A/B runner results", "private record 2026-10-08: serving A/B matrix definitions"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-mtp-draft-online-quantization",
@@ -676,7 +676,7 @@
       "gain": {"percent": null, "summary": "under measurement on 2026-10-08 (MTP2, TP8/DCP4, image 816c6d6a7e96)"},
       "measurements": [],
       "evidence": ["private record 2026-10-08: serving A/B matrix definitions"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-mxfp8-linears",
@@ -704,7 +704,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "weights 57.34 -> 53.07 GiB per rank; activation mode auto removed an MXFP8 prefill regression (3.8 s -> 1.57 s), 1,549 tok/s at 16K", "evidence": "private record 2026-10-05: eight-Spark session notes"}
       ],
       "evidence": ["profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-05: eight-Spark session notes"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-mxfp8-indexer-query",
@@ -729,7 +729,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "decode +0.2-2.2 %, prefill +1.4 %", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T19"}
       ],
       "evidence": ["private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-ckv-gather",
@@ -753,7 +753,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace plugin", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 844 -> 1,345.5 tok/s; +79 % at DCP8 (8-bit KV), +5.3 % at DCP2 (4-bit KV); decode unchanged", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
       ],
       "evidence": ["profiles/glm53-nvfp4-tp8/README.md", "source: vllm@bc9ea774 vllm/envs.py (VLLM_B12X_MLA_CKV_GATHER, VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS)", "private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-dcp-indexer-key-gather",
@@ -793,7 +793,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": null, "context": "16K, 64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "16K prefill 1,298 -> 1,400 / 1,402 tok/s, TTFT -6.9 / -7.2 % at 64K / 128K; with full launches 1,404 tok/s, TTFT -8.2 / -7.8 %; two runs per arm", "evidence": "private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B"}
       ],
       "evidence": ["private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B", "private record 2026-10-08: model-side plugin classification"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-dsa-indexer-merge-auto",
@@ -852,7 +852,7 @@
       "gain": {"percent": null, "summary": "with MTP3, MXFP8 linears and the MTP eh_proj split (glm53-mtp-eh-proj-tp): about 6 % faster together; not measured alone"},
       "measurements": [],
       "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-mtp-eh-proj-tp",
@@ -874,7 +874,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP3 + MXFP8 + both splits about 6 % faster", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
       ],
       "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
-      "profiles": []
+      "profiles": ["glm53-nvfp4-tp8"]
     },
     {
       "id": "glm53-indexer-priming-memory",

@@ -898,3 +898,25 @@ def test_a_profile_that_only_sircl_runs_needs_its_transport_section_and_its_posi
     with pytest.raises(ValueError, match="one half of a four-Spark ring.*on the prepared transport"):
         installer.make_lock(TP4, install_site(4, placement=[4, 5, 6, 7]), "1" * 40, "2" * 64,
                             image_runtime=image_lock.v2_view(image))
+
+
+
+def test_the_sircl_switches_a_profile_pins_reach_every_rank_beside_the_tuning_rows_settings():
+    from runtime.common import profiles
+    path = profiles.local_path(profiles.load("glm53-nvfp4-tp8")[0]["configuration"]["path"])
+    pinned = {key: value for key, value in profiles.read_json(path)["environment"].items() if key.startswith("SIRCL_")}
+    assert pinned == {"SIRCL_FUSED_NORM": "1", "SIRCL_COLUMN_GATHER": "1"}
+    tuning = transport.load_tuning()
+    tuning["layouts"]["cycle-8"]["settings"].update(link_slots=12, link_slot=1 << 20)
+    for table, slots in ((transport.load_tuning(), ("16", "524288")), (tuning, ("12", "1048576"))):
+        lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), tuning=table,
+                                         image=eight_spark_image())
+        for spec in installer.specifications(lock):
+            assert {key: spec.environment[key] for key in pinned} == pinned
+            # The link settings stay the tuning row's.
+            assert (spec.environment["SIRCL_LINK_SLOTS"], spec.environment["SIRCL_LINK_SLOT_BYTES"]) == slots
+    plain = installer.specifications({key: value for key, value in lock.items() if key != "transport"}, only_rank=0)[0]
+    for extra, message in (({"SIRCL_SPIN_LIMIT": "5"}, "pins only"), ({"SIRCL_LINK_SLOTS": "16"}, "pins only"),
+                           ({"SIRCL_FUSED_NORM": "on"}, "SIRCL_FUSED_NORM='on'; it takes 0 or 1")):
+        with pytest.raises(transport.TransportError, match=message):
+            transport.environment(section, {**plain.environment, **extra}, plain.command)

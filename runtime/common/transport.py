@@ -76,7 +76,12 @@ marks of where NCCL measured faster route no call. Two tables exist:
 container (``installer_image.adapt``): the environment the SIRCL launcher's
 ``serve.plan.build_plan`` sets, built from the same helpers and checked by
 the same rules (``test_transport.py`` compares the two variable for
-variable), with these differences, which the image layer makes possible:
+variable). A profile may pin SIRCL's fused-norm and column-gather switches
+in its own environment (``serve.plan.profile_settings``), which no tuning row
+sets; they reach every container unchanged, and the SIRCL launcher's
+``bundle --profile`` and the serving A/B runner read the same values from the
+profile. The containers differ from the launcher's in these points, which the
+image layer makes possible:
 
 - SIRCL is installed in the image's site-packages, so no source tree is
   mounted and ``PYTHONPATH`` keeps the image's own;
@@ -790,6 +795,13 @@ def environment(value, profile_environment, arguments):
     """
     plan, _, _ = _sircl()
     from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    try:
+        # The SIRCL switches a profile pins in its environment (serve.plan.profile_settings), checked as the
+        # SIRCL launcher's bundle --profile checks them; they reach the containers unchanged. Any other SIRCL_*
+        # variable of a profile is refused, so the tuning row's settings cannot be overwritten unseen.
+        plan.profile_settings(profile_environment)
+    except plan.ServePlanError as error:
+        raise TransportError(str(error)) from None
     settings = value["tuning"]["settings"]
     taken = table_settings(value)
     topology = group_topology(value["group"]["layout"], value["group"]["positions"])
