@@ -100,12 +100,12 @@ def test_download_limit_is_a_settings_file_preference(tmp_path):
 
 def test_ssh_hops_resolve_link_scope_on_the_jump_host_and_keep_key_local(tmp_path):
     route = [{"user": "root", "address": "fe80::1", "interface": "port0", "port": 22},
-             {"user": "cody", "address": "fe80::2", "interface": "port1", "port": 22}]
+             {"user": "analyst", "address": "fe80::2", "interface": "port1", "port": 22}]
     command = bootstrap.ssh_argv(route, tmp_path, identity=tmp_path / "private")
     proxy = next(a.removeprefix("ProxyCommand=") for a in command if a.startswith("ProxyCommand="))
     nested = shlex.split(proxy)
     assert nested[nested.index("-W") + 1] == "[fe80::2%%port1]:22"
-    assert command[-1] == "cody@fe80::2%port1"
+    assert command[-1] == "analyst@fe80::2%port1"
     assert "ForwardAgent=yes" not in json.dumps(command)
     assert "StrictHostKeyChecking=yes" in command
     assert command[command.index("-i") + 1] == str(tmp_path / "private")
@@ -242,20 +242,20 @@ def test_discovery_names_skipped_addresses_when_no_pair_is_found():
 
 
 @pytest.mark.parametrize("errors, cause", [
-    ("code@fe80::2%port0: Permission denied (publickey,password).\n", "did not accept the password or account code"),
+    ("operator@fe80::2%port0: Permission denied (publickey,password).\n", "did not accept the password or account operator"),
     ("ssh: connect to host fe80::2%port0 port 22: Connection refused\n", "--worker-bundle"),
     ("ssh: connect to host fe80::2%port0 port 22: Connection timed out\n", "did not answer SSH"),
     ("Connection closed by fe80::2%port0 port 22\n", "about 2 minutes"),
     ("Host key verification failed.\n", "has no recorded SSH host key yet"),
     ("kex_exchange_identification: read: Connection reset by peer\n", "closed the SSH connection"),
-    ("something unexpected\n", "SSH sign-in to code@fe80::2 on port0 failed"),
+    ("something unexpected\n", "SSH sign-in to operator@fe80::2 on port0 failed"),
 ])
 def test_login_failure_names_the_cause_and_keeps_the_ssh_message(tmp_path, errors, cause):
     def run(argv, **kwargs):
         kwargs["stderr"].write("Warning: Permanently added 'fe80::2%port0' (ED25519) to the list of known hosts.\n" + errors)
         return subprocess.CompletedProcess(argv, 255)
 
-    route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+    route = [{"user": "operator", "address": "fe80::2", "interface": "port0", "port": 22}]
     with pytest.raises(ValueError) as failure:
         bootstrap.SSH(tmp_path, run=run).login(route)
     message = str(failure.value)
@@ -279,7 +279,7 @@ def test_a_changed_host_key_is_told_apart_from_an_unknown_one(tmp_path):
             kwargs["stderr"].write(errors)
             return subprocess.CompletedProcess(argv, 255)
 
-        route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+        route = [{"user": "operator", "address": "fe80::2", "interface": "port0", "port": 22}]
         with pytest.raises(ValueError) as failure:
             bootstrap.SSH(tmp_path, run=run).login(route)
         messages.append(str(failure.value))

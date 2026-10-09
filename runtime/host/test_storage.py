@@ -467,7 +467,7 @@ def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     assert STALE_CACHE not in references["caches"] and OLD_LOCK in references["locks"][OLD_IMAGE]
 
 
-def local(items=(), *, revision="a" * 40, hostname="spark-aa42", filesystems=(), docker=None):
+def local(items=(), *, revision="a" * 40, hostname="spark-e", filesystems=(), docker=None):
     return {"schema": storage.LOCAL_SCHEMA, "hostname": hostname, "package_revision": revision,
             "filesystems": list(filesystems), "items": [dict(item) for item in items], "docker": docker,
             "measurement": {"budget_seconds": 60, "seconds": 1.0, "complete": True}}
@@ -511,7 +511,7 @@ def test_report_text_names_filesystems_and_marks_incomplete_sizes(tmp_path, caps
     assert storage.main([], state_root=canned_controller(tmp_path), invoke=spark) == 2
     printed = capsys.readouterr().out.splitlines()
     assert printed[:4] == [
-        "Node 0 spark-aa42",
+        "Node 0 spark-e",
         "    / (ext4): 3.4 TiB, 149.0 GiB free, 96% used; holds /srv/sparkring, Docker's data root /var/lib/docker",
         "         SIZE  CLASS         KIND        PATH",
         f"    12.0 GiB+  unreferenced  cache       {STALE_ITEM['path']}"]
@@ -527,7 +527,7 @@ def test_an_unreferenced_checkpoint_directory_is_released_by_the_checkpoints_com
              "revision": "f" * 40, "state": "ok", "bytes": 100 * 1024 ** 3, "frees_bytes": 2 * 1024 ** 3,
              "complete": True, "containers": []}
     replaced = {**entry, "path": path[:-1] + "e", "state": "replaced"}
-    spark = Spark({HOSTS[0]: local([entry, replaced]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([entry, replaced]), HOSTS[1]: local(hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     node = json.loads(capsys.readouterr().out)["nodes"][0]
@@ -541,19 +541,19 @@ def test_an_unreferenced_checkpoint_directory_is_released_by_the_checkpoints_com
 
 def test_a_running_container_keeps_an_unreferenced_item_out_of_the_proposal(tmp_path, capsys):
     busy = {**STALE_ITEM, "containers": ["rehearsal-r0"]}
-    spark = Spark({HOSTS[0]: local([busy]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([busy]), HOSTS[1]: local(hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     [entry] = json.loads(capsys.readouterr().out)["nodes"][0]["items"]
     assert (entry["class"], entry["release"]) == ("unreferenced", None)
     assert storage.main(["--release", busy["path"], "--yes"], state_root=state, invoke=spark) == 2
-    assert (f"Node 0 spark-aa42: running containers use {busy['path']} (rehearsal-r0); stop them first, then repeat "
+    assert (f"Node 0 spark-e: running containers use {busy['path']} (rehearsal-r0); stop them first, then repeat "
             "the release. Nothing was released.") in capsys.readouterr().err
 
 
 def test_release_refuses_mixed_package_revisions_and_unreachable_sparks(tmp_path, capsys):
     state = canned_controller(tmp_path)
-    spark = Spark({HOSTS[0]: local([STALE_ITEM]), HOSTS[1]: local(revision="b" * 40, hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([STALE_ITEM]), HOSTS[1]: local(revision="b" * 40, hostname="spark-d")})
     assert storage.main(["--release", STALE_ITEM["path"], "--yes"], state_root=state, invoke=spark) == 2
     error = capsys.readouterr().err
     assert "The Sparks run different SparkRing package revisions (Node 0 aaaaaaaaaaaa, Node 1 bbbbbbbbbbbb)" in error
@@ -759,7 +759,7 @@ def test_the_report_and_a_release_name_the_mesh_that_uses_a_workspace(tmp_path, 
     entry = {"path": path, "kind": "workspace", "deployment": "id-" + FIRST, "holds_models": False,
              "bytes": 3 * 1024 ** 2, "frees_bytes": 3 * 1024 ** 2, "files": 9, "complete": True, "mounts": [],
              "checkpoints": [], "containers": [], "meshes": [{"unit": unit, "site": site, "paths": [path + "/" + MARKER]}]}
-    spark = Spark({HOSTS[0]: local([entry]), HOSTS[1]: local([{**entry, "meshes": []}], hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([entry]), HOSTS[1]: local([{**entry, "meshes": []}], hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     nodes = json.loads(capsys.readouterr().out)["nodes"]
@@ -770,7 +770,7 @@ def test_the_report_and_a_release_name_the_mesh_that_uses_a_workspace(tmp_path, 
     start = next(index for index, line in enumerate(printed) if line.endswith(f"installed     workspace   {path}"))
     assert printed[start + 1].strip() == f"used by the installed mesh {unit}, whose site {site} names {path}/{MARKER}"
     assert storage.main(["--release", path, "--yes"], state_root=state, invoke=spark) == 2
-    assert (f"Node 0 spark-aa42: the installed mesh {unit}, whose site {site} names {path}/{MARKER}, uses {path}; "
+    assert (f"Node 0 spark-e: the installed mesh {unit}, whose site {site} names {path}/{MARKER}, uses {path}; "
             "SparkRing does not release it while that mesh is installed. Nothing was released.") in capsys.readouterr().err
     assert all(argv == LIST for _, argv in spark.calls)
 
@@ -808,7 +808,7 @@ def test_a_derived_checkpoint_is_installed_while_its_deployment_is_and_otherwise
         write_json(directory / f"rank{rank}" / "container.json", specification.document())
     item = {"path": served, "kind": "checkpoint", "repository": manifest["repository"], "revision": manifest["revision"],
             "state": "ok", "bytes": 100 * 1024 ** 3, "frees_bytes": 6 * 1024 ** 3, "complete": True, "containers": []}
-    spark = Spark({HOSTS[0]: local([item]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([item]), HOSTS[1]: local(hostname="spark-d")})
     write_json(state / "active.json", {"path": str(directory)})
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     [entry] = json.loads(capsys.readouterr().out)["nodes"][0]["items"]

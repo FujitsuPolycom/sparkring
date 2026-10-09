@@ -93,7 +93,7 @@ def copy_candidate(pins, path=FOLDER, *, without=(), differs=(), device=DEVICE, 
         files[name] = {"state": "differs" if name in differs else "match",
                        "evidence": "hashed" if name in differs else "recorded", "size": entry["size"],
                        "source": path + "/" + name, "kind": "file", "identity": [device, 1000 + number],
-                       "owner": "code", "mode": 0o644, "mount_id": mount_id}
+                       "owner": "operator", "mode": 0o644, "mount_id": mount_id}
     counts = {state: sum(1 for value in files.values() if value["state"] == state)
               for state in ("match", "differs", "size-only", "missing", "incomplete")}
     return {"path": path, "layout": "local-dir", "found_by": ["folder"], "commit": pins["revision"], "branches": [],
@@ -182,7 +182,7 @@ class Sparks:
 def sparks(monkeypatch):
     value = Sparks()
     monkeypatch.setattr(flow.discovery, "ssh", value)
-    monkeypatch.setenv("SUDO_USER", "code")
+    monkeypatch.setenv("SUDO_USER", "operator")
     return value
 
 
@@ -875,7 +875,7 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
                for node in result["checkpoint"]["nodes"])
     for host in ("root@192.0.2.10", "root@192.0.2.11"):
         [options] = sparks.options(host)
-        assert options["owned"] == DIRECTORY and options["operator"] == "code"
+        assert options["owned"] == DIRECTORY and options["operator"] == "operator"
         assert options["named"] == [] and options["ignore_local"] is False and options["root"] == "/"
         assert options["cache"] == "/srv/sparkring/test/cache"
     lines = output_lines(out.err)
@@ -1747,7 +1747,7 @@ LINUX = pytest.mark.skipif(not sys.platform.startswith("linux"), reason=(
     "the end-to-end checkpoint installation needs Linux: hard links through /proc/self/fd, flock, POSIX "
     "symlinks and loopback addresses standing in for the fabric"))
 MAIN_COMMIT = "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"
-CACHE = "/home/code/.cache/huggingface"
+CACHE = "/home/operator/.cache/huggingface"
 MAIN_CACHE = CACHE + "/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
 # Host paths that a simulated Spark keeps below its own root directory.
 HOST_PATHS = ("/srv/", "/var/lib/sparkring/", "/home/", "/var/tmp/")
@@ -1866,7 +1866,7 @@ class SimulatedSparks:
         for rank, root in enumerate(self.roots):
             for directory in ("etc", "proc/self", "root", "home/code", "srv/sparkring/test", "var/tmp"):
                 (root / directory).mkdir(parents=True, exist_ok=True)
-            (root / "etc/passwd").write_text(f"root:x:0:0::/root:/bin/bash\ncode:x:{uid}:{uid}::/home/code:/bin/bash\n")
+            (root / "etc/passwd").write_text(f"root:x:0:0::/root:/bin/bash\noperator:x:{uid}:{uid}::/home/operator:/bin/bash\n")
             (root / "proc/self/mountinfo").write_text("21 1 259:2 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p2 rw\n")
             state = base / "docker" / self.NAMES[rank]
             state.mkdir(parents=True)
@@ -2133,7 +2133,7 @@ def test_node_a_links_a_main_cache_downloads_config_once_and_streams_to_an_empty
     # The plan links the shards from the cache, copies the other files it holds,
     # and downloads only config.json, whose pinned blob the cache lacks.
     assert "Node 0 spark-10 -> " + DIRECTORY in lines and "    from " + MAIN_CACHE in lines
-    assert any(line.startswith("        Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in code's home "
+    assert any(line.startswith("        Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in operator's home "
                                "(the operator's)") for line in lines)
     assert "        52 of 53 files identified by their blob names; config.json differs from the pinned revision" in lines
     assert any(line.startswith("    hard-link 41 weight files (no copy, no extra space); copy 11 other files (")

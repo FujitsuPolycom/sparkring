@@ -6,10 +6,10 @@
   "system": {
     "model": "GLM-5.3-Flash NVFP4 with DFlash2 BF16 draft",
     "hosts": [
-      {"rank": 0, "hostname": "spark-edfd"},
-      {"rank": 1, "hostname": "spark-ebb8"},
-      {"rank": 2, "hostname": "spark-ebee"},
-      {"rank": 3, "hostname": "spark-4a87"}
+      {"rank": 0, "hostname": "spark-h"},
+      {"rank": 1, "hostname": "spark-f"},
+      {"rank": 2, "hostname": "spark-g"},
+      {"rank": 3, "hostname": "spark-c"}
     ],
     "hardware": "four NVIDIA DGX Spark systems with one GB10 GPU each",
     "topology": {
@@ -138,8 +138,8 @@
         "fused_session_blob": "4f13a08b97884138763d49632aa54399828132bd"
       },
       "bundle": {
-        "build_path": "/home/dooner/sircl-fault-builds/2f22dd7-device/build/sircl-bundle",
-        "archive_path": "/home/dooner/sircl-fault-builds/2f22dd7-device/sircl-bundle.tar.gz",
+        "build_path": "/home/admin/sircl-fault-builds/2f22dd7-device/build/sircl-bundle",
+        "archive_path": "/home/admin/sircl-fault-builds/2f22dd7-device/sircl-bundle.tar.gz",
         "archive_sha256": "ef256eb617d17413d45b3a20fcf5ffdd23b473a7128e38f1d62d8ba1d958de70",
         "deployed_path_on_each_rank": "/var/tmp/sircl-test-device-c09af595",
         "native_sha256": "c09af595640ef470ba62be9dfe328deaad172fac37391f405f5c57671a0090c9",
@@ -181,8 +181,8 @@
         "fused_session_blob": "788169e5070444e9cfe46ce6350d2b1d786d70a9"
       },
       "bundle": {
-        "build_path": "/home/dooner/sircl-fault-builds/8d75ad5-proxy/build/sircl-bundle",
-        "archive_path": "/home/dooner/sircl-fault-builds/8d75ad5-proxy/sircl-bundle.tar.gz",
+        "build_path": "/home/admin/sircl-fault-builds/8d75ad5-proxy/build/sircl-bundle",
+        "archive_path": "/home/admin/sircl-fault-builds/8d75ad5-proxy/sircl-bundle.tar.gz",
         "archive_sha256": "de1c398d3c6caf8f28dad97d64828bbdd4d9deacc4dd2e61665b1de3cc759f90",
         "deployed_path_on_each_rank": "/var/tmp/sircl-test-proxy-d8c5deef",
         "native_sha256": "d8c5deefb9e17fc72ae921db64c10b6618870bc7af2d45fdc57719ad7c3e510d",

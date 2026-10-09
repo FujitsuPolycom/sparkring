@@ -137,7 +137,7 @@ def controller_state(tmp_path, deployments, *, hosts=HOSTS, active=None, transac
     return state
 
 
-def local_listing(directories=(), revision="a" * 40, hostname="spark-aa42"):
+def local_listing(directories=(), revision="a" * 40, hostname="spark-e"):
     return {"schema": checkpoints.LOCAL_SCHEMA, "hostname": hostname, "package_revision": revision,
             "directories": list(directories)}
 
@@ -513,7 +513,7 @@ def test_release_refuses_mixed_package_revisions(tmp_path, capsys):
     state = controller_state(tmp_path, {"qwen-tp2-ibbbb": (DIRECTORY, False, "/srv/sparkring/tp2/b")},
                              active=None)
     spark = Spark({HOSTS[0]: local_listing([listed()], revision="a" * 40),
-                   HOSTS[1]: local_listing([listed()], revision="b" * 40, hostname="spark-931e")})
+                   HOSTS[1]: local_listing([listed()], revision="b" * 40, hostname="spark-d")})
     assert checkpoints.main(["--release", DIRECTORY, "--yes"], state_root=state, invoke=spark) == 2
     error = capsys.readouterr().err
     assert "The Sparks run different SparkRing package revisions (Node 0 aaaaaaaaaaaa, Node 1 bbbbbbbbbbbb)" in error
@@ -530,13 +530,13 @@ def test_release_names_retained_deployments_and_needs_yes_without_a_terminal(tmp
     state = controller_state(tmp_path, {"qwen-tp2-ibbbb": (DIRECTORY, False, "/srv/sparkring/tp2/b"),
                                         "glm-tp2-icccc": ("/srv/sparkring/tp2/checkpoints/glm/" + "c" * 40, False,
                                                           "/srv/sparkring/tp2/c")}, active="glm-tp2-icccc")
-    spark = Spark({HOSTS[0]: local_listing([listed()]), HOSTS[1]: local_listing([], hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local_listing([listed()]), HOSTS[1]: local_listing([], hostname="spark-d")})
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     assert checkpoints.main(["--release", DIRECTORY], state_root=state, invoke=spark) == 3
     printed = capsys.readouterr().out.splitlines()
     assert printed == [
         f"Release {DIRECTORY}:",
-        "    Node 0 spark-aa42: removes 48 files; frees 56.5 MB; 98.6 GiB stays on disk in /var/tmp/models/qwen",
+        "    Node 0 spark-e: removes 48 files; frees 56.5 MB; 98.6 GiB stays on disk in /var/tmp/models/qwen",
         "Retained deployments that use it need sudo sparkring install again: qwen-tp2-ibbbb",
         "SparkRing removes only the names it placed there; it never writes, moves or deletes the copies they were "
         "linked from.",
@@ -544,7 +544,7 @@ def test_release_names_retained_deployments_and_needs_yes_without_a_terminal(tmp
     assert spark.releases() == []
     assert checkpoints.main(["--release", DIRECTORY, "--yes"], state_root=state, invoke=spark) == 0
     assert [host for host, _, _ in spark.releases()] == [HOSTS[0]]
-    assert capsys.readouterr().out.splitlines()[-1] == "Node 0 spark-aa42: released; freed 56.5 MB"
+    assert capsys.readouterr().out.splitlines()[-1] == "Node 0 spark-e: released; freed 56.5 MB"
     assert checkpoints.main(["--release", "/srv/sparkring/tp2/checkpoints/none", "--yes"], state_root=state,
                             invoke=spark) == 2
     assert "is not a SparkRing checkpoint directory on any Spark" in capsys.readouterr().err
@@ -558,7 +558,7 @@ def test_listing_reports_a_spark_that_cannot_be_reached(tmp_path, capsys):
                    HOSTS[1]: RuntimeError("root@192.0.2.11: Connection timed out")})
     assert checkpoints.main([], state_root=state, invoke=spark) == 2
     printed = capsys.readouterr().out.splitlines()
-    assert printed[:5] == ["Node 0 spark-aa42", "    " + DIRECTORY,
+    assert printed[:5] == ["Node 0 spark-e", "    " + DIRECTORY,
                            f"        {REPOSITORY} at {REVISION[:12]}: 48 files, 98.6 GiB",
                            "        used by no retained deployment",
                            "        98.6 GiB is also linked from other paths"]

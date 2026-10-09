@@ -84,7 +84,7 @@ def test_combine_takes_medians_and_sums_errors():
 
 
 def test_sanitize_keeps_record_sections_and_hides_the_server():
-    clean = throughput.sanitize_matrix(matrix(), names=["client-box"], accounts=["code"])
+    clean = throughput.sanitize_matrix(matrix(), names=["client-box"], accounts=["operator"])
     assert list(clean) == list(throughput.KEEP)
     assert clean["metadata"]["server"] == "http://NODE_A"
     assert "startup_diagnostics" not in clean and "event_log" not in clean
@@ -95,13 +95,13 @@ def test_sanitize_keeps_record_sections_and_hides_the_server():
     ("note", f"peer {TAILNET}", "private address"),
     ("note", f"rank {FABRIC}", "private address"),
     ("note", "run on client-box", "name client-box"),
-    ("note", "path /home/code/results", "account code"),
+    ("note", "path /home/operator/results", "account operator"),
 ])
 def test_sanitize_refuses_private_leftovers(where, value, finding):
     document = matrix()
     document["metadata"][where] = value
     with pytest.raises(throughput.PrivateDataError, match=finding):
-        throughput.sanitize_matrix(document, names=["client-box"], accounts=["code"])
+        throughput.sanitize_matrix(document, names=["client-box"], accounts=["operator"])
 
 
 def test_address_pattern_ignores_public_and_longer_numbers():
@@ -113,7 +113,7 @@ def test_address_pattern_ignores_public_and_longer_numbers():
 
 
 def test_names_match_whole_tokens_only():
-    assert throughput.private_findings("encoder code-path", accounts=["code"]) == []
-    assert throughput.private_findings("user code logged in", accounts=["code"]) == ["account code"]
-    assert throughput.account_forms("PASS code: def f()", ["code"]) == []
-    assert throughput.account_forms(f"code@{LAN}", ["code"]) == ["account code"]
+    assert throughput.private_findings("encoder operator-path", accounts=["operator"]) == []
+    assert throughput.private_findings("user operator logged in", accounts=["operator"]) == ["account operator"]
+    assert throughput.account_forms("PASS operator: def f()", ["operator"]) == []
+    assert throughput.account_forms(f"operator@{LAN}", ["operator"]) == ["account operator"]

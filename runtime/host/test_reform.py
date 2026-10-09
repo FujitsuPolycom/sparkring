@@ -68,70 +68,70 @@ def state(spark, *, cluster=None, nodes=(), address, rank, active=None):
 
 
 def surveyed(*, fixed=True, containers=None):
-    """A survey of the four captured Sparks from spark-3286; ``fixed`` swaps spark-aa42's cables first."""
-    sparks = swapped(captured(), "spark-aa42") if fixed else captured()
-    near = ("spark-aa42", 1, "spark-931e", 0) if fixed else ("spark-aa42", 0, "spark-931e", 0)
+    """A survey of the four captured Sparks from spark-b; ``fixed`` swaps spark-e's cables first."""
+    sparks = swapped(captured(), "spark-e") if fixed else captured()
+    near = ("spark-e", 1, "spark-d", 0) if fixed else ("spark-e", 0, "spark-d", 0)
     documents = {
-        "local": observation(sparks["spark-3286"], root=True),
-        LAN["spark-0a0f"]: observation(sparks["spark-0a0f"], root=True),
-        LAN["spark-aa42"]: observation(sparks["spark-aa42"], root=True,
+        "local": observation(sparks["spark-b"], root=True),
+        LAN["spark-a"]: observation(sparks["spark-a"], root=True),
+        LAN["spark-e"]: observation(sparks["spark-e"], root=True,
                                        neighbors=link_local_neighbors(sparks, *near)),
-        LAN["spark-931e"]: observation(sparks["spark-931e"], root=True,
+        LAN["spark-d"]: observation(sparks["spark-d"], root=True,
                                        neighbors=link_local_neighbors(sparks, near[2], near[3], near[0], near[1])
-                                       + link_local_neighbors(sparks, "spark-931e", 1, "spark-0a0f", 0)),
+                                       + link_local_neighbors(sparks, "spark-d", 1, "spark-a", 0)),
     }
-    documents["local"]["state"] = state(sparks["spark-3286"], cluster="sparkring", nodes=["spark-3286", "spark-0a0f"],
+    documents["local"]["state"] = state(sparks["spark-b"], cluster="sparkring", nodes=["spark-b", "spark-a"],
                                         address="10.253.255.1", rank=0, active="deployment-b")
-    documents[LAN["spark-0a0f"]]["state"] = state(sparks["spark-0a0f"], address="10.253.255.2", rank=1)
-    documents[LAN["spark-aa42"]]["state"] = state(sparks["spark-aa42"], cluster="tp2", nodes=["spark-aa42", "spark-931e"],
+    documents[LAN["spark-a"]]["state"] = state(sparks["spark-a"], address="10.253.255.2", rank=1)
+    documents[LAN["spark-e"]]["state"] = state(sparks["spark-e"], cluster="tp2", nodes=["spark-e", "spark-d"],
                                                   address="10.253.255.1", rank=0, active="deployment-a")
-    documents[LAN["spark-931e"]]["state"] = state(sparks["spark-931e"], address="10.253.255.2", rank=1)
+    documents[LAN["spark-d"]]["state"] = state(sparks["spark-d"], address="10.253.255.2", rank=1)
     if containers:
-        documents[LAN["spark-931e"]]["state"]["containers"] = containers
+        documents[LAN["spark-d"]]["state"]["containers"] = containers
     table = {next(r["address"] for r in s["addresses"] if r["ifname"] == "enP7s7"): LAN[n] for n, s in sparks.items()}
     transport = Transport(documents)
     here = survey.Reach("local", "this Spark")
     here.run = lambda t, argv, data=None, ssh=None: json.dumps(documents["local"])
-    found = survey.survey(transport, recorded=(), user="code", say=lambda line: None, state=reform.prior_state,
+    found = survey.survey(transport, recorded=(), user="operator", say=lambda line: None, state=reform.prior_state,
                           arp=lambda interface: dict(table), sweep=lambda interface: None, here=here)
     return found, transport
 
 
 def test_record_mismatch_names_the_unrecorded_neighbor():
-    record = {"name": "sparkring", "plan": {"nodes": [{"hostname": "spark-3286"}, {"hostname": "spark-0a0f"}]}}
+    record = {"name": "sparkring", "plan": {"nodes": [{"hostname": "spark-b"}, {"hostname": "spark-a"}]}}
     sparks = captured()
-    rows = [row for row in cabling.lldp_rows(sparks["spark-3286"]["lldp"])]
-    assert reform.record_mismatch(record, rows, "spark-3286") == (
-        "spark-aa42 is cabled to this Spark but not part of its cluster \"sparkring\" (2 Sparks)")
-    pair = [row for row in rows if row["hostname"] in ("spark-0a0f", "spark-3286")]
-    assert reform.record_mismatch(record, pair, "spark-3286") is None
-    ring = {"name": "ring", "plan": {"nodes": [{"hostname": h} for h in ("spark-3286", "spark-0a0f", "a", "b")]}}
-    both = pair + [dict(row, netdev="enp1s0f1np1") for row in pair if row["hostname"] == "spark-0a0f"]
-    assert "not cabled as a ring" in reform.record_mismatch(ring, both, "spark-3286")
-    assert reform.record_mismatch({"targets": ["a", "b"]}, rows, "spark-3286") == (
+    rows = [row for row in cabling.lldp_rows(sparks["spark-b"]["lldp"])]
+    assert reform.record_mismatch(record, rows, "spark-b") == (
+        "spark-e is cabled to this Spark but not part of its cluster \"sparkring\" (2 Sparks)")
+    pair = [row for row in rows if row["hostname"] in ("spark-a", "spark-b")]
+    assert reform.record_mismatch(record, pair, "spark-b") is None
+    ring = {"name": "ring", "plan": {"nodes": [{"hostname": h} for h in ("spark-b", "spark-a", "a", "b")]}}
+    both = pair + [dict(row, netdev="enp1s0f1np1") for row in pair if row["hostname"] == "spark-a"]
+    assert "not cabled as a ring" in reform.record_mismatch(ring, both, "spark-b")
+    assert reform.record_mismatch({"targets": ["a", "b"]}, rows, "spark-b") == (
         "3 Sparks are cabled here, but setup enrolled 2")
 
 
 def test_record_reason_reads_cluster_record_first(tmp_path):
     (tmp_path / "enrolled.json").write_text(json.dumps({"targets": ["a", "b"]}))
     (tmp_path / "cluster.json").write_text(json.dumps(
-        {"name": "sparkring", "plan": {"nodes": [{"hostname": "spark-3286"}, {"hostname": "spark-aa42"}]}}))
-    rows = cabling.lldp_rows(captured()["spark-3286"]["lldp"])
-    assert single_uplink.record_reason(tmp_path, lldp=lambda: rows, hostname="spark-3286").startswith("spark-0a0f is")
+        {"name": "sparkring", "plan": {"nodes": [{"hostname": "spark-b"}, {"hostname": "spark-e"}]}}))
+    rows = cabling.lldp_rows(captured()["spark-b"]["lldp"])
+    assert single_uplink.record_reason(tmp_path, lldp=lambda: rows, hostname="spark-b").startswith("spark-a is")
     assert single_uplink.record_reason(tmp_path / "none", lldp=lambda: rows) is None
 
 
 def test_plan_lists_each_sparks_state_foreign_addresses_and_the_ring():
     found, _ = surveyed()
     diagnosis = cabling.diagnose(survey.records(found), found["head"])
-    assert diagnosis["ready"] and diagnosis["order_names"] == ["spark-3286", "spark-0a0f", "spark-931e", "spark-aa42"]
-    value = reform.plan(found, diagnosis, name="dgx4-2", reason="spark-aa42 is cabled to this Spark",
+    assert diagnosis["ready"] and diagnosis["order_names"] == ["spark-b", "spark-a", "spark-d", "spark-e"]
+    value = reform.plan(found, diagnosis, name="dgx4-2", reason="spark-e is cabled to this Spark",
                         now=lambda: (2026, 10, 2, 14, 30, 0, 4, 275, 0))
     assert value["stamp"] == STAMP and value["blockers"] == []
     lines = reform.plan_lines(value)
-    assert lines[:2] == ["The cabled Sparks differ from this Spark's cluster record: spark-aa42 is cabled to this Spark.",
+    assert lines[:2] == ["The cabled Sparks differ from this Spark's cluster record: spark-e is cabled to this Spark.",
                          "Re-form: setup moves aside what these Sparks keep from other SparkRing clusters:"]
-    aa42 = lines[lines.index("  spark-aa42:") + 1:]
+    aa42 = lines[lines.index("  spark-e:") + 1:]
     assert aa42[:8] == [
         "    - Node A of cluster \"tp2\" (2 Sparks): its records move aside",
         "    - automatic recovery: turned off",
@@ -146,12 +146,12 @@ def test_plan_lists_each_sparks_state_foreign_addresses_and_the_ring():
         "    - fabric address 198.18.200.13/30 on enP2p1s0f1np1, not set by SparkRing: replaced after a backup of its "
         "NetworkManager connection"]
     # SparkRing's own connections already use the hardware-derived form.
-    assert not any("link-local" in line for line in lines[lines.index("  spark-0a0f:"):lines.index("  spark-931e:")])
-    assert "  spark-3286 (Node A):" in lines
+    assert not any("link-local" in line for line in lines[lines.index("  spark-a:"):lines.index("  spark-d:")])
+    assert "  spark-b (Node A):" in lines
     assert "    - Node A of cluster \"sparkring\" (2 Sparks): its records move aside, except Node A's SSH key" in lines
     assert [a["address"] for s in value["sparks"] for a in s["foreign_addresses"]] == [
         "198.18.200.6/30", "198.18.200.14/30", "198.18.200.5/30", "198.18.200.13/30"]
-    assert lines[-1] == ("Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 like a first setup "
+    assert lines[-1] == ("Then setup sets up the ring spark-b → spark-a → spark-d → spark-e like a first setup "
                          "and renumbers its fabric addresses.")
 
 
@@ -160,12 +160,12 @@ def test_running_model_container_blocks_with_the_stop_command():
                                     {"name": "other", "deployment": "elsewhere", "profile": None}])
     value = reform.plan(found, cabling.diagnose(survey.records(found), found["head"]), name="dgx4-2")
     assert value["blockers"] == [
-        {"spark": "spark-931e", "container": "tp2-rank1", "command": "on spark-aa42: sudo sparkring down --execute"},
-        {"spark": "spark-931e", "container": "other", "command": "on spark-931e: sudo docker stop other"}]
+        {"spark": "spark-d", "container": "tp2-rank1", "command": "on spark-e: sudo sparkring down --execute"},
+        {"spark": "spark-d", "container": "other", "command": "on spark-d: sudo docker stop other"}]
     assert reform.plan_lines(value)[-2:] == [
-        "  spark-931e: tp2-rank1; stop it on spark-aa42: sudo sparkring down --execute",
-        "  spark-931e: other; stop it on spark-931e: sudo docker stop other"]
-    with pytest.raises(ValueError, match="Stop them, then repeat setup: tp2-rank1 on spark-931e"):
+        "  spark-d: tp2-rank1; stop it on spark-e: sudo sparkring down --execute",
+        "  spark-d: other; stop it on spark-d: sudo docker stop other"]
+    with pytest.raises(ValueError, match="Stop them, then repeat setup: tp2-rank1 on spark-d"):
         reform.execute(value, found, None, archive=None, transfer=None, root_command=None, root="unused")
 
 
@@ -364,12 +364,12 @@ def test_execute_retires_workers_first_then_node_a_and_writes_the_receipt(tmp_pa
                               root_command=root_command, keep=["setups/7"], here=here, say=lambda line: None,
                               root=tmp_path)
     workers = [e[1] for e in events if e[0] == "root"]
-    assert sorted(workers) == sorted([LAN["spark-0a0f"], LAN["spark-931e"], LAN["spark-aa42"]])
+    assert sorted(workers) == sorted([LAN["spark-a"], LAN["spark-d"], LAN["spark-e"]])
     assert all(e[2] for e in events if e[0] == "root")
     assert events[-1] == ("node a", [*reform.NODE_A_KEEPS, "setups/7"])
-    assert set(receipts) == {"spark-3286", "spark-0a0f", "spark-931e", "spark-aa42"}
+    assert set(receipts) == {"spark-b", "spark-a", "spark-d", "spark-e"}
     document = json.loads((tmp_path / "retired" / STAMP / "reform.json").read_text(encoding="utf-8"))
-    assert document["complete"] and document["plan"]["order"][0] == "spark-3286"
+    assert document["complete"] and document["plan"]["order"][0] == "spark-b"
     assert "/var/lib/sparkring/backups/dgx4-2/rankN/" in document["network_backups"]
 
 
@@ -385,7 +385,7 @@ def test_worker_script_is_self_contained():
 
 
 def arguments(**values):
-    return argparse.Namespace(**{"ssh_user": "code", "ssh_port": 22, "name": "dgx4-2", "plan": False,
+    return argparse.Namespace(**{"ssh_user": "operator", "ssh_port": 22, "name": "dgx4-2", "plan": False,
                                  "reset_links": False, **values})
 
 
@@ -394,7 +394,7 @@ def test_setup_step_plans_without_changes(monkeypatch, capsys):
     monkeypatch.setattr(reform, "survey_cabled", lambda t, **o: (found, cabling.diagnose(survey.records(found), found["head"])))
     executed = []
     args = arguments(plan=True)
-    assert single_uplink.reform_step(args, transport, None, reason="spark-aa42 is cabled", run=executed.append) == "planned"
+    assert single_uplink.reform_step(args, transport, None, reason="spark-e is cabled", run=executed.append) == "planned"
     out = capsys.readouterr().out
     assert executed == [] and "Re-form: setup moves aside" in out and single_uplink.HAIRPIN_SCOPE[0] in out
     assert args.ssh_port == 22 and not args.reset_links
@@ -414,7 +414,7 @@ def test_setup_step_reforms_then_continues_over_the_preparation_service(monkeypa
 def test_setup_step_stops_at_the_cabling_fix(monkeypatch):
     found, transport = surveyed(fixed=False)
     monkeypatch.setattr(reform, "survey_cabled", lambda t, **o: (found, cabling.diagnose(survey.records(found), found["head"])))
-    with pytest.raises(cabling.CablingError, match="On spark-aa42, swap its two cables"):
+    with pytest.raises(cabling.CablingError, match="On spark-e, swap its two cables"):
         single_uplink.reform_step(arguments(), transport, None, reason="x", say=lambda line: None)
 
 
@@ -433,10 +433,10 @@ def test_setup_step_leaves_sparks_without_cluster_state_to_ordinary_setup(monkey
 
 
 def test_fresh_scope_lists_the_reform_step():
-    args = argparse.Namespace(ssh_user="code", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="operator", ssh_port=22, no_share_internet=False)
     assert any("keeps setup from another SparkRing cluster" in line for line in single_uplink.scope_lines(args, fresh=True))
     assert not any("another SparkRing cluster" in line for line in single_uplink.scope_lines(args, fresh=False))
-    assert single_uplink.ring_state(Path("unused"), "spark-aa42 is cabled") == (True, True)
+    assert single_uplink.ring_state(Path("unused"), "spark-e is cabled") == (True, True)
 
 
 @pytest.mark.skipif(not hasattr(os, "geteuid"), reason="reads a Linux host")
@@ -450,13 +450,13 @@ def test_setup_plan_reforms_when_the_record_names_fewer_sparks_than_are_cabled(t
     base = tmp_path / "state"
     base.mkdir()
     (base / "cluster.json").write_text(json.dumps({"name": "sparkring", "plan": {
-        "nodes": [{"hostname": "spark-3286"}, {"hostname": "spark-0a0f"}],
+        "nodes": [{"hostname": "spark-b"}, {"hostname": "spark-a"}],
         "spec": {"hosts": [{"host": "root@198.51.100.1"}, {"host": "root@198.51.100.2"}]}}}))
     monkeypatch.setattr(controller, "STATE", base)
     monkeypatch.setattr(single_uplink.os, "geteuid", lambda: 0, raising=False)
     monkeypatch.setattr(single_uplink.distribution, "installed", lambda root: True)
     monkeypatch.setattr(single_uplink, "identity_key", lambda directory: (tmp_path / "key", "controller public key"))
-    monkeypatch.setattr(reform, "local_lldp", lambda: cabling.lldp_rows(captured()["spark-3286"]["lldp"]))
+    monkeypatch.setattr(reform, "local_lldp", lambda: cabling.lldp_rows(captured()["spark-b"]["lldp"]))
     found, _ = surveyed()
     seen = {}
 
@@ -476,21 +476,21 @@ def test_setup_plan_reforms_when_the_record_names_fewer_sparks_than_are_cabled(t
     monkeypatch.setattr(single_uplink.bootstrap, "discover", lambda *a, **k: pytest.fail("discovered before re-forming"))
     assert single_uplink.main(["--plan", "--name", "dgx4-2"]) == 0
     out = capsys.readouterr().out
-    assert ("The cabled Sparks differ from this Spark's cluster record: spark-aa42 is cabled to this Spark but not "
+    assert ("The cabled Sparks differ from this Spark's cluster record: spark-e is cabled to this Spark but not "
             "part of its cluster \"sparkring\" (2 Sparks).") in out
-    assert "Then setup sets up the ring spark-3286 → spark-0a0f → spark-931e → spark-aa42 like a first setup" in out
+    assert "Then setup sets up the ring spark-b → spark-a → spark-d → spark-e like a first setup" in out
     assert seen["port"] == 22 and (base / "cluster.json").exists()
 
 
 def test_setup_step_refuses_to_reform_a_spark_it_could_not_sign_in_to(monkeypatch):
     found, transport = surveyed()
-    gone = next(k for k, s in found["sparks"].items() if s["data"]["inventory"]["hostname"] == "spark-931e")
+    gone = next(k for k, s in found["sparks"].items() if s["data"]["inventory"]["hostname"] == "spark-d")
     del found["sparks"][gone]
-    found["notes"].append("Sign-in over the LAN at 192.0.2.31 as code failed: Permission denied")
+    found["notes"].append("Sign-in over the LAN at 192.0.2.31 as operator failed: Permission denied")
     diagnosis = cabling.diagnose(survey.records(found), found["head"])
     assert diagnosis["ready"]
     monkeypatch.setattr(reform, "survey_cabled", lambda t, **o: (found, diagnosis))
-    with pytest.raises(ValueError, match="Setup could not sign in to spark-931e, so it cannot re-form it"):
+    with pytest.raises(ValueError, match="Setup could not sign in to spark-d, so it cannot re-form it"):
         single_uplink.reform_step(arguments(), transport, None, reason="x", say=lambda line: None)
 
 
@@ -501,7 +501,7 @@ def test_survey_program_with_state_is_self_contained():
 
 
 def foreign_connections():
-    """spark-931e's fabric connections: SparkRing's on port 0, hand-made ones on port 1 in the default mode."""
+    """spark-d's fabric connections: SparkRing's on port 0, hand-made ones on port 1 in the default mode."""
     rows = {}
     for netdev, name, mode in (("enp1s0f0np0", "sparkring-a", "eui64"), ("enP2p1s0f0np0", "sparkring-b", "eui64"),
                                ("enp1s0f1np1", "Wired connection 5", "default"),
@@ -509,7 +509,7 @@ def foreign_connections():
         uuid = f"00000000-0000-4000-8000-{len(rows):012d}"
         rows[netdev] = {"uuid": uuid, "name": name, "mode": mode,
                         "file": f"/run/NetworkManager/system-connections/netplan-NM-{uuid}.nmconnection",
-                        "link_local": ["fe80::4ebb:47ff:fe2c:9320"] + (["fe80::1037:222a:cf8e:5d35"] if mode != "eui64" else [])}
+                        "link_local": ["fe80::ff:fe3d:a431"] + (["fe80::a8c1:5eff:4d2b:91f0"] if mode != "eui64" else [])}
     return rows
 
 
@@ -557,7 +557,7 @@ def test_retire_reactivates_a_connection_left_between_modify_and_up(tmp_path):
     assert ["nmcli", "connection", "up", uuid] in host.calls
     assert not [argv for argv in host.calls if argv[:4] == ["nmcli", "connection", "modify", uuid]]
     assert any(row.get("reactivated") and row["netdev"] == "enp1s0f1np1" for row in receipt["link_local"])
-    assert connections["enp1s0f1np1"]["link_local"] == ["fe80::4ebb:47ff:fe2c:9320"]
+    assert connections["enp1s0f1np1"]["link_local"] == ["fe80::ff:fe3d:a431"]
 
 
 def test_retire_keeps_the_link_local_form_of_the_function_setup_reaches_through(tmp_path):
@@ -576,8 +576,8 @@ def test_retire_keeps_the_link_local_form_of_the_function_setup_reaches_through(
 
 
 def test_route_over_a_fabric_hop_names_the_function_it_ends_at():
-    reach = survey.Reach("route", "a cable", route=[{"user": "code", "address": "192.0.2.42", "interface": None, "port": 22},
-                                                   {"user": "code", "address": "fe80::2", "interface": "enp1s0f1np1",
+    reach = survey.Reach("route", "a cable", route=[{"user": "operator", "address": "192.0.2.42", "interface": None, "port": 22},
+                                                   {"user": "operator", "address": "fe80::2", "interface": "enp1s0f1np1",
                                                     "port": 22}])
     found = {"sparks": {"x": {"reach": reach, "data": {"inventory": {"functions": [
         {"netdev": "enp1s0f0np0", "addresses": ["fe80::1"]}, {"netdev": "enp1s0f1np1", "addresses": ["fe80::2"]}]}}}}}

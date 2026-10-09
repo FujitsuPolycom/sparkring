@@ -31,11 +31,11 @@ def test_setup_summary_is_one_question(monkeypatch, capsys):
     monkeypatch.setattr(controller.sys.stdin, "isatty", lambda: True)
     asked = []
     monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "")
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     single_uplink.approve(args, fresh=True, follow="then install qwen38-flash-next-tp2 and start it")
     out = capsys.readouterr().out
     assert asked == ["Proceed? [Y/n]: "]
-    assert "sign in as cody" in out and "host key on first contact" in out and "qwen38-flash-next-tp2" in out
+    assert "sign in as analyst" in out and "host key on first contact" in out and "qwen38-flash-next-tp2" in out
     # A fresh setup does not know the ring size, so the one question also covers the ConnectX restarts.
     assert "about 8 seconds" in out and "now and at every boot" in out
     assert out.index("ConnectX hairpin setting") < out.index("qwen38-flash-next-tp2")
@@ -43,7 +43,7 @@ def test_setup_summary_is_one_question(monkeypatch, capsys):
 
 def test_yes_prints_the_approved_scope_without_asking(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("--yes asked a question"))
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     single_uplink.announce(args, fresh=False, follow="then install qwen38-flash-next-qad-tp4 and start it", four=True)
     out = capsys.readouterr().out
     assert out.startswith("Approved with --yes:\n")
@@ -51,7 +51,7 @@ def test_yes_prints_the_approved_scope_without_asking(monkeypatch, capsys):
 
 
 def test_hairpin_scope_is_listed_for_fresh_and_four_spark_setups_only(tmp_path):
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     assert single_uplink.ring_state(tmp_path) == (True, True)
     (tmp_path / "enrolled.json").write_text('{"targets": ["root@192.0.2.10", "root@192.0.2.11"]}')
     fresh, four = single_uplink.ring_state(tmp_path)
@@ -95,7 +95,7 @@ def test_setup_prints_needs_input_details(tmp_path, monkeypatch, capsys):
 
 
 def test_approved_logins_record_new_host_keys_in_a_listed_file(tmp_path):
-    route = [{"user": "cody", "address": "fe80::2", "interface": "port0", "port": 22}]
+    route = [{"user": "analyst", "address": "fe80::2", "interface": "port0", "port": 22}]
     approved = bootstrap.ssh_argv(route, tmp_path, interactive=True, trust_new=True)
     assert "StrictHostKeyChecking=accept-new" in approved and "HashKnownHosts=no" in approved
     assert f"UserKnownHostsFile={tmp_path / 'known_hosts'} ~/.ssh/known_hosts" in approved
@@ -285,7 +285,7 @@ def test_setup_installs_node_a_revision_on_other_workers_before_planning(tmp_pat
 
 
 def test_repeated_setup_lists_the_worker_update():
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     line = "  - install Node A's SparkRing revision on workers that run another one"
     assert line in single_uplink.scope_lines(args, fresh=False)
     assert line not in single_uplink.scope_lines(args, fresh=True)

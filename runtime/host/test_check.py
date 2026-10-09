@@ -59,7 +59,7 @@ def recorded(tmp_path, monkeypatch):
     value = document("pair", 2)
     (controller.STATE / "fabric.json").write_text(fabric_document.encoded(value))
     node.save(controller.STATE, "cluster.json", {"name": "test", "api_address": "192.0.2.80", "plan": {
-        "spec": {"hosts": [{"host": f"code@192.0.2.{20 + n}", "management_address": f"192.0.2.{20 + n}"}
+        "spec": {"hosts": [{"host": f"operator@192.0.2.{20 + n}", "management_address": f"192.0.2.{20 + n}"}
                            for n in range(2)]},
         "nodes": [{"hostname": row["hostname"]} for row in value["positions"]]}})
     monkeypatch.setattr(check, "deployments", lambda on=None: [(None, directory)])
@@ -123,7 +123,7 @@ def test_the_report_replaces_private_items_and_keeps_fabric_addresses(recorded, 
     directory, lock, value = recorded
     monkeypatch.setattr(check, "environment", lambda lock=None: {"driver": "580.95", "docker": "28.3.0"})
     installer.write(directory / "install-result.json", {
-        "api_url": "http://192.0.2.80:8015/v1", "deployment": str(directory), "host": "code@192.0.2.21",
+        "api_url": "http://192.0.2.80:8015/v1", "deployment": str(directory), "host": "operator@192.0.2.21",
         "mac": value["positions"][0]["ports"]["0"]["functions"]["primary"]["mac"],
         "fabric": value["positions"][0]["ports"]["0"]["functions"]["primary"]["address"],
         "hostname": value["positions"][1]["hostname"]})
@@ -140,4 +140,4 @@ def test_the_report_replaces_private_items_and_keeps_fabric_addresses(recorded, 
     assert value["positions"][0]["ports"]["0"]["functions"]["primary"]["address"] in saved
     for name in written["files"]:
         text = (root / name).read_text()
-        assert "code@" not in text and value["positions"][0]["hostname"] not in text, name
+        assert "operator@" not in text and value["positions"][0]["hostname"] not in text, name

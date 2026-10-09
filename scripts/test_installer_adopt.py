@@ -976,6 +976,6 @@ def test_audit_hook_refuses_writes_and_forbidden_argv_under_protected_trees(env,
                     os.close(fd)
     assert _forbidden_argv(["rsync", "-rlt", "a", "b"]) == "-rlt"
     assert _forbidden_argv(["rsync", "-r", "--no-perms", "--inplace"]) == "--inplace"
-    assert _forbidden_argv(["docker", "run", "--mount", "type=bind,src=/home/code/models,dst=/model"]) is not None
+    assert _forbidden_argv(["docker", "run", "--mount", "type=bind,src=/home/operator/models,dst=/model"]) is not None
     assert _forbidden_argv(["docker", "run", "--mount", "type=bind,src=/srv/x/.r.sparkring/fetch,dst=/fetch"]) is None
     assert _forbidden_argv(["rsync", "-r", "--no-perms", "--no-owner", "--no-group", "--protect-args"]) is None

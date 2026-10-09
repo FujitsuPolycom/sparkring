@@ -736,19 +736,19 @@ class AddressAndTopologyTests(unittest.TestCase):
                 "r0",
                 f"{IF0} UP 10.0.1.10/24\n"
                 f"{IF1} UP 10.0.4.12/24",
-                hostname="spark-edfd",
+                hostname="spark-h",
             ),
             "r1": observation(
                 "r1",
                 f"{IF0} UP 10.0.2.10/24\n"
                 f"{IF1} UP 10.0.1.11/24",
-                hostname="spark-ebb8",
+                hostname="spark-f",
             ),
             "r2": observation(
                 "r2",
                 f"{IF0} UP 10.0.3.11/24\n"
                 f"{IF1} UP 10.0.2.11/24",
-                hostname="spark-ebee",
+                hostname="spark-g",
             ),
             "r3": observation("r3", "", reachable=False),
         }
@@ -857,17 +857,17 @@ class PartialDiscoveryTests(unittest.TestCase):
         )
         outputs = {
             "operator@r0": probe_output(
-                "spark-edfd",
+                "spark-h",
                 f"{IF0} UP 10.0.1.10/24\n"
                 f"{IF1} UP 10.0.4.12/24",
             ),
             "operator@r1": probe_output(
-                "spark-ebb8",
+                "spark-f",
                 f"{IF0} UP 10.0.2.10/24\n"
                 f"{IF1} UP 10.0.1.11/24",
             ),
             "operator@r2": probe_output(
-                "spark-ebee",
+                "spark-g",
                 f"{IF0} UP 10.0.3.11/24\n"
                 f"{IF1} UP 10.0.2.11/24",
             ),
@@ -1120,15 +1120,15 @@ class LaunchEndpointTests(unittest.TestCase):
         )
         outputs = {
             "operator@r0": probe_output(
-                "spark-edfd", ADDRESSED_WIFI_LISTING, LOCAL_ROUTE
+                "spark-h", ADDRESSED_WIFI_LISTING, LOCAL_ROUTE
             ),
             "operator@r1": probe_output(
-                "spark-ebb8",
+                "spark-f",
                 FABRIC_ONLY_LISTING + f"\n{WIFI} UP 192.0.2.22/24",
                 FABRIC_ROUTE,
             ),
             "operator@r2": probe_output(
-                "spark-ebee", UNADDRESSED_WIFI_LISTING, FABRIC_ROUTE
+                "spark-g", UNADDRESSED_WIFI_LISTING, FABRIC_ROUTE
             ),
             "operator@r3": probe_output(
                 "spark-e1a4",
@@ -1406,20 +1406,20 @@ CROSS_ACCEPT_RULES = (
 
 HEALTHY_RING = {
     "r0": (
-        ("spark-edfd", (WIFI, IF0)),
+        ("spark-h", (WIFI, IF0)),
         f"lo UNKNOWN 127.0.0.1/8\n{IF0} UP 10.0.1.10/24\n{IF1} UP 10.0.4.12/24\n"
         f"{WIFI} UP 192.0.2.21/24",
         f"10.0.2.0/24 via 10.0.1.11 dev {IF0}\n10.0.3.0/24 via 10.0.4.13 dev {IF1}",
         f"local {RENDEZVOUS} dev lo src {RENDEZVOUS} uid 1000",
     ),
     "r1": (
-        ("spark-ebb8", (IF0,)),
+        ("spark-f", (IF0,)),
         f"lo UNKNOWN 127.0.0.1/8\n{IF0} UP 10.0.2.10/24\n{IF1} UP 10.0.1.11/24",
         f"10.0.3.0/24 via 10.0.2.11 dev {IF0}\n10.0.4.0/24 via 10.0.1.10 dev {IF1}",
         f"{RENDEZVOUS} dev {IF1} src 10.0.1.11 uid 1000\n    cache",
     ),
     "r2": (
-        ("spark-ebee", (IF0,)),
+        ("spark-g", (IF0,)),
         f"lo UNKNOWN 127.0.0.1/8\n{IF0} UP 10.0.3.11/24\n{IF1} UP 10.0.2.11/24",
         f"10.0.1.0/24 via 10.0.2.10 dev {IF1}\n10.0.4.0/24 via 10.0.3.12 dev {IF0}",
         f"{RENDEZVOUS} via 10.0.2.10 dev {IF1} src 10.0.2.11 uid 1000\n    cache",

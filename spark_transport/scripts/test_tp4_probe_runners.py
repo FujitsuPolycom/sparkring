@@ -388,7 +388,7 @@ def _local_posix(program, tmp_path):
 
 
 def test_posix_argument_encoder_roundtrips_literal_values(tmp_path):
-    values = ["/tmp/probe", "/tmp/a path/probe", "/tmp/Cody's/probe", "$(printf WRONG)",
+    values = ["/tmp/probe", "/tmp/a path/probe", "/tmp/Analyst's/probe", "$(printf WRONG)",
               "`printf WRONG`", "a; printf WRONG", "", "line1\nline2", 'a"b', r"a\b"]
     environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
                    "QUOTE_VALUES": json.dumps(values)}
@@ -415,7 +415,7 @@ def test_actual_probe_commands_preserve_literal_paths_and_peer_values(name, tmp_
     start = source.index("$command = @(")
     end = source.index(') -join " "', start) + len(') -join " "')
     construction = source[start:end]
-    literal = "/tmp/Cody's folder/$(printf WRONG);`printf WRONG`"
+    literal = "/tmp/Analyst's folder/$(printf WRONG);`printf WRONG`"
     values = {key: literal for key in ("Binary", "Library", "ProbeBinary", "Source", "Image", "headIp", "ManagementNic")}
     environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
                    "QUOTE_VALUES": json.dumps(values), "QUOTE_CONSTRUCTION": construction}
@@ -473,7 +473,7 @@ def test_actual_artifact_hash_commands_preserve_literal_paths(name, tmp_path):
         expression = next(line.strip() for line in source.splitlines()
                           if line.strip().startswith('"test -x') and "sha256sum" in line)
         construction = "$hashCommand = " + expression[:-1]
-    literal = "/tmp/Cody's folder/$(printf WRONG);`printf WRONG`"
+    literal = "/tmp/Analyst's folder/$(printf WRONG);`printf WRONG`"
     environment = {**os.environ, "QUOTE_HELPER": str(SCRIPTS / "posix_shell_argument.ps1"),
                    "QUOTE_PATH": literal, "QUOTE_CONSTRUCTION": construction}
     result = _powershell("-Command", r'''

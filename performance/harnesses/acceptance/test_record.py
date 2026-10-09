@@ -62,14 +62,14 @@ def test_throughput_row_matches_the_record_table_format():
 def test_text_sanitization_replaces_known_hosts_and_numbers_other_addresses():
     text = f"Model ready: http://{LAN}:8020/v1\nNode 1 via {FABRIC} and {FABRIC}; spark-r0 done\n"
     clean = record.sanitize_text(text, replace={LAN: "NODE_A", "spark-r0": "NODE_A"}, names=["client-box"],
-                                 users=["code"])
+                                 users=["operator"])
     assert clean == "Model ready: http://NODE_A:8020/v1\nNode 1 via ADDRESS_1 and ADDRESS_1; NODE_A done\n"
 
 
-@pytest.mark.parametrize("text", ["ran on client-box", "see /home/code/out", f"ssh code@{LAN.replace('192', 'x')}"])
+@pytest.mark.parametrize("text", ["ran on client-box", "see /home/operator/out", f"ssh operator@{LAN.replace('192', 'x')}"])
 def test_text_sanitization_refuses_names_and_accounts(text):
     with pytest.raises(throughput.PrivateDataError):
-        record.sanitize_text(text, replace={}, names=["client-box"], users=["code"])
+        record.sanitize_text(text, replace={}, names=["client-box"], users=["operator"])
 
 
 def functional(failed=()):
