@@ -2472,7 +2472,10 @@ The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
 and every other image, including the default image, installs `nvfp4-spark`.
 `--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
 `--checkpoint csf` on an image that cannot read it is refused before any
-Spark changes. `sparkring images` does not list the image of the
+Spark changes. While `csf` is research-only, every plan that installs it
+prints a `Note:` with that status and, when the image chose it, the
+`--checkpoint nvfp4-spark` alternative (`image_lock.CHECKPOINT_STATUS`).
+`sparkring images` does not list the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
 which reads it; its lock is selected with `--image-lock`:
 

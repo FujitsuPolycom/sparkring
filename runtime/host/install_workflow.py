@@ -652,6 +652,10 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     unreadable = image_lock.checkpoint_problem(image, card)
     if unreadable:
         raise NeedsInput(f"{unreadable}. Nothing has been changed.", field="checkpoint_name")
+    notice = image_lock.checkpoint_notice(image, profile, card,
+                                          preferred=args.checkpoint is None and requested_checkpoint is not None)
+    if notice:
+        print("Note: " + notice)
     # A checkpoint is requested by its listed name: an alias requests the same
     # deployment as that name, and the profile's default the same as no flag on
     # an image that does not read its preferred checkpoint.

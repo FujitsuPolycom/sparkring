@@ -222,6 +222,34 @@ CHECKPOINT_BUILDS = {
 }
 
 
+# The status of a checkpoint in CHECKPOINT_BUILDS until an installation of it passes the installer's checks;
+# the plan states it (checkpoint_notice), because a profile installs such a checkpoint without --checkpoint on
+# an image that reads it. Remove an entry when a record shows an installation of that checkpoint that passed.
+CHECKPOINT_STATUS = {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
+        "research-only: no installation of it has passed the installer's checks",
+}
+
+
+def checkpoint_notice(value, profile, card, *, preferred):
+    """The plan's note on the checkpoint of ``card`` when CHECKPOINT_STATUS records its status, else None.
+
+    ``preferred`` says the installer chose the checkpoint without ``--checkpoint``, as the profile's
+    preferred checkpoint on the image of lock ``value``; the note then names the flag that installs the
+    profile's default checkpoint."""
+    status = CHECKPOINT_STATUS.get(f"{card['model_repository']}@{card['model_revision']}")
+    if status is None:
+        return None
+    text = (f"Checkpoint {card['target_variant']} ({card['model_repository']} at {card['model_revision'][:12]}) "
+            f"is {status}")
+    if preferred:
+        from runtime.common import setup
+        default = setup.selection(profile)["target_variant"]
+        text += (f". {profile} installs it without --checkpoint on image {value.get('name')}, whose vLLM reads "
+                 f"it; --checkpoint {default} installs the profile's default checkpoint")
+    return text + "."
+
+
 def checkpoint_problem(value, card):
     """Why the image of lock ``value`` cannot read the checkpoint of ``card``, or None."""
     key = f"{card['model_repository']}@{card['model_revision']}"

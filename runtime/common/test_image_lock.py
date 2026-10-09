@@ -264,6 +264,15 @@ def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_
         key: value for key, value in CSF.items() if key != "target_variant"}
     assert image_lock.checkpoint_problem(pinned, card) is None
     assert "(--checkpoint csf)" in image_lock.checkpoint_problem(installer_image.default_lock(), card)
+    # The plan states the checkpoint's status, and how to install the default when the image chose it.
+    preferred = image_lock.checkpoint_notice(pinned, profile, card, preferred=True)
+    assert preferred.startswith("Checkpoint csf (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
+                                "dec48abd33ef) is research-only: no installation of it has passed")
+    assert f"{profile} installs it without --checkpoint" in preferred and "--checkpoint nvfp4-spark" in preferred
+    explicit = image_lock.checkpoint_notice(pinned, profile, card, preferred=False)
+    assert explicit.startswith("Checkpoint csf") and "without --checkpoint" not in explicit
+    assert image_lock.checkpoint_notice(pinned, profile, setup.selection(profile), preferred=False) is None
+    assert set(image_lock.CHECKPOINT_STATUS) <= set(image_lock.CHECKPOINT_BUILDS)
 
 
 def test_a_preferred_checkpoint_is_one_that_only_some_vllm_builds_read():
