@@ -272,7 +272,7 @@
     {
       "id": "sircl-cycle8-tuning-row",
       "title": "SIRCL settings of the cycle of eight",
-      "description": "The cycle-of-eight row of SIRCL's default tuning table, measured on 2026-10-07: all-reduce capacity and dispatch ceiling 1 MiB, 16 link slots of 512 KiB and a 28 KiB one-shot limit, with each session posting its lanes to the peers with the most relays first. The installer applies the row wherever the environment leaves a setting unset; SIRCL's serve launcher and bundle need the settings given.",
+      "description": "The cycle-of-eight row of SIRCL's default tuning table, measured on 2026-10-07: all-reduce capacity and dispatch ceiling 1 MiB, 16 link slots of 512 KiB and a 28 KiB one-shot limit, with each session posting its lanes to the peers with the most relays first. The installer applies the row wherever the environment leaves a setting unset, only to sessions of the SIRCL build the default table names (0.3.1); sessions of another build, such as the SIRCL 0.2.0 and 0.3.0 images 54af97d9 and 816c6d6a, take SIRCL's own rules unless the settings are given, and SIRCL's serve launcher and bundle need the settings given.",
       "category": "transport",
       "sides": ["decode", "prefill"],
       "models": [
@@ -284,7 +284,7 @@
       "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
       "enable": {
         "environment": {"SIRCL_ALLREDUCE_CAPACITY_BYTES": "1048576", "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES": "1048576", "SIRCL_LINK_SLOTS": "16", "SIRCL_LINK_SLOT_BYTES": "524288", "SIRCL_ONESHOT_MAX_BYTES": "28672"},
-        "launcher": "the installer applies the cycle-8 row of runtime/common/sircl-tuning-defaults.json; SIRCL serve or bundle: --capacity 1048576 --dispatch 1048576 --link-slots 16 --link-slot 524288, posting order unset"
+        "launcher": "the installer applies the cycle-8 row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.1 sessions; SIRCL serve or bundle: --capacity 1048576 --dispatch 1048576 --link-slots 16 --link-slot 524288, posting order unset"
       },
       "detect": [
         {"transport": "sircl"},

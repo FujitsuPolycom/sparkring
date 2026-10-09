@@ -81,6 +81,33 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     assert set(table["sircl"]) == {"version", "abi_version"} and table["sircl"]["abi_version"] == ABI_VERSION
 
 
+def shipped_sircl_locks():
+    """``{path: lock}`` of every v3 image lock with a SIRCL layer in the release and record trees.
+
+    The package carries the repository's source tree, so each of these locks reaches every installation.
+    """
+    found = {}
+    for tree in ("runtime/releases", "performance/records"):
+        for path in sorted((transport.ROOT / tree).rglob("*.json")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if image_lock.SCHEMA_V3 not in text:
+                continue
+            value = json.loads(text)
+            if isinstance(value, dict) and value.get("schema") == image_lock.SCHEMA_V3 and "sircl" in value:
+                found[path.relative_to(transport.ROOT).as_posix()] = value
+    return found
+
+
+def test_every_shipped_sircl_lock_names_the_sircl_build_of_the_default_tuning_table():
+    # The default rows apply only to sessions of the SIRCL build the table names; an image of another build would
+    # run none of them, silently. Re-key the table (and its measured rows) before shipping a lock of another build.
+    table = transport.load_tuning()
+    locks = shipped_sircl_locks()
+    assert locks
+    for path, lock in locks.items():
+        assert {key: lock["sircl"][key] for key in ("version", "abi_version")} == table["sircl"], path
+
+
 @pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path-4"), ("path", 3, "path"),
                                                    ("cycle", 8, "cycle-8"), ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
 def test_a_group_takes_its_own_row_else_the_row_of_its_shape(shape, size, expected):
