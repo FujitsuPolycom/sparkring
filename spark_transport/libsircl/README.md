@@ -307,4 +307,7 @@ and their terms, and every source or binary copy carries `LICENSE`, `NOTICE`, `v
   list the MPI calls they make; nccl-tests is NVIDIA's BSD-3-Clause test program, not NCCL's
   implementation.
 
-This working copy is private: no repository, commit or publication.
+This repository is libsircl's source of record: the library is developed in `spark_transport/libsircl/`
+of SparkRing, under the Apache License, Version 2.0, and its git history is its provenance. Status:
+research-only as a serving transport (no serving A/B on Sparks has measured it); STATUS.md labels each
+component.

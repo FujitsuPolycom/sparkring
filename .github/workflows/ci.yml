@@ -96,6 +96,29 @@ jobs:
       - name: Test the SIRCL package from the repository layout
         run: python -m pytest spark_transport/sircl -q -rs
 
+  libsircl:
+    name: libsircl C library
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the rdma-core headers the verbs transport compiles against
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libibverbs-dev
+      # libsircl's CPU suites (spark_transport/libsircl, make check): ABI, API, bootstrap, lifecycle, engine
+      # refusals, the vendored native sources, the native libraries across processes over the shared-memory
+      # verbs stand-in, the route planner against this repository's SIRCL package, the MPI shim, the
+      # nccl-tests evaluator and the prebuilt kernel packs' entry check. None needs a GPU or an RDMA device.
+      - name: Build libsircl and run its CPU checks
+        working-directory: spark_transport/libsircl
+        env:
+          SIRCL_PACKAGE: ${{ github.workspace }}/spark_transport/sircl
+        run: |
+          make -j BUILD=build
+          make check BUILD=build
+
   lil-bridge:
     name: pinned LIL bridge
     runs-on: ubuntu-latest

@@ -84,7 +84,7 @@
       "id": "installer-libsircl-layer",
       "path": "runtime/images/libsircl_layer.py",
       "kind": "python",
-      "reason": "Add libsircl, SIRCL's NCCL-compatible C library, to a kraken-line installer image with a v3 lock: the library built from the vendored spark_transport/libsircl snapshot in a network-less container of the parent image, its notices and the vLLM general plugin libsircl, recorded in its external-base receipt; prepare does not invoke Docker, and record probes, checks the layer and admits the built image and writes its v3 lock with the libsircl transport. Research-only; no release lists it."
+      "reason": "Add libsircl, SIRCL's NCCL-compatible C library, to a kraken-line installer image with a v3 lock: the library built from the committed spark_transport/libsircl source (recorded by its git tree id) in a network-less container of the parent image, its notices and the vLLM general plugin libsircl, recorded in its external-base receipt; prepare does not invoke Docker, and record probes, checks the layer and admits the built image and writes its v3 lock with the libsircl transport. Research-only; no release lists it."
     },
     {
       "id": "installer-transport-window",

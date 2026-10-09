@@ -170,6 +170,7 @@ def check_layer(image_id, parent_receipt_sha256, block, *, run):
     every file the layer receipt lists, so that verification covered them.
     """
     image_lock.validate_libsircl(block)
+    source_field, source = image_lock.libsircl_source(block)
     isolated = ["docker", "run", "--rm", "--pull", "never", "--runtime", "runc", "--network", "none",
                 "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--entrypoint", "/bin/cat",
                 image_id]
@@ -188,7 +189,7 @@ def check_layer(image_id, parent_receipt_sha256, block, *, run):
                  f"The image's verification does not cover its libsircl {label} {entry['path']}")
     layer = json.loads(layer_raw)
     _require(layer.get("schema") == LAYER_SCHEMA and layer.get("version") == block["version"]
-             and layer.get("snapshot") == block["snapshot"]
+             and layer.get(source_field) == source
              and layer.get("nccl_api_version") == block["nccl_api_version"]
              and layer.get("fail_stop") == block["fail_stop"]
              and (layer.get("library") or {}).get("path") == block["library"]["path"]
@@ -200,7 +201,7 @@ def check_layer(image_id, parent_receipt_sha256, block, *, run):
                                                                for path, digest in installed.items()),
              "The image's verification does not cover every installed libsircl file")
     return {"schema": "sparkring-libsircl-admission/v1", "image_id": image_id, "version": block["version"],
-            "snapshot": block["snapshot"], "receipt_sha256": block["receipt"]["sha256"],
+            source_field: source, "receipt_sha256": block["receipt"]["sha256"],
             "files_verified": len(installed)}
 
 
@@ -212,20 +213,26 @@ def unavailable(image_value, document):
         return f"image {image_value.get('name')} carries no libsircl layer"
     block = image_lock.libsircl(image_value)
     if not block["fail_stop"]:
-        return fail_stop_missing(image_library(block["snapshot"]))
+        return fail_stop_missing(image_library(block))
     return fabric_unavailable(document)
 
 
-def image_library(snapshot):
-    """How a refusal names the libsircl of an image layer built from vendored snapshot ``snapshot``."""
-    return f"the image's libsircl (snapshot {snapshot[:8]})"
+def source_text(block):
+    """The source of a libsircl block in a plan or a refusal: ``source tree <12 digits>`` or ``snapshot <8>``."""
+    field, value = image_lock.libsircl_source(block)
+    return f"source tree {value[:12]}" if field == "source_tree" else f"snapshot {value[:8]}"
+
+
+def image_library(block):
+    """How a refusal names the libsircl of an image layer: by the source its lock block names."""
+    return f"the image's libsircl ({source_text(block)})"
 
 
 def fail_stop_missing(library):
     """Why a libsircl build without the fail-stop mode is refused; ``library`` names that build."""
     return (f"{library} has no fail-stop mode ({FAIL_STOP_VARIABLE}): vLLM's PyNccl checks only that each call was "
             "queued, and a wait timeout that poisons a communicator does not fail the step whose output it spoiled; "
-            f"use a libsircl built from a snapshot whose library reads {FAIL_STOP_VARIABLE}")
+            f"use a libsircl build whose library reads {FAIL_STOP_VARIABLE}")
 
 
 def fabric_unavailable(document):
@@ -451,7 +458,7 @@ def refusals(profile_environment, arguments):
 def library_environment(block):
     """The libsircl settings of every container: the checked library, fail-stop, its NCCL API level, the verbs
     transport and the receipt prefix."""
-    _require(block["fail_stop"], fail_stop_missing(image_library(block["snapshot"])))
+    _require(block["fail_stop"], fail_stop_missing(image_library(block)))
     return {LIBRARY_VARIABLE: block["library"]["path"], DIGEST_VARIABLE: block["library"]["sha256"],
             FAIL_STOP_VARIABLE: "1", "LIBSIRCL_NCCL_API_VERSION": str(NCCL_API_VERSION),
             "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RECEIPT": RECEIPT_PREFIX}
@@ -524,7 +531,7 @@ def plan_lines(value, notes=()):
              f"  libsircl group: {group_['name']} at positions {', '.join(map(str, group_['positions']))}; "
              f"{group_['lanes']} lanes per peer, {relays_text(group_)}",
              f"  Library: {block['library']['path']}, SHA-256 {block['library']['sha256'][:12]}, "
-             f"snapshot {block['snapshot'][:8]}; fail-stop on ({FAIL_STOP_VARIABLE}=1)",
+             f"{source_text(block)}; fail-stop on ({FAIL_STOP_VARIABLE}=1)",
              f"  Off: {OFF_TEXT}",
              f"  {NOT_QUALIFIED}"]
     if group_["cabling"] == "none":

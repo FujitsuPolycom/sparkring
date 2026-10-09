@@ -18,7 +18,7 @@ installer prints that status in every plan that selects it.
 
 | Part | Path | Status |
 |---|---|---|
-| Vendored source and its manifest | [`spark_transport/libsircl/`](../../spark_transport/libsircl/README.md), [`scripts/sync_libsircl.py`](../../scripts/sync_libsircl.py) | implemented |
+| Source of record | [`spark_transport/libsircl/`](../../spark_transport/libsircl/README.md) | implemented |
 | vLLM general plugin `libsircl` | [`integrations/vllm/libsircl/`](../../integrations/vllm/libsircl/README.md) | research-only |
 | Image layer `installer-libsircl-layer` | [`runtime/images/libsircl_layer.py`](../../runtime/images/libsircl_layer.py) | research-only; no image built |
 | Installer transport `libsircl` | [`runtime/common/libsircl.py`](../../runtime/common/libsircl.py) | research-only |
@@ -26,78 +26,46 @@ installer prints that status in every plan that selects it.
 
 ## Source placement
 
-`spark_transport/libsircl/` holds a vendored copy of one libsircl snapshot.
-A snapshot is a directory that libsircl's own workspace writes: `tree/` with
-the library's files, `FILES.sha256` (one `<sha256>  ./<path>` line per file)
-and `MANIFEST`. The SHA-256 of `FILES.sha256` is the snapshot's tree digest,
-and its first eight hexadecimal digits name the snapshot. The vendored copy
-is snapshot `e31abc5c` (tree digest
-`e31abc5ca510f592cd0e2d895d2134a70f26625fe23fe75cf2dffcde3c447cf1`,
-library version 0.6.0), which has the fail-stop mode
-([Fail-stop](#fail-stop)), the ring schedules from 8 MiB on a communicator
-whose ring closes over cables (the cycle plan), SIRCL 0.3.1's native
-sources, four kernel packs and SIRCL's point-to-point
-channels between two ranks of a larger communicator
+`spark_transport/libsircl/` is libsircl's source of record: the library is
+developed here, and git commits are its provenance. An image, a lock or a
+receipt names the source a library was built from by the git tree id of
+`spark_transport/libsircl` at that commit (`source_tree`, as
+`git rev-parse HEAD:spark_transport/libsircl` prints it). The library
+(version 0.6.0) has the fail-stop mode ([Fail-stop](#fail-stop)), the ring
+schedules from 8 MiB on a communicator whose ring closes over cables (the
+cycle plan), SIRCL 0.3.1's native sources, four kernel packs and SIRCL's
+point-to-point channels between two ranks of a larger communicator
 (`LIBSIRCL_P2P_CHANNELS=on`, off by default). Its route planner
 (`tools/site_routes.py`) also prints each rank's point-to-point windows
-(`LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES`). Status of that snapshot
-in this repository: **hardware-unverified**. Its STATUS.md records GPU
-emulation on one RTX 5090 workstation and runs of earlier snapshots on
-Sparks (cabled pairs, a path of four and the cycle of eight); the cycle plan
-has not run on Sparks. The installer's libsircl transport
+(`LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES`).
+
+The directory's history here starts from libsircl snapshot `e31abc5c`, a
+directory of the library's files that libsircl's development workspace
+wrote, identified by its tree digest (the SHA-256 of its `FILES.sha256` list,
+`e31abc5ca510f592cd0e2d895d2134a70f26625fe23fe75cf2dffcde3c447cf1`): the
+commit "Vendor libsircl snapshot e31abc5c" holds its files except its run
+logs (`verification/`) and its change requests to SIRCL's package
+(`requests/`), whose texts name that workspace's directories. STATUS.md
+names the snapshot each recorded run used by the first eight digits of its
+tree digest; the run logs it cites stay with the workstation that made them.
+Evidence: GPU emulation on one RTX 5090 workstation and runs of earlier
+snapshots on Sparks (cabled pairs, a path of four and the cycle of eight);
+the cycle plan has not run on Sparks. The installer's libsircl transport
 (`runtime/common/libsircl.py`) carries six routing variables per rank and
 refuses a planner row with others. For a group of four consecutive Sparks (a
 path of four, or four positions of the ring of eight) this snapshot's planner
 adds the two point-to-point variables, so the transport refuses that group;
 a pair and the whole ring of eight plan as before.
 
-The directory holds the snapshot's files byte for byte, except three kinds
-that stay with the snapshot:
-
-- compiled Python caches (`__pycache__/`);
-- `verification/`, the run evidence that STATUS.md summarizes. Its logs name
-  the workstation's local paths and the host names of the Sparks it ran on;
-- `requests/`, the library's change requests to SIRCL's own package, whose
-  landing scripts name directories of the workspace that wrote the snapshot.
-
-A few passages of the library's documents and of `SOURCE_SNAPSHOT.json`
-name that workspace's directories, among them a local Windows path. The sync
-script's `REWRITES` replaces them in the vendored copy (`README.md`,
-`STATUS.md`, `RUNBOOK.md` and `SOURCE_SNAPSHOT.json`), and the sync refuses a
-snapshot whose vendored text still holds a local Windows user path or such a
-reference afterwards. None of these files is an input of the library build or
-of the image layer.
-
-Two files beside the library's own describe the copy, and the sync script
-writes both:
-
-- `SNAPSHOT.sha256`: the snapshot's `FILES.sha256`, byte for byte, so its
-  SHA-256 is the tree digest and every file's digest stays checkable;
-- `SNAPSHOT.json` (`sparkring-libsircl-snapshot/v2`): the tree digest, the
-  library version, the number of vendored files, the exclusion rules, every
-  excluded path (`SNAPSHOT.sha256` holds their SHA-256) and every rewritten
-  file with its snapshot and vendored SHA-256.
-
 `.gitattributes` keeps the directory's bytes unconverted on every platform.
-Updates arrive only through the sync script, never by hand:
-
-```bash
-python3 scripts/sync_libsircl.py sync SNAPSHOT_DIRECTORY --tree-digest TREE_DIGEST
-python3 scripts/sync_libsircl.py check
-```
-
-`sync` requires the SHA-256 of the snapshot's `FILES.sha256` to equal the
-digest given on the command line and the one `MANIFEST` states, requires
-every file of `tree/` to match its line and every line to name a file, then
-replaces the directory's contents. It replaces only a directory that is
-absent, empty or a vendored copy (one holding a `SNAPSHOT.json` of a
-`sparkring-libsircl-snapshot` schema). `check` requires every vendored file
-to match `SNAPSHOT.sha256` (a rewritten file: the vendored SHA-256 that
-`SNAPSHOT.json` records for it), every listed file that is not excluded to be
-present, nothing else to be there and no vendored text to name the
-workspace's directories; a CPU test runs it, so CI refuses a hand edit. The
-release-safety scan (`scripts/check_release_safety.py`) reports a local
-Windows user path in any tracked file.
+The library carries two native sources of SIRCL byte for byte
+(`src/transport/sircl_roce_proxy.c`, `src/transport/sircl_p2p_proxy.c`); its
+Makefile and CMake build refuse a copy whose SHA-256 differs from the one
+recorded beside it. CI's `libsircl` job builds the library and runs its CPU
+checks (`make check`, the route planner's tests against this repository's
+SIRCL package included). The release-safety scan
+(`scripts/check_release_safety.py`) reports a local Windows user path in any
+tracked file.
 
 The repository's [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)
 (section 18) and [NOTICE](../../NOTICE) name libsircl's components: its
@@ -116,7 +84,7 @@ lock, normally the SIRCL image
 derived image's v3 lock. It stacks on that image as a separate layer instead
 of extending the SIRCL layer:
 
-- libsircl has its own version and snapshot cadence. A separate layer
+- libsircl has its own version and release cadence. A separate layer
   rebuilds only its own files; the SIRCL wheel, native libraries, receipts and
   the SIRCL layer builder's v3 lock stay byte for byte those of the parent.
 - One image then carries the prepared transport, SIRCL ring sessions and
@@ -131,7 +99,7 @@ The layer adds:
 
 | Image path | Content |
 |---|---|
-| `/opt/sparkring/libsircl/lib/libsircl.so.<version>` | the library, built from the vendored tree |
+| `/opt/sparkring/libsircl/lib/libsircl.so.<version>` | the library, built from the committed source |
 | `/opt/sparkring/libsircl/LICENSE`, `NOTICE`, `vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE`, `LICENSES/CUDA-NOTICE.txt`, `LICENSES/rdma-core-verbs.txt` | the notices every binary copy carries |
 | `<site-packages>/sparkring_libsircl.py` and `sparkring_libsircl-<version>.dist-info/` | the vLLM general plugin `libsircl` |
 | `/opt/sparkring/receipts/libsircl-layer.json` | the layer receipt, `sparkring-libsircl-layer/v1` |
@@ -142,17 +110,19 @@ external-base receipt records `vllm/__init__.py`, as for the SIRCL layer. No
 
 Actions, none of which pushes or publishes an image:
 
-1. `natives --parent-lock LOCK --output DIR` checks the vendored tree against
-   `SNAPSHOT.sha256`, copies it into a network-less container of the parent
+1. `natives --parent-lock LOCK --output DIR` reads every file git tracks
+   under `spark_transport/libsircl` at `HEAD` from git's objects (it refuses
+   to start while tracked files there have changes not committed), copies
+   them into a network-less container of the parent
    image at the fixed path `/tmp/libsircl`, runs `make -j BUILD=build` and
    `make check BUILD=build` there with `LD_PRELOAD` unset, and saves the
    library, the check log and `natives.json`
-   (`sparkring-libsircl-natives/v1`: parent image, snapshot, version,
+   (`sparkring-libsircl-natives/v1`: parent image, source tree id, version,
    library SHA-256, compiler, kernel pack SHA-256 values). The build uses the
    prebuilt kernel packs, so it needs the image's gcc, make, Python 3 and
    rdma-core headers, and no nvcc. The library's debug information names the
    build directory, so the fixed path makes its bytes depend only on the
-   image's compiler and the tree: two x86_64 builds of `ba5a337b` at one path
+   image's compiler and the source: two x86_64 builds of snapshot `ba5a337b` at one path
    gave identical bytes, and a build at another path did not.
 2. `prepare --parent-lock LOCK --natives DIR --output CONTEXT` reads the
    parent's external-base and toolchain receipts (copies, or the local parent
@@ -176,12 +146,16 @@ Actions, none of which pushes or publishes an image:
 The lock is the parent's v3 lock with the built image's identity, the two
 re-recorded receipt digests, `libsircl` added to `transports` and a
 `libsircl` block ([image_lock.py](../../runtime/common/image_lock.py)):
-version, snapshot tree digest, library path and SHA-256, NCCL API level,
+version, the source's git tree id (`source_tree`), library path and SHA-256, NCCL API level,
 whether the library has the fail-stop mode (its bytes name
 `LIBSIRCL_FAIL_STOP`), plugin module path and SHA-256, and layer receipt
-path and SHA-256. A v3 lock
-without libsircl has no `libsircl` field, so every existing lock validates
-unchanged.
+path and SHA-256. A lock of a layer built while this repository vendored
+libsircl snapshots names the snapshot's tree digest (`snapshot`) in place of
+`source_tree`; image `27e9f75c0d09`'s locks
+([record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md))
+name snapshot `a3477af2` that way, and admission compares the field the lock
+names with the layer receipt's. A v3 lock without libsircl has no `libsircl`
+field, so every existing lock validates unchanged.
 
 ## How vLLM loads libsircl
 
@@ -294,9 +268,9 @@ which the library ends the process on a recorded asynchronous error, and
 requires a library that has the mode: the layer records `fail_stop` in the
 lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`,
 and the stock-image preflight reads the same mark from the host library. The
-vendored snapshot `e31abc5c` reads the variable (`src/engine.c`), so a layer
-or host library built from it passes the gate; a library built from a
-snapshot without the mode is refused, naming the reason.
+library reads the variable (`src/engine.c`), so a layer or host library built
+from this repository's source passes the gate; a library built from a source
+without the mode is refused, naming the reason.
 
 ### Container settings
 
@@ -369,7 +343,7 @@ The plan says what runs and that it is research-only, for example:
 ```text
 Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on libsircl 0.6.0; SIRCL's adapter and RoCEnante are off
   libsircl group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane
-  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot a3477af2; fail-stop on (LIBSIRCL_FAIL_STOP=1)
+  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, source tree 3e51d70dd67f; fail-stop on (LIBSIRCL_FAIL_STOP=1)
   Off: vLLM's custom all-reduce, torch and NCCL symmetric memory, FlashInfer all-reduce and B12X PCIe all-reduce, so PyNccl carries the device collectives
   Research-only: no serving A/B has measured libsircl; torch.distributed's own collectives stay on the image's NCCL
   Note: torch.distributed's NVIDIA NCCL cannot connect this group's ranks that share no cable; a collective vLLM sends through torch instead of PyNccl would wait at NCCL's connection setup
@@ -399,7 +373,7 @@ The plan needs on every Spark of the group:
 - the image, loaded locally (`--pull never` everywhere);
 - the host build of libsircl at `LIBRARY`, the same bytes on every Spark:
   `libsircl_layer.py host-library --builder-image ID --output DIR` builds it
-  from the vendored source in a network-less container of a builder image
+  from the committed source in a network-less container of a builder image
   that has gcc, make, Python 3 and the rdma-core headers (an installer image
   has them) and names its content-addressed path,
   `/var/lib/sparkring/libsircl/<sha256>/libsircl.so.<version>`; the stock
@@ -499,8 +473,8 @@ PARENT_LOCK=$W/sircl-lock.json
 PARENT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' $PARENT_LOCK)
 RELEASE=dev-20261008-kraken-csf-sircl-libsircl-cuda1342-nccl2323-status034
 
-# 1. The vendored tree matches its snapshot. Expect "files": 124, "snapshot": "e31abc5c".
-python3 scripts/sync_libsircl.py check
+# 1. The libsircl source the layer builds: the git tree id it records.
+git rev-parse HEAD:spark_transport/libsircl && git status --porcelain --untracked-files=no spark_transport/libsircl
 
 # 2. Build libsircl in the parent image. Expect libsircl.so.0.6.0, make check passed and the image's gcc line.
 python3 runtime/images/libsircl_layer.py natives --parent-lock $PARENT_LOCK --output $W/libsircl-natives
