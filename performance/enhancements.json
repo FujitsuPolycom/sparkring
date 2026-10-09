@@ -85,7 +85,7 @@
       "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
       "transports": ["sircl", "prepared", "libsircl"],
       "description": "The Kraken CSF sources with a SIRCL 0.3.0 layer built from repository commit ee4466b7 and libsircl 0.6.0 (fail-stop, NCCL API 22705); its v3 lock lists twelve profiles and SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. Built with the libsircl layer builder; its lock is not in the repository",
-      "evidence": ["docs/architecture/libsircl.md", "private record 2026-10-08: matrix host conditions and image lock"]
+      "evidence": ["docs/architecture/libsircl.md", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"]
     },
     "glm53-plugins-af06e272": {
       "label": "GLM-5.3 plugin layer image (af06e272)",
@@ -96,6 +96,16 @@
       "transports": ["sircl", "prepared", "libsircl"],
       "description": "The SIRCL 0.3.0 and libsircl image (816c6d6a) with the GLM-5.3 plugin layer of runtime/images/derive_glm53_plugins.py, which adds the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0; image af06e272, whose full ID and lock are not in the repository. A lock that the layer's record writes from the parent's v3 lock lists both plugins in vllm_plugins",
       "evidence": ["runtime/images/derive_glm53_plugins.py", "profiles/glm53-nvfp4-tp8/README.md"]
+    },
+    "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp": {
+      "label": "SIRCL 0.3.1, libsircl and GLM-5.3 plugin image (27e9f75c)",
+      "release": null,
+      "image_id": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+      "short_id": "27e9f75c0d09",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The Kraken CSF sources (the composition of image 816c6d6a) with a SIRCL 0.3.1 layer, libsircl 0.6.0 from snapshot a3477af2 (fail-stop, NCCL API 22705) and the GLM-5.3 plugin layer with the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0 and glm_dcp_decode_comm 2.0.0; SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. Built on one Spark and loaded on the others, not published; its two v3 locks are in the image record. Every entry that image 816c6d6a or af06e272 carries, it carries too",
+      "evidence": ["performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md"]
     },
     "shared-2026.09.3": {
       "label": "shared 2026.09.3",
@@ -190,7 +200,7 @@
       "parallelism": {"supported": [{"tp": [2, 4, 8], "dcp": "any"}]},
       "enable": {"launcher": "sudo sparkring install --profile PROFILE --image-lock LOCK, with an image lock (v3) whose image carries the SIRCL layer and a fabric document that lists sircl; NCCL stays off unless --nccl auto"},
       "detect": [{"transport": "sircl"}],
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": null,
       "measurements": [
@@ -223,7 +233,7 @@
         {"env": "SIRCL_SCATTER_SCHEDULE", "equals": "ring"}
       ],
       "requires": ["sircl-transport"],
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": null,
       "measurements": [
@@ -259,7 +269,7 @@
         {"env": "SIRCL_SCATTER_SCHEDULE", "equals": "ring"}
       ],
       "requires": ["sircl-transport"],
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": null, "summary": "not measured against SIRCL's defaults on a pair; the serving configurations that ran them are in the evidence"},
       "measurements": [
@@ -296,7 +306,7 @@
         {"env": "SIRCL_POST_ORDER", "equals": "ring-farthest", "unset_means": "ring-farthest"}
       ],
       "requires": ["sircl-transport"],
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": null,
       "measurements": [
@@ -327,7 +337,7 @@
         {"env": "SIRCL_COLUMN_GATHER", "in": ["1", "on", "true"], "unset_means": "1"}
       ],
       "requires": ["sircl-transport"],
-      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "implemented",
       "gain": null,
       "measurements": [
@@ -353,7 +363,7 @@
         {"env": "SIRCL_FUSED_NORM", "equals": "1"}
       ],
       "requires": ["sircl-transport"],
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 9, "summary": "TP8/DCP4, 4 streams, 1 MiB dispatch ceiling: 41.3 steps/s, +9 %; +2 % at 1 stream with the 128 KiB ceiling; in the 1 MiB run 1-stream tok/s fell 46.8 -> 38.4"},
       "measurements": [
@@ -384,7 +394,7 @@
       ],
       "requires": ["sircl-transport"],
       "trade_off": "it needs 12 link slots of 2 MiB, which replace the cycle-8 row's 16 slots of 512 KiB (sircl-cycle8-tuning-row); the two were not measured together",
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 3.7, "summary": "TP8/DCP4: 16K prefill 1,327 -> 1,376 tok/s (+3.7 %), decode unchanged"},
       "measurements": [
@@ -415,7 +425,7 @@
       ],
       "requires": ["sircl-transport"],
       "trade_off": "decode -7 % at 8 streams; NCCL runs on the fabric",
-      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 13, "summary": "TP8/DCP4: 16K prefill 1,274 -> 1,606 tok/s (+26 %) against the SIRCL settings of that run and +13 % against the best NCCL-free prefill since (1,423); decode within 1-3 % at 1-4 streams, -7 % at 8"},
       "measurements": [
@@ -474,7 +484,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": "8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+2.5 % at 8 streams", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T3"},
         {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "matrix campaigns of 2026-10-08 ran with it: SM 2,405-2,411 MHz read on every Spark", "evidence": "private record 2026-10-08: matrix host conditions and image lock"}
       ],
-      "evidence": ["private record 2026-10-05..08: GLM-5.3 TP8 overnight test series", "private record 2026-10-08: matrix host conditions and image lock"],
+      "evidence": ["private record 2026-10-05..08: GLM-5.3 TP8 overnight test series", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
       "profiles": []
     },
     {
@@ -564,7 +574,7 @@
       "detect": [{"env": "B12X_W4A16_SMALL_M_OCCUPANCY", "equals": "2"}],
       "requires": ["b12x-w4a16-experts"],
       "trade_off": "GLM-5.3 prefill -2.9 %",
-      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": null,
       "measurements": [
@@ -721,7 +731,7 @@
       "enable": {"speculative": {"quantization_config": {"linear": "mxfp8", "moe": "nvfp4_a16", "ignore": ["*kv_b_proj", "*.indexer.*"]}}},
       "detect": [{"arg": "--speculative-config", "json": "quantization_config.linear", "equals": "mxfp8"}],
       "requires": ["glm53-mtp-speculative"],
-      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034"]},
+      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": null, "summary": "under measurement on 2026-10-08 (MTP2, TP8/DCP4, image 816c6d6a7e96)"},
       "measurements": [],
@@ -836,7 +846,7 @@
       "parallelism": {"supported": [{"tp": [8], "dcp": [1, 2, 4]}]},
       "enable": {"environment": {"GLM_DSA_INDEXER_SPLIT": "1", "GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES": "1"}, "plugin": "glm_dsa_indexer_split 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM_DSA_INDEXER_SPLIT", "equals": "1"}],
-      "provided_by": {"images": ["glm53-plugins-af06e272"]},
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 7, "summary": "with glm53full_speedups on image af06e272: prefill about +7 % (the set's decode steps/s +10-15 % come from glm53full_speedups); alone, as workspace plugin 1.0.0 on image aba309e4610c: 16K prefill 1,298 -> 1,402 tok/s (+8 %), +9 % at 64K, +8 % at 128K, decode unchanged, outputs bit-exact"},
       "measurements": [
@@ -898,7 +908,7 @@
       "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
       "enable": {"environment": {"GLM53FULL_LATENT_SHARD": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM53FULL_LATENT_SHARD", "equals": "1"}],
-      "provided_by": {"images": ["glm53-plugins-af06e272"]},
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the row-parallel MTP eh_proj and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; not measured alone"},
       "measurements": [
@@ -920,7 +930,7 @@
       "enable": {"environment": {"GLM53FULL_EH_PROJ_TP": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
       "detect": [{"env": "GLM53FULL_EH_PROJ_TP", "equals": "1"}],
       "requires": ["glm53-mtp-speculative"],
-      "provided_by": {"images": ["glm53-plugins-af06e272"]},
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
       "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the latent split and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; earlier, with MTP3 and the latent split on image aba309e4610c: about 6 % faster together, acceptance 96 / 89 / 72 %"},
       "measurements": [
@@ -974,22 +984,23 @@
     {
       "id": "glm53-dcp-decode-collectives",
       "title": "DCP decode collectives",
-      "description": "Faster decode-context-parallel decode collectives for GLM-5.3, measured with a workspace plugin on an RDMA transport outside SparkRing. No SIRCL version exists; a clean-room port starts from SIRCL's own DCP collectives (adapter shim dcp_all_to_all) and must not be derived from that plugin's code.",
+      "description": "Decode-context-parallel decode collectives for GLM-5.3 on SIRCL DCP sessions: the vLLM general plugin glm_dcp_decode_comm 2.0.0 of the GLM-5.3 plugin layer (integrations/vllm/glm_dcp_decode_comm) builds the DCP query in one kernel, runs the DCP session's collectives on a communication stream, runs the indexer's wk GEMM on a side stream, converts the indexer selection to slots once per indexer layer and packs the all-to-all combine inside the scatter, each behind its own switch and each exact against the image's own path. Profile glm53-nvfp4-tp8 loads it with every switch at 0. A workspace plugin on an RDMA transport outside SparkRing measured a gain; on image 27e9f75c the plugin's five items gave no consistent decode gain in one measured start per setting.",
       "category": "transport",
       "sides": ["decode"],
       "models": [
         {"name": "GLM-5.3"}
       ],
       "parallelism": {"supported": [{"tp": [8], "dcp": [2, 4, 8]}]},
-      "enable": {"note": "no implementation in SparkRing; after a SIRCL port, its switch"},
-      "detect": null,
-      "provided_by": {"images": [], "port": "a SIRCL implementation written under the clean-room rule; the measured plugin runs on a transport SparkRing does not carry"},
+      "enable": {"environment": {"GLM_DCP_DECODE_QUERY_PACK": "1", "GLM_DCP_DECODE_OVERLAP": "1", "GLM_DCP_DECODE_WK_OVERLAP": "1", "GLM_DCP_DECODE_SELECTION_REUSE": "1", "GLM_DCP_DECODE_A2A_FUSED": "1"}, "note": "the plugin layer's glm_dcp_decode_comm in VLLM_PLUGINS; GLM_DCP_DECODE_AUDIT=1 also runs the image's own path beside each item and counts differing words"},
+      "detect": [{"env": "GLM_DCP_DECODE_QUERY_PACK", "equals": "1"}, {"env": "GLM_DCP_DECODE_OVERLAP", "equals": "1"}, {"env": "GLM_DCP_DECODE_WK_OVERLAP", "equals": "1"}, {"env": "GLM_DCP_DECODE_SELECTION_REUSE", "equals": "1"}, {"env": "GLM_DCP_DECODE_A2A_FUSED", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp"]},
       "status": "research-only",
-      "gain": {"percent": 2.5, "summary": "+1.5 % at 1 stream, +2.5 % at 2, neutral at 4-8 (16K); +4.9 % at 64K"},
+      "gain": {"percent": null, "summary": "the plugin on image 27e9f75c: decode engine steps/s -6.2 % to +3.6 % of the switches off across 12 cells, no consistent gain, one measured start each; a workspace plugin outside SparkRing measured +1.5-4.9 %"},
       "measurements": [
-        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+1.5 % at 1 stream, +2.5 % at 2, neutral at 4-8 at 16K; +4.9 % at 64K", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T35"}
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+1.5 % at 1 stream, +2.5 % at 2, neutral at 4-8 at 16K; +4.9 % at 64K", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T35"},
+        {"image": "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "tp": 8, "dcp": 4, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "glm_dcp_decode_comm 2.0.0, five switches on against off, arm S+, GPU clocks locked, one measured start each: engine steps/s -6.2 % to +3.6 % (16K: 19.72 / 27.87 / 42.05 / 58.55 against 20.04 / 28.13 / 40.59 / 58.39 at 1 / 2 / 4 / 8 streams); 16K and 32K time to first token higher with them on; an audit start reported 0 differing words in its five checks on all eight ranks", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md"}
       ],
-      "evidence": ["spark_transport/sircl/sparkring_sircl/vllm/shims.json", "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
+      "evidence": ["integrations/vllm/glm_dcp_decode_comm/README.md", "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md", "spark_transport/sircl/sparkring_sircl/vllm/shims.json", "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
       "profiles": []
     },
     {

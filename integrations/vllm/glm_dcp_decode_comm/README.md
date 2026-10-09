@@ -18,7 +18,9 @@ Status: **research-only**.
 | CPU suite (`tests/`) | host only; the image's vLLM and b12x files and the pinned SIRCL tree on disk; SIRCL's CUDA stand-in for the kernel's host side | the five flags in all 32 combinations on indexer and non-indexer layers, the wire format, the code edits, the pins, every refusal path, and the import hook beside `glm53full_speedups`'s hook in either order |
 | GPU checks (`tests/gpu_checks.py`), RTX 5090 | one RTX 5090 (SM120, not GB10) under WSL; torch 2.10.0+cu128, Triton 3.6.0; the image's kernels from copies of serving image 816c6d6a7e96's `common/kernels.py` and `dcp.py`; SIRCL's emulated DCP groups over its in-memory verbs stand-in | kernels: 12 of 12 checks, 0 differing words (`rope_cat`: 36 cases; `wire_combine`: 2, 4 and 8 ranks, 4 to 16 heads, both LSE bases). Packed all-to-all on `path:0-3` and `path:0-1`: 11 of 11 checks each, eager at 1 to 31 rows and in CUDA graphs with 3 replays, every rank equal to the image's combine on SIRCL. Registration: not run (no pinned vLLM). |
 | GPU checks, GB10 | serving image 816c6d6a7e96 on one Spark, 2026-10-09 (private record: GB10 gate log of these checks) | kernels: 13 of 13 checks, 0 differing words. Packed all-to-all on `path:0-3` and `path:0-1`: 13 of 13 checks each. Registration: 5 of 5 checks in each of the 4 flag sets, vLLM's attention module imported in 10 to 13 s with lazy CUDA module loading. |
-| Serving qualification | GLM-5.3 at TP8/DCP4 on the eight-Spark ring with `GLM_DCP_DECODE_AUDIT=1` | not run |
+| Audit while serving, GB10 | image 27e9f75c0d09 (SIRCL 0.3.1), profile `glm53-nvfp4-tp8` at TP8/DCP4 on the eight-Spark ring through the serving A/B runner, the five switches and `GLM_DCP_DECODE_AUDIT=1`, one warm-up start with CUDA graphs ([record](../../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md)) | 0 differing words in each of the five checks on all eight ranks; no `PatchRefused` |
+| Decode effect, GB10 | the same image, profile and Sparks, the five switches on against off, arm `S+`, GPU clocks locked, one measured start each ([record](../../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md)) | decode engine steps/s -6.2 % to +3.6 % of the switches off across 12 cells: no consistent gain; time to first token at 16K and 32K higher with them on |
+| Serving qualification | an installer deployment with the switches on | not run |
 
 The GPU checks ran against SIRCL 0.3.0, the tree of image 816c6d6a7e96,
 and on a package that differs from this one in its SIRCL pins, the import
@@ -26,8 +28,8 @@ hook's recursion guard (`PatchOnImport.find_spec`), one refusal message and
 documentation, with check scripts that differ in module names and in the
 loader's lookup of the image sources. The CPU suite covers both package code
 changes and passes against SIRCL 0.3.1 ("Pins" lists what that release
-changes in the pinned files). No measurement of the plugin's effect on decode
-step time exists.
+changes in the pinned files). The decode record is the only measurement of the plugin's effect on decode
+step time; with one measured start per setting it shows no consistent gain.
 
 ## Requirements
 
