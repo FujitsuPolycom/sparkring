@@ -434,11 +434,12 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   `glm53-flash-csf-tp8` needs an image whose vLLM is SIRCL's pinned build
   `sparkring-kraken-beta-20261007-bc9ea774`, listed in the lock's
   `sircl.vllm_pins`; the installer refuses it on any other image.
-  `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split` and
-  `glm53full_speedups`, which the GLM-5.3 plugin layer
+  `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
+  `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
+  off), which the GLM-5.3 plugin layer
   ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
-  adds; it needs an image whose lock lists them in `vllm_plugins`, and the
-  installer refuses it on any other image.
+  adds; it needs an image whose lock lists all three in `vllm_plugins`, and
+  the installer refuses it on any other image.
 - All installer profiles run with SparkCache off and vLLM's native prefix
   cache on.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
