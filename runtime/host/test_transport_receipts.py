@@ -238,6 +238,35 @@ def test_each_receipt_names_the_deployments_nccl_mode_and_the_verdict_states_the
     assert "rank 1 group tp: the receipt names NCCL mode auto, the deployment sets never" in verdict["problems"]
 
 
+def builtin_stats(shape):
+    """Session statistics of a session that took SIRCL's built-in plan for ``shape``."""
+    return {"tuning": {"table": "f" * 16, "path": f"builtin:{shape}",
+                       "key": {"shape": shape, "world": 8, "lanes": 2, "max_relays": 3},
+                       "decisions": {"all_reduce/eager/ring piece 524288": 161}}}
+
+
+def test_a_session_on_its_shapes_built_in_plan_matches_a_plan_without_a_measured_table():
+    from runtime.common.test_transport import eight_spark_image
+    lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
+    assert receipts.transport.session_table(section) is None
+
+    def reports(stats):
+        expected = receipts.transport.expected_session_settings(section)
+        return [report(rank, [dict(receipt(rank, tuning="f" * 16, stats={**expected, **stats}), world=8),
+                              dict(receipt(rank, group=f"dcp:{rank // 4}"), world=4)]) for rank in range(8)]
+
+    verdict = receipts.evaluate(lock, reports(builtin_stats("cycle:8")), now=lambda: 0)
+    assert verdict["verdict"] == "as-expected", verdict["problems"]
+    assert any(line.startswith("tuning: SIRCL's built-in plan for cycle:8 (table ffffffffffffffff) decides for "
+                               "rank 0 group tp, rank 1 group tp") for line in verdict["lines"]), verdict["lines"]
+    # A measured table the plan did not match, or a built-in source for a shape without a built-in plan,
+    # is still another table.
+    for stats in ({"tuning": {"table": "f" * 16, "path": "/tables/cycle8.json"}}, builtin_stats("cycle:6")):
+        verdict = receipts.evaluate(lock, reports(stats), now=lambda: 0)
+        assert any(problem.startswith("rank 0 group tp: tuning table ffffffffffffffff, the plan matched none")
+                   for problem in verdict["problems"]), verdict["problems"]
+
+
 def test_with_decode_context_parallelism_every_rank_needs_its_decode_context_parallel_receipt():
     from runtime.common.test_transport import eight_spark_image
     lock, section = sircl_deployment("glm53-nvfp4-tp8", "cycle", 8, list(range(8)), image=eight_spark_image())
