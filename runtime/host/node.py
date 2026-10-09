@@ -667,9 +667,15 @@ def adopt(config, *, root="/", collect=_collect_local, run=subprocess.run, retir
     return result
 
 
-def workspace(operator, name, *, root="/"):
-    import pwd
-    account = pwd.getpwnam(operator)
+def workspace(operator, name, *, root="/", account=None):
+    """Create the cluster's workspace (``/srv/sparkring/<name>``) and the controller state directory for the SSH
+    operator, or accept them when they exist and belong to that operator.
+
+    The controller state directory (``/var/lib/sparkring/controller``) may also belong to root: a setup whose
+    operator signed in as root left it so, and every command that uses it runs as root."""
+    if account is None:
+        import pwd
+        account = pwd.getpwnam(operator)
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,39}", name):
         raise ValueError("Choose a lowercase cluster name")
     # Source stagers claim empty per-model workspaces below this parent.
@@ -677,7 +683,8 @@ def workspace(operator, name, *, root="/"):
     controller = location(root, "/var/lib/sparkring/controller")
     for directory in (path, controller):
         if directory.exists():
-            if directory.stat().st_uid != account.pw_uid:
+            owners = (account.pw_uid, 0) if directory == controller else (account.pw_uid,)
+            if directory.stat().st_uid not in owners:
                 raise ValueError("State/workspace belongs to another operator: " + str(directory))
         else:
             directory.mkdir(parents=True, mode=0o700)

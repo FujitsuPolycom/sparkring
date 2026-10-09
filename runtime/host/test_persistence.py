@@ -766,3 +766,26 @@ def test_up_of_a_named_deployment_refuses_while_an_installation_that_completed_m
         controller.lifecycle(["up", UP_PROFILE, "--instance", "candidate", "--execute"])
     assert (UP_PROFILE + "-candidate", "up") not in lifecycle_calls
     assert installer.read(tmp_path / "active.json")["path"] == str(installed)
+
+
+def test_the_workspace_accepts_a_root_owned_controller_directory(tmp_path, monkeypatch):
+    """A setup whose operator was root left the controller state root-owned; another operator's is refused."""
+    from types import SimpleNamespace
+    from runtime.host import node
+    controller = tmp_path / "var/lib/sparkring/controller"
+    controller.mkdir(parents=True)
+    owner = controller.stat().st_uid
+    real = Path.stat
+
+    def stat(self, *args, **kwargs):
+        found = real(self, *args, **kwargs)
+        return SimpleNamespace(st_uid=0, st_mode=found.st_mode) if self == controller else found
+    monkeypatch.setattr(Path, "stat", stat)
+    monkeypatch.setattr(node.os, "chown", lambda *args: None, raising=False)
+    account = SimpleNamespace(pw_uid=owner + 4242, pw_gid=0)
+    with pytest.raises(ValueError, match="another operator"):
+        # The cluster workspace exists and belongs to another account.
+        (tmp_path / "srv/sparkring/ring8").mkdir(parents=True)
+        node.workspace("operator", "ring8", root=tmp_path, account=account)
+    (tmp_path / "srv/sparkring/ring8").rmdir()
+    assert node.workspace("operator", "ring8", root=tmp_path, account=account)["controller"] == str(controller)
