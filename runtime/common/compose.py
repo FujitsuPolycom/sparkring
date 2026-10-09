@@ -587,9 +587,29 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     return manifest, files
 
 
+def unreadable_checkpoint(profile_id, checkpoint, image_runtime=None):
+    """Why the image of a Compose export of ``profile_id`` cannot read ``checkpoint``, or None.
+
+    A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF
+    checkpoint (image_lock.CHECKPOINT_BUILDS), needs an image whose lock
+    lists one of them, as `sparkring install` requires. ``image_runtime`` is
+    the export's image lock; None names the profile's default lock.
+    """
+    lock = image_runtime if image_runtime is not None else installer_image_runtime(profile_id)
+    if lock is None:
+        return None
+    from runtime.common import image_lock, setup
+    return image_lock.checkpoint_problem(lock, setup.selection(profile_id, checkpoint))
+
+
 def render(profile_id, site, output, *, local_image_id=None, local_source_extension=None,
            local_kv_cache_gib=None, local_master_port=None, image_runtime=None, checkpoint=None,
            serving=None):
+    # The installer renders its deployments through build, after its own check
+    # of the checkpoint against the full image lock (install_workflow).
+    problem = unreadable_checkpoint(profile_id, checkpoint, image_runtime)
+    if problem:
+        raise ValueError(problem)
     manifest, files = build(profile_id, site, local_image_id=local_image_id,
                           local_source_extension=local_source_extension,
                           local_kv_cache_gib=local_kv_cache_gib, local_master_port=local_master_port,

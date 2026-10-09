@@ -54,6 +54,7 @@ services:
     - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X"}'
     - --compilation-config
     - '{"mode":0,"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32],"max_cudagraph_capture_size":32}'
+    - --async-scheduling
     - --pipeline-parallel-size
     - '1'
     - --decode-context-parallel-size
@@ -111,6 +112,7 @@ services:
       B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
       B12X_ROCE_PAIR_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 0=0/1
+      B12X_W4A16_SMALL_M_OCCUPANCY: '1'
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
@@ -152,6 +154,7 @@ services:
       TVM_FFI_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/tvm-ffi
       VLLM_ALLREDUCE_USE_FLASHINFER: '0'
       VLLM_ALLREDUCE_USE_SYMM_MEM: '0'
+      VLLM_B12X_KDA_PREFILL_COALESCING: '0'
       VLLM_B12X_MLA_CKV_GATHER: auto
       VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS: '524288'
       VLLM_B12X_MOE_FP4_FORCE_A16: '0'
@@ -176,7 +179,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: fa5acdbaaf12f55906942b0ae63b689cc947d8f5cc31c379b11230f0727784b3
+      io.sparkring.deployment: a699af47110cbcb90ae378da410835fead45ef803a3fd764ac2aaed6de471b73
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

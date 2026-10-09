@@ -29,7 +29,9 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 The checkpoint needs an image whose vLLM reads CSF scales: SIRCL's pinned
 vLLM build `sparkring-kraken-beta-20261007-bc9ea774`, which the image lock
 lists in `sircl.vllm_pins`. The installer refuses the profile on any other
-image.
+image. On such an image the GLM-5.3-Flash profiles of two and four Sparks
+install the same checkpoint by default, as `csf`
+([default checkpoint by profile](../glm53-checkpoints.md#default-checkpoint-by-profile)).
 
 Each Spark holds the whole checkpoint, 165.5 GiB. A blank Spark needs about
 226 GiB free: the checkpoint, the serving image and the compile cache

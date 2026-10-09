@@ -17,10 +17,12 @@ if str(ROOT) not in sys.path:
 from performance.harnesses.serving_ab import measure, remote, report, setlock, spec, verify  # noqa: E402
 from runtime.common import compose, image_lock, qwen_flash_next  # noqa: E402
 from runtime.common.container_spec import docker_create  # noqa: E402
+from scripts import check_enhancements  # noqa: E402
 
 SIRCL = ROOT / "spark_transport" / "sircl"
 if str(SIRCL) not in sys.path:
     sys.path.insert(0, str(SIRCL))
+from sparkring_sircl.vllm import fabric as sircl_fabric  # noqa: E402
 from sparkring_sircl.vllm.serve import plan as serve_plan  # noqa: E402
 SECCOMP = ROOT / "runtime" / "common" / "loader-seccomp.json"
 CACHE_PLACEHOLDER = "/serving-ab-cache"
@@ -89,6 +91,49 @@ def bundle(site_path: str, positions: list[int], run_id: str, nccl: str, args, s
     if result.returncode:
         raise SystemExit(f"bundle {run_id}: {result.stderr.strip()[-1500:]}")
     return json.loads(result.stdout)
+
+
+def nccl_dcp_problem(ring_size: int, positions: list[int], dcp: int) -> str | None:
+    """Why NCCL cannot carry the decode-context-parallel groups of ``positions``, or None.
+
+    The groups are consecutive blocks of ``dcp`` ranks, as SIRCL's bundle forms them. NCCL may run a group only
+    where consecutive members share a cable (sparkring_sircl.vllm.fabric.NcclPolicy), and arm N gives NCCL every
+    collective, the decode-context-parallel ones included."""
+    if dcp <= 1:
+        return None
+    layout = sircl_fabric.Layout.ring(ring_size)
+    for start in range(0, len(positions), dcp):
+        members = positions[start:start + dcp]
+        group = sircl_fabric.describe_group(layout, members, parent=positions)
+        if group.nccl_policy is sircl_fabric.NcclPolicy.NONE:
+            return (f"decode-context parallelism {dcp} forms a group of positions {members} on the ring of "
+                    f"{ring_size}, where NCCL may not run ({group.nccl_reason})")
+    return None
+
+
+def nccl_bundle(args, ring_size: int, positions: list[int], run: str, dcp: int) -> dict:
+    """The ``--nccl auto`` bundle arm N takes its NCCL variables from, after refusing a decode-context-parallel
+    group NCCL cannot carry; the bundle sees the same decode-context parallelism as the SIRCL arms'."""
+    problem = nccl_dcp_problem(ring_size, positions, dcp)
+    if problem:
+        raise SystemExit(f"arm N: {problem}")
+    return bundle(args.site, positions, f"{run}-auto", "auto", args, dcp=dcp)
+
+
+def fused_norm_notes(environment: dict, arms: list[str]) -> list[str]:
+    """What arm S runs of the fused all-reduce and RMSNorm when the profile pins SIRCL_FUSED_NORM.
+
+    Arm S is SIRCL with its off-by-default paths off, but its bundle takes the switches the profile pins
+    (``bundle --profile``), as the installer applies them, and SIRCL's bundle refuses ``--fused-norm off``
+    against a pin of 1. Such a profile's arm S therefore runs the fused path, like S+."""
+    settings = serve_plan.profile_settings(environment)
+    if "S" not in arms or "fused_norm" not in settings:
+        return []
+    value = "1" if settings["fused_norm"] else "0"
+    note = f"arm S runs SIRCL_FUSED_NORM={value}, which the profile pins"
+    if settings["fused_norm"]:
+        note += "; arms S and S+ run the same SIRCL switches"
+    return [note]
 
 
 def decode_context(profile: dict, bases: list[list[str]], requested: int | None) -> tuple[list[str], int]:
@@ -195,6 +240,17 @@ def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) 
     return deviations, applied
 
 
+def catalog_warnings(commands: dict) -> list[str]:
+    """The enhancement catalog's check warnings (scripts/check_enhancements.py) on each arm's rank-0 command,
+    such as MXFP8 or NVFP4 dense linears without --linear-backend, which run on a slow default kernel."""
+    found = set()
+    for ranks in commands.values():
+        tokens = ranks[0]
+        found.update(check_enhancements.setting_warnings(spec.environment(tokens),
+                                                         tokens[spec.image_index(tokens) + 1:]))
+    return sorted(found)
+
+
 def build_plan(args) -> dict:
     site = remote.load_site(args.site)
     positions = positions_of(args.positions)
@@ -251,7 +307,8 @@ def build_plan(args) -> dict:
     bundles = {arm: bundle(args.site, positions, f"{run}-{spec.slug(arm)}", "never", args, fused_norm=arm == "S+",
                            dcp=dcp)
                for arm in arms if arm in spec.SIRCL_ARMS}
-    auto = bundle(args.site, positions, f"{run}-auto", "auto", args) if "N" in arms else None
+    auto = nccl_bundle(args, site.size, positions, run, dcp) if "N" in arms else None
+    notes = fused_norm_notes(profile["environment"], arms)
     # S and S+ differ only in SIRCL settings and share compile and JIT caches; every other arm has its own.
     caches = {arm: f"{site.remote_dir}/serving-ab/{run}/cache-{spec.slug('S' if arm in spec.SIRCL_ARMS else arm)}"
               for arm in arms}
@@ -265,6 +322,7 @@ def build_plan(args) -> dict:
                                      positions=positions, roce_slot=args.roce_slot, extra_env=extra)
                 for arm in arms}
     arguments = list(profile["vllm_args"])
+    warnings = catalog_warnings(commands)
     return {"schema": "serving-ab-plan/v1", "profile": args.profile, "config": str(config_path.relative_to(ROOT)),
             "model": served["model"], "served_model_name": served["served_model_name"], "image": view["image_id"],
             "image_lock": {"path": args.image_lock, "name": lock["name"],
@@ -272,7 +330,7 @@ def build_plan(args) -> dict:
             "positions": positions, "sparks": [s.name for s in sparks], "api": f"http://{master}:{arg_value(arguments, '--port')}",
             "port": int(arg_value(arguments, "--port")), "context_limit": int(arg_value(arguments, "--max-model-len")),
             "order": [list(item) for item in order_of(args.order)], "metrics": args.metrics, "arms": arms,
-            "dcp": dcp, "deviations": deviations, "overrides": applied,
+            "dcp": dcp, "deviations": deviations, "arm_notes": notes, "warnings": warnings, "overrides": applied,
             "checkpoints": checkpoints, "caches": caches, "seccomp": {"path": seccomp, "sha256": seccomp_sha}, "sircl_env": extra, "roce_slot": args.roce_slot,
             "bundles": {arm: {"run_id": b["run_id"], "nccl": b["nccl"], "tuning": b.get("tuning"),
                               "remote": b["remote"]} for arm, b in bundles.items()},
@@ -286,6 +344,10 @@ def print_plan(plan: dict) -> None:
           f"decode-context parallelism {plan['dcp']}")
     for deviation in plan["deviations"]:
         print(f"deviation from the profile: {deviation}")
+    for note in plan.get("arm_notes", ()):
+        print(f"arm note: {note}")
+    for warning in plan.get("warnings", ()):
+        print(f"WARNING: {warning}")
     print("checkpoints:")
     for c in plan["checkpoints"]:
         chosen = c["chosen"]

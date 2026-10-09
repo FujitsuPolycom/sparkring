@@ -182,7 +182,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "fused_qkv_a_proj; no sequence parallelism at this launch"),
     FileCheck(LATENT_FLAG, "vllm", "distributed/device_communicators/cuda_communicator.py",
               "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8",
-              "all_gather offers each gather to b12x_ar_comm (sparknet) before NCCL"),
+              "all_gather offers each gather to b12x_ar_comm before NCCL"),
     FileCheck(LATENT_FLAG, "vllm", "model_executor/model_loader/reload/layerwise.py",
               "71f7022f85592ad8485b1856542fa8a23433315d6dfcbdddb01ead797575e122",
               "composed online quantization counts copied elements per layer, processes "

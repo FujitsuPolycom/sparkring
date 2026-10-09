@@ -87,7 +87,7 @@ def test_a_pair_runs_pynccl_on_libsircl_with_each_ranks_route_map():
         assert environment["LIBSIRCL_POSITION"] == str(rank)
         assert environment["SIRCL_PEER_ROUTES"] == f"{1 - rank}=rocep1s0f0/roceP2p1s0f0"
         assert environment["LIBSIRCL_CHAIN_ORDER"] == "0,1" and environment["LIBSIRCL_RING_WINDOW"] == "0"
-        assert "LIBSIRCL_FORWARD_WINDOWS" not in environment
+        assert "LIBSIRCL_FORWARD_WINDOWS" not in environment and "LIBSIRCL_P2P_WINDOWS" not in environment
         assert any(mount.target == transport.RECEIPT_TARGET and not mount.read_only for mount in spec.mounts)
 
 
@@ -107,6 +107,11 @@ def test_a_path_of_four_gets_forward_windows_on_its_relayed_lanes_and_the_ring_p
     assert routes[3]["LIBSIRCL_FORWARD_WINDOWS"] == "0=131072/131072,1=131072/131072"
     assert [row["LIBSIRCL_RING_WINDOW"] for row in routes] == ["0", "0", "0", "393216"]
     assert all(row["SIRCL_FORWARD_CHUNK_BYTES"] == "32768" for row in routes)
+    # Point-to-point channels get a window on every relayed lane, after the session's forward windows: 65,536
+    # bytes in 32 KiB chunks toward each peer two or three positions away.
+    assert [row["LIBSIRCL_P2P_WINDOWS"] for row in routes] == [
+        "2=65536/65536,3=65536/65536", "3=65536/65536", "0=65536/65536", "0=65536/65536,1=65536/65536"]
+    assert all(row["SIRCL_P2P_CHUNK_BYTES"] == "32768" for row in routes)
     for spec in specs:
         common_settings(spec, section)
 
@@ -249,7 +254,7 @@ def test_two_pipeline_stages_and_expert_parallelism_on_grouped_all_gathers_pass(
 def test_a_library_without_the_fail_stop_mode_is_refused():
     value = image()
     value["libsircl"]["fail_stop"] = False
-    with pytest.raises(transport.TransportError, match="no fail-stop mode .LIBSIRCL_FAIL_STOP."):
+    with pytest.raises(transport.TransportError, match=r"the image's libsircl \(snapshot [0-9a-f]{8}\) has no fail-stop mode .LIBSIRCL_FAIL_STOP."):
         transport.choose(value, document("pair", 2), backend="libsircl")
     _, section = deployment(TP2, "pair", 2, [0, 1])
     section["libsircl"]["fail_stop"] = False

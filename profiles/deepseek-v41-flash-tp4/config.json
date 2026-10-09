@@ -64,7 +64,8 @@
     "VLLM_MEMORY_PROFILER_ESTIMATE_CUDAGRAPHS": "0",
     "VLLM_DS41_ENGRAM_OVERLAP": "0",
     "VLLM_DS41_MARKOV_NVFP4": "1",
-    "VLLM_DS41_DRAFT_NVFP4_HEAD": "1"
+    "VLLM_DS41_DRAFT_NVFP4_HEAD": "1",
+    "SIRCL_FUSED_NORM": "1"
   },
   "vllm_args": [
     "--tensor-parallel-size",

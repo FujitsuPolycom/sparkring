@@ -1,0 +1,63 @@
+{
+ "arms": [
+  "S+"
+ ],
+ "context_limit": 1048576,
+ "dcp": 1,
+ "deviations": [],
+ "image": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+ "image_lock": {
+  "name": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034",
+  "sha256": "e7281985ac51e45ce5c4ea8583c389a5dd3b46508cda77c09d1d829290834ee4"
+ },
+ "metrics": "phase1",
+ "model": {
+  "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+  "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8",
+  "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+  "revision": "dba1be0a40aa45a94ad051997016db3960a90277"
+ },
+ "nccl_auto_policy": null,
+ "order": [
+  [
+   "W-S+",
+   "S+",
+   true
+  ],
+  [
+   "S+1",
+   "S+",
+   false
+  ],
+  [
+   "S+2",
+   "S+",
+   false
+  ]
+ ],
+ "overrides": {
+  "environment": {},
+  "vllm_arguments": {}
+ },
+ "positions": [
+  0,
+  1,
+  2,
+  3
+ ],
+ "profile": "deepseek-v41-flash-tp4",
+ "roce_slot": false,
+ "run_id": "mx-dsv41-tp4",
+ "schema": "serving-ab-plan/v1",
+ "served_model_name": "DeepSeek-V4.1-Flash-TP4",
+ "sircl_env": {
+  "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_GATHER_SCHEDULE": "ring",
+  "SIRCL_LARGE_SCHEDULE": "ring",
+  "SIRCL_LINK_SLOT_BYTES": "1048576",
+  "SIRCL_ONESHOT_MAX_BYTES": "65536",
+  "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_SCHEDULE": "ring"
+ }
+}

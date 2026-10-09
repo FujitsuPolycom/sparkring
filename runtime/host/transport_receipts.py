@@ -151,6 +151,9 @@ def host_report(lock, number, info, *, root="/", popen=subprocess.Popen):
     section = lock.get("transport")
     if not section:
         return {"schema": REPORT_SCHEMA, "rank": number, "backend": "prepared"}
+    if section.get("backend") == "nccl":
+        # An nccl deployment writes no SIRCL receipts; its report names the backend alone.
+        return {"schema": REPORT_SCHEMA, "rank": number, "backend": "nccl"}
     state = (info or {}).get("State") or {}
     started = state.get("StartedAt")
     directory = Path(root) / transport.receipt_directory(lock).lstrip("/")
@@ -368,6 +371,9 @@ def text(verdict):
     if verdict.get("backend") == transport.LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.verdict_text(verdict)
+    if verdict.get("backend") == "nccl":
+        # The nccl transport writes no SIRCL receipts; its verdict names the backend only.
+        return "Transport: nccl"
     if verdict["verdict"] == "unknown":
         return (f"Transport: sircl; receipts could not be read from every Spark ({verdict['problems'][0]}); "
                 "sudo sparkring check repeats the check")

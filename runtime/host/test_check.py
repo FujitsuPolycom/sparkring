@@ -104,6 +104,21 @@ def test_a_prepared_deployment_has_no_receipt_check(recorded, monkeypatch):
     assert result["deployments"][0]["transport"] == {"backend": "prepared"}
 
 
+def test_an_nccl_deployment_has_no_receipt_check_and_its_transport_line_names_nccl(recorded, monkeypatch):
+    directory, _, _ = recorded
+    from runtime.common.test_transport_nccl import nccl_deployment
+    lock, _ = nccl_deployment(TP2, "pair", 2, [0, 1])
+    (directory / "deployment.lock.json").unlink()
+    installer.write(directory / "deployment.lock.json", lock)
+    monkeypatch.setattr(check.retained_source, "apply", lambda *a, **k: pytest.fail("no receipt check expected"))
+    lines = []
+    result = check.run(client=Chat(), say=lines.append)
+    row = result["deployments"][0]
+    assert row["transport"] == {"backend": "nccl"} and row["ok"]
+    assert "  Transport: nccl" in lines
+    assert transport_receipts.text({"backend": "nccl"}) == "Transport: nccl"
+
+
 def test_the_report_replaces_private_items_and_keeps_fabric_addresses(recorded, tmp_path, monkeypatch):
     directory, lock, value = recorded
     monkeypatch.setattr(check, "environment", lambda lock=None: {"driver": "580.95", "docker": "28.3.0"})

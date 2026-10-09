@@ -1,0 +1,63 @@
+{
+ "arms": [
+  "S"
+ ],
+ "context_limit": 262144,
+ "dcp": 1,
+ "deviations": [
+  "checkpoint qad-step-4000 (the profile's default: qad-step5500-ple1000)"
+ ],
+ "image": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+ "image_lock": {
+  "name": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034",
+  "sha256": "e7281985ac51e45ce5c4ea8583c389a5dd3b46508cda77c09d1d829290834ee4"
+ },
+ "metrics": "phase1",
+ "model": {
+  "config_sha256": "2d655dfa625c3c018f9685031367bc83f8532d3faf3333d7c838b2bdc13b8a7e",
+  "index_sha256": "c528e5628a0f448edc52023933c207a8dbded850afdd960d893c9171a7665dde",
+  "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+  "revision": "629bc3218833a38b475b719f34aa571666f4a03e"
+ },
+ "nccl_auto_policy": null,
+ "order": [
+  [
+   "W-S",
+   "S",
+   true
+  ],
+  [
+   "S1",
+   "S",
+   false
+  ],
+  [
+   "S2",
+   "S",
+   false
+  ]
+ ],
+ "overrides": {
+  "environment": {},
+  "vllm_arguments": {}
+ },
+ "positions": [
+  0,
+  1
+ ],
+ "profile": "qwen38-flash-next-tp2",
+ "roce_slot": false,
+ "run_id": "mx-qwen-tp2-s4000",
+ "schema": "serving-ab-plan/v1",
+ "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+ "sircl_env": {
+  "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_GATHER_SCHEDULE": "ring",
+  "SIRCL_LARGE_SCHEDULE": "ring",
+  "SIRCL_LINK_SLOT_BYTES": "1048576",
+  "SIRCL_ONESHOT_MAX_BYTES": "65536",
+  "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+  "SIRCL_SCATTER_SCHEDULE": "ring"
+ }
+}

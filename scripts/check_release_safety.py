@@ -11,6 +11,9 @@ RULES = {
     "private-lan-address": r"192\.168\.[0-9]{1,3}\.[0-9]{1,3}|(?:^|[^0-9.])172\.(?:1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}",
     "private-ssh-target": r"[A-Za-z0-9_.-]+@(?:192\.168\.|10\.[0-9]|172\.(?:1[6-9]|2[0-9]|3[01])\.)",
     "private-workspace": r"Documents[\\/]sparkring",
+    # A local Windows user path: a drive letter or WSL mount followed by Users, or an AppData directory,
+    # with any number of separators, so JSON-escaped backslashes match too.
+    "local-user-path": r"[A-Za-z]:(?:\\|/)+Users(?:\\|/)|/mnt/[a-z]/Users/|AppData(?:\\|/)",
     "private-key": r"-----BEGIN [A-Z ]*PRIVATE KEY-----",
     "ssh-public-key": r"ssh-(?:rsa|ed25519|dss) AAAA",
     "credential-assignment": r"(?:pass(?:word|wd)|secret|api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|bearer)[\"']?\s*[:=]\s*[\"']?[A-Za-z0-9/+_.-]{12,}",

@@ -57,6 +57,10 @@ STATUS_ORDER = ("missing", "needs-port", "refused-here", "enabled")
 TRANSPORTS = ("prepared", "sircl", "libsircl")
 # Topologies whose ranks reach each other through relays: only SIRCL ring sessions run them.
 RELAYED = profile_catalog.RELAYED
+# Variables that SIRCL's adapter and serve launcher set on every container they run on SIRCL ring sessions. A
+# profile's own SIRCL session settings (schedules, link sizes, the one-shot limit) take effect only where its
+# deployment runs SIRCL, so they do not show which transport a deployment uses.
+SIRCL_MARKERS = ("SIRCL_MODE", "SIRCL_FABRIC", "SIRCL_RANK_POSITIONS")
 
 TOP_KEYS = {"schema", "purpose", "related", "categories", "sides", "statuses", "images", "checks",
             "enhancements", "not_adopted"}
@@ -204,8 +208,8 @@ def infer_transport(environment: dict[str, str], topology: str | None, image: di
     plugins = [part.strip() for part in environment.get("VLLM_PLUGINS", "").split(",")]
     if "libsircl" in environment.get("VLLM_NCCL_SO_PATH", "") or "libsircl" in plugins:
         return "libsircl", "vLLM's NCCL library is libsircl"
-    if "sircl" in plugins or any(key.startswith("SIRCL_") for key in environment):
-        return "sircl", "the environment configures SIRCL"
+    if "sircl" in plugins or any(key in environment for key in SIRCL_MARKERS):
+        return "sircl", "the environment runs SIRCL's adapter"
     if topology in RELAYED:
         return "sircl", f"only SIRCL ring sessions run topology {topology}"
     if image and "sircl" in image["transports"]:
@@ -499,6 +503,27 @@ def enable_text(entry: dict) -> str:
     return "; ".join(parts)
 
 
+def check_warnings(catalog: dict, view: Deployment) -> list[str]:
+    """``<id>: <message>`` of every catalog check (``checks``) whose conditions hold for ``view``."""
+    return [f"{check['id']}: {check['message']}" for check in catalog["checks"]
+            if any(holds(condition, view) for condition in check["when_any"])
+            and not any(holds(condition, view) for condition in check["unless_any"])]
+
+
+def setting_warnings(environment: dict[str, str], tokens: list[str], *, catalog: dict | None = None,
+                     root: Path = ROOT) -> list[str]:
+    """The catalog checks' warnings for one container's environment and vLLM arguments.
+
+    The installer's plan and the serving A/B runner's plan call it with the rank-0 container they render, so a
+    configuration that a check describes as slow (quantized dense linears without --linear-backend) is reported
+    before anything starts. The container's settings are read as they are, without the installer's defaults."""
+    catalog = catalog if catalog is not None else load_catalog(root)
+    view = Deployment(profile="", checkpoint=None, model_repository="", model_revision="", model_name="", tp=1,
+                      dcp=1, topology=None, image=None, transport="", environment=dict(environment),
+                      arguments=parse_arguments([str(token) for token in tokens]), source="record")
+    return check_warnings(catalog, view)
+
+
 def evaluate(catalog: dict, view: Deployment) -> dict:
     """The report of one deployment: every applicable entry with its status, the warnings of the catalog's
     checks and the entries listed only for other sizes of the model."""
@@ -561,11 +586,7 @@ def evaluate(catalog: dict, view: Deployment) -> dict:
                 ranked and percent is None, -(percent or 0) if ranked else 0, row["id"])
 
     rows.sort(key=order)
-    warnings = []
-    for check in catalog["checks"]:
-        if any(holds(condition, view) for condition in check["when_any"]) and not any(
-                holds(condition, view) for condition in check["unless_any"]):
-            warnings.append(f"{check['id']}: {check['message']}")
+    warnings = check_warnings(catalog, view)
     for row in rows:
         if row["status"] == "refused-here" and len(row["notes"]) > 1:
             warnings.append(f"{row['id']} is enabled but refused at TP{view.tp}/DCP{view.dcp}")

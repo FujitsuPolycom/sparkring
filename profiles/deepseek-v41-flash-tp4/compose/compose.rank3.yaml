@@ -114,6 +114,7 @@ services:
       OMP_NUM_THREADS: '16'
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SIRCL_ENABLED: '0'
+      SIRCL_FUSED_NORM: '1'
       SOURCE_IMAGE_PROFILE: ''
       SPARKCACHE_ENABLED: '0'
       SPARKRING_FEATURES: ''
@@ -149,7 +150,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-aba309e4610c-dba1be0a40aa
     labels:
-      io.sparkring.deployment: c956dd55caad9db6a00673eda4c5bdbe3a18963ff66da9e2c1ea8d1b00f4d3b7
+      io.sparkring.deployment: 1a727a85d178ba7d360fc807350080170cb960b34b9d6d702c8aafe3558d57e5
       io.sparkring.rank: '3'
     network_mode: host
     ipc: host

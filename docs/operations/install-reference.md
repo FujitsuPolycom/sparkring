@@ -146,6 +146,13 @@ port it uses ([API endpoint](#api-endpoint)); Enter keeps both. Setup
 signs in to each Spark once; that Spark's inventory identifies its other
 fabric functions and return paths.
 
+Before it asks, the plan prints a `Warning:` line for each check of the
+[enhancement catalog](../../performance/enhancements.md) (`checks` in
+`performance/enhancements.json`) that rank 0's rendered container meets, such
+as MXFP8 or NVFP4 dense linears without `--linear-backend`, which run on a
+slow default kernel. No catalog profile meets one; a warning names a changed
+setting to review before approving.
+
 ### What a run does
 
 It updates workers from Node A's package through a bundle of the package and
@@ -418,7 +425,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, the default image among them | MTP3 |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
@@ -431,10 +438,15 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   two and four Sparks and the GLM-5.3-Flash profiles of two and four Sparks
   also install other checkpoints
   ([Another checkpoint of a profile](#another-checkpoint-of-a-profile)).
-  `glm53-flash-csf-tp8` needs an image whose vLLM is SIRCL's pinned build
-  `sparkring-kraken-beta-20261007-bc9ea774`, listed in the lock's
-  `sircl.vllm_pins`; the installer refuses it on any other image.
-  `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
+- The GLM-5.3-Flash CSF checkpoint needs an image whose vLLM is SIRCL's
+  pinned build `sparkring-kraken-beta-20261007-bc9ea774`, listed in the
+  lock's `sircl.vllm_pins`, such as the image that the
+  [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+  builds. On such an image the GLM-5.3-Flash profiles of two and four Sparks
+  install it without `--checkpoint`; on every other image, including the
+  default image, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
+  the CSF checkpoint, and the installer refuses it on any other image.
+- `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
   `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
   off), which the GLM-5.3 plugin layer
   ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
@@ -494,6 +506,7 @@ A deployment's collectives run on one of these transports:
 |---|---|---|
 | `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
 | `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+| `nccl`, vLLM's PyNccl alone | Any installer image, on a recorded fabric, on a group NCCL's cabling rule holds for: a cabled pair or a whole cycle; only with `--transport nccl` | Every collective; on a whole cycle with NCCL's ring settings |
 | `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
 
 `sudo sparkring install` chooses `sircl` wherever it can run and says so
@@ -503,6 +516,12 @@ the transports each image carries.
 
 - `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
   with the reason where it cannot run; nothing changes.
+- `--transport nccl` runs every collective on vLLM's PyNccl with SIRCL and
+  the RoCEnante slot off. Each rank's `NCCL_IB_HCA` names the RDMA devices
+  of its own lanes from the fabric document; a group whose ranks reach each
+  other through relays, such as four Sparks of a ring of eight, is refused.
+  It writes no SIRCL receipts, so the transport verdict names the backend
+  only.
 - `--transport libsircl` runs vLLM's PyNccl on libsircl, SIRCL's
   NCCL-compatible C library, with SIRCL's adapter and RoCEnante off. It is
   research-only and never the default; it runs on pairs, paths and whole
@@ -530,16 +549,20 @@ SIRCL's settings come from a tuning table that chooses only among SIRCL's own
 algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
-`cycle-8`, and `path` and `cycle` for other sizes. A row is `measured`;
-`design`, settings from the SIRCL install design that no measurement has
-confirmed; or `rules`, where SIRCL's sessions derive their own settings. The
-shipped rows are the accepted defaults until `sudo sparkring fabric tune`
-measures a fabric: a `cycle-4` group, which has no row of its own, runs on
-SIRCL's own rules through the `cycle` row, and a pair takes the `pair` row's
-design settings. The `cycle-8` row
-holds the settings with which GLM-5.3 served at TP8 with NCCL off on an
-eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
-one-shot limit and 16 link slots of 512 KiB. A table that names
+`path-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
+`measured`; `design`, settings from the SIRCL install design that no
+measurement has confirmed; or `rules`, where SIRCL's sessions derive their own
+settings. A row may also state its evidence. The shipped rows are the accepted
+defaults until `sudo sparkring fabric tune` measures a fabric: a `cycle-4`
+group, which has no row of its own, runs on SIRCL's own rules through the
+`cycle` row. The `pair` and `path-4` rows hold the ring schedules with which
+the two- and four-Spark profiles were measured on pairs and paths of four Sparks
+of a ring of eight: ring all-reduces, all-gathers and reduce-scatters above a
+64 KiB one-shot limit, with 1 MiB link pieces and slot
+([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+The `cycle-8` row holds the settings with which GLM-5.3 served at TP8 with NCCL
+off on an eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a
+28 KiB one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
 for that group's sessions, and each session's setup agreement carries its
 hash, so every rank decides from the same table. With decode-context
@@ -552,6 +575,18 @@ row that sets fewer link slots or a smaller link slot than the table's is
 refused. The row's settings reach the tensor-parallel session only. A table's marks of where NCCL measured faster never route a call to
 NCCL. Without a table or a row setting, a session takes twice its ranks in link
 slots, at least 8.
+
+A table's rows apply only to sessions of the SIRCL build it names (`sircl`:
+version and ABI). The default table names SIRCL 0.3.1, the version of
+`spark_transport/sircl`; on an image whose SIRCL layer is another version,
+such as 0.3.0, no default row applies, the sessions derive their own settings,
+and the plan says `the default table is for another SIRCL build`.
+
+A profile's environment pins at most SIRCL's fused-norm and column-gather
+switches (`SIRCL_FUSED_NORM`, `SIRCL_COLUMN_GATHER`); the installer refuses
+any other `SIRCL_*` variable in a profile, so session sizes and schedules come
+only from the tuning table. The `nccl` and `libsircl` transports drop the
+profile's switches, and the prepared transport reads none of them.
 
 `sudo sparkring fabric tune` measures this fabric and writes
 `/var/lib/sparkring/controller/sircl-tuning.json`
@@ -2150,7 +2185,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
-| GLM-5.3-Flash CSF (eight Sparks), `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
+| GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
 
 The derived Qwen checkpoint, `--checkpoint qad-step5500-mxfp8-attention`,
@@ -2432,6 +2467,23 @@ listed one with the settings it needs, as its own deployment with its own
 pinned revision and checkpoint directory; an unlisted name changes nothing.
 Installing again without `--checkpoint` switches back to the default.
 
+The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
+`--checkpoint`, an image whose vLLM reads the CSF checkpoint installs `csf`,
+and every other image, including the default image, installs `nvfp4-spark`.
+`--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
+`--checkpoint csf` on an image that cannot read it is refused before any
+Spark changes. While `csf` is research-only, every plan that installs it
+prints a `Note:` with that status and, when the image chose it, the
+`--checkpoint nvfp4-spark` alternative (`image_lock.CHECKPOINT_STATUS`).
+`sparkring images` does not list the image of the
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
+which reads it; its lock is selected with `--image-lock`:
+
+```bash
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK --checkpoint nvfp4-spark
+```
+
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
@@ -2446,9 +2498,11 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
-| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default on an image that cannot read `csf`) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) with two CTAs per SM for small-M experts (`B12X_W4A16_SMALL_M_OCCUPANCY=2`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
-| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default on an image that cannot read `csf`) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode with two CTAs per SM for small-M experts; KDA prefill coalescing (`VLLM_B12X_KDA_PREFILL_COALESCING=1`); the draft's experts on the Marlin MoE backend instead of Humming, with the four-Spark profile's draft tensor parallelism, probabilistic draft sampling and standard rejection; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
@@ -2530,6 +2584,30 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
+- The `csf` entries of both GLM profiles are **research-only**: no
+  installation of either has run on Sparks. Their quantization, loader, W4A16
+  decode and draft MoE backend are those of `glm53-flash-csf-tp8`
+  ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
+  SIRCL's serve launcher served this checkpoint with the pair profile's
+  10 GiB of KV cache and 1,048,576-token context window, the same
+  quantization, loader and draft backend and the CSF source overlay instead
+  of the image's sources, and its check passed
+  ([measured results](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#measured-results));
+  that row records no change to the profile's environment, which does not
+  force W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=0`). By their pin manifests the
+  CSF weights take 2.3 GiB less than NVFP4-Spark's on each Spark of a ring
+  and 4.6 GiB less on each Spark of a pair. The ring's entry takes the 37 GiB
+  of KV cache of the QAD entry and of the eight-Spark profile, 3 GiB less
+  than NVFP4-Spark's; the pair's entry keeps the pair's 10 GiB. Neither has a
+  measured KV capacity or host memory headroom.
+- The serving A/B runner measured the `csf` entries' settings, with SIRCL's
+  ring schedules, on a pair and on a path of four Sparks of a ring of eight
+  ([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+  Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
+  repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1` and
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`. A checkpoint entry changes only
+  variables the profile already sets, and these profiles set neither, so
+  `csf` runs without them, as `glm53-flash-csf-tp8` does.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its

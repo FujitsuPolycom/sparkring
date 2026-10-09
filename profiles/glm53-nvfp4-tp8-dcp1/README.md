@@ -47,7 +47,9 @@ Downloads, storage and the fabric are those of
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer, lists the vLLM plugins
 `glm_dsa_indexer_split` and `glm53full_speedups` in `vllm_plugins` and lists
-this profile in `profiles`. No lock in this package does.
+this profile in `profiles`. The package carries one: `installer-image-ddcd1ae6.json`
+of image `27e9f75c0d09` ([image record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md)), for Sparks that
+hold that image.
 [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
 records such a lock from the plugin image
 ([derived layers](../../runtime/images/installer-images.md#derived-layers)).

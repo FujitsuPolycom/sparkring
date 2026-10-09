@@ -163,7 +163,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "tensors in rank order"),
     FileCheck("vllm", "distributed/device_communicators/cuda_communicator.py",
               "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8",
-              "a dim-0 all-gather returns the rank-major concatenation (sparknet adapter, symmetric memory or PyNccl)"),
+              "a dim-0 all-gather returns the rank-major concatenation (b12x_ar_comm, symmetric memory or PyNccl)"),
     FileCheck("vllm", "compilation/breakable_cudagraph.py",
               "a7b53a403c776df8195881c98fdba72e0e2662c15adc047cd5c79736247d19e2",
               "eager segments run after the capture segment ended, so a prefill indexer call never runs inside a "

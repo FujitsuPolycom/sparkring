@@ -209,6 +209,16 @@ def test_checkpoint_selection_changes_the_model(catalog):
     assert derived["model"]["name"] == "Qwen3.8-Flash-Next"
 
 
+def test_sircl_session_settings_in_a_profile_do_not_select_the_transport():
+    settings = {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_LINK_SLOT_BYTES": "1048576"}
+    sircl_image = {"transports": ["libsircl", "prepared", "sircl"]}
+    assert ce.infer_transport(settings, "direct-cycle-4", None)[0] == "prepared"
+    assert ce.infer_transport(settings, "direct-cycle-4", sircl_image)[0] == "sircl"
+    # What SIRCL's adapter sets on every container it runs does.
+    assert ce.infer_transport(dict(settings, SIRCL_MODE="custom"), "direct-cycle-4", None)[0] == "sircl"
+    assert ce.infer_transport({"VLLM_PLUGINS": "b12x_loader,sircl"}, "direct-pair-2", None)[0] == "sircl"
+
+
 def test_plan_input_reads_the_arm_command_and_the_image(tmp_path, catalog):
     _, config = ce.profile_configuration("glm53-nvfp4-tp8")
     environment = dict(config["environment"], SIRCL_FUSED_NORM="1", VLLM_B12X_MLA_CKV_GATHER="1",
@@ -260,7 +270,7 @@ def _write(path, text):
 def test_validation_rejects_private_data_unknown_names_and_drift(catalog):
     broken = copy.deepcopy(catalog)
     first = broken["enhancements"][0]
-    first["description"] += " see C:\\Users\\someone\\notes"
+    first["description"] += " see C:" + "\\Users\\someone\\notes"
     first["models"].append({"name": "Unknown-Model"})
     first["evidence"].append("notes/missing.md")
     problems = ce.validate(broken, profiles=False)

@@ -1,5 +1,5 @@
 {
- "generated_at": "bd2bb4ebad418748b8f8cfd66121a2d979f23d66",
+ "generated_at": "46c7cc476714e65170dbe84d1fb8d88d8be0dd9c",
  "plans": {
   "prepared": {
    "printed": [
@@ -110,7 +110,7 @@
      "reviewed": true,
      "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
     },
-    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-ib6f67a997831",
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-icf573933969b",
     "group": {
      "api_position": 0,
      "positions": [
@@ -163,10 +163,10 @@
     "Follow from another terminal: sudo sparkring logs --follow",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
-    "Transport: sircl on every collective, NCCL off (default table, pair: the design's settings, not measured)",
+    "Transport: sircl on every collective, NCCL off (default table, pair)",
     "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
     "  NCCL: opt-in only (auto); tables choose among SIRCL options",
-    "  SIRCL settings: large_blocks 32, oneshot_max 131072, ring_min 2097152",
+    "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring",
     "Update workers and prepare assets; then replace the current model.",
     "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
     "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",
@@ -269,7 +269,7 @@
      "reviewed": true,
      "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
     },
-    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-ibc5489e418f5",
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-ia06528bae28f",
     "group": {
      "api_position": 0,
      "positions": [
@@ -322,8 +322,8 @@
      ],
      "tuning": {
       "row": "pair",
-      "row_source": "design",
-      "sha256": "ce319a5421e67f58cacc6bbd34be7d5f8af42ef386549a5af29cdfbeaf216109",
+      "row_source": "measured",
+      "sha256": "63bf8b6094107d26cb4bbe3b9b764e419f6b820fcd2d179bcbb6fc7aa95d8f85",
       "source": "defaults"
      }
     }

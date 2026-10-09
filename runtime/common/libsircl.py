@@ -83,7 +83,7 @@ SITE_ROUTES = ROOT / SITE_ROUTES_TOOL
 SIRCL_ROOT = ROOT / "spark_transport" / "sircl"
 # The routing settings site_routes.py prints for a rank.
 ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_FORWARD_WINDOWS",
-                   "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW")
+                   "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES")
 LIBRARY_VARIABLE = "SPARKRING_LIBSIRCL_LIBRARY"
 DIGEST_VARIABLE = "SPARKRING_LIBSIRCL_SHA256"
 # Every communicator's receipt, <prefix>.rank<r>.<pid>.c<n>.json, in the deployment's receipt directory.
@@ -102,6 +102,10 @@ INDEPENDENT_TRANSPORTS_OFF = {
     "VLLM_ENABLE_PCIE_ALLREDUCE": "0",
 }
 CUSTOM_ALL_REDUCE_OFF = "--disable-custom-all-reduce"
+# A profile's SIRCL_* switches (serve.plan.profile_settings: the fused norm and the column gathers) configure
+# SIRCL's own adapter, which a libsircl container does not run, so its containers do not take them;
+# SIRCL_ENABLED, which the prepared images read, stays as the profile sets it.
+PROFILE_SIRCL_KEPT = ("SIRCL_ENABLED",)
 SECTION_FIELDS = {"schema", "backend", "status", "image", "fabric", "group", "devices", "routes", "planner",
                   "libsircl"}
 GROUP_FIELDS = {"layout", "positions", "shape", "size", "name", "max_relays", "lanes", "cabling"}
@@ -208,15 +212,20 @@ def unavailable(image_value, document):
         return f"image {image_value.get('name')} carries no libsircl layer"
     block = image_lock.libsircl(image_value)
     if not block["fail_stop"]:
-        return fail_stop_missing(block["snapshot"])
+        return fail_stop_missing(image_library(block["snapshot"]))
     return fabric_unavailable(document)
 
 
-def fail_stop_missing(snapshot):
-    return (f"the image's libsircl (snapshot {snapshot[:8]}) has no fail-stop mode ({FAIL_STOP_VARIABLE}): vLLM's "
-            "PyNccl checks only that each call was queued, and a wait timeout that poisons a communicator does not "
-            "fail the step whose output it spoiled; build the layer from a snapshot whose library reads "
-            f"{FAIL_STOP_VARIABLE}")
+def image_library(snapshot):
+    """How a refusal names the libsircl of an image layer built from vendored snapshot ``snapshot``."""
+    return f"the image's libsircl (snapshot {snapshot[:8]})"
+
+
+def fail_stop_missing(library):
+    """Why a libsircl build without the fail-stop mode is refused; ``library`` names that build."""
+    return (f"{library} has no fail-stop mode ({FAIL_STOP_VARIABLE}): vLLM's PyNccl checks only that each call was "
+            "queued, and a wait timeout that poisons a communicator does not fail the step whose output it spoiled; "
+            f"use a libsircl built from a snapshot whose library reads {FAIL_STOP_VARIABLE}")
 
 
 def fabric_unavailable(document):
@@ -442,7 +451,7 @@ def refusals(profile_environment, arguments):
 def library_environment(block):
     """The libsircl settings of every container: the checked library, fail-stop, its NCCL API level, the verbs
     transport and the receipt prefix."""
-    _require(block["fail_stop"], fail_stop_missing(block["snapshot"]))
+    _require(block["fail_stop"], fail_stop_missing(image_library(block["snapshot"])))
     return {LIBRARY_VARIABLE: block["library"]["path"], DIGEST_VARIABLE: block["library"]["sha256"],
             FAIL_STOP_VARIABLE: "1", "LIBSIRCL_NCCL_API_VERSION": str(NCCL_API_VERSION),
             "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RECEIPT": RECEIPT_PREFIX}
@@ -488,8 +497,10 @@ def adapt(specs, lock):
         owned = owned_settings(spec.environment)
         _require(not owned, f"rank {rank}: the profile sets {owned}, which the libsircl transport owns")
         _require(spec.environment.get("VLLM_HOST_IP"), f"rank {rank}'s container names no VLLM_HOST_IP")
+        profile = {key: item for key, item in spec.environment.items()
+                   if not key.startswith("SIRCL_") or key in PROFILE_SIRCL_KEPT}
         # The address a rank publishes in the unique id of a communicator it roots: its own bootstrap address.
-        settings = {**spec.environment, **common, **value["routes"][rank],
+        settings = {**profile, **common, **value["routes"][rank],
                     "SIRCL_BOOTSTRAP_ADDR": spec.environment["VLLM_HOST_IP"]}
         settings["VLLM_PLUGINS"] = plugins(settings.get("VLLM_PLUGINS", ""))
         mounts = (*spec.mounts, Bind(transport.receipt_directory(lock), transport.RECEIPT_TARGET, False))

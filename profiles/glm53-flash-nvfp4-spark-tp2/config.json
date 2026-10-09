@@ -8,6 +8,7 @@
     "index_sha256": "db30fc7c5a70ccfb3b1c46637bb4ddb04226b95a5dfc451dffccb96a4f0ff544"
   },
   "checkpoint": "nvfp4-spark",
+  "preferred_checkpoint": "csf",
   "checkpoints": {
     "nvfp4-spark": {
       "model": {
@@ -28,6 +29,31 @@
       "arguments": {
         "--kv-cache-memory-bytes": "5368709120",
         "--max-model-len": "524288"
+      }
+    },
+    "csf": {
+      "model": {
+        "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+        "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
+        "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",
+        "index_sha256": "568c770e4a083ab53c3d74deab348d541724f23ec9637d83513ecb8fa4a7ef73"
+      },
+      "served_model_name": "GLM-5.3-Flash-CSF-TP2",
+      "arguments": {
+        "--quantization": "nvfp4_csf",
+        "--load-format": "nvfp4_csf"
+      },
+      "environment": {
+        "VLLM_B12X_MOE_FP4_FORCE_A16": "1",
+        "B12X_W4A16_SMALL_M_OCCUPANCY": "2",
+        "VLLM_B12X_KDA_PREFILL_COALESCING": "1"
+      },
+      "speculative": {
+        "moe_backend": "marlin",
+        "draft_tensor_parallel_size": 2,
+        "kv_cache_dtype": "auto",
+        "draft_sample_method": "probabilistic",
+        "rejection_sample_method": "standard"
       }
     }
   },
@@ -83,7 +109,9 @@
     "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0",
     "B12X_COMPILE_WORKERS": "2",
     "MALLOC_MMAP_THRESHOLD_": "1048576",
-    "MALLOC_ARENA_MAX": "4"
+    "MALLOC_ARENA_MAX": "4",
+    "B12X_W4A16_SMALL_M_OCCUPANCY": "1",
+    "VLLM_B12X_KDA_PREFILL_COALESCING": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",
@@ -120,6 +148,7 @@
     "{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"humming\",\"attention_backend\":\"B12X\"}",
     "--compilation-config",
     "{\"mode\":0,\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32],\"max_cudagraph_capture_size\":32}",
+    "--async-scheduling",
     "--pipeline-parallel-size",
     "1",
     "--decode-context-parallel-size",

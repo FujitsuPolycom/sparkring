@@ -56,3 +56,13 @@ def test_panel_normalization_preserves_other_numeric_assignments():
     inside = raw.replace('"top": {', '"top": {"secret": ' + value + ', ')
     for text in (outside, inside):
         assert (1, 'credential-assignment') in findings(text)
+
+
+def test_local_windows_user_paths_are_findings():
+    # Assembled from pieces so that this file holds no such path.
+    drive, users = "C:", "Users"
+    for text in (drive + "\\" + users + "\\someone\\work", json.dumps({"lead": drive + "\\" + users + "\\someone"}),
+                 drive + "/" + users + "/someone", "/mnt/c/" + users + "/someone", "Local " + "AppData" + "\\Temp"):
+        assert (1, "local-user-path") in findings(text), text
+    for text in ("C: drive", "the Users guide", "AppData is a directory name", "/mnt/data/users"):
+        assert (1, "local-user-path") not in findings(text), text

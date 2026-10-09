@@ -541,7 +541,8 @@ def lifecycle(argv):
     from runtime.common import serving, transport as transports
     parser.add_argument("--transport", choices=transports.BACKENDS,
                         help="for a new deployment: sircl (the default where the image and fabric carry it), "
-                             "prepared, or libsircl (research-only)")
+                             "prepared, nccl (vLLM's PyNccl alone; needs the fabric document and a group NCCL's "
+                             "cabling rule holds for), or libsircl (research-only)")
     parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
@@ -732,13 +733,17 @@ def lifecycle(argv):
                 from runtime.host import relays
                 reference = relays.group_reference(STATE, cluster)
             site = model_site(cluster, profile, instance, requested, fabric=reference)
+            # The checkpoint sparkring install installs without --checkpoint on this
+            # image: the profile's preferred one where the image's vLLM reads it.
+            variant = image_lock.preferred_checkpoint(chosen, profile)
+            card = installer.setup.selection(profile, variant)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
-            # profile's revision, whose model operation adopts what that
+            # checkpoint's revision, whose model operation adopts what that
             # directory holds and downloads the rest on that rank. A copy
             # SparkRing did not create is used only when named, and is then
             # served in place: verified, never written. Copies found elsewhere
             # on the Sparks are adopted by sparkring install.
-            model = args.model_path or installer.checkpoint_directory(cluster, installer.setup.selection(profile))
+            model = args.model_path or installer.checkpoint_directory(cluster, card)
             for row in site["hosts"]:
                 row.update(model=model, reuse_verified_model=bool(args.model_path))
             if reference is None and profile in installer.compose.TP4_PROFILES:
@@ -749,11 +754,11 @@ def lifecycle(argv):
                 # port before the deployment is created, as sparkring install
                 # checks it.
                 from runtime.host import install_workflow
-                arguments = install_workflow.profile_arguments(installer.setup.selection(profile))
+                arguments = install_workflow.profile_arguments(card)
                 serving.apply(arguments, settings)
                 install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
                                                 settings.get("api_port") or serving.profile_value(arguments, "api_port"))
-            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings,
+            installer.init(directory, profile, site, variant=variant, image_runtime=image_runtime, settings=settings,
                            transport=choice["section"])
         else:
             # The deployment's own source validates its lock (retained_source);
@@ -764,8 +769,9 @@ def lifecycle(argv):
                 image_runtime = image_lock.v2_view(image_lock.for_profile(args.profile, installer.read(args.image_lock)))
                 if existing.get("image_runtime") != image_runtime:
                     raise ValueError("Deployment uses another image lock; choose a distinct --instance")
-            if args.transport and args.transport != (existing.get("transport") or {}).get("backend", "prepared") or (
-                    args.nccl and args.nccl != (existing.get("transport") or {}).get("nccl")):
+            recorded = existing.get("transport") or {}
+            if args.transport and args.transport != recorded.get("backend", "prepared") or (
+                    args.nccl and args.nccl != recorded.get("nccl")):
                 raise ValueError("Deployment uses another transport; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
@@ -958,6 +964,9 @@ def transport_view(directory, lock):
     if value.get("backend") == "libsircl":
         from runtime.common import libsircl
         return libsircl.status_view(value)
+    if value.get("backend") == "nccl":
+        return {"backend": "nccl", "group": value["group"]["name"], "positions": value["group"]["positions"],
+                "fabric": value["fabric"]["id"]}
     from runtime.host import transport_receipts
     verdict = transport_receipts.latest(directory)
     result = {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
@@ -973,6 +982,8 @@ def transport_status_line(value):
     if value.get("backend") == "libsircl":
         from runtime.common import libsircl
         return libsircl.status_line(value)
+    if value.get("backend") == "nccl":
+        return f"Transport: nccl on {value['group']} (SIRCL and the RoCEnante slot are off)"
     if value.get("backend") != "sircl":
         return "Transport: prepared"
     from runtime.host import transport_receipts

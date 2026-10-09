@@ -3,10 +3,12 @@
   "image_id": null,
   "layouts": {
     "cycle": {
+      "evidence": "no measurement; SIRCL's own derivation for cycles other than eight",
       "settings": {},
       "source": "rules"
     },
     "cycle-8": {
+      "evidence": "GLM-5.3 at TP8 with NCCL off on a ring of eight: 16 link slots of 512 KiB raised 8-stream decode 119.5 -> 126.5 tok/s and a 28 KiB one-shot limit with farthest-first posting gave steps/s +1-4 % (SIRCL 0.2.0, performance/enhancements.json, entry sircl-cycle8-tuning-row); the serving A/B runner's GLM-5.3 TP8 configurations on image 816c6d6a7e96 (SIRCL 0.3.0) ran with the same capacity, dispatch ceiling and link slots",
       "settings": {
         "capacity": 1048576,
         "dispatch": 1048576,
@@ -17,23 +19,44 @@
       "source": "measured"
     },
     "pair": {
+      "evidence": "Serving A/B runner on image 816c6d6a7e96 (SIRCL 0.3.0, ABI 9) on two cabled Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, with these settings as container variables: GLM-5.3-Flash CSF 15.3 / 49.7 decode steps/s at 1 / 8 streams, Qwen3.8-Flash-Next qad-step-4000 27.0 / 92.4 and qad-step5500-mxfp8-attention 25.6 / 89.8; not compared with SIRCL's own derivation on a pair (performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)",
       "settings": {
-        "large_blocks": 32,
-        "oneshot_max": 131072,
-        "ring_min": 2097152
+        "gather_link_chunk": 1048576,
+        "gather_schedule": "ring",
+        "large_schedule": "ring",
+        "link_slot": 1048576,
+        "oneshot_max": 65536,
+        "reduce_link_chunk": 1048576,
+        "scatter_link_chunk": 1048576,
+        "scatter_schedule": "ring"
       },
-      "source": "design"
+      "source": "measured"
     },
     "path": {
+      "evidence": "no measurement; SIRCL's own derivation for paths other than four",
       "settings": {},
       "source": "rules"
+    },
+    "path-4": {
+      "evidence": "Serving A/B runner on image 816c6d6a7e96 (SIRCL 0.3.0, ABI 9) on four consecutive Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, with these settings as container variables: GLM-5.3-Flash CSF 25.0 / 82.5, DeepSeek-V4.1-Flash 24.1 / 74.8 and Qwen3.8-Flash-Next qad-step5500-mxfp8-attention 36.5 / 125.7 decode steps/s at 1 / 8 streams (performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md); against SIRCL's own derivation on an earlier image, 64K prefill +4-17 % for GLM-5.3-Flash, Qwen3.8-Flash-Next, Swift-1.5 and DeepSeek-V4.1-Flash (performance/enhancements.json, entry sircl-ring-schedules-path4)",
+      "settings": {
+        "gather_link_chunk": 1048576,
+        "gather_schedule": "ring",
+        "large_schedule": "ring",
+        "link_slot": 1048576,
+        "oneshot_max": 65536,
+        "reduce_link_chunk": 1048576,
+        "scatter_link_chunk": 1048576,
+        "scatter_schedule": "ring"
+      },
+      "source": "measured"
     }
   },
-  "measured_at": "2026-10-07",
+  "measured_at": "2026-10-09",
   "schema": "sparkring-sircl-tuning/v1",
   "sircl": {
     "abi_version": 9,
-    "version": "0.2.0"
+    "version": "0.3.1"
   },
   "source": "defaults",
   "tables": []

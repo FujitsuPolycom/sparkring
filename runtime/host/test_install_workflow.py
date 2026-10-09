@@ -754,8 +754,14 @@ def test_a_pair_installs_the_qad_checkpoint_with_its_own_kv_limit_and_refuses_nv
     surveyed = len(sparks.surveys)
     assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvidia-nvfp4", "--yes", "--json"]) == 3
     refused = json.loads(capsys.readouterr().out)
-    assert refused["field"] == "checkpoint_name" and "lists: nvfp4-qad, nvfp4-spark" in refused["message"]
+    assert refused["field"] == "checkpoint_name" and "lists: csf, nvfp4-qad, nvfp4-spark" in refused["message"]
     assert len(sparks.surveys) == surveyed
+    # The default image's vLLM cannot read the CSF checkpoint, which the pair prefers where it can.
+    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "csf", "--yes", "--json"]) == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "checkpoint_name" and "(--checkpoint csf) needs an image whose vLLM is the pinned " \
+        "build sparkring-kraken-beta-20261007-bc9ea774" in refused["message"]
+    assert "records no pinned vLLM build" in refused["message"] and len(sparks.surveys) == surveyed
 
 
 def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
@@ -2889,3 +2895,21 @@ def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported
     result = json.loads(out.out)
     assert (result["recovery"], result["auto_recover"]) == (expected, False)
     assert "  Recovery:    " + line in out.err
+
+
+def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatch):
+    """The catalog's checks run on rank 0's rendered container (catalog_warnings), so a configuration the
+    catalog names as slow is printed before the installation starts."""
+    from runtime.common.container_spec import ContainerSpec
+    rendered = {"command": ("serve", "/models/target", "--quantization-config", '{"linear":"mxfp8"}')}
+
+    def specifications(lock, *, only_rank=None, **kwargs):
+        return [ContainerSpec(name="rank0", image_id="sha256:" + "a" * 64, entrypoint=("vllm",),
+                              command=rendered["command"], environment={"VLLM_PLUGINS": "b12x_loader"}, mounts=())]
+    monkeypatch.setattr(installer, "specifications", specifications)
+    lock = {"backend": "compose"}
+    warnings = flow.catalog_warnings(lock)
+    assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit: MXFP8 or NVFP4 dense linears")
+    rendered["command"] += ("--linear-backend", "b12x")
+    assert flow.catalog_warnings(lock) == []
+    assert flow.catalog_warnings({"backend": "glm-mesh"}) == [] and flow.catalog_warnings(None) == []

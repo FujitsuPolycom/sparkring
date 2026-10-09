@@ -42,9 +42,9 @@ names an entry some architecture's cubin lacks stops the build with that entry's
 
 ## 2. GPU emulation on the workstation (EMULATION)
 
-Every command runs inside WSL under the shared GPU lock. `REF` is the SIRCL reference tree
-(`../sircl-current/spark_transport/sircl`); `LOCK` is `ring8/cleanroom/impl/.build/gpu-lock.sh` of the
-lead workspace. `CUDA_DEVICE_MAX_CONNECTIONS=32` keeps ranks that share one process from serializing on
+Every command runs inside WSL under the shared GPU lock. `REF` is the SIRCL reference tree's
+`spark_transport/sircl` directory; `LOCK` is the script of that GPU lock.
+`CUDA_DEVICE_MAX_CONNECTIONS=32` keeps ranks that share one process from serializing on
 the GPU's default eight hardware queues.
 
 ```sh

@@ -38,8 +38,10 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer and lists the vLLM plugins
 `glm_dsa_indexer_split`, `glm53full_speedups` and `glm_dcp_decode_comm` in
-`vllm_plugins`. No lock in this package does. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
-adds the three plugins to the SIRCL 0.3.0 and libsircl image and writes such a
+`vllm_plugins`. The package carries two such locks, of the SIRCL 0.3.1, libsircl
+and GLM-5.3 plugin image `27e9f75c0d09` ([image record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md)), for
+Sparks that hold that image. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
+adds the three plugins to a SIRCL and libsircl image and writes such a
 lock from that image's v3 lock
 ([derived layers](../../runtime/images/installer-images.md#derived-layers)).
 `sparkring install` refuses a lock without the plugins, because vLLM would
@@ -111,8 +113,23 @@ of 8 sequences (at 0K context 19.12 / 28.75 / 42.08 / 59.75 against 19.14 /
 136.6 tokens/s, the same as 8 streams. The CUDA graph capture sizes already
 reach 48 tokens (16 sequences of 3 tokens with two draft tokens).
 
-Conclusion: the profile holds the fastest GLM-5.3 TP8 configuration measured
-on that ring as of 2026-10-09. No installation of this profile has run; it is
+On the image `27e9f75c0d09` (`sparkring-dev/kraken:csf-sircl-libsircl-plugins-dcp-20261009`:
+SIRCL 0.3.1, libsircl snapshot `a3477af2` and all three plugins, with
+`glm_dcp_decode_comm`'s items off), this profile's settings with 16
+sequences, the same ring and clocks, started outside `sparkring install`:
+
+| Context | 1 stream | 2 streams | 4 streams | 8 streams |
+|---|---:|---:|---:|---:|
+| 0 | 51.6 | 73.9 | 106.9 | 153.7 |
+| 16K | 46.4 | 63.4 | 94.8 | 135.2 |
+
+Decode in output tokens/s. Time to first token: 11.77 s for a 16K prompt,
+23.89 s for 32K.
+
+Conclusion: the profile holds the fastest GLM-5.3 TP8 configuration with a
+1M-token context measured on that ring as of 2026-10-09;
+[glm53-nvfp4-tp8-dcp1](../glm53-nvfp4-tp8-dcp1/README.md) decodes faster with
+a 524,288-token context. No installation of this profile has run; it is
 not serving-qualified.
 
 Open items:
@@ -127,10 +144,10 @@ Open items:
   checkpoint.
 - The default SIRCL tuning table's `cycle-8` row (1 MiB all-reduce capacity
   and dispatch ceiling, 28 KiB one-shot limit, 16 link slots of 512 KiB)
-  names SIRCL 0.2.0. On the SIRCL 0.3.0 image it does not apply, so the
-  installer uses SIRCL's own values for those settings, as the serving A/B
-  runner and the SIRCL bundle do; the link settings are the same either way.
-  A default table re-recorded for SIRCL 0.3.0 would give the installer the
-  row's capacity, dispatch ceiling and one-shot limit, which the runner and
-  the bundle do not set.
+  applies to SIRCL 0.3.1 sessions. The measured runs above gave the same
+  capacity, dispatch ceiling and link slots to the SIRCL bundle (`--capacity`,
+  `--dispatch` and container variables) and left the one-shot limit to the
+  session, which derives 28 KiB on eight ranks. On an image whose SIRCL layer
+  is 0.3.0, such as `af06e272`, the row does not apply and the installer's
+  sessions take SIRCL's own capacity and dispatch ceiling.
 - Block size and compilation settings are vLLM's defaults.

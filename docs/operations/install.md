@@ -64,10 +64,13 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step 5500
   with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
-  third-party hybrid (research-only). GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
-  for Local Inference Lab's QAD checkpoint, or on four Sparks
-  `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On two Sparks, QAD
-  runs with a shorter context window
+  third-party hybrid (research-only). GLM profiles install the CSF
+  checkpoint on an image whose vLLM reads it (research-only) and NVFP4-Spark
+  on every other image, the default image among them; add
+  `--checkpoint nvfp4-spark` for NVFP4-Spark on any image,
+  `--checkpoint nvfp4-qad` for Local Inference Lab's QAD checkpoint, or on
+  four Sparks `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On
+  two Sparks, QAD runs with a shorter context window
   ([checkpoints](install-reference.md#another-checkpoint-of-a-profile)).
 - `--download-limit 850Mbit` caps the model download from Hugging Face
   ([details](install-reference.md#limit-the-download-rate)).

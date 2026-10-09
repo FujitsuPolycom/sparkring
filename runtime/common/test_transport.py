@@ -75,13 +75,41 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     assert table["source"] == "defaults" and table["fabric"] is None and table["tables"] == []
     for row in table["layouts"].values():
         assert set(row["settings"]) <= set(transport.SETTINGS)
-    from spark_transport.sircl.sparkring_sircl import __version__
+    # The default table names the SIRCL build its rows were measured with. A session of another build of the same
+    # ABI takes SIRCL's own rules instead of the rows (``section``'s ``applies``).
     from spark_transport.sircl.sparkring_sircl.oneshot._proxy import ABI_VERSION
-    assert table["sircl"] == {"version": __version__, "abi_version": ABI_VERSION}
+    assert set(table["sircl"]) == {"version", "abi_version"} and table["sircl"]["abi_version"] == ABI_VERSION
 
 
-@pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path"), ("cycle", 8, "cycle-8"),
-                                                   ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
+def shipped_sircl_locks():
+    """``{path: lock}`` of every v3 image lock with a SIRCL layer in the release and record trees.
+
+    The package carries the repository's source tree, so each of these locks reaches every installation.
+    """
+    found = {}
+    for tree in ("runtime/releases", "performance/records"):
+        for path in sorted((transport.ROOT / tree).rglob("*.json")):
+            text = path.read_text(encoding="utf-8", errors="replace")
+            if image_lock.SCHEMA_V3 not in text:
+                continue
+            value = json.loads(text)
+            if isinstance(value, dict) and value.get("schema") == image_lock.SCHEMA_V3 and "sircl" in value:
+                found[path.relative_to(transport.ROOT).as_posix()] = value
+    return found
+
+
+def test_every_shipped_sircl_lock_names_the_sircl_build_of_the_default_tuning_table():
+    # The default rows apply only to sessions of the SIRCL build the table names; an image of another build would
+    # run none of them, silently. Re-key the table (and its measured rows) before shipping a lock of another build.
+    table = transport.load_tuning()
+    locks = shipped_sircl_locks()
+    assert locks
+    for path, lock in locks.items():
+        assert {key: lock["sircl"][key] for key in ("version", "abi_version")} == table["sircl"], path
+
+
+@pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path-4"), ("path", 3, "path"),
+                                                   ("cycle", 8, "cycle-8"), ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
 def test_a_group_takes_its_own_row_else_the_row_of_its_shape(shape, size, expected):
     assert transport.tuning_row(transport.load_tuning(), shape, size)[0] == expected
 
@@ -193,7 +221,7 @@ def test_a_measured_table_carries_default_rows_and_drops_a_default_table_it_repl
                                        fabric=document("cycle", 4)["id"], image_value=image, measured_at="2026-10-09",
                                        binding=binding, root=tmp_path / "repository")
     assert [entry["sha256"] for entry in kept["tables"]] == [other_digest, digest]
-    assert kept["layouts"]["pair"]["source"] == "default:design" and kept["layouts"]["cycle-4"]["source"] == "measured"
+    assert kept["layouts"]["pair"]["source"] == "default:measured" and kept["layouts"]["cycle-4"]["source"] == "measured"
     replaced = transport.measured_document(defaults, {"pair": {}}, {digest: json.loads(data)},
                                            fabric=document("pair", 2)["id"], image_value=image,
                                            measured_at="2026-10-09", binding=binding, root=tmp_path / "repository")
@@ -320,12 +348,16 @@ def launcher_plan(lock, nccl, **options):
     """
     plain = installer.specifications({key: value for key, value in lock.items() if key != "transport"})
     section = lock["transport"]
+    # The deployment adds the NCCL ring settings of the cycle contract where the profile leaves them unset
+    # (transport.added_ring_settings); the SIRCL launcher's bundle sets the same settings whenever it lets NCCL
+    # run on a cycle (serve.bundle.RING_SETTINGS), so the launcher plan reads the same environment.
+    ring = transport.added_ring_settings(section, plain[0].environment)
     ranks = []
     for number, spec in enumerate(plain):
         health = serve_profile.Health(spec.health_command, "10s", "5s", "0s", 3) if spec.health_command else None
         ranks.append(serve_profile.RankContainer(
             rank=number, image_reference=spec.image_id, entrypoint=spec.entrypoint, command=spec.command,
-            environment=dict(spec.environment),
+            environment={**spec.environment, **ring},
             mounts=tuple(serve_profile.Mount(m.source, m.target, m.read_only) for m in spec.mounts),
             devices=spec.devices, security_opt=spec.security_opt, memory=spec.memory, memory_swap=spec.memory_swap,
             memlock=spec.memlock, platform=spec.platform, pull_policy=spec.pull_policy, restart=spec.restart_policy,
@@ -349,7 +381,8 @@ def launcher_plan(lock, nccl, **options):
         positions=tuple(section["group"]["positions"]), model_path="/srv/model", nccl_mode=nccl,
         require_no_nccl=nccl == "never",
         **{key: settings[key] for key in ("capacity", "dispatch", "gather", "oneshot_max", "large_blocks", "ring_min",
-                                          "chain_min", "link_slots", "ring_gather_stagger") if key in settings},
+                                          "chain_min", "link_slots", "ring_gather_stagger", *transport.SCHEDULE_SETTINGS)
+           if key in settings},
         link_sizes={key: settings[key] for key in ("link_slot", "link_chunk", "gather_link_chunk", "scatter_link_chunk",
                                                    "reduce_link_chunk") if key in settings},
         **options)
@@ -397,16 +430,27 @@ def test_the_containers_load_the_images_prebuilt_libraries_and_the_sparks_fabric
         assert "SIRCL_TUNING_TABLE" not in environment
 
 
-def test_a_pair_tuning_row_sets_its_session_settings():
-    lock, section = sircl_deployment(TP2, "pair", 2, [0, 1])
+RING_SCHEDULE_ROW = {"large_schedule": "ring", "gather_schedule": "ring", "scatter_schedule": "ring",
+                     "oneshot_max": 65536, "link_slot": 1 << 20, "gather_link_chunk": 1 << 20,
+                     "reduce_link_chunk": 1 << 20, "scatter_link_chunk": 1 << 20}
+RING_SCHEDULE_ENVIRONMENT = {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring",
+                             "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536",
+                             "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+                             "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
+
+
+@pytest.mark.parametrize("shape, size, positions, row", [("pair", 2, [0, 1], "pair"),
+                                                         ("cycle", 8, [4, 5, 6, 7], "path-4")])
+def test_the_pair_and_path_of_four_rows_set_the_measured_ring_schedules(shape, size, positions, row):
+    profile = TP2 if len(positions) == 2 else TP4
+    lock, section = sircl_deployment(profile, shape, size, positions)
     environment = installer.specifications(lock)[0].environment
-    assert section["tuning"]["settings"] == {"large_blocks": 32, "oneshot_max": 131072, "ring_min": 2097152}
-    # The pair row holds the SIRCL install design's settings, which no measurement confirmed.
-    assert section["tuning"]["row_source"] == "design"
-    assert transport.plan_lines(section)[0] == ("Transport: sircl on every collective, NCCL off (default table, pair: "
-                                                "the design's settings, not measured)")
-    assert (environment["SIRCL_LARGE_BLOCKS"], environment["SIRCL_ONESHOT_MAX_BYTES"],
-            environment["SIRCL_RING_MIN_BYTES"]) == ("32", "131072", "2097152")
+    # The rows hold the ring-schedule settings that the serving matrix measured on pairs and paths of four.
+    assert (section["tuning"]["row"], section["tuning"]["row_source"]) == (row, "measured")
+    assert section["tuning"]["settings"] == RING_SCHEDULE_ROW
+    assert transport.plan_lines(section)[0] == f"Transport: sircl on every collective, NCCL off (default table, {row})"
+    assert {key: environment.get(key) for key in RING_SCHEDULE_ENVIRONMENT} == RING_SCHEDULE_ENVIRONMENT
+    assert "evidence" in transport.load_tuning()["layouts"][row]
 
 
 def test_with_nccl_auto_on_a_pair_nccl_uses_the_devices_facing_the_partner():
@@ -417,6 +461,20 @@ def test_with_nccl_auto_on_a_pair_nccl_uses_the_devices_facing_the_partner():
                                                                    "=rocep1s0f1,roceP2p1s0f1"]
     assert all("NCCL_DEBUG_SUBSYS" not in spec.environment or spec.environment["NCCL_DEBUG_SUBSYS"] != "INIT"
                for spec in specs)
+
+
+def test_with_nccl_auto_on_a_whole_cycle_the_installer_arms_the_ring():
+    lock, section = sircl_deployment(TP4, "cycle", 4, [0, 1, 2, 3], nccl="auto")
+    assert section["group"]["cabling"] == "ring"
+    for spec in installer.specifications(lock):
+        # The cycle contract: NCCL's ring runs, and builds no tree connections between Sparks that share no cable.
+        assert spec.environment["NCCL_ALGO"] == "Ring" and spec.environment["NCCL_SKIP_TREE_CONNECT"] == "1"
+    assert ("  NCCL on this cycle: NCCL_ALGO=Ring, NCCL_SKIP_TREE_CONNECT=1; the installer adds what the profile "
+            "leaves unset, so NCCL's ring runs but builds no tree connections between Sparks that share no cable") \
+        in transport.plan_lines(section)
+    # A profile that names another value for a ring setting is refused: the contract needs exactly these.
+    with pytest.raises(transport.TransportError, match="the profile sets NCCL_SKIP_TREE_CONNECT='0'"):
+        transport.environment(section, {"NCCL_SKIP_TREE_CONNECT": "0"}, [])
 
 
 def package_image(**changes):
@@ -454,9 +512,10 @@ def ring_document(image, group, *, session=TUNE_SESSION, piece=1 << 20, link=Tru
     return sircl_tuning.build_document(key, rows, session=session)
 
 
-def repository_tables(tmp_path, documents):
+def repository_tables(tmp_path, documents, image=None):
     """``documents`` (name -> SIRCL table) written in the repository ``tmp_path``, their paths, and the default
-    table naming them."""
+    table naming them; with ``image``, the default table is keyed to the image's SIRCL build, as a default table
+    released with that build is."""
     paths, entries = {}, []
     for name, value in documents.items():
         path = tmp_path / f"runtime/tables/{name}.json"
@@ -465,6 +524,9 @@ def repository_tables(tmp_path, documents):
         paths[name] = path
         entries.append({"path": f"runtime/tables/{name}.json", "sha256": hashlib.sha256(path.read_bytes()).hexdigest()})
     table = dict(transport.load_tuning(), tables=entries)
+    if image is not None:
+        sircl = image_lock.sircl(image)
+        table["sircl"] = {"version": sircl["version"], "abi_version": sircl["abi_version"]}
     transport.validate_tuning(table, root=tmp_path)
     return paths, table
 
@@ -473,7 +535,7 @@ def ring_table(tmp_path, image):
     """A measured SIRCL table for the four-Spark ring that chooses a ring all-reduce at 8 MiB, written in the
     repository ``tmp_path``, and the default table naming it."""
     measured = ring_document(image, transport.group_topology("ring:4", [0, 1, 2, 3]))
-    paths, table = repository_tables(tmp_path, {"cycle4": measured})
+    paths, table = repository_tables(tmp_path, {"cycle4": measured}, image)
     return measured, paths["cycle4"], table
 
 
@@ -544,8 +606,10 @@ def test_a_measured_row_keeps_the_default_rows_settings_and_its_tables_link_sett
         key: value for key, value in default_row.items() if key not in ("link_slots", "link_slot")}
     assert transport.measured_row(defaults, "cycle-8", {}, unlinked) == default_row
     assert transport.measured_row(defaults, "cycle-8", {"oneshot_max": 4096}, unlinked)["oneshot_max"] == 4096
-    # A size without its own row takes the shape row's settings (SIRCL's rules: none).
-    assert transport.measured_row(defaults, "path-4", {}, None) == defaults["layouts"]["path"]["settings"] == {}
+    # A size with its own row takes that row's settings; a size without one takes the shape row's (SIRCL's
+    # rules: none).
+    assert transport.measured_row(defaults, "path-4", {}, None) == defaults["layouts"]["path-4"]["settings"]
+    assert transport.measured_row(defaults, "path-3", {}, None) == defaults["layouts"]["path"]["settings"] == {}
     data = (json.dumps(linked, indent=1, sort_keys=True) + "\n").encode()
     digest = hashlib.sha256(data).hexdigest()
     value = measured_table(tmp_path, cycle, image, rows={"cycle-8": {}}, tables={digest: data})
@@ -570,7 +634,7 @@ def dcp_tables(tmp_path, image):
     documents = {"cycle8": ring_document(image, tensor, piece=512 << 10,
                                          session=dict(TUNE_SESSION, link_slot_bytes=512 << 10)),
                  "dcp4": ring_document(image, decode, session=dict(TUNE_SESSION, link_slots=8))}
-    paths, table = repository_tables(tmp_path, documents)
+    paths, table = repository_tables(tmp_path, documents, image)
     return documents, paths, table
 
 
@@ -761,9 +825,10 @@ def test_every_installer_profile_renders_on_sircl_on_its_layouts(profile, nccl):
 
 @pytest.mark.parametrize("shape, size, positions, layout, name, row, relays_, cabling", [
     ("cycle", 8, list(range(8)), "ring:8", "cycle-8", "cycle-8", 3, "ring"),
-    ("cycle", 8, [4, 5, 6, 7], "ring:8", "path-4", "path", 2, "none"),
-    ("cycle", 8, [6, 7, 0, 1], "ring:8", "path-4", "path", 2, "none"),
-    ("path", 4, [0, 1, 2, 3], "path:4", "path-4", "path", 2, "none"),
+    ("cycle", 8, [4, 5, 6, 7], "ring:8", "path-4", "path-4", 2, "none"),
+    ("cycle", 8, [6, 7, 0, 1], "ring:8", "path-4", "path-4", 2, "none"),
+    ("path", 4, [0, 1, 2, 3], "path:4", "path-4", "path-4", 2, "none"),
+    ("cycle", 8, [2, 3, 4], "ring:8", "path-3", "path", 1, "none"),
 ])
 def test_a_section_places_arcs_of_larger_fabrics(shape, size, positions, layout, name, row, relays_, cabling):
     value = document(shape, size)

@@ -18,7 +18,8 @@ and Sparks.
 - **Image:** `sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa`, image lock
   `dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp` (v3, SHA-256 `7ff35670…`; SIRCL 0.3.1, libsircl
   snapshot `a3477af2`, vLLM plugins `glm_dsa_indexer_split` 1.1.0, `glm53full_speedups` 1.1.0 and
-  `glm_dcp_decode_comm` 2.0.0), built from commit `68934e24`. The lock is not in the repository; each
+  `glm_dcp_decode_comm` 2.0.0), built from commit `68934e24`. The lock is `installer-image-68934e24.json` of the
+  [image record](dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md); each
   run's `plan.json` records its name and SHA-256.
 - **Hardware:** eight DGX Sparks (GB10) cabled as a ring of eight with ConnectX-7 RoCE; every run used all
   eight.

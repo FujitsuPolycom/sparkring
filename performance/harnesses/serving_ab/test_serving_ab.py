@@ -237,6 +237,16 @@ def test_overrides_change_every_rank_and_record_the_profile_value(tmp_path):
     assert all(t[-1] == "--async-scheduling" for t in bases) and changed[2] == "--async-scheduling (the profile's: unset)"
 
 
+def test_choose_model_takes_a_listed_checkpoint_or_another_profiles_model():
+    profile, _ = cli.profile_config("qwen38-flash-next-tp2")
+    chosen, deviations = cli.choose_model(profile, "qad-step5500-mxfp8-attention", None)
+    assert chosen["model"]["revision"].startswith("648b194a") and deviations[0].startswith("checkpoint qad-step5500")
+    glm, _ = cli.profile_config("glm53-flash-nvfp4-spark-tp4")
+    csf, deviations = cli.choose_model(glm, None, "glm53-flash-csf-tp8")
+    assert csf["model"]["revision"].startswith("dec48abd") and csf["vllm_args"] == glm["vllm_args"]
+    assert "of glm53-flash-csf-tp8" in deviations[0]
+
+
 def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(monkeypatch):
     """The SIRCL arms' bundles read the SIRCL switches the profile pins (bundle --profile), as the installer does."""
     from types import SimpleNamespace
@@ -246,7 +256,7 @@ def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(
         seen.append(command)
         return subprocess.CompletedProcess(command, 0, json.dumps({"nccl": "none", "ranks": []}), "")
     monkeypatch.setattr(cli.subprocess, "run", run)
-    args = SimpleNamespace(capacity=None, dispatch=None, tuning_table=None, profile="glm53-nvfp4-tp8")
+    args = SimpleNamespace(capacity=None, dispatch=None, tuning_table=[], profile="glm53-nvfp4-tp8")
     cli.bundle("site.json", list(range(8)), "run-s", "never", args, dcp=4)
     cli.bundle("site.json", list(range(8)), "run-auto", "auto", args)
     never, auto = seen
@@ -255,11 +265,51 @@ def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(
     assert "--profile" not in auto and "--fused-norm" not in never
 
 
-def test_choose_model_takes_a_listed_checkpoint_or_another_profiles_model():
-    profile, _ = cli.profile_config("qwen38-flash-next-tp2")
-    chosen, deviations = cli.choose_model(profile, "qad-step5500-mxfp8-attention", None)
-    assert chosen["model"]["revision"].startswith("648b194a") and deviations[0].startswith("checkpoint qad-step5500")
-    glm, _ = cli.profile_config("glm53-flash-nvfp4-spark-tp4")
-    csf, deviations = cli.choose_model(glm, None, "glm53-flash-csf-tp8")
-    assert csf["model"]["revision"].startswith("dec48abd") and csf["vllm_args"] == glm["vllm_args"]
-    assert "of glm53-flash-csf-tp8" in deviations[0]
+def test_the_nccl_arm_removes_the_sircl_plugin_a_profile_lists():
+    bases = [base(0), base(1)]
+    for tokens in bases:
+        spec.set_env(tokens, "VLLM_PLUGINS", "b12x_loader,sparkring_status,sircl,glm_dsa_indexer_split")
+    env = spec.environment(spec.render_arm("N", bases, **COMMON)[0])
+    assert env["VLLM_PLUGINS"] == "b12x_loader,sparkring_status,glm_dsa_indexer_split"
+    # The SIRCL arms keep it once.
+    s = spec.environment(spec.render_arm("S", [base(0), base(1)], **COMMON)[0])
+    assert s["VLLM_PLUGINS"].split(",").count("sircl") == 1
+
+
+def test_arm_n_is_refused_where_a_decode_context_parallel_group_is_not_cabled(monkeypatch):
+    from types import SimpleNamespace
+    seen = []
+
+    def run(command, **kwargs):
+        seen.append(command)
+        return subprocess.CompletedProcess(command, 0, json.dumps({"nccl": "ring", "ranks": []}), "")
+    monkeypatch.setattr(cli.subprocess, "run", run)
+    args = SimpleNamespace(site="site.json", capacity=None, dispatch=None, tuning_table=[], profile="glm53-nvfp4-tp8")
+    # Four consecutive Sparks of a ring of eight: the last and first share no cable.
+    assert "positions [0, 1, 2, 3]" in cli.nccl_dcp_problem(8, list(range(8)), 4)
+    with pytest.raises(SystemExit, match="arm N: decode-context parallelism 4"):
+        cli.nccl_bundle(args, 8, list(range(8)), "run", 4)
+    assert not seen
+    assert cli.nccl_dcp_problem(8, list(range(8)), 2) is None and cli.nccl_dcp_problem(8, list(range(8)), 1) is None
+    # The auto bundle takes the same decode-context parallelism as the SIRCL arms' bundles.
+    cli.nccl_bundle(args, 8, list(range(8)), "run", 2)
+    cli.nccl_bundle(args, 8, [0, 1], "run", 1)
+    with_dcp, without = seen
+    assert with_dcp[with_dcp.index("--dcp-size") + 1] == "2" and with_dcp[with_dcp.index("--nccl") + 1] == "auto"
+    assert "--dcp-size" not in without
+
+
+def test_the_plan_states_that_arm_s_runs_a_fused_norm_the_profile_pins():
+    glm, _ = cli.profile_config("glm53-nvfp4-tp8")
+    assert cli.fused_norm_notes(glm["environment"], ["S", "S+"]) == [
+        "arm S runs SIRCL_FUSED_NORM=1, which the profile pins; arms S and S+ run the same SIRCL switches"]
+    assert cli.fused_norm_notes(glm["environment"], ["S+", "N"]) == []
+    qwen, _ = cli.profile_config("qwen38-flash-next-tp2")
+    assert cli.fused_norm_notes(qwen["environment"], ["S", "S+"]) == []
+
+
+def test_the_plan_warns_of_quantized_linears_without_a_linear_backend():
+    quantized = base(0) + ["--quantization-config", '{"linear":"mxfp8"}']
+    warnings = cli.catalog_warnings({"S+": [quantized], "N": [quantized]})
+    assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit:")
+    assert cli.catalog_warnings({"S+": [quantized + ["--linear-backend", "b12x"]]}) == []
