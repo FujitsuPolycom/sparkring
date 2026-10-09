@@ -270,7 +270,7 @@ def _write(path, text):
 def test_validation_rejects_private_data_unknown_names_and_drift(catalog):
     broken = copy.deepcopy(catalog)
     first = broken["enhancements"][0]
-    first["description"] += " see C:\\Users\\someone\\notes"
+    first["description"] += " see C:" + "\\Users\\someone\\notes"
     first["models"].append({"name": "Unknown-Model"})
     first["evidence"].append("notes/missing.md")
     problems = ce.validate(broken, profiles=False)

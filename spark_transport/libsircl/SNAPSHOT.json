@@ -1,6 +1,13 @@
 {
  "excluded": {
   "paths": [
+   "requests/FO/base.json",
+   "requests/FO/edit_FO.py",
+   "requests/FO/land_FO.py",
+   "requests/PO/base.json",
+   "requests/PO/edit_PO.py",
+   "requests/PO/land_PO.py",
+   "requests/README.md",
    "tests/__pycache__/test_api.cpython-312.pyc",
    "tools/__pycache__/check_nccl_tests.cpython-312.pyc",
    "verification/binary.json",
@@ -126,12 +133,34 @@
    {
     "match": "verification/",
     "reason": "run evidence that STATUS.md summarizes; its logs name the build workstation's local paths and the host names of the Sparks it ran on"
+   },
+   {
+    "match": "requests/",
+    "reason": "change requests for SIRCL's own package; their landing scripts and notes name directories of the workspace that wrote the snapshot"
    }
   ]
  },
- "files": 128,
+ "files": 121,
  "manifest": "SNAPSHOT.sha256",
- "schema": "sparkring-libsircl-snapshot/v1",
+ "rewritten": {
+  "README.md": {
+   "sha256": "141075310aa97333ea7892e9e6e124392c48171c768170107728b66907407489",
+   "snapshot_sha256": "dda71a77d9a4a7e637b3a6c3f7b22de98f61e20be27187a9ed73d8a932d75987"
+  },
+  "RUNBOOK.md": {
+   "sha256": "0447f9c84f1cb2ba309e4b4b526dc4d81280448f10eddc3b42910ff853ca1a22",
+   "snapshot_sha256": "b5dae794e13a73f6471d84bb37f1cff23b16db153cab2c8b14e5165025cfe405"
+  },
+  "SOURCE_SNAPSHOT.json": {
+   "sha256": "bddf2704d6fed57e7f9a5e9e4a4b024c2e478f9d284313a46991ac54e55d6172",
+   "snapshot_sha256": "6e677c1e06055e5cacd8fafc633af417dd65645defcb36f63aac6fcba10d42cf"
+  },
+  "STATUS.md": {
+   "sha256": "2db355a5a124cb4105011fa4503e4420747ea2e08d8e7b48b830bb459337090d",
+   "snapshot_sha256": "047c1248986826387bfdb64679e128870f54edc9f0947f1869ac01307a2bf401"
+  }
+ },
+ "schema": "sparkring-libsircl-snapshot/v2",
  "snapshot": "a3477af2",
  "tree_digest": "a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302",
  "version": "0.6.0"

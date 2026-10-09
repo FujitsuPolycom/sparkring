@@ -48,21 +48,32 @@ path of four, or four positions of the ring of eight) this snapshot's planner
 adds the two point-to-point variables, so the transport refuses that group;
 a pair and the whole ring of eight plan as before.
 
-The directory holds the snapshot's files byte for byte, except two kinds that
-stay with the snapshot:
+The directory holds the snapshot's files byte for byte, except three kinds
+that stay with the snapshot:
 
 - compiled Python caches (`__pycache__/`);
 - `verification/`, the run evidence that STATUS.md summarizes. Its logs name
-  the workstation's local paths and the host names of the Sparks it ran on.
+  the workstation's local paths and the host names of the Sparks it ran on;
+- `requests/`, the library's change requests to SIRCL's own package, whose
+  landing scripts name directories of the workspace that wrote the snapshot.
+
+A few passages of the library's documents and of `SOURCE_SNAPSHOT.json`
+name that workspace's directories, among them a local Windows path. The sync
+script's `REWRITES` replaces them in the vendored copy (`README.md`,
+`STATUS.md`, `RUNBOOK.md` and `SOURCE_SNAPSHOT.json`), and the sync refuses a
+snapshot whose vendored text still holds a local Windows user path or such a
+reference afterwards. None of these files is an input of the library build or
+of the image layer.
 
 Two files beside the library's own describe the copy, and the sync script
 writes both:
 
 - `SNAPSHOT.sha256`: the snapshot's `FILES.sha256`, byte for byte, so its
   SHA-256 is the tree digest and every file's digest stays checkable;
-- `SNAPSHOT.json` (`sparkring-libsircl-snapshot/v1`): the tree digest, the
-  library version, the number of vendored files, the exclusion rules and
-  every excluded path (`SNAPSHOT.sha256` holds their SHA-256).
+- `SNAPSHOT.json` (`sparkring-libsircl-snapshot/v2`): the tree digest, the
+  library version, the number of vendored files, the exclusion rules, every
+  excluded path (`SNAPSHOT.sha256` holds their SHA-256) and every rewritten
+  file with its snapshot and vendored SHA-256.
 
 `.gitattributes` keeps the directory's bytes unconverted on every platform.
 Updates arrive only through the sync script, never by hand:
@@ -75,9 +86,15 @@ python3 scripts/sync_libsircl.py check
 `sync` requires the SHA-256 of the snapshot's `FILES.sha256` to equal the
 digest given on the command line and the one `MANIFEST` states, requires
 every file of `tree/` to match its line and every line to name a file, then
-replaces the directory's contents. `check` requires every vendored file to
-match `SNAPSHOT.sha256`, every listed file that is not excluded to be present,
-and nothing else to be there; a CPU test runs it, so CI refuses a hand edit.
+replaces the directory's contents. It replaces only a directory that is
+absent, empty or a vendored copy (one holding a `SNAPSHOT.json` of a
+`sparkring-libsircl-snapshot` schema). `check` requires every vendored file
+to match `SNAPSHOT.sha256` (a rewritten file: the vendored SHA-256 that
+`SNAPSHOT.json` records for it), every listed file that is not excluded to be
+present, nothing else to be there and no vendored text to name the
+workspace's directories; a CPU test runs it, so CI refuses a hand edit. The
+release-safety scan (`scripts/check_release_safety.py`) reports a local
+Windows user path in any tracked file.
 
 The repository's [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)
 (section 18) and [NOTICE](../../NOTICE) name libsircl's components: its

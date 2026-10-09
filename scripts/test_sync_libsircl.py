@@ -42,14 +42,24 @@ def test_the_vendored_copy_is_the_snapshot_its_manifest_names():
                  "LICENSES/CUDA-NOTICE.txt", "LICENSES/rdma-core-verbs.txt", "tools/site_routes.py",
                  "tests/api_manifest.json", "kernels/prebuilt/sircl_links.fatbin"):
         assert (sync.TARGET / path).is_file(), path
-    assert all(path.startswith("verification/") or "__pycache__" in path for path in record["excluded"]["paths"])
+    assert all(path.startswith(("verification/", "requests/")) or "__pycache__" in path
+               for path in record["excluded"]["paths"])
+    # Passages naming the snapshot workspace's directories are rewritten; the record pins both digests.
+    assert record["schema"] == sync.SCHEMA and set(record["rewritten"]) <= {path for path, _, _ in sync.REWRITES}
+    assert result["rewritten"] == len(record["rewritten"]) > 0
+    vendored = {path.relative_to(sync.TARGET).as_posix(): path.read_bytes() for path in sync.TARGET.rglob("*")
+                if path.is_file() and "__pycache__" not in path.parts}
+    assert sync.workspace_references(vendored) == []
+    source = json.loads((sync.TARGET / "SOURCE_SNAPSHOT.json").read_text(encoding="utf-8"))
+    assert source["selected"] in source["sources"]
 
 
 def test_a_synced_snapshot_keeps_its_bytes_and_leaves_out_caches_and_run_evidence(tmp_path):
     directory, digest = snapshot(tmp_path)
     target = tmp_path / "libsircl"
     result = sync.sync(directory, digest, target)
-    assert result == {"snapshot": digest[:8], "tree_digest": digest, "version": "0.6.0", "files": 4, "excluded": 2}
+    assert result == {"snapshot": digest[:8], "tree_digest": digest, "version": "0.6.0", "files": 4, "excluded": 2,
+                      "rewritten": 0}
     assert (target / sync.MANIFEST).read_bytes() == (directory / "FILES.sha256").read_bytes()
     assert (target / "src/api.c").read_bytes() == b"int x;\r\n"
     assert not (target / "verification").exists() and not (target / "tests").exists()
@@ -60,6 +70,69 @@ def test_a_synced_snapshot_keeps_its_bytes_and_leaves_out_caches_and_run_evidenc
     files = {"VERSION": b"0.6.1\n", "README.md": b"# libsircl 0.6.1\n"}
     later, later_digest = snapshot(tmp_path / "later", files)
     assert sync.sync(later, later_digest, target)["files"] == 2 and not (target / "src").exists()
+
+
+# A Windows user path as the snapshot workspace's documents record one, assembled so this file holds none.
+USER_PATH = b"C:" + b"\\Users\\someone\\work"
+
+
+def test_a_snapshot_passage_naming_its_workspace_is_rewritten_and_pinned(tmp_path):
+    readme = (b"# libsircl\n\n- The SIRCL reference this library follows is the clean-room implementation tree copied to\n"
+              b"  `../sircl-current`; `SOURCE_SNAPSHOT.json` records its files' SHA-256 hashes.\n")
+    source = json.dumps({"sources": {"lead": USER_PATH.decode()}, "selected": "lead"}).encode()
+    files = {"VERSION": b"0.6.0\n", "README.md": readme, "requests/PO/land_PO.py": b"IMPL = 'impl'\n",
+             "SOURCE_SNAPSHOT.json": source}
+    directory, digest = snapshot(tmp_path, files)
+    target = tmp_path / "libsircl"
+    result = sync.sync(directory, digest, target)
+    assert result["rewritten"] == 2 and result["files"] == 3 and not (target / "requests").exists()
+    assert (target / "README.md").read_bytes() == (
+        b"# libsircl\n\n- The SIRCL reference this library follows is a copy of SIRCL's clean-room implementation "
+        b"tree;\n  `SOURCE_SNAPSHOT.json` records its files' SHA-256 hashes.\n")
+    assert json.loads((target / "SOURCE_SNAPSHOT.json").read_bytes()) == {
+        "sources": {"reference": "SIRCL's clean-room implementation tree (its local path is not vendored)"},
+        "selected": "reference"}
+    record = json.loads((target / sync.RECORD).read_text())
+    assert record["rewritten"]["README.md"] == {
+        "snapshot_sha256": hashlib.sha256(readme).hexdigest(),
+        "sha256": hashlib.sha256((target / "README.md").read_bytes()).hexdigest()}
+    assert record["excluded"]["paths"] == ["requests/PO/land_PO.py"]
+    # A hand edit of a rewritten file, or a record whose snapshot digest is not the manifest's, is refused.
+    (target / "README.md").write_bytes(readme)
+    with pytest.raises(sync.SnapshotError, match="differ from the snapshot|name directories"):
+        sync.check(target)
+    sync.sync(directory, digest, target)
+    record["rewritten"]["README.md"]["snapshot_sha256"] = "0" * 64
+    (target / sync.RECORD).write_bytes(sync.encoded(record))
+    with pytest.raises(sync.SnapshotError, match="does not describe"):
+        sync.check(target)
+
+
+@pytest.mark.parametrize("text", [b"see " + USER_PATH + b"\\notes\n", b"copy of ../sircl-current\n",
+                                  b"the lead workspace's tree\n", b"/mnt/c/" + b"Users/someone/work\n"])
+def test_a_snapshot_whose_text_still_names_its_workspace_is_refused_before_anything_changes(tmp_path, text):
+    directory, digest = snapshot(tmp_path, {"VERSION": b"0.6.0\n", "docs/notes.md": text})
+    target = tmp_path / "libsircl"
+    with pytest.raises(sync.SnapshotError, match="names directories of its workspace"):
+        sync.sync(directory, digest, target)
+    assert not target.exists()
+
+
+def test_the_sync_replaces_only_an_absent_empty_or_vendored_target(tmp_path):
+    directory, digest = snapshot(tmp_path)
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "keep.txt").write_bytes(b"not a vendored copy")
+    with pytest.raises(sync.SnapshotError, match="neither empty nor a vendored libsircl copy"):
+        sync.sync(directory, digest, other)
+    assert [path.name for path in other.iterdir()] == ["keep.txt"]
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert sync.sync(directory, digest, empty)["files"] == 4
+    # A copy that the schema-v1 sync wrote is a vendored copy too.
+    value = json.loads((empty / sync.RECORD).read_text())
+    (empty / sync.RECORD).write_bytes(sync.encoded(dict(value, schema="sparkring-libsircl-snapshot/v1")))
+    assert sync.sync(directory, digest, empty)["files"] == 4
 
 
 @pytest.mark.parametrize("edit, message", [

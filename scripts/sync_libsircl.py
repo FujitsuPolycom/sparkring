@@ -14,14 +14,26 @@ except those ``EXCLUDED`` names, and writes two files of its own:
 
 - ``SNAPSHOT.sha256``: the snapshot's ``FILES.sha256``, byte for byte, so the
   tree digest and every file's digest stay checkable;
-- ``SNAPSHOT.json`` (``sparkring-libsircl-snapshot/v1``): the tree digest,
+- ``SNAPSHOT.json`` (``sparkring-libsircl-snapshot/v2``): the tree digest,
   the library version (the tree's ``VERSION``), the number of vendored files,
-  the exclusion rules and every excluded path.
+  the exclusion rules, every excluded path and every rewritten file with its
+  snapshot and vendored SHA-256.
 
-``check`` requires every vendored file to match ``SNAPSHOT.sha256``, every
-listed file that is not excluded to be present and no other file to be
-there, apart from the outputs of libsircl's own build and Python caches
-(``IGNORED``). Neither action changes a file that the snapshot does not name.
+A few of the library's documents name directories of the workspace that
+wrote the snapshot. ``REWRITES`` replaces those passages in the vendored
+copy. Before it changes the target, the sync refuses a snapshot whose
+vendored text still matches ``WORKSPACE_SHAPES`` (a local Windows user path
+or a reference to that workspace's own directories), and a target that is
+neither absent, empty nor a vendored copy (a directory holding a
+``SNAPSHOT.json`` of a ``sparkring-libsircl-snapshot`` schema).
+
+``check`` requires every vendored file to match ``SNAPSHOT.sha256`` (a
+rewritten file: the vendored SHA-256 its record states, for the snapshot
+SHA-256 that ``SNAPSHOT.sha256`` lists), every listed file that is not
+excluded to be present, no other file to be there, apart from the outputs of
+libsircl's own build and Python caches (``IGNORED``), and no vendored text to
+match ``WORKSPACE_SHAPES``. Neither action changes a file that the snapshot
+does not name.
 
     python3 scripts/sync_libsircl.py sync SNAPSHOT_DIRECTORY --tree-digest TREE_DIGEST
     python3 scripts/sync_libsircl.py check
@@ -36,7 +48,8 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TARGET = ROOT / "spark_transport" / "libsircl"
-SCHEMA = "sparkring-libsircl-snapshot/v1"
+SCHEMA = "sparkring-libsircl-snapshot/v2"
+SCHEMAS = ("sparkring-libsircl-snapshot/v1", SCHEMA)
 MANIFEST = "SNAPSHOT.sha256"
 RECORD = "SNAPSHOT.json"
 OWN = (MANIFEST, RECORD)
@@ -46,7 +59,36 @@ EXCLUDED = (
     ("__pycache__", "compiled Python cache, not source"),
     ("verification/", "run evidence that STATUS.md summarizes; its logs name the build workstation's local paths "
                       "and the host names of the Sparks it ran on"),
+    ("requests/", "change requests for SIRCL's own package; their landing scripts and notes name directories of "
+                  "the workspace that wrote the snapshot"),
 )
+# Passages of vendored documents that name directories of the workspace that wrote the snapshot:
+# (path, pattern, replacement); every match is replaced. When a snapshot rewords a passage so that its
+# pattern stops matching, WORKSPACE_SHAPES refuses the snapshot until the rule follows.
+REWRITES = (
+    ("README.md", rb"is the clean-room implementation tree copied to\n  `\.\./sircl-current`;",
+     b"is a copy of SIRCL's clean-room implementation tree;\n "),
+    ("README.md", rb"`requests/` holds\n  changes the library needs inside SIRCL's package, prepared for its lead\.",
+     b"The library's change\n  requests to SIRCL's package stay with the libsircl snapshot and are not vendored."),
+    ("STATUS.md", rb"is the lead workspace's `ring8/cleanroom/impl` tree, copied byte for byte to\n"
+                  rb"`\.\./sircl-current` \(",
+     b"is SIRCL's clean-room implementation tree, copied byte for byte\n("),
+    ("STATUS.md", rb" \(`requests/README\.md`\)", b" (kept with the libsircl snapshot, not vendored)"),
+    ("STATUS.md", rb"naming the lead implementation tree's `spark_transport/sircl`",
+     b"naming the SIRCL reference tree's `spark_transport/sircl`"),
+    ("RUNBOOK.md", rb"`REF` is the SIRCL reference tree\n\(`\.\./sircl-current/spark_transport/sircl`\); `LOCK` is "
+                   rb"`ring8/cleanroom/impl/\.build/gpu-lock\.sh` of the\nlead workspace\. ",
+     b"`REF` is the SIRCL reference tree's\n`spark_transport/sircl` directory; `LOCK` is the script of that GPU lock.\n"),
+    ("SOURCE_SNAPSHOT.json", rb"The copy at \.\./sircl-current is byte-identical", b"The copy is byte-identical"),
+    ("SOURCE_SNAPSHOT.json", rb'"lead": "[^"]*"',
+     b'"reference": "SIRCL\'s clean-room implementation tree (its local path is not vendored)"'),
+    ("SOURCE_SNAPSHOT.json", rb'"selected": "lead"', b'"selected": "reference"'),
+)
+# Text that no vendored file may hold: a local Windows user path (a drive or WSL mount followed by Users,
+# or AppData) and references to the snapshot workspace's own directories.
+WORKSPACE_SHAPES = re.compile(
+    rb"[A-Za-z]:(?:\\|/)+Users(?:\\|/)|/mnt/[a-z]/Users/|AppData(?:\\|/)|sircl-current|cleanroom/impl"
+    rb"|\blead (?:workspace|scratchpad|implementation tree)|\bits lead\b", re.I)
 # Outputs of libsircl's own build (make's default BUILD directory) and Python caches, which check tolerates.
 IGNORED = ("build", "__pycache__")
 _LINE = re.compile(r"([0-9a-f]{64}) [ *]\./(.+)")
@@ -121,22 +163,58 @@ def read_snapshot(directory, tree_digest):
     return data, entries, version
 
 
-def record(tree_digest, version, entries):
+def rewrite(path, data):
+    """``data`` of the snapshot file ``path`` with the ``REWRITES`` passages of that path replaced."""
+    for rule_path, pattern, replacement in REWRITES:
+        if rule_path != path:
+            continue
+        data = re.sub(pattern, lambda _: replacement, data)
+    return data
+
+
+def workspace_references(files):
+    """The paths of the text files in ``{path: bytes}`` that match ``WORKSPACE_SHAPES``."""
+    return sorted(path for path, data in files.items() if b"\0" not in data and WORKSPACE_SHAPES.search(data))
+
+
+def record(tree_digest, version, entries, rewritten):
     vendored = [path for path in entries if excluded(path) is None]
     return {"schema": SCHEMA, "snapshot": tree_digest[:8], "tree_digest": tree_digest, "version": version,
             "manifest": MANIFEST, "files": len(vendored),
             "excluded": {"rules": [{"match": rule, "reason": reason} for rule, reason in EXCLUDED],
-                         "paths": sorted(path for path in entries if excluded(path) is not None)}}
+                         "paths": sorted(path for path in entries if excluded(path) is not None)},
+            "rewritten": {path: dict(rewritten[path]) for path in sorted(rewritten)}}
 
 
 def encoded(value):
     return (json.dumps(value, indent=1, sort_keys=True) + "\n").encode()
 
 
+def replaceable(target):
+    """Refuses a ``target`` that is neither absent, empty nor a vendored copy, before anything is removed."""
+    if not target.exists():
+        return
+    require(target.is_dir() and not target.is_symlink(), f"the target {target} is not a directory")
+    if not any(target.iterdir()):
+        return
+    try:
+        schema = json.loads((target / RECORD).read_text(encoding="utf-8")).get("schema")
+    except (OSError, ValueError, AttributeError):
+        schema = None
+    require(schema in SCHEMAS, f"the target {target} is neither empty nor a vendored libsircl copy (it holds no "
+                               f"{RECORD} of a libsircl snapshot schema); the sync replaces only such a directory")
+
+
 def sync(snapshot, tree_digest, target=TARGET):
     """Replace ``target``'s contents with the snapshot's vendored files and the two manifest files."""
     data, entries, version = read_snapshot(snapshot, tree_digest)
     target = Path(target)
+    tree = Path(snapshot) / "tree"
+    files = {path: rewrite(path, (tree / path).read_bytes()) for path in sorted(entries) if excluded(path) is None}
+    found = workspace_references(files)
+    require(not found, "the snapshot's vendored text names directories of its workspace after the rewrites: "
+            + ", ".join(found[:5]) + "; extend REWRITES or EXCLUDED")
+    replaceable(target)
     if target.exists():
         for child in target.iterdir():
             if child.is_dir() and not child.is_symlink():
@@ -144,15 +222,14 @@ def sync(snapshot, tree_digest, target=TARGET):
             else:
                 child.unlink()
     target.mkdir(parents=True, exist_ok=True)
-    tree = Path(snapshot) / "tree"
-    for path in sorted(entries):
-        if excluded(path) is not None:
-            continue
+    for path, content in files.items():
         destination = target / path
         destination.parent.mkdir(parents=True, exist_ok=True)
-        destination.write_bytes((tree / path).read_bytes())
+        destination.write_bytes(content)
     (target / MANIFEST).write_bytes(data)
-    value = record(tree_digest, version, entries)
+    rewritten = {path: {"snapshot_sha256": entries[path], "sha256": sha256(content)}
+                 for path, content in files.items() if sha256(content) != entries[path]}
+    value = record(tree_digest, version, entries, rewritten)
     (target / RECORD).write_bytes(encoded(value))
     return check(target)
 
@@ -165,7 +242,14 @@ def check(target=TARGET):
     value = json.loads((target / RECORD).read_text(encoding="utf-8"))
     tree_digest = sha256(data)
     version = (target / "VERSION").read_text(encoding="utf-8").strip() if (target / "VERSION").is_file() else None
-    require(value == record(tree_digest, version, entries),
+    rewritten = value.get("rewritten") if isinstance(value, dict) else None
+    require(isinstance(rewritten, dict) and all(
+        path in entries and excluded(path) is None and isinstance(digests, dict)
+        and set(digests) == {"snapshot_sha256", "sha256"} and digests["snapshot_sha256"] == entries[path]
+        and _DIGEST.fullmatch(str(digests["sha256"])) and digests["sha256"] != entries[path]
+        for path, digests in rewritten.items()),
+        f"{RECORD} does not describe {MANIFEST} (tree digest {tree_digest[:12]}); run the sync again")
+    require(value == record(tree_digest, version, entries, rewritten),
             f"{RECORD} does not describe {MANIFEST} (tree digest {tree_digest[:12]}); run the sync again")
     present = set()
     for path in target.rglob("*"):
@@ -179,12 +263,15 @@ def check(target=TARGET):
             + ", ".join(sorted(present - wanted)[:5]))
     require(not (wanted - present), "the vendored copy lacks files of its snapshot: "
             + ", ".join(sorted(wanted - present)[:5]))
+    expected = {path: rewritten[path]["sha256"] if path in rewritten else entries[path] for path in wanted}
     changed = sorted(path for path in wanted if (target / path).is_symlink()
-                     or sha256((target / path).read_bytes()) != entries[path])
+                     or sha256((target / path).read_bytes()) != expected[path])
     require(not changed, "vendored files differ from the snapshot (update them only with the sync): "
             + ", ".join(changed[:5]))
+    found = workspace_references({path: (target / path).read_bytes() for path in wanted})
+    require(not found, "vendored files name directories of the snapshot's workspace: " + ", ".join(found[:5]))
     return {"snapshot": value["snapshot"], "tree_digest": tree_digest, "version": version, "files": len(wanted),
-            "excluded": len(value["excluded"]["paths"])}
+            "excluded": len(value["excluded"]["paths"]), "rewritten": len(rewritten)}
 
 
 def main(argv=None):

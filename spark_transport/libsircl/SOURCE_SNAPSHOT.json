@@ -1,9 +1,9 @@
 {
- "description": "Reference copy of the SIRCL clean-room implementation tree used by libsircl. The copy at ../sircl-current is byte-identical to the selected source at capture time, excluding build outputs (.build, .pytest_tmp) and caches.",
+ "description": "Reference copy of the SIRCL clean-room implementation tree used by libsircl. The copy is byte-identical to the selected source at capture time, excluding build outputs (.build, .pytest_tmp) and caches.",
  "sources": {
-  "lead": "C:\\Users\\Cody\\AppData\\Local\\Temp\\claude\\C--Users-Cody-Documents-Github-sparkring-design-system-extraction-774ad2\\91bedf0c-2617-4d47-acfe-1c5f863230ca\\scratchpad\\ring8\\cleanroom\\impl"
+  "reference": "SIRCL's clean-room implementation tree (its local path is not vendored)"
  },
- "selected": "lead",
+ "selected": "reference",
  "captured_utc": "2026-10-08T06:00:23Z",
  "changes_from_previous_capture": {
   "changed": [
