@@ -9,6 +9,7 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve  # noqa: E402
 from scripts.generate_profiles import generate  # noqa: E402
+from scripts import generate_enhancements  # noqa: E402
 
 
 def validate_preserved(root=ROOT):
@@ -124,12 +125,13 @@ def main():
             load(id)
             resolve(id)
         generated = generate(check=True)
+        enhancements = generate_enhancements.generate(check=True)
         frozen = validate_preserved()
         locked_assets = validate_locked_profile_assets()
         imports = validate_imports()
         builders = validate_build_contracts()
         validate_artifacts()
-        print(f'Validated {len(catalog())} profiles, {generated} exports, {frozen} preserved inputs, {locked_assets} locked profile assets, {imports} Python sources and {builders} builders')
+        print(f'Validated {len(catalog())} profiles, {generated} exports, {enhancements} catalogued enhancements, {frozen} preserved inputs, {locked_assets} locked profile assets, {imports} Python sources and {builders} builders')
     except (ValueError, OSError, KeyError, SyntaxError) as error:
         print(error, file=sys.stderr)
         return 1
