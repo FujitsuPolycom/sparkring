@@ -2,7 +2,7 @@
 
 SIRCL, SparkRing's Switchless Inference RDMA Collective Layer, carries
 tensor-parallel and decode-context-parallel (DCP) collectives between DGX
-Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.3.1
+Sparks over RoCE without a switch. This package, `sparkring-sircl` 0.3.2
 (path `spark_transport/sircl`, import name `sparkring_sircl`), holds its ring
 sessions: collectives for groups of 2 to 8 Sparks cabled as a ring, a path of
 consecutive Sparks, a pair or a triangle, for several independent groups on
@@ -613,7 +613,12 @@ one op at other blocks (its `blocks`; `set_op_blocks` for a caller that fixes
 an op's), except for a collective whose blocks the environment sets: every
 link kernel and the chain kernel find a launch's last block as the arrival
 that completes its grid on the kernel's tail word and return that word to 0,
-so consecutive launches may use different grids.
+so consecutive launches may use different grids. A launcher is compiled for
+one number of blocks per role, and an op in a CUDA graph capture at a count no
+launcher was compiled for raises. `prepare` compiles the session's counts and
+every count of the tuning table's choices; `prepare(..., op_blocks={kernel:
+counts})` also compiles the counts a caller sets with `set_op_blocks` before
+ops it captures (the kernels `set_op_blocks` takes, counts 1 to 64).
 
 ## Environment
 

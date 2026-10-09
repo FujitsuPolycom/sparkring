@@ -1243,6 +1243,107 @@ def test_the_adapter_keeps_nccl_off_unless_told_otherwise():
     assert direct.nccl_mode == "auto"
 
 
+# The tensor-parallel slot (vllm/tp_slot.py) on emulated ranks: its three size limits, the first-call log of each
+# collective and the session's output tensors returned as they are.
+
+def _slots(world: int = 2, *, single_node: bool = False) -> list[SirclRingAllReduce]:
+    groups = emulated_groups(list(range(world)))
+    routes = [{peer: ("rocep1s0f0",) for peer in range(world) if peer != rank} for rank in range(world)]
+    return run_ranks(world, lambda rank: SirclRingAllReduce(groups[rank], object(), torch.device("cpu"),
+                                                             peer_routes=routes[rank], single_node=single_node))
+
+
+def test_the_slot_reports_its_sessions_limits_and_zeros_while_disabled(stub):
+    import dataclasses
+
+    from sparkring_sircl.vllm.tp_slot import NO_SLOT_LIMITS, SlotLimits
+
+    slots = _slots()
+    # The stub's settings: capacity 1 MiB, dispatch limit 64 KiB, all-gather shards up to 48 KiB.
+    expected = SlotLimits(dispatch_bytes=64 << 10, capacity_bytes=1 << 20, gather_bytes=48 << 10)
+    for slot in slots:
+        assert not slot.disabled and slot.size_limits == expected
+        assert slot.size_limits.dispatch_bytes == slot.runtime.dispatch_limit_bytes
+        assert slot.size_limits.capacity_bytes == slot.runtime.max_size
+    # Read-only: the record is frozen and the slot has no setter for it.
+    with pytest.raises(dataclasses.FrozenInstanceError):
+        slots[0].size_limits.gather_bytes = 0
+    with pytest.raises(AttributeError):
+        slots[0].size_limits = NO_SLOT_LIMITS
+    # The limits are fixed once the session exists; the environment is read at construction.
+    stub.environ["SIRCL_ALLGATHER_MAX_BYTES"] = str(16 << 10)
+    stub.environ["SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES"] = str(16 << 10)
+    assert all(slot.size_limits == expected for slot in slots)
+    run_ranks(2, lambda rank: slots[rank].close())
+    assert NO_SLOT_LIMITS == SlotLimits(0, 0, 0)
+    assert all(slot.disabled and slot.size_limits == NO_SLOT_LIMITS for slot in slots)
+    for slot in _slots(single_node=True):
+        assert slot.disabled and slot.runtime is None and slot.size_limits == NO_SLOT_LIMITS
+
+
+def test_each_collectives_first_call_on_a_slot_logs_one_line(stub):
+    slots = _slots()
+    records: list[logging.LogRecord] = []
+
+    class Keep(logging.Handler):
+        def emit(self, record: logging.LogRecord) -> None:
+            records.append(record)
+
+    log = logging.getLogger("sircl.vllm.tp_slot")
+    keep, level = Keep(), log.level
+    log.addHandler(keep)
+    log.setLevel(logging.DEBUG)
+    try:
+        reduced = [torch.full((4, 512), float(rank + 1), dtype=torch.bfloat16) for rank in range(2)]   # 4096 B
+        shards = [torch.full((2, 256), float(rank + 1), dtype=torch.bfloat16) for rank in range(2)]     # 1024 B
+        for _ in range(3):
+            run_ranks(2, lambda rank: slots[rank].custom_all_reduce(reduced[rank]))
+            run_ranks(2, lambda rank: slots[rank].all_gather(shards[rank], 0))
+        # An all-reduce the slot does not route (float32) reaches no collective and logs nothing.
+        assert slots[0].custom_all_reduce(torch.ones(4, 512)) is None
+    finally:
+        log.removeHandler(keep)
+        log.setLevel(level)
+    lines = sorted((record.levelno, record.getMessage()) for record in records
+                   if "first call" in record.getMessage())
+    assert lines == sorted([
+        (logging.INFO, "SIRCL ring all-reduce, first call on this slot: 4096 bytes of bfloat16."),
+        (logging.DEBUG, "SIRCL ring all-reduce, first call on this slot: 4096 bytes of bfloat16."),
+        (logging.INFO, "SIRCL ring all-gather, first call on this slot: 1024 bytes of bfloat16."),
+        (logging.DEBUG, "SIRCL ring all-gather, first call on this slot: 1024 bytes of bfloat16."),
+    ])
+
+
+def test_the_slots_collectives_return_the_sessions_output_tensors(stub):
+    slots = _slots()
+    returned: dict[str, list[torch.Tensor]] = {"all_reduce": [], "all_gather": []}
+    for slot in slots:
+        for name, outputs in returned.items():
+            def recording(inp, _collective=getattr(slot.runtime, name), _outputs=outputs, **options):
+                out = _collective(inp, **options)
+                _outputs.append(out)
+                return out
+
+            setattr(slot.runtime, name, recording)
+    inputs = [torch.full((4, 512), float(rank + 1), dtype=torch.bfloat16) for rank in range(2)]
+    reduced = run_ranks(2, lambda rank: slots[rank].custom_all_reduce(inputs[rank]))
+    gathered = run_ranks(2, lambda rank: slots[rank].all_gather(inputs[rank], 0))
+    for out in reduced:
+        assert any(out is session_out for session_out in returned["all_reduce"])
+        assert torch.equal(out, reference_sum(inputs))
+    for out in gathered:
+        assert any(out is session_out for session_out in returned["all_gather"])
+        assert torch.equal(out, torch.cat(inputs, dim=0))
+    assert len(returned["all_reduce"]) == len(returned["all_gather"]) == 2
+
+
+def test_the_route_map_variable_keeps_its_name():
+    from sparkring_sircl.vllm import tp_slot
+
+    # One module constant names the route-map variable.
+    assert [name for name, value in vars(tp_slot).items() if value == "SIRCL_PEER_ROUTES"] == ["ENV_PEER_ROUTES"]
+
+
 def receipt_line(record):
     from sparkring_sircl.vllm import receipt
 

@@ -596,11 +596,16 @@ refused. The row's settings reach the tensor-parallel session only. A table's ma
 NCCL. Without a table or a row setting, a session takes twice its ranks in link
 slots, at least 8.
 
-A table's rows apply only to sessions of the SIRCL build it names (`sircl`:
-version and ABI). The default table names SIRCL 0.3.1, the version of
-`spark_transport/sircl`; on an image whose SIRCL layer is another version,
-such as 0.3.0, no default row applies, the sessions derive their own settings,
-and the plan says `the default table is for another SIRCL build`.
+A table's rows apply only to sessions of the SIRCL builds it names (`sircl`:
+version and ABI). The default table names SIRCL 0.3.2, the version of
+`spark_transport/sircl`, and lists SIRCL 0.3.1 under `compatible`, with the
+recorded reason: 0.3.2 changes no kernel, schedule, op or launch grid that a
+row's settings choose. Sessions of either build, including those of image
+`27e9f75c0d09` (SIRCL 0.3.1), take the default rows. On an image whose SIRCL
+layer is another version, such as 0.3.0, no default row applies, the sessions
+derive their own settings, and the plan says `the default table is for
+another SIRCL build`. A measured table names only the build it was measured
+with.
 
 A profile's environment pins at most SIRCL's fused-norm and column-gather
 switches (`SIRCL_FUSED_NORM`, `SIRCL_COLUMN_GATHER`); the installer refuses

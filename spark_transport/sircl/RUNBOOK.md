@@ -317,7 +317,9 @@ python -m sparkring_sircl.ring run --site "$SITE" --config ring8 --large \
   stagger (`--tune-staggers`), every chain and ring candidate at each number
   of blocks per role (`--tune-link-blocks` for the link kernels,
   `--tune-chain-blocks` for the chain all-reduce, default 1, 2 and 4; 0 names
-  the session's own); Swing where the session offers it; NCCL with
+  the session's own; every rank compiles each candidate's blocks before the
+  first case, so the graph cases capture at them); Swing where the session
+  offers it; NCCL with
   `--baseline nccl`. Candidates are ranked by the period of back-to-back
   calls ([Results](#results)). From 4 MiB, a candidate 1.5 times slower than
   the fastest at two sizes in a row stops (`--tune-prune-from`,

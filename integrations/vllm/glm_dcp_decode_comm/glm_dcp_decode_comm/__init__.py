@@ -131,7 +131,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
 
 PLUGIN_NAME = "glm_dcp_decode_comm"
-PLUGIN_VERSION = "2.0.0"
+PLUGIN_VERSION = "2.0.1"
 MARKER = "__glm_dcp_decode_comm__"
 HELPER_PREFIX = "_glm_dcp_decode_comm_"
 IMAGE = "816c6d6a7e96"
@@ -140,7 +140,7 @@ SIRCL_PACKAGE = "sparkring_sircl"
 # The SIRCL build the sparkring_sircl pins below record: the package at this version, built from SparkRing's
 # spark_transport/sircl/sparkring_sircl and installed by the serving image as dist-packages/sparkring_sircl
 # (README, "Pins", names the build). tools/refresh_pins.py rewrites the pins and this value together.
-SIRCL_VERSION = "0.3.1"
+SIRCL_VERSION = "0.3.2"
 
 FLAGS = {
     "overlap": "GLM_DCP_DECODE_OVERLAP",
@@ -304,7 +304,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "output buffer and final LSE"),
     # SIRCL at SIRCL_VERSION.
     FileCheck("sparkring_sircl", "__init__.py",
-              "db3b3e9e101f8caa13f6bbf049e36a35e939e219930ab2add6b41ce503a54793",
+              "7a2fed51291117602842eecdbefba5ef1400402603ff5d6d38d2bb4ff5c0c1f6",
               "the package version SIRCL_VERSION"),
     FileCheck("sparkring_sircl", "protocol.py",
               "6ace052d19d026a4767c1accbb93b4ec33d258b22a595be468d948ea63b2d222",
@@ -314,7 +314,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "bebd8e7117ae5ec462b1871a12ebde30eadbebf89a45dc4bf645fa076f2b9411",
               "the scatter piece rules that decide when an all-to-all is one op"),
     FileCheck("sparkring_sircl", "oneshot/runtime.py",
-              "7e85af0d5313b85bf4ec11e4e8f60935e9232b4ffdb084d6726d32d40cad381d",
+              "631cc65241508e60ed48d30b9f6dbedbef831f025661f8d355350834d7ea5645",
               "RoceOneshotAllReduce: all_gather(out=), the arena view, _counter_addresses, _order_stream, "
               "_mark_stream, _tuned_op, _lock, check_health and the launch geometry"),
     FileCheck("sparkring_sircl", "oneshot/_scatter_ops.py",
@@ -344,7 +344,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "communication stream wraps; the dcp_all_to_all and dcp_b12x_transport shims installed for a "
               "DCP group with a session"),
     FileCheck("sparkring_sircl", "vllm/adapter.py",
-              "5c686d3d22da72f4e9a4703b5a8ff64e0069851aab37ca6ad17124c9b176276c",
+              "7eab095f2acb329fbd90035ed9bec35ff66744a3850e2650a5757d674751f732",
               "GroupAdapter keeps a DCP group's SirclDcpCollectives in .dcp and its runtime in .session; "
               "live_adapters"),
     FileCheck("sparkring_sircl", "vllm/dcp_collectives.py",

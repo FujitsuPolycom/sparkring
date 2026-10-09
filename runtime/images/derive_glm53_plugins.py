@@ -17,14 +17,14 @@ off until its own environment flags select it:
   the fused ``q_a``/``kv_a`` latent projection is column-parallel over TP8
   with one all-gather (``GLM53FULL_LATENT_SHARD=1``) and the MTP ``eh_proj``
   is row-parallel (``GLM53FULL_EH_PROJ_TP=1``);
-- ``glm_dcp_decode_comm`` 2.0.0 (``integrations/vllm/glm_dcp_decode_comm``):
+- ``glm_dcp_decode_comm`` 2.0.1 (``integrations/vllm/glm_dcp_decode_comm``):
   exact changes to the DSA attention's decode context parallel collectives on
   a SIRCL DCP session, five items behind the ``GLM_DCP_DECODE_*`` flags (the
   query pack, the communication-stream overlap, the indexer ``wk`` overlap,
   the selection reuse and the fused all-to-all combine), with an audit mode
   that counts differing words against the image's computation
   (``GLM_DCP_DECODE_AUDIT=1``). Besides the image's ``vllm`` and ``b12x``
-  files it pins the SIRCL files it relies on to SIRCL 0.3.1: on a parent
+  files it pins the SIRCL files it relies on to SIRCL 0.3.2: on a parent
   whose SIRCL layer is another build it serves with its items off and
   refuses at startup when an item flag is on.
 
@@ -79,7 +79,7 @@ SPLIT = "integrations/vllm/glm_dsa_indexer_split/"
 SPEEDUPS = "integrations/vllm/glm53full_speedups/"
 DCP = "integrations/vllm/glm_dcp_decode_comm/"
 DCP_MODULES = ("__init__.py", "_scatter_pack_cute.py", "kernels.py", "layout.py", "reference.py", "runtime.py")
-DCP_DIST_INFO = "glm_dcp_decode_comm-2.0.0.dist-info/"
+DCP_DIST_INFO = "glm_dcp_decode_comm-2.0.1.dist-info/"
 
 # Every added file: the site-packages path, its repository source and the
 # SHA-256 of the repository bytes (the layer pins each result; additions have

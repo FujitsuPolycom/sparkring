@@ -1355,6 +1355,7 @@ class Harness:
         prune = float(options.get("tune_prune", 1.5))
         prune_from = int(options.get("tune_prune_from", 4 << 20))
         sizes = tuple(options.get("tune_sizes") or ())
+        self._prepare_tune()
         families = {}
         for collective in options.get("tune_collectives") or ():
             found = {tuning_family(choice) for choice, *_ in self.tune_candidates(collective, sizes[-1])} if sizes else set()
@@ -1400,6 +1401,30 @@ class Harness:
                         if (len(history) >= 2 and history[-1] > prune and history[-2] > prune
                                 and history[-1] >= history[-2]):
                             dropped.add(label)
+
+    def tune_op_blocks(self) -> dict[str, list[int]]:
+        """The blocks per role the tune's candidates set (``variant_kernel`` -> counts, increasing), over every
+        planned collective and size."""
+        found: dict[str, set[int]] = {}
+        for collective in self.options.get("tune_collectives") or ():
+            for size in self.options.get("tune_sizes") or ():
+                for _choice, name, _shape, variant in self.tune_candidates(collective, size):
+                    blocks = (variant or {}).get("chain_blocks") or (variant or {}).get("link_blocks")
+                    kernel = variant_kernel(name, variant) if blocks else None
+                    if kernel is not None:
+                        found.setdefault(kernel, set()).add(int(blocks))
+        return {kernel: sorted(counts) for kernel, counts in sorted(found.items())}
+
+    def _prepare_tune(self) -> None:
+        """Compile the launchers of every block count the tune's candidates set (:meth:`tune_op_blocks`) before
+        its first case, on every rank, then wait for the group: a graph case captures its ops, and a launcher
+        that is not compiled before the capture refuses it; a launcher compiled inside an eager case would
+        load its module while the peers' kernels wait for this rank."""
+        blocks = self.tune_op_blocks()
+        if not blocks:
+            return
+        self.session.prepare((self.torch.bfloat16,), links=True, op_blocks=blocks)
+        self.dist.barrier(group=self.process_group)
 
     def _run_cases(self, cap: int | None, first: bool) -> None:
         """Every case family once at the current grid cap (``cap`` None: the session's own)."""

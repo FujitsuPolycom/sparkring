@@ -1,6 +1,6 @@
 # glm_dcp_decode_comm
 
-A vLLM general plugin (distribution `glm-dcp-decode-comm` 2.0.0, entry point
+A vLLM general plugin (distribution `glm-dcp-decode-comm` 2.0.1, entry point
 `glm_dcp_decode_comm = glm_dcp_decode_comm:register`) that changes how
 GLM-5.3's DSA attention layers run their decode context parallel (DCP)
 collectives when those collectives run on a SIRCL DCP session. Every item is
@@ -27,9 +27,10 @@ and on a package that differs from this one in its SIRCL pins, the import
 hook's recursion guard (`PatchOnImport.find_spec`), one refusal message and
 documentation, with check scripts that differ in module names and in the
 loader's lookup of the image sources. The CPU suite covers both package code
-changes and passes against SIRCL 0.3.1 ("Pins" lists what that release
-changes in the pinned files). The decode record is the only measurement of the plugin's effect on decode
-step time; with one measured start per setting it shows no consistent gain.
+changes and passes against SIRCL 0.3.2 ("Pins" lists what 0.3.1 and 0.3.2
+change in the pinned files). The decode record is the only measurement of
+the plugin's effect on decode step time; with one measured start per setting
+it shows no consistent gain.
 
 ## Requirements
 
@@ -88,7 +89,7 @@ GLM_DCP_DECODE_A2A_FUSED=1
 GLM_DCP_DECODE_AUDIT=1
 ```
 
-It passes when every rank logs the startup line `glm_dcp_decode_comm 2.0.0:
+It passes when every rank logs the startup line `glm_dcp_decode_comm 2.0.1:
 enabled ...` naming the five items and audit mode, no `PatchRefused`, and
 every `glm_dcp_decode_comm audit cuda:N: CHECK: ...` line of every rank
 reports `0 differ` with a nonzero call count for each of the five checks
@@ -137,19 +138,23 @@ registration order.
 The pins describe two builds:
 
 - the image's vLLM and b12x files: serving image `816c6d6a7e96`;
-- SIRCL: package version 0.3.1, SparkRing's
+- SIRCL: package version 0.3.2, SparkRing's
   [`spark_transport/sircl/sparkring_sircl`](../../../spark_transport/sircl/sparkring_sircl)
-  at commit `694b94c2` (Git tree `e21f5f3b587a` of `sparkring_sircl`;
-  ring-session tree `ed8209a3a698` by the SIRCL sync tool's digest).
+  (Git tree `7b40507046a3` of `sparkring_sircl`; ring-session tree
+  `7e63930d15a6` by the SIRCL sync tool's digest).
 
 Against SIRCL 0.3.0 (image `816c6d6a7e96`), 0.3.1 changes five of the 17
 pinned files: the version in `__init__.py`; aligned working buffers around
 the public ops of `oneshot/runtime.py` and `oneshot/_scatter_ops.py` for a
 rank whose pointers are not 16-byte aligned; the library's local feature
-identity in `oneshot/_roce_proxy.c`; and a comment in `vllm/executor.py`. No
-attribute the plugin reads, no statement its kernel restates and no op code
-it relies on changes (`tests/test_dcp_decode_interfaces.py` reads them from
-the pinned source).
+identity in `oneshot/_roce_proxy.c`; and a comment in `vllm/executor.py`.
+0.3.2 changes three: the version in `__init__.py`; `oneshot/runtime.py`,
+whose `prepare` also compiles the blocks per role a caller names
+(`op_blocks`); and `vllm/adapter.py`, which reads the tensor-parallel slot's
+limits from its `size_limits` record. In neither release does an attribute
+the plugin reads, a statement its kernel restates or an op code it relies on
+change (`tests/test_dcp_decode_interfaces.py` reads them from the pinned
+source).
 
 The CPU suite checks the SIRCL pins against this checkout's SIRCL tree when
 that tree's version is `SIRCL_VERSION`, so a change to a pinned file of that
@@ -190,7 +195,7 @@ and the qualification run again.
 | `glm_dcp_decode_comm/_scatter_pack_cute.py` | the CuTe DSL packed all-to-all, the pinned SIRCL build's scatter op with the pack in its staging |
 | `glm_dcp_decode_comm/layout.py` | the query and wire-format geometry and the kernel's index helpers (pure Python) |
 | `glm_dcp_decode_comm/reference.py` | torch references of the image's computations and of the plugin's replacements |
-| `dist-info/glm_dcp_decode_comm-2.0.0.dist-info/` | the installed distribution's metadata and its `vllm.general_plugins` entry point |
+| `dist-info/glm_dcp_decode_comm-2.0.1.dist-info/` | the installed distribution's metadata and its `vllm.general_plugins` entry point |
 | `tools/refresh_pins.py` | records or checks every pin against vLLM, b12x and SIRCL trees |
 | `tests/` | the CPU suite (`test_dcp_decode_*.py`), the subprocess driver over SIRCL's CUDA stand-in (`scatter_driver.py`) and the GPU checks (`gpu_checks.py`) |
 

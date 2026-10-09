@@ -147,7 +147,7 @@ inherited SHA-256 `None`, and the parent receipt must not record it.
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
 [derive_glm53_plugins.py](derive_glm53_plugins.py) adds the GLM-5.3 vLLM
 general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 and
-`glm_dcp_decode_comm` 2.0.0 with their dist-info directories and names all
+`glm_dcp_decode_comm` 2.0.1 with their dist-info directories and names all
 three in `Layer.plugins`.
 
 The derived lock has its parent lock's schema. A parent with a
@@ -337,9 +337,9 @@ receipt.
 ```bash
 python3 runtime/images/sircl_layer.py wheel --output WHEELS
 python3 runtime/images/sircl_layer.py natives --parent-lock PARENT_LOCK \
-  --wheel WHEELS/sparkring_sircl-0.3.1-py3-none-any.whl --output NATIVES
+  --wheel WHEELS/sparkring_sircl-0.3.2-py3-none-any.whl --output NATIVES
 python3 runtime/images/sircl_layer.py prepare --parent-lock PARENT_LOCK \
-  --wheel WHEELS/sparkring_sircl-0.3.1-py3-none-any.whl --natives NATIVES \
+  --wheel WHEELS/sparkring_sircl-0.3.2-py3-none-any.whl --natives NATIVES \
   [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
 python3 runtime/images/sircl_layer.py build --context CONTEXT --tag sparkring:sircl \
   --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK

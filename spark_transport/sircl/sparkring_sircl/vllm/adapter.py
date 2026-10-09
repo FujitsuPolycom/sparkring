@@ -538,7 +538,7 @@ class GroupAdapter:
         if self.placement.policy is NcclPolicy.NONE:
             error = None
             try:
-                self.session.prepare(EXTRA_REDUCE_DTYPES, padded_gather=slot.all_gather_max_bytes > 0,
+                self.session.prepare(EXTRA_REDUCE_DTYPES, padded_gather=slot.size_limits.gather_bytes > 0,
                                      **sessionapi.link_keywords(self.session))
             except Exception as exc:  # noqa: BLE001 - voted below
                 error = f"{type(exc).__name__}: {exc}"
@@ -551,7 +551,7 @@ class GroupAdapter:
         scatter = self._prepare_tp_scatter(environ)
         self.limits = SessionLimits.of(self.session, reduce_dtypes=reduce, scatter_dtypes=scatter,
                                        per_peer_op_bytes=self.per_peer[0],
-                                       gather=slot.all_gather_max_bytes)
+                                       gather=slot.size_limits.gather_bytes)
 
     def _prepare_tp_scatter(self, environ) -> tuple[str, ...]:
         """BF16 session reduce-scatter for prefill row ownership, when the session has it.

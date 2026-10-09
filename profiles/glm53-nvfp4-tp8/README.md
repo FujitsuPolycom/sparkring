@@ -78,7 +78,7 @@ flags (`GLM_DCP_DECODE_QUERY_PACK`, `GLM_DCP_DECODE_OVERLAP`,
 `GLM_DCP_DECODE_WK_OVERLAP`, `GLM_DCP_DECODE_SELECTION_REUSE` and
 `GLM_DCP_DECODE_A2A_FUSED`) to `0`; with every item off, its registration
 patches nothing. Turning the items on is research-only: the plugin pins
-SIRCL 0.3.1 and refuses at startup on any other SIRCL build, its
+SIRCL 0.3.2 and refuses at startup on any other SIRCL build, its
 qualification is a run with the five flags and `GLM_DCP_DECODE_AUDIT=1`, and
 no measurement of its effect on this profile exists.
 
@@ -144,7 +144,8 @@ Open items:
   checkpoint.
 - The default SIRCL tuning table's `cycle-8` row (1 MiB all-reduce capacity
   and dispatch ceiling, 28 KiB one-shot limit, 16 link slots of 512 KiB)
-  applies to SIRCL 0.3.1 sessions. The measured runs above gave the same
+  applies to SIRCL 0.3.2 sessions and, as a compatible build the table
+  lists, to SIRCL 0.3.1 sessions such as those of image `27e9f75c0d09`. The measured runs above gave the same
   capacity, dispatch ceiling and link slots to the SIRCL bundle (`--capacity`,
   `--dispatch` and container variables) and left the one-shot limit to the
   session, which derives 28 KiB on eight ranks. On an image whose SIRCL layer

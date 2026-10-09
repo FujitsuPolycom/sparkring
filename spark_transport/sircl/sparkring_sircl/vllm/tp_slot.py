@@ -50,8 +50,9 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import contextmanager
+from dataclasses import dataclass
 
 import torch
 
@@ -65,7 +66,7 @@ DEFAULT_LIMIT_BYTES = 131072
 PREPARED_DTYPES = (torch.bfloat16,)
 MAX_LANES = 2
 
-ENV_PEER_HCAS = "SIRCL_PEER_ROUTES"
+ENV_PEER_ROUTES = "SIRCL_PEER_ROUTES"
 ENV_CAPACITY = "SIRCL_ALLREDUCE_CAPACITY_BYTES"
 ENV_DISPATCH = "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES"
 ENV_GATHER = "SIRCL_ALLGATHER_MAX_BYTES"
@@ -118,6 +119,35 @@ def gather_tiers() -> tuple[str, int | None, int | None]:
     return algorithm, None if oneshot_max < 0 else oneshot_max, None if swing_max < 0 else swing_max
 
 
+@dataclass(frozen=True)
+class SlotLimits:
+    """The slot's size limits in bytes, read once from its session when the session exists, for SIRCL's own
+    adapter (vLLM does not read them).
+
+    ``dispatch_bytes`` is the largest all-reduce message the slot hands to the session (the session's dispatch
+    limit), ``capacity_bytes`` the session's registered buffer capacity and ``gather_bytes`` the all-gather shard
+    limit the settings vote agreed (0 routes no all-gather). A slot without a session reports
+    :data:`NO_SLOT_LIMITS`, every limit zero.
+    """
+
+    dispatch_bytes: int = 0
+    capacity_bytes: int = 0
+    gather_bytes: int = 0
+
+    @classmethod
+    def of_session(cls, session, gather: int) -> "SlotLimits":
+        return cls(dispatch_bytes=int(session.dispatch_limit_bytes), capacity_bytes=int(session.max_size),
+                   gather_bytes=int(gather))
+
+
+NO_SLOT_LIMITS = SlotLimits()
+
+
+def _element_type(tensor: torch.Tensor) -> str:
+    """A tensor's element type as the logs name it (``bfloat16``)."""
+    return str(tensor.dtype).rpartition(".")[2]
+
+
 def describe_gather_tiers(runtime) -> str:
     """How the runtime splits all-gathers by shard size (sessions without tiers: one-shot)."""
     swing = int(getattr(runtime, "gather_swing_max_bytes", 0) or 0)
@@ -139,11 +169,11 @@ def peer_routes(world_size: int, rank: int) -> dict[int, tuple[str, ...]]:
     every rank instead of one rank failing before the session's setup exchange
     and leaving the others waiting.
     """
-    raw = os.environ.get(ENV_PEER_HCAS, "")
+    raw = os.environ.get(ENV_PEER_ROUTES, "")
     if not raw:
-        raise ValueError(f"{ENV_PEER_HCAS} is not set")
+        raise ValueError(f"{ENV_PEER_ROUTES} is not set")
     try:
-        return fabric.parse_routes(raw, world=world_size, rank=rank, name=ENV_PEER_HCAS)
+        return fabric.parse_routes(raw, world=world_size, rank=rank, name=ENV_PEER_ROUTES)
     except fabric.FabricError as exc:
         raise ValueError(str(exc)) from None
 
@@ -155,13 +185,13 @@ def require_peer_routes() -> None:
     syntax is checked here; the rank and world size are known
     when the communicator constructs the slot.
     """
-    raw = os.environ.get(ENV_PEER_HCAS, "")
+    raw = os.environ.get(ENV_PEER_ROUTES, "")
     if not raw:
-        raise RuntimeError(f"SIRCL slot: {ENV_PEER_HCAS} is not set; launch every rank with its "
+        raise RuntimeError(f"SIRCL slot: {ENV_PEER_ROUTES} is not set; launch every rank with its "
                            "route map (peer=device[/device],...)")
     entries = [entry for entry in raw.split(",") if entry.strip()]
     if not entries or any("=" not in entry for entry in entries):
-        raise RuntimeError(f"SIRCL slot: {ENV_PEER_HCAS}={raw!r} is not peer=device[/device],...")
+        raise RuntimeError(f"SIRCL slot: {ENV_PEER_ROUTES}={raw!r} is not peer=device[/device],...")
 
 
 class SirclRingAllReduce:
@@ -190,9 +220,8 @@ class SirclRingAllReduce:
             int(rank) for rank in (global_ranks if global_ranks is not None else range(self.world_size))
         )
         self._runtime = None
-        self._gather_max_bytes = 0
-        self._announced = False
-        self._announced_gather = False
+        self._limits = NO_SLOT_LIMITS
+        self._first_calls_logged: set[str] = set()
         self._routes = None if peer_routes is None else {
             int(peer): tuple(devices) for peer, devices in peer_routes.items()}
         if len(self.global_ranks) != self.world_size:
@@ -243,7 +272,7 @@ class SirclRingAllReduce:
             runtime.close()
             raise RuntimeError(f"SIRCL ring session prepare failed: {verdict}")
         self._runtime = runtime
-        self._gather_max_bytes = gather
+        self._limits = SlotLimits.of_session(runtime, gather)
         self.disabled = False
         if self.rank == 0:
             logger.info(
@@ -302,19 +331,13 @@ class SirclRingAllReduce:
         """
         return groupops.vote(self.group, local, compare=compare)
 
-    # -- limits, for diagnostics ---------------------------------------------------
+    # -- limits, for SIRCL's adapter -------------------------------------------------
 
     @property
-    def all_reduce_max_bytes(self) -> int:
-        return 0 if self.disabled else int(self._runtime.dispatch_limit_bytes)
-
-    @property
-    def all_reduce_capacity_bytes(self) -> int:
-        return 0 if self.disabled else int(self._runtime.max_size)
-
-    @property
-    def all_gather_max_bytes(self) -> int:
-        return 0 if self.disabled else self._gather_max_bytes
+    def size_limits(self) -> SlotLimits:
+        """The slot's size limits (:class:`SlotLimits`), fixed once the session exists; every limit is 0 while
+        the slot is disabled."""
+        return NO_SLOT_LIMITS if self.disabled else self._limits
 
     @property
     def runtime(self):
@@ -331,29 +354,29 @@ class SirclRingAllReduce:
         return (not self.disabled and inp.dtype in PREPARED_DTYPES
                 and self._runtime.should_allreduce(inp))
 
+    def _run_collective(self, name: str, collective: Callable[..., torch.Tensor], inp: torch.Tensor,
+                        **options) -> torch.Tensor:
+        """``collective(inp, **options)``, one of the session's collectives, whose output tensor is returned as
+        it is. The slot's first call of each collective ``name`` logs one line with the message size in bytes
+        and the element type (rank 0 at INFO, the other ranks at DEBUG); later calls log nothing."""
+        if name not in self._first_calls_logged:
+            self._first_calls_logged.add(name)
+            logger.log(logging.INFO if self.rank == 0 else logging.DEBUG,
+                       "SIRCL ring %s, first call on this slot: %d bytes of %s.",
+                       name, int(inp.nbytes), _element_type(inp))
+        return collective(inp, **options)
+
     def custom_all_reduce(self, inp: torch.Tensor) -> torch.Tensor | None:
         if not self.should_custom_ar(inp):
             return None
-        if not self._announced:
-            self._announced = True
-            (logger.info if self.rank == 0 else logger.debug)(
-                "SIRCL ring all-reduce is live: first routed all-reduce is %d bytes (%s).",
-                inp.numel() * inp.element_size(), str(inp.dtype).replace("torch.", ""),
-            )
-        return self._runtime.all_reduce(inp)
+        return self._run_collective("all-reduce", self._runtime.all_reduce, inp)
 
     def should_all_gather(self, inp: torch.Tensor, dim: int) -> bool:
-        return (not self.disabled and self._gather_max_bytes > 0
+        return (not self.disabled and self._limits.gather_bytes > 0
                 and self._runtime.should_all_gather(inp, dim))
 
     def all_gather(self, inp: torch.Tensor, dim: int) -> torch.Tensor:
-        if not self._announced_gather:
-            self._announced_gather = True
-            (logger.info if self.rank == 0 else logger.debug)(
-                "SIRCL ring all-gather is live: first routed shard is %s %s along dim %d.",
-                tuple(inp.shape), str(inp.dtype).replace("torch.", ""), dim,
-            )
-        return self._runtime.all_gather(inp, dim=dim)
+        return self._run_collective("all-gather", self._runtime.all_gather, inp, dim=dim)
 
     def supports_fused_add_rms_norm(self) -> bool:
         return False
@@ -374,7 +397,9 @@ class SirclRingAllReduce:
 
 
 __all__ = [
+    "NO_SLOT_LIMITS",
     "SirclRingAllReduce",
+    "SlotLimits",
     "attach_sircl_logging",
     "describe_gather_tiers",
     "env_bytes",

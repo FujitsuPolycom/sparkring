@@ -6,12 +6,15 @@ from pathlib import Path
 import pytest
 
 from runtime.common import image_lock, installer_image, transport
+from spark_transport.sircl.sparkring_sircl import __version__ as SIRCL_VERSION
 
 NATIVE = "0123456789abcdef"
 P2P = "fedcba9876543210"
 
 
-def sircl_block(version="0.3.1", abi=9):
+def sircl_block(version=SIRCL_VERSION, abi=9):
+    """The SIRCL layer of a v3 lock; by default of ``spark_transport/sircl``'s version, as an image built from this
+    tree carries it."""
     return {"version": version, "abi_version": abi,
             "wheel": {"name": f"sparkring_sircl-{version}-py3-none-any.whl", "sha256": "1" * 64},
             "native": {"path": f"{image_lock.LIBRARY_DIRECTORY}/roce_proxy-{NATIVE}.so", "sha256": "2" * 64,
@@ -371,7 +374,7 @@ def test_the_glm53_tp8_profile_runs_only_on_an_image_that_carries_the_glm53_plug
     profile = "glm53-nvfp4-tp8"
     assert image_lock.required_plugins(profile) == ["glm_dsa_indexer_split", "glm53full_speedups",
                                                     "glm_dcp_decode_comm"]
-    assert derive_glm53_plugins.PLUGINS == {**PLUGINS, "glm_dcp_decode_comm": "2.0.0"}
+    assert derive_glm53_plugins.PLUGINS == {**PLUGINS, "glm_dcp_decode_comm": "2.0.1"}
     with pytest.raises(ValueError, match=f"{profile} loads the vLLM plugins glm_dsa_indexer_split, "
                                          "glm53full_speedups, glm_dcp_decode_comm"):
         image_lock.for_profile(profile, with_eight_spark_profiles())
