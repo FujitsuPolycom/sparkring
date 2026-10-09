@@ -1,0 +1,65 @@
+{
+ "arms": [
+  "S+"
+ ],
+ "context_limit": 1048576,
+ "dcp": 4,
+ "deviations": [
+  "GLM_DCP_DECODE_QUERY_PACK=1 (the profile's: 0)",
+  "GLM_DCP_DECODE_OVERLAP=1 (the profile's: 0)",
+  "GLM_DCP_DECODE_WK_OVERLAP=1 (the profile's: 0)",
+  "GLM_DCP_DECODE_SELECTION_REUSE=1 (the profile's: 0)",
+  "GLM_DCP_DECODE_A2A_FUSED=1 (the profile's: 0)",
+  "GLM_DCP_DECODE_AUDIT=1 (the profile's: unset)"
+ ],
+ "image": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+ "image_lock": {
+  "name": "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp",
+  "sha256": "7ff356706dac78efec626de33186e6b737fdfd999b6190ed2880e7c2daad9581"
+ },
+ "metrics": "phase1",
+ "model": {
+  "config_sha256": "55ebc619e0b6a820d27e81394254c821a8f83391db51eaa821278a78d54136c5",
+  "index_sha256": "8b1381efe25b45d5130633813b550ccbcc40a9dd8ac51fc60ee77f94a00e0ba4",
+  "repository": "local-inference-lab/GLM-5.3-NVFP4",
+  "revision": "b472e4ee53f6a9862da5486c56c6ca21be3dab70"
+ },
+ "nccl_auto_policy": null,
+ "order": [
+  [
+   "W-S+",
+   "S+",
+   true
+  ]
+ ],
+ "overrides": {
+  "environment": {
+   "GLM_DCP_DECODE_A2A_FUSED": "1",
+   "GLM_DCP_DECODE_AUDIT": "1",
+   "GLM_DCP_DECODE_OVERLAP": "1",
+   "GLM_DCP_DECODE_QUERY_PACK": "1",
+   "GLM_DCP_DECODE_SELECTION_REUSE": "1",
+   "GLM_DCP_DECODE_WK_OVERLAP": "1"
+  },
+  "vllm_arguments": {}
+ },
+ "positions": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7
+ ],
+ "profile": "glm53-nvfp4-tp8",
+ "roce_slot": false,
+ "run_id": "mx-glm53-dcp-audit",
+ "schema": "serving-ab-plan/v1",
+ "served_model_name": "GLM-5.3-NVFP4-TP8",
+ "sircl_env": {
+  "SIRCL_LINK_SLOTS": "16",
+  "SIRCL_LINK_SLOT_BYTES": "524288"
+ }
+}
