@@ -105,7 +105,7 @@ applicable anchor in every tree it is given.
 A shim replaces or wraps one piece of vLLM that no official hook reaches. It
 installs only when every vLLM file it touches has the SHA-256 recorded for a
 pinned build ([`pins.py`](pins.py)); otherwise it raises `ShimRefused` and
-replaces nothing (`worker_regimes` logs a warning instead). An installed shim
+replaces nothing (`worker_regimes` and `step_health` log a warning instead). An installed shim
 calls vLLM's original whenever SIRCL does not own the group.
 
 [`shims.json`](shims.json) is the catalog: per shim its purpose, models, the
@@ -123,6 +123,7 @@ test compares the two.
 | `mhc_prefill_shard` | GLM-5.3-Flash's mHC prefill row ownership, which reduce-scatters and all-gathers on PyNccl directly: vLLM's ownership code gets a PyNccl stand-in that runs SIRCL's plans | a TP group without PyNccl gets a session while `VLLM_GLM53_MHC_PREFILL_SHARD` is set | `--mhc-prefill-shard off` (`VLLM_GLM53_MHC_PREFILL_SHARD=0`) |
 | `qwen_hc_prefill_shard` | Qwen3.8's hyper-connection prefill row ownership, through the same stand-in | a TP group without PyNccl gets a session while `VLLM_QWEN3_8_HC_PREFILL_MODE=shard` | `--env VLLM_QWEN3_8_HC_PREFILL_MODE=off` |
 | `roce_slot` | vLLM's RoCE all-reduce slot of every TP group builds SIRCL's slot class | the general plugin sees `VLLM_ENABLE_ROCE_ALLREDUCE=1` | `VLLM_ENABLE_ROCE_ALLREDUCE=0`, which both launchers set |
+| `step_health` | each of the worker's step methods (`execute_model`, `sample_tokens`, `execute_dummy_batch`) first checks every session and point-to-point channel set of the process for a recorded failure (`adapter.check_all_failures`), so a failure raises when a worker step starts, before the step's SIRCL ops (every model) | the first group that gets a session or point-to-point channels | no switch |
 | `worker_regimes` | the worker's warm-up, memory profiling, sleep, wake-up, weight loads and profiler run in the sessions' startup flag-wait regime; the warm-up's return arms the serving regime | the first group that gets a session | no switch |
 
 With NCCL off every multi-rank group is built without PyNccl, so the two
@@ -390,10 +391,37 @@ on an RTX 5090 against a NumPy model of vLLM's kernel, not on GB10.
 Setup is collective: route checks, settings, construction and preparation
 are voted, and a failure on any rank raises on every rank. After setup, a
 refused plan raises `SirclDispatchError` on every rank alike; a timeout or
-progress-thread error poisons the session, and the worker's post-step
-`check_health` checks every session through the TP slot
-(`adapter.check_all_health`) and raises for a poisoned one. Nothing is
-retried on another backend.
+progress-thread error poisons the session. Nothing is retried on another
+backend.
+
+A flag wait that times out is recorded by the kernel itself (the session's
+control words in pinned host memory, then its poison word) after the op that
+waited has returned to Python: that op's outputs are not results, and every
+later kernel of the session returns without work. A session reads the record
+before and right after each eager launch, so the failure raises at the
+session's next eager call at the latest. In vLLM two checks surround every
+step, and both reach every session and point-to-point channel set of the
+process:
+
+- the start-of-step check (shim `step_health`, `adapter.check_all_failures`)
+  runs when each of the worker's step methods starts, before any of the
+  step's SIRCL ops launch, a CUDA graph replay's included. It reads host
+  memory only: no device synchronization, no regime change, no receipt;
+- the post-step check (the worker's `check_health` on the TP slot,
+  `adapter.check_all_health`) runs once the step's output is on the host: a
+  synchronous output right after sampling, an asynchronous one right after
+  its `get_output()` copy. A failure of an op the sampled tokens depend on
+  therefore raises before those tokens leave the worker. An op ordered after
+  the tokens' copy, such as a draft model's forward pass in `sample_tokens`,
+  can record its failure after that check; the next step's start-of-step
+  check raises it before that step's ops launch.
+
+Collectives outside steps (online quantization's weight `amax` reductions
+and other startup collectives the tripwire carries, warm-up and profiling
+runs) have no check after the op: local work can consume one timed-out
+result, and the failure raises at the group's next collective or the next
+step's start-of-step check. They run in the startup regime, whose limit is
+minutes, and the process stops before it serves.
 
 A session waits for a late peer at most the limit of its flag-wait regime:
 `startup` (`SIRCL_STARTUP_WAIT_S`, 600 s) or `serving`

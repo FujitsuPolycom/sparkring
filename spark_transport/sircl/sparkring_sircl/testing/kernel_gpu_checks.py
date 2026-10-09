@@ -431,7 +431,7 @@ class KernelChecks:
                               != outputs[rank].cpu().view(torch.int16)).sum().item()) for rank in range(world)]
         planner = getattr(session0, "large_reduce_plan", None)
         schedule = ("chain" if callable(planner) and any(getattr(part, "chain", False)
-                                                         for part in planner(rows * 4096 * 2, aligned=True))
+                                                         for part in planner(rows * 4096 * 2))
                     else "pieces")
         posted = None if before is None or after is None else after - before
         ok = not wrong_reference and not wrong_allreduce and posted in (None, expected_ops)

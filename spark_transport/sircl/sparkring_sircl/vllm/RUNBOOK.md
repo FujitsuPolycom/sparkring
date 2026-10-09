@@ -349,7 +349,7 @@ the session rejects.
 
 ## Measured tuning tables
 
-A tuning table (schema `sircl-tuning-table/v1`, made by the ring harness's
+A tuning table (schema `sircl-tuning-table/v2`, `v1` read too, made by the ring harness's
 `tune` command) holds, per collective, size and mode (eager or CUDA graph
 replay), the fastest SIRCL choice and whether NCCL measured faster. Its key
 names the group shape (`pair`, `path:<n>`, `cycle:<n>` or a strided shape),

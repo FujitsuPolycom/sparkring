@@ -893,7 +893,7 @@ class Harness:
             plan = getattr(self.session, "large_reduce_plan", None)
             if callable(plan):
                 record["all_reduce_large_schedule"] = (
-                    "chain" if any(getattr(piece, "chain", False) for piece in plan(nbytes, aligned=True, mode=mode))
+                    "chain" if any(getattr(piece, "chain", False) for piece in plan(nbytes, mode=mode))
                     else "pieces")
         if exchange:
             record["traffic"] = "scatter"

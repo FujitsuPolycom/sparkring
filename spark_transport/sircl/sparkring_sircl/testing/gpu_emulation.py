@@ -712,6 +712,120 @@ def proto_halves(nbytes: int) -> tuple[int, int]:
 LATE_TAKE_US = 2000         # the late rank takes each link op this long after its doorbell
 
 
+ALIGNMENT_MESSAGE = 3 << 20      # an all-reduce the cycle of eight and the pair run as one ring op, a path as a chain
+
+
+def _offset_view(torch, tensor):
+    """``tensor``'s values in a contiguous view one element into a larger allocation: the same shape and dtype at
+    a pointer that is not 16-byte aligned."""
+    base = torch.empty(tensor.numel() + 16 // tensor.element_size(), dtype=tensor.dtype, device=tensor.device)
+    view = base[1:tensor.numel() + 1].view(tensor.shape)
+    view.copy_(tensor)
+    return view
+
+
+def _offset_output(torch, like):
+    """An output for ``like`` at a pointer that is not 16-byte aligned."""
+    base = torch.empty(like.numel() + 16 // like.element_size(), dtype=like.dtype, device=like.device)
+    return base[1:like.numel() + 1].view(like.shape)
+
+
+def _alignment_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
+    """Rank 0's buffers one element past 16-byte alignment while its peers' are aligned: every rank runs the same
+    ops, which follow the size and the agreed settings only, and every output equals the all-aligned call's bit
+    for bit. The all-reduce of :data:`ALIGNMENT_MESSAGE` bytes with rank 0's input offset, then its output; the
+    all-gather of 1 MiB shards and the reduce-scatter of 512 KiB chunks along dimension 0 with rank 0's input
+    offset; and a captured all-reduce whose rank 0 input is an offset view, replayed for two inputs."""
+    torch = group.torch
+    world = group.world
+    bf16 = torch.bfloat16
+    session0 = group.sessions[0]
+    results = []
+
+    def run(inputs, call, offset_input: bool, offset_output: bool = False):
+        placed = _on_device(group, inputs)
+        ins = [_offset_view(torch, tensor) if offset_input and rank == 0 else tensor
+               for rank, tensor in enumerate(placed)]
+        torch.cuda.synchronize()
+        outputs = group.each(lambda rank, session: call(session, ins[rank], offset_output and rank == 0))
+        return [output.cpu() for output in outputs]
+
+    def compare(name, inputs, call, route, offset_output=False):
+        try:
+            want = run(inputs, call, offset_input=False)
+            if _timed_out(group):
+                return name, False, f"the all-aligned call: {_timed_out(group)}"
+            got = run(inputs, call, offset_input=not offset_output, offset_output=offset_output)
+        except Exception as error:  # noqa: BLE001
+            return name, False, f"{type(error).__name__}: {error}"
+        timed_out = _timed_out(group)
+        if timed_out:
+            return name, False, timed_out
+        wrong = [rank for rank in range(world) if not _same_bits(torch, got[rank], want[rank])]
+        return name, not wrong, f"ranks {wrong} differ from the all-aligned call" if wrong else f"{route}; exact"
+
+    def reduce(session, x, offset_out):
+        out = _offset_output(torch, x) if offset_out else None
+        return session.all_reduce_large(x, out=out)
+
+    count = ALIGNMENT_MESSAGE // 2
+    inputs = _inputs(torch, world, (count,), bf16, 801)
+    plan = session0.large_reduce_plan(ALIGNMENT_MESSAGE)
+    route = "ops " + ",".join("ring" if piece.ring else "chain" if piece.chain else "pieces" for piece in plan)
+    results.append(compare(f"all_reduce_large {ALIGNMENT_MESSAGE} B, rank 0's input offset", inputs, reduce, route))
+    results.append(compare(f"all_reduce_large {ALIGNMENT_MESSAGE} B, rank 0's output offset", inputs, reduce,
+                           route, offset_output=True))
+
+    shard = _inputs(torch, world, (128, 4096), bf16, 802)
+    probe = torch.empty((128, 4096), dtype=bf16, device=session0.device)
+    gather_route = ("ring" if session0.gather_uses_ring(probe, 0) else
+                    "chain" if session0.gather_uses_chain(probe, 0) else "tiles")
+    results.append(compare("all_gather_large of 1 MiB shards, rank 0's input offset", shard,
+                           lambda session, x, _offset: session.all_gather_large(x, dim=0), gather_route))
+
+    rows = 64 * world
+    scatter_in = _inputs(torch, world, (rows, 4096), bf16, 803)
+    probe = torch.empty((rows, 4096), dtype=bf16, device=session0.device)
+    scatter_route = ("ring" if session0.scatter_uses_ring(probe) else
+                     "chain" if session0.scatter_uses_chain(probe) else "scatter ops")
+    results.append(compare("reduce_scatter of 512 KiB chunks, rank 0's input offset", scatter_in,
+                           lambda session, x, _offset: session.reduce_scatter(x), scatter_route))
+
+    # A captured all-reduce whose rank 0 input is an offset view: the staging copies are part of the graph.
+    name = f"graph all_reduce_large {ALIGNMENT_MESSAGE} B, rank 0's input offset"
+    try:
+        state = [dict() for _ in range(world)]
+        for rank, session in enumerate(group.sessions):
+            with torch.cuda.stream(group.streams[rank]):
+                x = torch.zeros(count, dtype=bf16, device=session.device)
+                if rank == 0:
+                    x = _offset_view(torch, x)
+                graph = torch.cuda.CUDAGraph()
+                with session.capture():
+                    with torch.cuda.graph(graph, stream=group.streams[rank]):
+                        y = session.all_reduce_large(x)
+            state[rank].update(x=x, y=y, graph=graph)
+        problem = ""
+        for seed in (804, 805):
+            step = _inputs(torch, world, (count,), bf16, seed)
+            want = run(step, reduce, offset_input=False)
+            placed = _on_device(group, step)
+
+            def replay(rank: int, session, placed=placed):
+                state[rank]["x"].copy_(placed[rank])
+                state[rank]["graph"].replay()
+
+            group.each(replay)
+            wrong = [rank for rank in range(world) if not _same_bits(torch, state[rank]["y"].cpu(), want[rank])]
+            if wrong or _timed_out(group):
+                problem = f"seed {seed}: " + (_timed_out(group) or f"ranks {wrong} differ from the eager call")
+                break
+        results.append((name, not problem, problem or f"{route}; two replays exact"))
+    except Exception as error:  # noqa: BLE001
+        results.append((name, False, f"{type(error).__name__}: {error}"))
+    return results
+
+
 def _late_link_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     """Link ops issued back to back on every rank while one rank's progress thread takes every link op
     ``LATE_TAKE_US`` after its doorbell (the native test hook ``roce_test_delay_link_ops``): that rank's
@@ -1948,10 +2062,12 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
                report: Callable[[tuple[str, bool, str]], None] | None = None,
                event_trace: int = 0,
                path_latency: tuple[int, int, int, int] | None = None,
-               column_gather_only: bool = False) -> list[tuple[str, bool, str]]:
+               column_gather_only: bool = False, alignment_only: bool = False) -> list[tuple[str, bool, str]]:
     """Every collective of the session, eager and captured, against host references; with
     ``event_trace`` records, every session keeps an event trace (``SIRCL_EVENT_TRACE``, the traced
-    chain kernel runs every chain op) and :func:`_trace_checks` checks one chain all-reduce's."""
+    chain kernel runs every chain op) and :func:`_trace_checks` checks one chain all-reduce's. With
+    ``column_gather_only`` or ``alignment_only``, only the column-gather or the alignment checks run after
+    preparing."""
     import torch
 
     if library is None:
@@ -1990,6 +2106,12 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
             from .column_gather_checks import column_gather_checks
 
             for check in column_gather_checks(group):
+                checks.append(check)
+            healthy = [not session.poisoned for session in group.sessions]
+            checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
+            return checks
+        if alignment_only:
+            for check in _alignment_checks(group):
                 checks.append(check)
             healthy = [not session.poisoned for session in group.sessions]
             checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
@@ -2034,6 +2156,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         for check in _scatter_chain_checks(group, types):
             checks.append(check)
         for check in _ring_checks(group, types):
+            checks.append(check)
+        for check in _alignment_checks(group):
             checks.append(check)
         for check in _late_link_checks(group):
             checks.append(check)
@@ -2485,6 +2609,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--column-gather-only", action="store_true",
                         help="after preparing, run only the column-gather checks (the vLLM adapter's staged "
                              "dimension-0 link all-gather against all_gather_large along the column dimension)")
+    parser.add_argument("--alignment-only", action="store_true",
+                        help="after preparing, run only the alignment checks (rank 0's buffers not 16-byte "
+                             "aligned while its peers' are)")
     parser.add_argument("--tune", action="store_true",
                         help="run tune_checks (the ring harness's tune command and sessions that take its table) "
                              "instead of run_checks")
@@ -2504,7 +2631,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
                             dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,
-                            path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only)
+                            path_latency=_path_latency(args.path_latency), column_gather_only=args.column_gather_only,
+                            alignment_only=args.alignment_only)
     failed = sum(1 for _, ok, _ in checks if not ok)
     print(f"{len(checks)} checks, {failed} failed")
     sys.stdout.flush()

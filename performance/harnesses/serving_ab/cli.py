@@ -79,8 +79,8 @@ def bundle(site_path: str, positions: list[int], run_id: str, nccl: str, args, s
         for flag in ("capacity", "dispatch"):
             if getattr(args, flag):
                 command += [f"--{flag}", str(getattr(args, flag))]
-        if args.tuning_table:
-            command += ["--tuning-table", args.tuning_table]
+        for table in args.tuning_table or ():
+            command += ["--tuning-table", table]
         if fused_norm:
             command += ["--fused-norm", "on"]
     if stage:
@@ -128,8 +128,36 @@ def decode_context(profile: dict, bases: list[list[str]], requested: int | None)
     return deviations, dcp
 
 
+def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) -> tuple[dict, list[str]]:
+    """The configuration served: the profile with another of its checkpoints or another profile's model.
+
+    Returns it, for the checkpoint search and the plan, and the deviations. The containers render from the
+    unchanged profile (the adapter refuses any other) with ``checkpoint`` passed on, which applies that entry
+    of the profile's checkpoint table as the installer's ``--checkpoint`` does
+    (qwen_flash_next.checkpoint_settings: its model and pinned settings). ``model_of`` (``PROFILE`` or
+    ``PROFILE:CHECKPOINT``) takes only the pinned model (repository, revision, config and index digests) of
+    another profile or of an entry of its checkpoint table: the containers mount that checkpoint copy, and
+    the arguments it needs are given with --set-arg and --set-env.
+    """
+    deviations = []
+    if checkpoint:
+        default = profile.get("checkpoint")
+        profile = qwen_flash_next.checkpoint_settings(profile, checkpoint)
+        deviations.append(f"checkpoint {checkpoint} (the profile's default: {default})")
+    if model_of:
+        name, _, entry = model_of.partition(":")
+        other, _ = profile_config(name)
+        model = qwen_flash_next.checkpoint_settings(other, entry)["model"] if entry else other["model"]
+        before = profile["model"]
+        profile = dict(profile, model=dict(model))
+        deviations.append(f"model {model['repository']}@{model['revision'][:12]} of {model_of} "
+                          f"(the profile's: {before['repository']}@{before['revision'][:12]})")
+    return profile, deviations
+
+
 def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) -> tuple[list[str], dict]:
-    """Apply ``--set-arg FLAG=VALUE`` and ``--set-env KEY=VALUE`` to every rank's base command.
+    """Apply ``--set-arg FLAG=VALUE`` (``--set-arg FLAG`` for a bare flag) and ``--set-env KEY=VALUE`` to every
+    rank's base command.
 
     A value ``@PATH`` is read from that file (for JSON such as ``--hf-overrides``). Every arm then runs the
     changed command. Returns one deviation line per change, against the profile's own value, and the full
@@ -139,9 +167,18 @@ def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) 
         return Path(text[1:]).read_text(encoding="utf-8").strip() if text.startswith("@") else text
     deviations, applied = [], {"vllm_arguments": {}, "environment": {}}
     for item in set_args:
-        flag, value = item.split("=", 1)
-        if not flag.startswith("--"):
+        if not item.startswith("--"):
             raise SystemExit(f"--set-arg {item!r}: the flag must start with --")
+        if "=" not in item:
+            present = [spec.arg(tokens, item) is not None or item in tokens[spec.image_index(tokens):]
+                       for tokens in bases][0]
+            for tokens in bases:
+                if item not in tokens[spec.image_index(tokens):]:
+                    tokens.append(item)
+            applied["vllm_arguments"][item] = True
+            deviations.append(f"{item} (the profile's: {'set' if present else 'unset'})")
+            continue
+        flag, value = item.split("=", 1)
         value = value_of(value)
         old = [spec.set_arg(tokens, flag, value) for tokens in bases][0]
         applied["vllm_arguments"][flag] = value
@@ -163,6 +200,7 @@ def build_plan(args) -> dict:
     positions = positions_of(args.positions)
     arms = list(dict.fromkeys(arm for _, arm, _ in order_of(args.order)))
     profile, config_path = profile_config(args.profile)
+    served, chosen = choose_model(profile, args.checkpoint, args.model_of)
     world = qwen_flash_next.node_count(profile)
     if world != len(positions):
         raise SystemExit(f"{args.profile} runs {world} ranks; --positions names {len(positions)}")
@@ -174,16 +212,21 @@ def build_plan(args) -> dict:
             checkpoints.append({"spark": spark.name, "position": spark.position,
                                 "chosen": {"path": explicit[str(spark.position)], "matches": None}, "candidates": []})
         else:
-            checkpoints.append(remote.find_checkpoint(spark, profile["model"]))
+            checkpoints.append(remote.find_checkpoint(spark, served["model"]))
     missing = [c["spark"] for c in checkpoints if not c["chosen"]]
     if missing:
-        raise SystemExit(f"no verified copy of {profile['model']['repository']}@{profile['model']['revision']} on "
+        raise SystemExit(f"no verified copy of {served['model']['repository']}@{served['model']['revision']} on "
                          f"{missing}; candidates: {[c['candidates'] for c in checkpoints if not c['chosen']]}")
     master = sparks[0].lan_address
     lock = json.loads(Path(args.image_lock).read_text(encoding="utf-8"))
     view = image_lock.v2_view(lock)
+    unlisted = []
     if args.profile not in view["profiles"]:
-        raise SystemExit(f"the image lock {lock['name']} does not list {args.profile}")
+        if not args.unlisted_profile:
+            raise SystemExit(f"the image lock {lock['name']} does not list {args.profile}")
+        # Research only: the lock's profiles are those the installer admitted when it recorded the image; a
+        # profile it did not admit can still be rendered and served here, and the plan says so.
+        unlisted.append(f"profile {args.profile} is not admitted by image lock {lock['name']} (--unlisted-profile)")
     # The vLLM plugins the profile loads must be in the image, as sparkring install requires.
     problem = image_lock.plugin_problem(lock, args.profile)
     if problem:
@@ -197,10 +240,11 @@ def build_plan(args) -> dict:
                  qwen_flash_next.container_spec(profile, rank=r, master=master, host_ip=spark.lan_address,
                                                 interface=site.lan_interface, image=view["image_id"],
                                                 model=checkpoints[r]["chosen"]["path"], cache=CACHE_PLACEHOLDER,
-                                                remote=True),
+                                                remote=True, checkpoint=args.checkpoint),
                  view, profile_id=args.profile, source_root=source_root))
              for r, spark in enumerate(sparks)]
-    deviations, dcp = decode_context(profile, bases, args.dcp_size)
+    deviations, dcp = decode_context(served, bases, args.dcp_size)
+    deviations = unlisted + chosen + deviations
     changed, applied = overrides(bases, args.set_arg, args.set_env)
     deviations += changed
     run = args.run_id
@@ -222,7 +266,7 @@ def build_plan(args) -> dict:
                 for arm in arms}
     arguments = list(profile["vllm_args"])
     return {"schema": "serving-ab-plan/v1", "profile": args.profile, "config": str(config_path.relative_to(ROOT)),
-            "model": profile["model"], "served_model_name": profile["served_model_name"], "image": view["image_id"],
+            "model": served["model"], "served_model_name": served["served_model_name"], "image": view["image_id"],
             "image_lock": {"path": args.image_lock, "name": lock["name"],
                            "sha256": hashlib.sha256(Path(args.image_lock).read_bytes()).hexdigest()},
             "positions": positions, "sparks": [s.name for s in sparks], "api": f"http://{master}:{arg_value(arguments, '--port')}",
@@ -276,7 +320,8 @@ def settle_memory(plan: dict, site: remote.Site, arm: str, out: Path) -> list[di
     the set must have no container of the campaign left; each then writes back dirty pages and drops the page,
     dentry and inode caches (``drop_caches`` frees caches only and changes no setting), and the runner polls
     ``MemAvailable`` until two readings 5 s apart differ by less than 256 MiB on every Spark, for at most
-    180 s. Returns, per Spark, the total and the settled available memory and the share vLLM asks for.
+    180 s. A Spark whose settled available memory is below the share vLLM asks for refuses the start (vLLM
+    would refuse it at startup). Returns, per Spark, the total and the settled available memory and that share.
     """
     sparks = [site.sparks[p] for p in plan["positions"]]
     for spark in sparks:
@@ -307,9 +352,14 @@ def settle_memory(plan: dict, site: remote.Site, arm: str, out: Path) -> list[di
             for p, (total, available) in zip(plan["positions"], current)]
     asks = (f"--gpu-memory-utilization {utilization}" if utilization
             else "no --gpu-memory-utilization in the profile, vLLM's default applies")
+    short = [r for r in rows if r["vllm_asks_gib"] and r["available_gib"] < r["vllm_asks_gib"]]
     log(f"memory before arm {arm} ({'settled' if stable else 'not settled after 180 s'}; {asks}): " + ", ".join(
             f"Spark {r['position']} {r['available_gib']:.2f} GiB available"
             + (f" (asks {r['vllm_asks_gib']:.2f})" if r["vllm_asks_gib"] else "") for r in rows), out)
+    if short:
+        # vLLM would refuse at startup; a process outside the run (another start's container) holds the memory.
+        raise RuntimeError("available memory below what vLLM asks on " + ", ".join(
+            f"Spark {r['position']} ({r['available_gib']:.2f} < {r['vllm_asks_gib']:.2f} GiB)" for r in short))
     return rows
 
 
@@ -334,6 +384,48 @@ def start(plan: dict, site: remote.Site, arm: str, out: Path) -> None:
             raise RuntimeError(f"arm {arm}: containers {states}")
         time.sleep(30)
     raise RuntimeError(f"arm {arm}: not ready within 3600 s")
+
+
+def post(url: str, body: dict | None = None, timeout: float = 600) -> str:
+    data = json.dumps(body).encode() if body is not None else b""
+    request = urllib.request.Request(url, data=data, method="POST", headers={"Content-Type": "application/json"})
+    return urllib.request.urlopen(request, timeout=timeout).read().decode(errors="replace")
+
+
+def profile_capture(plan: dict, site: remote.Site, arm: str, out: Path, tokens: int) -> dict:
+    """Capture vLLM's torch profiler over one one-stream request and copy rank 0's traces.
+
+    The containers must enable vLLM's torch profiler with its folder under the cache mount: --profiler-config
+    {"profiler": "torch", "torch_profiler_dir": "/cache/..."} (--set-arg), or VLLM_TORCH_PROFILER_DIR in a
+    vLLM that reads it; /start_profile and /stop_profile switch every worker's profiler, and the traces rank 0's
+    Spark wrote are copied into ``torch-profile-r0.tar``.
+    """
+    spark = site.sparks[plan["positions"][0]]
+    tokens0 = plan["commands"][arm][0]
+    folder = spec.environment(tokens0).get("VLLM_TORCH_PROFILER_DIR", "")
+    if spec.arg(tokens0, "--profiler-config"):
+        folder = json.loads(spec.arg(tokens0, "--profiler-config")).get("torch_profiler_dir", folder)
+    if not folder.startswith("/cache/"):
+        raise RuntimeError("profiling needs a torch profiler folder under /cache (--profiler-config "
+                           "torch_profiler_dir, or VLLM_TORCH_PROFILER_DIR where vLLM reads it)")
+    host = plan["caches"][arm] + folder[len("/cache"):]
+    t0 = time.monotonic()
+    # One untimed request first, so the profiled one finds compiled kernels and warm caches.
+    post(plan["api"] + "/v1/completions", {"model": plan["served_model_name"], "prompt": "Warm-up:",
+                                           "max_tokens": 32, "temperature": 0})
+    post(plan["api"] + "/start_profile")
+    reply = json.loads(post(plan["api"] + "/v1/completions", {
+        "model": plan["served_model_name"], "prompt": "Count from 1 to 400, separated by commas:",
+        "max_tokens": tokens, "temperature": 0, "ignore_eos": True}))
+    post(plan["api"] + "/stop_profile")
+    listing = remote.run(spark, remote.sudo(f"ls -la {host}"), check=False)
+    archive = subprocess.run([*remote.SSH, spark.ssh, remote.sudo(f"tar -C {host} -cf - .")], capture_output=True,
+                             timeout=1800)
+    (out / "torch-profile-r0.tar").write_bytes(archive.stdout)
+    record = {"tokens": tokens, "usage": reply.get("usage"), "seconds": round(time.monotonic() - t0, 1),
+              "host_dir": host, "listing": listing.splitlines(), "tar_bytes": len(archive.stdout)}
+    (out / "profile.json").write_text(json.dumps(record, indent=1), encoding="utf-8")
+    return record
 
 
 def name_of(tokens: list[str]) -> str:
@@ -424,13 +516,26 @@ def run_campaign(args) -> int:
                                     model=plan["served_model_name"], context_limit=plan["context_limit"],
                                     bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics)
             (d / "measure.json").write_text(json.dumps(codes, indent=1), encoding="utf-8")
+            if args.profile_label == label:
+                try:
+                    record = profile_capture(plan, site, arm, d, args.profile_tokens)
+                    log(f"{label}: profiled {record['usage']} in {record['seconds']} s; {record['tar_bytes']} bytes "
+                        "of rank 0 traces", out)
+                except Exception as error:  # noqa: BLE001 - a failed capture still stops the containers
+                    log(f"{label}: profile capture failed: {error}", out)
             if arm == "S+":
                 after = [verify.fused_calls(r) for r in receipts(plan, site, arm)]
                 (d / "fused-after.json").write_text(json.dumps(after, indent=1), encoding="utf-8")
             collect(plan, site, arm, d)
+            if args.keep_serving == label:
+                # Left serving for interactive use: the containers stay up and the run ends here.
+                log(f"{label}: measured {codes}; left serving at {plan['api']} as {plan['served_model_name']}", out)
+                if not warm and args.metrics != "none":
+                    measured.append(label)
+                break
             left = stop(plan, site, arm)
             log(f"{label}: measured {codes}; stopped ({left} campaign containers left)", out)
-            if not warm:
+            if not warm and args.metrics != "none":
                 measured.append(label)
             if left:
                 return 1
@@ -465,12 +570,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lock-host", type=int, default=0, help="site position of the lock host (default 0)")
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
+    parser.add_argument("--profile-label", help="after measuring this start, capture vLLM's torch profiler over one "
+                        "one-stream request (needs the profiler enabled with its folder under /cache: "
+                        "--set-arg=--profiler-config=...)")
+    parser.add_argument("--profile-tokens", type=int, default=60, help="tokens of the profiled request (default 60)")
+    parser.add_argument("--keep-serving", metavar="LABEL", help="after measuring this start, leave its containers "
+                        "serving and end the run (they are stopped by hand later)")
+    parser.add_argument("--unlisted-profile", action="store_true",
+                        help="research only: serve a profile the image lock does not list (one the installer did not "
+                             "admit), recorded as a deviation; the lock and its checks are unchanged")
+    parser.add_argument("--checkpoint", help="another checkpoint of the profile's table, as the installer's "
+                        "--checkpoint applies it; recorded as a deviation")
+    parser.add_argument("--model-of", metavar="PROFILE", help="serve another profile's pinned model with this "
+                        "profile's settings; recorded as a deviation")
     parser.add_argument("--set-arg", action="append", default=[], metavar="FLAG=VALUE",
                         help="set a vLLM argument in every arm, recorded as a deviation from the profile "
-                             "(VALUE @PATH reads a file)")
+                             "(VALUE @PATH reads a file; FLAG alone adds a bare flag)")
     parser.add_argument("--set-env", action="append", default=[], metavar="KEY=VALUE",
                         help="set a container variable in every arm, recorded as a deviation from the profile")
-    parser.add_argument("--tuning-table", help="SIRCL tuning table for the S arms (bundle --tuning-table)")
+    parser.add_argument("--tuning-table", action="append", default=[],
+                        help="SIRCL tuning table for the S arms (bundle --tuning-table; repeatable: each session takes "
+                             "the table whose key matches its group shape, sizes and build)")
     parser.add_argument("--capacity", type=int, help="SIRCL all-reduce capacity of the S arms (bundle --capacity)")
     parser.add_argument("--dispatch", type=int, help="SIRCL dispatch ceiling of the S arms (bundle --dispatch)")
     parser.add_argument("--sircl-env", action="append", default=[], metavar="KEY=VALUE",
