@@ -46,20 +46,27 @@ Decode is total output tokens/s with 1, 4, 8 and 16 users, each with 16K
 tokens of context; prefill is one 64K-token prompt. Two runs at temperature 1.0
 with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
 0.7.6 on installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`
+(release 2026.10.1) with the prepared transport, on two four-Spark rings
 ([all results, 16K–128K](performance/records/images/dev-20261004-kraken-matrix-20261004.md)).
+Each row ran its profile's default checkpoint on that image.
 \* The two-Spark GLM profile serves 8 requests at a time.
-† The GLM profiles install the CSF checkpoint on an image whose vLLM reads it
-and NVFP4 Spark on every other image, the default image among them. The
-measurements are NVFP4 Spark; CSF has none here
+† The GLM profiles install the CSF checkpoint on an image whose vLLM reads it,
+such as the release 2026.10.2 image, and NVFP4 Spark on every other image,
+such as 2026.10.1's. Both GLM-5.3-Flash rows of this table were measured
+with NVFP4 Spark (revision `a608241037e4`); the GLM-5.3-Flash rows of the
+[SIRCL table](#results-on-sircl-ring-sessions) were measured with CSF (revision
+`dec48abd33ef`)
 ([default checkpoint by profile](profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
 `--profile glm53-flash-tp2` and `--profile glm53-flash-tp4` select the same
 two profiles.
 
-Four Experimental profiles serve on all eight Sparks of an eight-Spark ring
-(`glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `deepseek-v41-flash-tp8`,
-`qwen38-flash-next-qad-tp8`). They need an image lock whose image carries
-SIRCL ring sessions, which this package does not ship, and have no
-installation measurements ([profile catalog](profiles/README.md)).
+Five Experimental profiles serve on all eight Sparks of an eight-Spark ring
+(`glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`,
+`deepseek-v41-flash-tp8`, `qwen38-flash-next-qad-tp8`). They run only on
+SIRCL ring sessions, with an image lock that lists them: the 2026.10.2
+image's lists all but `qwen38-flash-next-qad-tp8`. Only `glm53-nvfp4-tp8` and
+`glm53-nvfp4-tp8-dcp1` have measurements, none from an installation
+([profile catalog](profiles/README.md)).
 
 Thinking is the default for requests that don't set it: *on* (a request can
 turn it off) or *always*, and its effort. `--reasoning-effort LEVEL` and
@@ -69,6 +76,32 @@ SparkCache variants, which keep the prefix KV cache on disk across restarts
 through the external SparkCache connector, and models the installer doesn't
 cover have their own
 guides in the [profile catalog](profiles/README.md).
+
+## Results on SIRCL ring sessions
+
+Release 2026.10.2's image runs the collectives on SIRCL ring sessions with
+NCCL off ([release record](runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
+These results are Experimental: one eight-Spark ring, GPU clocks locked, the
+[serving A/B runner](performance/harnesses/serving_ab/README.md) instead of
+`sparkring install`, temperature 0, no prompt context, median of two starts.
+
+| Profile | Model and checkpoint | Sparks | Output tok/s, 1 / 2 / 4 / 8 streams | First token, 32K prompt (s) | Record |
+|---|---|---|---|---|---|
+| `glm53-nvfp4-tp8` | GLM-5.3 NVFP4 `b472e4ee53f6` | 8 | 50.7 / 73.9 / 102.4 / 151.4 | 24.4 | [image `27e9f75c0d09`](performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md) |
+| `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash CSF `dec48abd33ef` | 4 | 68.3 / 106.5 / 152.4 / 224.3 | 10.5 | [image `816c6d6a7e96`](performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md) |
+| `glm53-flash-nvfp4-spark-tp2` | GLM-5.3-Flash CSF `dec48abd33ef` | 2 | 42.0 / 61.4 / 88.9 / 133.5 | 15.3 | [image `816c6d6a7e96`](performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md) |
+| `qwen38-flash-next-qad-tp4` | Qwen3.8-Flash-Next QAD step 5500, MXFP8 attention | 4 | 91.0 / 143.6 / 218.5 / 310.6 | 6.8 | [image `816c6d6a7e96`](performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md) |
+| `qwen38-flash-next-tp2` | Qwen3.8-Flash-Next QAD step 5500, MXFP8 attention | 2 | 63.0 / 100.5 / 153.0 / 217.0 | 8.4 | [image `816c6d6a7e96`](performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md) |
+| `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash FP8/MXFP4 `dba1be0a40aa` | 4 | 61.9 / 94.3 / 138.8 / 181.9 | 7.6 | [image `816c6d6a7e96`](performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md) |
+
+Two Sparks were a cabled pair and four Sparks four consecutive Sparks of the
+ring of eight, whose ends reach each other through relays. Both images
+precede the 2026.10.2 image, whose SIRCL is 0.3.2.
+
+- **Pending:** installer qualification of the 2026.10.2 image on the
+  eight-Spark ring.
+- **Pending:** the same profiles on four-Spark rings: setup, TP4
+  installations, the TP4 benchmark and the four-Spark SIRCL tuning row.
 
 ## Documentation
 

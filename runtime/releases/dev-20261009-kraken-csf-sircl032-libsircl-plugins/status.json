@@ -1,0 +1,258 @@
+{
+  "schema": "sparkring-release-status/v1",
+  "release": "2026.10.2",
+  "image_release": "dev-20261009-kraken-csf-sircl032-libsircl-plugins",
+  "status": "implemented",
+  "maturity": "candidate",
+  "record": "runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md",
+  "notes": "runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/RELEASE_NOTES.md",
+  "image": {
+    "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+    "build_tag": "sparkring-dev/kraken:csf-sircl032-libsircl-plugins-20261009",
+    "build_commit": "c7c35fe0b24cb37d13a7a85c23d3281648ecf847",
+    "lock": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json",
+    "lock_sha256": "3bbcdfe378d7b0ad1577bb1e4e83517a428310a00fe5f388a35b79a4f2c95958",
+    "registry_reference": null,
+    "image_bytes": 31883141118
+  },
+  "rollback": {
+    "release": "2026.10.1",
+    "image_release": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad",
+    "transport": "prepared"
+  },
+  "components": [
+    {
+      "id": "sircl-collectives",
+      "version": "0.3.2",
+      "status": "qualified",
+      "scope": "one-shot all-reduce and all-gather on the eight-Spark ring",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "sircl-serving",
+      "version": "0.3.2",
+      "status": "research-only",
+      "scope": "serving through the vLLM adapter",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "libsircl",
+      "version": "0.6.0",
+      "status": "implemented",
+      "scope": "the library and its collectives; the libsircl installer transport is research-only",
+      "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-cycle-broadcast",
+      "version": "0.6.0",
+      "status": "unsupported",
+      "scope": "broadcast at bandwidth on a cycle: 1.9 GB/s against NVIDIA NCCL 2.32.3's 24.2 GB/s on eight Sparks",
+      "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-transport",
+      "version": "0.6.0",
+      "status": "research-only",
+      "scope": "sparkring install --transport libsircl",
+      "record": "docs/architecture/libsircl.md"
+    },
+    {
+      "id": "glm53-plugins",
+      "version": "glm_dsa_indexer_split 1.1.0, glm53full_speedups 1.1.0, glm_dcp_decode_comm 2.0.1",
+      "status": "research-only",
+      "scope": "loaded by glm53-nvfp4-tp8 and glm53-nvfp4-tp8-dcp1; glm_dcp_decode_comm's items off",
+      "record": "runtime/images/derive_glm53_plugins.py"
+    },
+    {
+      "id": "runtime-status",
+      "version": "0.3.4",
+      "status": "implemented",
+      "scope": "the image's dashboard; the repository source is 0.3.6, which no image carries",
+      "record": "integrations/vllm/runtime_status/README.md"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "deepseek-v41-flash-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "deepseek-v41-flash-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (research-only)"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (research-only)"
+    },
+    {
+      "id": "glm53-nvfp4-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "status": "research-only"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp4",
+      "status": "research-only"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "glm53-tp8-mtp2",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), one ConnectX-7 RoCE ring of eight, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+      "scope": "serving A/B runner, not sparkring install; profile glm53-nvfp4-tp8; one warm-up and two measured starts; temperature 0",
+      "result": "output tok/s at 1/2/4/8 streams: 50.7/73.9/102.4/151.4 (no context), 44.2/64.0/89.8/135.7 (16K), 47.9/65.9/99.8/143.7 (32K); time to first token 10.0 s (8K), 11.9 s (16K), 24.4 s (32K)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md"
+    },
+    {
+      "id": "tp2-tp4-sircl",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a cabled pair and paths of four inside the eight-Spark ring, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+      "scope": "serving A/B runner, not sparkring install; GLM-5.3-Flash CSF at TP2 and TP4, Qwen3.8-Flash-Next QAD step 5500 with MXFP8 attention at TP2 and TP4, DeepSeek-V4.1-Flash at TP4; two measured starts each; temperature 0",
+      "result": "output tok/s at 1/2/4/8 streams, no context: GLM-5.3-Flash TP2 42.0/61.4/88.9/133.5, TP4 68.3/106.5/152.4/224.3; Qwen TP2 63.0/100.5/153.0/217.0, TP4 91.0/143.6/218.5/310.6; DeepSeek TP4 61.9/94.3/138.8/181.9",
+      "record": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"
+    },
+    {
+      "id": "libsircl-ring8-a3477af2",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "the eight-Spark ring as a cycle of eight, one rank per Spark",
+      "image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f",
+      "scope": "libsircl snapshot a3477af2 built in the image; nccl-tests v2.21.1; NVIDIA NCCL 2.32.3 from the image as the baseline",
+      "result": "every row #wrong 0; 256 MiB all-reduce under ring schedules 19,305 us (24.33 GB/s bus) against NCCL's 19,940 us (23.56 GB/s); broadcast 1.94 GB/s against NCCL's 24.22 GB/s",
+      "record": "spark_transport/libsircl/STATUS.md"
+    }
+  ],
+  "gates": [
+    {
+      "id": "image-lock",
+      "result": "passed",
+      "scope": "image built from c7c35fe0, loaded on eight Sparks, lock validated for its 13 profiles",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009.md"
+    },
+    {
+      "id": "sircl-collectives",
+      "result": "passed",
+      "scope": "SIRCL one-shot all-reduce and all-gather on the eight-Spark ring",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "serving-measurements",
+      "result": "passed",
+      "scope": "serving A/B measurements of two, four and eight Sparks recorded (the evidence entries; research-only)",
+      "record": "runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md"
+    },
+    {
+      "id": "glm53-tp8-release-image",
+      "result": "pending",
+      "scope": "GLM-5.3 TP8 serving on the release image 1a8c10354eb0",
+      "record": null
+    },
+    {
+      "id": "libsircl-ring8-release-image",
+      "result": "pending",
+      "scope": "the libsircl 0.6.0 gate of the release image on the eight-Spark ring, its cycle plan included",
+      "record": null
+    },
+    {
+      "id": "clean-room-audit",
+      "result": "pending",
+      "scope": "acceptance audit of SIRCL 0.3.2, the three GLM-5.3 plugins and libsircl 0.6.0 against the clean-room rule",
+      "record": null
+    },
+    {
+      "id": "ring8-installer",
+      "result": "pending",
+      "scope": "installer qualification rounds on the eight-Spark ring with the release lock",
+      "record": null
+    },
+    {
+      "id": "ring4-setup",
+      "result": "pending",
+      "scope": "sudo sparkring setup --re-form on each of two rings of four",
+      "record": null
+    },
+    {
+      "id": "ring4-install",
+      "result": "pending",
+      "scope": "TP4 installations on the rings of four",
+      "record": null
+    },
+    {
+      "id": "ring4-benchmark",
+      "result": "pending",
+      "scope": "the TP4 benchmark on a ring of four",
+      "record": null
+    },
+    {
+      "id": "ring4-sircl-tune",
+      "result": "pending",
+      "scope": "sudo sparkring fabric tune of the cycle-4 group shape and its promotion to the default tuning table",
+      "record": null
+    },
+    {
+      "id": "ring4-libsircl-gate",
+      "result": "pending",
+      "scope": "the libsircl gate on a cycle of four",
+      "record": null
+    },
+    {
+      "id": "relay-marker",
+      "result": "pending",
+      "scope": "the relay marker binary of source c64c74535c06 published as a release asset and named in spark_transport/fabric/relay-marker-artifact.json, which names none; package builds without a compiler, install.sh among them, stop until it does",
+      "record": null
+    },
+    {
+      "id": "compose-v3",
+      "result": "pending",
+      "scope": "Compose rendering and the Install Builder (generate_compose_builder.py --verify) on this release's v3 lock; compose.build passes the lock to installer_image.for_profile, which accepts v1 and v2 locks only",
+      "record": null
+    },
+    {
+      "id": "publication",
+      "result": "pending",
+      "scope": "registry push, anonymous manifest and configuration check, publication records and the relay marker release asset",
+      "record": null
+    }
+  ]
+}

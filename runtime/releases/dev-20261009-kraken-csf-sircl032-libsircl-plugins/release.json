@@ -1,0 +1,18 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261009-kraken-csf-sircl032-libsircl-plugins",
+ "selection": "source-build",
+ "inputs": [
+  {
+   "path": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json",
+   "sha256": "3bbcdfe378d7b0ad1577bb1e4e83517a428310a00fe5f388a35b79a4f2c95958"
+  },
+  {
+   "path": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json",
+   "sha256": "f832ac0df98fd97b30c556868fee27574cb72e1b5f06fc115db12d9728309641"
+  }
+ ],
+ "image": {
+  "builder": "runtime/images/derive_glm53_plugins.py"
+ }
+}
