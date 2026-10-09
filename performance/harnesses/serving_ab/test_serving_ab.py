@@ -222,9 +222,21 @@ def test_decode_cells_without_speculation_take_one_token_per_request_and_step():
 def test_overrides_change_every_rank_and_record_the_profile_value(tmp_path):
     bases = [base(0), base(1)]
     (tmp_path / "spec.json").write_text('{"method":"mtp","num_speculative_tokens":3}')
-    changed, applied = cli.overrides(bases, [f"--speculative-config=@{tmp_path / 'spec.json'}", "--node-rank=5"],
+    changed, applied = cli.overrides(bases, [f"--speculative-config=@{tmp_path / 'spec.json'}", "--node-rank=5",
+                                             "--async-scheduling"],
                                      ["VLLM_B12X_KDA_PREFILL_COALESCING=0"])
     assert all(spec.arg(t, "--speculative-config") == '{"method":"mtp","num_speculative_tokens":3}' for t in bases)
     assert spec.environment(bases[1])["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
     assert changed[0].endswith("(the profile's: unset)") and changed[1].endswith("(the profile's: 0)")
     assert applied["environment"] == {"VLLM_B12X_KDA_PREFILL_COALESCING": "0"}
+    assert all(t[-1] == "--async-scheduling" for t in bases) and changed[2] == "--async-scheduling (the profile's: unset)"
+
+
+def test_choose_model_takes_a_listed_checkpoint_or_another_profiles_model():
+    profile, _ = cli.profile_config("qwen38-flash-next-tp2")
+    chosen, deviations = cli.choose_model(profile, "qad-step5500-mxfp8-attention", None)
+    assert chosen["model"]["revision"].startswith("648b194a") and deviations[0].startswith("checkpoint qad-step5500")
+    glm, _ = cli.profile_config("glm53-flash-nvfp4-spark-tp4")
+    csf, deviations = cli.choose_model(glm, None, "glm53-flash-csf-tp8")
+    assert csf["model"]["revision"].startswith("dec48abd") and csf["vllm_args"] == glm["vllm_args"]
+    assert "of glm53-flash-csf-tp8" in deviations[0]

@@ -127,8 +127,33 @@ def decode_context(profile: dict, bases: list[list[str]], requested: int | None)
     return deviations, dcp
 
 
+def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) -> tuple[dict, list[str]]:
+    """The configuration served: the profile with another of its checkpoints or another profile's model.
+
+    Returns it, for the checkpoint search and the plan, and the deviations. The containers render from the
+    unchanged profile (the adapter refuses any other) with ``checkpoint`` passed on, which applies that entry
+    of the profile's checkpoint table as the installer's ``--checkpoint`` does
+    (qwen_flash_next.checkpoint_settings: its model and pinned settings). ``model_of`` takes only another
+    profile's pinned model (repository, revision, config and index digests): the containers mount that
+    checkpoint copy, and the arguments it needs are given with --set-arg and --set-env.
+    """
+    deviations = []
+    if checkpoint:
+        default = profile.get("checkpoint")
+        profile = qwen_flash_next.checkpoint_settings(profile, checkpoint)
+        deviations.append(f"checkpoint {checkpoint} (the profile's default: {default})")
+    if model_of:
+        other, _ = profile_config(model_of)
+        before = profile["model"]
+        profile = dict(profile, model=dict(other["model"]))
+        deviations.append(f"model {other['model']['repository']}@{other['model']['revision'][:12]} of {model_of} "
+                          f"(the profile's: {before['repository']}@{before['revision'][:12]})")
+    return profile, deviations
+
+
 def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) -> tuple[list[str], dict]:
-    """Apply ``--set-arg FLAG=VALUE`` and ``--set-env KEY=VALUE`` to every rank's base command.
+    """Apply ``--set-arg FLAG=VALUE`` (``--set-arg FLAG`` for a bare flag) and ``--set-env KEY=VALUE`` to every
+    rank's base command.
 
     A value ``@PATH`` is read from that file (for JSON such as ``--hf-overrides``). Every arm then runs the
     changed command. Returns one deviation line per change, against the profile's own value, and the full
@@ -138,9 +163,18 @@ def overrides(bases: list[list[str]], set_args: list[str], set_envs: list[str]) 
         return Path(text[1:]).read_text(encoding="utf-8").strip() if text.startswith("@") else text
     deviations, applied = [], {"vllm_arguments": {}, "environment": {}}
     for item in set_args:
-        flag, value = item.split("=", 1)
-        if not flag.startswith("--"):
+        if not item.startswith("--"):
             raise SystemExit(f"--set-arg {item!r}: the flag must start with --")
+        if "=" not in item:
+            present = [spec.arg(tokens, item) is not None or item in tokens[spec.image_index(tokens):]
+                       for tokens in bases][0]
+            for tokens in bases:
+                if item not in tokens[spec.image_index(tokens):]:
+                    tokens.append(item)
+            applied["vllm_arguments"][item] = True
+            deviations.append(f"{item} (the profile's: {'set' if present else 'unset'})")
+            continue
+        flag, value = item.split("=", 1)
         value = value_of(value)
         old = [spec.set_arg(tokens, flag, value) for tokens in bases][0]
         applied["vllm_arguments"][flag] = value
@@ -162,6 +196,7 @@ def build_plan(args) -> dict:
     positions = positions_of(args.positions)
     arms = list(dict.fromkeys(arm for _, arm, _ in order_of(args.order)))
     profile, config_path = profile_config(args.profile)
+    served, chosen = choose_model(profile, args.checkpoint, args.model_of)
     world = qwen_flash_next.node_count(profile)
     if world != len(positions):
         raise SystemExit(f"{args.profile} runs {world} ranks; --positions names {len(positions)}")
@@ -173,10 +208,10 @@ def build_plan(args) -> dict:
             checkpoints.append({"spark": spark.name, "position": spark.position,
                                 "chosen": {"path": explicit[str(spark.position)], "matches": None}, "candidates": []})
         else:
-            checkpoints.append(remote.find_checkpoint(spark, profile["model"]))
+            checkpoints.append(remote.find_checkpoint(spark, served["model"]))
     missing = [c["spark"] for c in checkpoints if not c["chosen"]]
     if missing:
-        raise SystemExit(f"no verified copy of {profile['model']['repository']}@{profile['model']['revision']} on "
+        raise SystemExit(f"no verified copy of {served['model']['repository']}@{served['model']['revision']} on "
                          f"{missing}; candidates: {[c['candidates'] for c in checkpoints if not c['chosen']]}")
     master = sparks[0].lan_address
     lock = json.loads(Path(args.image_lock).read_text(encoding="utf-8"))
@@ -192,10 +227,11 @@ def build_plan(args) -> dict:
                  qwen_flash_next.container_spec(profile, rank=r, master=master, host_ip=spark.lan_address,
                                                 interface=site.lan_interface, image=view["image_id"],
                                                 model=checkpoints[r]["chosen"]["path"], cache=CACHE_PLACEHOLDER,
-                                                remote=True),
+                                                remote=True, checkpoint=args.checkpoint),
                  view, profile_id=args.profile, source_root=source_root))
              for r, spark in enumerate(sparks)]
-    deviations, dcp = decode_context(profile, bases, args.dcp_size)
+    deviations, dcp = decode_context(served, bases, args.dcp_size)
+    deviations = chosen + deviations
     changed, applied = overrides(bases, args.set_arg, args.set_env)
     deviations += changed
     run = args.run_id
@@ -217,7 +253,7 @@ def build_plan(args) -> dict:
                 for arm in arms}
     arguments = list(profile["vllm_args"])
     return {"schema": "serving-ab-plan/v1", "profile": args.profile, "config": str(config_path.relative_to(ROOT)),
-            "model": profile["model"], "served_model_name": profile["served_model_name"], "image": view["image_id"],
+            "model": served["model"], "served_model_name": served["served_model_name"], "image": view["image_id"],
             "image_lock": {"path": args.image_lock, "name": lock["name"],
                            "sha256": hashlib.sha256(Path(args.image_lock).read_bytes()).hexdigest()},
             "positions": positions, "sparks": [s.name for s in sparks], "api": f"http://{master}:{arg_value(arguments, '--port')}",
@@ -460,9 +496,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--lock-host", type=int, default=0, help="site position of the lock host (default 0)")
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
+    parser.add_argument("--checkpoint", help="another checkpoint of the profile's table, as the installer's "
+                        "--checkpoint applies it; recorded as a deviation")
+    parser.add_argument("--model-of", metavar="PROFILE", help="serve another profile's pinned model with this "
+                        "profile's settings; recorded as a deviation")
     parser.add_argument("--set-arg", action="append", default=[], metavar="FLAG=VALUE",
                         help="set a vLLM argument in every arm, recorded as a deviation from the profile "
-                             "(VALUE @PATH reads a file)")
+                             "(VALUE @PATH reads a file; FLAG alone adds a bare flag)")
     parser.add_argument("--set-env", action="append", default=[], metavar="KEY=VALUE",
                         help="set a container variable in every arm, recorded as a deviation from the profile")
     parser.add_argument("--tuning-table", help="SIRCL tuning table for the S arms (bundle --tuning-table)")

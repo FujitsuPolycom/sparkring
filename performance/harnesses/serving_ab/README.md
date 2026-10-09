@@ -67,9 +67,16 @@ admits mHC prefill row ownership at the sizes (`mhc_dcp_problem`),
 `VLLM_GLM53_MHC_PREFILL_SHARD=0`. `plan` prints each such change as a deviation
 from the profile. Without the option every arm runs the profile's own size.
 
+`--checkpoint NAME` serves another checkpoint of the profile's table with its
+pinned settings, as the installer's `--checkpoint` does; `--model-of PROFILE`
+serves another profile's pinned model with this profile's settings. Both are
+printed as deviations from the profile, and the checkpoint search uses the
+model chosen.
+
 `--set-arg FLAG=VALUE` sets a vLLM argument and `--set-env KEY=VALUE` a
 container variable in every arm's command; `VALUE` given as `@PATH` is read from
-that file (for JSON such as `--speculative-config` or `--hf-overrides`). Each
+that file (for JSON such as `--speculative-config` or `--hf-overrides`), and
+`--set-arg FLAG` alone adds a bare flag such as `--async-scheduling`. Each
 is applied to every rank's base before the arms' parts and printed as a
 deviation from the profile with the profile's own value; `plan.json` keeps the
 full values under `overrides`.
@@ -118,6 +125,7 @@ all-reduce backends and receipt lines.
 | `warmup` | contexts 0 and 32k, 1 and 8 streams, 10 s | 8k and 32k, once | fingerprints, prompt logprobs |
 | `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s, temperature 0, at most 1,024 tokens | 8k and 32k, three samples | as above |
 | `phase2` | as `phase1` | 2k, 8k, 32k and 128k, three samples | as above |
+| `phase1-16k` | as `phase1`, at contexts 0, 16k and 32k | 8k, 16k and 32k, three samples | as above |
 
 Decode runs llm-inference-bench's `llm_decode_bench.py` (`--bench-dir`) through
 [`bench_run.py`](bench_run.py), which turns off its self-update check. TTFT runs
