@@ -28,19 +28,22 @@ OBJECTS = $(SOURCES:src/%.c=$(BUILD)/%.o) $(TRANSPORT_HW:src/transport/%.c=$(BUI
 # all-gather, reduce-scatter and all-to-all over the ring session), the fold
 # pack (the local rank-ordered reduction of every other datatype and op), the
 # link pack (the chain all-reduce and the link collectives) and the
-# point-to-point pack (the channel send and receive kernels). Each fatbin is
-# prebuilt in kernels/prebuilt/ with its SHA-256, so building the library needs
-# no CUDA toolkit; `make kernels` regenerates them with nvcc and `make
-# kernels-check` proves the prebuilt files are what the sources and pinned
-# compiler produce.
+# point-to-point pack (the channel send and receive kernels). nvcc (NVCC, CUDA
+# 13.3 or later for sm_121) builds each fatbin from its sources into
+# $(BUILD)/packs/ as part of the library's build; `make kernels` builds the
+# four alone. The library embeds them and reports their SHA-256 in its setup
+# agreement and receipts.
+PACK_DIR = $(BUILD)/packs
+KERNEL_HEADERS = $(wildcard kernels/*.cuh)
 KERNEL_SOURCES = kernels/sircl_kernels.cu
-FATBIN = kernels/prebuilt/sircl_kernels.fatbin
+FATBIN = $(PACK_DIR)/sircl_kernels.fatbin
 FOLD_SOURCES = kernels/sircl_fold.cu
-FOLD_FATBIN = kernels/prebuilt/sircl_fold.fatbin
+FOLD_FATBIN = $(PACK_DIR)/sircl_fold.fatbin
 LINKS_SOURCES = kernels/sircl_links.cu
-LINKS_FATBIN = kernels/prebuilt/sircl_links.fatbin
+LINKS_FATBIN = $(PACK_DIR)/sircl_links.fatbin
 P2P_SOURCES = kernels/sircl_p2p.cu
-P2P_FATBIN = kernels/prebuilt/sircl_p2p.fatbin
+P2P_FATBIN = $(PACK_DIR)/sircl_p2p.fatbin
+PACKS = $(FATBIN) $(FOLD_FATBIN) $(LINKS_FATBIN) $(P2P_FATBIN)
 # SIRCL's point-to-point native library is vendored byte-identical (src/transport/sircl_p2p_proxy.c, SHA-256
 # in its .sha256 file); the build refuses a copy of other contents. P2P_FEATURES=1 (the default) compiles the
 # engine's setup check of the library's local feature word (p2p_local_features bit 0: p2p_destroy counts
@@ -53,7 +56,7 @@ CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
 endif
 NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
 
-.PHONY: all check clean generate kernels kernels-check emulation-tools mpi-shim
+.PHONY: all check clean generate kernels emulation-tools mpi-shim
 all: $(BUILD)/libsircl.so
 
 $(BUILD) $(BUILD)/transport:
@@ -99,14 +102,30 @@ $(BUILD)/transport/p2p_emu.o: src/transport/p2p_emu.c src/transport/p2p_names.h 
 	$(CC) -Isrc/transport/fake_verbs $(CFLAGS) -c $< -o $@
 $(BUILD)/transport/shm_verbs.o: src/transport/shm_verbs.c | $(BUILD)/transport
 	$(CC) -Isrc/transport/fake_verbs -Isrc/transport $(CFLAGS) -c $< -o $@
-$(BUILD)/kernels_fatbin.c: $(FATBIN) $(FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
-	$(PYTHON) tools/embed_fatbin.py $(FATBIN) $@ --check-sha256 $(FATBIN).sha256
-$(BUILD)/fold_fatbin.c: $(FOLD_FATBIN) $(FOLD_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
-	$(PYTHON) tools/embed_fatbin.py $(FOLD_FATBIN) $@ --check-sha256 $(FOLD_FATBIN).sha256 --symbol sccl_fold_fatbin
-$(BUILD)/links_fatbin.c: $(LINKS_FATBIN) $(LINKS_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
-	$(PYTHON) tools/embed_fatbin.py $(LINKS_FATBIN) $@ --check-sha256 $(LINKS_FATBIN).sha256 --symbol sccl_links_fatbin
-$(BUILD)/p2p_fatbin.c: $(P2P_FATBIN) $(P2P_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
-	$(PYTHON) tools/embed_fatbin.py $(P2P_FATBIN) $@ --check-sha256 $(P2P_FATBIN).sha256 --symbol sccl_p2p_fatbin
+# The kernel packs. A missing or failing nvcc stops the build here, naming NVCC.
+$(PACK_DIR):
+	mkdir -p $@
+$(FATBIN): $(KERNEL_SOURCES) $(KERNEL_HEADERS) | $(PACK_DIR)
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $@ $(KERNEL_SOURCES) || \
+	  { echo "building $@ needs nvcc (NVCC=$(NVCC); CUDA 13.3 or later)"; exit 1; }
+$(FOLD_FATBIN): $(FOLD_SOURCES) $(KERNEL_HEADERS) | $(PACK_DIR)
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $@ $(FOLD_SOURCES) || \
+	  { echo "building $@ needs nvcc (NVCC=$(NVCC); CUDA 13.3 or later)"; exit 1; }
+$(LINKS_FATBIN): $(LINKS_SOURCES) $(KERNEL_HEADERS) | $(PACK_DIR)
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $@ $(LINKS_SOURCES) || \
+	  { echo "building $@ needs nvcc (NVCC=$(NVCC); CUDA 13.3 or later)"; exit 1; }
+$(P2P_FATBIN): $(P2P_SOURCES) $(KERNEL_HEADERS) | $(PACK_DIR)
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $@ $(P2P_SOURCES) || \
+	  { echo "building $@ needs nvcc (NVCC=$(NVCC); CUDA 13.3 or later)"; exit 1; }
+kernels: $(PACKS)
+$(BUILD)/kernels_fatbin.c: $(FATBIN) tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(FATBIN) $@
+$(BUILD)/fold_fatbin.c: $(FOLD_FATBIN) tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(FOLD_FATBIN) $@ --symbol sccl_fold_fatbin
+$(BUILD)/links_fatbin.c: $(LINKS_FATBIN) tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(LINKS_FATBIN) $@ --symbol sccl_links_fatbin
+$(BUILD)/p2p_fatbin.c: $(P2P_FATBIN) tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(P2P_FATBIN) $@ --symbol sccl_p2p_fatbin
 $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD)/p2p_fatbin.o: $(BUILD)/%.o: $(BUILD)/%.c
 	$(CC) -fPIC -O0 -c $< -o $@
 # The file is libsircl.so.<version>; its SONAME is the interface name libnccl.so.2, which the dynamic linker
@@ -130,28 +149,6 @@ $(BUILD)/entries.ok: $(BUILD)/check_entries $(BUILD)/fake-cuda/libcuda.so.1
 	LD_LIBRARY_PATH=$(abspath $(BUILD)/fake-cuda) $(BUILD)/check_entries $(ARCHITECTURES)
 	touch $@
 
-kernels:
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(FATBIN) $(KERNEL_SOURCES)
-	sha256sum $(FATBIN) | cut -d' ' -f1 > $(FATBIN).sha256
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(FOLD_FATBIN) $(FOLD_SOURCES)
-	sha256sum $(FOLD_FATBIN) | cut -d' ' -f1 > $(FOLD_FATBIN).sha256
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(LINKS_FATBIN) $(LINKS_SOURCES)
-	sha256sum $(LINKS_FATBIN) | cut -d' ' -f1 > $(LINKS_FATBIN).sha256
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(P2P_FATBIN) $(P2P_SOURCES)
-	sha256sum $(P2P_FATBIN) | cut -d' ' -f1 > $(P2P_FATBIN).sha256
-kernels-check: | $(BUILD)
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check.fatbin $(KERNEL_SOURCES)
-	test "$$(sha256sum $(BUILD)/check.fatbin | cut -d' ' -f1)" = "$$(cat $(FATBIN).sha256)"
-	@echo "prebuilt transport pack matches the sources: $$(cat $(FATBIN).sha256)"
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-fold.fatbin $(FOLD_SOURCES)
-	test "$$(sha256sum $(BUILD)/check-fold.fatbin | cut -d' ' -f1)" = "$$(cat $(FOLD_FATBIN).sha256)"
-	@echo "prebuilt fold pack matches the sources: $$(cat $(FOLD_FATBIN).sha256)"
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-links.fatbin $(LINKS_SOURCES)
-	test "$$(sha256sum $(BUILD)/check-links.fatbin | cut -d' ' -f1)" = "$$(cat $(LINKS_FATBIN).sha256)"
-	@echo "prebuilt link pack matches the sources: $$(cat $(LINKS_FATBIN).sha256)"
-	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-p2p.fatbin $(P2P_SOURCES)
-	test "$$(sha256sum $(BUILD)/check-p2p.fatbin | cut -d' ' -f1)" = "$$(cat $(P2P_FATBIN).sha256)"
-	@echo "prebuilt point-to-point pack matches the sources: $$(cat $(P2P_FATBIN).sha256)"
 
 # GPU-emulation tools: the kernel pack's test entry points for the mixed-group check.
 emulation-tools: $(BUILD)/libsirclkp_test.so

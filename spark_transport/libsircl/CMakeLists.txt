@@ -7,15 +7,27 @@ endif()
 find_package(Threads REQUIRED)
 find_package(Python3 COMPONENTS Interpreter REQUIRED)
 
-# The prebuilt transport, fold, link and point-to-point packs, embedded for cuModuleLoadData and checked
-# against their recorded SHA-256.
+# The transport, fold, link and point-to-point packs: nvcc (LIBSIRCL_NVCC, CUDA 13.3 or later for sm_121)
+# builds each fatbin from its CUDA C++ source with the Makefile's flags, and the library embeds it for
+# cuModuleLoadData.
+find_program(LIBSIRCL_NVCC NAMES nvcc HINTS ENV CUDA_HOME PATH_SUFFIXES bin PATHS /usr/local/cuda/bin)
+if(NOT LIBSIRCL_NVCC)
+  message(FATAL_ERROR "libsircl's kernel packs need nvcc (CUDA 13.3 or later): set LIBSIRCL_NVCC")
+endif()
+set(LIBSIRCL_NVCCFLAGS -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121)
+file(GLOB LIBSIRCL_KERNEL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/kernels/*.cuh)
 foreach(pack kernels fold links p2p)
-  set(FATBIN ${CMAKE_CURRENT_SOURCE_DIR}/kernels/prebuilt/sircl_${pack}.fatbin)
+  set(FATBIN ${CMAKE_CURRENT_BINARY_DIR}/packs/sircl_${pack}.fatbin)
+  add_custom_command(
+    OUTPUT ${FATBIN}
+    COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_CURRENT_BINARY_DIR}/packs
+    COMMAND ${LIBSIRCL_NVCC} ${LIBSIRCL_NVCCFLAGS} -fatbin -o ${FATBIN} ${CMAKE_CURRENT_SOURCE_DIR}/kernels/sircl_${pack}.cu
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/kernels/sircl_${pack}.cu ${LIBSIRCL_KERNEL_HEADERS})
   add_custom_command(
     OUTPUT ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py ${FATBIN}
-            ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c --check-sha256 ${FATBIN}.sha256 --symbol sccl_${pack}_fatbin
-    DEPENDS ${FATBIN} ${FATBIN}.sha256 ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py)
+            ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c --symbol sccl_${pack}_fatbin
+    DEPENDS ${FATBIN} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py)
 endforeach()
 
 # SIRCL's point-to-point native library is vendored byte-identical; configuration refuses a copy whose
@@ -76,7 +88,7 @@ target_link_options(sircl PRIVATE -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functi
 
 # The kernel-entry check (tests/check_entries.c): the pack loader runs on the embedded fatbins through a
 # stand-in CUDA driver (tests/fake_cuda.c) that reads their cubins offline; the library links after it
-# passes, so a loader that names an entry missing from a prebuilt pack fails the build.
+# passes, so a loader that names an entry missing from a pack fails the build.
 add_library(fake_cuda SHARED tests/fake_cuda.c)
 set_target_properties(fake_cuda PROPERTIES OUTPUT_NAME cuda NO_SONAME TRUE SUFFIX ".so.1" C_STANDARD 11
                       LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/fake-cuda C_VISIBILITY_PRESET hidden)

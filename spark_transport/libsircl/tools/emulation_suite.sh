@@ -40,7 +40,7 @@ else
   note "FAIL build or CPU checks (build.log, check.log)"
   exit 1
 fi
-note "library $(sha256sum "$(readlink -f "$LIB")" | cut -d' ' -f1); link pack $(cat kernels/prebuilt/sircl_links.fatbin.sha256)"
+note "library $(sha256sum "$(readlink -f "$LIB")" | cut -d' ' -f1); link pack $(sha256sum build/packs/sircl_links.fatbin | cut -d' ' -f1)"
 
 # 2. Library runs: library <tag> <world> <lanes> <golden> [NAME=VALUE ...]
 library() {
@@ -266,7 +266,7 @@ if [ -n "${SIRCL_PACKAGE:-}" ] && want mixed; then
   mixed ring-path_0-1 path:0-1 1 $RINGM
   mixed links-path_0-1 path:0-1 1 -- --suite sircl-links
   mixed links-path_0-3 path:0-3 2 -- --suite sircl-links
-  if grep -q sircl_ring_reduce_two_pass kernels/prebuilt/sircl_links.fatbin; then
+  if grep -q sircl_ring_reduce_two_pass build/packs/sircl_links.fatbin; then
     mixed two-pass-links-path_0-1 path:0-1 1 LIBSIRCL_RING_REDUCE_PASSES=2 -- --suite sircl-links
   fi
   [ "${MIXED_RING8:-0}" = 1 ] && mixed links-ring_8 ring:8 2 -- --suite sircl-links

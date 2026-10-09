@@ -2,7 +2,7 @@
  * embedded transport, fold, link and point-to-point fatbins through the stand-in driver tests/fake_cuda.c, which reads the
  * fatbins' cubins offline: every entry name the loader asks for must be a defined function in every cubin
  * (every GPU architecture) of its pack. The build runs it before it links the library, so a loader that
- * names an entry its prebuilt pack lacks fails the build, without a GPU. Exit 0 when every entry is
+ * names an entry its pack lacks fails the build, without a GPU. Exit 0 when every entry is
  * present, 1 when one is missing (the loader's message names it), 2 when the stand-in driver is not the
  * libcuda.so.1 the loader would bind.
  *

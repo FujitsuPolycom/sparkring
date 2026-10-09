@@ -10,9 +10,12 @@ this repository is its source of record. The layer stacks on a parent with a
   not yet committed are not built and the build refuses to start while
   there are any) by libsircl's own Makefile (``make -j BUILD=build``, then
   ``make check``) in a network-less container of the parent image at the
-  fixed path ``/tmp/libsircl`` with ``LD_PRELOAD`` unset. The build embeds
-  the prebuilt kernel packs, so it needs the image's gcc, make, Python 3 and
-  rdma-core headers and no nvcc. The library's debug information names the
+  fixed path ``/tmp/libsircl`` with ``LD_PRELOAD`` unset. The build compiles
+  the four kernel packs from their CUDA C++ sources with the image's nvcc
+  (``nvcc`` on the path, else ``/usr/local/cuda/bin/nvcc``) and embeds them,
+  so it needs the image's CUDA toolkit, gcc, make, Python 3 and rdma-core
+  headers; the natives record names the packs it built (SHA-256) and the
+  nvcc that built them. The library's debug information names the
   build directory, so the fixed path makes its bytes depend only on the
   image's compiler and the source. The natives record, the layer receipt and
   the lock name the source by its git tree id (``source_tree``:
@@ -170,15 +173,13 @@ def require_committed(repository=ROOT):
             + changed)
 
 
-def kernel_packs(files):
-    """``{pack: sha256}`` of the prebuilt kernel packs, each equal to its ``.sha256`` file."""
+def kernel_packs(directory):
+    """``{pack: sha256}`` of the kernel packs a build wrote to ``directory`` (``<pack>.fatbin`` each)."""
     packs = {}
     for name in PACKS:
-        path = f"kernels/prebuilt/{name}.fatbin"
-        require(path in files and path + ".sha256" in files, f"the tree lacks the kernel pack {path}")
-        recorded = files[path + ".sha256"].decode().split()[0]
-        require(digest(files[path]) == recorded, f"{path} differs from its .sha256 file")
-        packs[name] = recorded
+        path = Path(directory) / f"{name}.fatbin"
+        require(path.is_file(), f"the build wrote no kernel pack {name}.fatbin")
+        packs[name] = digest(path.read_bytes())
     return packs
 
 
@@ -198,9 +199,13 @@ def build_script(version):
         f"cp -R {SOURCE_MOUNT} {BUILD_PATH}",
         f"cd {BUILD_PATH}",
         "unset LD_PRELOAD",
-        f"make -j BUILD=build > {OUTPUT_MOUNT}/build.log 2>&1",
-        f"make check BUILD=build > {OUTPUT_MOUNT}/check.log 2>&1",
+        "NVCC=$(command -v nvcc || echo /usr/local/cuda/bin/nvcc)",
+        f'"$NVCC" --version | tail -n 1 > {OUTPUT_MOUNT}/nvcc.txt',
+        f'make -j BUILD=build NVCC="$NVCC" > {OUTPUT_MOUNT}/build.log 2>&1',
+        f'make check BUILD=build NVCC="$NVCC" > {OUTPUT_MOUNT}/check.log 2>&1',
         f"cp build/{name} {OUTPUT_MOUNT}/{name}",
+        f"mkdir -p {OUTPUT_MOUNT}/packs",
+        f"cp build/packs/*.fatbin {OUTPUT_MOUNT}/packs/",
         f"gcc --version | head -n 1 > {OUTPUT_MOUNT}/compiler.txt",
     ]) + "\n"
 
@@ -215,7 +220,7 @@ def build_natives(image_id, output, *, repository=ROOT, run=_run, role="parent_i
     require(not output.exists(), "The natives directory must not exist")
     require_committed(repository)
     summary, files = tree_facts(repository)
-    packs, arches = kernel_packs(files), architectures(files)
+    arches = architectures(files)
     version = summary["version"]
     output.mkdir(parents=True)
     with tempfile.TemporaryDirectory() as source:
@@ -236,8 +241,10 @@ def build_natives(image_id, output, *, repository=ROOT, run=_run, role="parent_i
     result = {"schema": NATIVES_SCHEMA, role: image_id, "source_tree": summary["source_tree"], "version": version,
               "library": {"name": name, "sha256": digest(library)},
               "compiler": (output / "compiler.txt").read_text(encoding="utf-8").strip(),
-              "kernel_packs": packs, "architectures": arches,
-              "build": {"commands": ["make -j BUILD=build", "make check BUILD=build"], "path": BUILD_PATH,
+              "nvcc": (output / "nvcc.txt").read_text(encoding="utf-8").strip(),
+              "kernel_packs": kernel_packs(output / "packs"), "architectures": arches,
+              "build": {"commands": ['make -j BUILD=build NVCC="$NVCC"', 'make check BUILD=build NVCC="$NVCC"'],
+                        "path": BUILD_PATH,
                         "check_log_sha256": digest(check)}}
     (output / "natives.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return result
@@ -247,12 +254,13 @@ def read_natives(natives, *, repository=ROOT, role="parent_image_id", image_id=N
     """``(record, library bytes)`` of a natives directory built from this checkout's committed libsircl."""
     natives = Path(natives)
     record = json.loads((natives / "natives.json").read_text(encoding="utf-8"))
-    summary, files = tree_facts(repository)
+    summary, _ = tree_facts(repository)
     require(record.get("schema") == NATIVES_SCHEMA and record.get("source_tree") == summary["source_tree"]
             and record.get("version") == summary["version"],
             "natives.json was built from another libsircl source tree than this checkout's")
     require(image_id is None or record.get(role) == image_id, "natives.json was built in another image")
-    require(record.get("kernel_packs") == kernel_packs(files), "natives.json names other kernel packs")
+    require(record.get("kernel_packs") == kernel_packs(natives / "packs"),
+            "natives.json names other kernel packs than the build wrote")
     data = (natives / record["library"]["name"]).read_bytes()
     require(digest(data) == record["library"]["sha256"], "The library differs from natives.json")
     return record, data
@@ -302,7 +310,8 @@ def layer_files(lock, natives, site, *, repository=ROOT):
                "kernel_packs": record["kernel_packs"],
                "architectures": record["architectures"],
                "plugin": {"name": libsircl.PLUGIN_NAME, "path": plugin, "sha256": digest(payloads[plugin])},
-               "compiler": record["compiler"], "build": record["build"], "parent_image_id": lock["image_id"],
+               "compiler": record["compiler"], "nvcc": record["nvcc"], "build": record["build"],
+               "parent_image_id": lock["image_id"],
                "site_packages": site, "files": {path: digest(data) for path, data in sorted(payloads.items())}}
     payloads[image_lock.LIBSIRCL_RECEIPT] = derived_layer.canonical_json(receipt)
     return payloads, receipt
@@ -474,8 +483,9 @@ def main(argv=None):
     natives.add_argument("--parent-lock", required=True, type=Path)
     natives.add_argument("--output", required=True, type=Path)
     host = actions.add_parser("host-library", help="build the library a stock image mounts, in a builder image")
-    host.add_argument("--builder-image", required=True, help="a local image with gcc, make, Python 3 and rdma-core "
-                                                             "headers, such as an installer image")
+    host.add_argument("--builder-image", required=True, help="a local image with nvcc (CUDA 13.3 or later), gcc, "
+                                                             "make, Python 3 and rdma-core headers, such as an "
+                                                             "installer image")
     host.add_argument("--output", required=True, type=Path)
     prepared = actions.add_parser("prepare", help="write the build context; does not build")
     prepared.add_argument("--parent-lock", required=True, type=Path)

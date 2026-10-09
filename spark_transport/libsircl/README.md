@@ -55,8 +55,8 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
   pack, SIRCL's chain all-reduce and link collectives (chain and ring all-gather and reduce-scatter, ring
   all-reduce) for groups whose ranks form a chain of cable neighbors (`sircl_links.cu`); and the
   point-to-point pack, the send and receive kernels of SIRCL's point-to-point channels (`sircl_p2p.cu`).
-  All four are compiled ahead of time for `sm_120` and `sm_121`, embedded as fatbins (`kernels/prebuilt/`,
-  each checked by SHA-256) and launched from C through the CUDA driver API. `KERNEL_ROUTE.md` records why
+  All four are compiled by nvcc for `sm_120` and `sm_121` as part of the library's build (into
+  `build/packs/`), embedded as fatbins and launched from C through the CUDA driver API. `KERNEL_ROUTE.md` records why
   the kernels are CUDA C++ rather than extracted DSL output.
 - **Point-to-point channels** (communicators of three or more ranks created with
   `LIBSIRCL_P2P_CHANNELS=on`): SIRCL's point-to-point native library (`src/transport/sircl_p2p_proxy.c`, a
@@ -173,12 +173,15 @@ header implemented or not.
 
 ```sh
 make -j                 # build/libsircl.so; needs a C11 compiler, make, Python 3, rdma-core headers
-make check              # CPU suites; no GPU, RDMA device or CUDA toolkit
+                        # and nvcc (NVCC=<nvcc>, CUDA 13.3 or later) for the four kernel packs
+make check              # CPU suites; no GPU or RDMA device
+make kernels            # the four kernel packs alone, into build/packs/
 ```
 
-The library loads without CUDA or libibverbs; it resolves both at communicator creation.
-`make kernels NVCC=<nvcc>` regenerates the four kernel packs and `make kernels-check` proves the
-prebuilt fatbins match the sources. The build refuses a copy of SIRCL's point-to-point library whose
+The library loads without CUDA or libibverbs; it resolves both at communicator creation. The source holds
+the kernel packs' CUDA C++ only: every build compiles the packs and embeds them with their SHA-256, which
+the setup agreement compares, so ranks whose packs differ (built by another nvcc version, for example)
+refuse to form a communicator and name the pack. The build refuses a copy of SIRCL's point-to-point library whose
 SHA-256 differs from `src/transport/sircl_p2p_proxy.c.sha256`. By default (`P2P_FEATURES=1`; CMake
 `LIBSIRCL_P2P_FEATURES=ON`) the build also compiles the channels' setup check of the library's local
 feature word (`p2p_local_features` bit 0: `p2p_destroy` counts the verbs calls that failed, SIRCL change
@@ -300,9 +303,10 @@ and their terms, and every source or binary copy carries `LICENSE`, `NOTICE`, `v
   requests to SIRCL's package stay with the libsircl snapshot and are not vendored.
 - The RDMA transport contains code from rdma-core's `<infiniband/verbs.h>` inline functions, under the
   OpenIB.org BSD option (`LICENSES/rdma-core-verbs.txt`).
-- The prebuilt kernel packs (`kernels/prebuilt/*.fatbin`) contain object code that nvcc generated from
-  NVIDIA CUDA Toolkit headers; that object code is under NVIDIA's CUDA Toolkit End User License
-  Agreement, not Apache-2.0 (`LICENSES/CUDA-NOTICE.txt`).
+- The kernel packs a build compiles (`build/packs/*.fatbin`, embedded in the library) contain object code
+  that nvcc generated from NVIDIA CUDA Toolkit headers; in a built library that object code is under
+  NVIDIA's CUDA Toolkit End User License Agreement, not Apache-2.0 (`LICENSES/CUDA-NOTICE.txt`). The
+  source holds no compiled pack.
 - The MPI shim for nccl-tests (`tools/mpi-shim`) was written from nccl-tests v2.21.1's sources, read to
   list the MPI calls they make; nccl-tests is NVIDIA's BSD-3-Clause test program, not NCCL's
   implementation.

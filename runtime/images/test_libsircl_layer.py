@@ -29,13 +29,10 @@ def git(repository, *args):
 
 def fixture_tree(tmp_path):
     """``(repository, source tree id)``: a git repository whose one commit holds a small libsircl source."""
-    files = {"VERSION": b"0.6.0\n", "Makefile": MAKEFILE, "README.md": b"# libsircl\n"}
+    files = {"VERSION": b"0.6.0\n", "Makefile": MAKEFILE, "README.md": b"# libsircl\n",
+             "kernels/sircl_kernels.cu": b"// kernels\n"}
     for name in libsircl.NOTICES:
         files[name] = f"notice {name}\n".encode()
-    for pack in libsircl_layer.PACKS:
-        data = pack.encode() * 64
-        files[f"kernels/prebuilt/{pack}.fatbin"] = data
-        files[f"kernels/prebuilt/{pack}.fatbin.sha256"] = (hashlib.sha256(data).hexdigest() + "\n").encode()
     repository = tmp_path / "repository"
     for path, data in files.items():
         target = repository / libsircl_layer.SOURCE / path
@@ -75,6 +72,10 @@ def natives(tmp_path, lock, tree, *, library=b"\x7fELF libsircl 0.6.0"):
         (output / "check.log").write_text("9 suites OK\n")
         (output / "build.log").write_text("cc ...\n")
         (output / "compiler.txt").write_text("gcc (Ubuntu 13.3.0-6ubuntu2~24.04) 13.3.0\n")
+        (output / "nvcc.txt").write_text("Build cuda_13.4.r13.4/compiler.36836380_0\n")
+        (output / "packs").mkdir()
+        for pack in libsircl_layer.PACKS:
+            (output / "packs" / f"{pack}.fatbin").write_bytes(pack.encode() * 64)
         run.calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
     run.calls = []
@@ -100,11 +101,16 @@ def test_the_library_builds_in_a_network_less_container_of_the_parent_with_libsi
                                                for item in command)
     script = command[-1]
     assert f"cd {libsircl_layer.BUILD_PATH}" in script and "unset LD_PRELOAD" in script
-    assert "make -j BUILD=build" in script and "make check BUILD=build" in script
+    assert 'make -j BUILD=build NVCC="$NVCC"' in script and 'make check BUILD=build NVCC="$NVCC"' in script
+    assert "command -v nvcc || echo /usr/local/cuda/bin/nvcc" in script and "cp build/packs/*.fatbin" in script
     assert result["source_tree"] == digest and result["version"] == "0.6.0"
     assert result["library"] == {"name": "libsircl.so.0.6.0",
                                  "sha256": hashlib.sha256(b"\x7fELF libsircl 0.6.0").hexdigest()}
-    assert result["architectures"] == ["sm_120", "sm_121"] and set(result["kernel_packs"]) == set(libsircl_layer.PACKS)
+    assert result["architectures"] == ["sm_120", "sm_121"]
+    # The packs the build compiled, by SHA-256, and the nvcc that compiled them.
+    assert result["kernel_packs"] == {pack: hashlib.sha256(pack.encode() * 64).hexdigest()
+                                      for pack in libsircl_layer.PACKS}
+    assert result["nvcc"] == "Build cuda_13.4.r13.4/compiler.36836380_0"
     assert json.loads((directory / "natives.json").read_text()) == result
 
 
@@ -303,24 +309,25 @@ def test_the_host_library_names_its_content_addressed_host_path(tmp_path):
     def run(argv, text=True):
         output = Path(next(item.split("src=")[1].split(",")[0] for item in argv
                            if f"dst={libsircl_layer.OUTPUT_MOUNT}" in item))
-        for name, data in (("libsircl.so.0.6.0", b"lib"), ("check.log", b""), ("compiler.txt", b"gcc 13\n")):
+        for name, data in (("libsircl.so.0.6.0", b"lib"), ("check.log", b""), ("compiler.txt", b"gcc 13\n"),
+                           ("nvcc.txt", b"Build cuda_13.4\n")):
             (output / name).write_bytes(data)
+        (output / "packs").mkdir()
+        for pack in libsircl_layer.PACKS:
+            (output / "packs" / f"{pack}.fatbin").write_bytes(pack.encode())
         return subprocess.CompletedProcess(argv, 0, "", "")
     result = libsircl_layer.host_library("sha256:" + "4" * 64, tmp_path / "host", repository=tree, run=run)
     assert result["builder_image_id"] == "sha256:" + "4" * 64
     assert result["install"]["path"] == f"/var/lib/sparkring/libsircl/{hashlib.sha256(b'lib').hexdigest()}/libsircl.so.0.6.0"
 
 
-def test_the_committed_source_names_the_kernel_packs_and_architectures_the_layer_records():
+def test_the_committed_source_holds_the_pack_sources_and_architectures_the_layer_records():
     summary, files = libsircl_layer.tree_facts()
     assert summary["version"] == "0.6.0"
     assert libsircl_layer.architectures(files) == ["sm_120", "sm_121"]
-    packs = libsircl_layer.kernel_packs(files)
-    assert packs["sircl_kernels"] == "c2e6e5a1f3c2d6bf8af3bcdb62fece9684ab062980f2bfdedd233d82be4eaa25"
-    assert packs["sircl_links"] == "dc9dd167b44c5c6ff32fa2cc07eddceb0a0f45aa72b287fe336d67a9900f6410"
-    # The point-to-point channels' kernels, the fourth pack.
-    assert packs["sircl_p2p"] == "0f39a3b90dbf12be834f2cf431ea1d2d44617b3039a0857da1b8b9eabc9bbc3a"
-    assert set(packs) == set(libsircl_layer.PACKS)
+    # Every pack is built from its CUDA C++ source; the source holds no compiled pack.
+    assert {f"kernels/{pack}.cu" for pack in libsircl_layer.PACKS} <= set(files)
+    assert not [path for path in files if path.endswith(".fatbin")]
     # The fail-stop mode the transport requires: the engine reads LIBSIRCL_FAIL_STOP, so a library built from
     # the tree names it, NUL-terminated, among its strings (libsircl.has_fail_stop).
     assert b'sccl_env("LIBSIRCL_FAIL_STOP")' in files["src/engine.c"]

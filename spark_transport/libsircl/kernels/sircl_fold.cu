@@ -44,8 +44,8 @@
  * Max and min compare with `>` and `<` and keep the earlier rank's value on ties.
  * Every rank folds the same rows in the same order, so every rank stores the same bits.
  *
- * Built ahead of time into kernels/prebuilt/sircl_fold.fatbin (Makefile target `kernels`), separately
- * from the transport pack so that each prebuilt file is checked against its own sources.
+ * Built into its own fatbin (build/packs/sircl_fold.fatbin, Makefile target `kernels`), separately from
+ * the transport pack, so that a change to one pack leaves the other's bytes and SHA-256 unchanged.
  */
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>

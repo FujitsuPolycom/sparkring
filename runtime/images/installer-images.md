@@ -376,7 +376,8 @@ v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
   own Makefile from its committed [source](../../spark_transport/libsircl/README.md)
   (`make -j BUILD=build`, then `make check`) in a network-less container of
   the parent image, at the fixed path `/tmp/libsircl` and with `LD_PRELOAD`
-  unset. The build embeds the prebuilt kernel packs and needs no nvcc;
+  unset. The build compiles the four kernel packs with the parent image's
+  nvcc and embeds them;
 - libsircl's notices under `/opt/sparkring/libsircl`: `LICENSE`, `NOTICE`,
   `vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE` and `LICENSES/`;
 - the vLLM general plugin `libsircl`
@@ -388,7 +389,7 @@ v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
   version, the source's git tree id (`source_tree`), library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
   level, whether the library has the fail-stop mode (its bytes name
   `LIBSIRCL_FAIL_STOP`; the transport requires it), kernel packs and
-  architectures, plugin, compiler, build commands and every installed file
+  architectures, plugin, compiler, nvcc, build commands and every installed file
   with its SHA-256.
 
 Every added file is recorded in the external-base receipt, whose

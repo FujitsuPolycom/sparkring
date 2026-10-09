@@ -18,11 +18,11 @@ point-to-point library; they have not run in one group with SIRCL's DSL point-to
   command-ring words, op words, flag lines, device counters, arrival words, timed waits and error words
   are SIRCL's, so these kernels run against SIRCL's native progress thread and interoperate with ranks
   that run SIRCL's DSL kernels.
-- Build: `make kernels` runs nvcc for `sm_120` (RTX 5090) and `sm_121` (GB10) SASS into
-  `kernels/prebuilt/sircl_kernels.fatbin` with its SHA-256; the library embeds that file and loads it
-  with `cuModuleLoadData` once per CUDA context at communicator creation. Building the library needs no
-  CUDA toolkit, and the fatbin does not depend on the host CPU, so one file serves the x86_64
-  workstation and the aarch64 Sparks. `make kernels-check` rebuilds it and compares the hash.
+- Build: the library's build (or `make kernels`, the packs alone) runs nvcc for `sm_120` (RTX 5090) and
+  `sm_121` (GB10) SASS into `build/packs/sircl_kernels.fatbin`; the library embeds that file with its
+  SHA-256 and loads it with `cuModuleLoadData` once per CUDA context at communicator creation. The
+  fatbin holds GPU code only, so a pack built on the x86_64 workstation or on an aarch64 Spark runs on
+  both GPUs.
 - Launch: `src/kernelpack.c` resolves 77 entry points per architecture (`sircl_oneshot_<dtype>_w<W>`,
   `sircl_twoshot_<dtype>_w<W>`, `sircl_allgather_w<W>`, `sircl_scatter_<dtype>_w<W>`,
   `sircl_alltoall_w<W>`) and launches them with `cuLaunchKernel` from a parameter array of plain
@@ -31,11 +31,11 @@ point-to-point library; they have not run in one group with SIRCL's DSL point-to
 - Fold pack: `kernels/sircl_fold.cu` (libsircl's own code, no SIRCL counterpart) folds the W rows an
   all-gather or all-to-all of the transport pack delivered, element by element in rank order, for the
   12 NCCL datatypes and 5 built-in ops (60 entries `sircl_fold_d<datatype>_o<op>`). It touches no arena
-  and moves no data between ranks. It is built and checked like the transport pack, into
-  `kernels/prebuilt/sircl_fold.fatbin` with its own SHA-256, so the transport pack and its evidence
+  and moves no data between ranks. It is built like the transport pack, into
+  `build/packs/sircl_fold.fatbin` with its own SHA-256, so the transport pack and its evidence
   below stay unchanged when the fold pack changes.
 - Link pack: `kernels/sircl_links.cu`, ports of SIRCL's `oneshot/_chain_cute.py` (chain all-reduce) and
-  `_links_cute.py` (`LinkGather`, `LinkScatter`, `LinkRing`), into `kernels/prebuilt/sircl_links.fatbin`
+  `_links_cute.py` (`LinkGather`, `LinkScatter`, `LinkRing`), into `build/packs/sircl_links.fatbin`
   with its own SHA-256. SIRCL compiles one specialization per chain position, neighbors, rank order,
   threads, lanes and link geometry; the port takes all of them as launch parameters (the link
   collectives as one 176-byte parameter struct, `sccl_link_args`), so 168 entries per architecture
@@ -60,7 +60,7 @@ point-to-point library; they have not run in one group with SIRCL's DSL point-to
   same zero-gate SIRCL's `_cute_batch.py` uses, and the three-source sum of the chain reduce-scatter's
   owner is `round((L + x) + R)` with float32 additions in that order.
 - Point-to-point pack: `kernels/sircl_p2p.cu`, a port of SIRCL's `p2p/_kernels.py` (`P2PSend`, `P2PRecv`,
-  `wait_eq_or_poison`, `wait_ge_or_poison`) into `kernels/prebuilt/sircl_p2p.fatbin` with its own SHA-256.
+  `wait_eq_or_poison`, `wait_ge_or_poison`) into `build/packs/sircl_p2p.fatbin` with its own SHA-256.
   SIRCL compiles one specialization per threads, lanes, slots and slot bytes; the port takes them, and the
   block offsets SIRCL's native `p2p_layout` reports, as one 120-byte parameter struct (`sccl_p2p_args`), so
   16 entries per architecture serve every channel: `sircl_p2p_send_u<U>` and `sircl_p2p_recv_u<U>` for unroll
@@ -73,16 +73,17 @@ point-to-point library; they have not run in one group with SIRCL's DSL point-to
   loads of a copy pass are issued before its stores as volatile loads (system scope for the inbound slot)
   rather than through the zero gate.
 
-Licensing of the prebuilt packs: the CUDA C++ sources are SparkRing's (Apache-2.0); the fatbins also
-contain object code nvcc generated from NVIDIA CUDA Toolkit headers (the floating-point type headers the
-fold pack includes and nvcc's implicit device headers), which is under NVIDIA's CUDA Toolkit End User
-License Agreement, not Apache-2.0 (`NOTICE`, `LICENSES/CUDA-NOTICE.txt`).
+Licensing of the packs: the CUDA C++ sources are SparkRing's (Apache-2.0); a built fatbin, and so the
+library that embeds it, also contains object code nvcc generated from NVIDIA CUDA Toolkit headers (the
+floating-point type headers the fold pack includes and nvcc's implicit device headers), which is under
+NVIDIA's CUDA Toolkit End User License Agreement, not Apache-2.0 (`NOTICE`, `LICENSES/CUDA-NOTICE.txt`).
+The source holds no compiled pack.
 
 ## Evidence
 
 | Conditions | Measurement | Result | Conclusion |
 |---|---|---|---|
-| nvcc 13.3.73, `-O3 -std=c++17`, sm_120 + sm_121 SASS, WSL2 x86_64 | Build time, registers, spills; rebuilds from two source paths | 6.1 s for 154 cubins; 34-64 registers, 0 spill bytes; fatbin 2,714,984 bytes, SHA-256 `c2e6e5a1...be4eaa25`, identical on every rebuild | The pack is reproducible and path independent: a prebuilt file can be checked rather than trusted. |
+| nvcc 13.3.73, `-O3 -std=c++17`, sm_120 + sm_121 SASS, WSL2 x86_64 | Build time, registers, spills; rebuilds from two source paths | 6.1 s for 154 cubins; 34-64 registers, 0 spill bytes; fatbin 2,714,984 bytes, SHA-256 `c2e6e5a1...be4eaa25`, identical on every rebuild | The pack is reproducible and path independent: one nvcc and one source give one pack, whatever the build directory. |
 | Same compiler and flags, fold pack | Build time, registers, spills; rebuilds from two source paths | 4.0 s for 120 cubins; 46-64 registers, 0 spill bytes, 0-byte stack frames; fatbin 1,388,776 bytes, SHA-256 `66da585d...9f11eee9`, identical on every rebuild | The fold pack is reproducible like the transport pack. |
 | Same compiler and flags, link pack | Build time, registers, spills; rebuilds from two source paths | 55 s for 336 cubins; 56-128 registers, 0 spill bytes, 0-byte stack frames (the pair reduce exchange at unroll 4: 96 registers); fatbin 16,734,040 bytes, SHA-256 `2fb2fb0b...f9b340b7`, identical from both paths | The link pack is reproducible like the others. With a 1,024-thread launch bound (64 registers) the unroll-4 chain reduce-scatter spilled 20-44 bytes and unrolls 6-8 more; the 512-thread bound removes every spill. |
 | SIRCL's DSL (nvidia-cutlass-dsl 4.5.0.dev0, NVVM 12.9) with `CUTE_DSL_KEEP_PTX`, sm_120a | Arithmetic of the dumped one-shot PTX | `add.f32` (round to nearest, no flush to zero), conversions by SIRCL's own inline PTX | The port uses `add.rn.f32` and the identical conversion PTX, so each reduction is the same IEEE computation. |

@@ -28,11 +28,11 @@ libibverbs header code
   conditions and disclaimer are in LICENSES/rdma-core-verbs.txt.
 
 CUDA
-  The kernel packs in kernels/prebuilt/ were compiled with the NVIDIA CUDA Toolkit 13.3 (nvcc
-  V13.3.73) and contain object code generated from CUDA Toolkit headers. That object code is
-  distributed under the NVIDIA CUDA Toolkit End User License Agreement
-  (https://docs.nvidia.com/cuda/eula/) and is not licensed under the Apache License. See
-  LICENSES/CUDA-NOTICE.txt.
+  The library's build compiles its kernel packs (kernels/*.cu) with the NVIDIA CUDA Toolkit's
+  nvcc and embeds them in the library. The packs contain object code generated from CUDA Toolkit
+  headers; in a built library that object code is distributed under the NVIDIA CUDA Toolkit End
+  User License Agreement (https://docs.nvidia.com/cuda/eula/) and is not licensed under the
+  Apache License. See LICENSES/CUDA-NOTICE.txt.
 
 Trademarks
   NVIDIA, NCCL, CUDA, DGX and DGX Spark are trademarks and/or registered trademarks of NVIDIA

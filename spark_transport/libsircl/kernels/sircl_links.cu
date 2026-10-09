@@ -2,7 +2,7 @@
  * The link pack: SIRCL's chain all-reduce and link collectives, ported to CUDA C++ from SIRCL's CuTe DSL
  * kernels (sparkring_sircl/oneshot/_chain_cute.py and _links_cute.py), speaking the same chain and link
  * protocols with SIRCL's native progress thread. SIRCL specializes each kernel on the chain position,
- * neighbors and rank order at compile time; these entries take them as launch parameters, so one prebuilt
+ * neighbors and rank order at compile time; these entries take them as launch parameters, so one compiled
  * entry per dtype and unroll serves every rank.
  *
  * Chain all-reduce. The ranks form a chain of cable neighbors (chain index 0 to W-1; `prev` and `next`

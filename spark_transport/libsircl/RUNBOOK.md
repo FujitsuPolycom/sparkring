@@ -15,14 +15,15 @@ Safety classes, as in SIRCL's ring runbook:
 
 ## 1. Build (OFFLINE)
 
-Requirements: Linux (x86_64 or aarch64), a C11 compiler, make, Python 3 and the rdma-core
-development headers (`infiniband/verbs.h`; the serving image has them, since SIRCL builds its native
-layer there). No CUDA toolkit: the four kernel packs are prebuilt (`kernels/prebuilt/`, each checked by
-SHA-256). The build also checks the vendored copy of SIRCL's point-to-point library
-(`src/transport/sircl_p2p_proxy.c`) against its recorded SHA-256.
+Requirements: Linux (x86_64 or aarch64), a C11 compiler, make, Python 3, the rdma-core development
+headers (`infiniband/verbs.h`; the serving image has them, since SIRCL builds its native layer there)
+and nvcc of CUDA 13.3 or later (`NVCC=<nvcc>`, by default `nvcc` on the path), which compiles the four
+kernel packs into `build/packs/` before the library embeds them. The build also checks the vendored
+copies of SIRCL's native libraries (`src/transport/sircl_roce_proxy.c`, `src/transport/sircl_p2p_proxy.c`)
+against their recorded SHA-256.
 
 ```sh
-make -j BUILD=build              # build/libsircl.so, SONAME libnccl.so.2
+make -j BUILD=build              # build/libsircl.so, SONAME libnccl.so.2, and build/packs/*.fatbin
 make check BUILD=build           # CPU suites: ABI, API, bootstrap, lifecycle, engine refusals,
                                  # shared-memory verbs across processes, SIRCL's point-to-point
                                  # library across processes, MPI shim, fabric vectors
@@ -32,9 +33,10 @@ make emulation-tools mpi-shim BUILD=build
 `SIRCL_PACKAGE=<directory holding sparkring_sircl> make check` also runs the route planner's tests
 (`tests/test_site_routes.py`, skipped without it).
 
-`make kernels NVCC=<nvcc>` regenerates the transport, fold, link and point-to-point packs (CUDA 13.3 or
-later for `sm_121`); `make kernels-check NVCC=<nvcc>` rebuilds all four and fails unless each hash equals
-its prebuilt file's. The default build (`P2P_FEATURES=1`) compiles the channels' setup check of SIRCL's
+`make kernels` builds the transport, fold, link and point-to-point packs alone. With nvcc 13.3.73 (the
+CUDA pip packages that CI's `libsircl` job installs) the packs have the SHA-256 values `STATUS.md` names
+(transport `c2e6e5a1...`, fold `66da585d...`, link `dc9dd167...`, point-to-point `0f39a3b9...`); another
+nvcc version may give other bytes, and the setup agreement refuses ranks whose packs differ. The default build (`P2P_FEATURES=1`) compiles the channels' setup check of SIRCL's
 `p2p_local_features` word (SIRCL change LF) and refuses a vendored point-to-point library without it;
 `P2P_FEATURES=0` leaves the check out. Before it links the library, the build runs the kernel-entry check
 (`tests/check_entries.c`): the library's pack loader resolves every entry it names in the embedded packs

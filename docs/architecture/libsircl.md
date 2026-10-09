@@ -71,9 +71,9 @@ The repository's [THIRD_PARTY_NOTICES.md](../../THIRD_PARTY_NOTICES.md)
 (section 18) and [NOTICE](../../NOTICE) name libsircl's components: its
 Apache-2.0 `LICENSE` and `NOTICE`, the NCCL 2.32.3 header copy and NCCL's
 licence in `vendor/`, SIRCL's notice in `vendor/SIRCL-NOTICE`, the rdma-core
-header code under the OpenIB.org BSD licence and the prebuilt kernel packs,
-whose object code is under NVIDIA's CUDA Toolkit End User License Agreement
-(`LICENSES/`).
+header code under the OpenIB.org BSD licence and the kernel packs its build
+compiles, whose object code in a built library is under NVIDIA's CUDA Toolkit
+End User License Agreement (`LICENSES/`). The source holds no compiled pack.
 
 ## Image layer
 
@@ -115,12 +115,17 @@ Actions, none of which pushes or publishes an image:
    to start while tracked files there have changes not committed), copies
    them into a network-less container of the parent
    image at the fixed path `/tmp/libsircl`, runs `make -j BUILD=build` and
-   `make check BUILD=build` there with `LD_PRELOAD` unset, and saves the
-   library, the check log and `natives.json`
-   (`sparkring-libsircl-natives/v1`: parent image, source tree id, version,
-   library SHA-256, compiler, kernel pack SHA-256 values). The build uses the
-   prebuilt kernel packs, so it needs the image's gcc, make, Python 3 and
-   rdma-core headers, and no nvcc. The library's debug information names the
+   `make check BUILD=build` there with the image's nvcc (`nvcc` on the path,
+   else `/usr/local/cuda/bin/nvcc`) and `LD_PRELOAD` unset, and saves the
+   library, the four kernel packs it compiled, the check log and
+   `natives.json` (`sparkring-libsircl-natives/v1`: parent image, source tree
+   id, version, library SHA-256, compiler, nvcc version, kernel pack SHA-256
+   values). The build compiles the kernel packs from their CUDA C++ sources,
+   so it needs the image's CUDA toolkit, gcc, make, Python 3 and rdma-core
+   headers. The kraken-line images carry CUDA 13.4 (nvcc V13.4.92), so their
+   packs may differ in bytes from the nvcc 13.3.73 packs that libsircl's
+   STATUS evidence ran; the natives record names the packs each image
+   embeds. The library's debug information names the
    build directory, so the fixed path makes its bytes depend only on the
    image's compiler and the source: two x86_64 builds of snapshot `ba5a337b` at one path
    gave identical bytes, and a build at another path did not.
@@ -374,8 +379,8 @@ The plan needs on every Spark of the group:
 - the host build of libsircl at `LIBRARY`, the same bytes on every Spark:
   `libsircl_layer.py host-library --builder-image ID --output DIR` builds it
   from the committed source in a network-less container of a builder image
-  that has gcc, make, Python 3 and the rdma-core headers (an installer image
-  has them) and names its content-addressed path,
+  that has nvcc (CUDA 13.3 or later), gcc, make, Python 3 and the rdma-core
+  headers (an installer image has them) and names its content-addressed path,
   `/var/lib/sparkring/libsircl/<sha256>/libsircl.so.<version>`; the stock
   image needs no build tools. The builder's glibc bounds the images the
   library runs in: an x86_64 build of snapshot `ba5a337b` with GCC 13.3 on
@@ -403,7 +408,7 @@ when any check fails:
 | Architecture | the image is `arm64` and its interpreter runs on `aarch64` |
 | Library | it loads in the image, its SONAME is `libnccl.so.2`, `ncclGetVersion` reports 22705, `sirclGetInfo` names libsircl, and its bytes name `LIBSIRCL_FAIL_STOP` (the [fail-stop](#fail-stop) mode) |
 | glibc | the image's glibc (`os.confstr("CS_GNU_LIBC_VERSION")`) is at least the newest `GLIBC_x.y` symbol version the library needs (its ELF `.gnu.version_r`) |
-| CUDA driver API | `cuDriverGetVersion` through the container's `libcuda.so.1` is 13000 or later: the kernel packs hold `sm_120` and `sm_121` code built by nvcc 13.3 and no PTX, which a CUDA 13 driver loads (CUDA's minor-version compatibility; inferred) |
+| CUDA driver API | `cuDriverGetVersion` through the container's `libcuda.so.1` is 13000 or later: the kernel packs hold `sm_120` and `sm_121` code built by a CUDA 13 nvcc and no PTX, which a CUDA 13 driver loads (CUDA's minor-version compatibility; inferred) |
 | GPU architecture | the container sees a GPU, and every visible GPU's compute capability is one the kernel packs carry (`sm_120`, `sm_121`; GB10 is 12.1) |
 | `VLLM_NCCL_SO_PATH` | `vllm/envs.py` defines it and `find_nccl_library` reads it (read from the installed vLLM's sources, not by importing vLLM) |
 | PyNccl's functions | every function vLLM's `NCCLLibrary` binds resolves in the library; none is one libsircl exports only as a refusal ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)), except `ncclCommSuspend` and `ncclCommResume`, which only sleep mode calls and which `--enable-sleep-mode`'s refusal covers |

@@ -16,7 +16,8 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("fatbin", type=Path)
     parser.add_argument("output", type=Path)
-    parser.add_argument("--check-sha256", type=Path, help="file holding the expected SHA-256 of the fatbin")
+    parser.add_argument("--check-sha256", type=Path,
+                        help="a file holding the SHA-256 the fatbin must have (a release's recorded pack)")
     parser.add_argument("--symbol", default="sccl_kernels_fatbin",
                         help="C name of the array; <symbol>_size and <symbol>_sha256 hold its bytes and hash")
     args = parser.parse_args()

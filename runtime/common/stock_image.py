@@ -8,7 +8,7 @@ PyNccl and torch's ProcessGroupNCCL. The image is not an installer image:
 it carries no SparkRing receipts, and SparkRing does not pin or pull it.
 Status: research-only. docs/architecture/libsircl.md describes the option.
 
-libsircl comes from the host: a build of the vendored source
+libsircl comes from the host: a build of the committed source
 (``libsircl_layer.py host-library``) at ``libsircl.host_library_path``,
 mounted read-only at the path the image layer uses. ``preflight`` refuses,
 naming each reason, unless the image's facts (``stock_image_probe.probe``,
@@ -164,7 +164,7 @@ def preflight(image, facts, arguments, *, packs=None, manifest=None):
         problems.append(f"the image finds no CUDA driver: {cuda.get('error')}")
     elif cuda["driver_api"] < REQUIRED_DRIVER_API:
         problems.append(f"the CUDA driver API is {cuda['driver_api']}; libsircl's kernel packs, sm_120 and sm_121 code "
-                        f"built by nvcc 13.3 without PTX, need {REQUIRED_DRIVER_API} or later")
+                        f"built by a CUDA 13 nvcc without PTX, need {REQUIRED_DRIVER_API} or later")
     capabilities = cuda.get("compute_capabilities") or []
     if cuda.get("driver_api") and not capabilities:
         problems.append(f"the container sees no GPU: {cuda.get('error') or 'no device'}")
