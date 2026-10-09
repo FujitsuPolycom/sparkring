@@ -315,7 +315,8 @@ def settle_memory(plan: dict, site: remote.Site, arm: str, out: Path) -> list[di
     the set must have no container of the campaign left; each then writes back dirty pages and drops the page,
     dentry and inode caches (``drop_caches`` frees caches only and changes no setting), and the runner polls
     ``MemAvailable`` until two readings 5 s apart differ by less than 256 MiB on every Spark, for at most
-    180 s. Returns, per Spark, the total and the settled available memory and the share vLLM asks for.
+    180 s. A Spark whose settled available memory is below the share vLLM asks for refuses the start (vLLM
+    would refuse it at startup). Returns, per Spark, the total and the settled available memory and that share.
     """
     sparks = [site.sparks[p] for p in plan["positions"]]
     for spark in sparks:
@@ -346,9 +347,14 @@ def settle_memory(plan: dict, site: remote.Site, arm: str, out: Path) -> list[di
             for p, (total, available) in zip(plan["positions"], current)]
     asks = (f"--gpu-memory-utilization {utilization}" if utilization
             else "no --gpu-memory-utilization in the profile, vLLM's default applies")
+    short = [r for r in rows if r["vllm_asks_gib"] and r["available_gib"] < r["vllm_asks_gib"]]
     log(f"memory before arm {arm} ({'settled' if stable else 'not settled after 180 s'}; {asks}): " + ", ".join(
             f"Spark {r['position']} {r['available_gib']:.2f} GiB available"
             + (f" (asks {r['vllm_asks_gib']:.2f})" if r["vllm_asks_gib"] else "") for r in rows), out)
+    if short:
+        # vLLM would refuse at startup; a process outside the run (another start's container) holds the memory.
+        raise RuntimeError("available memory below what vLLM asks on " + ", ".join(
+            f"Spark {r['position']} ({r['available_gib']:.2f} < {r['vllm_asks_gib']:.2f} GiB)" for r in short))
     return rows
 
 
@@ -384,17 +390,24 @@ def post(url: str, body: dict | None = None, timeout: float = 600) -> str:
 def profile_capture(plan: dict, site: remote.Site, arm: str, out: Path, tokens: int) -> dict:
     """Capture vLLM's torch profiler over one one-stream request and copy rank 0's traces.
 
-    The containers must run with VLLM_TORCH_PROFILER_DIR under the cache mount (--set-env
-    VLLM_TORCH_PROFILER_DIR=/cache/torch-profile); /start_profile and /stop_profile switch every worker's
-    profiler, and the traces rank 0's Spark wrote are copied into ``torch-profile-r0.tar``.
+    The containers must enable vLLM's torch profiler with its folder under the cache mount: --profiler-config
+    {"profiler": "torch", "torch_profiler_dir": "/cache/..."} (--set-arg), or VLLM_TORCH_PROFILER_DIR in a
+    vLLM that reads it; /start_profile and /stop_profile switch every worker's profiler, and the traces rank 0's
+    Spark wrote are copied into ``torch-profile-r0.tar``.
     """
     spark = site.sparks[plan["positions"][0]]
-    env = spec.environment(plan["commands"][arm][0])
-    folder = env.get("VLLM_TORCH_PROFILER_DIR", "")
+    tokens0 = plan["commands"][arm][0]
+    folder = spec.environment(tokens0).get("VLLM_TORCH_PROFILER_DIR", "")
+    if spec.arg(tokens0, "--profiler-config"):
+        folder = json.loads(spec.arg(tokens0, "--profiler-config")).get("torch_profiler_dir", folder)
     if not folder.startswith("/cache/"):
-        raise RuntimeError("profiling needs VLLM_TORCH_PROFILER_DIR under /cache (--set-env)")
+        raise RuntimeError("profiling needs a torch profiler folder under /cache (--profiler-config "
+                           "torch_profiler_dir, or VLLM_TORCH_PROFILER_DIR where vLLM reads it)")
     host = plan["caches"][arm] + folder[len("/cache"):]
     t0 = time.monotonic()
+    # One untimed request first, so the profiled one finds compiled kernels and warm caches.
+    post(plan["api"] + "/v1/completions", {"model": plan["served_model_name"], "prompt": "Warm-up:",
+                                           "max_tokens": 32, "temperature": 0})
     post(plan["api"] + "/start_profile")
     reply = json.loads(post(plan["api"] + "/v1/completions", {
         "model": plan["served_model_name"], "prompt": "Count from 1 to 400, separated by commas:",
@@ -499,16 +512,25 @@ def run_campaign(args) -> int:
                                     bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics)
             (d / "measure.json").write_text(json.dumps(codes, indent=1), encoding="utf-8")
             if args.profile_label == label:
-                record = profile_capture(plan, site, arm, d, args.profile_tokens)
-                log(f"{label}: profiled {record['usage']} in {record['seconds']} s; {record['tar_bytes']} bytes of "
-                    "rank 0 traces", out)
+                try:
+                    record = profile_capture(plan, site, arm, d, args.profile_tokens)
+                    log(f"{label}: profiled {record['usage']} in {record['seconds']} s; {record['tar_bytes']} bytes "
+                        "of rank 0 traces", out)
+                except Exception as error:  # noqa: BLE001 - a failed capture still stops the containers
+                    log(f"{label}: profile capture failed: {error}", out)
             if arm == "S+":
                 after = [verify.fused_calls(r) for r in receipts(plan, site, arm)]
                 (d / "fused-after.json").write_text(json.dumps(after, indent=1), encoding="utf-8")
             collect(plan, site, arm, d)
+            if args.keep_serving == label:
+                # Left serving for interactive use: the containers stay up and the run ends here.
+                log(f"{label}: measured {codes}; left serving at {plan['api']} as {plan['served_model_name']}", out)
+                if not warm and args.metrics != "none":
+                    measured.append(label)
+                break
             left = stop(plan, site, arm)
             log(f"{label}: measured {codes}; stopped ({left} campaign containers left)", out)
-            if not warm:
+            if not warm and args.metrics != "none":
                 measured.append(label)
             if left:
                 return 1
@@ -544,8 +566,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
     parser.add_argument("--profile-label", help="after measuring this start, capture vLLM's torch profiler over one "
-                        "one-stream request (needs --set-env VLLM_TORCH_PROFILER_DIR=/cache/...)")
+                        "one-stream request (needs the profiler enabled with its folder under /cache: "
+                        "--set-arg=--profiler-config=...)")
     parser.add_argument("--profile-tokens", type=int, default=60, help="tokens of the profiled request (default 60)")
+    parser.add_argument("--keep-serving", metavar="LABEL", help="after measuring this start, leave its containers "
+                        "serving and end the run (they are stopped by hand later)")
     parser.add_argument("--unlisted-profile", action="store_true",
                         help="research only: serve a profile the image lock does not list (one the installer did not "
                              "admit), recorded as a deviation; the lock and its checks are unchanged")

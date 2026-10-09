@@ -95,7 +95,8 @@ on any chosen Spark, drops the caches there (`sync; echo 3 >
 /proc/sys/vm/drop_caches` under `sudo -n`), and polls `MemAvailable` until two
 readings 5 s apart differ by less than 256 MiB on every Spark, for at most
 180 s. The campaign log and the start's `memory-before.json` record each
-Spark's settled available memory beside the share vLLM asks for.
+Spark's settled available memory beside the share vLLM asks for, and a Spark
+below that share refuses the start, since vLLM would refuse it at startup.
 
 ## Checks before measuring
 
@@ -126,6 +127,7 @@ all-reduce backends and receipt lines.
 | `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s, temperature 0, at most 1,024 tokens | 8k and 32k, three samples | as above |
 | `phase2` | as `phase1` | 2k, 8k, 32k and 128k, three samples | as above |
 | `phase1-16k` | as `phase1`, at contexts 0, 16k and 32k | 8k, 16k and 32k, three samples | as above |
+| `none` | none: the start becomes ready, passes its checks and is profiled or stopped | none | none |
 
 Decode runs llm-inference-bench's `llm_decode_bench.py` (`--bench-dir`) through
 [`bench_run.py`](bench_run.py), which turns off its self-update check. TTFT runs
@@ -139,9 +141,11 @@ reported against the same-arm restarts, not as a pass or fail.
 ## Profiling
 
 `--profile-label LABEL` captures vLLM's torch profiler after that start's
-measurement: `/start_profile`, one one-stream completion of
+measurement: one untimed 32-token request, `/start_profile`, one one-stream completion of
 `--profile-tokens` tokens (default 60), `/stop_profile`. The containers need
-`--set-env VLLM_TORCH_PROFILER_DIR=/cache/<folder>`, so the traces land in the
+the profiler enabled with its folder under the cache mount, for example
+`--set-arg=--profiler-config={"profiler":"torch","torch_profiler_dir":"/cache/torch-profile"}`
+(or `VLLM_TORCH_PROFILER_DIR` in a vLLM that reads it), so the traces land in the
 arm's cache directory; rank 0's Spark's traces are copied into the start's
 `torch-profile-r0.tar`, with `profile.json` (the request's usage, the wall
 time and the trace folder's listing).

@@ -27,6 +27,8 @@ LOGPROBS = ROOT / "performance/records/qwen38-flash-next/decode-ab-20260925/logp
 METRICS = {
     "warmup": {"concurrency": "1,8", "duration": "10", "ttft": "8k,32k", "repeats": "1"},
     "phase1": {"concurrency": "1,2,4,8", "duration": "30", "ttft": "8k,32k", "repeats": "3"},
+    # No measurement: the start only becomes ready and passes its checks (for a profile capture).
+    "none": {},
     # phase1 plus decode at 16k context and TTFT at 16k, for comparisons recorded at 16K.
     "phase1-16k": {"concurrency": "1,2,4,8", "duration": "30", "ttft": "8k,16k,32k", "repeats": "3",
                    "contexts": "0,16k,32k"},
@@ -38,6 +40,8 @@ def measure(out: Path, *, host: str, port: int, model: str, context_limit: int, 
             python: str = sys.executable) -> dict:
     out.mkdir(parents=True, exist_ok=True)
     m = METRICS[metrics]
+    if not m:
+        return {}
     base = f"http://{host}:{port}"
     steps = [
         ("fingerprint", [python, "-m", "performance.harnesses.serving_ab.fingerprint", base + "/v1",
