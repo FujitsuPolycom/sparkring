@@ -331,7 +331,15 @@ SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-
           "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SWIFT = ("swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 # Installer profiles that only SIRCL ring sessions run; no v2 lock lists them.
-SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-tp8", "qwen38-flash-next-qad-tp8")
+SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1",
+              "qwen38-flash-next-qad-tp8")
+
+
+@pytest.mark.parametrize("profile, nodes", [("qwen38-flash-next-tp2", 2), ("deepseek-v41-flash-tp4", 4),
+                                            ("glm53-nvfp4-tp8", 8), ("glm53-nvfp4-tp8-dcp1", 8)])
+def test_admission_takes_the_node_count_from_the_profiles_tensor_parallelism(profile, nodes):
+    # A profile ID need not end with its node count, as glm53-nvfp4-tp8-dcp1 shows.
+    assert installer_image.profile_nodes(profile) == nodes
 
 
 def test_release_lock_lists_every_installer_profile_on_one_image():

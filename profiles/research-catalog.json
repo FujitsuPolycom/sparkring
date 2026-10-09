@@ -10,6 +10,10 @@
       "path": "profiles/glm53-nvfp4-tp8/profile.json"
     },
     {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "path": "profiles/glm53-nvfp4-tp8-dcp1/profile.json"
+    },
+    {
       "id": "deepseek-v41-flash-tp8",
       "path": "profiles/deepseek-v41-flash-tp8/profile.json"
     },
