@@ -11,15 +11,15 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPOSITORY_ROOT / "scripts"))
 
-from scripts.glm35_q40 import (
+from scripts.glm52_exl3_q40 import (
     prepare_q40_exact_state_serving as prepare_module,
 )  # noqa: E402
-from scripts.glm35_q40.q40_exact_state_overlay import (
+from scripts.glm52_exl3_q40.q40_exact_state_overlay import (
     transform as transform_exl3,
 )  # noqa: E402
 from scripts.sparkring_runtime import expand  # noqa: E402
-import glm35_profile as compiler  # noqa: E402
-from scripts.test_glm35_profile import (  # noqa: E402
+import glm52_exl3_profile as compiler  # noqa: E402
+from scripts.test_glm52_exl3_profile import (  # noqa: E402
     sircl_artifact_digests,
     source_ckv_profile,
 )

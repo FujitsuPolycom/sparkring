@@ -29,7 +29,7 @@ identity, model path, and JIT-cache path. The SIRCL artifact paths must name
 the exact locally built library and tracked adapter modules.
 
 ```bash
-python scripts/glm35_profile.py plan --execute \
+python scripts/glm52_exl3_profile.py plan --execute \
   --site .sparkring/exl3-r7/site.yaml \
   --template .sparkring/exl3-r7/candidate.json \
   --output-dir .sparkring/exl3-r7 \
@@ -62,7 +62,7 @@ reject unexpected source bytes and bind the attestation to the image ID.
 Use the compiler receipt's `pre_q40_profile_sha256` as the baseline digest:
 
 ```bash
-python scripts/glm35_q40/prepare_q40_exact_state_serving.py \
+python scripts/glm52_exl3_q40/prepare_q40_exact_state_serving.py \
   --base-profile .sparkring/exl3-r7/pre-q40-profile.json \
   --expected-base-profile-sha256 <pre-q40-profile-sha256> \
   --exl3 .sparkring/exl3-r7/q40-overlay/exl3.py \

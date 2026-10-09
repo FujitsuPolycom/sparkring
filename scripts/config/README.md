@@ -59,7 +59,7 @@ Run the focused offline tests after changing an R7 configuration contract:
 
 ```bash
 python -m pytest \
-  scripts/test_glm35_profile.py \
+  scripts/test_glm52_exl3_profile.py \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 

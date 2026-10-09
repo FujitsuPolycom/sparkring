@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.glm35_q40.q40_exact_state_attestation_overlay import (
+from scripts.glm52_exl3_q40.q40_exact_state_attestation_overlay import (
     INPUT_SHA256,
     OUTPUT_SHA256,
     PATCHED_EXL3_SHA256,
@@ -11,7 +11,7 @@ from scripts.glm35_q40.q40_exact_state_attestation_overlay import (
     sha256_bytes,
     transform,
 )
-from scripts.glm35_q40.q40_exact_state_overlay import (
+from scripts.glm52_exl3_q40.q40_exact_state_overlay import (
     OUTPUT_SHA256 as EXPECTED_PATCHED_EXL3_SHA256,
 )
 

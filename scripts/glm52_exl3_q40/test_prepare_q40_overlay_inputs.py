@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 from pathlib import Path
 
-from scripts.glm35_q40 import (
+from scripts.glm52_exl3_q40 import (
     prepare_q40_overlay_inputs as producer,
 )
 
@@ -41,7 +41,7 @@ class ConstantsMatchFixturesTest(unittest.TestCase):
 
     def test_the_overlays_accept_what_this_produces(self) -> None:
         """The generators' declared inputs are this producer's outputs."""
-        from scripts.glm35_q40 import (
+        from scripts.glm52_exl3_q40 import (
             q40_exact_state_attestation_overlay as attestation,
             q40_exact_state_overlay as exl3_overlay,
         )
