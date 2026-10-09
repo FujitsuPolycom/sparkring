@@ -715,6 +715,77 @@
    "needs": [
     "the sessions' flag-wait regimes (enter_startup, enter_serving)"
    ]
+  },
+  {
+   "name": "step_health",
+   "purpose": "Checks every SIRCL session and point-to-point channel set of the process for a recorded failure (a flag wait that timed out, a progress thread that stopped) when each of the worker's step methods starts, before the step's SIRCL ops launch; host reads only.",
+   "models": [
+    "every model"
+   ],
+   "code": [
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.execute_model",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.sample_tokens",
+     "role": "wraps"
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "name": "Worker.execute_dummy_batch",
+     "role": "wraps"
+    }
+   ],
+   "files": [
+    "v1/worker/gpu_worker.py"
+   ],
+   "anchors": [
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1397,
+      1397
+     ],
+     "text": "def sample_tokens("
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1444,
+      1444
+     ],
+     "text": "def execute_model("
+    },
+    {
+     "file": "v1/worker/gpu_worker.py",
+     "lines": [
+      1612,
+      1612
+     ],
+     "text": "def execute_dummy_batch(self) -> None:"
+    }
+   ],
+   "verified_builds": {
+    "lil-image-aba309e4610c": {
+     "v1/worker/gpu_worker.py": "989330be6dca8f5068032b6fe4f0f6276b31fef8bea491443a9f6c7cafd038bd"
+    },
+    "lil-karmic-kraken-beta-4a87c588": {
+     "v1/worker/gpu_worker.py": "d0dd42c8ec547d2efb0135b455ef5372ef4bf93231c2c69c1904a5212821c368"
+    },
+    "sparkring-kraken-beta-20261007-bc9ea774": {
+     "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
+    }
+   },
+   "enable": "SIRCL's communicator installs it with the first group that gets a session or point-to-point channels",
+   "disable": "none: every process with a session or channels tries it",
+   "without": "a failure raises at the worker's post-step check or at the next eager SIRCL call; a step that replays a CUDA graph launches its kernels first, and they return without work",
+   "measured": [],
+   "needs": [
+    "the sessions' and channels' check_health (host reads)"
+   ]
   }
  ]
 }

@@ -44,6 +44,7 @@ class FakeFabric:
             "fv_set_ack_delay": (None, [u64]),
             "fv_set_recording": (None, [i32]),
             "fv_inject_failure": (None, [u32, u32]),
+            "fv_fail_teardown": (None, [i32]),
             "fv_progress": (u64, [u64, u64]),
             "fv_pending": (u64, []),
         }

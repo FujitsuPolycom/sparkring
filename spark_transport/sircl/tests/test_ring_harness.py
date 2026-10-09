@@ -481,7 +481,9 @@ def test_tune_plans_its_candidates_and_quick_sizes(tmp_path, capsys, monkeypatch
     assert "increasing" in capsys.readouterr().err
     assert cli.main(["plan", "--site", str(site_file), "--groups", "0-1", "--name", "pair", "--tune",
                      "--tune-collectives", "all_reduce,all_gather", "--baseline", "nccl"]) == 0
-    assert "tune: all_reduce, all_gather at 16 sizes" in capsys.readouterr().out
+    planned = capsys.readouterr().out
+    assert "tune: all_reduce, all_gather at 19 sizes" in planned
+    assert "blocks per role [1, 2, 4]" in planned and "cycling through 8 input and output windows" in planned
     # tune --print prints the launch plan and contacts nothing.
     def refuse(*args, **kwargs):
         raise AssertionError("tune --print contacted a Spark")

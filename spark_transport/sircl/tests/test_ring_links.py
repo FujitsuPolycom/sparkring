@@ -65,7 +65,7 @@ def test_staggered_ring_ops_with_a_rank_taking_its_link_ops_late(simulator_libra
     (proto.LinkOp.RING_GATHER, 0, 1, 0, "all-gather stagger 1"),        # 3 slots hold no stagger on 3 ranks
     (proto.LinkOp.RING_SCATTER, 0, 1, 0, "all-gather stagger 1"),       # no finished pieces to forward
     (proto.LinkOp.RING_GATHER, 1, 0, 0, "with stagger 1"),              # no partials to stagger
-    (proto.LinkOp.RING_GATHER, 0, 0, 1, "op word"),                     # bits 24-31 hold nothing
+    (proto.LinkOp.RING_GATHER, 0, 0, 2, "op word"),                     # bits 25-31 hold nothing
 ])
 def test_native_refuses_staggers_its_op_word_or_slots_do_not_allow(simulator_library, op, stagger, gather_stagger,
                                                                     high, message):

@@ -323,6 +323,7 @@ typedef struct {
     uint32_t pieces;
     uint32_t stagger;         /* ring reduce-scatter stagger D (link 2) */
     uint32_t stagger3;        /* ring all-gather stagger D3 (link 3) */
+    uint32_t own_flags;       /* op word bit 24: every own item goes out as its flags only */
     uint32_t rounds[ROCE_LINKS];  /* rounds per link: pieces, plus (W - 2) D or (W - 2) D3 on a staggered link */
     uint32_t out_round[ROCE_LINKS], in_round[ROCE_LINKS], own_round[ROCE_LINKS];
     uint32_t first_out[ROCE_LINKS], first_in[ROCE_LINKS], first_own[ROCE_LINKS];
@@ -445,7 +446,7 @@ typedef struct roce_ctx {
     char err[512];
 } roce_ctx_t;
 
-void roce_destroy(roce_ctx_t *c);
+int roce_destroy(roce_ctx_t *c);
 
 #ifdef SIRCL_PROXY_TEST_HOOKS
 static void (*test_hook)(void *arg, int point, uint32_t seq, int peer);
@@ -1898,8 +1899,8 @@ static int link_take_ops(roce_ctx_t *c, int *work) {
         uint32_t word = params[0], bytes = params[1], piece = params[2];
         uint32_t op = word & 0xFFu, stagger = (word >> ROCE_STAGGER_SHIFT) & 0xFFu;
         uint32_t stagger3 = (word >> ROCE_GATHER_STAGGER_SHIFT) & 0xFFu;
-        if ((word >> 24) != 0u) {
-            FAIL(c, "link op %u: op word 0x%08x sets bits 24-31, which hold nothing", next, word);
+        if ((word >> 25) != 0u) {
+            FAIL(c, "link op %u: op word 0x%08x sets bits 25-31, which hold nothing", next, word);
             return -1;
         }
         if (op < ROCE_LINK_GATHER || op > ROCE_RING_REDUCE || bytes % 16u != 0 || piece == 0 ||
@@ -1935,6 +1936,7 @@ static int link_take_ops(roce_ctx_t *c, int *work) {
         entry->pieces = (bytes + piece - 1) / piece;
         entry->stagger = stagger;
         entry->stagger3 = stagger3;
+        entry->own_flags = (word >> 24) & 1u;
         for (int l = 0; l < ROCE_LINKS; l++) {
             roce_link_t *lk = &c->link[l];
             link_rounds((int)op, c->world, c->link_index, l, &entry->out_round[l], &entry->in_round[l],
@@ -1999,6 +2001,9 @@ static void link_source(const roce_link_op_t *op, int l, uint32_t q, int *own, u
     if (r < op->own_round[l]) {
         *own = 1;
         *item = op->first_own[l] + t * op->own_round[l] + r;
+        /* Op word bit 24: the peer has no use for this rank's own items (it discards them), so they go
+         * out as their flags only. */
+        if (op->own_flags) *bytes = 0;
     } else if (l == 3 && t < op->stagger3) {
         *own = -1;
         *item = 0u;
@@ -2906,21 +2911,26 @@ uint64_t roce_hca_stat(roce_ctx_t *c, int device, int which) {
     }
 }
 
-void roce_destroy(roce_ctx_t *c) {
-    if (c == NULL) return;
+/* Stops the progress thread and releases every verbs object; returns the number of verbs calls that
+ * failed. A queue pair or memory registration that could not be released can still let a peer's write
+ * reach the arena, so the caller keeps the arena allocated when the count is not zero. */
+int roce_destroy(roce_ctx_t *c) {
+    if (c == NULL) return 0;
     roce_stop(c);
     free(c->trace);
     c->trace = NULL;
     c->trace_cap = 0;
+    int failed = 0;
     for (int d = 0; d < ROCE_MAX_DEVICES; d++) {
         roce_dev_t *dev = &c->dev[d];
         for (int p = 0; p < ROCE_MAX_PEERS; p++) {
-            if (dev->qp[p] != NULL) ibv_destroy_qp(dev->qp[p]);
+            if (dev->qp[p] != NULL && ibv_destroy_qp(dev->qp[p]) != 0) failed++;
         }
-        if (dev->cq != NULL) ibv_destroy_cq(dev->cq);
-        if (dev->mr != NULL) ibv_dereg_mr(dev->mr);
-        if (dev->pd != NULL) ibv_dealloc_pd(dev->pd);
-        if (dev->ctx != NULL) ibv_close_device(dev->ctx);
+        if (dev->cq != NULL && ibv_destroy_cq(dev->cq) != 0) failed++;
+        if (dev->mr != NULL && ibv_dereg_mr(dev->mr) != 0) failed++;
+        if (dev->pd != NULL && ibv_dealloc_pd(dev->pd) != 0) failed++;
+        if (dev->ctx != NULL && ibv_close_device(dev->ctx) != 0) failed++;
     }
     free(c);
+    return failed;
 }

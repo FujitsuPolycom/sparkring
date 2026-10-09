@@ -98,6 +98,7 @@ def _base_options(args, base: plan_mod.Options) -> plan_mod.Options:
         cpu_policy=args.cpu_policy,
         large=bool(args.large),
         large_capacity=args.large_capacity or base.large_capacity,
+        rotate_buffers=args.rotate_buffers or base.rotate_buffers,
         large_iterations=args.large_iterations or base.large_iterations,
         large_piece_bytes=args.large_piece,
         startup_wait_s=args.startup_wait or base.startup_wait_s,
@@ -177,6 +178,9 @@ def _tune_options(args, base: plan_mod.Options) -> dict:
         "tune_grids": numbers(args.tune_grids, base.tune_grids),
         "tune_pieces": numbers(args.tune_pieces, base.tune_pieces),
         "tune_staggers": numbers(args.tune_staggers, base.tune_staggers),
+        "tune_link_blocks": numbers(args.tune_link_blocks, base.tune_link_blocks),
+        "tune_chain_blocks": numbers(args.tune_chain_blocks, base.tune_chain_blocks),
+        "rotate_buffers": args.rotate_buffers or plan_mod.TUNE_ROTATE_BUFFERS,
         "tune_prune": args.tune_prune or base.tune_prune,
         "tune_prune_from": base.tune_prune_from if args.tune_prune_from is None else args.tune_prune_from,
         "correctness_iterations": args.correctness_iterations or 1,
@@ -601,6 +605,10 @@ def main(argv: list[str] | None = None) -> int:
                               "thread its own (default); none: no pinning")
         sub.add_argument("--large", action="store_true",
                          help="add the large-message cases (two-shot, all_reduce_large, all_gather_large)")
+        sub.add_argument("--rotate-buffers", type=int,
+                         help="input and output windows every timed case cycles through call by call, so a call "
+                              "reads and writes buffers the previous N-1 calls did not touch (default 1, one "
+                              f"buffer; tune: {plan_mod.TUNE_ROTATE_BUFFERS})")
         sub.add_argument("--large-capacity", type=int,
                          help=f"session capacity with --large (default {plan_mod.LARGE_CAPACITY})")
         sub.add_argument("--large-iterations", type=int, help="timed calls per large-message case (default 20)")
@@ -716,6 +724,12 @@ def main(argv: list[str] | None = None) -> int:
             sub.add_argument("--tune-pieces", help="tune: chain chunks and link pieces (default 262144,524288,1048576)")
             sub.add_argument("--tune-staggers", help="tune: ring staggers of the partials (link 2) and of the "
                                                      "forwarded pieces (link 3) (default 0,1)")
+            sub.add_argument("--tune-link-blocks",
+                             help="tune: blocks per role of the link kernels' candidates (ring schedules, chain "
+                                  "all-gather and reduce-scatter), comma-separated; 0: the session's (default 1,2,4)")
+            sub.add_argument("--tune-chain-blocks",
+                             help="tune: blocks per role of the chain all-reduce's candidates; 0: the session's "
+                                  "(default 1,2,4)")
             sub.add_argument("--tune-prune-from", type=int,
                              help="tune: the smallest size in bytes at which a candidate can be dropped (default "
                                   "4194304)")

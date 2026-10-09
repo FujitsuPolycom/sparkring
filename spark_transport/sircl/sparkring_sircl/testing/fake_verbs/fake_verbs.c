@@ -109,6 +109,7 @@ static int relay_allowed[FV_MAX_NODES];
 static int relay_depth = 16;
 static int ideal;
 static int recording = 1;
+static int teardown_failures;  /* fv_fail_teardown */
 /* Path latency of a write and of its completion: base plus a share per relay (0, 0: none). */
 static uint64_t latency_base_ns, latency_relay_ns;
 /* Sending rate of each queue pair in bytes per microsecond (0: no sending time). */
@@ -419,6 +420,7 @@ FV_API void fv_reset(void) {
     relay_depth = 16;
     ideal = 0;
     recording = 1;
+    teardown_failures = 0;
     latency_base_ns = latency_relay_ns = 0;
     rate_bytes_per_us = 0;
     ack_delay_ns = 0;
@@ -546,6 +548,12 @@ FV_API void fv_inject_failure(uint32_t qp_num, uint32_t inline_value) {
             break;
         }
     }
+    FV_UNLOCK();
+}
+
+FV_API void fv_fail_teardown(int calls) {
+    FV_LOCK();
+    teardown_failures = calls > 0 ? calls : 0;
     FV_UNLOCK();
 }
 
@@ -875,6 +883,11 @@ FV_API int ibv_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_m
 
 FV_API int ibv_destroy_qp(struct ibv_qp *qp) {
     FV_LOCK();
+    if (teardown_failures > 0) {
+        teardown_failures--;
+        FV_UNLOCK();
+        return EBUSY;
+    }
     fv_qp_rec *q = qps[qp->fv_index];
     qps[qp->fv_index] = NULL;
     free(q->queue);

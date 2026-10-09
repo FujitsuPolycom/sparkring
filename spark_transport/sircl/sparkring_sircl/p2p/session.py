@@ -48,12 +48,20 @@ Contract:
   is limited by the context's wait limit (``startup`` regime, 600 s;
   :meth:`enter_serving`, 20 s); a timeout, a size mismatch or a failed RDMA
   write poisons the context on every rank of the group and
-  :meth:`check_health` raises from then on.
+  :meth:`check_health` raises from then on;
+- close: as a collective session's (:mod:`sparkring_sircl.teardown`):
+  collective over the exchange group unless ``abort`` is set, it waits for
+  this rank's transfers, votes every rank's health in round 1, stops the
+  progress thread, waits for every rank's stop in round 2 (only after round 1
+  completed) and destroys the native context; its result is kept as
+  ``close_result``. A stream synchronization or destruction that fails while
+  the channels wait for this rank's transfers is this rank's failure, voted in
+  round 1; the arena stays allocated when a verbs object cannot be released or
+  a stream's work was not shown complete.
 """
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import threading
 import time
@@ -66,6 +74,7 @@ import torch.distributed as dist
 
 from .. import roce_gid
 from .. import routes as routes_mod
+from .. import teardown as teardown_mod
 from ..agreement import agreement_failures
 from . import _kernels, _native, budget
 from .protocol import API_VERSION, CONTROL_BYTES, Control, ErrorKind, P2PLayout, describe_header, items, padded
@@ -195,7 +204,7 @@ def _dedicated_stream(device: torch.device) -> tuple[torch.cuda.ExternalStream, 
 def _destroy_stream(raw: int) -> None:
     from cuda.bindings import driver as cu
 
-    cu.cuStreamDestroy(cu.CUstream(raw))
+    _check(cu.cuStreamDestroy(cu.CUstream(raw)), "cuStreamDestroy")
 
 
 class _Channel:
@@ -214,15 +223,24 @@ class _Channel:
             self.stream, self.raw_stream = _dedicated_stream(self.device)
         return self.stream
 
-    def release(self) -> None:
-        """Wait for the stream's work and destroy the stream."""
+    def release(self) -> tuple[Optional[str], bool]:
+        """Wait for the stream's work and destroy the stream: ``(what failed or None, whether the stream's work
+        is known complete)``. The work is unknown after a failed synchronization; a failed destroy only leaks
+        the stream."""
         if self.stream is None:
-            return
+            return None, True
         stream, raw, self.stream, self.raw_stream = self.stream, self.raw_stream, None, 0
-        with contextlib.suppress(Exception):
+        problems, settled = [], True
+        try:
             stream.synchronize()
-        with contextlib.suppress(Exception):
+        except Exception as exc:  # noqa: BLE001 - voted in round 1
+            problems.append(f"stream synchronization failed: {type(exc).__name__}: {exc}")
+            settled = False
+        try:
             _destroy_stream(raw)
+        except Exception as exc:  # noqa: BLE001 - voted in round 1
+            problems.append(f"stream destruction failed: {type(exc).__name__}: {exc}")
+        return "; ".join(problems) or None, settled
 
 
 class PointToPoint:
@@ -250,6 +268,11 @@ class PointToPoint:
         self.world_size = dist.get_world_size(group=exchange_group)
         self._group = exchange_group
         self._closed = False
+        self.close_result: Optional[str] = None
+        # The teardown rounds' channel (teardown.tensor_exchange); the GPU emulation binds its thread group's.
+        self._teardown_exchange = teardown_mod.tensor_exchange(exchange_group)
+        # Its ordinal among this rank's objects of the group: the teardown notes name the close by it.
+        self._teardown_ordinal = teardown_mod.register(exchange_group, self.rank)
         self._lock = threading.Lock()
         self._native: Optional[_native.Native] = None
         self._library_path = library
@@ -277,7 +300,8 @@ class PointToPoint:
         statuses = _exchange((error, blob, record), exchange_group)
         failures = agreement_failures(statuses, self._layout_object if error is None else None)
         if failures:
-            self.close()
+            # Every rank fails here alike and nothing was posted: no rounds.
+            self.close(abort=True)
             raise RuntimeError("SIRCL point-to-point setup failed: " + "; ".join(failures))
         self._verdict("queue-pair connection", lambda: self._native.connect([s[1] for s in statuses]))
 
@@ -464,7 +488,8 @@ class PointToPoint:
         verdicts = _exchange(error, self._group)
         failures = [f"rank {index}: {verdict}" for index, verdict in enumerate(verdicts) if verdict is not None]
         if failures:
-            self.close()
+            # Every rank fails here alike, after its lane checks ended and before any transfer: no rounds.
+            self.close(abort=True)
             raise RuntimeError(f"SIRCL point-to-point {what} failed: " + "; ".join(failures))
 
     # -- wait limits -------------------------------------------------------------------------
@@ -657,7 +682,9 @@ class PointToPoint:
     # -- health, statistics, teardown -----------------------------------------------------------
 
     def _error_text(self) -> Optional[str]:
-        control = self._control
+        control = getattr(self, "_control", None)
+        if control is None:
+            return None
         tag = int(control[Control.ERROR_TAG]) & 0xFFFFFFFF
         poison = int(control[Control.POISON])
         if not tag and not poison:
@@ -681,17 +708,23 @@ class PointToPoint:
             what = "stopped"
         return what
 
-    def check_health(self) -> None:
-        """Raise when the channels failed on this or another rank of the group (host reads only)."""
+    def _failure_text(self) -> Optional[str]:
+        """This rank's failure (a failed progress thread or a kernel's error), or None."""
         if self._native is not None and self._native.failed():
             local = self._error_text()
             detail = f"; this rank's kernel {local}" if local else ""
-            raise RuntimeError(f"SIRCL point-to-point channels failed on rank {self.rank}: {self._native.error()}"
-                               f"{detail}")
+            return f"SIRCL point-to-point channels failed on rank {self.rank}: {self._native.error()}{detail}"
         local = self._error_text()
         if local:
-            raise RuntimeError(f"SIRCL point-to-point channels on rank {self.rank}: a kernel {local}; the channels are "
-                               "poisoned and received data is untrustworthy")
+            return (f"SIRCL point-to-point channels on rank {self.rank}: a kernel {local}; the channels are "
+                    "poisoned and received data is untrustworthy")
+        return None
+
+    def check_health(self) -> None:
+        """Raise when the channels failed on this or another rank of the group (host reads only)."""
+        failure = self._failure_text()
+        if failure is not None:
+            raise RuntimeError(failure)
         if self._closed:
             raise RuntimeError("SIRCL point-to-point channels are closed")
 
@@ -728,21 +761,49 @@ class PointToPoint:
             info.update(self._native.stats())
         return info
 
-    def close(self) -> None:
-        """Wait for this rank's transfers, stop the progress thread and release the RDMA resources (idempotent)."""
+    def close(self, *, abort: bool = False) -> Optional[str]:
+        """Refuse further work, wait for this rank's transfers, hold the teardown rounds over the exchange group
+        (unless ``abort``) and release the RDMA resources; the close result, None after a healthy close (see the
+        module docstring). Idempotent: a later call returns the first one's result."""
         with self._lock:
             if self._closed:
-                return
+                return self.close_result
             self._closed = True
-            for channel in (*getattr(self, "_out", ()), *getattr(self, "_in", ())):
-                channel.release()
-            if self._native is not None:
-                self._native.close()
-                self._native = None
+            released = [channel.release() for channel in (*getattr(self, "_out", ()), *getattr(self, "_in", ()))]
+            problems = [problem for problem, _ in released if problem]
+            settled = all(done for _, done in released)
+            parts = [self._failure_text()]
+            if problems:
+                more = f" (and {len(problems) - 1} more channel(s))" if len(problems) > 1 else ""
+                parts.append(f"SIRCL point-to-point channels on rank {self.rank}: {problems[0]}{more}")
+            own = "; ".join(part for part in parts if part) or None
+            # A setup that failed before the settings were read has no native context and holds no round.
+            limit = (self.wait_limit_s if hasattr(self, "settings") else 0.0) + teardown_mod.SLACK_S
+            what = f"SIRCL point-to-point teardown on rank {self.rank}"
+            try:
+                result = teardown_mod.close_native(
+                    self._native, group=self._group, exchange=self._teardown_exchange,
+                    own_failure=own, limit_s=limit, abort=abort, arena=getattr(self, "_region", None),
+                    what=what, unsettled=not settled, kind="channels",
+                    ordinal=getattr(self, "_teardown_ordinal", 0))
+            except BaseException as exc:
+                # close_native keeps every Exception; this is an interrupt mid-teardown. The outcome is unknown:
+                # the native context stays referenced and the arena allocated, and the close has failed.
+                if getattr(self, "_region", None) is not None:
+                    teardown_mod.retain(self._region)
+                interrupted = f"{what}: interrupted: {type(exc).__name__}: {exc}"
+                self.close_result = f"{own}; {interrupted}" if own else interrupted
+                raise
+            self._native = None
+            self.close_result = result
+        if result is not None:
+            logger.warning("SIRCL point-to-point close: %s", result)
+        return result
 
     def __del__(self) -> None:  # pragma: no cover - defensive teardown
+        # No rounds: garbage collection runs in no agreed order across ranks.
         try:
-            self.close()
+            self.close(abort=True)
         except Exception:  # noqa: BLE001 - teardown of a collected context
             pass
 

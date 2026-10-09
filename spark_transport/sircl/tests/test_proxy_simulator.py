@@ -35,7 +35,9 @@ def test_every_simulator_case_passes(simulator_binary):
                  "post-order/ring-farthest", "two-sessions", "unpaired-lanes", "forward-windows/path4",
                  "wait-regimes/path4", "chain/path4/lanes2", "chain/cycle8/lanes2", "chain-pauses/path4",
                  "chain-trace/path4", "chain/refusals", "forward-proof/cycle8/lanes2", "forward-proof/path4/lanes2",
-                 "forward-proof-wrap/cycle8/lanes2", "forward-proof-wrap/path4/lanes2"):
+                 "forward-proof-wrap/cycle8/lanes2", "forward-proof-wrap/path4/lanes2",
+                 "teardown-race/cycle3/lanes2", "teardown-ordered/cycle3/lanes2",
+                 "teardown-failed-destroy/cycle3/lanes2"):
         assert any(line.split()[1].startswith(name) for line in passed), name
 
 

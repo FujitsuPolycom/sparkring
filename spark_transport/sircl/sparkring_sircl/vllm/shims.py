@@ -71,6 +71,16 @@ own the group, so an installed shim changes nothing for other groups:
     regime. SIRCL's communicator installs it when it builds a group with a
     session; on a vLLM that matches no pinned build it logs a warning and the
     sessions keep the startup regime.
+``step_health``
+    Wraps the step methods of vLLM's GPU worker (``execute_model``,
+    ``sample_tokens``, ``execute_dummy_batch``) so that each first runs
+    :func:`.adapter.check_all_failures`: a flag wait that timed out or a
+    progress thread that stopped, recorded by any SIRCL session or
+    point-to-point channel set of the process, raises before the step's SIRCL
+    ops launch. The check reads host memory only. SIRCL's communicator
+    installs it with ``worker_regimes``; on a vLLM that matches no pinned
+    build it logs a warning, and a failure raises at the post-step check or at
+    the next eager SIRCL call.
 """
 
 from __future__ import annotations
@@ -188,6 +198,9 @@ def _install_dcp_b12x_transport() -> None:
 
 
 WARM_UP_METHOD = "compile_or_warm_up_model"
+# The worker's methods that run one step's SIRCL ops (forward pass, sampling with any draft model, a data-parallel
+# rank's dummy batch).
+WORKER_STEP_METHODS = ("execute_model", "sample_tokens", "execute_dummy_batch")
 
 
 def _in_startup(original: Callable, label: str, then_serve: bool) -> Callable:
@@ -213,6 +226,29 @@ def _install_worker_regimes() -> None:
             setattr(worker, name, _in_startup(original, f"Worker.{name}", name == WARM_UP_METHOD))
 
 
+def _checked_step(original: Callable) -> Callable:
+    from . import adapter
+
+    @functools.wraps(original)
+    def method(self, *args, **kwargs):
+        adapter.check_all_failures()
+        return original(self, *args, **kwargs)
+
+    setattr(method, MARKER, original)
+    return method
+
+
+def _install_step_health() -> None:
+    worker = importlib.import_module("vllm.v1.worker.gpu_worker").Worker
+    missing = [name for name in WORKER_STEP_METHODS if not callable(worker.__dict__.get(name))]
+    if missing:
+        raise ShimRefused(f"vLLM's Worker defines no {', '.join(missing)}")
+    for name in WORKER_STEP_METHODS:
+        original = worker.__dict__[name]
+        if getattr(original, MARKER, None) is None:
+            setattr(worker, name, _checked_step(original))
+
+
 SHIMS: dict[str, Shim] = {
     "dcp_all_to_all": Shim("dcp_all_to_all", pins.DCP_FILES, _install_dcp_all_to_all),
     "fused_allreduce_rms_norm": Shim("fused_allreduce_rms_norm", pins.NORM_FILES,
@@ -221,6 +257,7 @@ SHIMS: dict[str, Shim] = {
     "mhc_prefill_shard": Shim("mhc_prefill_shard", pins.MHC_FILES, _install_mhc_prefill_shard),
     "qwen_hc_prefill_shard": Shim("qwen_hc_prefill_shard", pins.QWEN_HC_FILES, _install_qwen_hc_prefill_shard),
     "worker_regimes": Shim("worker_regimes", pins.WORKER_FILES, _install_worker_regimes),
+    "step_health": Shim("step_health", pins.WORKER_FILES, _install_step_health),
     "dcp_b12x_transport": Shim("dcp_b12x_transport", pins.DCP_TRANSPORT_FILES, _install_dcp_b12x_transport),
 }
 

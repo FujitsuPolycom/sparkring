@@ -29,7 +29,10 @@ rest. For each group it
 5. installs the ``worker_regimes`` shim with the first group that gets a
    session, so the worker's warm-up, profiling, sleep, wake-up and weight loads
    run in the startup regime and the warm-up's return arms the serving regime
-   (:func:`.adapter.startup_all`);
+   (:func:`.adapter.startup_all`), and the ``step_health`` shim with the first
+   group that gets a session or point-to-point channels, so each of the
+   worker's step methods first checks every session and channel set of the
+   process for a recorded failure (:func:`.adapter.check_all_failures`);
 6. with ``SIRCL_FUSED_NORM=1``, binds the fused all-reduce + residual add +
    RMSNorm kernels to the tensor-parallel group's session and installs the
    ``fused_allreduce_rms_norm`` shim (:mod:`.norm_fusion`), exposing the bound
@@ -125,6 +128,22 @@ def _install_worker_regimes(unique_name: str) -> None:
     except shims.ShimRefused as exc:
         logger.warning("SIRCL sessions of %s keep the startup regime's flag-wait limit while serving, "
                        "because vLLM's worker cannot be wrapped: %s", unique_name, exc)
+
+
+def _install_step_health(unique_name: str) -> None:
+    """Check every session and channel set for a recorded failure when each worker step starts (pinned shim
+    ``step_health``).
+
+    On a vLLM that matches no pinned build a failure raises at the worker's
+    post-step check or at the next eager SIRCL call instead, and a warning
+    says so.
+    """
+    try:
+        shims.install(["step_health"])
+    except shims.ShimRefused as exc:
+        logger.warning("SIRCL failures of %s raise at the worker's post-step check or at the next eager SIRCL "
+                       "call, not when a step starts, because vLLM's worker cannot be wrapped: %s",
+                       unique_name, exc)
 
 
 _DIRECT_DCP = ("VLLM_USE_DIRECT_DCP_A2A", "VLLM_USE_DIRECT_DCP_Q_GATHER", "VLLM_USE_DIRECT_DCP_KV_GATHER")
@@ -309,6 +328,8 @@ class SirclCudaCommunicator(CudaCommunicator):
         )
         if self.sircl.session is not None:
             _install_worker_regimes(unique_name)
+        if self.sircl.session is not None or self.sircl.p2p is not None:
+            _install_step_health(unique_name)
         if kind == "tp":
             own = self.sircl.slot
             self.b12x_ar_comm = _chain(own if own is not None and not own.disabled else HubSlot())

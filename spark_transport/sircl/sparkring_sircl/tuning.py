@@ -1,6 +1,7 @@
 """Measured choices for a session's collectives: the tuning table (torch-free).
 
-A tuning table (schema ``sircl-tuning-table/v1``) belongs to one group shape and build. Its key names
+A tuning table (schema ``sircl-tuning-table/v2``; ``v1`` tables, which name no blocks and no conditions, are
+read too) belongs to one group shape and build. Its key names
 the shape (``pair``, ``path:<n>``, ``cycle:<n>``, or ``strided:<kind>:<fabric size>:<offsets>`` for a
 group that spans part of a larger fabric), the group's size, lane count and most relays on any lane,
 the hash of the native layer's source (``native``), the hash of the kernel sources (``kernels``) and the
@@ -18,6 +19,8 @@ SIRCL version (``sircl``); ``image`` names the serving image it was measured in.
   session's rules apply). An all-reduce decision whose choice names an algorithm (one-shot, two-shot,
   Swing) holds only up to the largest message it was measured at (``until``): those algorithms run a
   message in one op within the session's capacity, so a larger message has no decision there;
+- ``conditions`` (v2): how the measurements were taken, :data:`CONDITIONS`: ``rotate_buffers``, the number
+  of input and output windows each case cycled through call by call (1: one buffer reused by every call);
 - ``settings``: the session variables of :data:`SETTINGS` that the chosen candidates ran under and need,
   as :func:`table_settings` derives them from the tune session. A session that takes the table applies
   each one its environment leaves unset, so every choice runs as it was measured.
@@ -26,8 +29,11 @@ A candidate (:class:`Choice`) names its backend (``sircl`` or ``nccl``) and, for
 an all-reduce within the capacity (``oneshot``, ``twoshot``, ``swing``), or the schedule of a larger
 message, all-gather or reduce-scatter (``pieces``: two-shot pieces, tiles or scatter ops; ``chain``;
 ``ring``), the launch grid cap (``grid``), the link piece or chain chunk (``piece``), the ring
-reduce-scatter's stagger (``stagger``, link 2) and the ring all-gather's stagger (``gather_stagger``,
-link 3).
+reduce-scatter's stagger (``stagger``, link 2), the ring all-gather's stagger (``gather_stagger``,
+link 3) and, for a chain or ring schedule, the thread blocks per role of the kernel that runs it
+(``blocks``, 1 to 64: the link kernels of the ring schedules and of the chain all-gather and reduce-scatter,
+the chain kernel of the chain all-reduce; the launch grid is the kernel's roles times ``blocks``). A choice
+without ``blocks`` runs at the session's own blocks.
 
 :func:`build_document` derives the decisions from the measurements: at a measured size the measured
 fastest candidate; between two measured sizes, every candidate measured at both by a cost model fitted
@@ -53,7 +59,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Optional
 
-SCHEMA = "sircl-tuning-table/v1"
+SCHEMA = "sircl-tuning-table/v2"
+# Schemas a table may name: v1 has no ``blocks`` candidate field and no ``conditions``.
+SCHEMAS = ("sircl-tuning-table/v1", SCHEMA)
+# Measurement conditions a v2 table may record, each a positive integer.
+CONDITIONS = ("rotate_buffers",)
 COLLECTIVES = ("all_reduce", "all_gather", "reduce_scatter", "all_to_all")
 MODES = ("eager", "graph")
 BACKENDS = ("sircl", "nccl")
@@ -101,6 +111,7 @@ class Choice:
     piece: Optional[int] = None
     stagger: Optional[int] = None
     gather_stagger: Optional[int] = None
+    blocks: Optional[int] = None
 
     def __post_init__(self) -> None:
         if self.backend not in BACKENDS:
@@ -119,8 +130,11 @@ class Choice:
             raise TuningError(f"stagger {self.stagger} is not 0 to 4")
         if self.gather_stagger is not None and not 0 <= self.gather_stagger <= 4:
             raise TuningError(f"all-gather stagger {self.gather_stagger} is not 0 to 4")
+        if self.blocks is not None and (not 1 <= self.blocks <= 64 or self.schedule not in ("chain", "ring")):
+            raise TuningError(f"blocks {self.blocks} must be 1 to 64 and belong to a chain or ring schedule")
         if self.backend == "nccl" and any(v is not None for v in (self.algorithm, self.schedule, self.grid,
-                                                                  self.piece, self.stagger, self.gather_stagger)):
+                                                                  self.piece, self.stagger, self.gather_stagger,
+                                                                  self.blocks)):
             raise TuningError("an NCCL candidate names no SIRCL setting")
 
     def to_json(self) -> dict[str, Any]:
@@ -132,7 +146,8 @@ class Choice:
         unknown = set(document) - {field.name for field in dataclasses.fields(cls)}
         if unknown:
             raise TuningError(f"unknown candidate fields {sorted(unknown)}")
-        return cls(**{key: (int(value) if key in ("grid", "piece", "stagger", "gather_stagger") else str(value))
+        return cls(**{key: (int(value) if key in ("grid", "piece", "stagger", "gather_stagger", "blocks")
+                            else str(value))
                       for key, value in document.items()})
 
     def label(self) -> str:
@@ -145,6 +160,8 @@ class Choice:
             parts.append(f"stagger {self.stagger}")
         if self.gather_stagger is not None:
             parts.append(f"gather stagger {self.gather_stagger}")
+        if self.blocks is not None:
+            parts.append(f"blocks {self.blocks}")
         if self.grid is not None:
             parts.append(f"grid {self.grid}")
         return " ".join(parts)
@@ -269,8 +286,9 @@ class Table:
     """A loaded, validated tuning table."""
 
     def __init__(self, document: Mapping[str, Any], source: str = "", *, builtin: bool = False) -> None:
-        if document.get("schema") != SCHEMA:
-            raise TuningError(f"tuning table schema must be {SCHEMA}, got {document.get('schema')!r}")
+        if document.get("schema") not in SCHEMAS:
+            raise TuningError(f"tuning table schema must be {' or '.join(SCHEMAS)}, got {document.get('schema')!r}")
+        version_one = document.get("schema") == SCHEMAS[0]
         key = document.get("key")
         if not isinstance(key, Mapping) or any(field not in key for field in KEY_FIELDS):
             raise TuningError(f"tuning table key needs {', '.join(KEY_FIELDS)}")
@@ -287,6 +305,14 @@ class Table:
                        for value in settings.values())):
             raise TuningError(f"tuning table settings are positive integers of {', '.join(SETTINGS)}")
         self.settings: dict[str, int] = dict(settings)
+        conditions = self.document.get("conditions", {})
+        if (not isinstance(conditions, Mapping) or (version_one and conditions)
+                or any(name not in CONDITIONS for name in conditions)
+                or any(not isinstance(value, int) or isinstance(value, bool) or value < 1
+                       for value in conditions.values())):
+            raise TuningError(f"tuning table conditions are positive integers of {', '.join(CONDITIONS)}, in "
+                              f"schema {SCHEMA}")
+        self.conditions: dict[str, int] = dict(conditions)
         self._intervals: dict[tuple[str, str], list[Interval]] = {}
         self._until: dict[tuple[str, str], int] = {}
         for entry in self.document.get("decisions", ()):
@@ -295,6 +321,8 @@ class Table:
                 raise TuningError(f"decisions for {collective!r} in mode {mode!r}: unknown collective or mode")
             intervals = [Interval(int(item["from"]), Choice.from_json(item["choice"]), bool(item.get("nccl")))
                          for item in entry["intervals"]]
+            if version_one and any(interval.choice.blocks is not None for interval in intervals):
+                raise TuningError(f"decisions for {collective} in mode {mode}: blocks need schema {SCHEMA}")
             starts = [interval.start for interval in intervals]
             if not intervals or starts != sorted(set(starts)) or starts[0] < 1:
                 raise TuningError(f"decisions for {collective} in mode {mode}: intervals must start at "
@@ -398,6 +426,19 @@ def select_table(paths: Sequence[str | Path], own: Mapping[str, Any]) -> tuple[O
 #   pieces); at 4 MiB scatter ops win (157 us against 161 us).
 # On two ranks every element of a ring all-reduce or reduce-scatter is the sum of the same two values that
 # the two-shot op and scatter ops add, rounded once, so the plan changes no result bit.
+# Cycle of eight (all eight DGX Sparks, every edge cabled; ring harness, eager periods of the slowest rank at
+# 1 block per role and 16 link slots, buffers reused between calls, one run per arm: the two-shot op against
+# the ring at 1-3 MiB, and every arm at 1-64 MiB):
+# - all-reduce: the ring from the first message above the two-shot capacity (2 MiB), in 128 KiB pieces
+#   349.4 us at 3 MiB against 412.8 us for two-shot pieces; in 256 KiB pieces from 4 MiB, 423.6 us (128 KiB
+#   426.2 us) and 713.3 us at 8 MiB (128 KiB 733.3 us, 512 KiB 735.3 us); in 512 KiB pieces from 16 MiB,
+#   1,269.4 us (256 KiB 1,277.5 us), 2,473.1 us at 32 MiB and 4,875.8 us at 64 MiB. At 2 MiB the two-shot op
+#   (287.4 us at grid cap 32) and the ring in 128 KiB pieces (290.0 us) tie and the rules keep two-shot; at
+#   1 and 1.5 MiB the two-shot op wins (158.2 and 232.6 us against 263.4 and 268.5 us). Without the plan the
+#   rules run two-shot pieces from the capacity and the chain all-reduce from 8 MiB.
+# On eight ranks the ring adds each element's eight values in ring order, rounding at every hop, where the
+# two-shot op adds them in rank order and the chain in chain order: every rank's result is the same, but its
+# bits differ from those of the rules' schedules; a tuning table or SIRCL_LARGE_SCHEDULE keeps the rules'.
 BUILTIN_PLANS: dict[str, dict[str, tuple[tuple[int, dict[str, Any]], ...]]] = {
     "pair": {
         "all_reduce": ((3 << 20, {"schedule": "ring", "piece": 256 << 10}),),
@@ -405,6 +446,11 @@ BUILTIN_PLANS: dict[str, dict[str, tuple[tuple[int, dict[str, Any]], ...]]] = {
                        (16 << 20, {"schedule": "ring", "piece": 512 << 10})),
         "reduce_scatter": ((8 << 20, {"schedule": "ring", "piece": 256 << 10}),
                            (64 << 20, {"schedule": "ring", "piece": 512 << 10})),
+    },
+    "cycle:8": {
+        "all_reduce": (((2 << 20) + 16, {"schedule": "ring", "piece": 128 << 10}),
+                       (4 << 20, {"schedule": "ring", "piece": 256 << 10}),
+                       (16 << 20, {"schedule": "ring", "piece": 512 << 10})),
     },
 }
 BUILTIN_RUN_ID = "builtin"
@@ -624,10 +670,11 @@ def table_settings(decisions: Sequence[Mapping[str, Any]], session: Mapping[str,
 
 
 def build_document(key: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *, run_id: str = "",
-                   created: str = "", session: Optional[Mapping[str, Any]] = None) -> dict[str, Any]:
+                   created: str = "", session: Optional[Mapping[str, Any]] = None,
+                   conditions: Optional[Mapping[str, int]] = None) -> dict[str, Any]:
     """A tuning table from measurement rows ``{"collective", "mode", "bytes", "choice", "p50_us"}`` taken in a
     session whose ``stats()`` fields are ``session`` (the table's ``settings``, :func:`table_settings`;
-    none without it)."""
+    none without it) under ``conditions`` (:data:`CONDITIONS`)."""
     world = int(key["world"])
     measurements = sorted(({"collective": str(row["collective"]), "mode": str(row["mode"]),
                             "bytes": int(row["bytes"]), "choice": Choice.from_json(row["choice"]).to_json(),
@@ -651,6 +698,8 @@ def build_document(key: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *,
     settings = table_settings(decisions, session or {})
     if settings:
         document["settings"] = settings
+    if conditions:
+        document["conditions"] = {name: int(value) for name, value in conditions.items()}
     Table(document)
     return document
 
@@ -664,6 +713,9 @@ def render(document: Mapping[str, Any]) -> str:
     if settings:
         lines.append("  settings, applied by a session that takes the table where its environment leaves them "
                      "unset: " + ", ".join(f"{name}={value}" for name, value in settings.items()))
+    conditions = document.get("conditions") or {}
+    if conditions:
+        lines.append("  measured with " + ", ".join(f"{name} {value}" for name, value in conditions.items()))
     for entry in document["decisions"]:
         for index, interval in enumerate(entry["intervals"]):
             following = entry["intervals"][index + 1]["from"] if index + 1 < len(entry["intervals"]) else None
@@ -682,8 +734,8 @@ def render(document: Mapping[str, Any]) -> str:
     return "\n".join(lines)
 
 
-__all__ = ["ALGORITHMS", "BACKENDS", "BUILTIN_PLANS", "COLLECTIVES", "Choice", "KEY_FIELDS", "MODES", "SCHEDULES",
-           "SCHEMA", "builtin_document",
+__all__ = ["ALGORITHMS", "BACKENDS", "BUILTIN_PLANS", "COLLECTIVES", "CONDITIONS", "Choice", "KEY_FIELDS", "MODES",
+           "SCHEDULES", "SCHEMA", "SCHEMAS", "builtin_document",
            "MINIMUM_SETTINGS", "SETTINGS", "SETTING_STATS", "Table", "TuningError", "build_document",
            "decide_intervals", "document_hash", "facts", "facts_for_layout", "fit", "kernels_hash", "native_hash",
            "render", "select_table", "settings_conflicts", "shape_of", "single_op_limit", "sircl_version",

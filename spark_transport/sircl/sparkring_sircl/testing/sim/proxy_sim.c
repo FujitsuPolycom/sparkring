@@ -51,7 +51,7 @@ void roce_stop(roce_ctx_t *c);
 int roce_failed(roce_ctx_t *c);
 const char *roce_error(roce_ctx_t *c);
 uint64_t roce_stat(roce_ctx_t *c, int which);
-void roce_destroy(roce_ctx_t *c);
+int roce_destroy(roce_ctx_t *c);
 void roce_test_set_hook(void (*fn)(void *, int, uint32_t, int), void *arg);
 void roce_test_disable_multi_phase(roce_ctx_t *c);
 int roce_set_forward(roce_ctx_t *c, const uint32_t *lane_window_bytes, uint32_t chunk_bytes);
@@ -2028,6 +2028,211 @@ static void case_window_refusals(void) {
     report(name, ok, why);
 }
 
+/* -- teardown ------------------------------------------------------------------------------ */
+
+/* The gate of the teardown cases: while armed, a progress thread that takes a
+ * doorbell blocks until released, and the first taker disarms the gate. This
+ * holds a rank's whole posting of one op - data, flag and every later write it
+ * would owe - at the moment its peer's context dies, which is the state a
+ * close without a drain leaves a peer in whenever its kernel completed first. */
+static atomic_int gate_armed;
+static pthread_mutex_t gate_mutex = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t gate_cond = PTHREAD_COND_INITIALIZER;
+static int gate_released;
+/* The native test hook's doorbell point (the hook points of _roce_proxy.c). */
+enum { ROCE_HOOK_DOORBELL = 0 };
+
+static void teardown_gate_hook(void *arg, int point, uint32_t seq, int peer) {
+    (void)arg;
+    (void)seq;
+    (void)peer;
+    if (point != ROCE_HOOK_DOORBELL || !atomic_load(&gate_armed)) return;
+    atomic_store(&gate_armed, 0);                 /* the first taker holds the debt */
+    pthread_mutex_lock(&gate_mutex);
+    while (!gate_released) pthread_cond_wait(&gate_cond, &gate_mutex);
+    pthread_mutex_unlock(&gate_mutex);
+}
+
+static void gate_open(void) {
+    pthread_mutex_lock(&gate_mutex);
+    gate_released = 1;
+    pthread_cond_broadcast(&gate_cond);
+    pthread_mutex_unlock(&gate_mutex);
+}
+
+/* K one-shot ops on every rank of a 3-rank session, driven by the real kernel
+ * threads; the session is left quiescent with every proxy alive. */
+static int teardown_setup(session_t *s, int ops, kernel_t *kernels, pthread_t *threads, char *why, size_t len) {
+    if (create_session(s, 3, 2, KIND_CYCLE, 0, 16384, -1, -1) != 0) {
+        snprintf(why, len, "%s", s->error);
+        return -1;
+    }
+    scheduler_start(0x7EAu);
+    if (lane_check_session(s, 2000) != 0 || start_session(s) != 0) {
+        snprintf(why, len, "%s", s->error);
+        return -1;
+    }
+    for (int r = 0; r < 3; r++) {
+        memset(&kernels[r], 0, sizeof(kernels[r]));
+        kernels[r] = (kernel_t){.s = s, .rank = r, .n_ops = ops, .mix = MIX_ONESHOT, .first_seq = 1,
+                                .rng = 9u, .stop_proxy_at = -1};
+        pthread_create(&threads[r], NULL, kernel_main, &kernels[r]);
+    }
+    for (int r = 0; r < 3; r++) pthread_join(threads[r], NULL);
+    for (int r = 0; r < 3; r++) {
+        if (kernels[r].failed) {
+            snprintf(why, len, "rank %d kernel: %s", r, kernels[r].why);
+            return -1;
+        }
+    }
+    quiesce(s, (uint32_t)ops);
+    return 0;
+}
+
+/* Rank 0 destroys its context while rank 1's proxy still owes the whole posting
+ * of the op whose doorbell it just took. Rank 1's proxy must fail on the writes
+ * toward the destroyed context, and rank 2's must survive: the failure names
+ * rank 0 and the retry counter, exactly what a serving rank's proxy reports
+ * when a peer closed without waiting for the group. */
+static void case_teardown_race(void) {
+    const char *name = "teardown-race/cycle3/lanes2";
+    if (!wanted(name)) return;
+    fv_reset();
+    session_t *s = (session_t *)calloc(1, sizeof(session_t));
+    kernel_t kernels[3];
+    pthread_t threads[3];
+    char why[1024] = "";
+    int ok = 0;
+    atomic_store(&gate_armed, 0);
+    gate_released = 0;
+    roce_test_set_hook(teardown_gate_hook, NULL);
+    if (teardown_setup(s, 40, kernels, threads, why, sizeof(why)) == 0) {
+        uint32_t seq = 41, nbytes = 2048;
+        atomic_store(&gate_armed, 1);
+        /* Rank 1's kernel ends a round ahead of its proxy: the op's debt exists
+         * while no kernel waits for it. */
+        rank_t *k1 = &s->ranks[1];
+        fill(send_of(k1, s, seq), 0, nbytes, pattern_key(1, 1, seq, 0));
+        ring(k1, seq, ((uint32_t)OP_ONESHOT << OP_SHIFT) | nbytes, nbytes);
+        uint64_t start = now_ns();
+        while (atomic_load(&gate_armed) && now_ns() - start < 5000000000ull) usleep(100);
+        if (atomic_load(&gate_armed)) {
+            snprintf(why, sizeof(why), "rank 1's proxy never took doorbell %u", seq);
+        } else {
+            roce_destroy(s->ranks[0].ctx);
+            s->ranks[0].ctx = NULL;
+            gate_open();
+            start = now_ns();
+            while (!roce_failed(s->ranks[1].ctx) && now_ns() - start < 5000000000ull) usleep(100);
+            const char *error = roce_error(s->ranks[1].ctx);
+            int failed1 = roce_failed(s->ranks[1].ctx);
+            int named = failed1 && strstr(error, "to rank 0") != NULL &&
+                        strstr(error, "retry counter exceeded") != NULL;
+            int failed2 = roce_failed(s->ranks[2].ctx);
+            if (!failed1) {
+                snprintf(why, sizeof(why), "rank 1's proxy survived writes toward rank 0's destroyed context");
+            } else if (!named) {
+                snprintf(why, sizeof(why), "rank 1's proxy failed otherwise: %s", error);
+            } else if (failed2) {
+                snprintf(why, sizeof(why), "rank 2's proxy failed too: %s", roce_error(s->ranks[2].ctx));
+            } else {
+                ok = 1;
+                snprintf(why, sizeof(why), "rank 1: %.90s", error);
+            }
+        }
+        gate_open();
+    }
+    scheduler_stop();
+    roce_test_set_hook(pause_hook, NULL);
+    destroy_session(s);
+    free(s);
+    report(name, ok, why);
+}
+
+/* The two-round teardown: every rank's kernels are idle, round 1 waits for the
+ * proxies to drain what they owe, every proxy stops, round 2 orders the
+ * destruction after every stop, and only then do the contexts die. No proxy
+ * may fail: nothing is posted toward a context that is gone; and every
+ * roce_destroy releases every verbs object (returns 0). */
+static void case_teardown_ordered(void) {
+    const char *name = "teardown-ordered/cycle3/lanes2";
+    if (!wanted(name)) return;
+    fv_reset();
+    session_t *s = (session_t *)calloc(1, sizeof(session_t));
+    kernel_t kernels[3];
+    pthread_t threads[3];
+    char why[1024] = "";
+    int ok = 0;
+    if (teardown_setup(s, 40, kernels, threads, why, sizeof(why)) == 0) {
+        /* Round 1 returns everywhere: nothing a kernel needs is owed, and the
+         * still-running proxies finish their in-flight writes. */
+        uint64_t start = now_ns();
+        while (fv_pending() != 0 && now_ns() - start < 5000000000ull) usleep(100);
+        for (int r = 0; r < 3; r++) roce_stop(s->ranks[r].ctx);     /* posts nothing more */
+        /* Round 2: every proxy is stopped, so no write targets a context that
+         * is about to die. */
+        int failed = 0;
+        for (int r = 0; r < 3; r++) {
+            if (roce_failed(s->ranks[r].ctx)) {
+                failed = 1;
+                snprintf(why, sizeof(why), "rank %d's proxy failed: %s", r, roce_error(s->ranks[r].ctx));
+            }
+        }
+        if (!failed) {
+            int left = 0;
+            for (int r = 0; r < 3; r++) {
+                left += roce_destroy(s->ranks[r].ctx);
+                s->ranks[r].ctx = NULL;
+            }
+            if (left != 0) {
+                snprintf(why, sizeof(why), "%d verbs calls failed in the destroys", left);
+            } else {
+                ok = 1;
+                snprintf(why, sizeof(why), "40 ops, two rounds, no proxy failed, every verbs object released");
+            }
+        }
+    }
+    scheduler_stop();
+    destroy_session(s);
+    free(s);
+    report(name, ok, why);
+}
+
+/* A destroy whose verbs calls fail reports how many: the stand-in fails the
+ * next queue-pair destroy, so rank 0's roce_destroy returns 1 (its caller keeps
+ * the arena) and the other ranks' return 0. */
+static void case_teardown_failed_destroy(void) {
+    const char *name = "teardown-failed-destroy/cycle3/lanes2";
+    if (!wanted(name)) return;
+    fv_reset();
+    session_t *s = (session_t *)calloc(1, sizeof(session_t));
+    kernel_t kernels[3];
+    pthread_t threads[3];
+    char why[1024] = "";
+    int ok = 0;
+    if (teardown_setup(s, 10, kernels, threads, why, sizeof(why)) == 0) {
+        for (int r = 0; r < 3; r++) roce_stop(s->ranks[r].ctx);
+        fv_fail_teardown(1);
+        int counts[3];
+        for (int r = 0; r < 3; r++) {
+            counts[r] = roce_destroy(s->ranks[r].ctx);
+            s->ranks[r].ctx = NULL;
+        }
+        fv_fail_teardown(0);
+        if (counts[0] == 1 && counts[1] == 0 && counts[2] == 0) {
+            ok = 1;
+            snprintf(why, sizeof(why), "rank 0's destroy reported 1 failed verbs call, ranks 1 and 2 none");
+        } else {
+            snprintf(why, sizeof(why), "failed verbs calls per rank %d, %d, %d (expected 1, 0, 0)", counts[0],
+                     counts[1], counts[2]);
+        }
+    }
+    scheduler_stop();
+    destroy_session(s);
+    free(s);
+    report(name, ok, why);
+}
+
 static void case_swing_dump(void) {
     /* Print the Swing phases for cross-checking against tests/data/numeric.json. */
     if (!wanted("swing-schedule")) return;
@@ -2100,6 +2305,9 @@ int main(int argc, char **argv) {
     case_chain("chain-pauses", 4, KIND_PATH, 2, 3, 8192, 4096, 60, 98304, 1, 0);
     case_chain("chain-trace", 4, KIND_PATH, 2, 3, 8192, 4096, 30, 98304, 0, 1u << 16);
     case_chain_refusals();
+    case_teardown_race();
+    case_teardown_ordered();
+    case_teardown_failed_destroy();
     case_wait_regimes("wait-regimes-minutes/path4/lanes2", 600000, 20000, 150000);
     case_swing_dump();
     case_twoshot_timing();

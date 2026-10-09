@@ -53,7 +53,7 @@ int p2p_failed(p2p_ctx_t *c);
 const char *p2p_error(p2p_ctx_t *c);
 uint64_t p2p_stat(p2p_ctx_t *c, int which);
 uint64_t p2p_peer_stat(p2p_ctx_t *c, int peer, int which);
-void p2p_destroy(p2p_ctx_t *c);
+int p2p_destroy(p2p_ctx_t *c);
 int p2p_test_set_base(p2p_ctx_t *c, uint32_t base);
 uint32_t p2p_test_qp_num(p2p_ctx_t *c, int d, int p);
 

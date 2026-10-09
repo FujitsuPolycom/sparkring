@@ -36,6 +36,17 @@ A DCP session whose class does not offer the scatter collectives gets them
 marked available (multi-phase posting), and the all-to-all then runs through
 the host functions of ``oneshot/_scatter_ops.py``.
 
+Shared GPU: the world sizes the one GPU for all its ranks as
+:class:`.gpu_emulation.EmulatedGroup` does for a group (``EmulatedWorld.notes``
+records what it set): 32 hardware queues, the large-message grid capped while
+the sessions are constructed (:func:`.gpu_emulation.large_block_cap`) and
+the chain and link blocks per role lowered afterwards
+(:func:`.gpu_emulation.lower_role_blocks`), both for the world's rank count.
+A rank holds one session per group, but its sessions' kernels run one after
+another on the rank's one stream, so the world's ranks, not its sessions,
+share the multiprocessors. Without the caps, a collective whose ranks' grids
+do not all fit waits for blocks that never start until its wait limit.
+
 Host copies: every input reaches the device from the main thread before the
 ranks start, and a rank thread only launches work and copies device to
 device. In one process, a rank thread blocked in a copy from pageable host
@@ -66,7 +77,9 @@ from typing import Any
 from .. import routes as routes_mod
 from . import kernel_gpu_checks, native_build
 from .fabric import FakeFabric
-from .gpu_emulation import EmulatedGroup, ThreadDist, ThreadGroup, device_name, emulated_device_roles, wait_stream
+from .gpu_emulation import (EmulatedGroup, TeardownRounds, ThreadDist, ThreadGroup, construction_post_order,
+                            device_name, emulated_device_roles, large_block_cap, lower_role_blocks,
+                            share_hardware_queues, wait_stream)
 
 Check = tuple[str, bool, str]
 
@@ -107,6 +120,7 @@ class SubGroup:
         self.sessions: list[Any] = [None] * self.world
         derived = routes_mod.derive_routes(self.layout, lanes)
         exchange = ThreadGroup(self.world)
+        post_order = construction_post_order()
 
         def construct(rank: int) -> None:
             exchange.bind(rank)
@@ -116,7 +130,7 @@ class SubGroup:
             self.sessions[rank] = runtime.AllReduce(
                 exchange_group=exchange, device=torch.device("cuda", 0), max_size=max_size,
                 max_gather_bytes=max_gather_bytes, peer_routes=peer_routes, layout=layout_text, gid_index=3,
-                lane_check_ms=10000,
+                lane_check_ms=10000, post_order=post_order,
             )
 
         saved = runtime.dist
@@ -125,6 +139,7 @@ class SubGroup:
             self._threads(construct)
         finally:
             runtime.dist = saved
+        self.teardown = TeardownRounds(self.sessions, self.world)
 
     def rank_of(self, node: int) -> int:
         return self.members.index(node)
@@ -146,6 +161,11 @@ class EmulatedWorld:
 
         self.torch = torch
         self.size = max(member for _, members in groups for member in members) + 1
+        # What the world set for the shared GPU (module docstring, "Shared GPU"), one line each.
+        self.notes: list[str] = []
+        queues = share_hardware_queues(self.size)
+        if queues:
+            self.notes.append(queues)
         os.environ["SIRCL_NATIVE_LIBRARY"] = str(library)
         self.fabric = FakeFabric(_proxy.load(str(library)))
         self.fabric.reset()
@@ -159,13 +179,21 @@ class EmulatedWorld:
         self._roles.__enter__()
         self.streams = [torch.cuda.Stream() for _ in range(self.size)]
         self.groups: list[SubGroup] = []
+        multiprocessors = torch.cuda.get_device_properties(0).multi_processor_count
         try:
-            for layout_text, members in groups:
-                self.groups.append(SubGroup(torch, runtime, layout_text, members, self.streams, lanes, max_size,
-                                            max_gather_bytes))
+            with large_block_cap(self.size, multiprocessors, runtime.DEFAULT_LARGE_BLOCKS) as note:
+                if note:
+                    self.notes.append(note)
+                for layout_text, members in groups:
+                    self.groups.append(SubGroup(torch, runtime, layout_text, members, self.streams, lanes,
+                                                max_size, max_gather_bytes))
         except BaseException:
             self.close()
             raise
+        note = lower_role_blocks([session for group in self.groups for session in group.sessions], self.size,
+                                 multiprocessors)
+        if note:
+            self.notes.append(note)
 
     def run(self, body: Callable[[int], Any], nodes: Sequence[int] | None = None,
             timeout: float = 900.0) -> list[Any]:
@@ -524,7 +552,8 @@ def run_checks(*, groups: int = 2, tp: bool = True, lanes: int = 2, max_size: in
         add(("prepare", True, f"{time.perf_counter() - started:.1f} s; {len(dcp_groups)} DCP group(s) "
              f"{[group.layout_text for group in dcp_groups]}"
              + (f" and the TP session {tp_group.layout_text}" if tp_group else "")
-             + f"; all-to-all through {'the session methods' if scatter_session else 'the host functions'}"))
+             + f"; all-to-all through {'the session methods' if scatter_session else 'the host functions'}"
+             + (f"; emulation: {'; '.join(world.notes)}" if world.notes else "")))
         suite = DcpChecks(world, tp_group, dcp_groups, scatter_session=scatter_session, heads=heads, hidden=hidden)
         for rows in (*decode_rows, *prefill_rows):
             add(suite.all_to_all(rows))

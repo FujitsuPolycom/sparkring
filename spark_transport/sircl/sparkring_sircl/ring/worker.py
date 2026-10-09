@@ -155,6 +155,27 @@ def _write(path: Path, result: dict) -> None:
     os.replace(temporary, path)
 
 
+# The most device memory a case's rotated windows (rotate_buffers) take: a case whose windows would need
+# more cycles through fewer (Harness._windows).
+ROTATE_MEMORY_BYTES = 4 << 30
+
+
+def variant_kernel(collective: str, variant: dict) -> str | None:
+    """The kernel whose blocks a variant's ``link_blocks`` or ``chain_blocks`` set: ``chain_reduce`` (the chain
+    all-reduce) or a link kernel (``ring_reduce``, ``ring_gather``, ``ring_scatter``, ``chain_gather``,
+    ``chain_scatter``), from the case's collective and the variant's schedule; None where neither applies."""
+    kind = link_collective(collective)
+    schedule = variant.get({"reduce": "schedule", "gather": "gather_schedule",
+                            "scatter": "scatter_schedule"}.get(kind or "", "schedule"))
+    if kind is None or schedule not in ("chain", "ring"):
+        return None
+    if variant.get("chain_blocks"):
+        return "chain_reduce" if (kind, schedule) == ("reduce", "chain") else None
+    if (kind, schedule) == ("reduce", "chain"):
+        return None
+    return f"{schedule}_{kind}"
+
+
 def link_collective(collective: str) -> str | None:
     """The link collective (``gather``, ``scatter``, ``reduce``) whose piece a case's link ops use."""
     if collective == "all_gather_large":
@@ -357,31 +378,41 @@ class Harness:
         record = {"collective": f"nccl_{family}", "mode": mode, "dtype": "bfloat16", "shape": list(shape), "dim": 0,
                   "bytes": nbytes, "checked": 0, "mismatched_calls": 0, "mismatched_elements": 0,
                   "algorithm": f"NCCL {self.nccl_version} {self.nccl_transport}", "baseline": "nccl"}
-        x = torch.empty(shape, dtype=torch.bfloat16, device=self.device)
-        y = torch.empty(out_shape, dtype=torch.bfloat16, device=self.device)
+        windows = self._windows(shape, out_shape)
+        record["rotate_buffers"] = windows
+        xs = [torch.empty(shape, dtype=torch.bfloat16, device=self.device) for _ in range(windows)]
+        ys = [torch.empty(out_shape, dtype=torch.bfloat16, device=self.device) for _ in range(windows)]
+        x, y = xs[0], ys[0]
         count = x.numel()
 
-        def call() -> None:
+        def call(window: int) -> None:
             stream = torch.cuda.current_stream().cuda_stream
             if reduce:
-                self.nccl.all_reduce(x.data_ptr(), y.data_ptr(), count, "bfloat16", stream)
+                self.nccl.all_reduce(xs[window].data_ptr(), ys[window].data_ptr(), count, "bfloat16", stream)
             else:
-                self.nccl.all_gather(x.data_ptr(), y.data_ptr(), count, "bfloat16", stream)
+                self.nccl.all_gather(xs[window].data_ptr(), ys[window].data_ptr(), count, "bfloat16", stream)
 
-        graph = None
+        graphs = []
         if mode == "graph":
-            graph = torch.cuda.CUDAGraph()
             capture_stream = torch.cuda.Stream()
             torch.cuda.synchronize()
-            with torch.cuda.graph(graph, stream=capture_stream):
-                call()
+            for window in range(windows):
+                graph = torch.cuda.CUDAGraph()
+                with torch.cuda.graph(graph, stream=capture_stream):
+                    call(window)
+                graphs.append(graph)
             torch.cuda.synchronize()
+        turn = [0]
 
-        def once() -> None:
-            if graph is not None:
-                graph.replay()
+        def once(window: int | None = None) -> None:
+            """One call on ``window``; by default the next window in turn (``rotate_buffers``)."""
+            if window is None:
+                window = turn[0] % windows
+                turn[0] += 1
+            if graphs:
+                graphs[window].replay()
             else:
-                call()
+                call(window)
 
         def wrong_elements(inputs) -> int:
             if not reduce:
@@ -395,8 +426,9 @@ class Harness:
             return int(((got - total).abs() > tolerance).sum().item())
 
         inputs = self._inputs(1 if reduce else 2, shape, case, 0)
-        x.copy_(inputs[self.rank])
-        once()
+        for window in xs:
+            window.copy_(inputs[self.rank])
+        once(0)
         torch.cuda.synchronize()
         record["checked"] = 1
         wrong = wrong_elements(inputs)
@@ -715,6 +747,14 @@ class Harness:
         if variant and variant.get("gather_stagger") is not None:
             saved_gather_stagger = session.ring_gather_stagger
             session.set_ring_gather_stagger(variant["gather_stagger"])
+        blocked = None
+        if variant and (variant.get("link_blocks") or variant.get("chain_blocks")):
+            if not callable(getattr(session, "set_op_blocks", None)):
+                raise RuntimeError("this session class cannot set an op's blocks per role (link_blocks, chain_blocks)")
+            blocked = variant_kernel(collective, variant)
+            if blocked is None:
+                raise ValueError(f"blocks of {variant} name no chain or ring kernel of {collective}")
+            session.set_op_blocks(blocked, variant.get("chain_blocks") or variant.get("link_blocks"))
         if variant:
             session.large_schedule = variant.get("schedule", saved[0])
             if variant.get("chunk"):
@@ -750,6 +790,8 @@ class Harness:
                 session.set_ring_stagger(saved_stagger)
             if saved_gather_stagger is not None:
                 session.set_ring_gather_stagger(saved_gather_stagger)
+            if blocked is not None:
+                session.set_op_blocks(blocked, None)
 
     def _link_piece(self, collective: str, nbytes: int | None = None, mode: str | None = None) -> int | None:
         """The link piece ``collective``'s link op of ``nbytes`` per rank runs with in ``mode``: the session's
@@ -857,37 +899,47 @@ class Harness:
             record["traffic"] = "scatter"
         if record.get("traffic") in ("chain", "ring"):
             record["chain_order"] = list(self.session.chain_order)
-        x = torch.empty(shape, dtype=torch.bfloat16, device=self.device)
-        y = torch.empty(out_shape, dtype=torch.bfloat16, device=self.device)
-        graph = None
+        windows = self._windows(shape, out_shape)
+        record["rotate_buffers"] = windows
+        xs = [torch.empty(shape, dtype=torch.bfloat16, device=self.device) for _ in range(windows)]
+        ys = [torch.empty(out_shape, dtype=torch.bfloat16, device=self.device) for _ in range(windows)]
+        x, y = xs[0], ys[0]
+        graphs = []
         if mode == "graph":
-            graph = torch.cuda.CUDAGraph()
             stream = torch.cuda.Stream()
             torch.cuda.synchronize()
-            with session.capture():
-                with torch.cuda.graph(graph, stream=stream):
-                    self._call(collective, x, y, dim)
+            for window in range(windows):
+                graph = torch.cuda.CUDAGraph()
+                with session.capture():
+                    with torch.cuda.graph(graph, stream=stream):
+                        self._call(collective, xs[window], ys[window], dim)
+                graphs.append(graph)
             torch.cuda.synchronize()
+        turn = [0]
 
-        def once() -> None:
-            if graph is not None:
-                graph.replay()
+        def once(window: int | None = None) -> None:
+            """One call on ``window``; by default the next window in turn (``rotate_buffers``)."""
+            if window is None:
+                window = turn[0] % windows
+                turn[0] += 1
+            if graphs:
+                graphs[window].replay()
             else:
-                self._call(collective, x, y, dim)
+                self._call(collective, xs[window], ys[window], dim)
 
         checks = 1 if large else self.options["correctness_iterations"]
         make_inputs = self._world_inputs if tp else self._inputs
         for iteration in range(checks):
             inputs = make_inputs(label, shape, case, iteration)
             x.copy_(inputs[rank])
-            once()
+            once(0)
             torch.cuda.synchronize()
             session.check_health()
             wrong = self._differs(y, self._expected(collective, inputs, dim, chained_scatter, out_shape, mode))
             if large:
                 # The same inputs again: a collective's bits do not depend on timing.
                 first = y.detach().clone()
-                once()
+                once(0)
                 torch.cuda.synchronize()
                 session.check_health()
                 repeat = int((first.view(torch.int16) != y.view(torch.int16)).sum().item())
@@ -914,7 +966,8 @@ class Harness:
                 record["mismatched_calls"] += 1
                 record["mismatched_elements"] += wrong
         timed_inputs = make_inputs(label, shape, case, 1000)
-        x.copy_(timed_inputs[rank])
+        for window in xs:
+            window.copy_(timed_inputs[rank])
         warmup = 2 if large else self.options["warmup_iterations"]
         for _ in range(warmup):
             once()
@@ -973,7 +1026,8 @@ class Harness:
                 "proven_kib_per_call": round((progress_after["forward_proven_bytes"]
                                               - progress_before["forward_proven_bytes"]) / count / 1024, 3)}
         times = [round(start.elapsed_time(end) * 1000.0, 2) for start, end in zip(starts, ends)]
-        wrong = self._differs(y, self._expected(collective, timed_inputs, dim, chained_scatter, out_shape, mode))
+        last = ys[(turn[0] - 1) % windows]
+        wrong = self._differs(last, self._expected(collective, timed_inputs, dim, chained_scatter, out_shape, mode))
         record["checked"] += 1
         if wrong:
             record["mismatched_calls"] += 1
@@ -1002,6 +1056,13 @@ class Harness:
                 record["target_ms"], record["stretch_ms"] = target, stretch
         self.mismatches += record["mismatched_calls"]
         return record
+
+    def _windows(self, shape: tuple[int, ...], out_shape) -> int:
+        """The input and output windows a case cycles through call by call: ``rotate_buffers``, at most as
+        many as ROTATE_MEMORY_BYTES holds (at least 1)."""
+        wanted = max(1, int(self.options.get("rotate_buffers", 1)))
+        window_bytes = (math.prod(shape) + math.prod(out_shape)) * 2
+        return max(1, min(wanted, ROTATE_MEMORY_BYTES // max(window_bytes, 1)))
 
     def _traced_call(self, session, once) -> dict:
         """The event trace of ``TRACE_CALLS`` more calls of the case, run back to back after a barrier of the
@@ -1185,12 +1246,18 @@ class Harness:
         grids = tuple(options.get("tune_grids") or ()) or (None,)
         pieces = tuple(options.get("tune_pieces") or ())
         staggers = tuple(options.get("tune_staggers") or (0,))
+        # Blocks per role of the link kernels and of the chain kernel (0 or absent: the session's own).
+        link_blocks = tuple(int(b) or None for b in options.get("tune_link_blocks") or ()) or (None,)
+        chain_blocks = tuple(int(b) or None for b in options.get("tune_chain_blocks") or ()) or (None,)
         large = size >= int(options.get("tune_large_from", 262144))
         shape = (size // 2,)
         found: list[tuple[dict, str, tuple[int, ...], dict | None]] = []
 
         def grid_choice(base: dict, grid) -> dict:
             return {**base, "grid": grid} if grid else dict(base)
+
+        def with_blocks(choice: dict, variant: dict, blocks, key: str) -> tuple[dict, dict]:
+            return ({**choice, "blocks": blocks}, {**variant, key: blocks}) if blocks else (choice, variant)
 
         ring = bool(getattr(session, "ring_available", False))
         if collective == "all_reduce":
@@ -1210,16 +1277,22 @@ class Harness:
                 if session.chain_available:
                     for piece in pieces:
                         if piece <= session.chain_slot_bytes:
-                            found.append(({"schedule": "chain", "piece": piece}, "all_reduce_large", shape,
-                                          {"schedule": "chain", "chunk": piece}))
+                            for blocks in chain_blocks:
+                                choice, variant = with_blocks({"schedule": "chain", "piece": piece},
+                                                              {"schedule": "chain", "chunk": piece}, blocks,
+                                                              "chain_blocks")
+                                found.append((choice, "all_reduce_large", shape, variant))
                 if ring and size % (16 * world) == 0:
                     for piece in pieces:
                         for stagger in staggers:
                             for gather_stagger in staggers:
-                                found.append(({"schedule": "ring", "piece": piece, "stagger": stagger,
-                                               "gather_stagger": gather_stagger}, "all_reduce_large", shape,
-                                              {"schedule": "ring", "link_chunk": piece, "stagger": stagger,
-                                               "gather_stagger": gather_stagger}))
+                                for blocks in link_blocks:
+                                    choice, variant = with_blocks(
+                                        {"schedule": "ring", "piece": piece, "stagger": stagger,
+                                         "gather_stagger": gather_stagger},
+                                        {"schedule": "ring", "link_chunk": piece, "stagger": stagger,
+                                         "gather_stagger": gather_stagger}, blocks, "link_blocks")
+                                    found.append((choice, "all_reduce_large", shape, variant))
         elif collective == "all_gather":
             if session.max_gather_bytes > 0:
                 for grid in grids:
@@ -1227,14 +1300,19 @@ class Harness:
                                   {"gather_schedule": "pieces", **({"grid": grid} if grid else {})}))
                 if large and session.link_available:
                     for piece in pieces:
-                        found.append(({"schedule": "chain", "piece": piece}, "all_gather_large", shape,
-                                      {"gather_schedule": "chain", "link_chunk": piece}))
+                        for blocks in link_blocks:
+                            choice, variant = with_blocks({"schedule": "chain", "piece": piece},
+                                                          {"gather_schedule": "chain", "link_chunk": piece}, blocks,
+                                                          "link_blocks")
+                            found.append((choice, "all_gather_large", shape, variant))
                         if ring:
                             for gather_stagger in staggers:
-                                found.append(({"schedule": "ring", "piece": piece, "gather_stagger": gather_stagger},
-                                              "all_gather_large", shape,
-                                              {"gather_schedule": "ring", "link_chunk": piece,
-                                               "gather_stagger": gather_stagger}))
+                                for blocks in link_blocks:
+                                    choice, variant = with_blocks(
+                                        {"schedule": "ring", "piece": piece, "gather_stagger": gather_stagger},
+                                        {"gather_schedule": "ring", "link_chunk": piece,
+                                         "gather_stagger": gather_stagger}, blocks, "link_blocks")
+                                    found.append((choice, "all_gather_large", shape, variant))
         elif collective in ("reduce_scatter", "all_to_all"):
             if size % (16 * world) or self.scatter_through is None:
                 return []
@@ -1245,13 +1323,19 @@ class Harness:
                               {"scatter_schedule": "pieces", **({"grid": grid} if grid else {})}))
             if large and session.link_available and self.scatter_through == "session":
                 for piece in pieces:
-                    found.append(({"schedule": "chain", "piece": piece}, "reduce_scatter", shape,
-                                  {"scatter_schedule": "chain", "link_chunk": piece}))
+                    for blocks in link_blocks:
+                        choice, variant = with_blocks({"schedule": "chain", "piece": piece},
+                                                      {"scatter_schedule": "chain", "link_chunk": piece}, blocks,
+                                                      "link_blocks")
+                        found.append((choice, "reduce_scatter", shape, variant))
                     if ring:
                         for stagger in staggers:
-                            found.append(({"schedule": "ring", "piece": piece, "stagger": stagger}, "reduce_scatter",
-                                          shape, {"scatter_schedule": "ring", "link_chunk": piece,
-                                                  "stagger": stagger}))
+                            for blocks in link_blocks:
+                                choice, variant = with_blocks(
+                                    {"schedule": "ring", "piece": piece, "stagger": stagger},
+                                    {"scatter_schedule": "ring", "link_chunk": piece, "stagger": stagger}, blocks,
+                                    "link_blocks")
+                                found.append((choice, "reduce_scatter", shape, variant))
         return found
 
     def _group_p50(self, record: dict) -> float:

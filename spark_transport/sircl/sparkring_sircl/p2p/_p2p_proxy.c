@@ -197,7 +197,7 @@ typedef struct p2p_ctx {
     char err[512];
 } p2p_ctx_t;
 
-void p2p_destroy(p2p_ctx_t *c);
+int p2p_destroy(p2p_ctx_t *c);
 
 #define FAIL(c, ...) snprintf((c)->err, sizeof((c)->err), __VA_ARGS__)
 
@@ -1291,18 +1291,23 @@ uint32_t p2p_test_qp_num(p2p_ctx_t *c, int d, int p) {
 }
 #endif
 
-void p2p_destroy(p2p_ctx_t *c) {
-    if (c == NULL) return;
+/* Stops the progress thread and releases every verbs object; returns the number of verbs calls that
+ * failed. A queue pair or memory registration that could not be released can still let a peer's write
+ * reach the arena, so the caller keeps the arena allocated when the count is not zero. */
+int p2p_destroy(p2p_ctx_t *c) {
+    if (c == NULL) return 0;
     p2p_stop(c);
+    int failed = 0;
     for (int d = 0; d < P2P_MAX_DEVICES; d++) {
         p2p_dev_t *dev = &c->dev[d];
         for (int p = 0; p < P2P_MAX_PEERS; p++) {
-            if (dev->qp[p] != NULL) ibv_destroy_qp(dev->qp[p]);
+            if (dev->qp[p] != NULL && ibv_destroy_qp(dev->qp[p]) != 0) failed++;
         }
-        if (dev->cq != NULL) ibv_destroy_cq(dev->cq);
-        if (dev->mr != NULL) ibv_dereg_mr(dev->mr);
-        if (dev->pd != NULL) ibv_dealloc_pd(dev->pd);
-        if (dev->ctx != NULL) ibv_close_device(dev->ctx);
+        if (dev->cq != NULL && ibv_destroy_cq(dev->cq) != 0) failed++;
+        if (dev->mr != NULL && ibv_dereg_mr(dev->mr) != 0) failed++;
+        if (dev->pd != NULL && ibv_dealloc_pd(dev->pd) != 0) failed++;
+        if (dev->ctx != NULL && ibv_close_device(dev->ctx) != 0) failed++;
     }
     free(c);
+    return failed;
 }

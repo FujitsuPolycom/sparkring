@@ -41,13 +41,32 @@ on a Spark, and :class:`EmulatedGroup` sizes both for a multi-rank group
   multiprocessors) 16 blocks per rank for eight ranks, where the default 32
   lets eight scatter ops of 64 KiB per peer or more launch 256 blocks of a
   kernel that holds one 512-thread block per multiprocessor (98 registers per
-  thread at eight ranks) and stall. On the ring every rank has its own GPU and keeps the
-  default.
+  thread at eight ranks) and stall. The chain all-reduce and the link kernels
+  launch at most four roles of their blocks per role each; unless the
+  environment sets them (``SIRCL_CHAIN_BLOCKS``, ``SIRCL_LINK_BLOCKS`` and the
+  per-collective link-block variables), the group lowers every session's
+  chain blocks and link blocks per kernel after construction to
+  :func:`resident_role_cap`, one block per multiprocessor for every rank's
+  four roles: on a DGX Spark's GB10 (48 multiprocessors) 1 for eight ranks,
+  where the default 4 lets eight chain all-reduces of 3 MiB launch 128 blocks
+  of 512 threads and stall, and 2 for four ranks. Lowering the sessions' own
+  blocks, not the environment, keeps a tuning table's blocks and
+  ``set_op_blocks`` in force for an op. On the ring every rank has its own
+  GPU and keeps the defaults.
+
+A session's close holds two teardown rounds over its exchange group
+(:mod:`sparkring_sircl.teardown`); here every group's sessions hold them over a
+thread group of their own (:class:`TeardownRounds`), so every rank closes in
+its own thread at once (:meth:`EmulatedGroup.close`), and an abandoned round
+cannot break the setup group. :func:`run_checks` ends with every rank's close
+(:func:`_teardown_check`).
 
 ``python -m sparkring_sircl.testing.gpu_emulation [--layout path:0-3] [--lanes 2]``
 runs :func:`run_checks` and prints one line per check; with ``--tune`` it runs
 :func:`tune_checks` instead (the ring harness's tune command on the emulated
-group, and sessions that take its table). Requirements: CUDA,
+group, and sessions that take its table), and with ``--teardown``
+:func:`teardown_checks` (the teardown rounds of sessions that run no kernel).
+Requirements: CUDA,
 torch with CUDA, CUDA Python, the CuTe DSL, and a GCC-compatible compiler for
 the simulator library.
 """
@@ -76,8 +95,9 @@ from .fabric import FakeFabric
 class ThreadGroup:
     """A stand-in for a CPU process group whose ranks are threads of this process."""
 
-    def __init__(self, world: int) -> None:
+    def __init__(self, world: int, *, timeout: float = 600.0) -> None:
         self.world = world
+        self.timeout = timeout
         self._barrier = threading.Barrier(world)
         self._slots: list[Any] = [None] * world
         self._local = threading.local()
@@ -91,9 +111,36 @@ class ThreadGroup:
 
     def all_gather_object(self, out: list, obj: Any) -> None:
         self._slots[self.rank] = obj
-        self._barrier.wait(timeout=600)
+        self._barrier.wait(timeout=self.timeout)
         out[:] = list(self._slots)
-        self._barrier.wait(timeout=600)
+        self._barrier.wait(timeout=self.timeout)
+
+
+TEARDOWN_BARRIER_S = 60.0
+
+
+class TeardownRounds:
+    """The teardown rounds' channel of one emulated group's sessions or channel sets: a :class:`ThreadGroup` of
+    the rank threads of its own (an abandoned round breaks only its barrier, after
+    :data:`TEARDOWN_BARRIER_S`), bound as every session's ``_teardown_exchange``, and how many rounds each rank
+    entered (``entered``)."""
+
+    def __init__(self, sessions: Sequence[Any], world: int) -> None:
+        self.group = ThreadGroup(world, timeout=TEARDOWN_BARRIER_S)
+        self.entered = [0] * world
+        for rank, session in enumerate(sessions):
+            if session is not None:
+                session._teardown_exchange = self.exchange(rank)
+
+    def exchange(self, rank: int) -> Callable[[Any], list[Any]]:
+        def exchange(note: Any) -> list[Any]:
+            self.entered[rank] += 1
+            self.group.bind(rank)      # the round runs in a thread of its own
+            out: list[Any] = []
+            self.group.all_gather_object(out, note)
+            return out
+
+        return exchange
 
 
 class ThreadDist:
@@ -155,6 +202,24 @@ def share_hardware_queues(world: int) -> str | None:
     return text
 
 
+@contextlib.contextmanager
+def large_block_cap(world: int, multiprocessors: int, default: int):
+    """For sessions of ``world`` ranks on one GPU constructed inside the block (a session reads
+    ``SIRCL_LARGE_BLOCKS`` at construction): the cap of :func:`resident_grid_cap` in the environment, removed
+    afterwards. Yields the note of what it set, or None (the default fits, or the caller set the variable)."""
+    cap = resident_grid_cap(world, multiprocessors, default)
+    if cap is None:
+        yield None
+        return
+    os.environ["SIRCL_LARGE_BLOCKS"] = str(cap)
+    try:
+        yield (f"SIRCL_LARGE_BLOCKS={cap} (set by the emulation: {world} grids of {default} blocks exceed the "
+               f"{multiprocessors} multiprocessors at one block each)")
+    finally:
+        if os.environ.get("SIRCL_LARGE_BLOCKS") == str(cap):
+            del os.environ["SIRCL_LARGE_BLOCKS"]
+
+
 def resident_grid_cap(world: int, multiprocessors: int, default: int) -> int | None:
     """The large-message grid cap (``SIRCL_LARGE_BLOCKS``) that keeps the grids of ``world`` ranks resident on
     one GPU of ``multiprocessors`` at one block each, or None when the environment sets the cap or the
@@ -165,6 +230,58 @@ def resident_grid_cap(world: int, multiprocessors: int, default: int) -> int | N
 
     cap = emulation_large_blocks(world, multiprocessors, default)
     return cap if cap < default else None
+
+
+KERNEL_ROLES = 4        # the most roles of one chain or link kernel's grid (chain all-reduce, ring all-reduce)
+
+
+def resident_role_cap(world: int, multiprocessors: int, roles: int = KERNEL_ROLES) -> int:
+    """Blocks per role that keep ``world`` ranks' grids of ``roles`` roles resident on one GPU of ``multiprocessors``
+    at one block each: the largest power of two ``b`` with ``world * roles * b <= multiprocessors``, at least 1."""
+    per_rank = max(1, int(multiprocessors) // max(1, int(world) * int(roles)))
+    return 1 << (per_rank.bit_length() - 1)
+
+
+def cap_session_blocks(sessions: Sequence[Any], cap: int, environ=None) -> list[str]:
+    """Lower every session's chain blocks and link blocks per kernel to ``cap`` where the environment leaves them
+    unset (``SIRCL_CHAIN_BLOCKS``; ``SIRCL_LINK_BLOCKS`` and every per-collective ``SIRCL_*_LINK_BLOCKS``); returns
+    what changed, one note per setting."""
+    environ = os.environ if environ is None else environ
+    notes = []
+    chain = [session.chain_blocks for session in sessions if session.chain_blocks > cap]
+    if chain and not str(environ.get("SIRCL_CHAIN_BLOCKS", "")).strip():
+        for session in sessions:
+            session.chain_blocks = min(session.chain_blocks, cap)
+        notes.append(f"chain blocks per role {max(chain)} -> {cap}")
+    if not any(name.startswith("SIRCL_") and name.endswith("LINK_BLOCKS") and str(value).strip()
+               for name, value in environ.items()):
+        lowered = sorted({kernel for session in sessions for kernel, blocks in session.link_blocks.items()
+                          if blocks > cap})
+        for session in sessions:
+            for kernel in lowered:
+                session.link_blocks[kernel] = min(session.link_blocks[kernel], cap)
+        if lowered:
+            notes.append(f"link blocks per role of {', '.join(lowered)} -> {cap}")
+    return notes
+
+
+def lower_role_blocks(sessions: Sequence[Any], world: int, multiprocessors: int) -> str | None:
+    """Lower the chain and link blocks per role of ``sessions`` (of ``world`` ranks on one GPU of
+    ``multiprocessors``) to :func:`resident_role_cap` with :func:`cap_session_blocks`; the note of what changed,
+    or None."""
+    lowered = cap_session_blocks(sessions, resident_role_cap(world, multiprocessors))
+    if not lowered:
+        return None
+    return (f"{'; '.join(lowered)} (set by the emulation: {world} grids of {KERNEL_ROLES} roles at the sessions' "
+            f"blocks exceed the {multiprocessors} multiprocessors at one block each)")
+
+
+def construction_post_order() -> str:
+    """``SIRCL_POST_ORDER`` as the process holds it now, for every rank's session constructor (empty: the
+    layout's default). Read once in the main thread and passed as ``post_order``: a session's constructor sets the
+    variable to its own rank's resolved peer list while it creates its native context, and the rank threads
+    construct at once, so a rank reading the variable then would take another rank's list."""
+    return os.environ.get("SIRCL_POST_ORDER", "")
 
 
 def wait_stream(stream, timeout: float = 120.0) -> None:
@@ -231,6 +348,7 @@ class EmulatedGroup:
         self.streams = [torch.cuda.Stream() for _ in range(self.world)]
         self.sessions: list[Any] = [None] * self.world
         group = ThreadGroup(self.world)
+        post_order = construction_post_order()
 
         def construct(rank: int) -> None:
             group.bind(rank)
@@ -239,7 +357,7 @@ class EmulatedGroup:
             self.sessions[rank] = runtime.AllReduce(
                 exchange_group=group, device=torch.device("cuda", 0), max_size=max_size,
                 max_gather_bytes=max_gather_bytes, peer_routes=peer_routes, layout=layout_text, gid_index=3,
-                lane_check_ms=10000,
+                lane_check_ms=10000, post_order=post_order,
             )
 
         self._roles = emulated_device_roles(self.world)
@@ -249,19 +367,18 @@ class EmulatedGroup:
         # The large-message grid cap that keeps every rank's grid resident, for these sessions only (they read
         # it at construction), unless the caller set one.
         multiprocessors = torch.cuda.get_device_properties(0).multi_processor_count
-        cap = resident_grid_cap(self.world, multiprocessors, runtime.DEFAULT_LARGE_BLOCKS)
-        capped = None if cap is None else str(cap)
-        if capped is not None:
-            os.environ["SIRCL_LARGE_BLOCKS"] = capped
-            self.notes.append(f"SIRCL_LARGE_BLOCKS={cap} (set by the emulation: {self.world} grids of "
-                              f"{runtime.DEFAULT_LARGE_BLOCKS} blocks exceed the {multiprocessors} multiprocessors "
-                              "at one block each)")
         try:
-            self._threads(construct)
+            with large_block_cap(self.world, multiprocessors, runtime.DEFAULT_LARGE_BLOCKS) as note:
+                if note:
+                    self.notes.append(note)
+                self._threads(construct)
         finally:
             runtime.dist = saved
-            if capped is not None and os.environ.get("SIRCL_LARGE_BLOCKS") == capped:
-                del os.environ["SIRCL_LARGE_BLOCKS"]
+        self.teardown = TeardownRounds(self.sessions, self.world)
+        # The chain and link grids under the same rule, on the sessions' own blocks (see the module docstring).
+        note = lower_role_blocks(self.sessions, self.world, multiprocessors)
+        if note:
+            self.notes.append(note)
 
     def _threads(self, body: Callable[[int], Any], timeout: float = 900.0) -> list[Any]:
         torch = self.torch
@@ -312,17 +429,24 @@ class EmulatedGroup:
                     session.all_gather_large(shard, dim=-1)
                 if session.chain_available:
                     for dtype in dtypes:
-                        x = torch.zeros(64, dtype=dtype, device=session.device)
-                        session._launch_chain(session._chain_launcher(dtype, False), x, torch.empty_like(x), False)
+                        session._chain_launcher(dtype, False)
+                    # Every compiled chain launcher, whatever its blocks per role.
+                    for key in [key for key in session._launchers if key[0] == "chain" and key[1] in dtypes]:
+                        x = torch.zeros(64, dtype=key[1], device=session.device)
+                        session._launch_chain(session._launchers[key], x, torch.empty_like(x), False)
                 if session.link_available:
                     x = torch.zeros(64, dtype=torch.bfloat16, device=session.device)
-                    if ("link-gather",) in session._launchers:
+                    # Every compiled chain-link launcher at its own blocks per role (set for its launch).
+                    for key in [key for key in session._launchers if key[0] == "link-gather"]:
+                        session.set_op_blocks("chain_gather", key[1])
                         session._launch_gather_chain(x, torch.empty(64 * self.world, dtype=x.dtype,
                                                                     device=x.device), False)
-                    for dtype in dtypes:
-                        if ("link-scatter", dtype) in session._launchers:
-                            y = torch.zeros(8 * self.world, dtype=dtype, device=session.device)
-                            session._reduce_scatter_chain(y, None, None, None, None)
+                    session.set_op_blocks("chain_gather", None)
+                    for key in [key for key in session._launchers if key[0] == "link-scatter" and key[1] in dtypes]:
+                        session.set_op_blocks("chain_scatter", key[2])
+                        y = torch.zeros(8 * self.world, dtype=key[1], device=session.device)
+                        session._reduce_scatter_chain(y, None, None, None, None)
+                    session.set_op_blocks("chain_scatter", None)
                     # Every compiled ring launcher, whatever its dtype.
                     for key in [key for key in session._launchers if key[0] == "link-ring"]:
                         dtype = torch.uint8 if key[2] == "bytes" else getattr(torch, key[2])
@@ -347,11 +471,15 @@ class EmulatedGroup:
         """``operation(rank, session)`` on every rank at once, on the rank's stream."""
         return self._threads(lambda rank: operation(rank, self.sessions[rank]))
 
-    def close(self) -> None:
+    def close(self) -> list[Any] | None:
+        """Close every rank's session at once, each in its rank's thread (the teardown rounds pair across
+        them), and stop the fabric; every rank's close result, or None when a close raised."""
+        results = None
         with contextlib.suppress(Exception):
-            self._threads(lambda rank: self.sessions[rank].close() if self.sessions[rank] else None)
+            results = self._threads(lambda rank: self.sessions[rank].close() if self.sessions[rank] else None)
         self.fabric.stop()
         self._roles.__exit__(None, None, None)
+        return results
 
 
 # -- checks -----------------------------------------------------------------------------------
@@ -394,6 +522,20 @@ def _on_device(group: EmulatedGroup, inputs) -> list:
     return placed
 
 
+def _timed_out(group: EmulatedGroup) -> str:
+    """The first poisoned rank's health error after an op returned, or "". A session checks its health right
+    after it launches an op, before the kernel's waits can time out; a wait that times out later poisons the
+    session while the outputs are copied, and those outputs are not results."""
+    for session in group.sessions:
+        if session.poisoned:
+            try:
+                session.check_health()
+            except RuntimeError as error:
+                return f"a wait timed out during the op: {error}"
+            return "a session is poisoned after the op"
+    return ""
+
+
 def _collective(group: EmulatedGroup, name: str, inputs, call: Callable, reference) -> tuple[str, bool, str]:
     torch = group.torch
 
@@ -403,6 +545,9 @@ def _collective(group: EmulatedGroup, name: str, inputs, call: Callable, referen
         outputs = [output.cpu() for output in outputs]
     except Exception as error:  # noqa: BLE001 - reported as a failed check
         return name, False, f"{type(error).__name__}: {error}"
+    timed_out = _timed_out(group)
+    if timed_out:
+        return name, False, timed_out
     wrong = [rank for rank, output in enumerate(outputs) if not _same_bits(torch, output, reference)]
     return name, not wrong, f"ranks {wrong} differ" if wrong else ""
 
@@ -1042,6 +1187,172 @@ def _builtin_plan_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     return results
 
 
+def _launcher_at(session: Any, kernel: str, blocks: int, dtype: Any) -> None:
+    """Compile ``session``'s launcher of ``kernel`` (``protocol.LINK_BLOCK_KERNELS`` or ``chain_reduce``) at
+    ``blocks`` per role, without launching it."""
+    session.set_op_blocks(kernel, blocks)
+    try:
+        if kernel == "chain_reduce":
+            session._chain_launcher(dtype, False)
+        elif kernel == "chain_gather":
+            session._gather_chain_launcher(False)
+        elif kernel == "chain_scatter":
+            session._scatter_chain_launcher(dtype, False)
+        else:
+            mode = kernel.split("_", 1)[1]
+            session._ring_launcher(mode, None if mode == "gather" else dtype, False)
+    finally:
+        session.set_op_blocks(kernel, None)
+
+
+def _mixed_blocks_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
+    """Consecutive ops of one kernel at different blocks per role (``set_op_blocks``, as a tuning table's
+    choices run them): every chain and ring kernel this group has, ops back to back with the blocks changing
+    from op to op, every output bit for bit against its reference, and after every op the kernel's tail word
+    back at 0 on every rank (the last block of a launch resets it, so the next launch counts its own grid
+    from 0); then a tuning table whose ring all-reduce choices name blocks 1 and 2 at two sizes, ops
+    alternating between them. Every launcher these ops run, at every blocks per role, is compiled and its
+    module loaded before the first op (:meth:`EmulatedGroup.load_modules`)."""
+    torch = group.torch
+    session0 = group.sessions[0]
+    world, order = group.world, session0.chain_order
+    bf16 = torch.bfloat16
+    # Four blocks per role on eight ranks exceed what one emulation GPU keeps resident at once.
+    sequence = (1, 2, 4, 1, 4, 2) if world <= 4 else (1, 2, 1, 2)
+    # Tail words: link counters 5, 6, 7, 12, 13 (chain all-gather, chain reduce-scatter, ring reduce-scatter,
+    # ring all-gather, ring all-reduce), chain counters 3.
+    link_tails, chain_tail = (5, 6, 7, 12, 13), 3
+    cases = []
+    if session0.ring_available:
+        message = (world * 16 * 1024 + world * 16 * 3) * 2
+        cases += [("ring_reduce", "reduce", {"large_schedule": "ring"}, (message // 2,)),
+                  ("ring_gather", "gather", {"gather_schedule": "ring"}, (64, 1024)),
+                  ("ring_scatter", "scatter", {"scatter_schedule": "ring"}, (world * 32, 1024))]
+    if session0.link_available:
+        cases += [("chain_gather", "gather", {"gather_schedule": "chain"}, (64, 1024)),
+                  ("chain_scatter", "scatter", {"scatter_schedule": "chain"}, (world * 32, 1024))]
+    if session0.chain_available:
+        cases += [("chain_reduce", "reduce", {"large_schedule": "chain"}, ((256 << 10) // 2 + world * 8,))]
+    if not cases:
+        return [("mixed blocks per op", True, "no chain or ring kernel here")]
+    # One rank after another, every launcher at every blocks per role of the ops below (the table's choices
+    # name blocks 1 and 2, which the sequence holds), then every module loaded: a launcher compiled inside an
+    # op would load its module while the other ranks' kernels spin, and the load waits for them.
+    for rank, session in enumerate(group.sessions):
+        with torch.cuda.stream(group.streams[rank]):
+            for kernel, _kind, _schedule, _shape in cases:
+                for blocks in sorted(set(sequence)):
+                    _launcher_at(session, kernel, blocks, bf16)
+    group.load_modules([bf16])
+    names = ("large_schedule", "gather_schedule", "scatter_schedule")
+    results = []
+
+    def tails() -> list[int]:
+        torch.cuda.synchronize()
+        words = []
+        for session in group.sessions:
+            link = session._link_counters.cpu().tolist() if getattr(session, "_link_counters", None) is not None else []
+            chain = session._chain_counters.cpu().tolist() if getattr(session, "_chain_counters", None) is not None else []
+            words += [link[w] for w in link_tails if w < len(link)] + ([chain[chain_tail]] if chain else [])
+        return words
+
+    for seed, (kernel, kind, schedule, shape) in enumerate(cases, start=3100):
+        inputs = _inputs(torch, world, shape, bf16, seed)
+        saved = [{name: getattr(session, name) for name in names} for session in group.sessions]
+        wrong = []
+        try:
+            for session in group.sessions:
+                for name, value in schedule.items():
+                    setattr(session, name, value)
+            with contextlib.ExitStack() as stack:
+                for session in group.sessions:
+                    stack.enter_context(session.untuned())
+                if kind == "reduce":
+                    plan = session0.large_reduce_plan(inputs[0].numel() * 2)
+                    want = [references.large_all_reduce(torch, inputs, plan, order)] * world
+                elif kind == "gather":
+                    want = [torch.cat(inputs, dim=0)] * world
+                else:
+                    build = references.ring_reduce_scatter if kernel == "ring_scatter" else references.chain_reduce_scatter
+                    want = [row.reshape((shape[0] // world, *shape[1:])) for row in build(torch, inputs, order)]
+                on_device = _on_device(group, inputs)
+                for blocks in sequence:
+                    for session in group.sessions:
+                        session.set_op_blocks(kernel, blocks)
+
+                    def operation(rank, session):
+                        x = on_device[rank]
+                        if kind == "reduce":
+                            return session.all_reduce_large(x)
+                        if kind == "gather":
+                            return session.all_gather_large(x, dim=0)
+                        return session.reduce_scatter(x)
+
+                    outputs = [output.cpu() for output in group.each(operation)]
+                    timed_out = _timed_out(group)
+                    if timed_out:
+                        wrong.append(f"blocks {blocks}: {timed_out}")
+                        break
+                    differ = [rank for rank in range(world) if not _same_bits(torch, outputs[rank], want[rank])]
+                    if differ:
+                        wrong.append(f"blocks {blocks}: ranks {differ} differ")
+                    left = [word for word in tails() if word != 0]
+                    if left:
+                        wrong.append(f"blocks {blocks}: tail words {left} after the op")
+        except Exception as error:  # noqa: BLE001 - reported as a failed check
+            wrong.append(f"{type(error).__name__}: {error}")
+        finally:
+            for session, values in zip(group.sessions, saved):
+                session.set_op_blocks(kernel, None)
+                for name, value in values.items():
+                    setattr(session, name, value)
+        results.append((f"mixed blocks per op: {kernel} {list(shape)} at blocks {list(sequence)} back to back",
+                        not wrong, "; ".join(wrong[:3])))
+    if session0.ring_available:
+        from .. import tuning as tuning_mod
+
+        small, large = 128 << 10, 256 << 10
+        decisions = [{"collective": "all_reduce", "mode": "eager",
+                      "intervals": [{"from": small, "nccl": False,
+                                     "choice": {"schedule": "ring", "piece": 32768, "blocks": 1}},
+                                    {"from": large, "nccl": False,
+                                     "choice": {"schedule": "ring", "piece": 32768, "blocks": 2}}]}]
+        table = tuning_mod.Table({"schema": tuning_mod.SCHEMA, "key": dict(session0.tuning_facts(), image=""),
+                                  "run_id": "emulation", "created": "", "measurements": [],
+                                  "decisions": decisions})
+        saved_tables = [session._tuning for session in group.sessions]
+        wrong = []
+        try:
+            for session in group.sessions:
+                session._tuning = table
+                session._tuning_counts.clear()
+                session._tuning_unusable.clear()
+            for nbytes in (small, large, small, large):
+                inputs = _inputs(torch, world, (nbytes // 2,), bf16, 3200 + nbytes // 4096)
+                plan = session0.large_reduce_plan(nbytes)
+                want = references.large_all_reduce(torch, inputs, plan, order)
+                on_device = _on_device(group, inputs)
+                outputs = [output.cpu() for output in group.each(
+                    lambda rank, session, on_device=on_device: session.all_reduce_large(on_device[rank]))]
+                differ = [rank for rank in range(world) if not _same_bits(torch, outputs[rank], want)]
+                if differ:
+                    wrong.append(f"{nbytes} B: ranks {differ} differ")
+                left = [word for word in tails() if word != 0]
+                if left:
+                    wrong.append(f"{nbytes} B: tail words {left}")
+            counts = session0.stats()["tuning"]["decisions"]
+            if sorted(counts.values()) != [2, 2] or session0.stats()["tuning"]["unusable"]:
+                wrong.append(f"decisions {counts}, unusable {session0.stats()['tuning']['unusable']}")
+        except Exception as error:  # noqa: BLE001
+            wrong.append(f"{type(error).__name__}: {error}")
+        finally:
+            for session, saved_table in zip(group.sessions, saved_tables):
+                session._tuning = saved_table
+        results.append(("mixed blocks per op: a tuning table's ring all-reduce at blocks 1 and 2 by size, alternating",
+                        not wrong, "; ".join(wrong[:3])))
+    return results
+
+
 def _tuning_checks(group: EmulatedGroup) -> list[tuple[str, bool, str]]:
     """A tuning table on every session (``_tuning``, what ``SIRCL_TUNING_TABLE`` loads at setup) chooses
     each op: all-reduces from 16 B as two-shot ops in a grid of 2, from 4 KiB as one-shot ops in a grid of 1,
@@ -1344,6 +1655,9 @@ def _per_rank(group: EmulatedGroup, name: str, inputs, call: Callable, expected:
         outputs = [output.cpu() for output in group.each(operation)]
     except Exception as error:  # noqa: BLE001 - reported as a failed check
         return name, False, f"{type(error).__name__}: {error}"
+    timed_out = _timed_out(group)
+    if timed_out:
+        return name, False, timed_out
     wrong = [rank for rank, output in enumerate(outputs) if not _same_bits(torch, output, expected[rank])]
     detail = f"ranks {wrong} differ" if wrong else ""
     if compare is not None and not wrong:
@@ -1371,6 +1685,9 @@ def _repeat_check(group: EmulatedGroup, name: str, inputs, call: Callable, seeds
                 return call(session, placed[rank])
 
             outputs = [output.cpu() for output in group.each(operation)]
+            timed_out = _timed_out(group)
+            if timed_out:
+                return name, False, f"fabric order {seed}: {timed_out}"
             if first is None:
                 first = outputs
                 continue
@@ -1397,7 +1714,7 @@ def _scatter_chain_checks(group: EmulatedGroup, types) -> list[tuple[str, bool, 
     bf16, fp16, fp32 = torch.bfloat16, torch.float16, torch.float32
     # Only the prepared dtypes run: a launcher compiled here would load its module while other
     # ranks' kernels spin.
-    prepared = [dtype for dtype in types if all(("link-scatter", dtype) in session._launchers
+    prepared = [dtype for dtype in types if all(any(key[:2] == ("link-scatter", dtype) for key in session._launchers)
                                                 for session in group.sessions)]
     if not prepared:
         return [("chain reduce-scatter", False, "prepare(..., scatter=True) compiled no chain reduce-scatter")]
@@ -1728,6 +2045,8 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
             checks.append(check)
         for check in _builtin_plan_checks(group):
             checks.append(check)
+        for check in _mixed_blocks_checks(group):
+            checks.append(check)
         for check in _stagger_checks(group):
             checks.append(check)
         for check in _tuning_checks(group):
@@ -1761,8 +2080,168 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
                        f"({native.get('wait_regime')})"))
         for check in _lag_checks(group):
             checks.append(check)
+        checks.append(_teardown_check(group))
     finally:
         group.close()
+    return checks
+
+
+def _teardown_verdict(label: str, sessions: Sequence[Any], results: Sequence[Any], poisoned: Sequence[int],
+                      retained: int, entered: Sequence[int], elapsed: float) -> tuple[str, bool, str]:
+    """The check of every rank's close result: None when no rank is poisoned; else a poisoned rank's names its
+    own failure and every other rank's the lowest poisoned rank's note. Every rank entered both rounds, every
+    native context is gone, no arena was retained and the group stays usable for teardown rounds."""
+    from .. import teardown
+
+    problems = []
+    for rank, result in enumerate(results):
+        if rank in poisoned:
+            if not result or f"on rank {rank}" not in result:
+                problems.append(f"rank {rank} (poisoned): {result!r}")
+        elif poisoned:
+            if not result or not result.startswith(f"rank {poisoned[0]}: "):
+                problems.append(f"rank {rank}: {result!r}")
+        elif result is not None:
+            problems.append(f"rank {rank}: {result!r}")
+    if any(count != 2 for count in entered):
+        problems.append(f"rounds entered per rank {list(entered)}")
+    if any(getattr(s, "_proxy", None) is not None or getattr(s, "_native", None) is not None for s in sessions):
+        problems.append("a native context survived its close")
+    if len(teardown.RETAINED) != retained:
+        problems.append(f"{len(teardown.RETAINED) - retained} arena(s) retained")
+    if any(teardown.unusable(s._group) for s in sessions):
+        problems.append("the group was marked unusable")
+    if problems:
+        return (label, False, "; ".join(problems)[:600])
+    what = (f"poisoned ranks {list(poisoned)}: every result names its own failure or rank {poisoned[0]}'s"
+            if poisoned else "every result None")
+    return (label, True, f"{what}; two rounds per rank, every native context destroyed, in {elapsed:.2f} s")
+
+
+def _teardown_check(group: EmulatedGroup) -> tuple[str, bool, str]:
+    """Every rank closes at once after the other checks (the lag checks leave ranks 1 to W-1 poisoned)."""
+    from .. import teardown
+
+    poisoned = [rank for rank, session in enumerate(group.sessions) if session.poisoned]
+    retained = len(teardown.RETAINED)
+    started = time.perf_counter()
+    try:
+        results = group._threads(lambda rank: group.sessions[rank].close())
+    except Exception as error:  # noqa: BLE001
+        return ("teardown", False, f"{type(error).__name__}: {error}")
+    return _teardown_verdict("teardown", group.sessions, results, poisoned, retained, group.teardown.entered,
+                             time.perf_counter() - started)
+
+
+TEARDOWN_WAIT_S = 1.0
+
+
+def teardown_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | os.PathLike | None = None,
+                    report: Callable[[tuple[str, bool, str]], None] | None = None) -> list[tuple[str, bool, str]]:
+    """The teardown rounds of real sessions on the emulated fabric, each case on a group of its own whose
+    sessions run no kernel:
+
+    1. every rank closes a healthy group: every result None, two rounds per rank;
+    2. the last rank's control words record a flag wait that timed out: its result names its own failure,
+       every other rank's ``rank <last>: ...``, from the vote of round 1;
+    3. the fake verbs fail one queue-pair destroy (``fv_fail_teardown``): exactly one rank's result says
+       its RDMA teardown failed, and exactly its arena is retained;
+    4. rank 0 aborts (no rounds) while the others close under a serving limit of :data:`TEARDOWN_WAIT_S`:
+       the others' round 1 gives up after that limit plus ``teardown.SLACK_S`` and says so, each enters one
+       round, the group is marked unusable, and a later close on it holds no round.
+    """
+    from .. import protocol as proto
+    from .. import teardown
+
+    if library is None:
+        build = Path(os.environ.get("SIRCL_TEST_BUILD_DIR", Path.cwd() / ".build" / "sim"))
+        library = native_build.build_shared_library(build)
+    checks = _Checks(report)
+
+    def case(label: str, body: Callable[[EmulatedGroup], tuple[str, bool, str]]) -> None:
+        try:
+            group = EmulatedGroup(layout_text, lanes, max_size=64 << 10, max_gather_bytes=0, library=library)
+        except Exception as error:  # noqa: BLE001
+            checks.append((label, False, f"setup: {type(error).__name__}: {error}"))
+            return
+        try:
+            checks.append(body(group))
+        except Exception as error:  # noqa: BLE001
+            checks.append((label, False, f"{type(error).__name__}: {error}"))
+        finally:
+            group.close()
+
+    def close_all(group: EmulatedGroup, abort: Sequence[int] = ()) -> tuple[list[Any], float]:
+        started = time.perf_counter()
+        results = group._threads(lambda rank: group.sessions[rank].close(abort=rank in abort))
+        return results, time.perf_counter() - started
+
+    def healthy(group: EmulatedGroup) -> tuple[str, bool, str]:
+        retained = len(teardown.RETAINED)
+        results, elapsed = close_all(group)
+        return _teardown_verdict("teardown of a healthy group", group.sessions, results, [], retained,
+                                 group.teardown.entered, elapsed)
+
+    def poisoned(group: EmulatedGroup) -> tuple[str, bool, str]:
+        last = group.world - 1
+        ctrl = group.sessions[last]._ctrl_np
+        ctrl[proto.Ctrl.MISSING_PEER] = 0
+        ctrl[proto.Ctrl.MISSING_LANE] = 0
+        ctrl[proto.Ctrl.ERROR_KIND] = int(proto.ErrorKind.SLOT_OP)
+        ctrl[proto.Ctrl.ERROR_SEQ] = 7
+        retained = len(teardown.RETAINED)
+        results, elapsed = close_all(group)
+        return _teardown_verdict("teardown with a poisoned rank", group.sessions, results, [last], retained,
+                                 group.teardown.entered, elapsed)
+
+    def failed_destroy(group: EmulatedGroup) -> tuple[str, bool, str]:
+        retained = len(teardown.RETAINED)
+        group.fabric.lib.fv_fail_teardown(1)
+        results, elapsed = close_all(group)
+        group.fabric.lib.fv_fail_teardown(0)
+        failed = [rank for rank, result in enumerate(results) if result and "RDMA teardown call(s) failed" in result]
+        others = [result for rank, result in enumerate(results) if rank not in failed and result is not None]
+        kept = teardown.RETAINED[retained:]
+        ok = (len(failed) == 1 and not others and len(kept) == 1
+              and kept[0] is getattr(group.sessions[failed[0]], "_region", None))
+        detail = (f"rank {failed[0]}'s arena retained after one failed queue-pair destroy, in {elapsed:.2f} s"
+                  if ok else f"results {results}, {len(kept)} arena(s) retained")
+        return ("teardown with a failed RDMA destroy", ok, detail[:600])
+
+    def aborted(group: EmulatedGroup) -> tuple[str, bool, str]:
+        for session in group.sessions:
+            session.serving_wait_s = TEARDOWN_WAIT_S
+            session.enter_serving()
+        limit = TEARDOWN_WAIT_S + teardown.SLACK_S
+        results, elapsed = close_all(group, abort=(0,))
+        shared = group.sessions[1]._group
+        problems = []
+        if results[0] is not None:
+            problems.append(f"rank 0 (aborted): {results[0]!r}")
+        missed = f"round 1: not every rank arrived within {limit:g} s"
+        problems += [f"rank {rank}: {result!r}" for rank, result in enumerate(results)
+                     if rank and (not result or missed not in result)]
+        if group.teardown.entered != [0] + [1] * (group.world - 1):
+            problems.append(f"rounds entered per rank {group.teardown.entered}")
+        if not teardown.unusable(shared):
+            problems.append("the group was not marked unusable")
+        if not limit * 0.9 <= elapsed < limit + 30:
+            problems.append(f"the closes took {elapsed:.2f} s for a {limit:g} s round")
+        calls: list[Any] = []
+        later = teardown.ordered_close(group=shared, exchange=lambda note: calls.append(note) or [note],
+                                       own_failure=None, limit_s=limit, stop=lambda: None, what="a later close")
+        if calls or not later or "closed without the teardown rounds" not in later:
+            problems.append(f"a later close on the group: {later!r}, {len(calls)} round(s)")
+        if problems:
+            return ("teardown with an aborted rank", False, "; ".join(problems)[:600])
+        return ("teardown with an aborted rank", True,
+                f"ranks 1-{group.world - 1} gave up round 1 after {elapsed:.2f} s ({limit:g} s limit); the group "
+                "is unusable and a later close holds no round")
+
+    case("teardown of a healthy group", healthy)
+    case("teardown with a poisoned rank", poisoned)
+    case("teardown with a failed RDMA destroy", failed_destroy)
+    case("teardown with an aborted rank", aborted)
     return checks
 
 
@@ -2009,6 +2488,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tune", action="store_true",
                         help="run tune_checks (the ring harness's tune command and sessions that take its table) "
                              "instead of run_checks")
+    parser.add_argument("--teardown", action="store_true",
+                        help="run teardown_checks (the teardown rounds of sessions that run no kernel) instead of "
+                             "run_checks")
     args = parser.parse_args(argv)
     def show(check: tuple[str, bool, str]) -> None:
         name, ok, detail = check
@@ -2017,6 +2499,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.tune:
         checks = tune_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
                              report=show)
+    elif args.teardown:
+        checks = teardown_checks(args.layout, args.lanes, report=show)
     else:
         checks = run_checks(args.layout, args.lanes, max_size=args.max_size, max_gather_bytes=args.max_gather_bytes,
                             dtypes=tuple(args.dtypes.split(",")), report=show, event_trace=args.event_trace,

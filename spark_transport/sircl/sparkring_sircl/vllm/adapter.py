@@ -68,6 +68,21 @@ tensor-parallel communicator's ``b12x_ar_comm.check_health`` after a step.
 :func:`capture_all` and :func:`check_all_health` cover every live session of
 the process, and the communicator chains them into that slot.
 
+Failure checks around a step. A flag wait that times out is recorded by the
+kernel itself (the session's control words in pinned host memory, then its
+poison word) after the op that waited has returned to Python, so that op's
+outputs are not results and every later kernel of the session returns
+without work. The post-step check above runs once the step's output is on
+the host and keeps that step's tokens in the worker. The ``step_health`` shim
+(:mod:`.shims`) runs :func:`check_all_failures` when each of the worker's step
+methods starts (``execute_model``, ``sample_tokens``,
+``execute_dummy_batch``), before any of the step's SIRCL ops launch: a failure
+recorded during an earlier step, or after an earlier check (an op ordered
+after the sampled tokens' copy, such as a draft model's forward pass), raises
+there instead of at the step's first eager SIRCL call, which a CUDA graph
+replay never makes. :func:`check_all_failures` reads host memory only: no
+device synchronization, no regime change, no receipt.
+
 Flag-wait regimes. A session waits for a late peer at most the limit of its
 regime: ``startup`` (minutes: compilation, warm-up, graph capture) or
 ``serving`` (seconds: a longer lag means a failed rank). Sessions start in the
@@ -256,6 +271,18 @@ def _enter_regime(adapters: Sequence["GroupAdapter"], regime: str, reason: str) 
     return changed
 
 
+def check_all_failures() -> None:
+    """Raise when any SIRCL session or point-to-point channel set of this process recorded a failure: a flag
+    wait that timed out or a progress thread that stopped (``GroupAdapter.check_failures``).
+
+    Run by the ``step_health`` shim when each of the worker's step methods starts. Host reads only (each
+    session's control words and native failure flag, the channels' failure words): no device
+    synchronization, no regime change, no receipt.
+    """
+    for adapter in live_adapters():
+        adapter.check_failures()
+
+
 def check_all_health() -> None:
     """Fail-stop check of every SIRCL session in this process, run by vLLM's worker after each step.
 
@@ -439,7 +466,9 @@ class GroupAdapter:
                     self._share_p2p()
         except BaseException:
             guard.unregister(device_group)
-            self.close()
+            # The group is not tearing down as a whole (this may be one rank alone): the
+            # peers keep serving, so the teardown rounds would only wait them out.
+            self.close(abort=True)
             raise
         ranks = placement.global_ranks
         # The plans take no tuning-table input: a session's table chooses among SIRCL's options inside the
@@ -869,13 +898,18 @@ class GroupAdapter:
             self._receipt_dirty = True
         return changed
 
-    def check_health(self) -> None:
+    def check_failures(self) -> None:
+        """Raise when the group's session, DCP session or point-to-point channels recorded a failure (host
+        reads only)."""
         if self.slot is not None:
             type(self.slot).check_health(self.slot)
         if self.dcp is not None:
             type(self.dcp).check_health(self.dcp)
         if self.p2p is not None and self.p2p_shared_from is None:
             self.p2p.check_health()
+
+    def check_health(self) -> None:
+        self.check_failures()
         self._refresh_receipt()
 
     def _refresh_receipt(self) -> None:
@@ -1254,7 +1288,11 @@ class GroupAdapter:
             self._receipt_version = self.counters.version
             receipt.write(self.report(stats=stats), self.config.receipt_dir)
 
-    def close(self) -> None:
+    def close(self, *, abort: bool = False) -> None:
+        """Close this group's SIRCL resources: the DCP session, then the point-to-point channels,
+        every rank in this order (their teardown rounds pair across ranks in issue order).
+        ``abort`` skips the rounds: on a setup failure the group is not tearing down as a whole,
+        so waiting for peers that keep serving would only delay the raise."""
         if self._closed:
             return
         self._closed = True
@@ -1267,11 +1305,18 @@ class GroupAdapter:
         dcp, self.dcp = self.dcp, None
         if dcp is not None:
             with contextlib.suppress(Exception):
-                dcp.close()
+                # A session module's close may take no argument: abort is passed only when set.
+                if abort:
+                    dcp.close(abort=True)
+                else:
+                    dcp.close()
         channels, self.p2p = self.p2p, None
         if channels is not None and self.p2p_shared_from is None:
             with contextlib.suppress(Exception):
-                channels.close()
+                if abort:
+                    channels.close(abort=True)
+                else:
+                    channels.close()
         self.session = None             # a shared session stays open: its owner closes it
 
 

@@ -326,6 +326,12 @@ class Worker:
 
     def execute_model(self, scheduler_output):
         return self._run("execute_model")
+
+    def sample_tokens(self, grammar_output):
+        return self._run("sample_tokens")
+
+    def execute_dummy_batch(self):
+        return self._run("execute_dummy_batch")
 '''
 FILES["vllm/models/__init__.py"] = ""
 FILES["vllm/models/glm5next/__init__.py"] = """

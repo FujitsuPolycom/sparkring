@@ -88,7 +88,10 @@ ROLES = 4                    # all-gather roles: own link 0, own link 1, inbound
 # links 0 and 1, inbound items of links 0 and 1, the link op sequence, then the tail arrivals of
 # the chain all-gather (word 5), the chain reduce-scatter (word 6) and the ring reduce-scatter
 # (word 7), the own and inbound items of links 2 and 3 (words 8-11), and the tail arrivals of the
-# ring all-gather and all-reduce (words 12 and 13): each grid size counts on its own word.
+# ring all-gather and all-reduce (words 12 and 13). Each kernel type counts its blocks' arrivals on
+# a word of its own; the block whose arrival completes the launch's grid (prior + 1 == grid size)
+# is the last one, and it returns the word to 0, so consecutive launches of one kernel type may use
+# different grids (a tuning table's blocks per op) and every launch starts its count at 0.
 COUNTER_WORDS = 16
 DTYPE_NAMES = ("float16", "bfloat16", "float32")
 PIECE_COUNTERS = 65536       # arrival counters of an owner's pieces: the most pieces of one reduce-scatter
@@ -384,7 +387,10 @@ class LinkGather(_LinkKernel):
             cute.arch.sync_threads()
             if Int32(tidx) == Int32(0):
                 prior = atomic_add_relaxed_gpu_u32(counters + Int64(20), Uint32(1))
-                if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
+                if prior + Uint32(1) == Uint32(gdim):
+                    # Every block of this launch arrived: return the tail to 0, so the next launch of this
+                    # kernel finds its last block by the same count whatever its grid.
+                    st_release_gpu_u32(counters + Int64(20), Uint32(0))
                     fence_sc_gpu()
                     if ld_relaxed_sys_u32(ctrl_base + Int64(_ERROR_SEQ)) == Uint32(0):
                         pieces = Uint32((shard_packs + piece_packs - Int32(1)) // piece_packs)
@@ -741,7 +747,10 @@ class LinkScatter(_LinkKernel):
             cute.arch.sync_threads()
             if Int32(tidx) == Int32(0):
                 prior = atomic_add_relaxed_gpu_u32(counters + Int64(24), Uint32(1))
-                if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
+                if prior + Uint32(1) == Uint32(gdim):
+                    # Every block of this launch arrived: return the tail to 0, so the next launch of this
+                    # kernel finds its last block by the same count whatever its grid.
+                    st_release_gpu_u32(counters + Int64(24), Uint32(0))
                     fence_sc_gpu()
                     if ld_relaxed_sys_u32(ctrl_base + Int64(_ERROR_SEQ)) == Uint32(0):
                         pieces = Uint32((chunk_packs + piece_packs - Int32(1)) // piece_packs)
@@ -1122,7 +1131,10 @@ class LinkRing(_LinkKernel):
             cute.arch.sync_threads()
             if Int32(tidx) == Int32(0):
                 prior = atomic_add_relaxed_gpu_u32(counters + Int64(_RING_TAILS[self._mode]), Uint32(1))
-                if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
+                if prior + Uint32(1) == Uint32(gdim):
+                    # Every block of this launch arrived: return the tail to 0, so the next launch of this
+                    # kernel finds its last block by the same count whatever its grid.
+                    st_release_gpu_u32(counters + Int64(_RING_TAILS[self._mode]), Uint32(0))
                     fence_sc_gpu()
                     if ld_relaxed_sys_u32(ctrl_base + Int64(_ERROR_SEQ)) == Uint32(0):
                         pieces = Uint32((chunk_packs + piece_packs - Int32(1)) // piece_packs)

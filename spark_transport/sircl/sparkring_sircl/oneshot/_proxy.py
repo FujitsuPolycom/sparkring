@@ -46,7 +46,7 @@ def _declare(lib: ctypes.CDLL) -> ctypes.CDLL:
         "roce_hca_stat": (u64, [p, i32, i32]),
         "roce_tracing": (i32, [p]),
         "roce_trace_read": (i32, [p, ctypes.POINTER(u64), u64]),
-        "roce_destroy": (None, [p]),
+        "roce_destroy": (i32, [p]),
         "roce_store_release_u32": (None, [p, ctypes.c_uint32]),
         "roce_load_acquire_u32": (ctypes.c_uint32, [p]),
         "roce_set_forward": (i32, [p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_uint32]),
@@ -343,10 +343,14 @@ class Proxy:
         """Phase tracing is unsupported by this build of the native library."""
         return None
 
-    def close(self) -> None:
+    def close(self) -> int:
+        """Stop the progress thread and release the verbs objects (idempotent): the number of verbs calls
+        that failed, 0 when every object was released. Nonzero means a queue pair or memory registration may
+        survive, so the caller keeps the registered arena allocated."""
         ctx, self._ctx = self._ctx, None
         if ctx:
-            self._lib.roce_destroy(ctx)
+            return int(self._lib.roce_destroy(ctx))
+        return 0
 
     def __del__(self) -> None:  # pragma: no cover - defensive teardown
         with contextlib.suppress(Exception):

@@ -571,9 +571,11 @@ def link_rounds(op: int, world: int, index: int, link: int) -> LinkRounds:
 
 
 # The ring reduce-scatter's stagger D (link 2) travels in bits 8-15 of its link op word, the ring
-# all-gather's stagger D3 (link 3) in bits 16-23; bits 24-31 are zero.
+# all-gather's stagger D3 (link 3) in bits 16-23; bit 24 (RING_OWN_FLAGS) makes every own item of the op
+# go out as its flags only (its peer discards that rank's own items); bits 25-31 are zero.
 RING_STAGGER_SHIFT = 8
 RING_GATHER_STAGGER_SHIFT = 16
+RING_OWN_FLAGS = 1 << 24
 MAX_RING_STAGGER = 4
 
 
@@ -603,12 +605,18 @@ DEFAULT_LINK_BLOCKS = 4
 # - path:4 (Sparks 0-3, the ring closed through two relays), 512 KiB pieces: the ring all-reduce 395.1 /
 #   375.9 / 366.8 us at 4 MiB, 1,379.4 / 1,356.3 / 1,339.9 us at 16 MiB and 5,163.5 / 5,185.1 / 5,184.0 us
 #   at 64 MiB; the ring all-gather 231.0 / 214.2 / 205.1 us for 1 MiB shards and 2,622.5 / 2,597.3 /
-#   2,586.9 us for 16 MiB shards.
-# Not measured, so DEFAULT_LINK_BLOCKS: the chain all-gather and reduce-scatter on a pair, the ring
-# reduce-scatter and the chain all-gather and reduce-scatter on a path of four, every kernel on other paths,
-# cycles and strided groups.
+#   2,586.9 us for 16 MiB shards;
+# - cycle:8 (all eight Sparks, every edge cabled, 16 link slots): the ring all-reduce in 512 KiB pieces
+#   1,306.5 / 1,286.2 / 1,269.4 us at 16 MiB and
+#   4,915.8 / 4,888.2 / 4,875.8 us at 64 MiB, in 256 KiB pieces 449.7 / 451.2 / 423.6 us at 4 MiB; the ring
+#   all-gather of 16 MiB shards in 512 KiB pieces 4,922.5 / 4,884.2 / 4,868.9 us; the ring reduce-scatter of 64 MiB
+#   in 512 KiB pieces 2,502.9 / 2,481.8 / 2,475.1 us; 1 block the fastest in 32 of the 33 ring cases.
+# Not measured, so DEFAULT_LINK_BLOCKS: the chain all-gather and reduce-scatter on a pair and on the cycle of
+# eight, the ring reduce-scatter and the chain all-gather and reduce-scatter on a path of four, every kernel on
+# other paths, other cycles and strided groups.
 LINK_BLOCKS_BY_SHAPE: dict[str, dict[str, int]] = {"pair": {"ring_reduce": 1, "ring_gather": 1, "ring_scatter": 1},
-                                                   "path:4": {"ring_reduce": 1, "ring_gather": 1}}
+                                                   "path:4": {"ring_reduce": 1, "ring_gather": 1},
+                                                   "cycle:8": {"ring_reduce": 1, "ring_gather": 1, "ring_scatter": 1}}
 
 
 def link_blocks(shape: str | None, world: int, overall: int = 0, own: Mapping[str, int] | None = None) -> dict[str, int]:
@@ -640,16 +648,18 @@ def ring_rounds(pieces: int, world: int, stagger: int) -> int:
     return int(pieces) + (int(world) - 2) * int(stagger)
 
 
-def ring_op_word(op: int, stagger: int = 0, gather_stagger: int = 0) -> int:
+def ring_op_word(op: int, stagger: int = 0, gather_stagger: int = 0, own_flags: bool = False) -> int:
     """The link op word of a ring op: its code, the stagger D of link 2 (ring reduce-scatter and
-    all-reduce) and the stagger D3 of link 3 (ring all-gather and all-reduce)."""
+    all-reduce), the stagger D3 of link 3 (ring all-gather and all-reduce) and, with ``own_flags``, the
+    bit that sends every own item of the op as its flags only."""
     if not (0 <= int(stagger) <= MAX_RING_STAGGER and 0 <= int(gather_stagger) <= MAX_RING_STAGGER):
         raise ProtocolError(f"ring staggers {stagger} and {gather_stagger}: 0 to {MAX_RING_STAGGER} rounds")
     if int(stagger) and op not in (LinkOp.RING_SCATTER, LinkOp.RING_REDUCE):
         raise ProtocolError(f"link op {op} has no partials to stagger")
     if int(gather_stagger) and op not in (LinkOp.RING_GATHER, LinkOp.RING_REDUCE):
         raise ProtocolError(f"link op {op} forwards no finished pieces")
-    return int(op) | int(stagger) << RING_STAGGER_SHIFT | int(gather_stagger) << RING_GATHER_STAGGER_SHIFT
+    return (int(op) | int(stagger) << RING_STAGGER_SHIFT | int(gather_stagger) << RING_GATHER_STAGGER_SHIFT
+            | (RING_OWN_FLAGS if own_flags else 0))
 
 
 def ring_forward_source(item: int, world: int, stagger: int) -> int | None:

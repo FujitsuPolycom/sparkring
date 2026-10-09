@@ -72,7 +72,19 @@ Contract:
   bytes and the capacity: 28,672 on the ring of eight farthest first, 73,728
   on a path of four), and a session without a layout 131,072. Every rank
   derives it from agreed inputs, and the setup agreement compares it
-  (``stats()['oneshot_max_source']`` names where it came from).
+  (``stats()['oneshot_max_source']`` names where it came from);
+- close: :meth:`close` is collective over the exchange group unless
+  ``abort`` is set. It refuses further work, synchronizes the device, holds
+  the two teardown rounds of :mod:`sparkring_sircl.teardown` (round 1 votes
+  every rank's health while every progress thread runs; the rank stops its
+  progress thread; round 2, only after round 1 completed, waits for every
+  rank's stop) and then destroys the native context. Its result, also kept
+  as ``close_result``, is None after a healthy close and otherwise names this
+  rank's failure, the first failed peer's or the round that did not
+  complete. When a verbs object cannot be released, or the device
+  synchronization failed (a kernel may still use the arena), the registered
+  arena stays allocated for the rest of the process. ``abort`` (setup failures,
+  garbage collection) skips the rounds.
 
 This build carries the one-shot and two-shot all-reduce, the all-gather and
 the scatter collectives (reduce-scatter and all-to-all; host side in
@@ -111,6 +123,7 @@ from .. import scatter_plan as _scatter_plan
 from ..agreement import agreement_failures
 from .. import roce_gid
 from .. import routes as routes_mod
+from .. import teardown as teardown_mod
 from .. import tuning as tuning_mod
 from . import _allgather_cute, _chain_cute, _links_cute, _oneshot_cute, _scatter_ops, _timed_wait, _twoshot_cute
 from ._proxy import ABI_VERSION, Layout, Proxy
@@ -381,7 +394,8 @@ def _exchange(local: object, group: ProcessGroup) -> list[object]:
 
 @contextmanager
 def _environment(**overrides: str | None):
-    """Set environment variables the native layer reads at creation and start."""
+    """Set environment variables the native layer reads at creation and start, for the block, under
+    ``_ENV_LOCK``; a constructor reads them under the same lock (:func:`_process_environment`)."""
     with _ENV_LOCK:
         saved = {name: os.environ.get(name) for name in overrides}
         try:
@@ -395,6 +409,22 @@ def _environment(**overrides: str | None):
                     os.environ.pop(name, None)
                 else:
                     os.environ[name] = value
+
+
+def _joined_text(first: Optional[str], second: str) -> str:
+    return f"{first}; {second}" if first else second
+
+
+# The variables a constructor sets for its native context with _environment.
+NATIVE_CONTEXT_VARIABLES = ("SIRCL_POST_ORDER", "SIRCL_PROGRESS_CPU")
+
+
+def _process_environment(*names: str) -> dict[str, Optional[str]]:
+    """The process's values of ``names``, read under ``_ENV_LOCK``: never a value that another session's
+    constructor in this process set for its own native context (:func:`_environment`), when sessions are
+    constructed at once (the GPU emulation's rank threads)."""
+    with _ENV_LOCK:
+        return {name: os.environ.get(name) for name in names}
 
 
 class RoceOneshotAllReduce:
@@ -429,6 +459,11 @@ class RoceOneshotAllReduce:
         self.world_size = dist.get_world_size(group=exchange_group)
         self._group = exchange_group
         self._closed = False
+        self.close_result: Optional[str] = None
+        # The teardown rounds' channel (teardown.tensor_exchange); the GPU emulation binds its thread group's.
+        self._teardown_exchange = teardown_mod.tensor_exchange(exchange_group)
+        # Its ordinal among this rank's objects of the group: the teardown notes name the close by it.
+        self._teardown_ordinal = teardown_mod.register(exchange_group, self.rank)
         self._lock = threading.Lock()
         self._proxy: Optional[Proxy] = None
         # close() reads these; a setup that fails before _configure sets them reports its own error.
@@ -484,7 +519,8 @@ class RoceOneshotAllReduce:
         statuses = _exchange((error, blob, self._setup_record() if error is None else {}), exchange_group)
         failures = agreement_failures(statuses, self._layout_identity_object)
         if failures:
-            self.close()
+            # Every rank fails here alike and no collective ran: nothing is owed, so no rounds.
+            self.close(abort=True)
             raise RuntimeError("SIRCL session setup failed: " + "; ".join(failures))
         self._verdict("queue-pair connection", lambda: self._proxy.connect([s[1] for s in statuses]))
         route_maps = [{int(peer): tuple(devices) for peer, devices in status[2]["route_map"].items()}
@@ -587,12 +623,15 @@ class RoceOneshotAllReduce:
                 self.startup_wait_s = float(given)
             else:
                 self.serving_wait_s = float(given)
+        # Read under _ENV_LOCK: another session's constructor in this process may hold its own values of these
+        # in the environment while it creates or starts its native context.
+        given = _process_environment(*NATIVE_CONTEXT_VARIABLES)
         # Empty: the layout's default, chosen once the layout is known.
         self._post_order_name = (post_order if post_order is not None
-                                 else os.environ.get("SIRCL_POST_ORDER", "")).strip()
+                                 else (given["SIRCL_POST_ORDER"] or "")).strip()
         if self._post_order_name not in ("", "farthest"):
             proto.post_order(self.rank, self.world_size, self._post_order_name)
-        self._progress_cpu = progress_cpu if progress_cpu is not None else os.environ.get("SIRCL_PROGRESS_CPU")
+        self._progress_cpu = progress_cpu if progress_cpu is not None else given["SIRCL_PROGRESS_CPU"]
         post_mode = _env_text("SIRCL_POST_MODE", default="verbs")
         if post_mode != "verbs":
             raise ValueError(f"SIRCL_POST_MODE={post_mode} is unsupported by this SIRCL build; use verbs")
@@ -754,6 +793,8 @@ class RoceOneshotAllReduce:
         self.chain_slot_bytes = _env_int("SIRCL_CHAIN_SLOT_BYTES", default=self._table_settings.get(
             "SIRCL_CHAIN_SLOT_BYTES", DEFAULT_CHAIN_SLOT_BYTES))
         self.chain_blocks = _env_int("SIRCL_CHAIN_BLOCKS", default=DEFAULT_CHAIN_BLOCKS)
+        # Set in the environment: a tuning table's blocks do not apply to the chain all-reduce.
+        self._chain_blocks_env = bool(os.environ.get("SIRCL_CHAIN_BLOCKS", "").strip())
         self.chain_unroll = _env_int("SIRCL_CHAIN_UNROLL", default=DEFAULT_CHAIN_UNROLL)
         self._chain_mins = _env_minimums("SIRCL_CHAIN_MIN_BYTES", DEFAULT_CHAIN_MINS)
         self._ring_mins = _env_minimums("SIRCL_RING_MIN_BYTES", DEFAULT_RING_MINS)
@@ -793,10 +834,15 @@ class RoceOneshotAllReduce:
         self.link_slot_bytes = _env_int("SIRCL_LINK_SLOT_BYTES", default=auto_slot)
         shape = (tuning_mod.shape_of(self._layout_identity_object.identity())
                  if self._layout_identity_object is not None else None)
-        # Fixed for the session: a link kernel's tail counter counts the arrivals of one grid.
-        self.link_blocks = proto.link_blocks(
-            shape, self.world_size, _env_int("SIRCL_LINK_BLOCKS", default=0),
-            {collective: _env_int(name, default=0) for collective, name in LINK_BLOCK_VARIABLES.items()})
+        # The session's blocks per link kernel. A tuning table's choice may run one op at other blocks
+        # (_op_blocks), except for a collective whose blocks the environment sets; every link kernel and the
+        # chain kernel return their tail counter to 0 at the end of a launch, so grids may change between ops.
+        overall_blocks = _env_int("SIRCL_LINK_BLOCKS", default=0)
+        own_blocks = {collective: _env_int(name, default=0) for collective, name in LINK_BLOCK_VARIABLES.items()}
+        self.link_blocks = proto.link_blocks(shape, self.world_size, overall_blocks, own_blocks)
+        self._link_blocks_env = {collective: int(own_blocks[collective] or overall_blocks) for collective in own_blocks}
+        # Blocks of the current op by kernel (link kernels and "chain_reduce"), over the session's.
+        self._op_blocks: dict[str, int] = {}
         self.link_unroll = _env_int("SIRCL_LINK_UNROLL", default=DEFAULT_LINK_UNROLL)
         link_chunk = configured["SIRCL_LINK_CHUNK_BYTES"] or min(DEFAULT_LINK_CHUNK_BYTES, self.link_slot_bytes)
         proto.LinkLayout(self.lane_count, self.link_slots, self.link_slot_bytes)   # validates the geometry
@@ -946,7 +992,37 @@ class RoceOneshotAllReduce:
         if kernel not in self.link_blocks:
             raise ValueError(f"no link kernel runs the {schedule} {collective}; link kernels are "
                              f"{', '.join(self.link_blocks)}")
-        return self.link_blocks[kernel]
+        return self._op_blocks.get(kernel, self.link_blocks[kernel])
+
+    def chain_blocks_for(self) -> int:
+        """Blocks per role of the chain all-reduce's next op: the op's own (a tuning table's choice,
+        :meth:`set_op_blocks`), else the session's (``chain_blocks``, ``SIRCL_CHAIN_BLOCKS``)."""
+        return self._op_blocks.get("chain_reduce", self.chain_blocks)
+
+    def set_op_blocks(self, kernel: str, blocks: Optional[int]) -> None:
+        """Blocks per role of later ops of one kernel (a link kernel of ``protocol.LINK_BLOCK_KERNELS``, or
+        ``chain_reduce``, the chain all-reduce), over the session's and the environment's; None returns the
+        kernel to the session's. For a caller that fixes an op's blocks (the ring harness's forced rows and
+        ``tune`` candidates); every rank sets the same value before the same op, and an op in a CUDA graph
+        capture needs its launcher compiled before the capture."""
+        if kernel not in set(self.link_blocks) | {"chain_reduce"}:
+            raise ValueError(f"kernels are {', '.join([*self.link_blocks, 'chain_reduce'])}, not {kernel!r}")
+        if blocks is None:
+            self._op_blocks.pop(kernel, None)
+            return
+        if not 1 <= int(blocks) <= 64:
+            raise ValueError(f"blocks per role must be 1 to 64, got {blocks}")
+        self._op_blocks[kernel] = int(blocks)
+
+    def _choice_blocks(self, collective: str, choice: tuning_mod.Choice) -> dict[str, int]:
+        """The op blocks ``choice`` sets for ``collective`` (kernel -> blocks): none where it names no blocks
+        or the environment sets that collective's (``SIRCL_*LINK_BLOCKS``, ``SIRCL_CHAIN_BLOCKS``)."""
+        kind = {"all_reduce": "reduce", "all_gather": "gather", "reduce_scatter": "scatter"}.get(collective)
+        if choice.blocks is None or kind is None or choice.schedule not in ("chain", "ring"):
+            return {}
+        if choice.schedule == "chain" and kind == "reduce":
+            return {} if self._chain_blocks_env else {"chain_reduce": int(choice.blocks)}
+        return {} if self._link_blocks_env.get(kind) else {f"{choice.schedule}_{kind}": int(choice.blocks)}
 
     def link_chunk_for(self, collective: str) -> int:
         """The link piece of ``collective``: ``gather`` (chain and ring all-gathers), ``scatter`` (chain and
@@ -1080,26 +1156,30 @@ class RoceOneshotAllReduce:
                 self.ring_stagger = choice.stagger
             if choice.gather_stagger is not None:
                 self.ring_gather_stagger = choice.gather_stagger
+            self._op_blocks.update(self._choice_blocks(collective, choice))
         return True
 
     @contextlib.contextmanager
-    def _tuned_op(self, collective: str, nbytes: int, *, mode: Optional[str] = None, count: bool = True):
+    def _tuned_op(self, collective: str, nbytes: int, *, mode: Optional[str] = None, count: bool = True,
+                  direct: bool = False):
         """One op of ``collective`` of ``nbytes`` with the tuning table's choice for ``mode`` (the current
         one when None) applied, the session's settings restored after it; counts the op under its choice
         (or as unusable when the choice cannot run here) unless ``count`` is False. Without a table, inside
-        :meth:`untuned` or without a decision, nothing changes. Nested uses apply the same choice again."""
+        :meth:`untuned` or without a decision, nothing changes. Nested uses apply the same choice again.
+        With ``direct`` (an op that is one one-shot or two-shot launch: :meth:`all_reduce`), a ring or chain
+        choice is not the op's: it is neither applied nor counted, and the rules choose the algorithm."""
         if self._tuning is None or self._tuning_suspended or not self._plan_applies(collective):
             yield None
             return
         mode = mode or self._mode()
         choice = self._tuning.decide(collective, int(nbytes), mode)
-        if choice is None:
+        if choice is None or (direct and choice.schedule in ("ring", "chain")):
             yield None
             return
         with self._tuning_lock:
             saved = (self._large_blocks, self._blocks, self.large_schedule, self.gather_schedule,
                      self.scatter_schedule, dict(self._ring_mins), dict(self._chain_mins), dict(self._link_chunks),
-                     self.chain_chunk_bytes, self.ring_stagger, self.ring_gather_stagger)
+                     self.chain_chunk_bytes, self.ring_stagger, self.ring_gather_stagger, dict(self._op_blocks))
             applied = self._apply_choice(collective, choice, int(nbytes))
             if count:
                 label = f"{collective}/{mode}/{choice.label()}"
@@ -1110,7 +1190,9 @@ class RoceOneshotAllReduce:
             finally:
                 (self._large_blocks, self._blocks, self.large_schedule, self.gather_schedule, self.scatter_schedule,
                  ring_mins, chain_mins, link_chunks, self.chain_chunk_bytes, self.ring_stagger,
-                 self.ring_gather_stagger) = saved
+                 self.ring_gather_stagger, op_blocks) = saved
+                self._op_blocks.clear()
+                self._op_blocks.update(op_blocks)
                 self._ring_mins.clear()
                 self._ring_mins.update(ring_mins)
                 self._chain_mins.clear()
@@ -1411,7 +1493,8 @@ class RoceOneshotAllReduce:
         verdicts = _exchange(error, self._group)
         failures = [f"rank {index}: {verdict}" for index, verdict in enumerate(verdicts) if verdict is not None]
         if failures:
-            self.close()
+            # Every rank fails here alike, after its lane checks ended and before any collective: no rounds.
+            self.close(abort=True)
             raise RuntimeError(f"SIRCL session {what} failed: " + "; ".join(failures))
 
     @classmethod
@@ -1577,22 +1660,17 @@ class RoceOneshotAllReduce:
             if self.max_gather_bytes > 0:
                 self._all_gather_launcher(capturing=False)
                 self._tiled_gather_launcher(capturing=False)
-            if self.chain_available:
-                for dtype in dtypes:
-                    self._chain_launcher(dtype, capturing=False)
-            if self.link_available and self.max_gather_bytes > 0 and (links or self.gather_schedule != "pieces"):
-                self._gather_chain_launcher(capturing=False)
-            if scatter and self.link_available and (links or self.scatter_schedule != "pieces"):
-                for dtype in dtypes:
-                    self._scatter_chain_launcher(dtype, capturing=False)
-            schedules = (self.large_schedule, self.gather_schedule, self.scatter_schedule)
-            if self.ring_available and (links or "ring" in schedules):
-                for dtype in dtypes:
-                    self._ring_launcher("reduce", dtype, capturing=False)
-                    if scatter:
-                        self._ring_launcher("scatter", dtype, capturing=False)
-                if self.max_gather_bytes > 0:
-                    self._ring_launcher("gather", None, capturing=False)
+            self._prepare_link_launchers(dtypes, scatter, links)
+            # Every block count a tuning table's choices run with is compiled too, so its ops also run in a
+            # CUDA graph capture.
+            for override in self._table_block_overrides():
+                saved_blocks = dict(self._op_blocks)
+                self._op_blocks.update(override)
+                try:
+                    self._prepare_link_launchers(dtypes, scatter, links)
+                finally:
+                    self._op_blocks.clear()
+                    self._op_blocks.update(saved_blocks)
             if scatter and self.scatter_available:
                 _scatter_ops.prepare(self, dtypes)
             if self.poll_rate_per_s is None:
@@ -1644,8 +1722,37 @@ class RoceOneshotAllReduce:
             self._launchers[key] = launcher
         return launcher
 
+    def _prepare_link_launchers(self, dtypes: Sequence[torch.dtype], scatter: bool, links: bool) -> None:
+        """Compile the chain, chain-link and ring launchers ``prepare`` needs at the current blocks."""
+        if self.chain_available:
+            for dtype in dtypes:
+                self._chain_launcher(dtype, capturing=False)
+        if self.link_available and self.max_gather_bytes > 0 and (links or self.gather_schedule != "pieces"):
+            self._gather_chain_launcher(capturing=False)
+        if scatter and self.link_available and (links or self.scatter_schedule != "pieces"):
+            for dtype in dtypes:
+                self._scatter_chain_launcher(dtype, capturing=False)
+        schedules = (self.large_schedule, self.gather_schedule, self.scatter_schedule)
+        if self.ring_available and (links or "ring" in schedules):
+            for dtype in dtypes:
+                self._ring_launcher("reduce", dtype, capturing=False)
+                if scatter:
+                    self._ring_launcher("scatter", dtype, capturing=False)
+            if self.max_gather_bytes > 0:
+                self._ring_launcher("gather", None, capturing=False)
+
+    def _table_block_overrides(self) -> list[dict[str, int]]:
+        """The distinct op blocks the tuning table's choices set (``_choice_blocks``), for ``prepare``."""
+        found: list[dict[str, int]] = []
+        for collective, _mode, choice in (self._tuning.decided() if self._tuning is not None else ()):
+            override = self._choice_blocks(collective, choice)
+            if override and override not in found:
+                found.append(override)
+        return found
+
     def _chain_launcher(self, dtype: torch.dtype, capturing: bool) -> Callable[..., None]:
-        key = ("chain", dtype)
+        blocks = self.chain_blocks_for()
+        key = ("chain", dtype, blocks)
         launcher = self._launchers.get(key)
         if launcher is None:
             if capturing:
@@ -1656,28 +1763,29 @@ class RoceOneshotAllReduce:
             launcher = _chain_cute.get_launcher(
                 _DTYPE_NAMES[dtype], self.world_size, self.chain_index, self._chain_prev, self._chain_next,
                 self.rank, self._threads, self.lane_count, self.chain_slots, self.chain_slot_bytes,
-                self.chain_blocks, self.device.index, self.chain_unroll, self.event_trace,
+                blocks, self.device.index, self.chain_unroll, self.event_trace,
             )
             self._launchers[key] = launcher
         return launcher
 
     def _gather_chain_launcher(self, capturing: bool) -> Callable[..., None]:
-        key = ("link-gather",)
+        blocks = self.link_blocks_for("gather", "chain")
+        key = ("link-gather", blocks)
         launcher = self._launchers.get(key)
         if launcher is None:
             if capturing:
                 raise RuntimeError("SIRCL chain all-gather was not prepared before CUDA graph capture; call prepare()")
             launcher = _links_cute.get_gather_launcher(
                 self.world_size, self.chain_index, self._chain_prev, self._chain_next, self.rank, self.chain_order,
-                self._threads, self.lane_count, self.link_slots, self.link_slot_bytes,
-                self.link_blocks_for("gather", "chain"),
+                self._threads, self.lane_count, self.link_slots, self.link_slot_bytes, blocks,
                 self.link_unroll, self.device.index,
             )
             self._launchers[key] = launcher
         return launcher
 
     def _scatter_chain_launcher(self, dtype: torch.dtype, capturing: bool) -> Callable[..., None]:
-        key = ("link-scatter", dtype)
+        blocks = self.link_blocks_for("scatter", "chain")
+        key = ("link-scatter", dtype, blocks)
         launcher = self._launchers.get(key)
         if launcher is None:
             if capturing:
@@ -1688,14 +1796,15 @@ class RoceOneshotAllReduce:
             launcher = _links_cute.get_scatter_launcher(
                 _DTYPE_NAMES[dtype], self.world_size, self.chain_index, self._chain_prev, self._chain_next,
                 self.rank, self.chain_order, self._threads, self.lane_count, self.link_slots, self.link_slot_bytes,
-                self.link_blocks_for("scatter", "chain"), self.link_unroll, self.device.index,
+                blocks, self.link_unroll, self.device.index,
             )
             self._launchers[key] = launcher
         return launcher
 
     def _ring_launcher(self, mode: str, dtype: Optional[torch.dtype], capturing: bool) -> Callable[..., None]:
         name = "bytes" if dtype is None else _DTYPE_NAMES[dtype]
-        key = ("link-ring", mode, name)
+        blocks = self.link_blocks_for(mode, "ring")
+        key = ("link-ring", mode, name, blocks)
         launcher = self._launchers.get(key)
         if launcher is None:
             if capturing:
@@ -1703,8 +1812,7 @@ class RoceOneshotAllReduce:
                                    "call prepare(..., links=True)")
             launcher = _links_cute.get_ring_launcher(
                 mode, name, self.world_size, self.chain_index, self.rank, self.chain_order, self._threads,
-                self.lane_count, self.link_slots, self.link_slot_bytes, self.link_blocks_for(mode, "ring"),
-                self.link_unroll,
+                self.lane_count, self.link_slots, self.link_slot_bytes, blocks, self.link_unroll,
                 self.device.index, self.event_trace,
             )
             self._launchers[key] = launcher
@@ -2060,7 +2168,10 @@ class RoceOneshotAllReduce:
         """Sum ``inp`` over the session's ranks into ``out`` (allocated like ``inp`` when omitted).
 
         Accepts eligible messages up to the capacity ``max_size``; every rank
-        must pass the same ``algorithm``. A poisoned session raises.
+        must pass the same ``algorithm``. A poisoned session raises. One
+        one-shot or two-shot launch: a tuning table's or built-in plan's ring or
+        chain choice for the size is :meth:`all_reduce_large`'s, neither applied
+        nor counted here (``stats()["tuning"]["decisions"]``).
         """
         del channel_id, peer_input_ptrs
         with self._lock:
@@ -2076,8 +2187,9 @@ class RoceOneshotAllReduce:
             device = _NO_CONTEXT if torch.cuda.current_device() == self.device.index else torch.cuda.device(self.device)
             with device, context:
                 capturing = torch.cuda.is_current_stream_capturing()
+                # One launch: a ring or chain choice for this size belongs to all_reduce_large.
                 tuned = (_NO_CONTEXT if algorithm is not None or self._tuning is None
-                         else self._tuned_op("all_reduce", nbytes))
+                         else self._tuned_op("all_reduce", nbytes, direct=True))
                 with tuned:
                     chosen = algorithm or self.select_algorithm(nbytes)
                     if chosen not in ALGORITHMS or not self._available[chosen]:
@@ -2472,26 +2584,34 @@ class RoceOneshotAllReduce:
 
     # -- health and diagnostics -------------------------------------------------------------------
 
+    def _failure_text(self) -> Optional[str]:
+        """This rank's failure (a stopped progress thread or a flag wait that timed out), or None."""
+        if self._proxy is not None and self._proxy.failed():
+            return f"SIRCL progress thread failed on rank {self.rank}: {self._proxy.error()}"
+        ctrl = getattr(self, "_ctrl_np", None)
+        if ctrl is None:
+            return None
+        failed_seq = int(ctrl[proto.Ctrl.ERROR_SEQ]) & 0xFFFFFFFF
+        if not failed_seq:
+            return None
+        peer = int(ctrl[proto.Ctrl.MISSING_PEER])
+        lane = int(ctrl[proto.Ctrl.MISSING_LANE])
+        kind = int(ctrl[proto.Ctrl.ERROR_KIND])
+        if kind == proto.ErrorKind.CHAIN_CHUNK:
+            what = f"chain chunk {failed_seq - 1} from rank {peer} lane {lane}"
+        elif kind == proto.ErrorKind.CHAIN_SLOT:
+            what = f"its progress thread to free the chain send slot of chunk {failed_seq - 1}"
+        else:
+            what = f"rank {peer} lane {lane} at sequence {failed_seq}"
+        return (f"SIRCL collective on rank {self.rank} timed out waiting for {what} (wait limit "
+                f"{self.wait_limit_s:g} s, {self.wait_regime} regime); the session is poisoned (later launches "
+                "do nothing) and rank data is untrustworthy")
+
     def check_health(self) -> None:
         """Raise when the progress thread failed or a flag wait timed out (two host reads)."""
-        if self._proxy is not None and self._proxy.failed():
-            raise RuntimeError(f"SIRCL progress thread failed on rank {self.rank}: {self._proxy.error()}")
-        failed_seq = int(self._ctrl_np[proto.Ctrl.ERROR_SEQ]) & 0xFFFFFFFF
-        if failed_seq:
-            peer = int(self._ctrl_np[proto.Ctrl.MISSING_PEER])
-            lane = int(self._ctrl_np[proto.Ctrl.MISSING_LANE])
-            kind = int(self._ctrl_np[proto.Ctrl.ERROR_KIND])
-            if kind == proto.ErrorKind.CHAIN_CHUNK:
-                what = f"chain chunk {failed_seq - 1} from rank {peer} lane {lane}"
-            elif kind == proto.ErrorKind.CHAIN_SLOT:
-                what = f"its progress thread to free the chain send slot of chunk {failed_seq - 1}"
-            else:
-                what = f"rank {peer} lane {lane} at sequence {failed_seq}"
-            raise RuntimeError(
-                f"SIRCL collective on rank {self.rank} timed out waiting for {what} (wait limit "
-                f"{self.wait_limit_s:g} s, {self.wait_regime} regime); the session is poisoned (later launches "
-                "do nothing) and rank data is untrustworthy"
-            )
+        failure = self._failure_text()
+        if failure is not None:
+            raise RuntimeError(failure)
         if self._closed:
             raise RuntimeError("SIRCL session is closed")
 
@@ -2671,25 +2791,49 @@ class RoceOneshotAllReduce:
     def twoshot_trace(self, reset: bool = True) -> dict[str, Any]:
         return {"calls": 0, "enabled": False}
 
-    def close(self) -> None:
-        """Synchronize the device, stop the progress thread and release the RDMA resources (idempotent)."""
+    def close(self, *, abort: bool = False) -> Optional[str]:
+        """Refuse further work, synchronize the device, hold the teardown rounds over the exchange group
+        (unless ``abort``) and release the RDMA resources; the close result, None after a healthy close (see
+        the module docstring). Idempotent: a later call returns the first one's result."""
         with self._lock:
             if self._closed:
-                return
+                return self.close_result
             self._closed = True
-            with contextlib.suppress(Exception):
+            unsettled: Optional[str] = None
+            try:
                 torch.cuda.synchronize(self.device)
+            except Exception as exc:  # noqa: BLE001 - voted in round 1
+                unsettled = (f"SIRCL session on rank {self.rank}: device synchronization failed: "
+                             f"{type(exc).__name__}: {exc}")
             if self._profile is not None and self._profile.path:
                 with contextlib.suppress(Exception):
                     self._profile.dump(lambda start, end: start.elapsed_time(end))
-            if self._proxy is not None:
-                self._proxy.close()
-                self._proxy = None
+            own = "; ".join(part for part in (unsettled, self._failure_text()) if part) or None
+            what = f"SIRCL session teardown on rank {self.rank}"
+            try:
+                result = teardown_mod.close_native(
+                    self._proxy, group=self._group, exchange=self._teardown_exchange, own_failure=own,
+                    limit_s=self.wait_limit_s + teardown_mod.SLACK_S, abort=abort,
+                    arena=getattr(self, "_region", None), what=what, unsettled=unsettled is not None,
+                    kind="session", ordinal=getattr(self, "_teardown_ordinal", 0))
+            except BaseException as exc:
+                # close_native keeps every Exception; this is an interrupt mid-teardown. The outcome is unknown:
+                # the native context stays referenced and the arena allocated, and the close has failed.
+                if getattr(self, "_region", None) is not None:
+                    teardown_mod.retain(self._region)
+                self.close_result = _joined_text(own, f"{what}: interrupted: {type(exc).__name__}: {exc}")
+                raise
+            self._proxy = None
+            self.close_result = result
+        if result is not None:
+            logger.warning("SIRCL session close: %s", result)
+        return result
 
     def __del__(self) -> None:  # pragma: no cover - defensive teardown
-        # No module-global lookups: at interpreter exit the module's globals may already be None.
+        # No rounds: garbage collection runs in no agreed order across ranks, and at interpreter exit the
+        # module's globals and the exchange group may already be gone.
         try:
-            self.close()
+            self.close(abort=True)
         except Exception:  # noqa: BLE001 - teardown of a collected session
             pass
 

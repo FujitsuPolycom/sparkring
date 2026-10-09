@@ -22,7 +22,13 @@ Checks, each against the bytes the sender sent:
   ranks' streams;
 - a receive whose size differs from the message, refused on every rank;
 - a receive that no rank answers, timed out under the serving wait limit;
-- item counters that start 16 items before the 32-bit wrap.
+- item counters that start 16 items before the 32-bit wrap;
+- every rank closes its channels at once: both teardown rounds, every result
+  None (:func:`.gpu_emulation._teardown_verdict`).
+
+Every rank closes its channels in its own thread at once
+(:meth:`P2PGroup.close_channels`): a close holds two teardown rounds over a
+thread group of the channel set's own (:class:`.gpu_emulation.TeardownRounds`).
 
 Order. Every rank shares one GPU here, so the streams of all ranks share the
 GPU's hardware queues (``CUDA_DEVICE_MAX_CONNECTIONS``, 32), and a receive
@@ -33,6 +39,15 @@ and the emulation's channels have 32 slots of 1 MiB, so that no message of a
 check (at most 64 MiB, two rounds of slots) makes its send kernel wait for the
 receiver. On a ring every rank has its own GPU, and only its own order
 matters (``p2p/session.py``, "issue order").
+
+Host copies. A check whose rank threads wait for collectives copies its
+inputs to the device from the main thread before the ranks start and its
+outputs to the host after they finish (as ``dcp_gpu_checks.py`` does): a rank
+thread blocked in a copy from pageable host memory while its stream waits for
+a peer can hold a driver lock that another rank's CUDA call waits for while
+holding the interpreter lock, which stops the verbs stand-in's Python
+delivery thread, so the peers' writes stop and the waiting kernels time out.
+Separate processes, as on the ring, share no such lock.
 
 ``python -m sparkring_sircl.testing.p2p_emulation --layout ring:8 --lanes 2``
 prints one line per check. Requirements: CUDA, torch with CUDA, CUDA Python,
@@ -53,7 +68,8 @@ from typing import Any
 
 from .. import routes as routes_mod
 from . import p2p_build
-from .gpu_emulation import EmulatedGroup, ThreadDist, ThreadGroup, _path_latency, device_name
+from .gpu_emulation import (EmulatedGroup, TeardownRounds, ThreadDist, ThreadGroup, _path_latency, _teardown_verdict,
+                            device_name)
 
 SERVING_LIMIT_S = 0.5
 EMULATION_SETTINGS = {"SIRCL_P2P_BLOCKS": "2", "SIRCL_P2P_THREADS": "256", "SIRCL_P2P_SLOTS": "32",
@@ -111,6 +127,11 @@ class P2PGroup:
         finally:
             self.p2p_session.dist = saved
         self.channels = sessions
+        self.teardown = TeardownRounds(sessions, self.world)
+
+    def close_channels(self) -> list[Any]:
+        """Close every rank's channels at once, each in its rank's thread; every rank's close result."""
+        return self.group._threads(lambda rank: self.channels[rank].close() if self.channels[rank] else None)
 
     def prepare(self, dtypes: Sequence[Any]) -> None:
         """Compile and load every kernel, one rank after another (compilation is not a collective)."""
@@ -142,12 +163,10 @@ class P2PGroup:
                 self.barrier.reset()
 
     def close(self) -> None:
-        for channels in self.channels:
-            try:
-                if channels is not None:
-                    channels.close()
-            except Exception:  # noqa: BLE001 - teardown
-                pass
+        try:
+            self.close_channels()
+        except Exception:  # noqa: BLE001 - teardown
+            pass
         self.group.close()
 
 
@@ -311,7 +330,9 @@ def _send_first_check(group: P2PGroup, nbytes: int) -> tuple[str, bool, str]:
 
 
 def _mixed_check(group: P2PGroup) -> tuple[str, bool, str]:
-    """All-reduce, a transfer to the next rank, all-reduce again: collective ops and channels interleaved."""
+    """All-reduce, a transfer to the next rank, all-reduce again: collective ops and channels interleaved. The
+    inputs reach the device and the outputs the host outside the rank threads (module docstring, "Host
+    copies")."""
     torch = group.torch
     world = group.world
     count = 4096
@@ -326,25 +347,35 @@ def _mixed_check(group: P2PGroup) -> tuple[str, bool, str]:
             acc += inputs(rank, step).float()
         return acc.to(torch.bfloat16)
 
+    if not group.collectives:
+        return "collectives and channels interleaved", True, "skipped: no collective sessions"
+    staged = {}
+    for rank in range(world):
+        stream = group.group.streams[rank]
+        with torch.cuda.stream(stream):
+            device = group.channels[rank].device
+            staged[rank] = (inputs(rank, 1).to(device), inputs(rank, 2).to(device))
+            stream.synchronize()
+
     def operation(rank: int, channels, session):
         nxt, prev = (rank + 1) % world, (rank - 1) % world
-        first = session.all_reduce(inputs(rank, 1).to(channels.device))
+        one, two = staged[rank]
+        first = session.all_reduce(one)
         out = torch.empty(count * 2, dtype=torch.uint8, device=channels.device)
         for work in _issue(group, channels, [(first.view(torch.uint8), nxt)], [(out, prev)]):
             work.wait()
-        second = session.all_reduce(inputs(rank, 2).to(channels.device) + out.view(torch.bfloat16) * 0)
-        return first.cpu(), out.view(torch.bfloat16).cpu(), second.cpu()
+        second = session.all_reduce(two + out.view(torch.bfloat16) * 0)
+        return first, out.view(torch.bfloat16), second
 
     def verify(results) -> str:
         reference1, reference2 = total(1), total(2)
         view = torch.int16
+        results = [tuple(tensor.cpu() for tensor in result) for result in results]
         wrong = [rank for rank, (a, b, c) in enumerate(results)
                  if not (torch.equal(a.view(view), reference1.view(view)) and torch.equal(b.view(view), reference1.view(view))
                          and torch.equal(c.view(view), reference2.view(view)))]
         return f"ranks {wrong} differ" if wrong else ""
 
-    if not group.collectives:
-        return "collectives and channels interleaved", True, "skipped: no collective sessions"
     return _run(group, "collectives and channels interleaved on the ranks' streams", operation, verify)
 
 
@@ -469,20 +500,34 @@ def run_checks(layout_text: str = "path:0-3", lanes: int = 2, *, library: str | 
         healthy = [not channels.poisoned for channels in group.channels]
         checks.append(("health", all(healthy), "" if all(healthy) else f"poisoned ranks {healthy}"))
         checks.append(_mismatch_check(group))
-        for channels in group.channels:
-            channels.close()
+        group.close_channels()
         group.build_channels(start_item=0)
         for rank in range(world):
             with torch.cuda.stream(group.group.streams[rank]):
                 group.channels[rank].prepare()
         checks.append(_timeout_check(group))
-        for channels in group.channels:
-            channels.close()
+        group.close_channels()
         group.build_channels(start_item=0xFFFFFFF0)
         checks.append(_wrap_check(group))
+        checks.append(_teardown_check(group))
     finally:
         group.close()
     return checks
+
+
+def _teardown_check(group: P2PGroup) -> tuple[str, bool, str]:
+    """Every rank closes its healthy channels at once: every result None, two rounds per rank."""
+    from .. import teardown
+
+    poisoned = [rank for rank, channels in enumerate(group.channels) if channels.poisoned]
+    retained = len(teardown.RETAINED)
+    started = time.perf_counter()
+    try:
+        results = group.close_channels()
+    except Exception as error:  # noqa: BLE001
+        return ("teardown", False, f"{type(error).__name__}: {error}")
+    return _teardown_verdict("teardown", group.channels, results, poisoned, retained, group.teardown.entered,
+                             time.perf_counter() - started)
 
 
 def _wrap_check(group: P2PGroup) -> tuple[str, bool, str]:

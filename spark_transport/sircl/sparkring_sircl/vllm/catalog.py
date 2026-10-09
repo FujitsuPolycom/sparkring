@@ -208,6 +208,20 @@ ENTRIES: tuple[Entry, ...] = (
                 "serving instead of the serving limit (SIRCL_SERVING_WAIT_S, 20 s), and a warning says so",
         needs=("the sessions' flag-wait regimes (enter_startup, enter_serving)",),
     ),
+    Entry(
+        name="step_health",
+        purpose="Checks every SIRCL session and point-to-point channel set of the process for a recorded failure "
+                "(a flag wait that timed out, a progress thread that stopped) when each of the worker's step "
+                "methods starts, before the step's SIRCL ops launch; host reads only.",
+        models=("every model",),
+        code=tuple(Code(WORKER, f"Worker.{method}", "wraps") for method in shims.WORKER_STEP_METHODS),
+        enable="SIRCL's communicator installs it with the first group that gets a session or point-to-point "
+               "channels",
+        disable="none: every process with a session or channels tries it",
+        without="a failure raises at the worker's post-step check or at the next eager SIRCL call; a step that "
+                "replays a CUDA graph launches its kernels first, and they return without work",
+        needs=("the sessions' and channels' check_health (host reads)",),
+    ),
 )
 
 

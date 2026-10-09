@@ -308,7 +308,8 @@ def merge(plan: Mapping, results: Sequence[Mapping | None]) -> dict:
                                                     "relay_load", "route_texts", "warnings")}
                        for group in plan["groups"]],
             "ranks": ranks, "cases": cases, "crossover": crossovers(cases), "post_orders": order_comparison(cases),
-            "warnings": warnings, "tuning": tuning}
+            "warnings": warnings, "tuning": tuning,
+            "rotate_buffers": int((plan.get("options") or {}).get("rotate_buffers", 1))}
 
 
 def profile_lines(result: Mapping) -> list[str]:
@@ -443,8 +444,9 @@ def tuning_tables(plan: Mapping, result: Mapping, *, created: str = "") -> dict[
         layout = routes_mod.Layout.parse(group["layout"])
         key = tuning_mod.facts(layout.identity(), layout.world, int(group.get("lanes", 2)), int(group["max_relays"]))
         key["image"] = plan.get("image", "")
-        tables[index] = tuning_mod.build_document(key, rows, run_id=str(plan.get("run_id", "")), created=created,
-                                                  session=tune_session(plan, result, index))
+        tables[index] = tuning_mod.build_document(
+            key, rows, run_id=str(plan.get("run_id", "")), created=created, session=tune_session(plan, result, index),
+            conditions={"rotate_buffers": int((plan.get("options") or {}).get("rotate_buffers", 1))})
     return tables
 
 
@@ -517,7 +519,10 @@ def _period_note(case: Mapping) -> str:
 
 
 def table(result: Mapping) -> str:
-    lines = [f"configuration {result['configuration']} (run {result['run_id']}): {result['status'].upper()}"]
+    windows = int(result.get("rotate_buffers", 1))
+    rotated = (f"; every timed case cycled through {windows} input and output windows (--rotate-buffers)"
+               if windows > 1 else "")
+    lines = [f"configuration {result['configuration']} (run {result['run_id']}): {result['status'].upper()}{rotated}"]
     # With NCCL rows, a column of NCCL's median over SIRCL's for every row that has an NCCL counterpart.
     versus = any(case.get("vs_nccl") for case in result["cases"])
     header = f"{'group':>5} {'collective':<10} {'mode':<5} {'bytes':>7} {'shape':<12} {'exact':<5} " \

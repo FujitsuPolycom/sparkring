@@ -89,6 +89,9 @@ FV_API void fv_set_ack_delay(uint64_t ns);
 FV_API void fv_set_recording(int on);
 /* The next inline write of `inline_value` on queue pair `qp_num` (0: any) fails. */
 FV_API void fv_inject_failure(uint32_t qp_num, uint32_t inline_value);
+/* The next `calls` calls of ibv_destroy_qp fail with EBUSY and leave their queue pair in place
+ * (fv_reset releases it); 0 ends the failures. */
+FV_API void fv_fail_teardown(int calls);
 FV_API void fv_fail_device(int device);
 FV_API uint64_t fv_progress(uint64_t max_work_requests, uint64_t seed);
 FV_API uint64_t fv_pending(void);

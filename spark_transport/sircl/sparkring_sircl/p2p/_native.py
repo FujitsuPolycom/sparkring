@@ -48,7 +48,7 @@ def _declare(lib: ctypes.CDLL) -> ctypes.CDLL:
         "p2p_stat": (u64, [p, i32]),
         "p2p_peer_stat": (u64, [p, i32, i32]),
         "p2p_hca_stat": (u64, [p, i32, i32]),
-        "p2p_destroy": (None, [p]),
+        "p2p_destroy": (i32, [p]),
         "p2p_store_release_u32": (None, [p, u32]),
         "p2p_load_acquire_u32": (u32, [p]),
     }
@@ -251,10 +251,14 @@ class Native:
             raise RuntimeError("this point-to-point library has no test hooks")
         return int(function(self._handle(), int(device), int(peer)))
 
-    def close(self) -> None:
+    def close(self) -> int:
+        """Stop the progress thread and release the verbs objects (idempotent): the number of verbs calls
+        that failed, 0 when every object was released. Nonzero means a queue pair or memory registration may
+        survive, so the caller keeps the registered arena allocated."""
         ctx, self._ctx = self._ctx, None
         if ctx:
-            self._lib.p2p_destroy(ctx)
+            return int(self._lib.p2p_destroy(ctx))
+        return 0
 
     def __del__(self) -> None:  # pragma: no cover - defensive teardown
         with contextlib.suppress(Exception):

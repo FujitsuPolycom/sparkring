@@ -11,6 +11,7 @@ switch. This package holds its N-rank ring sessions:
 - :mod:`.protocol`: the wire protocol's constants and arithmetic shared by the
   kernels and the native progress thread;
 - :mod:`.agreement`: the setup agreement of a session's ranks;
+- :mod:`.teardown`: the two-round teardown of a session's or channel set's close;
 - :mod:`.build`: the native library build (``sircl-prepare``);
 - :mod:`.roce_gid`: per-device RoCE GID resolution;
 - :mod:`.groups`: vLLM's tensor-parallel and DCP rank layout;

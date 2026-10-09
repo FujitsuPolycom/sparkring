@@ -33,8 +33,9 @@ it, so slots need no resetting between ops. In a reduce block, threads 0 to
 (the last warp) waits for the free send slot: two different wait loops never run
 in divergent threads of one warp. With both loops in one warp, the send-slot
 wait has been observed to report a timeout while its condition held. The device counters hold the chunks
-of each half before this op and the chain op sequence; the last block to finish
-advances them unless a wait timed out. A wait longer than the session's wait
+of each half before this op and the chain op sequence; the last block to finish (the
+arrival that completes the grid on the tail word, which it then returns to 0, so the next
+launch may use another grid) advances them unless a wait timed out. A wait longer than the session's wait
 limit records what it waited for (command ring words 2, 3, 6 and 8) and poisons
 the session.
 
@@ -434,7 +435,10 @@ class ChainAllReduce:
             cute.arch.sync_threads()
             if Int32(tidx) == Int32(0):
                 prior = atomic_add_relaxed_gpu_u32(counters + Int64(12), Uint32(1))
-                if (prior + Uint32(1)) % Uint32(gdim) == Uint32(0):
+                if prior + Uint32(1) == Uint32(gdim):
+                    # Every block of this launch arrived: return the tail to 0, so the next launch of this
+                    # kernel finds its last block by the same count whatever its grid.
+                    st_release_gpu_u32(counters + Int64(12), Uint32(0))
                     fence_sc_gpu()
                     if ld_relaxed_sys_u32(ctrl_base + Int64(_ERROR_SEQ)) == Uint32(0):
                         n_a = (a_packs + chunk_packs - Int32(1)) // chunk_packs

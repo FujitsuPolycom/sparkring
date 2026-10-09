@@ -169,10 +169,14 @@ LINK_SLOT_BYTES = 512 << 10
 GATHER_ROW_BYTES = 4096 * 2
 # The ring-large configuration: whole-ring all-reduce sizes (96 MiB: 8,192 tokens at hidden size 6,144).
 RING_LARGE_SIZES = (8 << 20, 32 << 20, 64 << 20, 96 << 20)
-# The tune command's collectives and sizes: per-rank bytes from 4 KiB to 128 MiB, every power of two, or
-# every fourth with --quick.
+# The tune command's collectives and sizes: per-rank bytes from 4 KiB to 128 MiB, every power of two and
+# 1.5, 3 and 6 MiB (where a pair's two-shot op and ring cross), or every fourth power of two with --quick.
 TUNE_COLLECTIVES = ("all_reduce", "all_gather", "reduce_scatter", "all_to_all")
-TUNE_SIZES = tuple(4096 << shift for shift in range(16))
+TUNE_SIZES = tuple(sorted({4096 << shift for shift in range(16)} | {3 << 19, 3 << 20, 3 << 21}))
+# Input and output windows every tune case cycles through call by call (--rotate-buffers): 7 other windows
+# between two uses of one, so a window's bytes are no longer in the GPU's caches at the sizes where the
+# two-shot op and the ring compete; every case of a run without the option reuses one buffer.
+TUNE_ROTATE_BUFFERS = 8
 TUNE_QUICK_SIZES = tuple(4096 << shift for shift in range(0, 16, 2))
 # Grid caps --large-blocks may name without SIRCL_LARGE_BLOCKS: the session's counters cover grids up to the
 # larger of SIRCL_LARGE_BLOCKS and 32 blocks.
@@ -423,6 +427,7 @@ class Options:
     post_barrier_warmup: int = 10
     large: bool = False
     large_capacity: int = LARGE_CAPACITY
+    rotate_buffers: int = 1                 # input and output windows every timed case cycles through
     large_allreduce_sizes: tuple[int, ...] = LARGE_ALLREDUCE_SIZES
     large_allgather_sizes: tuple[int, ...] = LARGE_ALLGATHER_SIZES
     large_iterations: int = 20
@@ -473,6 +478,8 @@ class Options:
     tune_grids: tuple[int, ...] = (4, 8, 16, 32)    # launch grid caps of the one-shot, two-shot, tiles, scatter ops
     tune_pieces: tuple[int, ...] = (262144, 524288, 1048576)   # chain chunks and link pieces
     tune_staggers: tuple[int, ...] = (0, 1)  # ring staggers of link 2 (reduce-scatter) and link 3 (all-gather)
+    tune_link_blocks: tuple[int, ...] = (1, 2, 4)    # blocks per role of the link kernels (0: the session's)
+    tune_chain_blocks: tuple[int, ...] = (1, 2, 4)   # blocks per role of the chain all-reduce (0: the session's)
     tune_large_from: int = 262144            # smallest size of the pieces, chain and ring candidates
     tune_prune: float = 1.5                  # slower than the fastest by this factor at two sizes in a row: dropped
     tune_prune_from: int = TUNE_PRUNE_FROM   # smallest size at which a candidate can be dropped
@@ -562,6 +569,11 @@ class Options:
             if any(not 0 <= d <= 4 for d in self.tune_staggers) or self.tune_prune <= 1.0 or self.tune_large_from < 16:
                 raise PlanError("tune staggers are 0 to 4, the pruning factor is above 1 and the large-message "
                                 "candidates start at a positive size")
+            if any(not 0 <= b <= 64 for b in (*self.tune_link_blocks, *self.tune_chain_blocks)):
+                raise PlanError("tune blocks per role are 1 to 64 (0: the session's own)")
+        if isinstance(self.rotate_buffers, bool) or not isinstance(self.rotate_buffers, int) \
+                or not 1 <= self.rotate_buffers <= 64:
+            raise PlanError("the rotated buffers of a case are 1 to 64 windows")
         if self.eager_path not in EAGER_PATHS:
             raise PlanError(f"the eager path is one of {', '.join(EAGER_PATHS)}, got {self.eager_path!r}")
         if self.tune_prune_from < 0:
@@ -1037,7 +1049,10 @@ def render_text(plan: ConfigurationPlan) -> str:
                      f"{list(options.tune_grids)}) within the capacity, and from {options.tune_large_from} bytes "
                      f"pieces, tiles and scatter ops (the same grids), chain (pieces {list(options.tune_pieces)}) "
                      f"and ring (those pieces, staggers {list(options.tune_staggers)} on the partials and on the "
-                     f"forwarded pieces), Swing where the session "
+                     f"forwarded pieces), each chain and ring candidate at blocks per role "
+                     f"{list(options.tune_link_blocks)} (the chain all-reduce {list(options.tune_chain_blocks)}; 0: "
+                     f"the session's), every case cycling through {options.rotate_buffers} input and output "
+                     f"windows, Swing where the session "
                      f"offers it{', NCCL' if options.baseline == 'nccl' else ''}; a candidate "
                      f"{options.tune_prune:g} times the fastest at two sizes in a row from {options.tune_prune_from} bytes "
                      f"on, its ratio not falling, is dropped; "

@@ -410,6 +410,23 @@ HOOKS: tuple[Hook, ...] = (
               "it is never armed and sessions keep the startup limit.",
     ),
     Hook(
+        collective="Start-of-step failure check of every SIRCL session",
+        mechanism="the step_health shim runs adapter.check_all_failures when each of the worker's step methods "
+                  "starts",
+        official=False,
+        anchors=(
+            Anchor("v1/worker/gpu_worker.py", 1397, 1397, "def sample_tokens("),
+            Anchor("v1/worker/gpu_worker.py", 1444, 1444, "def execute_model("),
+            Anchor("v1/worker/gpu_worker.py", 1612, 1612, "def execute_dummy_batch(self) -> None:"),
+        ),
+        shim="step_health",
+        status="shim implemented and pinned",
+        notes="sample_tokens runs the sampler and any draft model's forward pass, whose SIRCL ops come after the "
+              "sampled tokens' copy that the post-step check waits for; execute_dummy_batch runs a data-parallel "
+              "rank's dummy forward pass. The check reads the sessions' control words and native failure flags in "
+              "host memory, never the device poison word.",
+    ),
+    Hook(
         collective="Plugin order",
         mechanism="general plugins load in every worker before init_device builds process groups",
         official=True,

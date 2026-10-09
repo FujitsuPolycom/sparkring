@@ -214,7 +214,7 @@ class EmulatedChannels:
         with self._shared.lock:
             return list(self._shared.records)
 
-    def close(self) -> None:
+    def close(self, *, abort: bool = False) -> None:
         self.closed = True
 
 

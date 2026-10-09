@@ -470,7 +470,7 @@ class EmulatedRingSession:
             "link_chunk_bytes": self.link_chunk_bytes,
         }
 
-    def close(self) -> None:
+    def close(self, *, abort: bool = False) -> None:
         self._closed = True
 
 

@@ -513,10 +513,16 @@ class SirclDcpCollectives:
         with self._runtime.capture(stream=stream):
             yield
 
-    def close(self) -> None:
+    def close(self, *, abort: bool = False) -> None:
+        """Close the group's session; ``abort`` skips its teardown rounds (a setup failure, where the
+        group is not tearing down as a whole)."""
         runtime, self._runtime = self._runtime, None
         if runtime is not None:
-            runtime.close()
+            # A session module's close may take no argument: abort is passed only when set.
+            if abort:
+                runtime.close(abort=True)
+            else:
+                runtime.close()
 
     def stats(self) -> dict:
         return {} if self._runtime is None else self._runtime.stats()
