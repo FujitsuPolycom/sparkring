@@ -11,6 +11,7 @@ adds the third:
 - ``line``: the image line, ``kraken`` (images built on Local Inference Lab's
   ``karmic-kraken-beta`` vLLM and B12X branches);
 - ``transports``: the collective transports the image carries, sorted:
+  ``libsircl`` (SIRCL's NCCL-compatible C library under vLLM's PyNccl),
   ``prepared`` (the prepared RoCEnante transport) and ``sircl`` (SIRCL ring
   sessions). This package admits only v3 locks that list ``prepared``, whose
   v2 fields then keep their meaning;
@@ -27,7 +28,17 @@ adds the third:
 - ``tuning_defaults_sha256``: the SHA-256 of the default SIRCL tuning table the
   image was released with (``runtime/common/sircl-tuning-defaults.json``);
 - ``archived``: whether the release is archived; an archived image stays
-  selectable by name.
+  selectable by name;
+- ``libsircl``, present only when ``transports`` lists ``libsircl``: the
+  libsircl layer (``runtime/images/libsircl_layer.py``): the library version,
+  the vendored snapshot's tree digest, the library under
+  ``/opt/sparkring/libsircl/lib`` with its SHA-256, the NCCL API level it
+  reports, whether it has the fail-stop mode (it reads
+  ``LIBSIRCL_FAIL_STOP``), the vLLM plugin module that selects it with its
+  SHA-256, and the layer receipt
+  ``/opt/sparkring/receipts/libsircl-layer.json``. A v3 lock
+  without the layer has no such field, so it validates as it did before the
+  field existed.
 
 ``v2_view`` gives ``installer_image`` the v2 fields of a v3 lock, so image
 admission, the deployment lock's ``image_runtime`` and storage planning stay
@@ -45,9 +56,13 @@ from runtime.common import installer_image, profiles
 
 SCHEMA_V3 = "sparkring-installer-image/v3"
 LINES = ("kraken",)
-TRANSPORTS = ("prepared", "sircl")
+TRANSPORTS = ("libsircl", "prepared", "sircl")
 V3_FIELDS = (installer_image.FIELDS[installer_image.SCHEMA] - {"schema"}) | {
     "schema", "line", "transports", "sircl", "tuning_defaults_sha256", "archived"}
+# Where the libsircl layer installs the library and its receipt.
+LIBSIRCL_LIBRARY_DIRECTORY = "/opt/sparkring/libsircl/lib"
+LIBSIRCL_RECEIPT = "/opt/sparkring/receipts/libsircl-layer.json"
+LIBSIRCL_FIELDS = {"version", "snapshot", "library", "nccl_api_version", "fail_stop", "plugin", "receipt"}
 # Where the SIRCL layer puts its prebuilt native libraries and its receipt.
 LIBRARY_DIRECTORY = "/opt/sparkring/sircl/lib"
 LAYER_RECEIPT = "/opt/sparkring/receipts/sircl-layer.json"
@@ -109,9 +124,39 @@ def validate_sircl(value):
     return value
 
 
+def validate_libsircl(value):
+    """The ``libsircl`` block of a v3 lock after checking its fields; ValueError otherwise."""
+    _require(isinstance(value, dict) and set(value) == LIBSIRCL_FIELDS,
+             "The libsircl layer records " + ", ".join(sorted(LIBSIRCL_FIELDS)))
+    version = value["version"]
+    _require(isinstance(version, str) and _VERSION.fullmatch(version), "The libsircl layer records its version")
+    _require(isinstance(value["snapshot"], str) and _SHA256.fullmatch(value["snapshot"]),
+             "The libsircl layer records its snapshot's tree digest")
+    _require(type(value["nccl_api_version"]) is int and value["nccl_api_version"] > 0,
+             "The libsircl layer records the NCCL API level its library reports")
+    _require(type(value["fail_stop"]) is bool, "The libsircl layer records whether its library has the fail-stop mode")
+    library = value["library"]
+    _require(isinstance(library, dict) and set(library) == {"path", "sha256"}
+             and library["path"] == f"{LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.{version}"
+             and isinstance(library["sha256"], str) and _SHA256.fullmatch(library["sha256"]),
+             f"The libsircl layer's library is {LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.<version> with its SHA-256")
+    plugin = value["plugin"]
+    _require(isinstance(plugin, dict) and set(plugin) == {"name", "path", "sha256"} and plugin["name"] == "libsircl"
+             and isinstance(plugin["path"], str) and plugin["path"].endswith("-packages/sparkring_libsircl.py")
+             and isinstance(plugin["sha256"], str) and _SHA256.fullmatch(plugin["sha256"]),
+             "The libsircl layer records its vLLM plugin libsircl: sparkring_libsircl.py in site-packages and its "
+             "SHA-256")
+    receipt = value["receipt"]
+    _require(isinstance(receipt, dict) and set(receipt) == {"path", "sha256"} and receipt["path"] == LIBSIRCL_RECEIPT
+             and isinstance(receipt["sha256"], str) and _SHA256.fullmatch(receipt["sha256"]),
+             f"The libsircl layer's receipt is {LIBSIRCL_RECEIPT}")
+    return value
+
+
 def validate_v3(value, profile):
     """A v3 lock after checking its v3 fields and, through ``v2_view``, its v2 fields for ``profile``."""
-    _require(isinstance(value, dict) and set(value) == V3_FIELDS, f"Expected a complete {SCHEMA_V3} lock")
+    _require(isinstance(value, dict) and set(value) in (V3_FIELDS, V3_FIELDS | {"libsircl"}),
+             f"Expected a complete {SCHEMA_V3} lock")
     _require(value["line"] in LINES, "A v3 image lock names its image line: " + ", ".join(LINES))
     transports = value["transports"]
     _require(isinstance(transports, list) and transports == sorted(set(transports)) and set(transports) <= set(TRANSPORTS),
@@ -124,6 +169,11 @@ def validate_v3(value, profile):
         _require(value["sircl"] is None, "A v3 image lock without the sircl transport records no SIRCL layer")
         _require(not sircl_only(value), f"{', '.join(sircl_only(value))} run only on SIRCL ring sessions; a v3 "
                                         "image lock lists them only when its image carries the SIRCL layer")
+    if "libsircl" in transports:
+        _require("libsircl" in value, "A v3 image lock that lists the libsircl transport records its libsircl layer")
+        validate_libsircl(value["libsircl"])
+    else:
+        _require("libsircl" not in value, "A v3 image lock without the libsircl transport records no libsircl layer")
     _digest(value["tuning_defaults_sha256"], "the default tuning table")
     _require(type(value["archived"]) is bool, "A v3 image lock says whether it is archived")
     installer_image.validate(v2_view(value), profile)
@@ -187,6 +237,11 @@ def transports(value):
 def sircl(value):
     """The SIRCL layer of ``value``, or None."""
     return value.get("sircl") if schema(value) == SCHEMA_V3 else None
+
+
+def libsircl(value):
+    """The libsircl layer of ``value``, or None."""
+    return value.get("libsircl") if schema(value) == SCHEMA_V3 else None
 
 
 def line(value):

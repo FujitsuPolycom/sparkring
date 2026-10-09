@@ -1,0 +1,17 @@
+SparkRing SIRCL ring sessions (sparkring-sircl)
+Copyright 2026 SparkRing contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes software derived from RoCEnante, the b12x one-shot RoCE
+collectives (b12x/comm/roce), by Local Inference Lab
+(https://github.com/local-inference-lab) and its contributors, including Luke
+Alonso (lukealonso), licensed under the Apache License, Version 2.0: the
+one-shot all-reduce and all-gather kernels and the device intrinsics, and the
+session and progress-thread protocol they follow. The derived files are listed
+in PROVENANCE.md with the b12x revision they derive from. b12x is developed
+inside FlashInfer at flashinfer/experimental/b12x.
+
+This product includes SparkRing's RoCE GID resolver and follows SparkRing's
+per-peer RoCEnante path posting (third_party/b12x_roce in the SparkRing
+repository), itself derived from the b12x source above.

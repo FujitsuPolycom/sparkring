@@ -1,0 +1,1208 @@
+{
+ "description": "Reference copy of the SIRCL clean-room implementation tree used by libsircl. The copy at ../sircl-current is byte-identical to the selected source at capture time, excluding build outputs (.build, .pytest_tmp) and caches.",
+ "sources": {
+  "lead": "C:\\Users\\Cody\\AppData\\Local\\Temp\\claude\\C--Users-Cody-Documents-Github-sparkring-design-system-extraction-774ad2\\91bedf0c-2617-4d47-acfe-1c5f863230ca\\scratchpad\\ring8\\cleanroom\\impl"
+ },
+ "selected": "lead",
+ "captured_utc": "2026-10-08T06:00:23Z",
+ "changes_from_previous_capture": {
+  "changed": [
+   "PROVENANCE.md",
+   "STATUS.md",
+   "spark_transport/sircl/README.md",
+   "spark_transport/sircl/RUNBOOK.md",
+   "spark_transport/sircl/sparkring_sircl/env.py",
+   "spark_transport/sircl/sparkring_sircl/oneshot/runtime.py",
+   "spark_transport/sircl/sparkring_sircl/protocol.py",
+   "spark_transport/sircl/sparkring_sircl/ring/cli.py",
+   "spark_transport/sircl/sparkring_sircl/ring/plan.py",
+   "spark_transport/sircl/sparkring_sircl/ring/summary.py",
+   "spark_transport/sircl/sparkring_sircl/ring/worker.py",
+   "spark_transport/sircl/sparkring_sircl/testing/gpu_emulation.py",
+   "spark_transport/sircl/sparkring_sircl/tuning.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/README.md",
+   "spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md",
+   "spark_transport/sircl/sparkring_sircl/vllm/STATUS.md",
+   "spark_transport/sircl/sparkring_sircl/vllm/adapter.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/catalog.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/executor.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/guard.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/mhc.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/pins.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/planner.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/qwen_hc.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/receipt.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/serve/bundle.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/serve/checks.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/serve/cli.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/serve/plan.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/serve/probe.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/settings.py",
+   "spark_transport/sircl/sparkring_sircl/vllm/shims.json",
+   "spark_transport/sircl/tests/test_ring_harness.py",
+   "spark_transport/sircl/tests/test_tuning.py",
+   "spark_transport/sircl/tests/test_vllm_guard.py",
+   "spark_transport/sircl/tests/test_vllm_registration.py",
+   "spark_transport/sircl/tests/test_vllm_serve.py"
+  ],
+  "added": [
+   "spark_transport/sircl/sparkring_sircl/testing/column_gather_checks.py",
+   "spark_transport/sircl/tests/test_vllm_column_gather.py"
+  ],
+  "removed": []
+ },
+ "files": {
+  "LICENSE": {
+   "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+   "bytes": 11558
+  },
+  "NOTES-kernels.md": {
+   "sha256": "249f645572a7532ad189fb3f016b7c8f46e9c22e7904a92002d78308a351acfd",
+   "bytes": 67091
+  },
+  "NOTES-vllm-adapter.md": {
+   "sha256": "e803c143398c85961f827d27177bd6bb7acfd6bf92aad389592b533c95adf867",
+   "bytes": 53096
+  },
+  "NOTICE": {
+   "sha256": "912a4a4707341df100a4ae10f3fc53fa1de7ab73cfc13486d14e9d72808b8c0b",
+   "bytes": 937
+  },
+  "PROVENANCE.md": {
+   "sha256": "e3420c85e362052946b3bd158948d4d8964a1eceb781f7c5939b1d79997936e4",
+   "bytes": 8481
+  },
+  "STATUS.md": {
+   "sha256": "e0a758ed5a91a4afb6add4fb938b391fc2b9a9f88ef94147811ff7e141ca405f",
+   "bytes": 58897
+  },
+  "docs/architecture/sircl.md": {
+   "sha256": "2654e755a5a039ced6c4fa1e0a916302883ba952f6cd99fada47adf88ffe0bad",
+   "bytes": 14242
+  },
+  "spark_transport/README.md": {
+   "sha256": "9dbdbdacf3baf03b7e84271320b0434ffc348ad3ee2829e70fb9dc48e9eb0162",
+   "bytes": 10104
+  },
+  "spark_transport/sircl/LICENSE": {
+   "sha256": "1eb85fc97224598dad1852b5d6483bbcf0aa8608790dcc657a5a2a761ae9c8c6",
+   "bytes": 11558
+  },
+  "spark_transport/sircl/NOTICE": {
+   "sha256": "912a4a4707341df100a4ae10f3fc53fa1de7ab73cfc13486d14e9d72808b8c0b",
+   "bytes": 937
+  },
+  "spark_transport/sircl/README.md": {
+   "sha256": "062c457d009804e7dce3d158065bfb06a017114b801262a4aea32ba510d50fad",
+   "bytes": 81486
+  },
+  "spark_transport/sircl/RUNBOOK.md": {
+   "sha256": "91f9dacefe2e658a17bc13505ab3c81c79e6fabf7ed4bdbdfc2d9f8293750c5b",
+   "bytes": 60835
+  },
+  "spark_transport/sircl/pyproject.toml": {
+   "sha256": "4f23b39ea1bfbf972acd47709b0c61c83df07f67d18a8a82b507c2f0576d62b8",
+   "bytes": 1756
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/plan.json": {
+   "sha256": "fe6b823eaf423a5656b7a841fae27c5b80168d3c71c5f0612fe33706a831974e",
+   "bytes": 11085
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/plan.txt": {
+   "sha256": "d30b8a8f27c9faf91018f2cf62361cb23f0d7082d5d02b6a062d5614ebb62eaa",
+   "bytes": 3152
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/rank-0.json": {
+   "sha256": "e4cb174a99f03cdb58e7ce412c73fd50cbf8e0b95367a3039f72978530bf1c4d",
+   "bytes": 100795
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/rank-1.json": {
+   "sha256": "32bedba5656a4b00494955f7ed3fdc6a84d9412b607b3f6f98468681399410b2",
+   "bytes": 100347
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/rank-2.json": {
+   "sha256": "30e454e01c25b80357299a08fcd18bb78baacf655a5cfb9ec0d215023c3580f4",
+   "bytes": 100286
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/rank-3.json": {
+   "sha256": "dec587aa449efc0c7f6c911d6541e230927a2258ba8d45234feeb5aeef8b04d2",
+   "bytes": 100827
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/result.json": {
+   "sha256": "890e6e208ab1e0a61dc3eb3c8321adce5221db806917caf2dfdd0a3d16e25e9e",
+   "bytes": 13633
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-210932/path4/summary.txt": {
+   "sha256": "120eb6d368fb594da3d10edacddd1e0c0a657976031066ef9e54668484fb4d6a",
+   "bytes": 2245
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/plan.json": {
+   "sha256": "5169533f7b73f9014986056a754dd3c3a9a5ea3d725559ea054bffbfbc31813a",
+   "bytes": 11086
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/plan.txt": {
+   "sha256": "3d79a454500383d3888584411f1fa490d2610a9166e14cf744e244d5dd14517c",
+   "bytes": 3130
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/rank-0.json": {
+   "sha256": "7c52066fffd6b5afdbac3fe9d47212453acf25303519dd27f05224ab9d620174",
+   "bytes": 749839
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/rank-1.json": {
+   "sha256": "7bdea0918b4435294c45c8da45dabc45f5bd84a514fb482ab57d148ac9a9beba",
+   "bytes": 749768
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/rank-2.json": {
+   "sha256": "c536c2187191c7f3ba7651dc46399ddd001cb249332deaf25c8f6291e3c62c41",
+   "bytes": 750040
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/rank-3.json": {
+   "sha256": "e8d0f4108532667d50ef790049c9c6e84103d103d34e442b32c713923c3b0240",
+   "bytes": 749877
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/result.json": {
+   "sha256": "753a858ff44cc2627ed60a0e72165b77950f163dea62cf5d754e7f240aec4c49",
+   "bytes": 41014
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211020/path4/summary.txt": {
+   "sha256": "623a54f398d690557cd9590d224c3a979ad050a301354f502eb433c4dddd1199",
+   "bytes": 7591
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/plan.json": {
+   "sha256": "a150acfffb2458d926d866c3e1f927264119d769a677d41233884f2939ab9f63",
+   "bytes": 10037
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/plan.txt": {
+   "sha256": "ff41e1dc301c4ce2cad2c879cc5db9dd120b74260acfee577931cd56804c28fa",
+   "bytes": 3352
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-0.json": {
+   "sha256": "f2568f22d2c70908314430625401e0f6a564093d79594093a663aa63de0d3e6e",
+   "bytes": 97862
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-1.json": {
+   "sha256": "099777a7229dc30a1ec829a75b4e5bd543c862fb0f1ff856d34302f598ab4c56",
+   "bytes": 97129
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-2.json": {
+   "sha256": "81c106357679fa6e82d2676aab859e889c8cb1283573c00faa5aaa1450fb5e17",
+   "bytes": 96617
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-3.json": {
+   "sha256": "e8b4184aae0a26311e33e1395cb5e2ee0206dce05cab153b986d3227f97d49b6",
+   "bytes": 97696
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-4.json": {
+   "sha256": "07bebcb876912573cbf8a0507a9b1eba3fa7d5a3dc7cc5cfe7832b3e818e6333",
+   "bytes": 97188
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-5.json": {
+   "sha256": "f5d2d9fe9863ef215d25944c3b1c99a062348775a1c7d52ff9100c3f3ddbdc6b",
+   "bytes": 97126
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-6.json": {
+   "sha256": "861c7091744bf14247754ee7fc1b6cc8e7770cd4f5b045d0e7ed28d70471dc3c",
+   "bytes": 97265
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/rank-7.json": {
+   "sha256": "cb166e2dcd947169206b5cb1e21aee4824a8384d8488c46893d5175184b8733a",
+   "bytes": 97164
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/result.json": {
+   "sha256": "f4f5aafc4f0fe39173d92c377170e4c8517f52157b618b30fe13cfcdd0a2966a",
+   "bytes": 44160
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211303/pairs/summary.txt": {
+   "sha256": "f4ec9941031810ccebb1d278b64b05137e5193f27a5c99f33899d93d71f5c7bb",
+   "bytes": 8563
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/plan.json": {
+   "sha256": "49e6292f42047cb781a3cc4bb76c35e32d96e959e112a787bf572f5ffe88fc46",
+   "bytes": 10038
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/plan.txt": {
+   "sha256": "1882263eca7aa17d512ee3734451c76801a587a9e74c5b86a871fc60018a43a9",
+   "bytes": 3330
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-0.json": {
+   "sha256": "b0c843a6b20c0e92f904cd4398b89409d5e2a8929536327fc3b458402b32b127",
+   "bytes": 736738
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-1.json": {
+   "sha256": "feeff7cdde4788bae0903bd48a4d845a7fae7e152d145415d67f430291fdb2ea",
+   "bytes": 738795
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-2.json": {
+   "sha256": "4ce7dde73630c09c944ee18571ae35b74611f8212f946b70a8bda7e3d9711a48",
+   "bytes": 740330
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-3.json": {
+   "sha256": "8a0bc708a42d7ff7bd47a2db04cd3a01e237b8cda5eeabcb0182907af46ceb55",
+   "bytes": 741906
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-4.json": {
+   "sha256": "7fdb9dcc17f7005583e4b93553cbce6de32d6bc117d25ba6ca899b498f4b19a1",
+   "bytes": 740850
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-5.json": {
+   "sha256": "98984a67250d157057c5c8aa6a21f0ad2b36cdf44eef2c0359558381da896790",
+   "bytes": 740589
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-6.json": {
+   "sha256": "289fac86bb0744da5cd733e7924a2765b59a2c729878b9b2859bf22c9aaf255b",
+   "bytes": 740125
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/rank-7.json": {
+   "sha256": "f60168920ea729c06383bc8939c79074f37537634cadfcb02e9580f86c12ef24",
+   "bytes": 740090
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/result.json": {
+   "sha256": "c4042bc92534eec5d0cae90de8f91eaa7f1376c791d5cb980391fd5a6ace2c19",
+   "bytes": 145454
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211351/pairs/summary.txt": {
+   "sha256": "c4d305ec6036fb4bb60e739b17ca5f6c74c60c2cd3061093fc137b2f0799b565",
+   "bytes": 29947
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/plan.json": {
+   "sha256": "b8417108e40c5a37903c93267bcd0867f01190faaeee7699a783d9fc49ba751f",
+   "bytes": 20859
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/plan.txt": {
+   "sha256": "c8939e6804952df11b52d6fdd3f7b5ad85c7fe110afbbef76448fcf185724077",
+   "bytes": 5400
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-0.json": {
+   "sha256": "94e618c688761f9e672dac6a86461cd700755b6715bb4dfe2031901cc31c1bf4",
+   "bytes": 101106
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-1.json": {
+   "sha256": "6e7f98229dfdf3f8f11c81d85bba4aeefffdf136201fffb0db667ea7b32ce022",
+   "bytes": 100599
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-2.json": {
+   "sha256": "d4bde2649aaaed505e4e4d80784b4ae8e14d6e5ffcb0d55e1d0713a51bd0d16f",
+   "bytes": 100633
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-3.json": {
+   "sha256": "fa2d2188aceb5f709992cf6a64d6f335f32a5d87529db4c9e0a89252bea63f3f",
+   "bytes": 101077
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-4.json": {
+   "sha256": "6105efb3888a532711a02a95af104a38f2f4e93e0b6037b6fcee4d05e04a24f0",
+   "bytes": 100928
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-5.json": {
+   "sha256": "5e46f7044f75e204c7ca4fb965dfb053b9ddf33e8ab124ad153dc3363fe95279",
+   "bytes": 100472
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-6.json": {
+   "sha256": "643ba7e3aa2bc9615e6e75289b6962b53364350313315d31a4eb13f16500b4c7",
+   "bytes": 100759
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/rank-7.json": {
+   "sha256": "bc6de91d084d7c52bc6531a393e0048561557fc010ee48a07b2b3232d6abe8b5",
+   "bytes": 100884
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/result.json": {
+   "sha256": "f7f0e58130f8787a75b1797ec94496cf448208a95f68acffcf0e6b90d6b24d37",
+   "bytes": 27078
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211518/two-tp4/summary.txt": {
+   "sha256": "e8076ac70b709f7f75b2a0da87ffb3f8950a605f80d348667cc7f4f6c541db60",
+   "bytes": 4353
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/plan.json": {
+   "sha256": "53fedc81de599d91fe0ecfa4a120badc39d328dd4c92cb4c2316195dcdbeab8c",
+   "bytes": 20860
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/plan.txt": {
+   "sha256": "22b759468a72ed090ee13eadacae11c4928768256c7d70032180e813c07a18a3",
+   "bytes": 5378
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-0.json": {
+   "sha256": "1b6083f08a39e214c6f7be4a55ea7798689d1199693f0607dae9e95ca5e60486",
+   "bytes": 749886
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-1.json": {
+   "sha256": "4a167c31e96ef6ac3ca154fb35c301a293f5c0adaa4d1623a65a9336e4aa6f08",
+   "bytes": 750311
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-2.json": {
+   "sha256": "ca78ed8b3299ba066c0936aa06c9160045047b6515d3fdc60a53af6658c8cdd7",
+   "bytes": 751038
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-3.json": {
+   "sha256": "f8e7a256bdbc4484157e6a7480f48a884bba9290ea03e73714df9fe193c0524b",
+   "bytes": 749696
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-4.json": {
+   "sha256": "15ae891b32be1d89c260e37ebb134f6d413e0242fea5ccf63b3cc7fbf8879e94",
+   "bytes": 748629
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-5.json": {
+   "sha256": "fa5bc159b7dbd96b94733d9e250521378038e61d56f23ec85f0d76f648f951e8",
+   "bytes": 749742
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-6.json": {
+   "sha256": "9420bc42a3984cf60ba222ab52ae4f0113db9956b77d781407578bd1a312597d",
+   "bytes": 749042
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/rank-7.json": {
+   "sha256": "9583b558761b25de4689e4d3645f9a21d3959c58ce62a39430f394ef099b55db",
+   "bytes": 749530
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/result.json": {
+   "sha256": "11942f116050bbbc9d0b61ced03e8f5044252d6aabe09670fa245307efffcef1",
+   "bytes": 81833
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211605/two-tp4/summary.txt": {
+   "sha256": "df7a814e5f8211dd0a8b1270c083d6e503b8334ae48b6c69a060eb906584f976",
+   "bytes": 15045
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/plan.json": {
+   "sha256": "010b3bf71be6c76d72bb4013ee7fd71b5e0ef9de866563813ece43ea49512519",
+   "bytes": 45098
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/plan.txt": {
+   "sha256": "299435523c9e5d457950b37d7278054342b1e646ec76a1b631158577efca54fe",
+   "bytes": 10672
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-0.json": {
+   "sha256": "9e7121d0c80996923398e6cc19178ca5f6facf7c71fd5252bd8236d274f73721",
+   "bytes": 103510
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-1.json": {
+   "sha256": "fda7fb47e0879c6ffc51a0dc9fef439f2e4dead6c8b072542b8e758d24f7aba6",
+   "bytes": 103577
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-2.json": {
+   "sha256": "b1407b446b85f2adb64185500e9217ed876fc7c012f238fd65f3b93a8fcb4cb8",
+   "bytes": 103583
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-3.json": {
+   "sha256": "9efaf26247f6878ff09bc1d3e892e93948353aa9ca1c8abb9ce3db83dbd8e7d6",
+   "bytes": 103589
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-4.json": {
+   "sha256": "346f6c1b934ccb61c1d67eed6953e4c5d61261c3255e9308a67453f0f4738765",
+   "bytes": 103436
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-5.json": {
+   "sha256": "d9462c034ecbe119ec952f10a66363a3cf5504e8f5010543098e8646ab89d8f2",
+   "bytes": 103496
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-6.json": {
+   "sha256": "20ab92a93f9b1a1038a829872008ac3e6c9b068187aa47d31f0fa7732f8c4f9e",
+   "bytes": 103583
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/rank-7.json": {
+   "sha256": "f92977a8e1ea332aff864a7c9018376f0845c65151ea9edc1628a690dacf37bf",
+   "bytes": 103521
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/result.json": {
+   "sha256": "db9d7341b962515f5cbb7484bdbdb8538aa7602ec86f8d99b9d1dedbe8f6c755",
+   "bytes": 19940
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211739/ring8/summary.txt": {
+   "sha256": "efbddcb9cbd19f64ce15f81b799bc4ca56430ac35f8508e4515920ba0300ef4e",
+   "bytes": 2245
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/plan.json": {
+   "sha256": "1919f8f6e5b7f83b4ca3bc05bd9a1a626b1f7a87da3e2fe56ebe32a68af815a8",
+   "bytes": 45099
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/plan.txt": {
+   "sha256": "284cadb54c72fe065bf94cda56a31dd7f2826c5aded175098f7510fb35322fd9",
+   "bytes": 10650
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-0.json": {
+   "sha256": "7e81dc93f98fa39bd2c450bb902c34371c2034897017a26704feb613161163d3",
+   "bytes": 753960
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-1.json": {
+   "sha256": "8c5776b1c053e176999baffa5cad100653f7a3a264e63c53885788a6812739ad",
+   "bytes": 753840
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-2.json": {
+   "sha256": "2d001f6f9b90566183fc3c14f9a19c6f8eb0ca6a3259f7b0336302394d86ab25",
+   "bytes": 753745
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-3.json": {
+   "sha256": "7445b72498973f486615820b528238caf642d8bd53bd12400c34c4f039bc9395",
+   "bytes": 754007
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-4.json": {
+   "sha256": "bff522292dc86445a87cede7ecfaac93bd6782156b4228056281b0a36d35f061",
+   "bytes": 754484
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-5.json": {
+   "sha256": "cfed43efea2f0a2346f4b0740ee869f945bf3eb16737fb400e22654489ea4266",
+   "bytes": 754171
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-6.json": {
+   "sha256": "9cf788aaee02524c49d99d9cb0cd30fb2d75de92e00552a8335ce5ee6d5d2814",
+   "bytes": 754038
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/rank-7.json": {
+   "sha256": "577b0eb35f98d311486314304e86c03a831e2d60f14d99424cbb64413b92149d",
+   "bytes": 754235
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/result.json": {
+   "sha256": "183c3bdb11bb2bf7c2d7c33607ba9efe8dbe228ec272735340571c3435eb1663",
+   "bytes": 51351
+  },
+  "spark_transport/sircl/sircl-ring-results/20261006-211827/ring8/summary.txt": {
+   "sha256": "10a37df01552df9486337b285cca2b292f56b6dd03efb4a248ecdc84d81d8675",
+   "bytes": 7591
+  },
+  "spark_transport/sircl/sparkring_sircl/__init__.py": {
+   "sha256": "818143de3af0cc4f7413e5337aa365ad08e7f5c92351e637b8fac759b443f656",
+   "bytes": 1314
+  },
+  "spark_transport/sircl/sparkring_sircl/agreement.py": {
+   "sha256": "536275cbc1c82443da3d87ddbafefbd90a652e158520e9bd7a3a89e4ff668de3",
+   "bytes": 3306
+  },
+  "spark_transport/sircl/sparkring_sircl/bounds.py": {
+   "sha256": "fd983f5f7618d473263fa33fe34ec87a9a2e054988c47f53ab46216ddf00d02d",
+   "bytes": 10978
+  },
+  "spark_transport/sircl/sparkring_sircl/build.py": {
+   "sha256": "b64c062e2638f2fec27f69edaf418baead5ffe89be30313a149816bfe7210a03",
+   "bytes": 4363
+  },
+  "spark_transport/sircl/sparkring_sircl/callprofile.py": {
+   "sha256": "30b860876e3086f11b75c6e6449ede779732d39bb8442fc1841697d8aa170b37",
+   "bytes": 6413
+  },
+  "spark_transport/sircl/sparkring_sircl/cpus.py": {
+   "sha256": "5411bcd2c84e96a96d61d689344bdaa8b349064864e653e7f850b4216a6fd208",
+   "bytes": 8427
+  },
+  "spark_transport/sircl/sparkring_sircl/env.py": {
+   "sha256": "f7bc67aa7243690acf9a096ce4447bc7c73488cc1415e9918d72b0aee9bb7dbd",
+   "bytes": 11239
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/__init__.py": {
+   "sha256": "13ca72aae3e8549a38f93bc983d023ba992d57031ed28e0e5d48393197e5a7a1",
+   "bytes": 2323
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/__main__.py": {
+   "sha256": "13a1a5b340cdcfc1902b62be90e508c7c71886000d5bf087e7854aadf09fb35e",
+   "bytes": 52
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/cli.py": {
+   "sha256": "81ea42d8b2f5e3348f4a7217c4bb512a9d17d8d30f47d6d4e322e463830df74d",
+   "bytes": 14781
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/commands.py": {
+   "sha256": "740bfab048868b0c9f46cc9e215eeceacdc5c6943e6a94a3d1db1ea2b19b5496",
+   "bytes": 10775
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/diff.py": {
+   "sha256": "80d1e2f85ff84b7cead9395a55dc16ad08e4c5a1c02bcce8d0e4cd64e3df3fe0",
+   "bytes": 20154
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/layouts.py": {
+   "sha256": "c42e2930323fd93d23ef823b5ea4d5ff4e9bdb4b02e9df72b7a327a15460faa0",
+   "bytes": 9318
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/mesh_marker.c": {
+   "sha256": "5f330fba6e4c6c2e49d158b84fd76ef0c2ed710354753742503c09262b9c6d4a",
+   "bytes": 11626
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/ops.py": {
+   "sha256": "62b4eea70443d69f3f017d245b09e585efd631ab2708a2aad4fa90b15b282ce8",
+   "bytes": 10567
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/plan.py": {
+   "sha256": "14926a959b35abe0dd674c218dcadf37990dfdc7ad4452fca6b1f969daaef4d2",
+   "bytes": 35509
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/report.py": {
+   "sha256": "348a99b6de5fb9656c65e7e39ec6eafcd1070a6562c2d39dc9eda26f95f4dbb6",
+   "bytes": 10284
+  },
+  "spark_transport/sircl/sparkring_sircl/fabric/state.py": {
+   "sha256": "4ad3e426c3c456bf9cdf757853086321b2db1bacc9840ebd6bd096927991d1cc",
+   "bytes": 23886
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/__init__.py": {
+   "sha256": "8a60dee1f865b64928fbe5b781a72eadddf3361662c66d72ea8430c8ed101c1d",
+   "bytes": 1972
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/_geometry.py": {
+   "sha256": "fa183c67ea582cef62f06b4883416b84de9565b6bf468ff88137c72454ced6a3",
+   "bytes": 7255
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/_kernel.py": {
+   "sha256": "39b3b7016f27d29801c220a8101bd0a15ff214463ad3272d46b3c6f691f78726",
+   "bytes": 25838
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/_ptx.py": {
+   "sha256": "28d479f0410f5ddaa73a25bd75808807a22f411b5b504c4a4be52e193fa58d47",
+   "bytes": 10765
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/_reference.py": {
+   "sha256": "2c0ba8ac7932833b5b1b58cbd4e561449dc144a69b3e2ccf3df9dfd38ed221a2",
+   "bytes": 8872
+  },
+  "spark_transport/sircl/sparkring_sircl/fused_norm/runtime.py": {
+   "sha256": "ad0552d672cf81a185eb515c51248993e8832577d79f1e75d5c755fab323bb5e",
+   "bytes": 17869
+  },
+  "spark_transport/sircl/sparkring_sircl/groups.py": {
+   "sha256": "46a94cad0e7250a00bcc6c30fd377d6970d94bd48759a81e185c67b66dde10ff",
+   "bytes": 3234
+  },
+  "spark_transport/sircl/sparkring_sircl/latency_model.py": {
+   "sha256": "f21abf64e271f805a8f661412de3895159593625496b1338164953e05c0972d7",
+   "bytes": 24414
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/__init__.py": {
+   "sha256": "eae7c03b453db6c1e045c18aa52d8989c6e2c4be787e0b1d2f555f370da8f527",
+   "bytes": 1722
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_allgather_cute.py": {
+   "sha256": "bc08cbdcd7a25889229595f3b9833c011d71d461bf9d4dd3e82a8d3b9e410367",
+   "bytes": 18188
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_chain_cute.py": {
+   "sha256": "9e83f27c155fe74d34c01c494cbbb122fe9d68b7f1c50ae8b93b0bca0554d286",
+   "bytes": 26910
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_compile.py": {
+   "sha256": "d8809ed8ef574fbab8ea1345decffcbd6d140e0dd5ac28c4b2d21b01881c858a",
+   "bytes": 4906
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_cute_batch.py": {
+   "sha256": "62cf464dc61fe3b54afe6075965d6aa5f4ac1bf7986f0fd22d12f74d2f41c989",
+   "bytes": 2821
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_cute_intrinsics.py": {
+   "sha256": "66a0ba2831ab7bffbb9319ac912817cd8b32b7c94b94be7e00b0fcf058eaae98",
+   "bytes": 13652
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_fast_launch.py": {
+   "sha256": "6eb5b8cf416226c76399389524ea8338eed33b5ea5f2f97ecc1b39dc4ba711cb",
+   "bytes": 7052
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_links_cute.py": {
+   "sha256": "231602750cabbe1b8b5473c0015d462521ddb2c97c9446988a449d5f54b0519b",
+   "bytes": 72414
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_oneshot_cute.py": {
+   "sha256": "987c876fc538115eab9bda14baa85c429b6b4816e2665d85826ed1e498d3fc75",
+   "bytes": 18591
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_proxy.py": {
+   "sha256": "3e98369499dde0748901055daab5bffbc3f981fee130d493b44eb3519e2bf07a",
+   "bytes": 16460
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_roce_proxy.c": {
+   "sha256": "7deb5b1a3686f53a1b3366dca7fab8713f8794a156c1b37c15545f0663f2ae83",
+   "bytes": 135201
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_scatter_cute.py": {
+   "sha256": "f715fa9f3a1a3de666b55224879e9dfe9df55c34b6ef31d221a608c985a4793c",
+   "bytes": 22514
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_scatter_ops.py": {
+   "sha256": "288270f284a07d697ec1f91220100d83cca880efcf8b2cf2a69fa00e15a144fb",
+   "bytes": 11228
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_swing_cute.py": {
+   "sha256": "0659e954976a23756c5645d178148daaea7949d29be2d7d321f852aef4c8339a",
+   "bytes": 21388
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_swing_ops.py": {
+   "sha256": "9fd1c43545b567894ff56fc72aab14ce9a4269e5efca2bd1186de86f171b0f0b",
+   "bytes": 7006
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_timed_wait.py": {
+   "sha256": "1dfcd71bde391242e7b5e131da29849263bd9f5e467e57cd196422088c58d435",
+   "bytes": 12760
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/_twoshot_cute.py": {
+   "sha256": "ca76a58d0754d5eef639b9ba63253e8b809a4b4f1dc69eb5defd81764fad626c",
+   "bytes": 22690
+  },
+  "spark_transport/sircl/sparkring_sircl/oneshot/runtime.py": {
+   "sha256": "67a6871d916f9a60bd1f8482afddff0ca1524c80e1bc31ea5a4b790f4601d113",
+   "bytes": 156257
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/__init__.py": {
+   "sha256": "fa40452e3c9e1e88c9b3613f6fb6694d442dc4a259b8ed708fe2518d175d647b",
+   "bytes": 1598
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/_kernels.py": {
+   "sha256": "23c122d9aecdf951b1a693a554af1a55d2b71e153c22c25614bfc7e7c851f110",
+   "bytes": 19860
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/_native.py": {
+   "sha256": "49087a76d08a3313f37cd651a97bcac0535790e2ab5d36feaafbe011c0d0ac01",
+   "bytes": 12459
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/_p2p_proxy.c": {
+   "sha256": "5325f3c471447b4ec0e955a16cf72c6cc9975c0dab43b5ec5924a966cb129765",
+   "bytes": 56693
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/budget.py": {
+   "sha256": "3657576c93d0f6d18f4bba74cd19136ec575cf9bdde39b8db52e53b4ccfda14e",
+   "bytes": 10792
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/build.py": {
+   "sha256": "1614a7e24f6dace8a49e3e5cbb0cb6918a2b46b2d487499ab3b92551cbace304",
+   "bytes": 3311
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/protocol.py": {
+   "sha256": "6b32f96a34270b119978d3a6e83849bff10c2465e9cab93c487d46e38551bcda",
+   "bytes": 9955
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/session.py": {
+   "sha256": "24df9843a1bf29412f3a7f34278c08de3adae9adc601d07db8a1c4c00bb69087",
+   "bytes": 38246
+  },
+  "spark_transport/sircl/sparkring_sircl/p2p/settings.py": {
+   "sha256": "970df0acfdb52e19527dfd3212912f3189d472c0a4b3a4462b79e55e170a9baf",
+   "bytes": 7476
+  },
+  "spark_transport/sircl/sparkring_sircl/pieces.py": {
+   "sha256": "666721e06a656c2db027a720b69c3dd26ad60384d7e99c5881fa610d2259c069",
+   "bytes": 6802
+  },
+  "spark_transport/sircl/sparkring_sircl/posting.py": {
+   "sha256": "ab7a0cf7115c8029a2734a741a6b2b6278a122e80c1caa86a7c04f4c41c2ab61",
+   "bytes": 5322
+  },
+  "spark_transport/sircl/sparkring_sircl/protocol.py": {
+   "sha256": "f8b0de165f0e4cf1c82b0595b516acd0043caf10e59da8b7c5f03db859d30f39",
+   "bytes": 36172
+  },
+  "spark_transport/sircl/sparkring_sircl/references.py": {
+   "sha256": "7873570b65ed2e50f79e5e4ad1e0c85c5389300f7cf7f45f26f6e57404e5e18c",
+   "bytes": 6438
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/__init__.py": {
+   "sha256": "79f401889c874b7f785b68cc0ccdd9a0851d8383dd77ea1471857242ca86d6f8",
+   "bytes": 939
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/__main__.py": {
+   "sha256": "13a1a5b340cdcfc1902b62be90e508c7c71886000d5bf087e7854aadf09fb35e",
+   "bytes": 52
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/cli.py": {
+   "sha256": "81b876bcb716fe9d681729e4412919b50c5ae28cdc18f87f68cced9240e6e910",
+   "bytes": 44152
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/counters.py": {
+   "sha256": "590b9070106fadecf2bff7fd77709105821d9258155e12f9a71368df59a43994",
+   "bytes": 6675
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/nccl.py": {
+   "sha256": "bddb497f2892a12864820b64f6347c007f09a4b56fb7dae1760f8a6b205e6b5a",
+   "bytes": 10383
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/p2p.py": {
+   "sha256": "2fddf473384530d86ec910b56afba26ae11f16bbec7dc71b4d479a463070e581",
+   "bytes": 26750
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/p2p_worker.py": {
+   "sha256": "d3a8a7b7c7a4167037d5142861c2a67babec9e805453b17a2f02d34ef3925797",
+   "bytes": 14038
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/plan.py": {
+   "sha256": "d8c40dae42ea79492bff702c0e3d0aad6944976893b8f4a4f5ce806c72915111",
+   "bytes": 69452
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/remote.py": {
+   "sha256": "5a409c56ec085c707e36e2dbc8df7a67bc600f208d436c7e1205bb0328c8f882",
+   "bytes": 8496
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/site.example.json": {
+   "sha256": "a7eda07b1a2676b58e3e19d875827172312870757dd90eea150ab2c3472c74cc",
+   "bytes": 1096
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/site.py": {
+   "sha256": "669b6501ebb8f963c2d1723ce588d9c57460532342eca4ad8f0d711332069abe",
+   "bytes": 6773
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/summary.py": {
+   "sha256": "e2ba44eb351893d1383b02cdb6c40ac2cf55d81b19e012032b301bc1904f4e05",
+   "bytes": 31715
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/trace.py": {
+   "sha256": "1364021a8f9e42f9494a65cc23e001ca3b2f14b3ca194a49209eb07105bb970e",
+   "bytes": 5596
+  },
+  "spark_transport/sircl/sparkring_sircl/ring/worker.py": {
+   "sha256": "36ac98c5e557e24defbe00a93e980312075518428f8e548cbe7cc535a34aeb25",
+   "bytes": 90815
+  },
+  "spark_transport/sircl/sparkring_sircl/roce_gid.py": {
+   "sha256": "a38d1d3699e6b4c0fe4bd6e12de75e8137208ba322d49ce47158e73e6e28e613",
+   "bytes": 8721
+  },
+  "spark_transport/sircl/sparkring_sircl/routes.py": {
+   "sha256": "a6ba07dfc54797764156f18b20189b515871d02ccad710825fff0912d92315af",
+   "bytes": 33577
+  },
+  "spark_transport/sircl/sparkring_sircl/scatter_plan.py": {
+   "sha256": "696833cb2d6ca9da186d30682256e6d0dbec1832eb8a98a8f4f5f428e41a4b55",
+   "bytes": 7155
+  },
+  "spark_transport/sircl/sparkring_sircl/swing_plan.py": {
+   "sha256": "702507e89a6a11f465c88964a55ab9c7e9933b43d347335513da87fba0206f09",
+   "bytes": 10601
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/__init__.py": {
+   "sha256": "46fec63f27ef0479e85e95747a29a566a3aeb2f3e5d0464e81cd708faf9b3e21",
+   "bytes": 153
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/collective_models.py": {
+   "sha256": "8697beb11bb5ebb577c63e7d3a3a2685e562065d1300126cc92761aeb5df7022",
+   "bytes": 23770
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/column_gather_checks.py": {
+   "sha256": "8bbb3b7ebf631d95c61039a15053e9cf29d8c0b2594e05180f87faf24c2e620e",
+   "bytes": 12603
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/dcp_gpu_checks.py": {
+   "sha256": "29a05bd88ec64f7c3e1c04430d0543d71488b2f11e22593f3210564b69800023",
+   "bytes": 30255
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/fabric.py": {
+   "sha256": "6b985f987c2b5381397f938376cff646f27e7bef117120233c7accb4b705ed7d",
+   "bytes": 14143
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/fake_verbs/fake_verbs.c": {
+   "sha256": "32f59b8b26d55f6c7f36072310becd7a745a16d3d4ca875075cdb6173590f8f2",
+   "bytes": 31487
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/fake_verbs/fake_verbs.h": {
+   "sha256": "407baa33688f538102f6bed8e7bf5e14bf6bcc984e09cf01a96127cbbdab0800",
+   "bytes": 4817
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/fake_verbs/infiniband/verbs.h": {
+   "sha256": "4492551757c091045ac75150585a645f4f5682402e8cd4564d5116d31d0de3da",
+   "bytes": 7509
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/fused_norm_gpu_checks.py": {
+   "sha256": "f24d3e3d99eb2d1cbadf4af077e39a776f529b859e4489e58de72e9d441b1013",
+   "bytes": 15258
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/gpu_emulation.py": {
+   "sha256": "68026bf1f89557e50ccdc0c90d6ff4481dabafce8414e06c30f1c9ded9bdc296",
+   "bytes": 108493
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/kernel_gpu_checks.py": {
+   "sha256": "d6cd85120cea80fe722d51e7c8e2aeefeda447ba14256552f771c0fdfe780d45",
+   "bytes": 38610
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/native_build.py": {
+   "sha256": "5ceaed9073f7a62a752397f03ff407be80d35bc19bb955eba5c3a3d3708df550",
+   "bytes": 3310
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/p2p_build.py": {
+   "sha256": "1131004846ed1f32afaf019f101c2ce72d824d36564d49db269d612b9355f482",
+   "bytes": 2805
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/p2p_emulation.py": {
+   "sha256": "43c08d97a6efeae25e74a0c22b4d6d6dbebd7603612b8364342a670676f3a8ad",
+   "bytes": 26272
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/p2p_fabric.py": {
+   "sha256": "5fc77736de4ecc0f017a0af455455abddfeb0e4eea0de3d29c27bdeae1fd1f7f",
+   "bytes": 9522
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/relay_hosts.py": {
+   "sha256": "4f9c4829a03c01f61861d9d973a76cfe2b550cd92b49e8fa1a15484044f28b9e",
+   "bytes": 36734
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/ring_links.py": {
+   "sha256": "9a114fc81adbea38fa16983efe569ff5f18f77a36675101f3a55b183ad2e4267",
+   "bytes": 16380
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/sim/p2p_sim.c": {
+   "sha256": "032164c10c0242712e718ab2fc7658a8b7d01810fb112d1c857dbf8c5190fc10",
+   "bytes": 41566
+  },
+  "spark_transport/sircl/sparkring_sircl/testing/sim/proxy_sim.c": {
+   "sha256": "cef78de84c1e0a0833c49cc29e17398dc417c04f4ea479eb29969cc8bd7863c5",
+   "bytes": 94373
+  },
+  "spark_transport/sircl/sparkring_sircl/tuning.py": {
+   "sha256": "292a6113e09d3a1196a74704a0a0bb9430cc79dcc27e9e58b5bbf9a6e972c34f",
+   "bytes": 34871
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/README.md": {
+   "sha256": "9f2fac5e66c549c10493fe5492526b2d72eca73b10b362d1f60f4634dc2040ba",
+   "bytes": 39829
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md": {
+   "sha256": "a3b9dff4310bb10b09aa042605397c8be810016e3fb93db4712d00ce2961f7e3",
+   "bytes": 91124
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/STATUS.md": {
+   "sha256": "9f4e5b5bc90118aae685758d24879a395e68b89dd2f3317453f8d65aae26dd51",
+   "bytes": 26387
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/SURVEY.md": {
+   "sha256": "4651303adb9706a506304f8066ab1a62fd7dc44bb00fccf84584eb9816707eac",
+   "bytes": 28699
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/__init__.py": {
+   "sha256": "4104f4d16c89635526d5989cf9cfbf3703f11932df455a0cc0c0d67f6a1a0271",
+   "bytes": 2293
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/adapter.py": {
+   "sha256": "8a9684975b2ce9f75234bf8768470b49c38a18db74791e08b8e1ff06bf0b9ef5",
+   "bytes": 69100
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/catalog.py": {
+   "sha256": "fcf914f165bdaaecad47ef4dfe3ceed8ba047a02a25dff7246ffd0c899806968",
+   "bytes": 21399
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/communicator.py": {
+   "sha256": "6dcd6b4101352bb6ab67f6aa5e4b7cbb640987e886e019fc94bf1b6de8b1369f",
+   "bytes": 24536
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/cuda_platform.py": {
+   "sha256": "042d13adf7171a846b60d6c6d9373d1cfe37fc31a98b466a16ffa6e0a4ac7237",
+   "bytes": 604
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/dcp_collectives.py": {
+   "sha256": "00e1bcf51ade8f9935e33147a9df97de4283c5211822da2ba891114bfb658b83",
+   "bytes": 38145
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/emulation.py": {
+   "sha256": "7afe67882b26bc407487378607f2f038a02d56e3373250b10dfb1f776b0eeeff",
+   "bytes": 28451
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/executor.py": {
+   "sha256": "dc2846d6c612160f219a00eccb25e512ede477b581af51254360eeb3b3f646ce",
+   "bytes": 22661
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/fabric.py": {
+   "sha256": "6136b42a5bf83a7081dc0b1cde955fbe9dbd30cafe27f21602f4157e8b911669",
+   "bytes": 25276
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/groupops.py": {
+   "sha256": "d64b03548b296bad58e1af744439681e54b0f8505177e3db79c8255c7dcdc5e3",
+   "bytes": 3040
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/guard.py": {
+   "sha256": "ef924fafd5544de9c28403bf98cccb3eced95273b3130223f71c112d9bd30fbd",
+   "bytes": 21921
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/hooks.py": {
+   "sha256": "8b1ed824d3e16c97fa904d2b194ef88c1f9e975fad3e26bac931f7362ac232c7",
+   "bytes": 25455
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/mhc.py": {
+   "sha256": "950d5b69a20e50a7e7f60c2099075b00c171d884802098f47040124b2cbf7dfc",
+   "bytes": 7393
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/norm_fusion.py": {
+   "sha256": "ba23eda176559b748ab9738696088b00ac6e2b02a19e350bc5804eae38040ef9",
+   "bytes": 14086
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/p2p.py": {
+   "sha256": "854ef8d5617f346d5cd991095da0b2f73bca2ed991b1b1c19f1c9e341e656373",
+   "bytes": 12425
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/p2p_emulation.py": {
+   "sha256": "12c2686b6c95be3db2362aabd14fbed68aaf2aeccc912fb017b620fc3f61c13c",
+   "bytes": 9877
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/pins.py": {
+   "sha256": "a1578bcd9449a2e6d325151c1c0a4b393975f9274939a16c2bc6e49a35f6c1e7",
+   "bytes": 14938
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/planner.py": {
+   "sha256": "7c3c0dbf2cff159734856d12c459052d3b007b0db60fbb67ac5f2bee399d1378",
+   "bytes": 28355
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/platform.py": {
+   "sha256": "8b4cbd25aeedd7fda8c449ed753f27bd946918cc9ef27eb93a13986fd39b95d2",
+   "bytes": 1238
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/plugin.py": {
+   "sha256": "775e396f1a4d37f21e3ba98dbb7c92a4bf4ec3eff056fb488558ab8398962bd5",
+   "bytes": 4591
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/qwen_hc.py": {
+   "sha256": "b3cd22b47d348577eb283766d7060b39c743c3336ae15d838cfab90bdf170fa4",
+   "bytes": 5207
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/receipt.py": {
+   "sha256": "e39ec096c912d1c5d77d5f1da17834bc7799a02fa9dedec876fd92dbbcd10f4e",
+   "bytes": 5782
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/__init__.py": {
+   "sha256": "a0a1626a87bcf65ce6432aaa7643566028f6cd41a202999226b9e16ab3af07b6",
+   "bytes": 1033
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/__main__.py": {
+   "sha256": "8211a33684802379bd9470f7b94d9e1a0e090b69211f4fa1aa204cb0f8d841df",
+   "bytes": 150
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/bundle.py": {
+   "sha256": "b51eb8cdc0264e4523ea10b0288b29a953e88d05d5d6645add3b36302225afdb",
+   "bytes": 52055
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/checks.py": {
+   "sha256": "089790acdff9e80b63ad86dd6cd0a4f62f834d388a2966010555cf14b0ba72b6",
+   "bytes": 19649
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/cli.py": {
+   "sha256": "3f26eaf4b06c2805f1108a45527a32efd417efaf9fb46f116c575633d16afd36",
+   "bytes": 54246
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/commands.py": {
+   "sha256": "10374daae84783e836fbb276cb64783fae020d2ebd797f050fad4db286204559",
+   "bytes": 13292
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/plan.py": {
+   "sha256": "c3a10958cc8c4b92cd3c78064b06c8610ae725ab19f7068958e7e54ed01037c2",
+   "bytes": 198473
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/probe.py": {
+   "sha256": "ab1694e81f57f899b3af5e7ae92f8310f2a28aab49ed407e10bdd8694bc0643d",
+   "bytes": 12728
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/profile.py": {
+   "sha256": "7c85fa5b82a19d4ef96e46f1ec40d0115ba888b80560da2ac6f4518d00d4bafe",
+   "bytes": 24689
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/sitefile.py": {
+   "sha256": "f57f1ce736669a266ce890dd3afcb5923d7b3e12bd57ff29edf78cddd6e714db",
+   "bytes": 6254
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/serve/staging.py": {
+   "sha256": "8742f35c88ce69137866c2a6b4612f6283adec34d10ba2851873954df7f92782",
+   "bytes": 4532
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/sessionapi.py": {
+   "sha256": "86baf3390b5404bb7d70bc6ae92e1273283765283689428db8fac15923d084d1",
+   "bytes": 16399
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/settings.py": {
+   "sha256": "30b160a6b66b7f8934950f34e4fc7ca0d0ae22014d1d98f17c2a68b8f345ca52",
+   "bytes": 12043
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/shims.json": {
+   "sha256": "797ef640518193a72492083f1cf9f6becbfa7787c89b2a9b693c73da739ba7dc",
+   "bytes": 24490
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/shims.py": {
+   "sha256": "b350bdcd239b8a0232cbc754772677e64ebeca38a9133368c9c4bc69621b3cd9",
+   "bytes": 12241
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/tp4.py": {
+   "sha256": "bb99f0410654d9139ed48094da8cc63a6ea4a7aa4af6362ae0c1dfa4e017a6a6",
+   "bytes": 5670
+  },
+  "spark_transport/sircl/sparkring_sircl/vllm/tp_slot.py": {
+   "sha256": "13635116974404651ddc1ef8489141caf1cfeeb3598d04b00de62a7de27a98fd",
+   "bytes": 17155
+  },
+  "spark_transport/sircl/tests/conftest.py": {
+   "sha256": "5afdf2708a118a119523cdf8cdfc4dbe16e1047c82724502132f79fff1e0b16b",
+   "bytes": 1373
+  },
+  "spark_transport/sircl/tests/data/numeric.json": {
+   "sha256": "add50dad0c78dc1ad80ce18ad1dc1c6a9f0d55409655fcc1d60046b6b0caa20f",
+   "bytes": 15237
+  },
+  "spark_transport/sircl/tests/data/routes.json": {
+   "sha256": "17f2157aaf27f9bfdba143196cca44ec96e4060aca3b788d0599625839452a0f",
+   "bytes": 251065
+  },
+  "spark_transport/sircl/tests/fabric_reference.py": {
+   "sha256": "1eb5aff483720e2133f907c07e61d0cbf724c514d972797ab7774ef0778d4803",
+   "bytes": 5291
+  },
+  "spark_transport/sircl/tests/test_agreement.py": {
+   "sha256": "37bd8b2b86891e7ffa43907b113383554ca98658f35b86d8dcc5761834613fe8",
+   "bytes": 3395
+  },
+  "spark_transport/sircl/tests/test_callprofile.py": {
+   "sha256": "a233388f2687a018ecdaf8660b1df7ac2fbd4ed3f9c486162960c1ab61cf0945",
+   "bytes": 2951
+  },
+  "spark_transport/sircl/tests/test_cpus.py": {
+   "sha256": "54671a6b3a34a03acbb331b51ad7d2fc79c8c64ea8bad3751637bf42fa3a3226",
+   "bytes": 5386
+  },
+  "spark_transport/sircl/tests/test_dcp4_harness.py": {
+   "sha256": "61cbac536e14a4f3d69279ef8851a5466e34551ac414367275ef4a927cdce2e5",
+   "bytes": 7938
+  },
+  "spark_transport/sircl/tests/test_event_trace.py": {
+   "sha256": "6a21aec8fe9a84fc01ffaa202f41c6434e9fd059c84158191f98ce5cc68aa681",
+   "bytes": 3422
+  },
+  "spark_transport/sircl/tests/test_fabric_ops.py": {
+   "sha256": "1e28313fd6a056c9650235ba5c8d6e083b88e1b0b43697c57e10dd12f107dd7a",
+   "bytes": 28822
+  },
+  "spark_transport/sircl/tests/test_fabric_plan.py": {
+   "sha256": "282a630cf3103869c87f9ee815edc0cadb94da960a1b95b777486b25626b257d",
+   "bytes": 11647
+  },
+  "spark_transport/sircl/tests/test_fast_launch.py": {
+   "sha256": "6277f79aca73c78841e0a5e7927745a3386743264b0f3024d15f53daa0f6d684",
+   "bytes": 5287
+  },
+  "spark_transport/sircl/tests/test_fused_norm_reference.py": {
+   "sha256": "9320618d771459098e0e4aa751d252ddce154d212752e15dece2bbc01bc0f6a3",
+   "bytes": 9580
+  },
+  "spark_transport/sircl/tests/test_fused_norm_simulator.py": {
+   "sha256": "b450714d211d37ae8c2b97946524fae0ce847416d990935544a765fc2b24e01c",
+   "bytes": 2729
+  },
+  "spark_transport/sircl/tests/test_groups.py": {
+   "sha256": "645f241a49b415912a271a9cfcb32b1d7d6059121befab2a66b04d6254e11dd2",
+   "bytes": 1395
+  },
+  "spark_transport/sircl/tests/test_latency_harness.py": {
+   "sha256": "09b70634ac9ec645ac2c6e75e22d15245d20c6a61c7b3c07f67b3d34bee6bac0",
+   "bytes": 16283
+  },
+  "spark_transport/sircl/tests/test_native_binding.py": {
+   "sha256": "65a3cb93f09bc512db393546bd6e60397c50162832483ed6faf6690cc5133866",
+   "bytes": 10707
+  },
+  "spark_transport/sircl/tests/test_p2p_binding.py": {
+   "sha256": "91a55ff1bd4aef70a99f05d0361716e59008ec611296842b90352c66c586374f",
+   "bytes": 9422
+  },
+  "spark_transport/sircl/tests/test_p2p_protocol.py": {
+   "sha256": "f065fbc69f01ecebb05bde97ddd2969636bc78a672a45637daa04650f187a53c",
+   "bytes": 9155
+  },
+  "spark_transport/sircl/tests/test_p2p_simulator.py": {
+   "sha256": "09e2c95e8629fa1ad541d21cb345220a502f2839ad7084e5d7746979dc2f91c1",
+   "bytes": 2755
+  },
+  "spark_transport/sircl/tests/test_pieces.py": {
+   "sha256": "a67f7a9e580bb2c2f41ab3f80eec514875a88af07129938241f61861acf8e280",
+   "bytes": 9062
+  },
+  "spark_transport/sircl/tests/test_posting.py": {
+   "sha256": "100fddce52d9e90bb0a2b0d16e62ba673a369ea3c8734db08bdfa9dd612b07b2",
+   "bytes": 6085
+  },
+  "spark_transport/sircl/tests/test_protocol.py": {
+   "sha256": "4383960e5f1f27d9f70ddfb85cda7354bca06616c6185fdda779360e69ec6870",
+   "bytes": 13225
+  },
+  "spark_transport/sircl/tests/test_proxy_simulator.py": {
+   "sha256": "591f69b2ed44077f8f5e1d2dd5664c30db2ed7baf265d845a0bcadb4c3aa5eab",
+   "bytes": 2804
+  },
+  "spark_transport/sircl/tests/test_ring_docker.py": {
+   "sha256": "2df88de8d6c3aaa8ccec3e4289c4609c31f1f63f083b1c320f8f273802064d3d",
+   "bytes": 10550
+  },
+  "spark_transport/sircl/tests/test_ring_harness.py": {
+   "sha256": "97b9e53a77b7bccdb9fdc7bb3736d3763162e2cb068d6e0f4270ac68abc4bac3",
+   "bytes": 62256
+  },
+  "spark_transport/sircl/tests/test_ring_links.py": {
+   "sha256": "f942cf0babdaba06f43d43f4845fddab3aebc087447ed3d5007ee2d43f01f25b",
+   "bytes": 4563
+  },
+  "spark_transport/sircl/tests/test_ring_p2p.py": {
+   "sha256": "0d4403e0004d62c29ac2492847d04e6a5482ebaf2dd8187a84079220d13a6877",
+   "bytes": 4635
+  },
+  "spark_transport/sircl/tests/test_routes.py": {
+   "sha256": "8a4a757e82bd5a134d7d5e4e7728d013a9daeb06b6e4e460b1118c2387e5b292",
+   "bytes": 12245
+  },
+  "spark_transport/sircl/tests/test_scatter_plan.py": {
+   "sha256": "46d40c3bfdc8fc75f64f6e7abe785ae8004a6f7cab25cb363bd264820623d0db",
+   "bytes": 5658
+  },
+  "spark_transport/sircl/tests/test_scatter_simulator.py": {
+   "sha256": "53e4cc593fd4820282c09094e44066837c5e78309f96024bbd57f862f3f36de5",
+   "bytes": 8307
+  },
+  "spark_transport/sircl/tests/test_swing_harness.py": {
+   "sha256": "cfcb49dc2844753f7d7eac0cd21967a4b93fd59b9a73a953739fde8206172bc1",
+   "bytes": 5684
+  },
+  "spark_transport/sircl/tests/test_swing_plan.py": {
+   "sha256": "2a97991fc4a9768b64a37d95234a5bc7e002c7e912bb407dd2386d836e89d571",
+   "bytes": 8927
+  },
+  "spark_transport/sircl/tests/test_swing_simulator.py": {
+   "sha256": "a8669d18c11d46025d850aaf5f51c8168ca892ba50fe649277a551872615c4a7",
+   "bytes": 4625
+  },
+  "spark_transport/sircl/tests/test_tuning.py": {
+   "sha256": "760ac96ad10b8d06b7d6a8d6f1e320126c83fe2b700c72faf2cbf03591bfa044",
+   "bytes": 13840
+  },
+  "spark_transport/sircl/tests/test_vllm_capture.py": {
+   "sha256": "c044b42291e7365bc6083c3fe3292f48d7351d7763ce95efba82fdceccf89efe",
+   "bytes": 6396
+  },
+  "spark_transport/sircl/tests/test_vllm_column_gather.py": {
+   "sha256": "e76db15faa6b0dc5aec6ba8c5472c3ee037f999e733fa678ebb5cb9bc4b67062",
+   "bytes": 20893
+  },
+  "spark_transport/sircl/tests/test_vllm_executor.py": {
+   "sha256": "10021ab5ed3fe6eea932599f2bd595be0284c2deaa2a9fe751260838326f18a2",
+   "bytes": 18255
+  },
+  "spark_transport/sircl/tests/test_vllm_fabric.py": {
+   "sha256": "b8d16097133b35e0f798a4db6d3815d489976cc32cdf9251d737d0f28d740aae",
+   "bytes": 8476
+  },
+  "spark_transport/sircl/tests/test_vllm_groups.py": {
+   "sha256": "173b8e5ae42487b31716f29e80810a001bc4a0f08c93e3bc7206434cc107ce0d",
+   "bytes": 15238
+  },
+  "spark_transport/sircl/tests/test_vllm_guard.py": {
+   "sha256": "fecb5294ba293410069c9374fc4d1ff49f1da7fd87a1c991f7374a1fdd84d6cf",
+   "bytes": 7456
+  },
+  "spark_transport/sircl/tests/test_vllm_p2p.py": {
+   "sha256": "a9f313344061b7bf41a5d327411ba47214f7f9b39016fd1ff7f36e0376decd10",
+   "bytes": 16089
+  },
+  "spark_transport/sircl/tests/test_vllm_pins.py": {
+   "sha256": "c45cf6453419d224cb31dad7eae1a357a17dbd06671e3593468ef311c2f1dab4",
+   "bytes": 11917
+  },
+  "spark_transport/sircl/tests/test_vllm_planner.py": {
+   "sha256": "ebeac8f634edf0ecf2bfbef048189f0ce057db9b7a498e034353264d85a6b4b8",
+   "bytes": 13884
+  },
+  "spark_transport/sircl/tests/test_vllm_registration.py": {
+   "sha256": "74d5ce72397be6f43bbe66996d274e2696d421546e139b424a6ae7cdd3af88b8",
+   "bytes": 63207
+  },
+  "spark_transport/sircl/tests/test_vllm_serve.py": {
+   "sha256": "b93ce5dc3921a87ebaa8585d8c0610d562475be612cc3a88d13ba4ff1f3c7b7c",
+   "bytes": 253909
+  },
+  "spark_transport/sircl/tests/test_vllm_shims_catalog.py": {
+   "sha256": "4924baef3bc7f5c9fc56be860fe13615153168b86a985a2bcf27f294ed639366",
+   "bytes": 12447
+  },
+  "spark_transport/sircl/tests/vectors.py": {
+   "sha256": "d1c0e8731e708e0a23861a78ea641b592289eaef37398fc11f8797cb6ba25fc3",
+   "bytes": 748
+  },
+  "spark_transport/sircl/tests/vllm_stub.py": {
+   "sha256": "3b7d10ee23a7439fa4be83b5d874b489f34ddb06e645f1ed7f8ebeb970245650",
+   "bytes": 22139
+  }
+ }
+}

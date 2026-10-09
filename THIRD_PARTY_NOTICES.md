@@ -490,3 +490,43 @@ blobs they derive from are listed in `spark_transport/sircl/PROVENANCE.md`.
 The package keeps the Apache-2.0 license text as `spark_transport/sircl/LICENSE`
 and its attribution in `spark_transport/sircl/NOTICE`; distribution must
 preserve both.
+
+## 18. libsircl, SIRCL's NCCL-compatible C library (included)
+
+`spark_transport/libsircl/` vendors libsircl snapshot `db529218` (tree digest
+`db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0`, version
+0.6.0; [vendored copy](docs/architecture/libsircl.md#source-placement)).
+libsircl is SparkRing's own work under the Apache License, Version 2.0
+(`spark_transport/libsircl/LICENSE` and `NOTICE`). It is an independent
+implementation of NCCL's C interface; it is not NVIDIA NCCL and is not
+sponsored or endorsed by NVIDIA. It contains:
+
+- `include/nccl.h`, a copy of NVIDIA NCCL's public header `src/nccl.h.in` at
+  tag v2.32.3-1 with marked changes, and the unmodified header and NCCL's
+  `LICENSE.txt` in `vendor/`. Copyright (c) 2015-2026 NVIDIA CORPORATION &
+  AFFILIATES, licensed under the Apache License, Version 2.0. No NCCL
+  implementation source is included.
+- Copies of SIRCL files (`src/transport/sircl_roce_proxy.c`, the verbs-subset
+  header) and CUDA C++ ports of SIRCL's kernels, which derive in part from
+  RoCEnante by Local Inference Lab and its contributors (Section 17);
+  `vendor/SIRCL-NOTICE` reproduces SIRCL's notice.
+- Code from rdma-core's `<infiniband/verbs.h>` inline functions, used under
+  the OpenIB.org BSD license; the notices are in
+  `LICENSES/rdma-core-verbs.txt`.
+- Prebuilt kernel packs (`kernels/prebuilt/*.fatbin`) compiled with the NVIDIA
+  CUDA Toolkit 13.3. Their object code is generated from CUDA Toolkit headers
+  and is distributed under the
+  [NVIDIA CUDA Toolkit End User License Agreement](https://docs.nvidia.com/cuda/eula/),
+  not the Apache License; `LICENSES/CUDA-NOTICE.txt` reproduces the notices
+  the CUDA floating-point headers require.
+- An MPI subset for nccl-tests (`tools/mpi-shim`), written from the MPI calls
+  that NVIDIA's BSD-3-Clause nccl-tests v2.21.1 makes; no nccl-tests code is
+  included.
+
+Every source or binary copy carries `LICENSE`, `NOTICE`,
+`vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE` and `LICENSES/`. The image
+layer `installer-libsircl-layer` installs them beside the library under
+`/opt/sparkring/libsircl/`.
+
+NVIDIA, NCCL, CUDA, DGX and DGX Spark are trademarks and/or registered
+trademarks of NVIDIA Corporation in the United States and other countries.

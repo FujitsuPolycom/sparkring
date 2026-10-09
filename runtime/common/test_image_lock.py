@@ -185,3 +185,63 @@ def test_the_csf_checkpoint_needs_an_image_whose_vllm_is_its_pinned_build():
     from spark_transport.sircl.sparkring_sircl.vllm import pins
     assert {build for builds in image_lock.CHECKPOINT_BUILDS.values() for build in builds} <= {
         build.name for build in pins.SUPPORTED}
+
+
+# The libsircl layer, an optional block of a v3 lock.
+
+SITE = "/usr/local/lib/python3.12/dist-packages/"
+
+
+def libsircl_block(version="0.6.0"):
+    return {"version": version, "snapshot": "b" * 64, "nccl_api_version": 22705, "fail_stop": True,
+            "library": {"path": f"{image_lock.LIBSIRCL_LIBRARY_DIRECTORY}/libsircl.so.{version}", "sha256": "7" * 64},
+            "plugin": {"name": "libsircl", "path": SITE + "sparkring_libsircl.py", "sha256": "8" * 64},
+            "receipt": {"path": image_lock.LIBSIRCL_RECEIPT, "sha256": "9" * 64}}
+
+
+def libsircl_lock(name="dev-20261010-kraken-sircl-libsircl-cuda1342-nccl2323-status034", **changes):
+    """A v3 lock of a kraken-line image with the SIRCL and libsircl layers."""
+    return sircl_lock(name, **{"transports": ["libsircl", "prepared", "sircl"], "libsircl": libsircl_block(),
+                               **changes})
+
+
+@pytest.mark.parametrize("profile", installer_image.SUPPORTED)
+def test_a_v3_lock_with_the_libsircl_layer_validates_and_keeps_the_v2_contract(profile):
+    value = libsircl_lock()
+    assert image_lock.validate(value, profile) is value
+    assert image_lock.transports(value) == ("libsircl", "prepared", "sircl")
+    assert image_lock.libsircl(value) == libsircl_block() and image_lock.sircl(value) == sircl_block()
+    assert set(image_lock.v2_view(value)) == installer_image.FIELDS[installer_image.SCHEMA]
+    # A lock without the layer has no libsircl field, as every lock made before the layer existed.
+    assert image_lock.libsircl(sircl_lock()) is None and "libsircl" not in sircl_lock()
+    assert image_lock.libsircl(installer_image.default_lock()) is None
+
+
+@pytest.mark.parametrize("change, message", [
+    ({"libsircl": None}, "libsircl layer records"),
+    ({"transports": ["prepared", "sircl"]}, "without the libsircl transport records no libsircl layer"),
+    ({"transports": ["prepared", "libsircl", "sircl"]}, "sorted"),
+])
+def test_a_v3_lock_whose_libsircl_fields_disagree_is_refused(change, message):
+    with pytest.raises(ValueError, match=message):
+        image_lock.validate(libsircl_lock(**change), "qwen38-flash-next-tp2")
+    without = {key: item for key, item in libsircl_lock().items() if key != "libsircl"}
+    with pytest.raises(ValueError, match="records its libsircl layer"):
+        image_lock.validate(without, "qwen38-flash-next-tp2")
+
+
+@pytest.mark.parametrize("edit, message", [
+    (lambda block: block["library"].update(path="/opt/elsewhere/libsircl.so.0.6.0"), "library is"),
+    (lambda block: block.update(version="0.7.0"), "library is"),
+    (lambda block: block.update(snapshot="ba5a337b"), "tree digest"),
+    (lambda block: block.update(nccl_api_version="22705"), "NCCL API level"),
+    (lambda block: block.update(fail_stop="yes"), "fail-stop mode"),
+    (lambda block: block["plugin"].update(name="sircl"), "vLLM plugin libsircl"),
+    (lambda block: block["receipt"].update(path="/tmp/receipt.json"), "receipt is"),
+    (lambda block: block.pop("plugin"), "records"),
+])
+def test_a_libsircl_layer_that_disagrees_with_itself_is_refused(edit, message):
+    block = libsircl_block()
+    edit(block)
+    with pytest.raises(ValueError, match=message):
+        image_lock.validate_libsircl(block)

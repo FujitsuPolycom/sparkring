@@ -37,6 +37,9 @@ integrations/vllm/** text eol=lf
 spark_transport/fabric/** text eol=lf
 # SIRCL ring sessions name the native library and the staged tree by content digests.
 spark_transport/sircl/** text eol=lf
+# The vendored libsircl snapshot is checked byte for byte against its SHA-256 manifest
+# (scripts/sync_libsircl.py check); keep its stored bytes on every platform.
+spark_transport/libsircl/** -text whitespace=cr-at-eol
 profiles/** text eol=lf
 
 runtime/releases/**/*.tar.gz -text

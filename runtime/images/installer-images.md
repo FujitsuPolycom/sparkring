@@ -345,6 +345,57 @@ SIRCL's facts to the dashboard's Transport table, enters an image through a
 [status descriptor layer](#replacing-the-runtime-status-package) below the
 SIRCL layer.
 
+## libsircl layer
+
+[libsircl_layer.py](libsircl_layer.py) (`installer-libsircl-layer`) adds
+libsircl, SIRCL's NCCL-compatible C library
+([design](../../docs/architecture/libsircl.md)), to a kraken-line image with a
+v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
+`libsircl` among its `transports` and a `libsircl` block. Status:
+**research-only**; no release lists it. The layer holds:
+
+- `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, built by libsircl's
+  own Makefile from the vendored [snapshot](../../spark_transport/libsircl/README.md)
+  (`make -j BUILD=build`, then `make check`) in a network-less container of
+  the parent image, at the fixed path `/tmp/libsircl` and with `LD_PRELOAD`
+  unset. The build embeds the prebuilt kernel packs and needs no nvcc;
+- libsircl's notices under `/opt/sparkring/libsircl`: `LICENSE`, `NOTICE`,
+  `vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE` and `LICENSES/`;
+- the vLLM general plugin `libsircl`
+  ([sparkring_libsircl.py](../../integrations/vllm/libsircl/README.md)) in
+  the serving interpreter's site-packages with its dist-info directory. vLLM
+  loads it only when `VLLM_PLUGINS` names `libsircl`, so the image's other
+  deployments are unchanged;
+- `/opt/sparkring/receipts/libsircl-layer.json` (`sparkring-libsircl-layer/v1`):
+  version, snapshot, library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
+  level, whether the library has the fail-stop mode (its bytes name
+  `LIBSIRCL_FAIL_STOP`; the transport requires it), kernel packs and
+  architectures, plugin, compiler, build commands and every installed file
+  with its SHA-256.
+
+Every added file is recorded in the external-base receipt, whose
+`capabilities.libsircl` names the layer receipt, so the image's `verify`
+checks their bytes.
+
+```bash
+python3 runtime/images/libsircl_layer.py natives --parent-lock PARENT_LOCK --output NATIVES
+python3 runtime/images/libsircl_layer.py prepare --parent-lock PARENT_LOCK --natives NATIVES   [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
+python3 runtime/images/libsircl_layer.py build --context CONTEXT --tag sparkring:libsircl   --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
+```
+
+`natives` first checks the vendored tree against its manifest
+(`scripts/sync_libsircl.py check`) and needs the parent image on the build
+host; `prepare` is offline given copied receipts. `record` (run by `build`)
+confirms that the parent has none of the added paths, probes the built image
+(the plugin's entry point, `ncclGetVersion` 22705, `sirclGetInfo` naming
+libsircl and its version, and the plugin selecting the library), checks the
+layer as installation does (`libsircl.check_layer`), runs the installer's
+admission for every profile and writes the v3 lock. `host-library
+--builder-image ID --output DIR` builds the same library in another local
+image for the stock-image option, which mounts it from the host. The
+[design](../../docs/architecture/libsircl.md#build-and-load-commands) gives
+the commands that build the layer on one Spark and load it on the others.
+
 ## CSF sources of the kraken line
 
 A parent that serves the GLM-5.3-Flash CSF checkpoint needs vLLM and B12X

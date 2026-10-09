@@ -48,10 +48,11 @@ field and adds:
 | Field | Meaning |
 |---|---|
 | `line` | The image line: `kraken`, images built on Local Inference Lab's `karmic-kraken-beta` vLLM and B12X branches |
-| `transports` | The collective transports the image carries, sorted: `prepared` and `sircl`. This package admits v3 locks that list `prepared`, whose v2 fields keep their meaning |
+| `transports` | The collective transports the image carries, sorted: `libsircl`, `prepared` and `sircl`. This package admits v3 locks that list `prepared`, whose v2 fields keep their meaning |
 | `sircl` | The SIRCL layer: package version, native ABI, wheel name and SHA-256, the two prebuilt libraries (path, SHA-256, source digest), the layer receipt, the tuning key a measured table must match, and the pinned vLLM builds the image's vLLM matches |
 | `tuning_defaults_sha256` | The SHA-256 of [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json) at the image's build |
 | `archived` | `true` for an archived release, which `--image` still selects and which is never the default |
+| `libsircl` | Present only when `transports` lists `libsircl`: the [libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)'s version, snapshot tree digest, library path and SHA-256, NCCL API level, whether the library has the fail-stop mode, vLLM plugin path and SHA-256, and layer receipt |
 
 v1 and v2 locks keep validating, and published releases keep their v2 lock
 bytes. Compose exports and the Install Builder use a v3 image through its v2

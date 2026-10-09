@@ -195,6 +195,9 @@ def admit_image(lock):
             if card["profile"] in installer_image.QWEN4_EXP else None,
             # A SIRCL deployment also admits the image's SIRCL layer (transport.admit_layer).
             "sircl": (lock.get("transport") or {}).get("sircl"),
+            # A libsircl deployment admits the image's libsircl layer instead; the key has the field only then.
+            **({"libsircl": lock["transport"]["libsircl"]} if (lock.get("transport") or {}).get("backend")
+               == "libsircl" else {}),
         }, sort_keys=True).encode()).hexdigest()
         record = ADMISSIONS / (key + ".json")
         if record.is_file() and not record.is_symlink():
@@ -205,7 +208,9 @@ def admit_image(lock):
         loader_policy.check(card["image_id"], run=run)
         if "transport" in lock:
             from runtime.common import transport
-            receipt = {**receipt, "sircl": transport.admit_layer(lock, run=run)}
+            # transport.admit_layer admits the SIRCL layer, or the libsircl layer of a libsircl deployment.
+            layer = "libsircl" if lock["transport"].get("backend") == "libsircl" else "sircl"
+            receipt = {**receipt, layer: transport.admit_layer(lock, run=run)}
         try:
             ADMISSIONS.mkdir(parents=True, exist_ok=True, mode=0o700)
             deploy_engine.save_receipt(record, {"image_id": current, "receipt": receipt})

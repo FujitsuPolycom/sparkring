@@ -1,0 +1,129 @@
+#!/usr/bin/env python3
+"""CPU tests of tools/check_nccl_tests.py on synthetic outputs of tools/nccl_tests_pair.sh: a complete pair
+(an all-reduce sweep, an all-to-all whose in-place rows are N/A, receipts whose all-reduces ran as ring and
+fold ops) passes; a missing manifest, a job that failed after a partial log, a job absent from the expected
+lines and job lists that differ between the ranks fail."""
+from __future__ import annotations
+
+import contextlib
+import io
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "tools"))
+
+import check_nccl_tests  # noqa: E402
+
+HEADER = """#       size         count      type   redop    root     time   algbw   busbw  #wrong     time   algbw   busbw  #wrong
+#        (B)    (elements)                               (us)  (GB/s)  (GB/s)             (us)  (GB/s)  (GB/s)
+"""
+FOOTER = """# Out of bounds values : 0 OK
+# Avg bus bandwidth    : 1.5
+#
+# Collective test concluded: {name}
+#
+"""
+ALL_REDUCE = "all_reduce_perf -b 8 -e 32 -f 2 -g 1"
+ALLTOALL = "alltoall_perf -b 8 -e 16 -f 2 -g 1"
+
+
+def log_name(job: str) -> str:
+    name, *rest = job.split()
+    return name + "".join("_" + word.replace("-", "-") for word in rest) + ".log"
+
+
+def sweep(name: str, sizes, in_wrong="0", stop=False) -> str:
+    text = HEADER
+    for size in sizes:
+        text += f"{size:12d}  {size // 4:12d}     float     sum      -1     9.0    0.00    0.00       0     9.0    0.00    0.00    {in_wrong}\n"
+    return text if stop else text + FOOTER.format(name=name)
+
+
+def receipt(rank: int) -> dict:
+    return {"schema": "libsircl-receipt/v1", "forwarded": 0, "refused": {"op": 0, "capture_stream": 0},
+            "healthy": True, "all_reduce": {"calls": 3, "ops": {}}, "fold": {"ops": {"int32/max": 1}},
+            "chain": {"ops": 0}, "links": {"ops": {"ring_reduce": 2}}}
+
+
+def write_rank(directory: Path, rank: int, jobs, logs, status=None) -> None:
+    directory.mkdir(parents=True)
+    rows = []
+    for job in jobs:
+        name = log_name(job)
+        (directory / name).write_text(logs.get(job, "") if rank == 0 else "")
+        rows.append(f"{job}\t{name}\t{(status or {}).get(job, 0)}")
+    (directory / "jobs.tsv").write_text("\n".join(rows) + "\n")
+    (directory / f"receipt.rank{rank}.123.c1.json").write_text(json.dumps(receipt(rank)))
+
+
+def check(*argv) -> tuple[int, str]:
+    out = io.StringIO()
+    with contextlib.redirect_stdout(out):
+        code = check_nccl_tests.main([str(a) for a in argv])
+    return code, out.getvalue()
+
+
+class CheckNcclTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix="check-nccl-tests-")
+        self.root = Path(self.temporary.name)
+        self.logs = {ALL_REDUCE: sweep("all_reduce_perf", [8, 16, 32]),
+                     ALLTOALL: sweep("alltoall_perf", [8, 16], in_wrong="N/A")}
+
+    def tearDown(self):
+        self.temporary.cleanup()
+
+    def pair(self, jobs0, jobs1=None, status=None, logs=None):
+        write_rank(self.root / "r0", 0, jobs0, logs or self.logs, status)
+        write_rank(self.root / "r1", 1, jobs1 if jobs1 is not None else jobs0, logs or self.logs, status)
+        return self.root / "r0", self.root / "r1"
+
+    def test_complete_pair_passes_and_reports_alltoall_in_place_uncovered(self):
+        lines = self.root / "lines.txt"
+        lines.write_text(f"# the two lines\n{ALL_REDUCE}\n{ALLTOALL}\n")
+        code, out = check(*self.pair([ALL_REDUCE, ALLTOALL]), "--expect-lines", lines)
+        self.assertEqual(code, 0, out)
+        self.assertIn("INFO 2 in-place all-to-all rows N/A", out)
+        self.assertNotIn("FAIL", out)
+
+    def test_missing_manifest_fails(self):
+        r0, r1 = self.pair([ALL_REDUCE])
+        (r1 / "jobs.tsv").unlink()
+        code, out = check(r0, r1)
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL job manifests in 1 of 2 directories", out)
+
+    def test_partial_log_then_nonzero_exit_fails(self):
+        logs = dict(self.logs)
+        logs[ALL_REDUCE] = sweep("all_reduce_perf", [8], stop=True)
+        code, out = check(*self.pair([ALL_REDUCE, ALLTOALL], status={ALL_REDUCE: 1}, logs=logs))
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL every job exited 0", out)
+        self.assertIn("FAIL 1 of 2 jobs completed their sweep", out)
+
+    def test_job_missing_from_expected_lines_fails(self):
+        lines = self.root / "lines.txt"
+        lines.write_text(f"{ALL_REDUCE}\n{ALLTOALL}\n")
+        code, out = check(*self.pair([ALL_REDUCE]), "--expect-lines", lines)
+        self.assertEqual(code, 1)
+        self.assertIn("not run: ['alltoall_perf", out)
+
+    def test_ranks_that_ran_different_jobs_fail(self):
+        code, out = check(*self.pair([ALL_REDUCE, ALLTOALL], [ALL_REDUCE]))
+        self.assertEqual(code, 1)
+        self.assertIn("the job lists differ", out)
+
+    def test_in_place_na_outside_alltoall_is_wrong(self):
+        logs = dict(self.logs)
+        logs[ALL_REDUCE] = sweep("all_reduce_perf", [8, 16, 32], in_wrong="N/A")
+        code, out = check(*self.pair([ALL_REDUCE], logs=logs))
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL #wrong 0 on 3 rows", out)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

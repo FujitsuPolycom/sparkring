@@ -1,0 +1,154 @@
+{
+ "cases": {
+  "prepared-pair": {
+   "lock_id": "11787b4e15ad8904410e1b79aa68917b14126c60e93f766e6905df0fabb3f2d7",
+   "plan_lines": [
+    "Transport: prepared (--transport prepared)",
+    "Transport: prepared",
+    "Transport: prepared, because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
+   ],
+   "section_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+   "specs_sha256": [
+    "ebb73046931a6d8e357998be9c069067384f79e9f9835245393be64d005569e5",
+    "0c220bc8404afff6b08e1c4c921debe68c4c085059caa85aa98f82ce71928ec3"
+   ]
+  },
+  "prepared-path-4": {
+   "lock_id": "5e82baa267d37e74394b54e9e334f862261939575ba9cd149340c1405623d035",
+   "plan_lines": [
+    "Transport: prepared (--transport prepared)",
+    "Transport: prepared",
+    "Transport: prepared, because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
+   ],
+   "section_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+   "specs_sha256": [
+    "27f2be0962702a14e9e1a7e23890f78431b0e91b4a3fd7916b8b8abf79d7ff62",
+    "0cde273749cb6865d39c44153cb618e33c0eccac2811a108759be7a9fd138d3d",
+    "5f72fed71c9532098bb767817ecccb9f56c42a11972be22261c15f53b9967da7",
+    "17f590f0495f4f2e9a8e0674443b9586a1c5c8abae78957eed620273417dd04f"
+   ]
+  },
+  "sircl-cycle-4": {
+   "lock_id": "255e55509238cd98b3b1a4baa349ce58a16fe341d270bedb4a7354d98748d792",
+   "plan_lines": [
+    "Transport: sircl on every collective, NCCL off (default table, cycle-4: not measured, SIRCL's own rules apply)",
+    "  SIRCL group: cycle-4 at positions 0, 1, 2, 3; 2 lanes per peer, at most 1 relay on a lane",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options"
+   ],
+   "section_sha256": "3d30acf9d5e82a2c74f4871f0e44cfd146d05063157328eba612e4fd80bbe4de",
+   "specs_sha256": [
+    "91cac805f4399b527ebb07b166afa2522cb5388c92f6963c72a016b09298b1de",
+    "9c43359d5830ca0732e45225f5b6dbb2e33c41d58899b5652079b308c99aaba2",
+    "e10ef13ddc80b03f3cadbaf0f0222d1aa05f029d8b0f1fa6030bf18707379ea5",
+    "6b0f8f7cedc16cd215e2485bd69bb8f65dc80eaa18d7d8d139ad7db7892cceb5"
+   ]
+  },
+  "sircl-cycle-8": {
+   "lock_id": "38d492addf186e9798a0af6ff2b4e63dbde4bfc0e662f6ae3c53a57902018481",
+   "plan_lines": [
+    "Transport: sircl on every collective, NCCL off (default table, cycle-8)",
+    "  SIRCL group: cycle-8 at positions 0, 1, 2, 3, 4, 5, 6, 7; 2 lanes per peer, at most 3 relays on a lane",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options",
+    "  SIRCL settings: capacity 1048576, dispatch 1048576, link_slot 524288, link_slots 16, oneshot_max 28672"
+   ],
+   "section_sha256": "9be6bbdfb50c1753199de4b82ef182bc97fdcee8934b3f26013daa5dda565a5f",
+   "specs_sha256": [
+    "10cc3f4651065167d8d86b8137900aac2a7cded21be6d091024ba42f9c62f5e7",
+    "9913c0074383011277b4b3631664b037ab5c6dd7223f1418a80bb8968c8ba6ea",
+    "41ec13c1b23152100368621e45339b8c69f771a38077ab8e8c0e0f97e553b65c",
+    "3f982d3c29db5a64e3f62060a93884105c0633c10cfc13803ca88820e9e13ce1",
+    "d6e8c5ff57275065707650b1a90e98c6f2cd63c4c59ecaf0a5e237fdd996c433",
+    "47bced8f49a473ed7fc560230c4c1a9b993298845826b95b3bfa502674ac2136",
+    "811fa05ce5c0dac63677f8796cff8f70ee788d938bd55c22b55cb7938bbd415e",
+    "c6dfd52bff1140918e750630b11aa9909fff9ab15e3067d2358c40561b0528ab"
+   ]
+  },
+  "sircl-pair": {
+   "lock_id": "01fc3e29aec2524cc50b3d39e88549d7818ac837b00a7ca237b78be3cf4039ac",
+   "plan_lines": [
+    "Transport: sircl on every collective, NCCL off (default table, pair: the design's settings, not measured)",
+    "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options",
+    "  SIRCL settings: large_blocks 32, oneshot_max 131072, ring_min 2097152"
+   ],
+   "section_sha256": "6c555d4c8736814e6785ad8381e7eb3c26c77b0cc3a787e8aeb2ec9e0de5d287",
+   "specs_sha256": [
+    "1bff5373a596b587c7899ceeca7930ac40bb36321ce9d5b02c636b3dddc04a7b",
+    "d47a52d7249df322b9141b16b3bff277ccc433077795a15c0f03ea42dc2a89eb"
+   ]
+  },
+  "sircl-pair-nccl-auto": {
+   "lock_id": "beac673d918d47a36196639224518ceb5b4fc3a11150811b0d52e145fe3b39d5",
+   "plan_lines": [
+    "Transport: sircl; NCCL may carry what the cabling allows, every collective on this group (--nccl auto; default table, pair: the design's settings, not measured)",
+    "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options",
+    "  SIRCL settings: large_blocks 32, oneshot_max 131072, ring_min 2097152"
+   ],
+   "section_sha256": "eb9fecb61bb5075f751bfc11a3ab559b8d336eb52d0d7a5c2a4f422ae3d61131",
+   "specs_sha256": [
+    "068502617d3b59e84c7adac4cb01b96a305a4496204383c3442444ea47ebde4d",
+    "62d074d8f93e4dd037c6742ee076847e86cc400a6e70f1cfdd2290b017d1e8a7"
+   ]
+  },
+  "sircl-path-4-of-cycle-8": {
+   "lock_id": "8362f33f26dcb84e9900c0695487914c63dbfe4a0655711d49ca92c52e7f6aa7",
+   "plan_lines": [
+    "Transport: sircl on every collective, NCCL off (default table, path-4: not measured, SIRCL's own rules apply)",
+    "  SIRCL group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options"
+   ],
+   "section_sha256": "6cbe0430274b903d424525edf7ba7d73089da2688de892fce70227265a84c9b9",
+   "specs_sha256": [
+    "d417a16cf02cbf8b9863be3b1c50a3fb2c00f3af9a1252a886e1aad082ec3ea8",
+    "8ab241b226f7f4c21b39b12b564d248b9a0ad984f02af292a15adcce0ffa3661",
+    "4bf239db6fa2b3238bd69c13a608e0dacaa53100ea44e9dad83069c966aaca9d",
+    "b0d166c5e9781f4ff5b5d193c7a151a8b93cb95d73890651008482884780116c"
+   ]
+  }
+ },
+ "choose": {
+  "v2-no-fabric/None": [
+   "prepared",
+   null,
+   "image dev-20261004-kraken-cuda1342-nccl2323-status034 carries no SIRCL layer"
+  ],
+  "v2-no-fabric/prepared": [
+   "prepared",
+   null,
+   "image dev-20261004-kraken-cuda1342-nccl2323-status034 carries no SIRCL layer"
+  ],
+  "v3-cycle-8/None": [
+   "sircl",
+   "never",
+   null
+  ],
+  "v3-cycle-8/prepared": [
+   "prepared",
+   null,
+   null
+  ],
+  "v3-no-fabric/None": [
+   "prepared",
+   null,
+   "this cluster has no fabric document; sudo sparkring setup records one"
+  ],
+  "v3-no-fabric/prepared": [
+   "prepared",
+   null,
+   "this cluster has no fabric document; sudo sparkring setup records one"
+  ],
+  "v3-pair/None": [
+   "sircl",
+   "never",
+   null
+  ],
+  "v3-pair/prepared": [
+   "prepared",
+   null,
+   null
+  ]
+ },
+ "generated_at": "bd2bb4ebad418748b8f8cfd66121a2d979f23d66",
+ "schema": "sparkring-transport-plan-digests/v1"
+}
