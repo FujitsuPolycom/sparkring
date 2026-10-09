@@ -13,6 +13,7 @@ import getpass
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -90,11 +91,14 @@ def summarize(plan, *, observe_only=False, api_address=None):
     layout = topology.layout_of(plan)
     print(f"{len(plan['nodes'])} Sparks: " + {"pair": "p0 pair", "cycle": "p0-to-p1 ring",
                                                "path": "p0-to-p1 line"}[layout["shape"]])
-    if not observe_only:
-        document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
-                                              marker=relays.marker_artifact(installer.ROOT))
-        for line in fabric.plan_lines(document, relay_plan):
-            print(line)
+    document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
+                                          marker=relays.marker_artifact(installer.ROOT))
+    for line in fabric.plan_lines(document, relay_plan):
+        print(line)
+    if observe_only:
+        print("Adoption changes no link, address, NetworkManager connection or route and restarts no driver; of the "
+              "relay table it adds only the objects that are missing on a Spark (a route, neighbour or filter "
+              "preference that is present stays as it is), then records the fabric document.")
     hairpin = hairpin_ring.requirement(plan)
     for host, proposed in zip(plan["spec"]["hosts"], plan["network"]["hosts"], strict=True):
         line = f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"])
@@ -211,6 +215,32 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     return plan
 
 
+def retire_cluster_record(plan, *, state=None, now=None):
+    """Move aside Node A's record of another cluster (its ``cluster.json``, fabric document and relay plan) before
+    adoption records this one; return the directory, or None when nothing differs.
+
+    The files move to ``/var/lib/sparkring/retired/<UTC time>-adopt-controller/`` with a ``receipt.json`` that
+    names each and how to put it back. Deployments, caches and checkpoints stay where they are."""
+    state = Path(state or STATE)
+    path = state / "cluster.json"
+    if not path.exists() or installer.read(path)["plan"]["id"] == plan["id"]:
+        return None
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
+    directory = state.parent / "retired" / f"{stamp}-adopt-controller"
+    directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+    moved = {}
+    for source in (path, state / "fabric.json", relays.plan_path(state)):
+        if Path(source).exists():
+            target = directory / Path(source).name
+            os.replace(source, target)
+            moved[str(source)] = str(target)
+    receipt = {"schema": "sparkring-retired-record/v1", "reason": "adopt", "moved": moved,
+               "restore": [f"sudo mv {target} {source}" for source, target in moved.items()]}
+    (directory / "receipt.json").write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print("Moved Node A's record of another cluster aside: " + str(directory))
+    return directory
+
+
 def setup(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair, line or ring of up to eight "
                                      "Sparks, review its fabric, then save persistent host setup.")
@@ -297,9 +327,15 @@ def setup(argv=None):
         return topology.build_spec(found, head, name=args.name, fabric_cidr=args.fabric_cidr)
 
     if args.adopt:
+        retire_cluster_record(plan)
+        document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"],
+                                              marker=relays.marker_artifact(installer.ROOT))
+        fabric.save_prepared(directory, document, relay_plan)
+        sections = [relays.section(relay_plan, rank) if relay_plan else None
+                    for rank in range(len(plan["spec"]["hosts"]))]
         observed = []
         for rank, host in enumerate(plan["spec"]["hosts"]):
-            config = topology.persistent_config(plan, rank)
+            config = topology.persistent_config(plan, rank, relays=sections[rank])
             config.update(ownership="observed", routes=[], forwarding=[])
             if mesh_ring:
                 mesh = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
@@ -310,9 +346,11 @@ def setup(argv=None):
                 order = ("cw_primary", "ccw_primary", "cw_secondary", "ccw_secondary")
                 config["native_mesh"] = {"reference": mesh["reference"], "host_ip": mesh["host_ip"],
                                          "hcas": [next(p["rdma_device"] for p in host["data_interfaces"] if p["role"] == role) for role in order]}
-            discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt"], data=json.dumps(config))
+            adopted = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt",
+                                                              "--retire-existing"], data=json.dumps(config)) or "{}")
             discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "workspace", "--operator", host["host"].split("@", 1)[0], "--name", args.name])
-            observed.append({"rank": rank, "adopted": True})
+            observed.append({"rank": rank, "adopted": True, **{key: adopted[key] for key in
+                                                                ("retired", "relays", "relay_markers") if key in adopted}})
         receipt = {"complete": True, "network_changed": False, "nodes": observed}
         armed = []
         if relaying:
@@ -344,8 +382,7 @@ def setup(argv=None):
     from runtime.host import fabric_bandwidth
     # A degraded cable is a warning with its repair steps; setup never fails here.
     bandwidth = fabric_bandwidth.after_setup(STATE, cluster)
-    if not args.adopt:
-        fabric.finish_setup(STATE, cluster, directory, bandwidth=bandwidth)
+    fabric.finish_setup(STATE, cluster, directory, bandwidth=bandwidth)
     print("Network configured. Choose a model: sparkring models")
     return 0
 

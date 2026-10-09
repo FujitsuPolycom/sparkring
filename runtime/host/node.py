@@ -224,7 +224,13 @@ def observe(config, *, collect=_collect_local):
 def restore(config, *, collect=_collect_local, run=subprocess.run, root="/"):
     """Restore only missing routes/rules and relay table objects; refuse conflicting routes before mutation."""
     if config.get("ownership") == "observed":
-        raise ValueError("This fabric belongs to its existing service; no restoration changes are authorized")
+        # An adopted fabric keeps its links, addresses and routes; only its relay table's missing objects return.
+        if config.get("relays") is None:
+            raise ValueError("This fabric belongs to its existing service; no restoration changes are authorized")
+        rows = relay_table.restore(config["relays"], call=lambda argv: call(argv, run=run), root=root)
+        return {"configured": True, "hardware_qualified": False,
+                "relays": {"restored": sum(row["state"] == "restored" for row in rows),
+                           "missing": relay_table.missing(rows)}}
     facts = observe(config, collect=collect)
     missing = []
     for desired in config["routes"]:
@@ -421,12 +427,14 @@ def restore_fabric(config, *, root="/", run=subprocess.run, log=_log):
     """
     validate(config)
     table = config.get("relays")
-    if config.get("ownership") == "observed" or not (config["routes"] or config["forwarding"] or table):
+    observed = config.get("ownership") == "observed"
+    if observed and not table or not (config["routes"] or config["forwarding"] or table):
         return None
     if call(["systemctl", "is-active", FABRIC_UNIT], run=run, accepted=(0, 3)).returncode:
         return {"active": False, "routes": [], "settings": []}
-    result = {"active": True, "routes": add_routes(config, root=root, run=run, log=log),
-              "settings": apply_settings(config, root=root, run=run, log=log)}
+    # An adopted fabric (observed) has no routes or settings of its own; only its relay table returns.
+    result = {"active": True, "routes": [] if observed else add_routes(config, root=root, run=run, log=log),
+              "settings": [] if observed else apply_settings(config, root=root, run=run, log=log)}
     if table:
         try:
             result["relays"] = relay_table.restore(table, call=lambda argv: call(argv, run=run), root=root, log=log)
@@ -539,6 +547,19 @@ def verify_persistence(config, facts, *, run=subprocess.run, restoration=None, a
                                "and sudo sparkring fabric verify lists each")
 
 
+def _refuse_mesh_beside_markers(config, *, run=subprocess.run):
+    """Refuse a record with relay markers while a mesh service runs here: both would claim the same RDMA packets."""
+    if not (config.get("relays") or {}).get("markers"):
+        return
+    listing = call(["systemctl", "list-units", "--type=service", "--state=active", "--no-legend", "--plain",
+                    *MESH_UNIT_PATTERNS], run=run).stdout
+    running = sorted({line.split()[0] for line in listing.splitlines() if line.split()})
+    if running:
+        raise ValueError("A four-Spark mesh service runs on this Spark (" + ", ".join(running) + "); its markers "
+                         "and the relay table's would claim the same RDMA packets. Stop its model with sudo "
+                         "sparkring down --execute on Node A, then run setup again")
+
+
 def _comparable(config):
     return {key: value for key, value in config.items() if key not in REFRESHED_FIELDS}
 
@@ -558,14 +579,7 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
     path = location(root, "/etc/sparkring/fabric.json")
     if path.exists() and _comparable(read(root, "/etc/sparkring/fabric.json")) != _comparable(config):
         raise ValueError("Node already has another approved configuration; inspect before replacing it")
-    if (config.get("relays") or {}).get("markers"):
-        listing = call(["systemctl", "list-units", "--type=service", "--state=active", "--no-legend", "--plain",
-                        *MESH_UNIT_PATTERNS], run=run).stdout
-        running = sorted({line.split()[0] for line in listing.splitlines() if line.split()})
-        if running:
-            raise ValueError("A four-Spark mesh service runs on this Spark (" + ", ".join(running) + "); its markers "
-                             "and the relay table's would claim the same RDMA packets. Stop its model with sudo "
-                             "sparkring down --execute on Node A, then run setup again")
+    _refuse_mesh_beside_markers(config, run=run)
     observe(config, collect=collect)
     save(root, "/etc/sparkring/fabric.json", config)
     call(["systemctl", "enable", "sparkring-fabric.service"], run=run)
@@ -591,18 +605,66 @@ def relay_markers(*, root="/", popen=subprocess.Popen):
     return relay_table.supervise(table, popen=popen)
 
 
-def adopt(config, *, root="/", collect=_collect_local):
+RETIRED = "/var/lib/sparkring/retired"
+
+
+def retire_record(*, root="/", reason, now=None):
+    """Move this Spark's fabric record (``/etc/sparkring/fabric.json``) aside with a receipt; return the directory.
+
+    The record moves to ``/var/lib/sparkring/retired/<UTC time>-<reason>/etc/sparkring/fabric.json``, and the
+    directory's ``receipt.json`` names it and the command that puts it back. No route, address, service or
+    other file changes: a record's boot service reads it only while that service is enabled."""
+    source = location(root, "/etc/sparkring/fabric.json")
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
+    name = f"{RETIRED}/{stamp}-{reason}"
+    directory = location(root, name)
+    target = directory / "etc/sparkring/fabric.json"
+    target.parent.mkdir(parents=True, exist_ok=False, mode=0o700)
+    os.replace(source, target)
+    receipt = {"schema": "sparkring-retired-record/v1", "reason": reason,
+               "moved": {"/etc/sparkring/fabric.json": f"{name}/etc/sparkring/fabric.json"},
+               "restore": f"sudo mv {name}/etc/sparkring/fabric.json /etc/sparkring/fabric.json"}
+    (directory / "receipt.json").write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    return name
+
+
+def adopt(config, *, root="/", collect=_collect_local, run=subprocess.run, retire=False):
+    """Record an existing fabric as observed, and keep its relay table in place, without any network change.
+
+    The record changes no link, address, NetworkManager connection or route, and restarts no driver
+    (``ownership`` ``observed``, no ``routes`` or ``forwarding``). With a relay table (``relays``) adoption
+    adds only the table's objects that are missing (``relays.restore``, which never removes or replaces one:
+    a route, neighbour or filter preference that is present stays as it is) and enables
+    ``sparkring-fabric.service``, which adds them again at every boot, and, with markers,
+    ``sparkring-relay-marker.service``. A Spark that records another setup is refused unless ``retire``
+    moves that record aside first (``retire_record``)."""
     validate(config)
     if config["node_id"] != read(root, "/etc/sparkring/node.json")["node_id"]:
         raise ValueError("Observed configuration belongs to another node")
     if config.get("ownership") != "observed" or config["routes"] or config["forwarding"]:
         raise ValueError("Adoption must not request network changes")
+    _refuse_mesh_beside_markers(config, run=run)
     observe(config, collect=collect)
     path = location(root, "/etc/sparkring/fabric.json")
+    result = {"adopted": True, "network_changed": False}
     if path.exists() and read(root, "/etc/sparkring/fabric.json") != config:
-        raise ValueError("Node records another setup; inspect before replacing it")
+        if not retire:
+            raise ValueError("Node records another setup; inspect before replacing it")
+        result["retired"] = retire_record(root=root, reason="adopt")
     save(root, "/etc/sparkring/fabric.json", config)
-    return {"adopted": True, "network_changed": False}
+    table = config.get("relays")
+    if table:
+        rows = relay_table.restore(table, call=lambda argv: call(argv, run=run), root=root)
+        result["relays"] = {"restored": sum(row["state"] == "restored" for row in rows),
+                            "present": sum(row["state"] == "present" for row in rows),
+                            "missing": relay_table.missing(rows)}
+        call(["systemctl", "enable", FABRIC_UNIT], run=run)
+        call(["systemctl", "restart", FABRIC_UNIT], run=run)
+        if table.get("markers"):
+            call(["systemctl", "enable", MARKER_UNIT], run=run)
+            call(["systemctl", "restart", MARKER_UNIT], run=run)
+        result["relay_markers"] = bool(table.get("markers"))
+    return result
 
 
 def workspace(operator, name, *, root="/"):

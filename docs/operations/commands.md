@@ -168,7 +168,7 @@ over the cables, and accepts `--name`, `--fabric-cidr`, `--plan`, `--yes`,
 |---|---|
 | `--node USER@IP` | A management target, Node A included; repeat for each Spark, each with the same package |
 | `--apply` | Apply the reviewed plan |
-| `--adopt` | Verify and record existing networking without changing links, routes or services |
+| `--adopt` | Verify and record existing networking without changing links, addresses, NetworkManager connections or routes and without a driver restart; add only the relay table's missing objects (a route, neighbour or filter preference that is present stays as it is), enable `sparkring-fabric.service` and `sparkring-relay-marker.service`, and record the fabric document. A Spark's or Node A's record of another setup moves aside to `/var/lib/sparkring/retired/` with a receipt |
 | `--skip-enroll` | SSH keys and host trust are already configured |
 | `--inventory FILE` | Offline node records; planning only, with `--plan` |
 | `--head-id ID` | Node A's identity for `--inventory` |

@@ -486,3 +486,86 @@ def test_relay_markers_entry_runs_the_records_markers(tmp_path):
     assert seen == [config["relays"]]
     node.save(tmp_path, "/etc/sparkring/fabric.json", topology.persistent_config(plan, 3))
     assert node.relay_markers(root=tmp_path) == 0
+
+
+MUTATIONS = (["ip", "route", "add"], ["ip", "route", "replace"], ["ip", "route", "del"], ["ip", "neigh", "replace"],
+             ["ip", "neigh", "add"], ["ip", "neigh", "del"], ["tc", "filter", "replace"], ["tc", "filter", "add"],
+             ["tc", "filter", "del"], ["tc", "qdisc", "add"], ["tc", "qdisc", "del"], ["ip", "addr", "add"],
+             ["ip", "addr", "del"], ["ip", "link", "set"])
+NETWORK_TOOLS = ("nmcli", "netplan", "devlink", "modprobe", "rmmod", "ethtool", "iptables", "sysctl")
+
+
+def adopted_spark(tmp_path, rank=1):
+    """A Spark of an eight-Spark ring whose relay table is already in place, and its observed record."""
+    plan, document, relay_plan = prepared("cycle", 8)
+    section = relays.section(relay_plan, rank)
+    config = topology.persistent_config(plan, rank, relays=section)
+    config.update(ownership="observed", routes=[], forwarding=[])
+    netdevs = sorted({r["dev"] for r in section["routes"]} | {f["dev"] for f in section["filters"]})
+    kernel = Kernel(tmp_path, netdevs)
+    relays.restore(section, call=kernel, root=tmp_path)
+    kernel.calls.clear()
+    node.save(tmp_path, "/etc/sparkring/node.json", {"schema": "sparkring-node/v1",
+                                                     "node_id": plan["spec"]["hosts"][rank]["node_id"]})
+    from runtime.host.test_fabric_layouts import configured
+    return config, kernel, configured(plan)[rank]["facts"]
+
+
+def test_adoption_keeps_a_present_relay_table_as_it_is_and_changes_no_network(tmp_path):
+    config, kernel, facts = adopted_spark(tmp_path)
+    before = copy.deepcopy((kernel.routes, kernel.neighbours, kernel.qdiscs, kernel.filters))
+    # The Spark records another cluster's setup, which adoption moves aside.
+    node.save(tmp_path, "/etc/sparkring/fabric.json", {"schema": "another-record"})
+    services = []
+
+    def run(argv, **kwargs):
+        if argv[0] == "systemctl":
+            services.append(argv)
+            return SimpleNamespace(returncode=0, stdout="", stderr="")
+        return kernel(argv)
+    with pytest.raises(ValueError, match="records another setup"):
+        node.adopt(config, root=tmp_path, collect=lambda request: facts, run=run)
+    result = node.adopt(config, root=tmp_path, collect=lambda request: facts, run=run, retire=True)
+    assert result["network_changed"] is False and result["relay_markers"] is True
+    assert result["relays"]["restored"] == 0 and result["relays"]["missing"] == []
+    # Nothing that changes an interface, address, connection, route, neighbour, filter or driver ran.
+    commands = [argv for argv in kernel.calls]
+    assert not [argv for argv in commands if argv[:3] in MUTATIONS or argv[0] in NETWORK_TOOLS]
+    assert (kernel.routes, kernel.neighbours, kernel.qdiscs, kernel.filters) == before
+    assert [argv for argv in services if argv[1] != "list-units"] == [
+        ["systemctl", "enable", node.FABRIC_UNIT], ["systemctl", "restart", node.FABRIC_UNIT],
+        ["systemctl", "enable", relays.MARKER_UNIT], ["systemctl", "restart", relays.MARKER_UNIT]]
+    # The other record is kept with a receipt that says how to put it back.
+    retired = tmp_path / result["retired"].lstrip("/")
+    assert json.loads((retired / "etc/sparkring/fabric.json").read_text()) == {"schema": "another-record"}
+    receipt = json.loads((retired / "receipt.json").read_text())
+    assert receipt["restore"].startswith("sudo mv /var/lib/sparkring/retired/")
+    assert node.read(tmp_path, "/etc/sparkring/fabric.json") == config
+
+
+def test_an_adopted_record_restores_only_its_relay_table_at_boot(tmp_path):
+    config, kernel, facts = adopted_spark(tmp_path)
+    kernel.routes.clear()
+    kernel.neighbours.clear()
+    result = node.restore(config, collect=lambda request: facts, run=lambda argv, **kwargs: kernel(argv), root=tmp_path)
+    assert result["relays"]["missing"] == [] and result["relays"]["restored"] == len(config["relays"]["routes"]) + len(
+        config["relays"]["neighbours"])
+    assert not [argv for argv in kernel.calls if argv[0] in NETWORK_TOOLS or argv[:3] == ["ip", "route", "add"]]
+    # Without a relay table an adopted record still restores nothing.
+    bare = dict(config, relays=None)
+    with pytest.raises(ValueError, match="existing service"):
+        node.restore(bare, collect=lambda request: facts, run=lambda argv, **kwargs: kernel(argv), root=tmp_path)
+
+
+def test_the_agent_keeps_an_adopted_relay_table_and_nothing_else(tmp_path):
+    config, kernel, _ = adopted_spark(tmp_path)
+    kernel.neighbours.clear()
+
+    def run(argv, **kwargs):
+        if argv[0] == "systemctl":
+            return SimpleNamespace(returncode=0, stdout="active\n", stderr="")
+        return kernel(argv)
+    result = node.restore_fabric(config, root=tmp_path, run=run, log=lambda line: None)
+    assert result["active"] is True and result["routes"] == [] and result["settings"] == []
+    assert {row["state"] for row in result["relays"] if row["kind"] == "neighbour"} == {"restored"}
+    assert not [argv for argv in kernel.calls if argv[0] in NETWORK_TOOLS or argv[:3] == ["ip", "route", "add"]]

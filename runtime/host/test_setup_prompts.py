@@ -1,6 +1,7 @@
 """Setup asks once, recognizes known Sparks without new logins and records host keys it trusts."""
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -193,7 +194,19 @@ def test_adoption_on_four_sparks_records_the_setting_without_restarting(four_spa
             {"rank": rank, "after": hairpin_ring.KEPT if rank < 3 else hairpin_ring.RESTART} for rank in range(4)])
         return value
     monkeypatch.setattr(controller.hairpin_ring, "ensure", ensure)
+    finished = []
+    monkeypatch.setattr(controller.fabric, "finish_setup", lambda state, cluster, directory, **options: finished.append(
+        Path(directory)))
+    # Node A records another cluster, which adoption moves aside before it records this one.
+    from runtime.common import installer
+    installer.write(controller.STATE / "cluster.json", {"plan": {"id": "another-cluster"}})
     assert controller.setup([*targets, "--adopt", "--apply", "--skip-enroll", "--output", str(tmp_path / "adopt")]) == 0
+    # Adoption records the fabric document and relay plan it prepared, and moves differing node records aside.
+    assert finished == [tmp_path / "adopt"] and (tmp_path / "adopt" / controller.fabric.PREPARED_DOCUMENT).exists()
+    assert all(argv[3:6] == ["node", "adopt", "--retire-existing"] for _, argv in calls if argv[3:5] == ["node", "adopt"])
+    [retired] = (controller.STATE.parent / "retired").iterdir()
+    assert json.loads((retired / "cluster.json").read_text())["plan"]["id"] == "another-cluster"
+    assert installer.read(controller.STATE / "cluster.json")["plan"]["id"] == plan["id"]
     assert prompts == ["Record this verified existing fabric without network changes, and record the ConnectX hairpin "
                        "setting that is in effect and apply it at every boot (no driver restart)? [y/N]: "]
     # The hairpin step runs once, after node adopt on every Spark, and never restarts a function.

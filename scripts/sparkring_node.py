@@ -12,8 +12,11 @@ from runtime.host import node
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring node")
     commands = parser.add_subparsers(dest="action", required=True)
-    for name in ("initialize", "verify", "configure", "adopt", "restore", "control-key", "control-configure", "control-up"):
+    for name in ("initialize", "verify", "configure", "restore", "control-key", "control-configure", "control-up"):
         commands.add_parser(name)
+    adopting = commands.add_parser("adopt")
+    adopting.add_argument("--retire-existing", action="store_true",
+                          help="move a differing fabric record aside (with a receipt) instead of refusing")
     seed = commands.add_parser("seed")
     seed.add_argument("--key-file", required=True)
     seed.add_argument("--yes", action="store_true",
@@ -137,7 +140,7 @@ def main(argv=None):
             if args.action == "configure":
                 result = node.configure(config)
             elif args.action == "adopt":
-                result = node.adopt(config)
+                result = node.adopt(config, retire=args.retire_existing)
             else:
                 node.observe(config)
                 result = {"verified": True, "hardware_qualified": False}
