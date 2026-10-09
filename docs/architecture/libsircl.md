@@ -31,13 +31,22 @@ A snapshot is a directory that libsircl's own workspace writes: `tree/` with
 the library's files, `FILES.sha256` (one `<sha256>  ./<path>` line per file)
 and `MANIFEST`. The SHA-256 of `FILES.sha256` is the snapshot's tree digest,
 and its first eight hexadecimal digits name the snapshot. The vendored copy
-is snapshot `db529218` (tree digest
-`db52921865ff54352873bae80a929689be6193c05f95ec1f709cd54dd2143ab0`,
+is snapshot `a3477af2` (tree digest
+`a3477af2ba16bbdb951b88b25c67a29402c90abc0158a1f95d82723ff6c41302`,
 library version 0.6.0), which has the fail-stop mode
-([Fail-stop](#fail-stop)). Status of that snapshot: **hardware-unverified**.
-It has run only in GPU emulation on one RTX 5090 workstation; its pair check
-on Sparks (its RUNBOOK section 3.2, with and without `LIBSIRCL_FAIL_STOP=1`)
-is staged and has not run.
+([Fail-stop](#fail-stop)), four kernel packs and SIRCL's point-to-point
+channels between two ranks of a larger communicator
+(`LIBSIRCL_P2P_CHANNELS=on`, off by default). Its route planner
+(`tools/site_routes.py`) also prints each rank's point-to-point windows
+(`LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES`). Status of that snapshot
+in this repository: **hardware-unverified**. Its STATUS.md records GPU
+emulation on one RTX 5090 workstation and runs on a cabled pair of Sparks
+for its library sources. The installer's libsircl transport
+(`runtime/common/libsircl.py`) carries six routing variables per rank and
+refuses a planner row with others. For a group of four consecutive Sparks (a
+path of four, or four positions of the ring of eight) this snapshot's planner
+adds the two point-to-point variables, so the transport refuses that group;
+a pair and the whole ring of eight plan as before.
 
 The directory holds the snapshot's files byte for byte, except two kinds that
 stay with the snapshot:
@@ -265,7 +274,7 @@ which the library ends the process on a recorded asynchronous error, and
 requires a library that has the mode: the layer records `fail_stop` in the
 lock's `libsircl` block when the library's bytes name `LIBSIRCL_FAIL_STOP`,
 and the stock-image preflight reads the same mark from the host library. The
-vendored snapshot `db529218` reads the variable (`src/engine.c`), so a layer
+vendored snapshot `a3477af2` reads the variable (`src/engine.c`), so a layer
 or host library built from it passes the gate; a library built from a
 snapshot without the mode is refused, naming the reason.
 
@@ -314,7 +323,8 @@ A profile is refused, naming each reason, when:
 - it needs what libsircl does not carry (`libsircl.capability_problems`):
   `--enable-sleep-mode` (libsircl exports `ncclCommSuspend` and
   `ncclCommResume` only as refusals); pipeline parallelism above 2
-  (libsircl carries point-to-point only between the two ranks of a two-rank
+  (the transport leaves libsircl's point-to-point channels off, so
+  point-to-point runs only between the two ranks of a two-rank
   communicator); data parallelism; expert parallelism with an all-to-all
   backend other than `allgather_reducescatter`; and the sequence-parallelism
   pass (`pass_config.enable_sp`);
@@ -339,7 +349,7 @@ The plan says what runs and that it is research-only, for example:
 ```text
 Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on libsircl 0.6.0; SIRCL's adapter and RoCEnante are off
   libsircl group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane
-  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot db529218; fail-stop on (LIBSIRCL_FAIL_STOP=1)
+  Library: /opt/sparkring/libsircl/lib/libsircl.so.0.6.0, SHA-256 0123456789ab, snapshot a3477af2; fail-stop on (LIBSIRCL_FAIL_STOP=1)
   Off: vLLM's custom all-reduce, torch and NCCL symmetric memory, FlashInfer all-reduce and B12X PCIe all-reduce, so PyNccl carries the device collectives
   Research-only: no serving A/B has measured libsircl; torch.distributed's own collectives stay on the image's NCCL
   Note: torch.distributed's NVIDIA NCCL cannot connect this group's ranks that share no cable; a collective vLLM sends through torch instead of PyNccl would wait at NCCL's connection setup
@@ -469,7 +479,7 @@ PARENT_LOCK=$W/sircl-lock.json
 PARENT=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' $PARENT_LOCK)
 RELEASE=dev-20261008-kraken-csf-sircl-libsircl-cuda1342-nccl2323-status034
 
-# 1. The vendored tree matches its snapshot. Expect "files": 112, "snapshot": "db529218".
+# 1. The vendored tree matches its snapshot. Expect "files": 128, "snapshot": "a3477af2".
 python3 scripts/sync_libsircl.py check
 
 # 2. Build libsircl in the parent image. Expect libsircl.so.0.6.0, make check passed and the image's gcc line.

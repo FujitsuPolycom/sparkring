@@ -29,6 +29,7 @@ enum {
   SCCL_CU_MEMHOSTREGISTER_PORTABLE = 1,
   SCCL_CU_MEMHOSTREGISTER_DEVICEMAP = 2,
   SCCL_CU_EVENT_DISABLE_TIMING = 2,
+  SCCL_CU_STREAM_NON_BLOCKING = 1,
   SCCL_CU_STREAM_CAPTURE_STATUS_NONE = 0,
   SCCL_CU_STREAM_CAPTURE_STATUS_ACTIVE = 1,
   SCCL_CU_STREAM_CAPTURE_STATUS_INVALIDATED = 2,
@@ -64,6 +65,8 @@ typedef struct sccl_cuda {
   sccl_CUresult (*MemHostRegister)(void *, size_t, unsigned);
   sccl_CUresult (*MemHostUnregister)(void *);
   sccl_CUresult (*StreamGetCaptureInfo)(sccl_CUstream, int *, unsigned long long *);
+  sccl_CUresult (*StreamCreate)(sccl_CUstream *, unsigned);
+  sccl_CUresult (*StreamDestroy)(sccl_CUstream);
   sccl_CUresult (*StreamSynchronize)(sccl_CUstream);
   sccl_CUresult (*StreamQuery)(sccl_CUstream);
   sccl_CUresult (*StreamWaitEvent)(sccl_CUstream, sccl_CUevent, unsigned);

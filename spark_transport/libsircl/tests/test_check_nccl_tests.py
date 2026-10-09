@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """CPU tests of tools/check_nccl_tests.py on synthetic outputs of tools/nccl_tests_pair.sh: a complete pair
 (an all-reduce sweep, an all-to-all whose in-place rows are N/A, receipts whose all-reduces ran as ring and
-fold ops) passes; a missing manifest, a job that failed after a partial log, a job absent from the expected
-lines and job lists that differ between the ranks fail."""
+fold ops) passes; sendrecv and alltoallv sweeps whose in-place rows are N/A, as nccl-tests v2.21.1 prints
+them, pass with those rows counted as not covered, also when the job names its binary by path; a missing
+manifest, a job that failed after a partial log, a job absent from the expected lines and job lists that
+differ between the ranks fail; a nonzero #wrong of a test without an in-place result, out of place or in
+place, fails, and an in-place N/A of a test with one (all-reduce, hypercube) fails."""
 from __future__ import annotations
 
 import contextlib
@@ -29,17 +32,21 @@ FOOTER = """# Out of bounds values : 0 OK
 """
 ALL_REDUCE = "all_reduce_perf -b 8 -e 32 -f 2 -g 1"
 ALLTOALL = "alltoall_perf -b 8 -e 16 -f 2 -g 1"
+SENDRECV = "sendrecv_perf -b 8 -e 32 -f 2 -g 1"
+ALLTOALLV = "alltoallv_perf -b 8 -e 16 -f 2 -g 1"
+HYPERCUBE = "hypercube_perf -b 8 -e 16 -f 2 -g 1"
 
 
 def log_name(job: str) -> str:
     name, *rest = job.split()
-    return name + "".join("_" + word.replace("-", "-") for word in rest) + ".log"
+    return Path(name).name + "".join("_" + word for word in rest) + ".log"
 
 
-def sweep(name: str, sizes, in_wrong="0", stop=False) -> str:
+def sweep(name: str, sizes, in_wrong="0", stop=False, out_wrong="0") -> str:
     text = HEADER
     for size in sizes:
-        text += f"{size:12d}  {size // 4:12d}     float     sum      -1     9.0    0.00    0.00       0     9.0    0.00    0.00    {in_wrong}\n"
+        text += (f"{size:12d}  {size // 4:12d}     float     sum      -1     9.0    0.00    0.00    {out_wrong:>4}"
+                 f"     9.0    0.00    0.00    {in_wrong}\n")
     return text if stop else text + FOOTER.format(name=name)
 
 
@@ -87,8 +94,34 @@ class CheckNcclTests(unittest.TestCase):
         lines.write_text(f"# the two lines\n{ALL_REDUCE}\n{ALLTOALL}\n")
         code, out = check(*self.pair([ALL_REDUCE, ALLTOALL]), "--expect-lines", lines)
         self.assertEqual(code, 0, out)
-        self.assertIn("INFO 2 in-place all-to-all rows N/A", out)
+        self.assertIn("INFO 2 in-place rows N/A (alltoall_perf 2): not covered", out)
         self.assertNotIn("FAIL", out)
+
+    def test_sendrecv_and_alltoallv_in_place_na_is_not_covered(self):
+        logs = dict(self.logs)
+        logs[SENDRECV] = sweep("sendrecv_perf", [8, 16, 32], in_wrong="N/A")
+        logs[ALLTOALLV] = sweep("alltoallv_perf", [8, 16], in_wrong="N/A")
+        code, out = check(*self.pair([ALL_REDUCE, ALLTOALL, SENDRECV, ALLTOALLV], logs=logs))
+        self.assertEqual(code, 0, out)
+        self.assertIn("PASS #wrong 0 on 10 rows", out)
+        self.assertIn("INFO 7 in-place rows N/A (alltoall_perf 2, alltoallv_perf 2, sendrecv_perf 3): not covered",
+                      out)
+
+    def test_a_binary_named_by_path_keeps_its_in_place_exemption(self):
+        job = "/g/nccl-tests/build/" + SENDRECV
+        code, out = check(*self.pair([job], logs={job: sweep("sendrecv_perf", [8, 16, 32], in_wrong="N/A")}))
+        self.assertEqual(code, 0, out)
+        self.assertIn("INFO 3 in-place rows N/A (sendrecv_perf 3)", out)
+
+    def test_nonzero_wrong_of_a_test_without_in_place_result_fails(self):
+        for out_wrong, in_wrong in (("1", "N/A"), ("0", "2")):
+            with self.subTest(out_wrong=out_wrong, in_wrong=in_wrong):
+                logs = {SENDRECV: sweep("sendrecv_perf", [8, 16, 32], in_wrong=in_wrong, out_wrong=out_wrong)}
+                self.root = Path(self.temporary.name) / f"out-{out_wrong}-in-{in_wrong.replace('/', '')}"
+                code, out = check(*self.pair([SENDRECV], logs=logs))
+                self.assertEqual(code, 1, out)
+                self.assertIn("FAIL #wrong 0 on 3 rows", out)
+                self.assertIn(f"('{log_name(SENDRECV)}', 8, '{out_wrong}', '{in_wrong}')", out)
 
     def test_missing_manifest_fails(self):
         r0, r1 = self.pair([ALL_REDUCE])
@@ -117,12 +150,19 @@ class CheckNcclTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("the job lists differ", out)
 
-    def test_in_place_na_outside_alltoall_is_wrong(self):
+    def test_in_place_na_of_a_test_with_an_in_place_result_is_wrong(self):
         logs = dict(self.logs)
         logs[ALL_REDUCE] = sweep("all_reduce_perf", [8, 16, 32], in_wrong="N/A")
         code, out = check(*self.pair([ALL_REDUCE], logs=logs))
         self.assertEqual(code, 1)
         self.assertIn("FAIL #wrong 0 on 3 rows", out)
+
+    def test_in_place_na_of_hypercube_is_wrong(self):
+        # nccl-tests v2.21.1's hypercube_perf reports an in-place #wrong, so N/A there is not an exemption.
+        code, out = check(*self.pair([HYPERCUBE], logs={HYPERCUBE: sweep("hypercube_perf", [8, 16], in_wrong="N/A")}))
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL #wrong 0 on 2 rows", out)
+        self.assertNotIn("INFO", out)
 
 
 if __name__ == "__main__":

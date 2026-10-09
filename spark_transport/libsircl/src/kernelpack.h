@@ -1,8 +1,9 @@
 /* The ahead-of-time CUDA kernel packs (the CUDA C++ sources in kernels/,
  * each embedded as one fatbin): the transport pack (ring-session kernels), the
- * fold pack (local rank-ordered reductions) and the link pack (the chain
- * all-reduce and the link collectives). Loading per CUDA context, entry lookup
- * and launches from C. */
+ * fold pack (local rank-ordered reductions), the link pack (the chain
+ * all-reduce and the link collectives) and the point-to-point pack (the send
+ * and receive kernels of SIRCL's point-to-point channels). Loading per CUDA
+ * context, entry lookup and launches from C. */
 #ifndef SCCL_KERNELPACK_H
 #define SCCL_KERNELPACK_H
 #include "cuda_api.h"
@@ -105,6 +106,22 @@ typedef struct {
 } sccl_link_args;
 _Static_assert(sizeof(sccl_link_args) == 176, "sccl_link_args must match the link pack's LinkParams");
 
+/* The point-to-point pack (kernels/sircl_p2p.cu): sircl_p2p_send_u<U> and sircl_p2p_recv_u<U>, U 1-8, built
+ * for at most SCCL_P2P_MAX_THREADS threads per block. */
+enum { SCCL_P2P_MAX_UNROLL = 8, SCCL_P2P_MAX_THREADS = 512, SCCL_P2P_MIN_THREADS = 64 };
+/* One point-to-point launch: the message (`data`, a 16-byte-aligned device address; `packs` 16-byte packs;
+ * `tail` its bytes modulo 16), the channel's first item and the message's items, the peer's block and the
+ * control line of the channel arena (device addresses), the peer, the slot geometry and the block offsets of
+ * the native layer's p2p_layout (receive, send, flag, desc, ready, consumed, sent). Mirrors the device-side
+ * P2PParams (120 bytes). */
+typedef struct {
+  uint64_t data, block_base, ctrl_base, slot_bytes;
+  int32_t packs, tail, items, peer;
+  uint32_t first, slots, lanes, reserved;
+  uint64_t recv_off, send_off, flag_off, desc_off, ready_off, consumed_off, sent_off;
+} sccl_p2p_args;
+_Static_assert(sizeof(sccl_p2p_args) == 120, "sccl_p2p_args must match the point-to-point pack's P2PParams");
+
 /* Load every pack into `ctx` once (pushing it current for the load); later
  * calls for the same context return at once. 0 on success. */
 int sccl_kp_load(sccl_CUcontext ctx);
@@ -143,10 +160,16 @@ int sccl_kp_ring_exchange_function(sccl_CUcontext ctx, int unroll, sccl_CUfuncti
 int sccl_kp_ring_exchange_reduce_function(sccl_CUcontext ctx, int dtype, int unroll, sccl_CUfunction *out);
 sccl_CUresult sccl_kp_launch_link(sccl_CUfunction function, const sccl_link_args *args, unsigned grid,
                                   unsigned threads, sccl_CUstream stream);
-/* SHA-256 of the embedded transport, fold and link fatbins, hexadecimal; part of the setup agreement. */
+/* The point-to-point entry of a direction (send 1: sircl_p2p_send_u<U>; 0: sircl_p2p_recv_u<U>) and unroll. */
+int sccl_kp_p2p_function(sccl_CUcontext ctx, int send, int unroll, sccl_CUfunction *out);
+sccl_CUresult sccl_kp_launch_p2p(sccl_CUfunction function, const sccl_p2p_args *args, unsigned grid,
+                                 unsigned threads, sccl_CUstream stream);
+/* SHA-256 of the embedded transport, fold, link and point-to-point fatbins, hexadecimal; part of the setup
+ * agreement. */
 const char *sccl_kp_hash(void);
 const char *sccl_kp_fold_hash(void);
 const char *sccl_kp_links_hash(void);
+const char *sccl_kp_p2p_hash(void);
 const char *sccl_kp_error(void);
 
 #endif

@@ -5,7 +5,9 @@ kernels, speaking SIRCL's wire protocol unchanged.** Cubins extracted from the D
 used. Status: the one-shot and two-shot all-reduce, the all-gather (plain and tiled), the scatter
 ops (reduce-scatter and all-to-all), the chain all-reduce and the link collectives (chain and ring
 all-gather and reduce-scatter, ring all-reduce) are **implemented** and verified in GPU emulation
-against SIRCL's DSL kernels (below and `STATUS.md`).
+against SIRCL's DSL kernels (below and `STATUS.md`). The send and receive kernels of SIRCL's
+point-to-point channels are **implemented** and verified in GPU emulation against SIRCL's native
+point-to-point library; they have not run in one group with SIRCL's DSL point-to-point kernels.
 
 ## What the pack is
 
@@ -57,6 +59,19 @@ against SIRCL's DSL kernels (below and `STATUS.md`).
   at most 512 threads whatever `SIRCL_THREADS` says. Loads of a pass are issued together through the
   same zero-gate SIRCL's `_cute_batch.py` uses, and the three-source sum of the chain reduce-scatter's
   owner is `round((L + x) + R)` with float32 additions in that order.
+- Point-to-point pack: `kernels/sircl_p2p.cu`, a port of SIRCL's `p2p/_kernels.py` (`P2PSend`, `P2PRecv`,
+  `wait_eq_or_poison`, `wait_ge_or_poison`) into `kernels/prebuilt/sircl_p2p.fatbin` with its own SHA-256.
+  SIRCL compiles one specialization per threads, lanes, slots and slot bytes; the port takes them, and the
+  block offsets SIRCL's native `p2p_layout` reports, as one 120-byte parameter struct (`sccl_p2p_args`), so
+  16 entries per architecture serve every channel: `sircl_p2p_send_u<U>` and `sircl_p2p_recv_u<U>` for unroll
+  U of 1 to 8 (`SIRCL_P2P_UNROLL`), built for at most 512 threads per block (44 to 96 registers, no spills).
+  One launch carries one message: block b of the grid takes the message's items b, b + gridDim.x, ...; a
+  send waits for its slot's sent word, copies the item into the send slot and writes the header and the
+  ready tag; a receive waits for every lane flag of the item, checks its header, copies the slot out and
+  writes the consumed tag. The waits, the failure record (peer, lane, kind, expected and received header,
+  then the tag, then the poison word) and the 64-poll poison and 1,024-poll clock checks are SIRCL's. The
+  loads of a copy pass are issued before its stores as volatile loads (system scope for the inbound slot)
+  rather than through the zero gate.
 
 Licensing of the prebuilt packs: the CUDA C++ sources are SparkRing's (Apache-2.0); the fatbins also
 contain object code nvcc generated from NVIDIA CUDA Toolkit headers (the floating-point type headers the

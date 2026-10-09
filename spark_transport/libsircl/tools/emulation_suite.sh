@@ -5,9 +5,12 @@
 # two to eight ranks as processes on the one GPU over the emulation transport, checked against the SIRCL
 # session digests in tests/emulation/golden/ under the default (pair default on two ranks), pieces,
 # chain and ring schedules, a relayed pair with and without a ring window, forward windows, teardown
-# right after a ring collective, fail-stop (LIBSIRCL_FAIL_STOP), PyTorch's ProcessGroupNCCL, the
-# setup-failure cases and the timing sweeps. With NCCL_TESTS_BUILD (a directory of nccl-tests v2.21.1 binaries built
-# against this tree's build/mpi-shim) it also runs nccl-tests on two processes; with SIRCL_PACKAGE (the
+# right after a ring collective, fail-stop (LIBSIRCL_FAIL_STOP), pipeline stage pairs of ring:8,
+# point-to-point channels on communicators of more than two ranks (LIBSIRCL_P2P_CHANNELS), PyTorch's
+# ProcessGroupNCCL and its pipeline exchange (lazily and eagerly initialized), the setup-failure cases and
+# the timing sweeps. With
+# NCCL_TESTS_BUILD (a directory of nccl-tests v2.21.1 binaries built against this tree's build/mpi-shim) it
+# also runs nccl-tests on two processes; with SIRCL_PACKAGE (the
 # directory holding SIRCL's sparkring_sircl package) the link pack's mixed groups against SIRCL's DSL
 # kernels. It writes only build/ and OUT (default /tmp/libsircl-emulation-<time>), never touches the fabric
 # or other processes, and prints one line per run; OUT/SUMMARY collects them. Exit status 1 when any run
@@ -93,6 +96,16 @@ teardown() {  # teardown <tag> [teardown_race.py arguments]
 }
 teardown w4 --world 4
 teardown w2-8MiB --world 2 --count 4194304
+# Pipeline stage pairs of ring:8 (positions i and i + 4, every lane through relays) with the route planner's
+# settings: TP4 splits and pair splits, grouped point-to-point, with and without the ring plan.
+for plan in ring none; do
+  args=(); [ $plan = none ] && args=(--no-ring-plan)
+  timeout 1800 "$PY" tests/emulation/pp_pairs.py --library "$LIB" --python "$PY" ${args[@]+"${args[@]}"}     --work "$OUT/pp-pairs-$plan" > "$OUT/pp-pairs-$plan.log" 2>&1
+  code=$?
+  if [ $code -eq 0 ]; then note "PASS pipeline pairs of ring:8, ring plan $plan: $(tail -1 "$OUT/pp-pairs-$plan.log")"
+  else note "FAIL pipeline pairs of ring:8, ring plan $plan (exit $code); $OUT/pp-pairs-$plan.log"
+    failures=$((failures + 1)); fi
+done
 # Fail-stop: the pair default with LIBSIRCL_FAIL_STOP=1 (no check may end the process); and a late rank's peer
 # ending its process within the wait limit (exit and abort), while without fail-stop it keeps a wrong output.
 library pair-fail-stop 2 2 "$G/w2.json" LIBSIRCL_FAIL_STOP=1
@@ -101,6 +114,31 @@ timeout 900 "$PY" tests/emulation/fail_stop.py --library "$LIB" --python "$PY" -
 code=$?
 if [ $code -eq 0 ]; then note "PASS fail-stop: $(tail -1 "$OUT/fail-stop.log")"; else
   note "FAIL fail-stop (exit $code): $(tail -1 "$OUT/fail-stop.log"); $OUT/fail-stop.log"; failures=$((failures + 1)); fi
+# Point-to-point channels on communicators of more than two ranks (LIBSIRCL_P2P_CHANNELS=on): the library run
+# of four ranks with channels on (collectives as without them), then every case of p2p_channels.py: four and
+# eight ranks with every ordered pair at once, a subset of pairs while the other ranks idle, a pipeline chain
+# and the sendrecv ring; ring:8 under the route planner's settings with SIRCL's budget (relayed pairs refused)
+# and with every relayed lane windowed; a size mismatch, a peer that is gone (fail-stop) and setup refusals.
+library channels-on 4 2 "$G/w4.json" LIBSIRCL_P2P_CHANNELS=on
+channels() {  # channels <tag> [p2p_channels.py arguments]
+  local tag=$1; shift
+  timeout 2400 "$PY" tests/emulation/p2p_channels.py --library "$LIB" --python "$PY" --work "$OUT/channels-$tag" "$@" \
+    > "$OUT/channels-$tag.log" 2>&1
+  local code=$?
+  if [ $code -eq 0 ]; then note "PASS channels $tag: $(tail -1 "$OUT/channels-$tag.log")"; else
+    note "FAIL channels $tag (exit $code): $(tail -1 "$OUT/channels-$tag.log"); $OUT/channels-$tag.log"
+    failures=$((failures + 1))
+  fi
+}
+channels w4 --world 4 --rounds 3
+channels w4-l1 --world 4 --lanes 1 --rounds 2
+channels w4-own-staging --world 4 --rounds 2 --env LIBSIRCL_STREAM_ORDERED_ALLOC=off
+channels w8 --world 8 --rounds 2
+channels ring8 --layout ring8 --rounds 2
+channels ring8-alone --layout ring8-alone --rounds 2
+channels size --case size
+channels gone --case gone
+channels setup --case setup
 fi
 
 # 3. PyTorch and setup failures.
@@ -109,6 +147,15 @@ want torch && for world in 2 4; do
   code=$?
   if [ $code -eq 0 ]; then note "PASS torch ProcessGroupNCCL w$world"; else
     note "FAIL torch ProcessGroupNCCL w$world (exit $code); $OUT/torch-w$world.log"; failures=$((failures + 1)); fi
+done
+# vLLM's pipeline exchange through torch.distributed (lazily created two-rank communicators per stage pair):
+# a chain of four stages, and TP 4 x PP 2 under ring:8's route-planner settings; and the default group
+# initialized eagerly (device_id), whose point-to-point runs on its four-rank communicator's channels.
+want torch && for shape in chain tp4pp2 eager; do
+  timeout 1800 "$PY" tests/emulation/torch_pp.py --launch --library "$LIB" --shape $shape --work "$OUT/torch-pp-$shape"     > "$OUT/torch-pp-$shape.log" 2>&1
+  code=$?
+  if [ $code -eq 0 ]; then note "PASS torch pipeline exchange $shape: $(tail -1 "$OUT/torch-pp-$shape.log")"; else
+    note "FAIL torch pipeline exchange $shape (exit $code); $OUT/torch-pp-$shape.log"; failures=$((failures + 1)); fi
 done
 if want setup; then
 timeout 1800 "$PY" tests/emulation/setup_failures.py --library "$LIB" --python "$PY" > "$OUT/setup-failures.log" 2>&1
@@ -135,28 +182,32 @@ want sweeps && for schedule in default chain ring; do
 done
 
 # 5. nccl-tests on two processes (NCCL_TESTS_BUILD), each line its own MPI-shim job; each rank reports a
-# host name of its own (SIRCL_MPI_DISTINCT_HOSTS), so nccl-tests counts one rank per host and both use device 0.
+# host name of its own (SIRCL_MPI_DISTINCT_HOSTS), so nccl-tests counts one rank per host and every rank uses
+# device 0. NT_WORLD sets another process count and NT_ENV settings (NAME=VALUE ...) for every rank.
 if [ -n "${NCCL_TESTS_BUILD:-}" ] && want nccl-tests; then
   N="$OUT/nccl-tests"
   mkdir -p "$N"
   line() {
     local test=$1; shift
-    local tag port=$((29900 + RANDOM % 500)) r pids=() codes=""
-    tag=$(printf '%s' "$test $*" | tr -c 'A-Za-z0-9_.-' '_')
-    for r in 1 0; do
+    local world=${NT_WORLD:-2} tag port=$((29900 + RANDOM % 500)) r pids=() codes="" settings
+    read -r -a settings <<< "${NT_ENV:-}"
+    tag=$(printf '%s' "w$world $test $*" | tr -c 'A-Za-z0-9_.-' '_')
+    for r in $(seq $((world - 1)) -1 0); do
       env LD_LIBRARY_PATH="$TREE/build/mpi-shim/lib:${LD_LIBRARY_PATH:-}" LIBSIRCL_TRANSPORT=emulation \
-        SIRCL_EMU_FABRIC=/libsircl-suite-nt-$$ LIBSIRCL_EMU_LANES=1 SIRCL_MPI_SIZE=2 SIRCL_MPI_RANK=$r SIRCL_MPI_DISTINCT_HOSTS=1 \
-        SIRCL_MPI_ROOT=127.0.0.1:$port SIRCL_MPI_TIMEOUT_S=600 SIRCL_MPI_JOB="$test $*" LIBSIRCL_RECEIPT="$N/receipt" \
+        SIRCL_EMU_FABRIC=/libsircl-suite-nt-$$ LIBSIRCL_EMU_LANES=1 SIRCL_MPI_SIZE=$world SIRCL_MPI_RANK=$r \
+        SIRCL_MPI_DISTINCT_HOSTS=1 SIRCL_MPI_ROOT=127.0.0.1:$port SIRCL_MPI_TIMEOUT_S=600 \
+        SIRCL_MPI_JOB="w$world $test $*" LIBSIRCL_RECEIPT="$N/receipt" ${settings[@]+"${settings[@]}"} \
         LD_PRELOAD="$(readlink -f "$LIB")" timeout --kill-after=30 1800 "$NCCL_TESTS_BUILD/$test" "$@" \
         > "$N/$tag-rank$r.log" 2>&1 &
       pids+=($!)
     done
     for r in "${pids[@]}"; do wait "$r"; codes="$codes $?"; done
     rm -f /dev/shm/libsircl-suite-nt-$$*
-    # nccl-tests prints its results and check on rank 0 only; both ranks must exit 0.
-    if [ "$codes" = " 0 0" ] && grep -q "Out of bounds values : 0 OK" "$N/$tag-rank0.log"; then
-      note "PASS nccl-tests $test $*"
-    else note "FAIL nccl-tests $test $* (exit codes rank 1, rank 0:$codes); $N/$tag-rank0.log"; failures=$((failures + 1)); fi
+    # nccl-tests prints its results and check on rank 0 only; every rank must exit 0.
+    if [ -z "$(echo "$codes" | tr -d ' 0')" ] && grep -q "Out of bounds values : 0 OK" "$N/$tag-rank0.log"; then
+      note "PASS nccl-tests $test $* on $world processes${NT_ENV:+ ($NT_ENV)}"
+    else note "FAIL nccl-tests $test $* on $world processes (exit codes, highest rank first:$codes); $N/$tag-rank0.log"
+      failures=$((failures + 1)); fi
   }
   line all_reduce_perf -b 8 -e 1M -f 2 -g 1 -c 1 -n 5 -w 2
   for test in all_reduce_perf reduce_perf all_gather_perf reduce_scatter_perf broadcast_perf alltoall_perf \
@@ -164,6 +215,14 @@ if [ -n "${NCCL_TESTS_BUILD:-}" ] && want nccl-tests; then
     line $test -b 8 -e 16M -f 4 -g 1 -c 1 -n 3 -w 1 -d bfloat16
   done
   line all_reduce_perf -b 8 -e 16M -f 4 -g 1 -c 1 -n 3 -w 1 -d float -G 2
+  # Point-to-point channels on four processes with LIBSIRCL_P2P_CHANNELS=on: nccl-tests' sendrecv (every rank
+  # sends to the next and receives from the previous), hypercube (exchanges with the rank across each
+  # dimension) and alltoallv (one group of sends and receives with every rank), all with ncclSend and ncclRecv,
+  # and its all-reduce beside them.
+  for test in sendrecv_perf hypercube_perf alltoallv_perf; do
+    NT_WORLD=4 NT_ENV=LIBSIRCL_P2P_CHANNELS=on line $test -b 8 -e 16M -f 4 -g 1 -c 1 -n 3 -w 1 -d bfloat16
+  done
+  NT_WORLD=4 NT_ENV=LIBSIRCL_P2P_CHANNELS=on line all_reduce_perf -b 8 -e 1M -f 4 -g 1 -c 1 -n 3 -w 1
 fi
 # 6. Mixed groups against SIRCL's DSL kernels (SIRCL_PACKAGE: the directory that holds SIRCL's
 # sparkring_sircl package, with nvidia-cutlass-dsl importable): SIRCL's emulation harness with the link

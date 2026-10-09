@@ -55,6 +55,8 @@ static void load(void) {
   SYM(MemHostRegister, "cuMemHostRegister_v2");
   SYM(MemHostUnregister, "cuMemHostUnregister");
   SYM(StreamGetCaptureInfo, "cuStreamGetCaptureInfo");
+  SYM(StreamCreate, "cuStreamCreate");
+  SYM(StreamDestroy, "cuStreamDestroy_v2");
   SYM(StreamSynchronize, "cuStreamSynchronize");
   SYM(StreamQuery, "cuStreamQuery");
   SYM(StreamWaitEvent, "cuStreamWaitEvent");

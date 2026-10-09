@@ -17,19 +17,25 @@ Safety classes, as in SIRCL's ring runbook:
 
 Requirements: Linux (x86_64 or aarch64), a C11 compiler, make, Python 3 and the rdma-core
 development headers (`infiniband/verbs.h`; the serving image has them, since SIRCL builds its native
-layer there). No CUDA toolkit: the three kernel packs are prebuilt (`kernels/prebuilt/`, each checked by
-SHA-256).
+layer there). No CUDA toolkit: the four kernel packs are prebuilt (`kernels/prebuilt/`, each checked by
+SHA-256). The build also checks the vendored copy of SIRCL's point-to-point library
+(`src/transport/sircl_p2p_proxy.c`) against its recorded SHA-256.
 
 ```sh
 make -j BUILD=build              # build/libsircl.so, SONAME libnccl.so.2
 make check BUILD=build           # CPU suites: ABI, API, bootstrap, lifecycle, engine refusals,
-                                 # shared-memory verbs across processes, MPI shim, fabric vectors
+                                 # shared-memory verbs across processes, SIRCL's point-to-point
+                                 # library across processes, MPI shim, fabric vectors
 make emulation-tools mpi-shim BUILD=build
 ```
 
-`make kernels NVCC=<nvcc>` regenerates the transport, fold and link packs (CUDA 13.3 or later for
-`sm_121`); `make kernels-check NVCC=<nvcc>` rebuilds all three and fails unless each hash equals its
-prebuilt file's. Before it links the library, the build runs the kernel-entry check
+`SIRCL_PACKAGE=<directory holding sparkring_sircl> make check` also runs the route planner's tests
+(`tests/test_site_routes.py`, skipped without it).
+
+`make kernels NVCC=<nvcc>` regenerates the transport, fold, link and point-to-point packs (CUDA 13.3 or
+later for `sm_121`); `make kernels-check NVCC=<nvcc>` rebuilds all four and fails unless each hash equals
+its prebuilt file's. `make P2P_FEATURES=1` adds the setup check of SIRCL's `p2p_local_features` word; the
+build refuses it until the vendored point-to-point library defines that word (SIRCL change LF). Before it links the library, the build runs the kernel-entry check
 (`tests/check_entries.c`): the library's pack loader resolves every entry it names in the embedded packs
 through a stand-in CUDA driver that reads their cubins offline (`tests/fake_cuda.c`), so a loader that
 names an entry some architecture's cubin lacks stops the build with that entry's name.
@@ -88,8 +94,21 @@ bash $LOCK sircl-ccl python tests/emulation/teardown_race.py --library build/lib
 # Fail-stop: with LIBSIRCL_FAIL_STOP=1 (and abort) a late rank's peer ends its process within the 2 s wait limit
 # plus 3 s; without it the peer keeps a wrong output. Expected: "fail-stop: 0 problems".
 bash $LOCK sircl-ccl python tests/emulation/fail_stop.py --library build/libsircl.so
-# PyTorch ProcessGroupNCCL through LD_PRELOAD, and communicator setup failures.
+# Point-to-point channels (LIBSIRCL_P2P_CHANNELS=on) on four and eight ranks: every ordered pair at once, a
+# subset of pairs while the other ranks idle, a pipeline chain, the sendrecv ring; ring:8 under the route
+# planner's settings (relayed pairs refused under SIRCL's budget; with --layout ring8-alone, windowed); a
+# size mismatch, a peer that is gone under fail-stop, setup refusals. Expected: "0 failed" on every line.
+bash $LOCK sircl-ccl python tests/emulation/p2p_channels.py --library build/libsircl.so --world 4 --rounds 3
+bash $LOCK sircl-ccl python tests/emulation/p2p_channels.py --library build/libsircl.so --world 8 --rounds 2
+bash $LOCK sircl-ccl python tests/emulation/p2p_channels.py --library build/libsircl.so --layout ring8
+bash $LOCK sircl-ccl python tests/emulation/p2p_channels.py --library build/libsircl.so --layout ring8-alone
+for case in size gone setup; do
+  bash $LOCK sircl-ccl python tests/emulation/p2p_channels.py --library build/libsircl.so --case $case
+done
+# PyTorch ProcessGroupNCCL through LD_PRELOAD (with --shape eager, the default group initialized eagerly,
+# its point-to-point on the four-rank communicator's channels), and communicator setup failures.
 bash $LOCK sircl-ccl python tests/emulation/torch_pg.py --launch --library build/libsircl.so --world 2
+bash $LOCK sircl-ccl python tests/emulation/torch_pp.py --launch --library build/libsircl.so --shape eager
 bash $LOCK sircl-ccl python tests/emulation/setup_failures.py --library build/libsircl.so
 ```
 
@@ -98,8 +117,11 @@ bash $LOCK sircl-ccl python tests/emulation/setup_failures.py --library build/li
 `tools/emulation_suite.sh` runs, from the tree root, the build and CPU checks and then every
 library-level emulation run of section 2 that needs no SIRCL tree: two to eight ranks against the digests
 in `tests/emulation/golden/` under the pair plan, pieces, chain and ring schedules, a relayed pair with
-and without a ring plan and forward windows, fail-stop, PyTorch's `ProcessGroupNCCL`, the setup failures and the timing sweeps; with
-`NCCL_TESTS_BUILD` (nccl-tests v2.21.1 built against `build/mpi-shim`) also nccl-tests on two processes.
+and without a ring plan and forward windows, fail-stop, pipeline stage pairs of ring:8, point-to-point
+channels on four and eight ranks, PyTorch's `ProcessGroupNCCL` and its pipeline exchange (lazily and
+eagerly initialized), the setup failures and the timing sweeps; with `NCCL_TESTS_BUILD` (nccl-tests v2.21.1
+built against `build/mpi-shim`, their CUDA runtime `libcudart` on `LD_LIBRARY_PATH`) also nccl-tests on two
+processes, and its sendrecv, hypercube and alltoallv tests on four processes with point-to-point channels.
 It needs Python 3 with torch, make, a C compiler and one CUDA GPU (sm_120 or sm_121), so one Spark in the
 serving image runs it as well as the workstation. It writes only `build/` and its output directory and
 prints one PASS or FAIL line per run (`<out>/SUMMARY`).
@@ -259,7 +281,10 @@ Exit criteria (the handoff's pair milestone):
 runs all-gather, reduce-scatter, broadcast and reduce in bf16, and all-reduce of int32 max, int64 sum,
 double prod, float avg and uint8 min. The exit is `#wrong 0` on every line and receipts as in 3.4. On a
 two-rank communicator nccl-tests' `alltoall_perf`, `sendrecv_perf`, `gather_perf` and `scatter_perf`
-(which use `ncclSend` and `ncclRecv`) can run the same way.
+(which use `ncclSend` and `ncclRecv`) can run the same way. nccl-tests v2.21.1 prints the in-place
+`#wrong` of `alltoall_perf`, `alltoallv_perf` and `sendrecv_perf` as `N/A` (these tests have no in-place
+result); `tools/check_nccl_tests.py` counts those rows as not covered and requires their out-of-place
+`#wrong` 0, and treats an in-place `N/A` of any other test as wrong.
 
 ### 3.6 Large messages on the pair: pieces, chain and ring schedules
 
@@ -396,7 +421,11 @@ The line sets `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, 
 the relayed lanes (`LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`) and, where the ring that
 closes the chain can run, `LIBSIRCL_RING_WINDOW`. For `path:0-3` the planner gives windows of 131,072
 bytes on every relayed lane and a ring window of 393,216 bytes on position 3, whose ring lanes toward
-position 0 cross two relays; for `ring:8` every ring edge is a cable (ring window 0).
+position 0 cross two relays; for `ring:8` every ring edge is a cable (ring window 0). With point-to-point
+channels (`LIBSIRCL_P2P_CHANNELS=on`) the line also sets `LIBSIRCL_P2P_WINDOWS`: pass `--ring-schedules`
+when the site runs the ring schedules, so the channels leave the ring windows their room, and on `ring:8`
+give the session less than the whole share (`--session-share` below 1, or `--max-window 32768`) for the
+relayed pairs to have channels; the JSON output (`--json`) names every ordered pair left without one.
 
 ### 4.1 Bit-exact check under each schedule (every rank, same moment)
 

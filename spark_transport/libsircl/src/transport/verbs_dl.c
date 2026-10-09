@@ -1,5 +1,5 @@
-/* The libibverbs entry points that SIRCL's native proxy calls (proxy_hw.c),
- * resolved from libibverbs.so.1 at first use, so the library loads on hosts
+/* The libibverbs entry points that SIRCL's native proxy and point-to-point
+ * library call (proxy_hw.c, p2p_hw.c), resolved from libibverbs.so.1 at first use, so the library loads on hosts
  * without rdma-core and binds the process's own libibverbs where one is
  * loaded. Data-path calls (ibv_post_send, ibv_poll_cq) are inline in the
  * rdma-core header and dispatch through the device context; they need no
@@ -36,6 +36,7 @@ static struct {
   int (*modify_qp)(struct ibv_qp *, struct ibv_qp_attr *, int);
   int (*destroy_qp)(struct ibv_qp *);
   const char *(*wc_status_str)(enum ibv_wc_status);
+  struct ibv_mr *(*reg_mr_iova2)(struct ibv_pd *, void *, size_t, uint64_t, unsigned int);
 } v;
 static int available;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -66,6 +67,8 @@ static void load(void) {
   SYM(destroy_qp, "ibv_destroy_qp");
   SYM(wc_status_str, "ibv_wc_status_str");
 #undef SYM
+  /* Optional: libibverbs before rdma-core 29 lacks it (see ibv_reg_mr_iova2 below). */
+  *(void **)(&v.reg_mr_iova2) = dlsym(h, "ibv_reg_mr_iova2");
   available = 1;
 }
 
@@ -101,6 +104,18 @@ HIDDEN int ibv_dealloc_pd(struct ibv_pd *pd) { READY_OR(-1); return v.dealloc_pd
 HIDDEN struct ibv_mr *ibv_reg_mr(struct ibv_pd *pd, void *a, size_t n, int access) {
   READY_OR(NULL);
   return v.reg_mr(pd, a, n, access);
+}
+/* rdma-core's inline ibv_reg_mr calls ibv_reg_mr_iova2 for access flags that are not a compile-time constant
+ * or that ask for an optional access flag. The native layers pass constant flags without those, so an
+ * optimized build drops that branch; an unoptimized one (a CMake build without a build type) keeps the call,
+ * so the symbol must resolve. Without it in the process's libibverbs the call fails with EOPNOTSUPP. */
+HIDDEN struct ibv_mr *ibv_reg_mr_iova2(struct ibv_pd *pd, void *a, size_t n, uint64_t iova, unsigned int access) {
+  READY_OR(NULL);
+  if (!v.reg_mr_iova2) {
+    errno = EOPNOTSUPP;
+    return NULL;
+  }
+  return v.reg_mr_iova2(pd, a, n, iova, access);
 }
 HIDDEN int ibv_dereg_mr(struct ibv_mr *mr) { READY_OR(-1); return v.dereg_mr(mr); }
 HIDDEN struct ibv_cq *ibv_create_cq(struct ibv_context *c, int n, void *ctx, struct ibv_comp_channel *ch, int vec) {

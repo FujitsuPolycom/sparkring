@@ -24,7 +24,8 @@ compared with the host model in ``fold_model.py``. ncclAlltoAll, ncclGather and 
 unaligned, in place, several ops per call, NULL buffers on the ranks that do not use them); one CUDA graph
 of a fold all-reduce, an all-to-all, a gather and a scatter, replayed. ncclSend and ncclRecv: on two ranks
 outside and inside groups, both directions, in-order matching, torch's all-to-all pattern and a graph; on
-more ranks, a send to another rank refused and a send to the rank itself carried. Rank-local staging: the
+more ranks, a send to the rank itself carried and, without point-to-point channels (LIBSIRCL_P2P_CHANNELS
+unset or off; p2p_channels.py tests them), a send to another rank refused. Rank-local staging: the
 collectives of every selection point with one rank's buffers unaligned or in place, eager and captured
 cold, launch and carry the same ops on every rank as with aligned buffers (receipt counts). On a pair,
 one-way exchanges whose empty direction alternates between the ranks across link-slot wrap, each round
@@ -754,7 +755,9 @@ def run_point_to_point_checks(torch, lib, comm, world, rank, max_piece, stream, 
             x = device(b"\1" * 64)
             code = lib.ncclSend(address(x), 64, 1, (rank + 1) % world, comm, handle)
             return [0], code == 5
-        checked(f"a send to another rank of a {world}-rank communicator refused with ncclInvalidUsage", refused)
+        if os.environ.get("LIBSIRCL_P2P_CHANNELS", "") != "on":
+            checked(f"a send to another rank of a {world}-rank communicator without point-to-point channels "
+                    "refused with ncclInvalidUsage", refused)
 
         def self_exchange():
             data = payload(seed_base + 1700, rank, 5000)
@@ -839,11 +842,7 @@ def run_point_to_point_checks(torch, lib, comm, world, rank, max_piece, stream, 
             "receive still complete", refused_in_group)
 
     def receipt_now():
-        needed = ctypes.c_size_t(0)
-        lib.sirclGetReceipt(comm, None, 0, ctypes.byref(needed))
-        text = ctypes.create_string_buffer(needed.value)
-        lib.sirclGetReceipt(comm, text, needed.value, ctypes.byref(needed))
-        return json.loads(text.value.decode())
+        return receipt_of(lib, comm)
 
     def all_to_all(count=3000, fused=False):  # bf16 elements per chunk
         chunks = [payload(seed_base + 1740 + source, source, world * count * 2) for source in range(world)]
@@ -990,11 +989,17 @@ LOCAL_COUNTS = (("links", "staged"), ("links", "graph_staged"), ("all_reduce", "
 
 
 def receipt_of(lib, comm) -> dict:
-    needed = ctypes.c_size_t(0)
-    lib.sirclGetReceipt(comm, None, 0, ctypes.byref(needed))
-    text = ctypes.create_string_buffer(needed.value)
-    lib.sirclGetReceipt(comm, text, needed.value, ctypes.byref(needed))
-    return json.loads(text.value.decode())
+    """The communicator's receipt. It is made at each call from live counters and may grow between the
+    call that sizes it and the next (a counter gains a digit), so the read retries until the receipt it
+    got was whole (sircl.h)."""
+    room = 1 << 14
+    while True:
+        needed = ctypes.c_size_t(0)
+        text = ctypes.create_string_buffer(room)
+        lib.sirclGetReceipt(comm, text, room, ctypes.byref(needed))
+        if needed.value <= room:
+            return json.loads(text.value.decode())
+        room = needed.value + 4096
 
 
 def counts_of(receipt: dict, keys) -> dict:
@@ -1333,10 +1338,20 @@ def run_rank_local_staging_checks(torch, lib, comm, world, rank, seed_base, repo
         aligned_engine, aligned_native, aligned_local, aligned_bad = runs["aligned"]
         report("rank-local staging: every call of the aligned run exact", not aligned_bad,
                "; ".join(aligned_bad[:6]))
+        def comparable(counts):
+            """Under LIBSIRCL_LINK_BLOCKS_CYCLE (a test hook giving successive link ops of a communicator the
+            listed blocks per role in turn) the split of a run's link ops over block counts depends on where
+            the rotation stood when the run began, which the runs before it on the same child moved; there the
+            runs compare the number of link ops instead."""
+            if not os.environ.get("LIBSIRCL_LINK_BLOCKS_CYCLE"):
+                return counts
+            return dict(counts, **{"link_blocks.ops_by_blocks": sum(counts.get("link_blocks.ops_by_blocks",
+                                                                                {}).values())})
+
         for label in ("unaligned", "in place"):
             engine, native, local, bad = runs[label]
             report(f"rank-local staging: every call with rank 1 {label} exact", not bad, "; ".join(bad[:6]))
-            same = engine == aligned_engine and native == aligned_native
+            same = comparable(engine) == comparable(aligned_engine) and native == aligned_native
             report(f"rank-local staging: with rank 1 {label}, this rank launches and carries the aligned run's ops",
                    same, "" if same else json.dumps({"aligned": [aligned_engine, aligned_native],
                                                      label: [engine, native]})[:1500])
@@ -1348,7 +1363,7 @@ def run_rank_local_staging_checks(torch, lib, comm, world, rank, seed_base, repo
         report("rank-local staging: captured cold with rank 1 unaligned, every rank captures every call",
                not capture_bad and graph_staging, "; ".join(capture_bad[:4]) or
                ("" if graph_staging else "no stream-ordered allocation on this driver or device"))
-        same = engine == aligned_engine
+        same = comparable(engine) == comparable(aligned_engine)
         report("rank-local staging: the captured calls launch the aligned run's ops", same,
                "" if same else json.dumps({"aligned": aligned_engine, "captured": engine})[:1500])
         # The cold child's staging buffer never grew: every staged call under capture is a graph allocation.
@@ -1901,11 +1916,7 @@ def main(argv=None) -> int:
     status = ctypes.c_int(-1)
     lib.ncclCommGetAsyncError(comm, ctypes.byref(status))
     report("ncclCommGetAsyncError", status.value == 0, f"status {status.value}")
-    needed = ctypes.c_size_t(0)
-    lib.sirclGetReceipt(comm, None, 0, ctypes.byref(needed))
-    buffer = ctypes.create_string_buffer(needed.value)
-    lib.sirclGetReceipt(comm, buffer, needed.value, ctypes.byref(needed))
-    receipt = json.loads(buffer.value.decode())
+    receipt = receipt_of(lib, comm)
     calls = receipt["all_reduce"]["calls"]
     ops = sum(receipt["all_reduce"]["ops"].values())
     # The fold ran for 57 (datatype, op) pairs: all 60 but the three sums the transport kernels reduce.
@@ -1915,8 +1926,12 @@ def main(argv=None) -> int:
            and receipt["broadcast"]["calls"] == 10 and receipt["reduce"]["calls"] == 6
            and receipt["all_to_all"]["calls"] == 8 + alternating_alltoalls and receipt["gather"]["calls"] == 5
            and receipt["scatter"]["calls"] == 5 and len(receipt["fold"]["ops"]) == 57
-           and receipt["point_to_point"]["sends"] + receipt["point_to_point"]["receives"] == (24 if world == 2 else 2),
-           json.dumps({k: receipt[k] for k in ("all_reduce", "all_gather", "reduce_scatter", "all_to_all", "fold")}))
+           and receipt["point_to_point"]["sends"] + receipt["point_to_point"]["receives"] == (24 if world == 2 else 2)
+           # One send to another rank refused on a larger communicator without point-to-point channels.
+           and receipt["channels"]["refused"] == (1 if world != 2 and os.environ.get("LIBSIRCL_P2P_CHANNELS") != "on"
+                                                  else 0),
+           json.dumps({k: receipt[k] for k in ("refused", "channels", "all_reduce", "all_gather", "reduce_scatter",
+                                               "all_to_all", "fold")}))
     if any((os.environ.get(name) or "pieces") != "pieces"
            for name in ("SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE")) or \
             os.environ.get("SIRCL_LARGE_SCHEDULE") == "ring" or pair_default(world) == "ring":

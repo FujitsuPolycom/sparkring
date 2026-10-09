@@ -15,7 +15,10 @@ const char *sirclGetInfo(void);
 ncclResult_t sirclSetWaitRegime(ncclComm_t comm, const char *regime);
 /* The communicator's receipt (JSON, schema libsircl-receipt/v1): what carried
  * each call, refusals and native counters. Writes at most `length` bytes
- * including the terminator; *needed receives the size it needs. */
+ * including the terminator; *needed receives the size this call's receipt
+ * needs. The receipt is made at each call from live counters, so it may grow
+ * between a call that sizes it and the next: the output is whole only when
+ * *needed <= length, and a caller retries with a larger buffer otherwise. */
 ncclResult_t sirclGetReceipt(ncclComm_t comm, char *out, size_t length, size_t *needed);
 #ifdef __cplusplus
 }
