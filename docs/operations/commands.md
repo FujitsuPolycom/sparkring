@@ -74,6 +74,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
 | `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
+| `--image REF --transport libsircl --libsircl-library PATH --model-path DIR --plan -- VLLM_ARGUMENTS` | Plan a stock vLLM image (a registry reference or image ID) with libsircl as its NCCL: checks every Spark and writes each rank's Compose file; research-only, plan only ([stock image](../architecture/libsircl.md#stock-image-option)) |
 | `--transport sircl`, `--transport prepared` or `--transport libsircl` | The collective transport ([transport and receipts](install-reference.md#transport-and-receipts)); default: `sircl` where the image and the recorded fabric carry it, else `prepared`; `libsircl` (research-only) only by name |
 | `--nccl never` or `--nccl auto` | NCCL on a SIRCL deployment: `never` (default) keeps it off; `auto` lets it carry what the cabling allows; `topology` is another name for `auto` |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |

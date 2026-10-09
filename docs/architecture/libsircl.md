@@ -48,8 +48,8 @@ writes both:
 - `SNAPSHOT.sha256`: the snapshot's `FILES.sha256`, byte for byte, so its
   SHA-256 is the tree digest and every file's digest stays checkable;
 - `SNAPSHOT.json` (`sparkring-libsircl-snapshot/v1`): the tree digest, the
-  library version, the exclusion rules and every excluded path with its
-  SHA-256.
+  library version, the number of vendored files, the exclusion rules and
+  every excluded path (`SNAPSHOT.sha256` holds their SHA-256).
 
 `.gitattributes` keeps the directory's bytes unconverted on every platform.
 Updates arrive only through the sync script, never by hand:
@@ -117,8 +117,10 @@ Actions, none of which pushes or publishes an image:
    (`sparkring-libsircl-natives/v1`: parent image, snapshot, version,
    library SHA-256, compiler, kernel pack SHA-256 values). The build uses the
    prebuilt kernel packs, so it needs the image's gcc, make, Python 3 and
-   rdma-core headers, and no nvcc; the fixed path keeps the debug
-   information, and so the library's bytes, the same on every build host.
+   rdma-core headers, and no nvcc. The library's debug information names the
+   build directory, so the fixed path makes its bytes depend only on the
+   image's compiler and the tree: two x86_64 builds of `ba5a337b` at one path
+   gave identical bytes, and a build at another path did not.
 2. `prepare --parent-lock LOCK --natives DIR --output CONTEXT` reads the
    parent's external-base and toolchain receipts (copies, or the local parent
    image), refuses a parent that already records an added path, records every
@@ -129,10 +131,14 @@ Actions, none of which pushes or publishes an image:
 3. `build` tags the parent, builds the context and runs `record`; `record`
    confirms that the parent has none of the added paths, probes the built
    image (the plugin's entry point is registered, the library loads, reports
-   NCCL API level 22705 and identifies itself through `sirclGetInfo`, and the
-   plugin selects it), checks the layer receipt against the lock the way
-   installation does, runs the installer's admission for every profile, and
-   writes the v3 lock.
+   NCCL API level 22705 and identifies itself through `sirclGetInfo`, the
+   plugin selects it, and every function the image's PyNccl binds resolves
+   in it), checks the layer receipt against the lock the way installation
+   does, runs the installer's admission for every profile, and writes the v3
+   lock. The probe ran against an x86_64 build of `ba5a337b` and a stand-in
+   site-packages on a workstation: all 20 functions of PyNccl's list in Local
+   Inference Lab's `integration/karmic-kraken-beta` at `57a80980bb`
+   resolved.
 
 The lock is the parent's v3 lock with the built image's identity, the two
 re-recorded receipt digests, `libsircl` added to `transports` and a
@@ -336,67 +342,112 @@ Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on li
 
 ## Stock-image option
 
-`sudo sparkring install --image REF --transport libsircl --model-path PATH
-[--on POSITIONS] --plan -- VLLM_ARGUMENTS` plans a deployment of an
-unmodified ARM64 vLLM image, such as `ghcr.io/spark-arena/dgx-vllm-eugr-nightly`
-or `eugr/spark-vllm-b12x:nightly-20261001`, with libsircl as its NCCL. `REF`
-is a registry reference (it contains `/`) or a local image ID; it is not an
-installer image release, carries no SparkRing receipts and is not pinned by
-SparkRing. Status: **research-only**. The option plans and checks; it never
-pulls the image, and the installer does not start, stop or switch a stock
-deployment: it writes each rank's Compose file and prints the commands that
-start them ([stock_install.py](../../runtime/host/stock_install.py)).
-Without `--plan` it refuses and says so.
+```bash
+sudo sparkring install --image REF --transport libsircl --libsircl-library LIBRARY \
+  --model-path PATH [--on POSITIONS] --plan -- VLLM_ARGUMENTS
+```
+
+plans a deployment of an unmodified ARM64 vLLM image, such as
+`ghcr.io/spark-arena/dgx-vllm-eugr-nightly` or
+`eugr/spark-vllm-b12x:nightly-20261001`, with libsircl as the NCCL of both
+vLLM's PyNccl and torch's ProcessGroupNCCL. `REF` is a registry reference or
+a local image ID (it contains `/` or `:`); it is not an installer image
+release, carries no SparkRing receipts and is not pinned by SparkRing.
+Status: **research-only**. The option plans and checks; it never pulls the
+image, and the installer does not start, stop or switch a stock deployment:
+it writes each rank's Compose file and prints the commands that copy, start
+and stop them ([stock_install.py](../../runtime/host/stock_install.py)).
+Without `--plan` it refuses and says so; it takes no `--profile`.
 
 The plan needs on every Spark of the group:
 
 - the image, loaded locally (`--pull never` everywhere);
-- a host build of libsircl at
-  `/var/lib/sparkring/libsircl/<sha256>/libsircl.so.<version>`, the same
-  bytes on every Spark. `libsircl_layer.py host-library --builder-image ID
-  --output DIR` builds it from the vendored source in a network-less
-  container of a builder image that has gcc, make, Python 3 and the rdma-core
-  headers (an installer image has them); the stock image needs none of them;
-- the model files at `PATH`.
+- the host build of libsircl at `LIBRARY`, the same bytes on every Spark:
+  `libsircl_layer.py host-library --builder-image ID --output DIR` builds it
+  from the vendored source in a network-less container of a builder image
+  that has gcc, make, Python 3 and the rdma-core headers (an installer image
+  has them) and names its content-addressed path,
+  `/var/lib/sparkring/libsircl/<sha256>/libsircl.so.<version>`; the stock
+  image needs no build tools. The builder's glibc bounds the images the
+  library runs in: an x86_64 build of snapshot `ba5a337b` with GCC 13.3 on
+  Ubuntu 24.04 (glibc 2.39) needs `GLIBC_2.38`, so an image with an older
+  glibc needs a library built with that glibc or an older one;
+- the model files at `PATH`, mounted read-only at `/model`.
 
-Preflight ([stock_image.py](../../runtime/common/stock_image.py)) runs a
-standard-library probe ([stock_image_probe.py](../../runtime/common/stock_image_probe.py))
-in a network-less, read-only container of the image on every Spark, with the
-GPUs and the host library mounted as serving mounts them, and refuses with
-the reason when any check fails:
+The group, its routing settings and its refusals of shapes are those of the
+[installer transport](#installer-transport): pairs, paths and whole cycles of
+two to eight Sparks, so a pair and the eight-Spark cycle (TP8 through relays)
+are planned the same way.
+
+### Preflight
+
+On every Spark, over SSH and read-only,
+[stock_image.py](../../runtime/common/stock_image.py) inspects the image,
+hashes the library and runs a standard-library probe
+([stock_image_probe.py](../../runtime/common/stock_image_probe.py)) in a
+network-less, read-only container of the image with the GPUs and the library
+mounted as serving mounts them. It refuses, naming each reason and Spark,
+when any check fails:
 
 | Check | Rule |
 |---|---|
-| Architecture | the image is `linux/arm64` and its interpreter runs on `aarch64` |
-| glibc | the image's glibc (`os.confstr("CS_GNU_LIBC_VERSION")`) is at least the newest `GLIBC_x.y` symbol version the host library needs (its ELF `.gnu.version_r`) |
+| Architecture | the image is `arm64` and its interpreter runs on `aarch64` |
+| Library | it loads in the image, its SONAME is `libnccl.so.2`, `ncclGetVersion` reports 22705, `sirclGetInfo` names libsircl, and its bytes name `LIBSIRCL_FAIL_STOP` (the [fail-stop](#fail-stop) mode) |
+| glibc | the image's glibc (`os.confstr("CS_GNU_LIBC_VERSION")`) is at least the newest `GLIBC_x.y` symbol version the library needs (its ELF `.gnu.version_r`) |
 | CUDA driver API | `cuDriverGetVersion` through the container's `libcuda.so.1` is 13000 or later: the kernel packs hold `sm_120` and `sm_121` code built by nvcc 13.3 and no PTX, which a CUDA 13 driver loads (CUDA's minor-version compatibility; inferred) |
-| GPU architecture | every visible GPU's compute capability is one the kernel packs carry: `sm_120` or `sm_121` (GB10 is 12.1) |
-| `VLLM_NCCL_SO_PATH` | `vllm.envs` defines it and `find_nccl_library` reads it (read from the installed vLLM's sources, not by importing vLLM) |
-| PyNccl's API | every function vLLM's `NCCLLibrary` binds is one libsircl exports ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)); the functions every PyNccl communicator calls are implemented; a conditional call libsircl refuses is refused when its condition is set (`ncclCommSuspend` and `ncclCommResume` with `--enable-sleep-mode`) |
-| Multi-node launch | the image's vLLM accepts `--nnodes`, `--node-rank`, `--master-addr` and `--headless` |
-| torch's NCCL | read from the `NEEDED` entries of torch's `libtorch_cuda.so`: `dynamic` (needs `libnccl.so.2`), `static`, or `absent` |
+| GPU architecture | the container sees a GPU, and every visible GPU's compute capability is one the kernel packs carry (`sm_120`, `sm_121`; GB10 is 12.1) |
+| `VLLM_NCCL_SO_PATH` | `vllm/envs.py` defines it and `find_nccl_library` reads it (read from the installed vLLM's sources, not by importing vLLM) |
+| PyNccl's functions | every function vLLM's `NCCLLibrary` binds resolves in the library; none is one libsircl exports only as a refusal ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)), except `ncclCommSuspend` and `ncclCommResume`, which only sleep mode calls and which `--enable-sleep-mode`'s refusal covers |
+| Multi-node launch | the CLI accepts `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` and `--headless`, and the image has a `vllm` command |
+| torch's NCCL | torch's `libtorch_cuda.so` needs `libnccl.so.2` (`dynamic`). A `static` or absent NCCL is refused: `LD_PRELOAD` cannot redirect it, and torch's own collectives would reach another NCCL |
+| Arguments | `VLLM_ARGUMENTS` set none of the options the plan owns and pass the installer transport's [refusals](#refusals) |
+| Same bytes | every Spark holds the same image ID and library SHA-256 |
 
-Each rank's container then runs the image's own entrypoint and vLLM with:
+When those pass, a second probe on every Spark runs with the planned
+`VLLM_NCCL_SO_PATH` and `LD_PRELOAD`, imports torch and reports which
+library each caller bound; it refuses unless PyNccl's `ctypes` load of
+`VLLM_NCCL_SO_PATH` and the process's global scope both resolve
+`ncclGetVersion` in libsircl (`dladdr`), `torch.cuda.nccl.version()` is
+2.27.5 (libsircl's API level 22705), and libsircl is the only mapped file
+with the SONAME `libnccl.so.2`. This verifies the binding, not a collective:
+a qualification on Sparks still runs one PyNccl and one ProcessGroupNCCL
+collective on every rank and requires each to add a libsircl receipt.
 
-- the host library mounted read-only at
+### Each rank's container
+
+- the image's own entrypoint, followed by `vllm serve /model`
+  `VLLM_ARGUMENTS`, the group's multi-node arguments
+  (`--tensor-parallel-size` and `--nnodes` equal to the group size,
+  `--node-rank`, `--master-addr` rank 0's address, `--master-port 29511`,
+  `--headless` above rank 0, `--host 0.0.0.0 --port 8000` on rank 0),
+  `--disable-custom-all-reduce` and, unless `VLLM_ARGUMENTS` give their own,
+  `--compilation-config` setting the communication fusions the image's vLLM
+  has (`fuse_allreduce_rms`, `fuse_gemm_comms`, `enable_sp`) to false;
+- the library mounted read-only at
   `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, `VLLM_NCCL_SO_PATH`
-  naming it, and, when torch's NCCL is `dynamic`, `LD_PRELOAD` with libsircl
-  first and no other `libnccl.so` entry of the image's own `LD_PRELOAD`. With
-  a `static` torch NCCL the plan says that torch's own collectives stay on it;
-- the same per-rank routing settings, `LIBSIRCL_*` and `SIRCL_GID_INDEX`
-  values as the installer transport, from the same fabric document and group
-  placement, and the receipt directory;
-- `/dev/infiniband`, all GPUs, host networking and IPC, unlimited memlock;
+  naming it, and `LD_PRELOAD` with libsircl first and no other `libnccl.so`
+  entry of the image's own `LD_PRELOAD`;
+- `LIBSIRCL_FAIL_STOP=1`, `LIBSIRCL_NCCL_API_VERSION=22705`,
+  `LIBSIRCL_TRANSPORT=verbs`, the rank's routing settings,
+  `SIRCL_BOOTSTRAP_ADDR` and `VLLM_HOST_IP` the rank's address,
+  `GLOO_SOCKET_IFNAME` and `NCCL_SOCKET_IFNAME` its interface,
+  `SIRCL_GID_INDEX=3`, the receipt prefix in `receipts/` of the plan's
+  directory, and `NCCL_DEBUG=INFO`, `NCCL_DEBUG_SUBSYS=INIT`;
+- `0` for each switch of a bypassing collective path that the image's
+  `vllm/envs.py` defines (`VLLM_DISABLE_PYNCCL`, symmetric memory, FlashInfer
+  all-reduce, PCIe all-reduce, `VLLM_ENABLE_ROCE_ALLREDUCE`); switches the
+  image does not define are not set;
+- `/dev/infiniband`, all GPUs, host networking and IPC, unlimited memlock and
+  `IPC_LOCK`, and no other added capability;
 - SparkRing's loader seccomp policy (io_uring admitted) only when the image's
   loader needs it: `--load-format fastsafetensors` or `instanttensor`, or the
-  image registers B12X's `b12x_loader` plugin;
-- the multi-node arguments the group needs: `--tensor-parallel-size` (the
-  group size), `--nnodes`, `--node-rank`, `--master-addr` (rank 0's address),
-  `--master-port`, `--headless` on ranks above 0, and the API port on rank 0.
-  `VLLM_ARGUMENTS` may not set them.
+  image registers B12X's `b12x_loader` plugin.
 
-A pair and the whole eight-Spark cycle (TP8 through relays) are planned the
-same way; the group rules are the installer transport's.
+The files land in `/var/lib/sparkring/controller/stock/<name>/` on Node A
+(`compose.rank<r>.yaml`, `plan.json` and, where needed, `loader-seccomp.json`),
+with the commands that copy them to `/var/lib/sparkring/stock/<name>/` on each
+Spark and start and stop the containers. `<name>` is derived from the image
+ID, library digest, positions, model path, arguments and fabric identity.
 
 ## Build and load commands
 

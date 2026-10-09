@@ -222,7 +222,7 @@ def probe_record(plan):
     layer = plan["layer"]
     return {"entry_points": [["libsircl", "sparkring_libsircl:register"]], "nccl_get_version": [0, 22705],
             "library": "libsircl", "version": layer["version"], "selected": layer["library"]["path"],
-            "plugin_file": layer["plugin"]["path"]}
+            "plugin_file": layer["plugin"]["path"], "pynccl_functions": 20, "pynccl_missing": []}
 
 
 def test_record_probes_checks_the_layer_admits_and_writes_the_lock(tmp_path, monkeypatch):
@@ -245,7 +245,8 @@ def test_record_probes_checks_the_layer_admits_and_writes_the_lock(tmp_path, mon
 
 
 @pytest.mark.parametrize("field, value", [("selected", "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"),
-                                          ("nccl_get_version", [0, 23203]), ("entry_points", [])])
+                                          ("nccl_get_version", [0, 23203]), ("entry_points", []),
+                                          ("pynccl_missing", ["ncclCommShrink"]), ("pynccl_functions", 0)])
 def test_a_built_image_whose_probe_disagrees_is_not_recorded(tmp_path, monkeypatch, field, value):
     _, _, _, _, result = prepared(tmp_path)
     context = Path(result["context"])

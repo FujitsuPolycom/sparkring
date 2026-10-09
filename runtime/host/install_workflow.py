@@ -1459,7 +1459,9 @@ def main(argv=None):
     images = parser.add_mutually_exclusive_group()
     images.add_argument("--image", metavar="NAME",
                         help="run the profile on another installer image: a name or release tag that sparkring images "
-                             "lists; default: the installer's own image")
+                             "lists; default: the installer's own image. A registry reference or local image ID "
+                             "(REF, with / or :) instead plans a stock vLLM image with --transport libsircl --plan "
+                             "and the vLLM arguments after -- (research-only)")
     images.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
     parser.add_argument("--model-path", action="append", metavar="[N=]PATH",
                         help="a local copy of the checkpoint; PATH for every Spark or N=PATH for Node N (repeatable); "
@@ -1506,13 +1508,23 @@ def main(argv=None):
                         help="NCCL on a SIRCL deployment: never (default) keeps NCCL off every collective; auto lets "
                              "NCCL carry what the cabling allows (every collective on a pair, the ring algorithm on "
                              "a whole cycle, nothing across relays); topology is another name for auto")
+    parser.add_argument("--libsircl-library", metavar="PATH",
+                        help="with --image REF --transport libsircl: the host build of libsircl every Spark holds "
+                             "(runtime/images/libsircl_layer.py host-library)")
     serving_settings.add_arguments(parser)
-    args = parser.parse_args(argv)
+    # A stock image's vLLM arguments follow --.
+    argv = list(sys.argv[1:] if argv is None else argv)
+    vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
+    args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    from runtime.common import stock_image
+    stock = args.image is not None and stock_image.is_reference(args.image)
+    if vllm_arguments and not stock:
+        parser.error("arguments after -- are a stock image's vLLM arguments: use them with --image REF")
     if args.nccl is not None:
         args.nccl = transports.nccl_mode(args.nccl)
     if args.events is not None and not args.events.parent.is_dir():
         parser.error(f"--events: the directory {args.events.parent} does not exist")
-    if args.image is not None:
+    if args.image is not None and not stock:
         # A named image is its lock in this package; naming the default image
         # requests the same deployment as no selection.
         try:
@@ -1533,7 +1545,11 @@ def main(argv=None):
             except OSError:
                 before[journal] = None
         try:
-            result = execute(args)
+            if stock:
+                from runtime.host import stock_install
+                result = stock_install.plan(args, vllm_arguments, state=controller.STATE, invoke=discovery.ssh)
+            else:
+                result = execute(args)
         except NeedsInput as error:
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
@@ -1556,6 +1572,10 @@ def main(argv=None):
             if result.get("field") != "checkpoint":
                 for line in controller.detail_lines(result.get("details")):
                     print("  " + line)
+        elif result["state"] == "planned" and stock:
+            from runtime.host import stock_install
+            for line in stock_install.lines(result):
+                print(line)
         elif result["state"] == "planned":
             command = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
             print(f"Plan saved. Install it with {command} --yes.")

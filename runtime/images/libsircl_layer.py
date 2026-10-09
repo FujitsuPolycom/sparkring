@@ -10,8 +10,9 @@ lock, normally the SIRCL image, and adds:
   ``make check``) in a network-less container of the parent image at the
   fixed path ``/tmp/libsircl`` with ``LD_PRELOAD`` unset. The build embeds
   the prebuilt kernel packs, so it needs the image's gcc, make, Python 3 and
-  rdma-core headers and no nvcc; the fixed path keeps the library's debug
-  information, and so its bytes, independent of the build host;
+  rdma-core headers and no nvcc. The library's debug information names the
+  build directory, so the fixed path makes its bytes depend only on the
+  image's compiler and the tree;
 - the notices every binary copy carries under ``/opt/sparkring/libsircl``;
 - the vLLM general plugin ``libsircl``
   (``integrations/vllm/libsircl/sparkring_libsircl.py``) in the serving
@@ -84,7 +85,16 @@ handle.sirclGetInfo.restype = ctypes.c_char_p
 info = json.loads(handle.sirclGetInfo().decode())
 os.environ.update(SPARKRING_LIBSIRCL_LIBRARY=library, SPARKRING_LIBSIRCL_SHA256=digest)
 import sparkring_libsircl
-sparkring_libsircl.register()
+# register's steps without importing vLLM: the checked file, its libsircl identity, then the selection.
+selected = sparkring_libsircl.selected()
+sparkring_libsircl.check_binding(selected, functions=lambda: None)
+os.environ[sparkring_libsircl.TARGET] = selected
+# The functions PyNccl binds, read from vLLM's source as the plugin reads them from the loaded module.
+import ast, importlib.util
+root = list(importlib.util.find_spec("vllm").submodule_search_locations)[0]
+source = open(os.path.join(root, "distributed", "device_communicators", "pynccl_wrapper.py")).read()
+bound = sorted({node.args[0].value for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Call)
+                and getattr(node.func, "id", None) == "Function" and node.args and isinstance(node.args[0], ast.Constant)})
 try:
     import torch
     torch_nccl = list(torch.cuda.nccl.version())
@@ -92,7 +102,8 @@ except Exception as error:
     torch_nccl = repr(error)
 print("LIBSIRCL-LAYER-PROBE " + json.dumps({"entry_points": points, "nccl_get_version": [code, version.value],
       "library": info.get("library"), "version": info.get("version"), "selected": os.environ.get("VLLM_NCCL_SO_PATH"),
-      "plugin_file": sparkring_libsircl.__file__, "torch_nccl_version": torch_nccl}))
+      "plugin_file": sparkring_libsircl.__file__, "pynccl_functions": len(bound),
+      "pynccl_missing": [name for name in bound if not hasattr(handle, name)], "torch_nccl_version": torch_nccl}))
 '''
 
 
@@ -348,9 +359,12 @@ def probe_problems(record, block):
     group, name, value = libsircl.PLUGIN_ENTRY_POINT
     expected = {"entry_points": [[name, value]], "nccl_get_version": [0, block["nccl_api_version"]],
                 "library": "libsircl", "version": block["version"], "selected": block["library"]["path"],
-                "plugin_file": block["plugin"]["path"]}
-    return [f"{key}: {record.get(key)!r}, expected {wanted!r}" for key, wanted in expected.items()
-            if record.get(key) != wanted]
+                "plugin_file": block["plugin"]["path"], "pynccl_missing": []}
+    problems = [f"{key}: {record.get(key)!r}, expected {wanted!r}" for key, wanted in expected.items()
+                if record.get(key) != wanted]
+    if not record.get("pynccl_functions"):
+        problems.append("pynccl_functions: the image's vLLM has no PyNccl function list")
+    return problems
 
 
 def probe_image(image_id, block, *, run=_run):

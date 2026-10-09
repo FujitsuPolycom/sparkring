@@ -505,6 +505,11 @@ the transports each image carries.
   elsewhere. The installer does not judge libsircl's
   receipts, so the transport verdict is `unknown`
   ([design](../architecture/libsircl.md)).
+- `--image REF --transport libsircl --plan`, with a registry reference or
+  image ID as `REF`, plans a stock vLLM image with libsircl as its NCCL
+  instead of an installer profile. It checks every Spark read-only and
+  writes each rank's Compose file; SparkRing does not start or manage that
+  deployment ([stock-image option](../architecture/libsircl.md#stock-image-option)).
 - `--nccl auto` lets NCCL carry the collectives the cabling allows: every
   collective on a pair, NCCL's ring algorithm on a whole cycle, none across
   relays. `--nccl never` is the default; `topology` is another name for
