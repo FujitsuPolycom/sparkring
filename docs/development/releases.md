@@ -68,10 +68,12 @@ installation; record the rollback image, normally the v2 release it derives
 from, in the release notes.
 
 The default tuning table's rows are the accepted defaults until a
-measurement replaces them: the `cycle-8` row's settings are measured, the
-`pair` row's come from the SIRCL install design (`design`), and other group
-sizes, such as `cycle-4`, run on SIRCL's own rules through the `path` and
-`cycle` rows. To replace one, such as the `cycle-4` row that SIRCL's
+measurement replaces them: the `pair`, `path-4` and `cycle-8` rows' settings
+are measured, each row names its evidence, and other group sizes, such as
+`cycle-4`, run on SIRCL's own rules through the `path` and `cycle` rows. The
+table names the SIRCL version and ABI its rows apply to; a release whose SIRCL
+layer has another version runs none of them until the table names that
+version. To replace one, such as the `cycle-4` row that SIRCL's
 rules serve while no measurement exists, run `sudo sparkring fabric tune --execute` on the owner's
 fabric of that shape with the release's image, copy Node A's
 `/var/lib/sparkring/controller/sircl-tuning.json` and

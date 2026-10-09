@@ -10,7 +10,7 @@ NATIVE = "0123456789abcdef"
 P2P = "fedcba9876543210"
 
 
-def sircl_block(version="0.2.0", abi=9):
+def sircl_block(version="0.3.1", abi=9):
     return {"version": version, "abi_version": abi,
             "wheel": {"name": f"sparkring_sircl-{version}-py3-none-any.whl", "sha256": "1" * 64},
             "native": {"path": f"{image_lock.LIBRARY_DIRECTORY}/roce_proxy-{NATIVE}.so", "sha256": "2" * 64,

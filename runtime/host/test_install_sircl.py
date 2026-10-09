@@ -60,8 +60,7 @@ def test_an_image_with_sircl_and_a_recorded_fabric_install_on_sircl_with_nccl_of
     assert recorded["fabric"]["id"] == document["id"] and recorded["group"]["name"] == "pair"
     assert result["transport"]["backend"] == "sircl" and result["transport"]["verdict"] == "as-expected"
     assert events.index("candidate:up") < events.index("candidate:transport")
-    assert ("Transport: sircl on every collective, NCCL off (default table, pair: the design's settings, "
-            "not measured)") in out.err
+    assert "Transport: sircl on every collective, NCCL off (default table, pair)" in out.err
     assert "  Transport:   sircl, NCCL: absent" in out.err
     # The result stays with the deployment for sparkring check --report.
     saved = json.loads((Path(result["deployment"]) / flow.RESULT_FILE).read_text())
@@ -181,8 +180,9 @@ def test_an_installation_after_fabric_tune_runs_on_the_measured_table(sircl, mon
     assert tuning["tables"][0]["path"] == f"{transport.HOST_TABLES}/{digest}.json"
     assert "Transport: sircl on every collective, NCCL off (measured on this fabric 2026-10-09, pair)" in out.err
     # The measured row keeps the default pair row's settings beside the measurement's own.
-    assert ("SIRCL settings: large_blocks 32, link_slot 1048576, link_slots 12, oneshot_max 131072, ring_min 2097152"
-            in out.err)
+    assert ("SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, "
+            "link_slots 12, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, "
+            "scatter_schedule ring") in out.err
     assert f"Measured row pair: {transport.MEASURED_ROW_RULE}" in out.err
     # A driver update on Node A makes the measured table stale: the next installation says so and uses the
     # default table, which is another deployment.

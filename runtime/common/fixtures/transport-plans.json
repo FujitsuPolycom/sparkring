@@ -14,7 +14,7 @@
    ]
   },
   "prepared-path-4": {
-   "lock_id": "5e82baa267d37e74394b54e9e334f862261939575ba9cd149340c1405623d035",
+   "lock_id": "c728cf95ecea9312fa495c490781690ebd2126078fcecaad833c5417a4d466ae",
    "plan_lines": [
     "Transport: prepared (--transport prepared)",
     "Transport: prepared",
@@ -22,88 +22,89 @@
    ],
    "section_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
    "specs_sha256": [
-    "f73c3030d36562e1acf3d570d6542e8dd07f1d01e3e152b90e16d93c19cefb58",
-    "6bcba8829b11d5e5c3331e03abb08967a28f9172f2c45c79230629242e76d472",
-    "9c9fc23c087c1f448281b97c3dfff781a464cc5c0e36e5522f9dc72e723d3af3",
-    "6199ba27880ec075bdd611c823575fb1d3b737722f4aebd6fe6e7fc0068ab8f3"
+    "4964b05a850d6b63805aef227667a597099245f8dc98410e80eda3a2970a90ac",
+    "728bfc4b9003fb1d54e19b34a248111223c429971dd244da0f404b25df20c418",
+    "145d0bc912a4e9e1fa4e8f7fd24db1c68d0cb65b3ac91d70c68b5e1c285ef609",
+    "afd8ed08c1a9e7dca13255454a05084db7c3256a6fd9ca0782dc15ad80f3d241"
    ]
   },
   "sircl-cycle-4": {
-   "lock_id": "255e55509238cd98b3b1a4baa349ce58a16fe341d270bedb4a7354d98748d792",
+   "lock_id": "aa679b94da0490f1c010f354fd24239cdc00a9d030b01992ebe2ad4c31e8380a",
    "plan_lines": [
     "Transport: sircl on every collective, NCCL off (default table, cycle-4: not measured, SIRCL's own rules apply)",
     "  SIRCL group: cycle-4 at positions 0, 1, 2, 3; 2 lanes per peer, at most 1 relay on a lane",
     "  NCCL: opt-in only (auto); tables choose among SIRCL options"
    ],
-   "section_sha256": "3d30acf9d5e82a2c74f4871f0e44cfd146d05063157328eba612e4fd80bbe4de",
+   "section_sha256": "6c6138f5c05f8f6e8b23cc4d4e92f11b76fe1ec06aaf8b1a6483d41d548f645f",
    "specs_sha256": [
-    "77bc9367ff27456ac2bcea1fcf36290747ae8a208be1b900d04def1bbb13a32f",
-    "f1d2d791fe2ac0742daccd4f98924e46efac07642d1b2b390a8ecfece60b086a",
-    "222139b396886e6920776c48bad337b6604e4fda9752d5350d78f29deec3bad8",
-    "89eb39bd7dbcc3f84cfb9c11e469f18d2b6686640e6f9d67c5a66fe7a6d97491"
+    "e7f38442e0e183a7e637ade1532082d3ef4b7b09577db9ea43af6f1271e0b7d2",
+    "440b4651db3b90589847e06923e40eebeb4252805e841a688bfd33e6588865dd",
+    "1eec1515442a9f382986f4b580d6a9398dc3be9fea68c9d791d814ae10b940fb",
+    "8d8dede7c8f63bcf551eaede48cca29c8eb124505f1fc0c9cee210e357e709e4"
    ]
   },
   "sircl-cycle-8": {
-   "lock_id": "38d492addf186e9798a0af6ff2b4e63dbde4bfc0e662f6ae3c53a57902018481",
+   "lock_id": "92bae8acb29807c3f434a9e15221bd7c67e986619f4f7f009ce702bbbb677fb6",
    "plan_lines": [
     "Transport: sircl on every collective, NCCL off (default table, cycle-8)",
     "  SIRCL group: cycle-8 at positions 0, 1, 2, 3, 4, 5, 6, 7; 2 lanes per peer, at most 3 relays on a lane",
     "  NCCL: opt-in only (auto); tables choose among SIRCL options",
     "  SIRCL settings: capacity 1048576, dispatch 1048576, link_slot 524288, link_slots 16, oneshot_max 28672"
    ],
-   "section_sha256": "9be6bbdfb50c1753199de4b82ef182bc97fdcee8934b3f26013daa5dda565a5f",
+   "section_sha256": "954b05cc7a016debf05326aae82b4f2f36afdd475e2c1008b77c3e4cdd56ce97",
    "specs_sha256": [
-    "10cc3f4651065167d8d86b8137900aac2a7cded21be6d091024ba42f9c62f5e7",
-    "9913c0074383011277b4b3631664b037ab5c6dd7223f1418a80bb8968c8ba6ea",
-    "41ec13c1b23152100368621e45339b8c69f771a38077ab8e8c0e0f97e553b65c",
-    "3f982d3c29db5a64e3f62060a93884105c0633c10cfc13803ca88820e9e13ce1",
-    "d6e8c5ff57275065707650b1a90e98c6f2cd63c4c59ecaf0a5e237fdd996c433",
-    "47bced8f49a473ed7fc560230c4c1a9b993298845826b95b3bfa502674ac2136",
-    "811fa05ce5c0dac63677f8796cff8f70ee788d938bd55c22b55cb7938bbd415e",
-    "c6dfd52bff1140918e750630b11aa9909fff9ab15e3067d2358c40561b0528ab"
+    "62504e2826b8add32da861528ae8594fd4a6070f07a096f51740fb314936826c",
+    "be2d79b93e9b58bfe841ca39532857fb7449bdc964f3143941843f9e48ee3860",
+    "2e9be40c78e4708d4a67e85a9b62b0ac254c95ffcf86b9ced8022883a8274b79",
+    "1b3c56c5b9ab5c31f43eb18fe65ea78fbc7e1e1469c32df0e8356ccd18ceb5d7",
+    "915ba7c723e3ff63fd6c3cc3add3fb0c52b4d8e85223c78b9eb1c21cfcf8c675",
+    "41adc58a2ee50e081848413e01d6085c4ff238003e83bbbeb9ed0e36e3a64d9a",
+    "b7908fd1fb1d2eae5b339dfa611e63511294466ef2482ee0edbfb065eae5ff87",
+    "abffcd4ab58433523b1dc5c32c3c6b7e2a2d5ef9739baeb58cda81773013c73a"
    ]
   },
   "sircl-pair": {
-   "lock_id": "01fc3e29aec2524cc50b3d39e88549d7818ac837b00a7ca237b78be3cf4039ac",
+   "lock_id": "40002a848f8cc15a66edc70d3847635b267c714fe9a3c1af002638a5dbbd14ec",
    "plan_lines": [
-    "Transport: sircl on every collective, NCCL off (default table, pair: the design's settings, not measured)",
+    "Transport: sircl on every collective, NCCL off (default table, pair)",
     "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
     "  NCCL: opt-in only (auto); tables choose among SIRCL options",
-    "  SIRCL settings: large_blocks 32, oneshot_max 131072, ring_min 2097152"
+    "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring"
    ],
-   "section_sha256": "6c555d4c8736814e6785ad8381e7eb3c26c77b0cc3a787e8aeb2ec9e0de5d287",
+   "section_sha256": "2c75c2e43b12bf376a79080fb37314cbe86136f0f9701481b1304057a64b762a",
    "specs_sha256": [
-    "8ffb87d142b2d61bd6db3c57bc33d9aa2b8bf70db8e4e8e7938724471ac38616",
-    "b548d158cf654afc355db2745b16ce3790820b1349ced80a9a7d6a6385abe616"
+    "351a7d351e2a4542ba3f4be7c1abaf98086f1bb662542e54f6555b4419d269d5",
+    "92b0ca89d263af0f42901b89c84f1821c52bd3ed0260479966bde3dbe1c0e8c9"
    ]
   },
   "sircl-pair-nccl-auto": {
-   "lock_id": "beac673d918d47a36196639224518ceb5b4fc3a11150811b0d52e145fe3b39d5",
+   "lock_id": "9adcaae497571f84e1617fe9342fe7a38b81c99162f14852bcf07099f5b50cf5",
    "plan_lines": [
-    "Transport: sircl; NCCL may carry what the cabling allows, every collective on this group (--nccl auto; default table, pair: the design's settings, not measured)",
+    "Transport: sircl; NCCL may carry what the cabling allows, every collective on this group (--nccl auto; default table, pair)",
     "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
     "  NCCL: opt-in only (auto); tables choose among SIRCL options",
-    "  SIRCL settings: large_blocks 32, oneshot_max 131072, ring_min 2097152"
+    "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring"
    ],
-   "section_sha256": "eb9fecb61bb5075f751bfc11a3ab559b8d336eb52d0d7a5c2a4f422ae3d61131",
+   "section_sha256": "37578bdd56d56442765fa3ad8c17a52912ad22326b48a6d8808a4621d6c9fddb",
    "specs_sha256": [
-    "8affb245cbbb9c5b5713420bc70b7a1c3f7fc1d5ab656e6f86cd9018ea90b0e6",
-    "112723cad0df34ab62864e121e382be41d56af5fb9502f2e18b10d8fee075d92"
+    "ec896a6cc61ce3e629f7b3e8fb64acd6e88799f4cd24fad512a31042bee8d35d",
+    "c79e86b41d69f72181ff35687ec3eb0ae5094ff00601be8d9f5fcda5302dc8f7"
    ]
   },
   "sircl-path-4-of-cycle-8": {
-   "lock_id": "8362f33f26dcb84e9900c0695487914c63dbfe4a0655711d49ca92c52e7f6aa7",
+   "lock_id": "7269182ea1075063b67b7180f0c3dcecf62c07d133b191e82b30cd96d149b66e",
    "plan_lines": [
-    "Transport: sircl on every collective, NCCL off (default table, path-4: not measured, SIRCL's own rules apply)",
+    "Transport: sircl on every collective, NCCL off (default table, path-4)",
     "  SIRCL group: path-4 at positions 4, 5, 6, 7; 2 lanes per peer, at most 2 relays on a lane",
-    "  NCCL: opt-in only (auto); tables choose among SIRCL options"
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options",
+    "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring"
    ],
-   "section_sha256": "6cbe0430274b903d424525edf7ba7d73089da2688de892fce70227265a84c9b9",
+   "section_sha256": "33d307d787b874b912c85c1c55fc3bb5e14f5a21b2a5df9ba66b6d3eae6d612e",
    "specs_sha256": [
-    "c19f1637cc3fcf67f40ce107752c8acec213552da364dbc335eb300b37dd6863",
-    "24626edd5b0fedab1e3ce07a3bb57af57494aca24e15f0ea42fa6d13cf6d214f",
-    "cc3c797a51e949809a1acd9c410096df48083d8371ced613afd0afb622c975c3",
-    "fdcca9e9d22222af2c709f92b27240f7310222a0b7f07ce7a43bb0221c884bef"
+    "17460f1ddb5088831b97e1b6d47a9afcda6e45ad12c81eed2c36fe043672e9a7",
+    "8afa235e81444dfde0e38afc66cf52c15815730e5a7e9dce9be979344b988a7d",
+    "ac7ef829163334679a8469e51c9480540a36c6bd830c336c35e03b8d3dd5872a",
+    "2211fcbfad5deb82d35100be220115598314bd8b248ddc3b236e2d07d9d1a5e1"
    ]
   }
  },
@@ -149,6 +150,6 @@
    null
   ]
  },
- "generated_at": "9060cd5da33b4038d9c2f5d2c8ae02f58923b0ff",
+ "generated_at": "46c7cc476714e65170dbe84d1fb8d88d8be0dd9c",
  "schema": "sparkring-transport-plan-digests/v1"
 }

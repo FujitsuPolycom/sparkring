@@ -50,8 +50,9 @@ SIRCL's own settings: per group shape (``pair``, ``path-<n>``,
 ``cycle-<n>``, else the row of the shape alone), the session settings that
 ``serve.plan.Options`` of the SIRCL launcher names (one-shot limit, launch
 grid, schedules, minimums, link sizes, capacities and waits), with each
-row's evidence (``measured``, ``rules`` for SIRCL's own derivation,
-``inherited:<row>``). ``tables`` names measured SIRCL tuning tables
+row's source (``measured``, ``rules`` for SIRCL's own derivation,
+``inherited:<row>``) and, optionally, the measurement behind it as text
+(``evidence``). ``tables`` names measured SIRCL tuning tables
 (``sircl-tuning-table/v1``: per collective, size and mode, the fastest SIRCL
 algorithm, schedule, piece and launch grid, and the session settings those
 choices ran under and need: link slots, link slot, chain slot and
@@ -294,10 +295,11 @@ def validate_tuning(document, *, root=ROOT, host_root="/"):
         _require(GROUP_NAME.fullmatch(name), f"tuning row {name!r}: rows are pair, path, cycle, path-<n> or cycle-<n>")
         source = row.get("source") if isinstance(row, dict) else None
         own = source.removeprefix(CARRIED) if isinstance(source, str) and measured else source
-        _require(isinstance(row, dict) and set(row) == {"source", "settings"} and isinstance(own, str)
-                 and ROW_SOURCES.fullmatch(own) and isinstance(row["settings"], dict),
+        _require(isinstance(row, dict) and set(row) in ({"source", "settings"}, {"source", "settings", "evidence"})
+                 and isinstance(own, str) and ROW_SOURCES.fullmatch(own) and isinstance(row["settings"], dict)
+                 and (isinstance(row.get("evidence", "-"), str) and row.get("evidence", "-").strip()),
                  f"tuning row {name}: source (measured, design, rules or inherited:<row>; in a measured table also "
-                 "default:<source>) and settings")
+                 "default:<source>), settings and optionally its evidence (text)")
         for key, value in row["settings"].items():
             _require(key in SETTINGS and _setting(key, value), f"tuning row {name}: {key}={value!r} is not a "
                      "SIRCL session setting the installer passes")

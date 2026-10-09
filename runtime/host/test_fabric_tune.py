@@ -327,7 +327,7 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
     assert measured["binding"]["defaults_sha256"] == transport.tuning_digest(transport.load_tuning())
     assert {name: row["source"] for name, row in measured["layouts"].items()} == {
         "pair": "measured", "path-3": "measured", "cycle-4": "measured", "cycle": "default:rules",
-        "cycle-8": "default:measured", "path": "default:rules"}
+        "cycle-8": "default:measured", "path": "default:rules", "path-4": "default:measured"}
     # One SIRCL table per layout, the same bytes on every Spark under their SHA-256.
     assert len(measured["tables"]) == 3
     for entry in measured["tables"]:
@@ -351,10 +351,14 @@ def test_a_measured_table_is_produced_bound_digested_distributed_and_used_by_the
         assert (tuning["source"], tuning["row"], tuning["row_source"]) == ("measured", name, "measured")
         assert tuning["sha256"] == transport.tuning_digest(measured) and tuning["measured_at"] == "2026-10-09"
         # The measured row keeps the default table's settings for its shape (the pair row's; SIRCL's rules for
-        # cycles and paths of other sizes); the table records the tune session's settings its choices need.
+        # cycles and paths of other sizes) except the link settings the measured table records, which the
+        # session takes from the table; the table records the tune session's settings its choices need.
         defaults = transport.load_tuning()
-        assert tuning["settings"] == transport.tuning_row(defaults, *transport.row_group(name))[1]["settings"]
-        assert tuning["settings"] == (defaults["layouts"]["pair"]["settings"] if name == "pair" else {})
+        recorded = {key for key, variable in transport.ROW_TABLE_SETTINGS.items() if variable in SETTINGS}
+        default_row = transport.tuning_row(defaults, *transport.row_group(name))[1]["settings"]
+        assert tuning["settings"] == {key: value for key, value in default_row.items() if key not in recorded}
+        assert set(tuning["settings"]) == (set(defaults["layouts"]["pair"]["settings"]) - recorded if name == "pair"
+                                           else set())
         (entry,) = tuning["tables"]
         stored = json.loads((cycle4["fleet"].host(0) / entry["path"].lstrip("/")).read_bytes())
         assert entry["settings"] == stored["settings"] == SETTINGS

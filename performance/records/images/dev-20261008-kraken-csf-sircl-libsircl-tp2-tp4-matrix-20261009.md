@@ -15,7 +15,9 @@ campaign set the same SIRCL session settings, called the ring-schedule settings 
 
 These are SIRCL session settings: an installer deployment takes them only from SparkRing's SIRCL tuning
 table ([runtime/common/sircl-tuning-defaults.json](../../../runtime/common/sircl-tuning-defaults.json)),
-never from a profile. The other settings each campaign adds are folded into its profile as listed under
+never from a profile. The default table holds them as its measured `pair` and `path-4` rows, with this
+record as their evidence, for SIRCL 0.3.1 sessions; an image whose SIRCL layer is 0.3.0, such as this
+campaign's, runs without them through the installer. The other settings each campaign adds are folded into its profile as listed under
 Conclusion.
 
 ## Conditions

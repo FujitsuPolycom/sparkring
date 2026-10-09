@@ -541,16 +541,20 @@ SIRCL's settings come from a tuning table that chooses only among SIRCL's own
 algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
-`cycle-8`, and `path` and `cycle` for other sizes. A row is `measured`;
-`design`, settings from the SIRCL install design that no measurement has
-confirmed; or `rules`, where SIRCL's sessions derive their own settings. The
-shipped rows are the accepted defaults until `sudo sparkring fabric tune`
-measures a fabric: a `cycle-4` group, which has no row of its own, runs on
-SIRCL's own rules through the `cycle` row, and a pair takes the `pair` row's
-design settings. The `cycle-8` row
-holds the settings with which GLM-5.3 served at TP8 with NCCL off on an
-eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a 28 KiB
-one-shot limit and 16 link slots of 512 KiB. A table that names
+`path-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
+`measured`; `design`, settings from the SIRCL install design that no
+measurement has confirmed; or `rules`, where SIRCL's sessions derive their own
+settings. A row may also state its evidence. The shipped rows are the accepted
+defaults until `sudo sparkring fabric tune` measures a fabric: a `cycle-4`
+group, which has no row of its own, runs on SIRCL's own rules through the
+`cycle` row. The `pair` and `path-4` rows hold the ring schedules with which
+the two- and four-Spark profiles were measured on pairs and paths of four Sparks
+of a ring of eight: ring all-reduces, all-gathers and reduce-scatters above a
+64 KiB one-shot limit, with 1 MiB link pieces and slot
+([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+The `cycle-8` row holds the settings with which GLM-5.3 served at TP8 with NCCL
+off on an eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a
+28 KiB one-shot limit and 16 link slots of 512 KiB. A table that names
 a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
 for that group's sessions, and each session's setup agreement carries its
 hash, so every rank decides from the same table. With decode-context
@@ -565,10 +569,10 @@ NCCL. Without a table or a row setting, a session takes twice its ranks in link
 slots, at least 8.
 
 A table's rows apply only to sessions of the SIRCL build it names (`sircl`:
-version and ABI). The default table names SIRCL 0.2.0, the build its rows
-were measured with; on an image whose SIRCL layer is another version, such as
-0.3.0, no default row applies, the sessions derive their own settings, and
-the plan says `the default table is for another SIRCL build`.
+version and ABI). The default table names SIRCL 0.3.1, the version of
+`spark_transport/sircl`; on an image whose SIRCL layer is another version,
+such as 0.3.0, no default row applies, the sessions derive their own settings,
+and the plan says `the default table is for another SIRCL build`.
 
 A profile's environment pins at most SIRCL's fused-norm and column-gather
 switches (`SIRCL_FUSED_NORM`, `SIRCL_COLUMN_GATHER`); the installer refuses

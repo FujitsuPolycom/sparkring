@@ -214,7 +214,7 @@
       "parallelism": {"supported": [{"tp": [4], "dcp": [1]}]},
       "enable": {
         "environment": {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"},
-        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; an installer deployment takes them from a tuning row"
+        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; the installer applies them from the path-4 row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.1 sessions"
       },
       "detect": [
         {"transport": "sircl"},
@@ -250,7 +250,7 @@
       "parallelism": {"supported": [{"tp": [2], "dcp": [1]}]},
       "enable": {
         "environment": {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"},
-        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; an installer deployment takes them from a tuning row"
+        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; the installer applies them from the pair row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.1 sessions"
       },
       "detect": [
         {"transport": "sircl"},

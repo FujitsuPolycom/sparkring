@@ -81,8 +81,8 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     assert set(table["sircl"]) == {"version", "abi_version"} and table["sircl"]["abi_version"] == ABI_VERSION
 
 
-@pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path"), ("cycle", 8, "cycle-8"),
-                                                   ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
+@pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path-4"), ("path", 3, "path"),
+                                                   ("cycle", 8, "cycle-8"), ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
 def test_a_group_takes_its_own_row_else_the_row_of_its_shape(shape, size, expected):
     assert transport.tuning_row(transport.load_tuning(), shape, size)[0] == expected
 
@@ -194,7 +194,7 @@ def test_a_measured_table_carries_default_rows_and_drops_a_default_table_it_repl
                                        fabric=document("cycle", 4)["id"], image_value=image, measured_at="2026-10-09",
                                        binding=binding, root=tmp_path / "repository")
     assert [entry["sha256"] for entry in kept["tables"]] == [other_digest, digest]
-    assert kept["layouts"]["pair"]["source"] == "default:design" and kept["layouts"]["cycle-4"]["source"] == "measured"
+    assert kept["layouts"]["pair"]["source"] == "default:measured" and kept["layouts"]["cycle-4"]["source"] == "measured"
     replaced = transport.measured_document(defaults, {"pair": {}}, {digest: json.loads(data)},
                                            fabric=document("pair", 2)["id"], image_value=image,
                                            measured_at="2026-10-09", binding=binding, root=tmp_path / "repository")
@@ -354,7 +354,8 @@ def launcher_plan(lock, nccl, **options):
         positions=tuple(section["group"]["positions"]), model_path="/srv/model", nccl_mode=nccl,
         require_no_nccl=nccl == "never",
         **{key: settings[key] for key in ("capacity", "dispatch", "gather", "oneshot_max", "large_blocks", "ring_min",
-                                          "chain_min", "link_slots", "ring_gather_stagger") if key in settings},
+                                          "chain_min", "link_slots", "ring_gather_stagger", *transport.SCHEDULE_SETTINGS)
+           if key in settings},
         link_sizes={key: settings[key] for key in ("link_slot", "link_chunk", "gather_link_chunk", "scatter_link_chunk",
                                                    "reduce_link_chunk") if key in settings},
         **options)
@@ -402,16 +403,27 @@ def test_the_containers_load_the_images_prebuilt_libraries_and_the_sparks_fabric
         assert "SIRCL_TUNING_TABLE" not in environment
 
 
-def test_a_pair_tuning_row_sets_its_session_settings():
-    lock, section = sircl_deployment(TP2, "pair", 2, [0, 1])
+RING_SCHEDULE_ROW = {"large_schedule": "ring", "gather_schedule": "ring", "scatter_schedule": "ring",
+                     "oneshot_max": 65536, "link_slot": 1 << 20, "gather_link_chunk": 1 << 20,
+                     "reduce_link_chunk": 1 << 20, "scatter_link_chunk": 1 << 20}
+RING_SCHEDULE_ENVIRONMENT = {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring",
+                             "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536",
+                             "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+                             "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
+
+
+@pytest.mark.parametrize("shape, size, positions, row", [("pair", 2, [0, 1], "pair"),
+                                                         ("cycle", 8, [4, 5, 6, 7], "path-4")])
+def test_the_pair_and_path_of_four_rows_set_the_measured_ring_schedules(shape, size, positions, row):
+    profile = TP2 if len(positions) == 2 else TP4
+    lock, section = sircl_deployment(profile, shape, size, positions)
     environment = installer.specifications(lock)[0].environment
-    assert section["tuning"]["settings"] == {"large_blocks": 32, "oneshot_max": 131072, "ring_min": 2097152}
-    # The pair row holds the SIRCL install design's settings, which no measurement confirmed.
-    assert section["tuning"]["row_source"] == "design"
-    assert transport.plan_lines(section)[0] == ("Transport: sircl on every collective, NCCL off (default table, pair: "
-                                                "the design's settings, not measured)")
-    assert (environment["SIRCL_LARGE_BLOCKS"], environment["SIRCL_ONESHOT_MAX_BYTES"],
-            environment["SIRCL_RING_MIN_BYTES"]) == ("32", "131072", "2097152")
+    # The rows hold the ring-schedule settings that the serving matrix measured on pairs and paths of four.
+    assert (section["tuning"]["row"], section["tuning"]["row_source"]) == (row, "measured")
+    assert section["tuning"]["settings"] == RING_SCHEDULE_ROW
+    assert transport.plan_lines(section)[0] == f"Transport: sircl on every collective, NCCL off (default table, {row})"
+    assert {key: environment.get(key) for key in RING_SCHEDULE_ENVIRONMENT} == RING_SCHEDULE_ENVIRONMENT
+    assert "evidence" in transport.load_tuning()["layouts"][row]
 
 
 def test_with_nccl_auto_on_a_pair_nccl_uses_the_devices_facing_the_partner():
@@ -567,8 +579,10 @@ def test_a_measured_row_keeps_the_default_rows_settings_and_its_tables_link_sett
         key: value for key, value in default_row.items() if key not in ("link_slots", "link_slot")}
     assert transport.measured_row(defaults, "cycle-8", {}, unlinked) == default_row
     assert transport.measured_row(defaults, "cycle-8", {"oneshot_max": 4096}, unlinked)["oneshot_max"] == 4096
-    # A size without its own row takes the shape row's settings (SIRCL's rules: none).
-    assert transport.measured_row(defaults, "path-4", {}, None) == defaults["layouts"]["path"]["settings"] == {}
+    # A size with its own row takes that row's settings; a size without one takes the shape row's (SIRCL's
+    # rules: none).
+    assert transport.measured_row(defaults, "path-4", {}, None) == defaults["layouts"]["path-4"]["settings"]
+    assert transport.measured_row(defaults, "path-3", {}, None) == defaults["layouts"]["path"]["settings"] == {}
     data = (json.dumps(linked, indent=1, sort_keys=True) + "\n").encode()
     digest = hashlib.sha256(data).hexdigest()
     value = measured_table(tmp_path, cycle, image, rows={"cycle-8": {}}, tables={digest: data})
@@ -784,9 +798,10 @@ def test_every_installer_profile_renders_on_sircl_on_its_layouts(profile, nccl):
 
 @pytest.mark.parametrize("shape, size, positions, layout, name, row, relays_, cabling", [
     ("cycle", 8, list(range(8)), "ring:8", "cycle-8", "cycle-8", 3, "ring"),
-    ("cycle", 8, [4, 5, 6, 7], "ring:8", "path-4", "path", 2, "none"),
-    ("cycle", 8, [6, 7, 0, 1], "ring:8", "path-4", "path", 2, "none"),
-    ("path", 4, [0, 1, 2, 3], "path:4", "path-4", "path", 2, "none"),
+    ("cycle", 8, [4, 5, 6, 7], "ring:8", "path-4", "path-4", 2, "none"),
+    ("cycle", 8, [6, 7, 0, 1], "ring:8", "path-4", "path-4", 2, "none"),
+    ("path", 4, [0, 1, 2, 3], "path:4", "path-4", "path-4", 2, "none"),
+    ("cycle", 8, [2, 3, 4], "ring:8", "path-3", "path", 1, "none"),
 ])
 def test_a_section_places_arcs_of_larger_fabrics(shape, size, positions, layout, name, row, relays_, cabling):
     value = document(shape, size)
