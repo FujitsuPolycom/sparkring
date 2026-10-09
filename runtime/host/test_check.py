@@ -69,6 +69,8 @@ def recorded(tmp_path, monkeypatch):
         reports = pair_reports()
         return transport_receipts.record(path, reports, transport_receipts.evaluate(lock, reports))
     monkeypatch.setattr(check.retained_source, "apply", transport)
+    # Every rank's GPU reads a locked SM clock and no event reason.
+    monkeypatch.setattr(check, "read_on_spark", lambda host, argv: "2411, 3003, 0x0000000000000000")
     return directory, lock, value
 
 
@@ -141,3 +143,20 @@ def test_the_report_replaces_private_items_and_keeps_fabric_addresses(recorded, 
     for name in written["files"]:
         text = (root / name).read_text()
         assert "operator@" not in text and value["positions"][0]["hostname"] not in text, name
+
+
+def test_a_rank_whose_gpu_needs_attention_fails_the_check(recorded):
+    lines = []
+
+    def read(host, argv):
+        assert argv[0] == "nvidia-smi"
+        return "721, 3003, 0x0000000000000008" if host == "spark1" else "2405, 3003, 0x0000000000000000"
+    result = check.run(client=Chat(), say=lines.append, read=read)
+    row = result["deployments"][0]
+    assert not result["ok"] and row["functional"]["ok"]
+    assert [gpu["attention"] for gpu in row["gpu"]] == [[], ["clock event reasons hw_slowdown",
+                                                             "SM clock 721 MHz, below half of its 3003 MHz maximum"]]
+    assert ("  GPU needs attention: rank 1: clock event reasons hw_slowdown; SM clock 721 MHz, below half of its "
+            "3003 MHz maximum (SM 721 MHz, maximum 3003 MHz, reasons hw_slowdown)") in lines
+    healthy = check.run(client=Chat(), say=lines.append)
+    assert healthy["ok"] and "  GPU clocks: SM 2411 MHz on 2 ranks; no clock event reason other than idle" in lines

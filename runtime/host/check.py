@@ -10,11 +10,16 @@ the fabric, ``runtime.host.placement``) the command:
 2. for a deployment on SIRCL ring sessions, reads every rank's receipts and
    container log through the deployment's own source and judges them against
    its transport section (``runtime/host/transport_receipts.py``), recording
-   the verdict that ``sparkring status`` prints.
+   the verdict that ``sparkring status`` prints;
+3. reads every rank's GPU SM clock and active clock event reasons
+   (``runtime/host/gpu_clocks.py``) and reports a rank that needs attention:
+   an event reason other than idle, or a busy GPU below half its maximum SM
+   clock.
 
 The result is ``sparkring-check/v1`` (``--json``). The exit status is 0 when
-every check passed and every SIRCL verdict is ``as-expected``, 1 otherwise.
-It changes no Spark: requests go to the model and SSH commands only read.
+every check passed, every SIRCL verdict is ``as-expected`` and no rank's GPU
+needs attention, 1 otherwise. It changes no Spark: requests go to the model
+and SSH commands only read.
 
 ``--report DIR`` also writes ``DIR/sparkring-report-<UTC time>/``
 (``sparkring-test-report/v1``), the bundle a tester attaches to a Test report
@@ -38,7 +43,8 @@ import subprocess
 import sys
 
 from runtime.common import distribution, installer, transport
-from runtime.host import api_endpoint, controller, fabric, node, progress, retained_source, transport_receipts
+from runtime.host import (api_endpoint, controller, fabric, gpu_clocks, node, progress, retained_source,
+                          transport_receipts)
 
 SCHEMA = "sparkring-check/v1"
 REPORT_SCHEMA = "sparkring-test-report/v1"
@@ -84,9 +90,16 @@ def transport_check(directory, lock, *, cache):
         return {"backend": "sircl", "verdict": "unknown", "problems": [str(error).strip().splitlines()[-1][:300]]}
 
 
-def run(on=None, *, client=None, say=print):
-    """``sparkring-check/v1`` of every deployment checked."""
+def read_on_spark(host, argv):
+    """A read-only command's standard output on the Spark ``host`` (the deployment's SSH target)."""
+    from scripts.installer_runner import ssh
+    return ssh(host, argv, timeout=60)
+
+
+def run(on=None, *, client=None, say=print, read=None):
+    """``sparkring-check/v1`` of every deployment checked; ``read(host, argv)`` runs the GPU clock query."""
     cache = controller.STATE / "retained-sources"
+    read = read or read_on_spark
     rows = []
     for slot, directory in deployments(on):
         lock = installer.read(Path(directory) / "deployment.lock.json")
@@ -104,10 +117,14 @@ def run(on=None, *, client=None, say=print):
             say(f"  Transport: {verdict['backend']}")
         else:
             say("  " + (transport_receipts.text({"problems": ["no detail"], **verdict}) or "Transport: sircl"))
-        ok = checked.get("ok", False) and verdict.get("verdict", "as-expected") == "as-expected"
+        gpus = gpu_clocks.check(lock["site"]["ranks"], run=read)
+        for line in gpu_clocks.lines(gpus):
+            say("  " + line)
+        ok = (checked.get("ok", False) and verdict.get("verdict", "as-expected") == "as-expected"
+              and not any(row["attention"] for row in gpus))
         rows.append({"deployment": str(directory), "profile": lock["selection"]["profile"],
                      "placement": list(slot) if slot else None, "api_url": shown["api_url"],
-                     "functional": checked, "transport": verdict, "ok": ok})
+                     "functional": checked, "transport": verdict, "gpu": gpus, "ok": ok})
     return {"schema": SCHEMA, "checked_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "deployments": rows, "ok": bool(rows) and all(row["ok"] for row in rows)}
 
