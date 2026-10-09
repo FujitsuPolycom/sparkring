@@ -46,8 +46,8 @@ output quality?
     given to the operator account; the hard-linked shards are the pinned
     checkpoint's own files.
 - **Serving.** Image `sha256:fcb20b0ce839`, profile `qwen38-flash-next-tp2` of
-  SparkRing `9f39a9f6`, on two directly cabled DGX Sparks (spark-3286 rank 0,
-  spark-0a0f rank 1). Three deployments:
+  SparkRing `9f39a9f6`, on two directly cabled DGX Sparks (spark-b rank 0,
+  spark-a rank 1). Three deployments:
   - stock, installer: `install.sh --profile qwen38-flash-next-tp2`;
   - stock, research Compose: each rank's installer Compose file changed by
     [research_compose.py](mxfp8-attention-20261001/research_compose.py)
@@ -159,7 +159,7 @@ on 2026-09-30 and 2026-10-01 missed at least once
 
 Per-run values and the SHA-256 of each raw output are in
 [results.json](mxfp8-attention-20261001/measurements/results.json); the raw
-outputs, rank logs and Compose files stay on spark-3286 under
+outputs, rank logs and Compose files stay on spark-b under
 `~/mxattn-results/`.
 
 ## Conclusion

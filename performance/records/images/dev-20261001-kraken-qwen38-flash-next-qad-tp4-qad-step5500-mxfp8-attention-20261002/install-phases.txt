@@ -17,28 +17,28 @@ Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 6
 Install qwen38-flash-next-qad-tp4 on 4 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB
-Searched spark-edfd in 17.9 s, spark-ebb8 in 11.3 s, spark-ebee in 9.9 s and spark-4a87 in 11.1 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 17.9 s, spark-f in 11.3 s, spark-g in 9.9 s and spark-c in 11.1 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
     53 of 53 files already in place
     needs 12.9 GiB free on /: 8.9 GiB for checkpoint files, 4 GiB for the compile cache; 74 GiB free
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
-Node 1 spark-ebb8: as Node 0 (328 GiB free)
-Node 2 spark-ebee: as Node 0 (539 GiB free)
-Node 3 spark-4a87: as Node 0 (113 GiB free)
+Node 1 spark-f: as Node 0 (328 GiB free)
+Node 2 spark-g: as Node 0 (539 GiB free)
+Node 3 spark-c: as Node 0 (113 GiB free)
 
 Derived checkpoint qad-step5500-mxfp8-attention (sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention at 648b194a96e5): 54 files, 100.2 GiB; 48 files are hard-linked from the base, 6 (5.6 GiB) are written by runtime/common/mxfp8_attention.py
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
     hard-links 48 files from the base (no extra space)
     derives 6 files (5.6 GiB) in the installer image, CPU only and without network, after checking that the donor's MXFP8 tensors are the base's weights
-Node 1 spark-ebb8 -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+Node 1 spark-f -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
     hard-links 48 files from the base (no extra space)
     receives 6 files (5.6 GiB) from Node 0 over the fabric
-Node 2 spark-ebee -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+Node 2 spark-g -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
     hard-links 48 files from the base (no extra space)
     receives 6 files (5.6 GiB) from Node 1 over the fabric
-Node 3 spark-4a87 -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+Node 3 spark-c -> /srv/sparkring/tp4-installer/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
     hard-links 48 files from the base (no extra space)
     receives 6 files (5.6 GiB) from Node 0 over the fabric
 Every file is placed only after its SHA-256 equals the derived checkpoint's manifest.

@@ -8,21 +8,21 @@ Looking for existing copies of XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e o
 Install mimo-v26-flash-rl-tp2 on 2 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e: 150 files, 165.6 GiB
-Searched spark-aa42 in 7.4 s and spark-931e in 6.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-e in 7.4 s and spark-d in 6.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+Node 0 spark-e -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
     from /var/tmp/models/XiaomiMiMo--MiMo-V2.6-Flash-MOPD
         plain folder, files owned by root
         2 small files checked by SHA-256; 128 weight files match by name and size only
         SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a replacement.
     from /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-RL/5711b268169967567844e1e560e8a3966da959b1
-        plain folder, files owned by code and root
+        plain folder, files owned by operator and root
         20 of 150 files identified by SparkRing's earlier checksums; 66 files differ from the pinned revision
     hard-link 131 weight files (no copy, no extra space); copy 19 other files (23.0 MB)
     needs 32.0 GiB free on / (34.4 MB for checkpoint files, 32 GiB for the compile cache; 91 GiB free)
-Node 1 spark-931e -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+Node 1 spark-d -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
     from /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-RL/5711b268169967567844e1e560e8a3966da959b1
-        plain folder, files owned by code and root
+        plain folder, files owned by operator and root
         20 of 150 files identified by SparkRing's earlier checksums; 66 files differ from the pinned revision
     hard-link 3 weight files (no copy, no extra space); copy 17 other files (16.0 MB)
     receives 130 files (160.0 GiB) from Node 0 over the fabric

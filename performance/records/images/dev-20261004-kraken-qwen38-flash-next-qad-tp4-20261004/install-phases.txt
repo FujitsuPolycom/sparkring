@@ -18,14 +18,14 @@ Install qwen38-flash-next-qad-tp4 on 4 Sparks.
 It stops deepseek-v41-flash-tp4 on all four Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB
-Searched spark-3286 in 3.5 s, spark-0a0f in 1.0 s, spark-931e in 3.1 s and spark-aa42 in 5.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-b in 3.5 s, spark-a in 1.0 s, spark-d in 3.1 s and spark-e in 5.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-3286 -> /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
+Node 0 spark-b -> /srv/sparkring/dgx4-2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
     53 of 53 files already in place
     needs 4.0 GiB free on /: 4 GiB for the compile cache; 2606 GiB free
-Node 1 spark-0a0f: as Node 0 (2669 GiB free)
-Node 2 spark-931e: as Node 0 (2072 GiB free)
-Node 3 spark-aa42: as Node 0 (1887 GiB free)
+Node 1 spark-a: as Node 0 (2669 GiB free)
+Node 2 spark-d: as Node 0 (2072 GiB free)
+Node 3 spark-e: as Node 0 (1887 GiB free)
 
 Nothing is downloaded.
 Update SparkRing on the Sparks that run another revision

@@ -14,11 +14,11 @@ that repair?
 
 ## Conditions
 
-- Two directly cabled DGX Sparks: spark-3286 (rank 0) and spark-0a0f
+- Two directly cabled DGX Sparks: spark-b (rank 0) and spark-a
   (rank 1), one p0-to-p0 cable using both PCIe functions of port 0.
 - Image: `runtime/images/derive_transport_port_gid.py` at SparkRing revision
   `81d99674` over `dev-20260930-spinwait-cuda1342-nccl2323-status033`,
-  built on spark-3286 (image `sha256:07baba8539f2`, transport manifest
+  built on spark-b (image `sha256:07baba8539f2`, transport manifest
   `d5e790c5173c`). The published release
   `dev-20261001-portgid-cuda1342-nccl2323-status033` carries the same layer
   and manifest; its image was built separately.
@@ -26,10 +26,10 @@ that repair?
   1. With a `qwen38-flash-next-tp2` deployment on that image serving, both
      ranks' HCAs used index 3 (`spark_roce_gid.py` and the transport's
      startup lines agreed).
-  2. spark-0a0f was restarted with `systemctl reboot`.
+  2. spark-a was restarted with `systemctl reboot`.
   3. Afterwards `integrations/vllm/spark_roce_gid.py` reported index 4 for
-     both of spark-3286's devices (`rocep1s0f0`, `roceP2p1s0f0`) and index 3
-     on spark-0a0f. No `sparkring install` or `up`, and therefore no GID
+     both of spark-b's devices (`rocep1s0f0`, `roceP2p1s0f0`) and index 3
+     on spark-a. No `sparkring install` or `up`, and therefore no GID
      repair, ran before the probe.
   4. Rank 0's model container was stopped.
 - Probe: [probe.py](../../../integrations/vllm/rocenante_prepared/probe.py)
@@ -44,8 +44,8 @@ that repair?
 
 | Rank | Status | Cases passed | `gid_indices` per selected HCA |
 |---|---|---|---|
-| 0 (spark-3286) | passed | 15 of 15 | `rocep1s0f0`: 4, `roceP2p1s0f0`: 4 |
-| 1 (spark-0a0f) | passed | 15 of 15 | 3, 3 |
+| 0 (spark-b) | passed | 15 of 15 | `rocep1s0f0`: 4, `roceP2p1s0f0`: 4 |
+| 1 (spark-a) | passed | 15 of 15 | 3, 3 |
 
 The cases were nine FP16/BF16/FP32 reductions against NCCL, three gathers,
 gather output ownership, alternating-grid frozen-graph replays and selected

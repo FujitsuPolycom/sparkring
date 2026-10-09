@@ -8,15 +8,15 @@ Looking for existing copies of local-inference-lab/GLM-5.3-Flash-NVFP4-Spark at 
 Install glm53-flash-nvfp4-spark-tp2 on 2 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/GLM-5.3-Flash-NVFP4-Spark at a608241037e4: 55 files, 174.8 GiB
-Searched spark-aa42 in 9.2 s and spark-931e in 7.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-e in 9.2 s and spark-d in 7.1 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
+Node 0 spark-e -> /srv/sparkring/tp2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
     55 of 55 files already in place
     needs 33.7 GiB free on /: 29.7 GiB for the relay's copy of the layers the Sparks lack, 4 GiB for the compile cache; 60 GiB free
     not used: /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/glm52-nvfp4-model (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
-Node 1 spark-931e -> /srv/sparkring/tp2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
+Node 1 spark-d -> /srv/sparkring/tp2/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
     55 of 55 files already in place
     needs 71.3 GiB free on /: 67.3 GiB for the whole image (no image it derives from is present), 4 GiB for the compile cache; 99 GiB free
     not used: /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)

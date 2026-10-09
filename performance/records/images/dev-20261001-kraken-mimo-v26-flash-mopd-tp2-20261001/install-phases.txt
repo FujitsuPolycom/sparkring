@@ -8,13 +8,13 @@ Looking for existing copies of XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e o
 Install mimo-v26-flash-mopd-tp2 on 2 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e: 150 files, 165.6 GiB
-Searched spark-aa42 in 10.4 s and spark-931e in 7.8 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-e in 10.4 s and spark-d in 7.8 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+Node 0 spark-e -> /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
     150 of 150 files already in place
     needs 4.0 GiB free on /: 4 GiB for the compile cache; 60 GiB free
     not used: /srv/sparkring/tp2/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e/dflash (another checkpoint: its index differs)
-Node 1 spark-931e: as Node 0 (75 GiB free)
+Node 1 spark-d: as Node 0 (75 GiB free)
 
 Nothing is downloaded.
 Node 0: Check host before preparing assets

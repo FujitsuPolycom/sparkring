@@ -12,16 +12,16 @@ Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 6
 Install qwen38-flash-next-qad-tp4 on 4 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB
-Searched spark-edfd in 14.8 s, spark-ebb8 in 10.9 s, spark-ebee in 10.2 s and spark-4a87 in 9.7 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 14.8 s, spark-f in 10.9 s, spark-g in 10.2 s and spark-c in 9.7 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
     53 of 53 files already in place
     needs 4.0 GiB free on /: 4 GiB for the compile cache; 75 GiB free
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
-Node 1 spark-ebb8: as Node 0 (328 GiB free)
-Node 2 spark-ebee: as Node 0 (540 GiB free)
-Node 3 spark-4a87: as Node 0 (113 GiB free)
+Node 1 spark-f: as Node 0 (328 GiB free)
+Node 2 spark-g: as Node 0 (540 GiB free)
+Node 3 spark-c: as Node 0 (113 GiB free)
 
 Nothing is downloaded.
 Node 0: Check host before preparing assets

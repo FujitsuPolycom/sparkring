@@ -17,8 +17,8 @@ CUDA graphs, and change decode speed at 1 and 8 concurrent requests?
 
 ## Conditions
 
-- **Cluster:** two directly cabled DGX Sparks (spark-aa42 rank 0,
-  spark-931e rank 1).
+- **Cluster:** two directly cabled DGX Sparks (spark-e rank 0,
+  spark-d rank 1).
 - **Model and image:** `local-inference-lab/GLM-5.3-Flash-NVFP4-Spark`
   revision `a608241037e4` on installer image
   `dev-20260928-plainstatus-cuda1342-nccl2323-status033` (image

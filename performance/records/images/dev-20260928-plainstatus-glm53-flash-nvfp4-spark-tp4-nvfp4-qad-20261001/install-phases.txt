@@ -17,44 +17,44 @@ Looking for existing copies of local-inference-lab/GLM-5.3-Flash-NVFP4 at 175ae8
 Install glm53-flash-nvfp4-spark-tp4 on 4 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/GLM-5.3-Flash-NVFP4 at 175ae8ce3b5a: 57 files, 185.7 GiB
-Searched spark-edfd in 11.1 s, spark-ebb8 in 6.3 s, spark-ebee in 7.0 s and spark-4a87 in 7.7 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 11.1 s, spark-f in 6.3 s, spark-g in 7.0 s and spark-c in 7.7 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
     from /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
-        plain folder, files owned by dooner and root
+        plain folder, files owned by admin and root
         13 files checked by SHA-256; 43 weight files match by name and size only
         SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a replacement.
     from /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
-        plain folder, files owned by dooner
+        plain folder, files owned by admin
         1 of 57 files identified by SparkRing's earlier checksums; 46 files differ from the pinned revision
     hard-link 47 weight files (no copy, no extra space); copy 10 other files (36.6 MB)
     needs 32.1 GiB free on / (56.8 MB for checkpoint files, 32 GiB for the compile cache; 213 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
-Node 1 spark-ebb8 -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
+Node 1 spark-f -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
     from /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
-        plain folder, files owned by cody and root
+        plain folder, files owned by analyst and root
         13 files checked by SHA-256; 43 weight files match by name and size only
         SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a replacement.
     from /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
-        plain folder, files owned by cody
+        plain folder, files owned by analyst
         1 of 57 files identified by SparkRing's earlier checksums; 46 files differ from the pinned revision
     hard-link 47 weight files (no copy, no extra space); copy 10 other files (36.6 MB)
     needs 32.1 GiB free on / (56.8 MB for checkpoint files, 32 GiB for the compile cache; 529 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
-Node 2 spark-ebee: as Node 1 (740 GiB free)
-Node 3 spark-4a87 -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
+Node 2 spark-g: as Node 1 (740 GiB free)
+Node 3 spark-c -> /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
     from /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49
-        plain folder, files owned by dooner and root
+        plain folder, files owned by admin and root
         13 files checked by SHA-256; 43 weight files match by name and size only
         SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a replacement.
     from /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88
-        plain folder, files owned by dooner
+        plain folder, files owned by admin
         1 of 57 files identified by SparkRing's earlier checksums; 46 files differ from the pinned revision
     hard-link 47 weight files (no copy, no extra space); copy 10 other files (36.6 MB)
     needs 32.1 GiB free on / (56.8 MB for checkpoint files, 32 GiB for the compile cache; 254 GiB free)
-    not used: /home/dooner/.cache/huggingface/MiMo-oproj-mxfp8 (another checkpoint: its index differs)
+    not used: /home/admin/.cache/huggingface/MiMo-oproj-mxfp8 (another checkpoint: its index differs)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
 
