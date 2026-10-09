@@ -66,6 +66,9 @@ Switched support is a separate network configuration and has no switched-hardwar
 
 ## Configuration variants
 
+Network names the cabling: a pair is two Sparks cabled to each other, and a ring of 4 or 8 connects
+each Spark to the next ([requirements](../docs/operations/install.md#requirements)).
+
 Profile IDs identify saved configurations. Guide status describes the primary quickstart;
 record links preserve configuration evidence when the guide selects a different release.
 
@@ -74,7 +77,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [mimo-v26-flash-mopd-tp2 (default)](../docs/operations/install.md) |
+| DCP1 | pair | Off | Development | [mimo-v26-flash-mopd-tp2 (default)](../docs/operations/install.md) |
 
 </details>
 
@@ -83,7 +86,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [mimo-v26-flash-mopd-tp4 (default)](../docs/operations/install.md) |
+| DCP1 | ring of 4 | Off | Development | [mimo-v26-flash-mopd-tp4 (default)](../docs/operations/install.md) |
 
 </details>
 
@@ -92,8 +95,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [deepseek-v4-flash-0731-pair](../profiles/deepseek-v4-flash-0731-pair/README.md) |
-| DCP1 | direct-pair-2 | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
+| DCP1 | pair | Off | Development | [deepseek-v4-flash-0731-pair](../profiles/deepseek-v4-flash-0731-pair/README.md) |
+| DCP1 | pair | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) |
 
 </details>
 
@@ -102,8 +105,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [deepseek-v4-flash-0731](../profiles/deepseek-v4-flash-0731/README.md) |
-| DCP1 | direct-cycle-4 | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
+| DCP1 | ring of 4 | Off | Development | [deepseek-v4-flash-0731](../profiles/deepseek-v4-flash-0731/README.md) |
+| DCP1 | ring of 4 | On | Development | [sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) |
 
 </details>
 
@@ -112,7 +115,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Experimental | [deepseek-v4-flash-vision-exp-tp4](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
+| DCP1 | ring of 4 | Off | Experimental | [deepseek-v4-flash-vision-exp-tp4](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md) |
 
 </details>
 
@@ -121,7 +124,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| EP4 | direct-cycle-4 | Off | Development | [deepseek-v41-flash-sglang-cycle](../profiles/deepseek-v41-flash-sglang-cycle/README.md) |
+| EP4 | ring of 4 | Off | Development | [deepseek-v41-flash-sglang-cycle](../profiles/deepseek-v41-flash-sglang-cycle/README.md) |
 
 </details>
 
@@ -130,8 +133,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [deepseek-v41-flash-tp4 (default)](../docs/operations/install.md) |
-| DCP1 | direct-cycle-4 | Off | Development | [deepseek-v41-flash-cycle](../profiles/deepseek-v41-flash-cycle/README.md) |
+| DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-tp4 (default)](../docs/operations/install.md) |
+| DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-cycle](../profiles/deepseek-v41-flash-cycle/README.md) |
 
 </details>
 
@@ -140,7 +143,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-8 | Off | Experimental | [deepseek-v41-flash-tp8 (default)](../profiles/deepseek-v41-flash-tp8/README.md) |
+| DCP1 | ring of 8 | Off | Experimental | [deepseek-v41-flash-tp8 (default)](../profiles/deepseek-v41-flash-tp8/README.md) |
 
 </details>
 
@@ -149,7 +152,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-flash-csf-tp8 (default)](../profiles/glm53-flash-csf-tp8/README.md) |
+| DCP1 | ring of 8 | Off | Experimental | [glm53-flash-csf-tp8 (default)](../profiles/glm53-flash-csf-tp8/README.md) |
 
 </details>
 
@@ -158,10 +161,10 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [glm53-flash-nvfp4-spark-tp2 (default)](../docs/operations/install.md) |
-| DCP1 | tp2-rocenante-adaptive | On | Validated | [glm53-flash-spark-tp2-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/profile.json) |
-| DCP1 | tp2-rocenante-adaptive | Off | Experimental | [glm53-flash-spark-tp2-dcp1](../profiles/glm53-flash-spark-tp2-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1/profile.json) |
-| DCP1 | tp2-rocenante-adaptive | Off | Experimental | [glm53-flash-spark-tp2-dcp1-nocache](../profiles/glm53-flash-spark-tp2-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-nocache/profile.json) |
+| DCP1 | pair | Off | Development | [glm53-flash-nvfp4-spark-tp2 (default)](../docs/operations/install.md) |
+| DCP1 | pair (RoCEnante adaptive bundle) | On | Validated | [glm53-flash-spark-tp2-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/profile.json) |
+| DCP1 | pair (RoCEnante adaptive bundle) | Off | Experimental | [glm53-flash-spark-tp2-dcp1](../profiles/glm53-flash-spark-tp2-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1/profile.json) |
+| DCP1 | pair (RoCEnante adaptive bundle) | Off | Experimental | [glm53-flash-spark-tp2-dcp1-nocache](../profiles/glm53-flash-spark-tp2-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp2-dcp1-nocache/profile.json) |
 
 </details>
 
@@ -170,10 +173,10 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [glm53-flash-nvfp4-spark-tp4 (default)](../docs/operations/install.md) |
-| DCP1 | sparkring-rocenante-mesh | On | Validated | [glm53-flash-spark-tp4-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/profile.json) |
-| DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1](../profiles/glm53-flash-spark-tp4-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1/profile.json) |
-| DCP1 | sparkring-rocenante-mesh | Off | Experimental | [glm53-flash-spark-tp4-dcp1-nocache](../profiles/glm53-flash-spark-tp4-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json) |
+| DCP1 | ring of 4 | Off | Development | [glm53-flash-nvfp4-spark-tp4 (default)](../docs/operations/install.md) |
+| DCP1 | RoCEnante mesh (SIRCL carries most collectives) | On | Validated | [glm53-flash-spark-tp4-dcp1-sparkcache (default)](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/profile.json) |
+| DCP1 | RoCEnante mesh (SIRCL carries most collectives) | Off | Experimental | [glm53-flash-spark-tp4-dcp1](../profiles/glm53-flash-spark-tp4-dcp1/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1/profile.json) |
+| DCP1 | RoCEnante mesh (SIRCL carries most collectives) | Off | Experimental | [glm53-flash-spark-tp4-dcp1-nocache](../profiles/glm53-flash-spark-tp4-dcp1-nocache/README.md) · [record](../profiles/glm53-flash-spark-tp4-dcp1-nocache/profile.json) |
 | DCP1 | switched | Off | Experimental | [glm53-flash-spark-tp4-switched](../profiles/glm53-flash-spark-tp4-switched/README.md) |
 
 </details>
@@ -183,8 +186,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP4 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |
-| DCP1 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8-dcp1](../profiles/glm53-nvfp4-tp8-dcp1/README.md) |
+| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |
+| DCP1 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8-dcp1](../profiles/glm53-nvfp4-tp8-dcp1/README.md) |
 
 </details>
 
@@ -193,8 +196,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [qwen38-flash-next-tp2 (default)](../profiles/qwen38-flash-next-tp2/README.md) |
-| DCP1 | direct-pair-2 | On | Validated | [qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md) |
+| DCP1 | pair | Off | Development | [qwen38-flash-next-tp2 (default)](../profiles/qwen38-flash-next-tp2/README.md) |
+| DCP1 | pair | On | Validated | [qwen38-flash-next-tp2-sparkcache](../profiles/qwen38-flash-next-tp2/README.md) |
 
 </details>
 
@@ -203,8 +206,8 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
-| DCP1 | direct-cycle-4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+| DCP1 | ring of 4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
+| DCP1 | ring of 4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
 
 </details>
 
@@ -213,7 +216,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-8 | Off | Experimental | [qwen38-flash-next-qad-tp8 (default)](../profiles/qwen38-flash-next-qad-tp8/README.md) |
+| DCP1 | ring of 8 | Off | Experimental | [qwen38-flash-next-qad-tp8 (default)](../profiles/qwen38-flash-next-qad-tp8/README.md) |
 
 </details>
 
@@ -222,7 +225,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [qwen38-27b-exl3-k5k6-pair](../profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
+| DCP1 | pair | Off | Development | [qwen38-27b-exl3-k5k6-pair](../profiles/qwen38-27b-exl3-k5k6-pair/README.md) |
 
 </details>
 
@@ -231,7 +234,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Development | [qwen38-27b-exl3-k5k6](../profiles/qwen38-27b-exl3-k5k6/README.md) |
+| DCP1 | ring of 4 | Off | Development | [qwen38-27b-exl3-k5k6](../profiles/qwen38-27b-exl3-k5k6/README.md) |
 
 </details>
 
@@ -240,7 +243,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-pair-2 | Off | Development | [swift15-qwen38-flash-next-tp2 (default)](../profiles/swift15-qwen38-flash-next-tp2/README.md) |
+| DCP1 | pair | Off | Development | [swift15-qwen38-flash-next-tp2 (default)](../profiles/swift15-qwen38-flash-next-tp2/README.md) |
 
 </details>
 
@@ -249,7 +252,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
-| DCP1 | direct-cycle-4 | Off | Experimental | [swift15-qwen38-flash-next-tp4 (default)](../profiles/swift15-qwen38-flash-next-tp4/README.md) |
+| DCP1 | ring of 4 | Off | Experimental | [swift15-qwen38-flash-next-tp4 (default)](../profiles/swift15-qwen38-flash-next-tp4/README.md) |
 
 </details>
 

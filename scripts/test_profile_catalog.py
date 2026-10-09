@@ -74,7 +74,7 @@ def test_dcp4_profiles_are_listed_only_as_retired_configurations():
     # Decode-context parallelism 4 on four Sparks is listed only as retired; GLM-5.3's eight-Spark
     # profile runs four decode-context-parallel groups of four inside tensor parallelism 8.
     assert [line for line in active.splitlines() if line.startswith('| DCP4 |')] == [
-        '| DCP4 | direct-cycle-8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |']
+        '| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |']
     for profile_id in dcp4_profiles:
         assert load(profile_id)[0]['recommendation'] == 'retired'
         assert resolve(profile_id)['serving']['decode_context_parallel_size'] == 4
@@ -175,3 +175,17 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
         thinking_column(text.replace('| API port | Thinking |', '| API port | Effort |'))
     with pytest.raises(ValueError, match='qwen38-flash-next-tp2-sparkcache has no thinking record'):
         thinking_column(text.replace('`qwen38-flash-next-tp2` |', '`qwen38-flash-next-tp2-sparkcache` |'))
+
+
+def test_the_network_column_names_each_topology_in_plain_words():
+    from runtime.common import profiles
+    from scripts.generate_profiles import TOPOLOGY_LABELS, topology_label
+    assert set(TOPOLOGY_LABELS) == profiles.TOPOLOGIES
+    variants = profile_table().split('## Configuration variants', 1)[1]
+    rows = [line.split(' | ')[1] for line in variants.splitlines() if line.startswith('| DCP') or line.startswith('| EP')]
+    assert rows and set(rows) <= set(TOPOLOGY_LABELS.values())
+    assert {'pair', 'ring of 4', 'ring of 8', 'RoCEnante mesh (SIRCL carries most collectives)'} <= set(rows)
+    assert not any(topology in variants for topology in TOPOLOGY_LABELS if topology != 'switched')
+    import pytest
+    with pytest.raises(ValueError, match='needs a Network label'):
+        topology_label('direct-line-3')
