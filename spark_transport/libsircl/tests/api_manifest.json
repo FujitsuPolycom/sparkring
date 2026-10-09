@@ -1,0 +1,1683 @@
+{
+  "upstream": "NVIDIA/nccl v2.32.3-1",
+  "header_sha256": "4d844c73806b153deaab89fe8688b6c5f905cbe8fb076fbe5df3c337413a7211",
+  "header_version": 23203,
+  "functions": [
+    {
+      "name": "ncclMemAlloc",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "void**",
+          "name": "ptr"
+        },
+        {
+          "type": "size_t",
+          "name": "size"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclMemFree",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "void *",
+          "name": "ptr"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGetVersion",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "int *",
+          "name": "version"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGetUniqueId",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclUniqueId*",
+          "name": "uniqueId"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommInitRankConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t*",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "nranks"
+        },
+        {
+          "type": "ncclUniqueId",
+          "name": "commId"
+        },
+        {
+          "type": "int",
+          "name": "rank"
+        },
+        {
+          "type": "ncclConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommInitRank",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t*",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "nranks"
+        },
+        {
+          "type": "ncclUniqueId",
+          "name": "commId"
+        },
+        {
+          "type": "int",
+          "name": "rank"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommInitAll",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t*",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "ndev"
+        },
+        {
+          "type": "const int*",
+          "name": "devlist"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommFinalize",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommDestroy",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommAbort",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommRevoke",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "revokeFlags"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommSplit",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "color"
+        },
+        {
+          "type": "int",
+          "name": "key"
+        },
+        {
+          "type": "ncclComm_t *",
+          "name": "newcomm"
+        },
+        {
+          "type": "ncclConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommShrink",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int*",
+          "name": "excludeRanksList"
+        },
+        {
+          "type": "int",
+          "name": "excludeRanksCount"
+        },
+        {
+          "type": "ncclComm_t*",
+          "name": "newcomm"
+        },
+        {
+          "type": "ncclConfig_t*",
+          "name": "config"
+        },
+        {
+          "type": "int",
+          "name": "shrinkFlags"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommGetUniqueId",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "ncclUniqueId*",
+          "name": "uniqueId"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommGrow",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "nRanks"
+        },
+        {
+          "type": "const ncclUniqueId*",
+          "name": "uniqueId"
+        },
+        {
+          "type": "int",
+          "name": "rank"
+        },
+        {
+          "type": "ncclComm_t*",
+          "name": "newcomm"
+        },
+        {
+          "type": "ncclConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommInitRankScalable",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t*",
+          "name": "newcomm"
+        },
+        {
+          "type": "int",
+          "name": "nranks"
+        },
+        {
+          "type": "int",
+          "name": "myrank"
+        },
+        {
+          "type": "int",
+          "name": "nId"
+        },
+        {
+          "type": "ncclUniqueId*",
+          "name": "commIds"
+        },
+        {
+          "type": "ncclConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGetErrorString",
+      "return": "const char*",
+      "arguments": [
+        {
+          "type": "ncclResult_t",
+          "name": "result"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGetLastError",
+      "return": "const char*",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclResetDebugInit",
+      "return": "void",
+      "arguments": [],
+      "implemented": false,
+      "linux_only": true
+    },
+    {
+      "name": "ncclCommGetAsyncError",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "ncclResult_t *",
+          "name": "asyncError"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommCount",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int*",
+          "name": "count"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommCuDevice",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int*",
+          "name": "device"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommUserRank",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int*",
+          "name": "rank"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommRegister",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "void*",
+          "name": "buff"
+        },
+        {
+          "type": "size_t",
+          "name": "size"
+        },
+        {
+          "type": "void**",
+          "name": "handle"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommDeregister",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "void*",
+          "name": "handle"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommSuspend",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "int",
+          "name": "flags"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommResume",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommMemStats",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "ncclCommMemStat_t",
+          "name": "stat"
+        },
+        {
+          "type": "uint64_t*",
+          "name": "value"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommWindowRegister",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "void*",
+          "name": "buff"
+        },
+        {
+          "type": "size_t",
+          "name": "size"
+        },
+        {
+          "type": "ncclWindow_t*",
+          "name": "win"
+        },
+        {
+          "type": "int",
+          "name": "winFlags"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclCommWindowDeregister",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "ncclWindow_t",
+          "name": "win"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclWinGetUserPtr",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "ncclWindow_t",
+          "name": "win"
+        },
+        {
+          "type": "void**",
+          "name": "outUserPtr"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclRedOpCreatePreMulSum",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclRedOp_t *",
+          "name": "op"
+        },
+        {
+          "type": "void *",
+          "name": "scalar"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclScalarResidence_t",
+          "name": "residence"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclRedOpDestroy",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclReduce",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclBcast",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "void*",
+          "name": "buff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclBroadcast",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAllReduce",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclReduceScatter",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "recvcount"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAllGather",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "sendcount"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAlltoAll",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGather",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclScatter",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAllReduceConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclBroadcastConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclReduceConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAllGatherConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "sendcount"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclReduceScatterConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "recvcount"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclRedOp_t",
+          "name": "op"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclAlltoAllConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGatherConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclScatterConfig",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "root"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        },
+        {
+          "type": "const ncclCollConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclSend",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "sendbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "peer"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclRecv",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "void*",
+          "name": "recvbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "peer"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclPutSignal",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const void*",
+          "name": "localbuff"
+        },
+        {
+          "type": "size_t",
+          "name": "count"
+        },
+        {
+          "type": "ncclDataType_t",
+          "name": "datatype"
+        },
+        {
+          "type": "int",
+          "name": "peer"
+        },
+        {
+          "type": "ncclWindow_t",
+          "name": "peerWin"
+        },
+        {
+          "type": "size_t",
+          "name": "peerWinOffset"
+        },
+        {
+          "type": "int",
+          "name": "sigIdx"
+        },
+        {
+          "type": "int",
+          "name": "ctx"
+        },
+        {
+          "type": "unsigned int",
+          "name": "flags"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclSignal",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "int",
+          "name": "peer"
+        },
+        {
+          "type": "int",
+          "name": "sigIdx"
+        },
+        {
+          "type": "int",
+          "name": "ctx"
+        },
+        {
+          "type": "unsigned int",
+          "name": "flags"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclWaitSignal",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "int",
+          "name": "nDesc"
+        },
+        {
+          "type": "ncclWaitSignalDesc_t*",
+          "name": "signalDescs"
+        },
+        {
+          "type": "ncclComm_t",
+          "name": "comm"
+        },
+        {
+          "type": "cudaStream_t",
+          "name": "stream"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGroupStart",
+      "return": "ncclResult_t",
+      "arguments": [],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGroupEnd",
+      "return": "ncclResult_t",
+      "arguments": [],
+      "implemented": true,
+      "linux_only": false
+    },
+    {
+      "name": "ncclGroupSimulateEnd",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclSimInfo_t*",
+          "name": "simInfo"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclSetEncryption",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const ncclEncryptionConfig_t*",
+          "name": "config"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamBind",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t*",
+          "name": "out"
+        },
+        {
+          "type": "const char*",
+          "name": "key"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetI8",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "int8_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetI16",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "int16_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetI32",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "int32_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetI64",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "int64_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetU8",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "uint8_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetU16",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "uint16_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetU32",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "uint32_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetU64",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "uint64_t*",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetStr",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "const char**",
+          "name": "out"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGet",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "ncclParamHandle_t",
+          "name": "h"
+        },
+        {
+          "type": "void*",
+          "name": "out"
+        },
+        {
+          "type": "int",
+          "name": "maxLen"
+        },
+        {
+          "type": "int*",
+          "name": "len"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetParameter",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const char*",
+          "name": "key"
+        },
+        {
+          "type": "const char**",
+          "name": "value"
+        },
+        {
+          "type": "int*",
+          "name": "valueLen"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamGetAllParameterKeys",
+      "return": "ncclResult_t",
+      "arguments": [
+        {
+          "type": "const char***",
+          "name": "table"
+        },
+        {
+          "type": "int*",
+          "name": "tableLen"
+        }
+      ],
+      "implemented": false,
+      "linux_only": false
+    },
+    {
+      "name": "ncclParamDumpAll",
+      "return": "void",
+      "arguments": [],
+      "implemented": false,
+      "linux_only": false
+    }
+  ]
+}

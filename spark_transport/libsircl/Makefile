@@ -1,0 +1,135 @@
+CC ?= cc
+.DEFAULT_GOAL := all
+PYTHON ?= python3
+NVCC ?= nvcc
+BUILD ?= build
+# The library's version, from the one version source (VERSION).
+VERSION := $(shell cat VERSION)
+CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSIRCL_VERSION='"$(VERSION)"'
+CFLAGS ?= -O2 -g
+# Diagnostic messages are bounded copies that truncate by design.
+CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
+
+# The library: API layer, bootstrap, fabric arithmetic, session engine, CUDA
+# driver loader and the embedded kernel pack, plus SIRCL's native proxy twice:
+# over the real libibverbs (loaded at run time) and over the shared-memory
+# verbs stand-in (emulation).
+SOURCES = src/api.c src/bootstrap.c src/stubs.c src/aliases.c src/device_api.c src/fabric.c src/engine.c src/cuda_api.c \
+          src/kernelpack.c
+TRANSPORT_HW = src/transport/proxy_hw.c src/transport/verbs_dl.c
+TRANSPORT_EMU = src/transport/proxy_emu.c src/transport/shm_verbs.c
+OBJECTS = $(SOURCES:src/%.c=$(BUILD)/%.o) $(TRANSPORT_HW:src/transport/%.c=$(BUILD)/transport/%.o) \
+          $(TRANSPORT_EMU:src/transport/%.c=$(BUILD)/transport/%.o) $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o \
+          $(BUILD)/links_fatbin.o
+-include $(OBJECTS:.o=.d)
+
+# Three kernel packs, CUDA C++ compiled ahead of time for GB10 (sm_121) and
+# the workstation's RTX 5090 (sm_120): the transport pack (all-reduce,
+# all-gather, reduce-scatter and all-to-all over the ring session), the fold
+# pack (the local rank-ordered reduction of every other datatype and op) and the
+# link pack (the chain all-reduce and the link collectives). Each fatbin is
+# prebuilt in kernels/prebuilt/ with its SHA-256, so building the library needs
+# no CUDA toolkit; `make kernels` regenerates them with nvcc and `make
+# kernels-check` proves the prebuilt files are what the sources and pinned
+# compiler produce.
+KERNEL_SOURCES = kernels/sircl_kernels.cu
+FATBIN = kernels/prebuilt/sircl_kernels.fatbin
+FOLD_SOURCES = kernels/sircl_fold.cu
+FOLD_FATBIN = kernels/prebuilt/sircl_fold.fatbin
+LINKS_SOURCES = kernels/sircl_links.cu
+LINKS_FATBIN = kernels/prebuilt/sircl_links.fatbin
+NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
+
+.PHONY: all check clean generate kernels kernels-check emulation-tools mpi-shim
+all: $(BUILD)/libsircl.so
+
+$(BUILD) $(BUILD)/transport:
+	mkdir -p $@
+$(BUILD)/%.o: src/%.c include/nccl.h src/internal.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
+$(BUILD)/transport/proxy_hw.o: src/transport/proxy_hw.c src/transport/sircl_roce_proxy.c | $(BUILD)/transport
+	$(CC) $(CFLAGS) -c $< -o $@
+$(BUILD)/transport/verbs_dl.o: src/transport/verbs_dl.c | $(BUILD)/transport
+	$(CC) $(CFLAGS) -c $< -o $@
+$(BUILD)/transport/proxy_emu.o: src/transport/proxy_emu.c src/transport/sircl_roce_proxy.c | $(BUILD)/transport
+	$(CC) -Isrc/transport/fake_verbs $(CFLAGS) -c $< -o $@
+$(BUILD)/transport/shm_verbs.o: src/transport/shm_verbs.c | $(BUILD)/transport
+	$(CC) -Isrc/transport/fake_verbs -Isrc/transport $(CFLAGS) -c $< -o $@
+$(BUILD)/kernels_fatbin.c: $(FATBIN) $(FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(FATBIN) $@ --check-sha256 $(FATBIN).sha256
+$(BUILD)/fold_fatbin.c: $(FOLD_FATBIN) $(FOLD_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(FOLD_FATBIN) $@ --check-sha256 $(FOLD_FATBIN).sha256 --symbol sccl_fold_fatbin
+$(BUILD)/links_fatbin.c: $(LINKS_FATBIN) $(LINKS_FATBIN).sha256 tools/embed_fatbin.py | $(BUILD)
+	$(PYTHON) tools/embed_fatbin.py $(LINKS_FATBIN) $@ --check-sha256 $(LINKS_FATBIN).sha256 --symbol sccl_links_fatbin
+$(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o: $(BUILD)/%.o: $(BUILD)/%.c
+	$(CC) -fPIC -O0 -c $< -o $@
+# The file is libsircl.so.<version>; its SONAME is the interface name libnccl.so.2, which the dynamic linker
+# and ctypes.CDLL("libnccl.so.2") resolve. libsircl.so is a development link to it.
+$(BUILD)/libsircl.so: $(BUILD)/libsircl.so.$(VERSION)
+	ln -sf libsircl.so.$(VERSION) $@
+$(BUILD)/libsircl.so.$(VERSION): $(OBJECTS) exports.map $(BUILD)/entries.ok
+	$(CC) -shared -pthread $(LDFLAGS) -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=exports.map -o $@ $(OBJECTS) -ldl
+
+# The kernel-entry check (tests/check_entries.c): the library's pack loader runs on the embedded fatbins
+# through a stand-in CUDA driver (tests/fake_cuda.c) that reads their cubins offline, so every entry the
+# loader names must be defined in every architecture's cubin. The library links only after it passes.
+ARCHITECTURES = $(words $(filter -gencode,$(NVCCFLAGS)))
+$(BUILD)/fake-cuda/libcuda.so.1: tests/fake_cuda.c | $(BUILD)
+	mkdir -p $(BUILD)/fake-cuda
+	$(CC) -std=c11 -O2 -fPIC -Wall -Wextra -Werror -fvisibility=hidden -shared -Wl,-soname,libcuda.so.1 -o $@ $<
+$(BUILD)/check_entries: tests/check_entries.c $(BUILD)/kernelpack.o $(BUILD)/cuda_api.o $(BUILD)/kernels_fatbin.o \
+                        $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -ldl
+$(BUILD)/entries.ok: $(BUILD)/check_entries $(BUILD)/fake-cuda/libcuda.so.1
+	LD_LIBRARY_PATH=$(abspath $(BUILD)/fake-cuda) $(BUILD)/check_entries $(ARCHITECTURES)
+	touch $@
+
+kernels:
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(FATBIN) $(KERNEL_SOURCES)
+	sha256sum $(FATBIN) | cut -d' ' -f1 > $(FATBIN).sha256
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(FOLD_FATBIN) $(FOLD_SOURCES)
+	sha256sum $(FOLD_FATBIN) | cut -d' ' -f1 > $(FOLD_FATBIN).sha256
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(LINKS_FATBIN) $(LINKS_SOURCES)
+	sha256sum $(LINKS_FATBIN) | cut -d' ' -f1 > $(LINKS_FATBIN).sha256
+kernels-check: | $(BUILD)
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check.fatbin $(KERNEL_SOURCES)
+	test "$$(sha256sum $(BUILD)/check.fatbin | cut -d' ' -f1)" = "$$(cat $(FATBIN).sha256)"
+	@echo "prebuilt transport pack matches the sources: $$(cat $(FATBIN).sha256)"
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-fold.fatbin $(FOLD_SOURCES)
+	test "$$(sha256sum $(BUILD)/check-fold.fatbin | cut -d' ' -f1)" = "$$(cat $(FOLD_FATBIN).sha256)"
+	@echo "prebuilt fold pack matches the sources: $$(cat $(FOLD_FATBIN).sha256)"
+	$(NVCC) $(NVCCFLAGS) -fatbin -o $(BUILD)/check-links.fatbin $(LINKS_SOURCES)
+	test "$$(sha256sum $(BUILD)/check-links.fatbin | cut -d' ' -f1)" = "$$(cat $(LINKS_FATBIN).sha256)"
+	@echo "prebuilt link pack matches the sources: $$(cat $(LINKS_FATBIN).sha256)"
+
+# GPU-emulation tools: the kernel pack's test entry points for the mixed-group check.
+emulation-tools: $(BUILD)/libsirclkp_test.so
+$(BUILD)/libsirclkp_test.so: tests/emulation/kp_shim.c src/kernelpack.c src/cuda_api.c $(BUILD)/kernels_fatbin.o \
+                            $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o
+	$(CC) $(CFLAGS) -Isrc -fvisibility=hidden -shared -o $@ tests/emulation/kp_shim.c src/kernelpack.c \
+	  src/cuda_api.c $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o -ldl
+
+# A launcher-free MPI subset for nccl-tests (MPI=1 MPI_HOME=$(BUILD)/mpi-shim); see RUNBOOK.md.
+mpi-shim: $(BUILD)/mpi-shim/lib/libmpi.so
+$(BUILD)/mpi-shim/lib/libmpi.so: tools/mpi-shim/mpi_shim.c tools/mpi-shim/include/mpi.h
+	mkdir -p $(BUILD)/mpi-shim/lib $(BUILD)/mpi-shim/include
+	cp tools/mpi-shim/include/mpi.h $(BUILD)/mpi-shim/include/mpi.h
+	$(CC) -std=c11 -O2 -fPIC -Wall -Wextra -Werror -shared -pthread -Itools/mpi-shim/include -o $@ tools/mpi-shim/mpi_shim.c
+
+$(BUILD)/test_fabric: tests/test_fabric.c $(BUILD)/fabric.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
+check: all $(BUILD)/test_fabric
+	$(BUILD)/test_fabric
+	$(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so)
+	$(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so)
+	$(PYTHON) tests/test_bootstrap.py
+	$(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so)
+	$(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so)
+	$(PYTHON) tests/test_shm_verbs.py
+	$(PYTHON) tests/test_mpi_shim.py
+	$(PYTHON) tests/test_check_nccl_tests.py
+	$(PYTHON) tests/test_kernel_entries.py --build $(BUILD)
+generate:
+	$(PYTHON) tools/generate_api.py
+clean:
+	rm -rf $(BUILD)

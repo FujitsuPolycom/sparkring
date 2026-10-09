@@ -1,0 +1,424 @@
+# libsircl status
+
+Status of the library as a whole: **implemented; verified in GPU emulation; on a cabled pair of NVIDIA
+DGX Spark systems, bit-identical to the SIRCL Python session's outputs and timed.** The NCCL-compatible
+API layer, bootstrap, session engine, the three kernel packs and both transports are implemented. The pair at
+ring positions 0-1 ran `RUNBOOK.md` sections 3.1 to 3.5 on snapshot fb63329a, nccl-tests v2.21.1 included
+(hardware evidence below); no serving or training claim follows from this document.
+
+Workstation conditions for every GPU-emulation result: one RTX 5090 (driver 595.79, CUDA 13.2 driver
+API), WSL2 Ubuntu 24.04, x86_64, GCC 13.3, nvcc 13.3.73 for the kernel packs, Python 3.12 with torch
+2.10.0+cu128 and nvidia-cutlass-dsl 4.5.0.dev0 for SIRCL's sessions, every GPU run under the
+workstation's GPU lock, 2026-10-08 America/Chicago. The library binary of every library, PyTorch,
+setup-failure and timing run is `libsircl.so` SHA-256 `7ccc632e...6c42b2f61`
+(`verification/binary.json`; a second build from the same sources in another directory has the same
+hash).
+
+## Sources
+
+The SIRCL reference is the lead workspace's `ring8/cleanroom/impl` tree, copied byte for byte to
+`../sircl-current` (288 files, build outputs and caches excluded); `SOURCE_SNAPSHOT.json` records every
+file's SHA-256 and the 39 files that changed since the previous capture; at 03:00 CDT every source file
+of the reference tree still matched the capture and no source file had been added. SIRCL's own CPU
+tests pass on that copy (503 passed, 16 skipped; `verification/sircl-cpu-tests.log`). The library
+carries a byte-identical copy of SIRCL's native proxy as SIRCL's implementation tree holds it with the
+ordered session close (request TD: `roce_destroy` returns the number of verbs calls that failed) and
+flags-only own items (request FO) (`src/transport/sircl_roce_proxy.c`, SHA-256 `93c65f37...cfa3b3`; the
+reference copy above predates both: `7deb5b1a...f2ae83`) and SIRCL's verbs-subset header
+(`src/transport/fake_verbs/infiniband/verbs.h`).
+The interface follows NVIDIA's public `nccl.h.in` v2.32.3-1 and the user guide only.
+
+## Components
+
+| Component | Status | Evidence |
+|---|---|---|
+| Symbol surface: 73 `ncclX` host functions and 73 `pnccl` twins of the 2.32.3 header, and the 16 host entry points of NCCL's device API (`nccl_device/core.h` and its barrier and LL all-to-all headers, NCCL 2.28 and later) with their twins, which programs built against current headers import (`src/device_api.c`: `ncclCommQueryProperties` and the team queries implemented, the device communicator, device pointers and requirement builders refused); SONAME `libnccl.so.2`, version 22705; only `nccl*`, `pnccl*` and the three extension functions `sirclGetInfo`, `sirclSetWaitRegime` and `sirclGetReceipt` exported, each by exact name; `tests/api_manifest.json` marks each function of the header implemented or not; `tools/check_exports.py` lists any function a header set declares or a program imports that the library lacks | implemented | ABI suite (5 tests); engine suite's device-API test; generator check; `tools/check_exports.py`: 0 missing against the NCCL 2.29.7 headers and the nccl-tests v2.21.1 binaries built on the workstation; PyTorch and vLLM bind to it (`verification/framework-loading.json`) |
+| Kernel-entry check: before the library links, its pack loader resolves every entry it names in the three embedded packs through a stand-in CUDA driver that reads every architecture's cubin offline (`tests/check_entries.c`, `tests/fake_cuda.c`; make and CMake) | implemented | kernel-entry suite (3 tests: every entry present; hiding one entry of each pack fails and names it; refused without the stand-in driver); a loader that names the two-pass ring all-reduce entries, built with link pack `5935b067...` (which has none), fails the build at `sircl_ring_reduce_two_pass_f32_u1` |
+| Loading: the library links only libc and the dynamic loader, has no constructor that touches CUDA, and opens `libcuda.so.1` only when a communicator is created | implemented | CPU test in an isolated interpreter, with a negative control that initializes CUDA in a constructor; `tools/probe_cuda_on_load.py` (`verification/cuda-on-load.json`) |
+| Bootstrap: unique id with root address, port, nonce and site hash; loopback, or a LAN address from `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME` or `NCCL_SOCKET_IFNAME`; all-gather rounds through the root; a rank leaving a complete group fails every later round at once | implemented | bootstrap suite (21 tests); between the two Sparks of the pair (hardware evidence) |
+| Communicator lifecycle: blocking and non-blocking init, groups (a collective or point-to-point call refused with `ncclInvalidArgument` leaves its group as it was; a queued point-to-point call holds no reference on its communicator, so `ncclCommAbort` from another thread returns at once and that group's `ncclGroupEnd` fails the calls with `ncclInvalidUsage`), finalize and destroy (wait for every rank; see the teardown row), abort, revoke, a communicator's error and its text published together (one lock), `ncclRedOpCreatePreMulSum` (not implemented) returning `ncclNumOps`, which every collective refuses, async errors from the command ring and the progress thread; `ncclCommSplit` (members ordered by key, then parent rank; `NCCL_SPLIT_NOCOLOR` gets NULL; children keep the parent's route-map position; a NULL config, or a config whose `blocking` is undefined, takes the parent's blocking mode) | implemented | lifecycle (14) and API (17) suites, also under AddressSanitizer and UndefinedBehaviorSanitizer; GPU emulation (below): `library_rank.py`'s checks of an invalid-peer send inside a group (the group's valid send and receive complete), of `ncclCommAbort` with a send queued in another thread's open group (returns within 0.1 s; that group's end returns `ncclInvalidUsage`) and of `ncclRedOpCreatePreMulSum`'s op in an all-reduce of unequal inputs (refused with `ncclInvalidArgument`, the buffer unchanged). Abort cannot stop a kernel waiting for a dead peer before its wait limit (request AW) |
+| Session engine: settings and both packs' hashes agreed across ranks; route maps keyed by process position (`LIBSIRCL_POSITION`, exchanged at setup), so one map serves every communicator a process joins; pinned arena (cuMemHostAlloc on hardware, shared memory registered with CUDA in emulation), device counters, SIRCL's native proxy, queue-pair connection, lane check, progress thread per communicator | implemented | GPU emulation (below); setup-failure cases; verbs transport on the pair (hardware evidence) |
+| Transport kernel pack: one-shot and two-shot all-reduce, all-gather, reduce-scatter and all-to-all scatter ops in CUDA C++, sm_120 and sm_121, prebuilt and hash-checked; its hash, the fold pack's and the link pack's join the setup agreement | implemented | `KERNEL_ROUTE.md`: 905 of 905 mixed-group checks against SIRCL's DSL kernels; on the pair (hardware evidence) |
+| Fold kernel pack: rank-ordered local reduction of gathered rows, 12 datatypes x 5 built-in ops, sm_120 and sm_121, prebuilt and hash-checked | implemented | library emulation and the pair: every datatype and op equal to the host model |
+| `ncclAllReduce`, every datatype, `ncclSum`/`ncclProd`/`ncclMax`/`ncclMin`/`ncclAvg`: float16, bfloat16 and float32 sums in the transport kernels (one-shot to `SIRCL_ONESHOT_MAX_BYTES`, two-shot above, pieces of `SIRCL_LARGE_PIECE_BYTES`, zero-padded tails below 16 bytes, unaligned buffers through scratch, in place); every other datatype and op as an all-gather of slot-sized tiles and the fold | implemented | library emulation, PyTorch emulation, the pair |
+| `ncclAllGather` (every datatype): tiles of at most one slot sized from agreed settings only, so ranks whose buffers differ in alignment split a call into the same ops; tiles that are not whole 16-byte packs or not aligned travel through scratch; in place | implemented | library emulation, the pair |
+| `ncclReduceScatter`, every datatype and built-in op: float16, bfloat16 and float32 sums in the scatter ops; every other datatype and op as an all-to-all of column tiles and the fold; padded and unaligned chunks through scratch; in place | implemented | library emulation, the pair |
+| `ncclBroadcast`, `ncclBcast` (an all-gather of the root's tiles; other ranks may pass no send buffer) and `ncclReduce` (the all-reduce, kept on the root; other ranks may pass no receive buffer) | implemented | library emulation, the pair |
+| `ncclAlltoAll` (every datatype; overlapping buffers through scratch), `ncclGather` (the all-gather's tiles, kept on the root) and `ncclScatter` (the all-to-all's tiles from the root); ranks that do not use a buffer may pass NULL | implemented | library emulation, the pair |
+| `ncclSend`, `ncclRecv` between the two ranks of a two-rank communicator: outside a group each call is one exchange; inside a group the k-th send to the peer and the k-th receive from it form exchange k, carried at the outermost `ncclGroupEnd`; a rank's sends to itself are local copies on any communicator; CUDA graph capture | implemented | library emulation, PyTorch emulation, the pair |
+| Stream order: a call on another stream than the communicator's previous call waits for that stream (an event); inside a CUDA graph capture every collective of one capture uses one stream; calls enqueue and return | implemented | alternating-stream and graph checks (below) |
+| Receipts: per-communicator counts of calls, ops by algorithm and dtype, fold ops by datatype and op, link ops by kind and by blocks per role, pair exchanges, point-to-point sends, receives and bytes, captured calls, padded and unaligned staging, refusals and native counters; the pair plan, the progress thread's CPUs and the ring all-reduce's relay form; in one file per communicator written at creation, refreshed after calls every `LIBSIRCL_RECEIPT_INTERVAL_S` and at destroy (`LIBSIRCL_RECEIPT`), and in process (`sirclGetReceipt`); `"forwarded": 0` always | implemented | library emulation and the pair check every rank's receipt |
+| One-way pair exchanges post the empty direction's items as flags only: the exchange kernel sets bit 24 of the link op word when its input is 0, and the native proxy then posts those items without payload; the peer discards them as before | implemented | Conditions: snapshot ca09d28c (SIRCL's landed proxy with this change, link pack `dc9dd167...`) against snapshot 7d1c6f19 and NVIDIA NCCL 2.32.3 on ConnectX-7 between two Sparks (pair 4-5), nccl-tests v2.21.1, bfloat16, root 0, 512 KiB to 256 MiB, out of place, two runs of this tree and of NVIDIA. Measurement (us at 256 MiB and 4 MiB): broadcast 11,008 and 11,000 / 177 and 173 against 7d1c6f19's 11,976 / 216 and NVIDIA's 11,033 and 11,029 / 208 and 190; reduce 10,993 and 10,993 / 177 and 180 against 12,447 and NVIDIA's 11,025 and 10,990 / 205 and 220; gather 5,505 and 5,495 / 90 and 90 against NVIDIA's 5,531 and 5,543 / 109 and 115; scatter 5,483 and 5,494 / 88 and 86 against NVIDIA's 5,545 and 5,548 / 99 and 104; every job exact; NIC bytes per direction over the five rows 133.1 GB against 232.7 GB without the change (NVIDIA 133.2 GB), as in research snapshot bcff23bc. The all-to-all at API level 22705 (grouped point-to-point) does not use this path: 7,229 / 157 us against NVIDIA's 6,228 and 6,215 / 166 and 176. GPU emulation on the workstation: every one-way exchange of the two-rank library run bit-exact, the same link items with fewer link bytes on both ranks. Conclusion: the four rooted one-way collectives match NVIDIA within 1% at 256 MiB and are faster from 4 MiB |
+| The all-to-all of two ranks as grouped point-to-point calls (torch's pattern; nccl-tests' below NCCL API level 22800): a send to and a receive from the peer and a send to and a receive from the rank itself of one size, the receive blocks adjacent in rank order and neither send block overlapping them, carried as one pair exchange whose kernel copies the own block in parallel with the transfer (otherwise a copy ahead of the exchange) | implemented | GPU emulation on the workstation: `library_rank.py` on two ranks, torch's pattern of 1 MiB blocks under the pair plan exact with one pair exchange and no separate local copy, and exact under the pieces schedule (no pair plan, the copy ahead); the emulation suite's nccl-tests lines (11, `alltoall_perf` included) exit 0 with `#wrong` 0. On ConnectX-7 between two Sparks (pair 4-5; snapshot b75d4b26 = this change on ca09d28c, against ca09d28c and NVIDIA NCCL 2.32.3; nccl-tests v2.21.1 `alltoall_perf` at API level 22705, bfloat16, 512 KiB to 256 MiB, out of place, two runs each; us at 256 / 16 / 4 MiB): 6,147 and 6,139 / 428 and 423 / 141 and 142 against ca09d28c's 7,217 and 7,266 / 493 and 493 / 159 and 159 and NVIDIA's 6,216 and 6,220 / 455 and 447 / 163 and 177; every job exact; broadcast, reduce, gather and scatter unchanged within the runs' spread. Conclusion: the all-to-all through torch's grouped point-to-point path is 1% faster than NVIDIA at 256 MiB, 5-7% at 16 MiB and 13-20% at 4 MiB |
+| Shared-memory verbs stand-in (`src/transport/shm_verbs.c`): the verbs subset of SIRCL's proxy across processes, with seeded interleaving across queue pairs; segments named by process id and process start time, so containers that share the host's `/dev/shm` with reused process ids never share a name, and a name that exists already is skipped (never removed); a report of every queue pair and failed write for link dumps; the emulation runners remove the segments of their ended rank processes | research-only (test infrastructure) | CPU suite across processes (5 tests, one with stale segments under the names the ranks try first: the group runs exact and leaves them untouched; with the skip disabled the same test fails with `shm_open: File exists`); every library emulation run |
+| MPI shim for nccl-tests (`tools/mpi-shim`: every MPI call and constant of nccl-tests v2.21.1, including `MPI_Allgatherv`, `MPI_Reduce`, `MPI_Error_string`, splits of any color and `MPI_UNDEFINED`, splits of splits, collectives among a communicator's members over a full TCP mesh; a job tag, `SIRCL_MPI_JOB`, in every hello, so processes of different jobs refuse each other; a watchdog that ends the process when a peer's process ends outside `MPI_Finalize`; with `SIRCL_MPI_DISTINCT_HOSTS=1`, a host name per rank, so nccl-tests on one host in emulation counts one rank per host and every rank uses device 0), nccl-tests driver and evaluator (`tools/nccl_tests_pair.sh`: one shim job and a time limit per test line, the ring harness's CPU placement, a job manifest `jobs.tsv` per rank and exit status 1 when any line failed; `tools/check_nccl_tests.py`: the manifests of every rank, the same jobs on every rank and, given the lines file, every expected job, exit 0 per job, every job's sweep complete, `#wrong` 0 with an all-to-all's in-place `N/A` counted as not covered, receipts whose all-reduce ops (transport, fold, chain, ring) cover their calls), all-reduce timing sweep (`tests/emulation/perf_rank.py`) | research-only (test infrastructure) | MPI shim CPU suite (6 tests, 1 to 4 processes: a peer that exits after `MPI_Init` ends the other within 15 s, ranks of different jobs never join, each rank's host name under `SIRCL_MPI_DISTINCT_HOSTS`); the emulation suite's nccl-tests section on the workstation (two processes, one GPU, 11 lines, every line exit 0 on both ranks and `Out of bounds values : 0 OK`); nccl-tests v2.21.1 (commit `afd59ab`) compiles and links against the shim on the workstation with every test binary, `comm_ops_perf` included (nvcc 13.3, NCCL 2.29.7 headers, sm_121; its GIN device-API tests need NCCL 2.30.7 headers and were not built, and their MPI calls compile and run as C++ against the shim on two processes); evaluator on synthetic outputs (`tests/test_check_nccl_tests.py`, 6 cases: a complete pair, a missing manifest, a partial log with a failed exit, a job missing from the lines file, ranks with different jobs, an in-place `N/A` outside all-to-all); timing sweep in emulation (below) |
+| Link kernel pack (`kernels/sircl_links.cu`, `dc9dd167...`): SIRCL's chain all-reduce and link collectives in CUDA C++ (chain all-gather and reduce-scatter over links 0 and 1; ring all-gather, reduce-scatter and all-reduce over links 2 and 3 with both staggers), chain position and rank order as launch parameters, unroll 1-8, at most 512 threads per block (up to 128 registers per thread, no spills), sm_120 and sm_121, prebuilt and hash-checked; the ring all-reduce's relay in the two-pass form (default: the slot, then the output) and in one pass (`LIBSIRCL_RING_REDUCE_PASSES=1`); the pair exchange entries; a launch's last block is the one whose arrival completes its own grid, so link ops of one kernel type may differ in blocks per role | implemented; the one-pass relay: research-only (on a GB10, one run under forward windows on four ranks returned differing bits on one rank of a split communicator; not yet isolated) | mixed groups against SIRCL's DSL kernels on `path:0-1`, `path:0-3` and `ring:8` of the two-pass pack `5935b067...`: chain and ring schedules and SIRCL's own link checks, every check passed (below); the one-pass pack's mixed groups are queued |
+| Schedules of large messages and relayed groups, SIRCL's plan: `SIRCL_LARGE_SCHEDULE` (all-reduce: one ring op for the largest prefix of W equal chunks, or one chain op for the 16-byte-aligned body), `SIRCL_GATHER_SCHEDULE` (one chain or ring all-gather for 16-byte-multiple shards), `SIRCL_SCATTER_SCHEDULE` (chain or ring reduce-scatter of 16-byte-multiple chunks, in column tiles of `LIBSIRCL_LINK_TILE_BYTES`); each `pieces`, `chain`, `auto` (from SIRCL's per-collective chain minimums) or `ring` (from its ring minimums, else as `auto`); unset, `pieces` on groups of three or more and the pair plan on two ranks (a cabled pair, one block per link role: ring all-reduces from 2 MiB in 256 KiB pieces, ring all-gathers from 1 MiB shards with pieces by shard size, ring reduce-scatters from 4 MiB of input, and pair exchanges for all-to-alls, point-to-point exchanges of equal or one-way sizes, broadcasts, scatters, gathers and ncclReduce sums from 1 MiB; a relayed pair: the chain from 8 MiB; README.md, "Pair default"); blocks per link role per collective and per call (`LIBSIRCL_*_LINK_BLOCKS`, `SIRCL_LINK_BLOCKS`, the plan), agreed at setup; decided from agreed settings and sizes only, with unaligned and in-place buffers staged, so every rank runs the same ops; chain order from `LIBSIRCL_CHAIN_ORDER` or the ranks by position | implemented | CPU suites; GPU emulation (below); the pair default's sizes follow SIRCL's ring harness on two cabled pairs (`RUNBOOK.md` section 3.6), not yet a libsircl run on Sparks |
+| Progress thread placement: `SIRCL_PROGRESS_CPU` pins it; otherwise `LIBSIRCL_CPU_POLICY=performance` (default) starts it on the fastest CPU class the creating thread may use (GB10: the Cortex-X925 cores), `none` leaves it to the scheduler; the application's threads keep their affinity; receipts name the thread's CPUs (`progress_cpus`) | implemented | build and CPU suites; the workstation's CPUs are of one class, so the choice of cores runs only on a GB10 and has not run there |
+| The chain and link areas in the arena after the control line, the link counters, piece counters and decision words, SIRCL's link settings (`SIRCL_LINK_*`, staggers) agreed at setup; the ring plan from `LIBSIRCL_RING_WINDOW`; forward windows of relayed lanes from `LIBSIRCL_FORWARD_WINDOWS`; `tools/site_routes.py` prints every rank's route map, chain order, forward windows and ring plan from SIRCL's route planner | implemented | CPU suites; setup-failure cases; `tools/site_routes.py` reproduces the pair's route maps and gives `path:0-3` a ring window of 393,216 bytes on position 3 |
+| Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a communicator of two or more ranks wait for this rank's work, then a bootstrap round of every rank that also carries each rank's health, then stop the progress thread, then a second round, before any queue pair, registration or arena is freed; each round bounded by the wait limit; the close is terminal (new work refused, its result kept); a failed release of the transport keeps the memory allocated; `ncclCommAbort` does not wait | implemented | Conditions: GPU emulation on the workstation and on GB10s (snapshot 7d1c6f19, built in the serving image); `tests/emulation/teardown_race.py`: a reversed `ncclCommSplit` child, one ring all-reduce, `ncclCommDestroy` at once, repeated, one rank's writes delayed 5 ms so its predecessor finishes first; with `--expect close-error`, a rank 4 s late under a 2 s wait limit, or the stand-in's deregistrations failed (`SIRCL_EMU_FAIL_DEREG=1`). Measurement: four ranks and two ranks at 8 MiB per rank, 20 rounds each, every round exact with no async error and the parent healthy (GB10: four ranks, 5 runs of 20 rounds, 0 failed); without the rounds (snapshot 6fe2882f) the same check failed 7 of 10 rounds on four ranks on the workstation and 98 of 100 on a GB10 (each failure poisons the parent): a rank's kernel had completed while its progress thread still held an outbound item gated by a peer's credit, destroy stopped that thread and freed its queue pairs, the peer waited out the wait limit, and the peer's late credit write failed (transport retry counter exceeded; the destination queue pair was gone). In close-error mode (workstation and GB10) every round's first finalize or destroy returned the error, a second finalize the same, and a collective after the close was refused. The full emulation suite on a GB10 (snapshot 7d1c6f19) passed every section, the teardown check on four ranks and on two at 8 MiB included. On the fabric (ConnectX-7, four Sparks on a path and a cabled pair, 8 MiB per rank, no delayed rank): 100 rounds each without the rounds and 60 with them (snapshot 7d1c6f19), all exact and healthy, and 10 runs of the relayed-group bit-exact check under the ring schedules (RUNBOOK 4.1) on the path, 0 failed; the stranded item did not occur at natural timing there. Result: round 1 proves that every item and flag a kernel waits for has landed; round 2 that no rank posts toward queue pairs or regions about to be freed. Writes no kernel waits for (credits) may still be in flight; each rank destroys its queue pairs before its registrations and memory, so they land in registered memory or are dropped. Limits: the rounds are bounded, but this rank's own wait for its work, the progress thread's join and the verbs destroys are not; in emulation the stand-in resolves a write under its registry lock and applies it after, so a write resolved before a deregistration still lands in the old segment, and emulation does not test a NIC's revocation of a deregistered region. Callers: torch 2.10's `destroy_process_group` shuts its groups down in one order on every rank (finalize, then destroy); vLLM 0.19.1's pynccl `destroy` calls `ncclCommDestroy`; a caller that tears down with `ncclCommAbort` runs no rounds |
+| Destroying or finalizing communicators in a different order on different ranks | unsupported | each teardown round waits for every rank of its communicator, so crossed orders wait out the wait limit on each round (20 s serving, 600 s startup) and return `ncclRemoteError`; they do not wait longer |
+| Process exit without `ncclCommDestroy`, `ncclCommFinalize` or `ncclCommAbort` while a peer's collective on the communicator still runs | unsupported | at library unload only the native threads stop; a peer may wait out its wait limit |
+| `ncclCommDestroy` while replays of captured CUDA graphs of the communicator's collectives still run | unsupported (caller contract) | teardown waits for the engine's last eager launch (a launch under capture records no stream), not for graph replays; a communicator used only under capture has nothing to wait for |
+| CUDA graph capture of a call that needs more staging than the communicator has allocated (a pair exchange or link op on unaligned or overlapping buffers) | unsupported (documented precondition) | the staging buffer grows outside capture only; such a capture is refused with `ncclInvalidUsage` naming the bytes needed, and succeeds after one eager call of the same shape. Evidence: `library_rank.py`'s in-place all-to-all check on a fresh communicator, cold and after an eager call |
+| Point-to-point between ranks of a communicator of more than two ranks (torch with eager initialization issues `send`, `recv` and all-to-all on the group's communicator) | unsupported | refused with `ncclInvalidUsage` |
+| `ncclMemAlloc` and `ncclMemFree` (device memory of the current CUDA context, ordinary buffers for every collective, eager and in graphs); buffer and window registration (`ncclCommRegister`, `ncclCommWindowRegister` and their deregistrations) accepted as hints, the handle and the window being the buffer's address, and `ncclWinGetUserPtr` | implemented | API suite (registration and windows on a CPU communicator); nccl-tests v2.21.1 allocates its buffers with `ncclMemAlloc` |
+| `ncclRedOpCreatePreMulSum` and other ops beyond the five built in, the per-call `nccl*Config` collectives, shrink, grow, the scalable initialization, host RMA signals, the device communicator and device pointers | unsupported | refused with `ncclInvalidUsage` (an op number beyond the built-in five: `ncclInvalidArgument`, counted in the receipt) and logged once |
+| One progress thread per process; an abort word watched by every kernel wait | unsupported | requests PO and AW to the SIRCL package (`requests/README.md`) |
+| All-reduce timing on a cabled pair (`tests/emulation/perf_rank.py`: bf16, fp16, fp32, 8 B to 256 MiB, eager and graph) | qualified | the pair (hardware evidence): fp32 8 KiB 9.73 us eager, 9.61 us in graphs |
+| nccl-tests v2.21.1, unmodified, through `LD_PRELOAD` on a cabled pair: every collective test and point-to-point | qualified | snapshot fb63329a on Sparks 0-1 (hardware evidence): `#wrong 0` on every line of `RUNBOOK.md` sections 3.4 and 3.5; this tree's pair plan has not run there |
+| Frameworks on the ring | unsupported | PyTorch in emulation only |
+
+## Evidence
+
+The files behind each result are in `verification/` (CPU, build and loading records),
+`verification/emulation/` (GPU emulation logs and per-rank results) and `verification/hardware/` (the
+pair).
+
+### Hardware: the cabled pair at ring positions 0-1
+
+Conditions common to both runs: two DGX Sparks (GB10, aarch64) at positions 0 and 1 of the eight-Spark
+ring, cabled directly; the serving image `aba309e4610c...`; containers with `--privileged --gpus
+device=0 --network host --ipc host --ulimit memlock=-1`; the library built from source in each container
+with the prebuilt kernel packs (transport `c2e6e5a1...`, fold `66da585d...`); `LIBSIRCL_TRANSPORT=verbs`,
+2 lanes, route maps `1=rocep1s0f0/roceP2p1s0f0` and `0=rocep1s0f1/roceP2p1s0f1`; run by the ring
+operator on 2026-10-08. The rank scripts load the library with ctypes, so the NVIDIA NCCL the image
+preloads (below) stays out of their calls; every receipt names the verbs transport and libsircl's packs.
+
+Run at 08:43 UTC, `RUNBOOK.md` sections 3.1 and 3.2, source archive SHA-256 `70727348...0f17d5e85` (a
+tree without point-to-point, split and route-map positions;
+`verification/hardware/pair-20261008T0843Z/`):
+
+- `library_rank.py`: 217 of 217 checks per rank against the rank-order reference, the fold model and
+  the bytes sent; communicator setup 0.22 s, the whole check 9 s; receipts `"forwarded":0`, refusals
+  only the deliberate op-7 case, `"healthy":true`, all-reduce 130 calls (9 captured), the native layer
+  294 ops posted and 646 RDMA writes completed;
+- `make check` in the image: every suite but the CUDA-on-load test, whose check (any mapped file named
+  `libcuda`) the image met before the library loaded.
+
+Run at 10:06 UTC, sections 3.1 to 3.3, source archive SHA-256 `89380984...ae7027e4a`, library SHA-256
+`c8c659c9...` on both ranks (`verification/hardware/pair-20261008T1006Z/`):
+
+- `make check` in the image: every suite passed (ABI 5, API 14, bootstrap 21, lifecycle 13, engine 4,
+  shared-memory verbs 4, MPI shim 3).
+- `tools/probe_cuda_on_load.py`: the library mapped and initialized nothing of CUDA, with and without
+  site packages. The image's environment sets `LD_PRELOAD` to NVIDIA NCCL
+  (`/opt/sparkring/toolchain/nccl/lib/libnccl.so.2`), `libcudart.so.13` and eight further CUDA
+  libraries, so `libcuda` and `libcudart` are mapped before any program starts (`cuDeviceGetCount` 3:
+  not initialized). `RUNBOOK.md` section 3 puts libsircl first in that list and drops the other
+  `libnccl.so.2` for programs that bind NCCL through the dynamic linker.
+- `library_rank.py` with SIRCL-session digests: 228 checks per rank. Every check against the rank-order
+  reference, the fold model and the bytes sent passed, including the 11 point-to-point and split checks
+  (the split reverses the ranks, so each process joins the child at another rank with its own route-map
+  position). 178 and 180 checks passed: the other 50 and 48 compared outputs with digests made on the
+  workstation from inputs that `torch.randn` generated: the image's torch on aarch64 and the
+  workstation's torch 2.10 on x86_64 generate different floating inputs from the same seed for all but
+  the smallest counts. The all-gathers among them move bytes unchanged, and every uint8 all-gather,
+  whose inputs came from `torch.randint`, matched. The inputs are
+  now SplitMix64 bits and the digests record each case's input digest too (Library evidence below).
+- `perf_rank.py`, all-reduce sum, out of place, 50 timed calls after 10 warm-up calls, graphs of 20
+  calls, 72 sizes (bf16, fp16, fp32 from 8 B to 256 MiB), every size up to 64 MiB checked bit for bit
+  (`perf-rank0.out`):
+
+  | Measurement | bf16 | fp16 | fp32 |
+  |---|---|---|---|
+  | 8 KiB eager, per call | 9.83 us | 9.74 us | 9.73 us |
+  | 8 KiB in a CUDA graph, per call | 9.55 us | 9.64 us | 9.61 us |
+  | 8 B to 8 KiB eager | 8.29-12.35 us | 8.07-12.08 us | 8.07-11.68 us |
+  | 128 KiB eager | 18.35 us | 18.35 us | 18.32 us |
+  | peak bus bandwidth (4 MiB) | 17.63 GB/s | 17.72 GB/s | 17.85 GB/s |
+  | bus bandwidth, 16 MiB to 256 MiB | 14.88-15.11 GB/s | 14.89-14.93 GB/s | 14.86-15.04 GB/s |
+
+  72 of 72 sizes correct; the receipt reports 6,618 all-reduce calls (1,560 captured), `"forwarded":0`,
+  `"healthy":true`.
+
+Run at 10:44 UTC, sections 3.1 to 3.3, source archive SHA-256 `e9f947f5...49b4d171` (the SplitMix64
+inputs and digests; library sources as in the 10:06 run, library SHA-256 `c8c659c9...` on both ranks;
+`verification/hardware/pair-20261008T1044Z/`):
+
+- `make check` in the image: every suite passed; the probe and the nccl-tests preflight ran clean; the
+  preflight finds the NCCL 2.32.3 header at `/opt/sparkring/toolchain/nccl` and the rewritten preload
+  list with libsircl first.
+- `library_rank.py` with SIRCL-session digests: 228 of 228 checks passed on each rank; 87 per rank equal
+  the SIRCL session's bytes, 72 the fold model, none report different inputs.
+- `perf_rank.py` with `SIRCL_LARGE_PIECE_BYTES=16777216` (16 MiB pieces; the receipt confirms the
+  setting): bus bandwidth 15.30-15.34 GB/s at 16 MiB and 15.06-15.14 GB/s at 64 MiB and 256 MiB, against
+  14.86-15.04 GB/s with 4 MiB pieces; 4 MiB itself still reaches 17.78-17.89 GB/s; 8 KiB fp32 9.73 us
+  eager and 9.60 us in graphs; no size wrong.
+
+Conclusion: on the cabled pair, through its NCCL API and the real RDMA fabric, every collective and the
+point-to-point calls produce the bits of the rank-order reference, of the fold model and, for the
+float16, bfloat16 and float32 sums, the all-gathers and the reduce-scatters, of the SIRCL Python
+session, eager and in CUDA graph replay, with nothing forwarded; a split communicator with other rank
+numbers finds its routes by position. The eager 8 KiB all-reduce takes 9.7-9.9 us per call, within the
+milestone's 20 us; the ring operator's earlier measurement of NVIDIA NCCL 2.32.3 on the same pair, 18.8
+us eager, is not in this tree's evidence. Messages above 4 MiB stay near 15 GB/s of bus bandwidth whether
+they travel in 4 MiB or 16 MiB pieces, so the piece size does not set that limit; the 4 MiB single op
+reaches 17.8 GB/s.
+
+nccl-tests on the pair, snapshot fb63329a (the pair default at that snapshot: the ring all-reduce from 6 MiB
+at 4 blocks per link role, ring all-gathers from 8 MiB of output, pieces below; the tree, `MANIFEST` and
+build logs in `../sircl-ccl-snapshots/fb63329a/`), built in the serving image on Sparks 0-1 and run by
+the ring operator with `tools/nccl_tests_pair.sh` (each line its own MPI-shim job under a time limit, the
+binaries on the Cortex-X925 cores but one and the progress thread on the remaining one):
+
+- Bit-exact check of section 3.2: exit 0 on both ranks.
+- Section 3.4, `all_reduce_perf -b 8 -e 256M -f 2`, bf16, fp16 and fp32, eager and `-G 20`: `#wrong 0` on
+  every line. Float, eager, out of place, us per call: 8 KiB 11.4, 1 MiB 86.6, 2 MiB 152.8, 4 MiB 285.7
+  (two-shot), 8 MiB 425.6, 16 MiB 772.9, 64 MiB 2,842 (23.6 GB/s bus bandwidth), 256 MiB 11,101 (24.18
+  GB/s); with `SIRCL_LINK_BLOCKS=1`: 8 MiB 399.1, 16 MiB 742.5, 64 MiB 2,812.7, 256 MiB 11,060 (24.27
+  GB/s). NVIDIA NCCL 2.32.3 in the same window: 8 MiB 427-441, 16 MiB 811-828, 64 MiB 3,119-3,134, 256 MiB
+  12,129-12,192; libsircl at one block per role is 7-10% faster from 8 MiB.
+- Section 3.5, every further test (all-gather, reduce-scatter, broadcast, reduce, all-to-all, sendrecv,
+  gather, scatter, and the integer, double, average and min all-reduces): `#wrong 0`, no errors, the MPI
+  shim's watchdog never ended a process. bf16 times at 8 MiB, libsircl against NVIDIA NCCL, us:
+  all-gather 279 / 315, reduce-scatter 325 / 350, broadcast 596 / 346, reduce 531 / 371, all-to-all 403 /
+  264, sendrecv 680 / 406, gather 298 / 198, scatter 324 / 199 (at fb63329a these moved store-and-forward
+  through scratch; the pair plan's link paths replace them in this tree).
+- nccl-tests moves its buffers to a new window of a large allocation at every call (`common.cu`), so
+  each call reads cold input; the same library's own sweep (`perf_rank.py`, buffers reused) took 126-129
+  us at 2 MiB and 235 us at 4 MiB where nccl-tests' two-shot took 152.8 and 285.7; with `-b` equal to `-e`
+  (no movement) nccl-tests took 131.8 and 239.4.
+
+Conclusion: libsircl runs nccl-tests unmodified through `LD_PRELOAD` on the pair, every test correct; at
+one block per link role it is faster than NVIDIA NCCL 2.32.3 from 8 MiB of all-reduce. The pair plan of
+this tree replaces the store-and-forward paths of the slower collectives with link paths, which have not
+run on hardware.
+
+### Link pack against SIRCL's DSL kernels
+
+Chain all-reduce. Conditions: `tests/emulation/mixed_group.py` with `SIRCL_LARGE_SCHEDULE=chain`, so
+every `all_reduce_large` runs as one chain op (plus the zero-padded tail); each session's chain
+launchers taken from SIRCL's DSL or from the link pack, DSL-only, mixed (even ranks C++) and C++-only on
+the same sessions, eager and in CUDA graph replay; chain chunks of 512 KiB in 4 slots of 1 MiB, so
+larger cases reuse slots within one op. References: SIRCL's `references.large_all_reduce` for the
+session's plan (per-hop rounding in chain order) and the DSL outputs. Measurement and result, with the
+pack built from the chain all-reduce alone (`6c29474d...`, before the link collectives joined the file;
+`verification/emulation/chain-*.log`): `path:0-1` (1 lane) 208 of 208; `path:0-3` (2 lanes) 208 of
+208; `ring:8` (2 lanes) 208 of 208. Conclusion: the CUDA C++ chain kernel speaks SIRCL's chain protocol
+with SIRCL's progress thread and reproduces the DSL kernel's bits at two, four and eight ranks, where
+every hop rounds. The pack that adds the link collectives (`5935b067...`) changes the chain entries'
+launch bound from 1,024 to 512 threads; with that pack the chain all-reduce passed again in every run below (the chain schedules and SIRCL's chain checks).
+
+Link collectives. Conditions: the same harness with every compiled link launcher swapped
+(`("link-gather",)`, `("link-scatter", dtype)`, `("link-ring", mode, dtype)`), pack `5935b067...`;
+the chain schedules (`SIRCL_GATHER_SCHEDULE=chain`, `SIRCL_SCATTER_SCHEDULE=chain`), the ring schedules
+(`ring`, `SIRCL_RING_MIN_BYTES=0`) and SIRCL's own link checks of its emulation harness
+(`--suite sircl-links`: chain and ring collectives across pieces and slot reuse, link ops taken late by
+one rank's progress thread, pieces of their own, ring minimums and every stagger the slots hold).
+Reduce-scatters are compared with `references.chain_reduce_scatter` or `ring_reduce_scatter` for the
+path the session takes. Measurement and result (`verification/emulation/links-*.log`; launches from C
+counted over the mixed and C++-only modes):
+
+| Layout | Chain schedules | Ring schedules | SIRCL's link checks |
+|---|---|---|---|
+| `path:0-1`, 1 lane | 209 of 209 | 209 of 209 | 266 of 266 |
+| `path:0-3`, 2 lanes (the ring closes through two relays) | 209 of 209; 6 chain all-gathers, 90 chain reduce-scatters | 209 of 209; 6 ring all-gathers, 90 ring reduce-scatters, 90 ring all-reduces | 266 of 266; 192 chain all-gathers, 258 chain reduce-scatters, 198 ring all-gathers, 192 ring reduce-scatters, 324 ring all-reduces |
+| `ring:8`, 2 lanes | 209 of 209; 12 chain all-gathers, 180 chain reduce-scatters | 209 of 209; 12 ring all-gathers, 180 ring reduce-scatters, 180 ring all-reduces | 266 of 266; 384 chain all-gathers, 516 chain reduce-scatters, 396 ring all-gathers, 384 ring reduce-scatters, 648 ring all-reduces |
+
+In SIRCL's link checks the C++ kernels also ran with one rank's progress thread taking every link op
+2 ms late, under every ring stagger the slots hold, and with pieces of their own per collective; every
+session stayed healthy. Conclusion: the CUDA C++ link collectives speak SIRCL's link protocol
+with SIRCL's progress thread, alone and mixed with DSL ranks, and reproduce SIRCL's per-hop rounding on a
+pair, on a path of four whose ring crosses relays and on the cycle of eight.
+
+### Transport kernel pack against SIRCL's DSL kernels
+
+Conditions: SIRCL's emulation harness, unmodified, with each session's launchers taken from SIRCL's
+DSL or from the pack (`tests/emulation/mixed_group.py`). Measurement, result and conclusion:
+`KERNEL_ROUTE.md`. In short: 905 of 905 checks on `path:0-1`, `ring:3`, `path:0-3` (one-block and
+every-block polling) and `ring:8`, every output bit-exact against the host reference and the DSL's
+output, eager and in graph replay, mixed groups included; pack `c2e6e5a1...be4eaa25`. The test shim,
+rebuilt to load both packs, repeats the `path:0-1` run with 181 of 181 checks passed
+(`verification/emulation/mixed-pair-rebuilt-shim.log`).
+
+### Library end to end: one process per rank on one GPU
+
+Conditions: `tests/emulation/run_library.py`, one process per rank, the library loaded with ctypes and
+called through its NCCL C API, `LIBSIRCL_TRANSPORT=emulation`, torch only for tensors, streams and
+CUDA graphs. Two references: the SIRCL Python session's bytes for the same inputs
+(`tests/emulation/sircl_golden.py`, DSL kernels, large-message schedule fixed to pieces; as files for
+two ranks with one lane, as SHA-256 digests in `tests/emulation/golden/w*.json` for the other groups,
+with the digest of each case's inputs) for the float16, bfloat16 and float32 sums, the all-gathers and
+the reduce-scatters; and a host model of
+the fold arithmetic (`tests/emulation/fold_model.py`, NumPy and torch CPU conversions) for every other
+datatype and op, which SIRCL's session does not reduce.
+
+Measurement per rank, 228 checks with two ranks and 221 with more:
+
+- transport reductions: all-reduce of float16, bfloat16 and float32 from one element to 10 MiB (tails,
+  two pieces and more, unaligned, in place, four calls alternating between two streams), reduce-scatter
+  of 2 B to 4.2 MiB chunks (padded, unaligned, in place, several ops per call), reduce to rotating roots
+  with the other ranks' buffers untouched;
+- byte movement: all-gather of bf16, uint8 and fp32 shards of 1 B to 8.4 MiB (padded, unaligned, in
+  place, tiles larger than a slot) and of 3 MiB shards with rank 0's output and rank 1's input
+  unaligned; broadcast from every root with no send buffer on the others; in-place `ncclBcast`;
+  `ncclAlltoAll` of 16 B to 4.2 MiB chunks (padded, unaligned, in place); `ncclGather` and
+  `ncclScatter` to and from rotating roots (padded, several tiles, in place, NULL buffers on the ranks
+  that do not use them);
+- fold reductions: all-reduce of all 12 datatypes with all 5 built-in ops at 1,027 elements, and six
+  further cases (one element to 8 MiB in three ops, unaligned, in place); reduce of int64 and float16
+  to a root; reduce-scatter of int32, float64, bfloat16, float8 e5m2 and uint64 (padded, two ops,
+  unaligned, in place);
+- point-to-point with two ranks: sends of 1 B, 4,097 B and 4 MiB in three ops outside a group, a group
+  exchanging 1,000 B and 70,000 B in opposite directions, three sends matched in issue order, torch's
+  all-to-all pattern with sends to the rank itself, a send and a receive captured in a CUDA graph and
+  replayed twice; with more ranks, a send to another rank refused and a send to the rank itself carried;
+- `ncclCommSplit` with keys that reverse the rank order, then an all-reduce on the child summed in the
+  child's rank order, and the child destroyed;
+- CUDA graphs: one of three all-reduces (one-shot, two-shot, pieces with a padded tail), one of an
+  all-gather and a reduce-scatter, one of a fold all-reduce, an all-to-all, a gather and a scatter, each
+  captured once and replayed twice with new inputs;
+- an op number beyond the built-in five refused with `ncclInvalidArgument`; the receipt (calls, ops,
+  57 distinct fold pairs, point-to-point counts, captured calls, nothing forwarded);
+  `ncclCommGetAsyncError`, finalize, destroy.
+
+Result:
+
+| Group | Lanes | Checks | Failed | Equal to the SIRCL session's bytes | Equal to the fold model | Wall time |
+|---|---|---|---|---|---|---|
+| 2 ranks | 1 | 456 | 0 | 174 | 144 | 9.7 s |
+| 2 ranks | 2 | 456 | 0 | 174 | 144 | 10.4 s |
+| 3 ranks | 1 | 663 | 0 | 261 | 215 | 17.7 s |
+| 4 ranks | 2 | 884 | 0 | 348 | 286 | 27.1 s |
+| 8 ranks | 2 | 1,768 | 0 | 552 | 570 | 121.3 s |
+
+Every check not compared with a reference is compared with the rank-order host reference or with the
+bytes the ranks sent. For eight ranks the SIRCL session's reduce-scatter bytes are absent: on its
+emulated `ring:8` (2 lanes, `max_gather_bytes` 64 KiB), SIRCL's `reduce_scatter` completed the 16 B and
+4,096 B chunk cases and did not complete the 65,552 B chunks, the first case above 64 KiB, within its
+harness's 120 s stream wait (`verification/emulation/sircl-golden-w8-full.log`). The golden run for eight
+ranks therefore skips reduce-scatter (`sircl_golden.py --skip-reduce-scatter`), and the library's
+eight-rank reduce-scatters are checked against the rank-order reference only. The library's emulation
+gives every pair of ranks a direct lane, so it does not exercise SIRCL's relayed lanes.
+
+Every case's inputs are SplitMix64 bits generated with NumPy integer arithmetic, the same on every
+platform (`library_rank.inputs_for`); the SIRCL-session outputs of the table were generated from them
+(`verification/emulation/sircl-golden-w*.log`). Five eight-rank runs passed in full since the checks
+order their buffer fills: the table's and four with the earlier `torch.randn` inputs
+(`verification/emulation/runs.out`).
+One earlier eight-rank run, made with a version of the checks that filled buffers on torch's default
+stream without ordering the fills before the library's stream, had five of the eight child ranks of the
+split check reach the wait limit; unordered fills change the values a rank sends, not whether they
+arrive, so that run's timeout has no identified cause. That version also failed the two-rank, two-lane
+4 MiB send in five of six runs, as an unordered zero-fill of the receive buffer racing the library's copy
+into it would; with ordered fills, eight of eight two-rank, two-lane runs passed.
+
+Conclusion: through its NCCL API, the library's float16, bfloat16 and float32 all-reduce,
+reduce-scatter and reduce reproduce the SIRCL Python session's outputs bit for bit; every other
+datatype and op reproduces the fold model bit for bit on every rank; the byte-moving collectives and
+point-to-point move exact bytes; all of it eager and under CUDA graph capture, across processes. The
+processes share the GPU by time slicing, so these runs measure correctness only.
+
+### PyTorch ProcessGroupNCCL, unmodified, through LD_PRELOAD
+
+Conditions: `tests/emulation/torch_pg.py`, torch 2.10.0+cu128 built against NCCL 2.27.5, one process
+per rank on one GPU, `LD_PRELOAD` of the library, emulation transport, `init_process_group("nccl",
+device_id=...)`. Measurement per rank: the process maps libsircl and `ncclGetVersion` in its global
+scope reports 22705; all-reduce of bf16, fp16 and fp32 sums (7 elements to 5 MiB), of int64 (sum),
+fp32 (`MAX`) and bf16 (`AVG`); `all_gather_object`, `broadcast_object_list`; an all-reduce on
+`new_group([0, 1])`; with two ranks `send`/`recv`, `batch_isend_irecv` and `all_to_all_single`;
+`barrier`, `all_gather_into_tensor`, `reduce_scatter_tensor`, `broadcast`, `reduce`; an all-reduce
+captured in a CUDA graph and replayed twice; `destroy_process_group`; every tensor compared with the host
+reference bit for bit. Result: every check passed with 2 ranks (46 checks) and with 4 ranks (79 checks; point-to-point
+runs with two ranks only, since torch then issues it on the four-rank communicator); torch reports
+`comm_split_count` 1, so `new_group` split the group's communicator through `ncclCommSplit`; every
+receipt reports both packs' hashes, `"forwarded":0` and no refusals
+(`verification/emulation/torch-pg-w2.log`, `torch-pg-w4.log`). Conclusion: torch's NCCL backend runs unmodified on
+libsircl in emulation, including object collectives, integer and averaging reductions, subgroups and,
+on two ranks, point-to-point.
+
+### Setup failures
+
+Conditions: `tests/emulation/setup_failures.py`, two processes on one GPU per case. Measurement: the
+result code and `ncclGetLastError` text of `ncclCommInitRank` on both ranks. Result: 5 of 5 cases passed: the verbs transport without a route map, a route map naming a device
+the host lacks, RoCE v2 GID resolution over a sysfs tree with two candidate entries,
+`SIRCL_ONESHOT_MAX_BYTES` differing between the ranks, and an invalid `SIRCL_THREADS` on one rank;
+both ranks returned an error within 3.7 to 4.3 s of starting (process start and CUDA initialization
+included), naming every failing rank and its reason (`verification/emulation/setup-failures.log`).
+Conclusion: a communicator that cannot form fails on every rank promptly, and the error names each
+failing rank and its reason.
+
+### All-reduce timing sweep in emulation
+
+Conditions: `tests/emulation/perf_rank.py`, two ranks, emulation transport, bf16, fp16 and fp32 from 8 B
+to 2 MiB (factor 8), 10 calls eager and in graphs of 5. Measurement: correctness of each size and the
+tool's run to completion; the times measure GPU time slicing between the two processes, not a fabric.
+Result: 21 of 21 sizes correct; the sweep ran to completion, eager and in graphs (`verification/emulation/timing-sweep-w2.log`). Conclusion: the sweep that
+`RUNBOOK.md` section 3.3 runs on the pair works end to end.
+
+### Launch cost from C
+
+Conditions: RTX 5090, WSL2; pack kernels launched on a poisoned session so each returns at once
+(`tests/emulation/launch_bench.c`); 20,000 launches in batches of 100. Result: one-shot 4.25 us mean
+(3.48 us best batch), two-shot 4.19 us (3.67 us) per `cuLaunchKernel`. Conclusion: a C launch of the
+pack costs about 4 us on the workstation; GB10 measured 2.75 us for a DSL kernel through a prebuilt
+argument block (handoff section 4), so the eager 8 KiB target of 20 us on a pair keeps its margin. Not
+measured on GB10.
+
+### CPU suites, builds and loading
+
+Conditions: WSL2, GCC 13.3, Python 3.12, no GPU or RDMA device. Results:
+
+- `make check`: ABI 5, API 14, bootstrap 21, lifecycle 13, engine 4, shared-memory verbs 4, MPI shim 3
+  tests passed; 10,057 fabric vector checks passed (`verification/library-tests.log`).
+- The CUDA-on-load test passes against the library and fails against a control library that initializes
+  CUDA in a constructor; `tools/probe_cuda_on_load.py` on the workstation finds that the library maps and
+  initializes nothing of CUDA, with and without site packages (`verification/cuda-on-load.json`).
+- CMake 4.4.4 build of `CMakeLists.txt`: 8 of 8 tests passed (`verification/cmake-tests.log`).
+- AddressSanitizer and UndefinedBehaviorSanitizer build: lifecycle 13 and API 14 tests passed, engine 3
+  of 4 and ABI 4 of 5; the other two replace the preload list, which the sanitizer runtime refuses, and
+  pass in the plain build (`verification/sanitizer-cpu.log`).
+- `make kernels-check`: both prebuilt packs equal a rebuild from the sources
+  (`verification/kernels-check.log`).
+- Host loading without a CUDA context: torch's c10d and vLLM's pynccl bind to libsircl and report
+  22705, or the value of `LIBSIRCL_NCCL_API_VERSION` (`verification/framework-loading*.json`).
+- `tools/check_nccl_tests.py` evaluates a synthetic nccl-tests output and receipt as intended.
+- The generated API matches the header; ruff E, F and W are clean on the library tree and on the SIRCL
+  copy.
+
+## Limits
+
+- Groups larger than a cabled pair run on hardware only with the routing settings `tools/site_routes.py`
+  prints (route maps, chain order, forward windows, ring plan); no such group has run on Sparks
+  (`RUNBOOK.md` section 4). The library emulation gives every pair of ranks a direct lane, so relays are
+  exercised only in SIRCL's emulation harness (mixed groups).
+- The chain and link schedules stage unaligned or overlapping buffers in a device buffer grown outside
+  CUDA graph capture; on a rank whose capture needs a larger buffer the call fails with
+  `ncclInvalidUsage` (its peers' ops of that call then wait until their wait limit), until one eager call
+  of that size has run there.
+- Point-to-point between ranks is carried on two-rank communicators only. torch with eager
+  initialization (`device_id`) and more than two ranks issues `send`, `recv` and all-to-all on the
+  group's communicator, which the library refuses.
+- The library orders eager calls across streams, not CUDA graph replays: a graph that holds a
+  communicator's collectives must not run while that communicator's other work runs.
+- The fold path sends every rank's whole message to every rank (an all-gather or all-to-all, then a
+  local fold): (W-1) times the message per rank, against about 2(W-1)/W for the two-shot all-reduce.
+  It suits the integer, control and averaging reductions frameworks issue; it is not tuned for
+  bandwidth. Point-to-point stages every exchange through scratch.
+- `ncclGather`, `ncclScatter` and `ncclBroadcast` move every rank's tiles to every rank; only the root's
+  (or the root-bound) bytes are kept.
+- Fold semantics: integers wrap; integer `ncclAvg` truncates toward zero; float8 results saturate to the
+  largest finite value; max and min keep the earlier rank's value on ties and do not order NaNs.
+- `ncclCommSplit` creates the child communicators before it returns, whatever the config's blocking
+  field says.
+- One progress thread per communicator, spinning 20,000,000 idle passes before it naps (request PO).
+- A kernel waiting for a dead peer returns only at its wait limit; `LIBSIRCL_WAIT_REGIME=serving` or
+  `sirclSetWaitRegime(comm, "serving")` shortens it to `SIRCL_SERVING_WAIT_S` (request AW).
+- Collectives inside `ncclGroupStart`/`ncclGroupEnd` launch at the call, in issue order, and
+  point-to-point calls at the group's end; a group that issues collectives of several communicators in
+  different orders on different ranks can deadlock.
+- Within one CUDA graph capture a communicator's collectives use one stream; another stream is refused.
+- A rank that leaves after setup breaks later setup rounds; shrink and grow are unsupported.
+
+## Next items
+
+1. On the pair (operator): `RUNBOOK.md` sections 3.4 and 3.5 (nccl-tests through `LD_PRELOAD`, under
+   the pair default and the harness's CPU placement), and section 3.6, libsircl's large-message times
+   against the ring harness's and NVIDIA NCCL 2.32.3's on the same pair.
+2. Relayed groups on Sparks (operator): `RUNBOOK.md` section 4 on the path of four and the cycle of eight
+   with `tools/site_routes.py` settings, under the default, chain and ring schedules.
+3. Land requests PO and AW in SIRCL, then adopt them: one progress thread per process, abort through
+   the command ring.
+4. Point-to-point between two ranks of a larger communicator (a two-rank session per pair, set up on
+   first use) and the per-call `nccl*Config` collectives.

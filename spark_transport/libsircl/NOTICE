@@ -1,0 +1,40 @@
+libsircl
+Copyright 2026 SparkRing contributors
+
+libsircl is SIRCL's NCCL-compatible C API, part of SparkRing's SIRCL ring sessions, licensed under
+the Apache License, Version 2.0 (LICENSE). It is an independent implementation of the NCCL C
+interface. It is not NVIDIA NCCL and is not sponsored or endorsed by NVIDIA Corporation.
+
+NCCL interface header
+  include/nccl.h is a modified copy of src/nccl.h.in from NVIDIA NCCL at tag v2.32.3-1
+  (https://github.com/NVIDIA/nccl), Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES,
+  licensed under the Apache License, Version 2.0. The unmodified file and NCCL's LICENSE.txt are in
+  vendor/. src/stubs.c, src/aliases.c and tests/api_manifest.json are generated from that header
+  and reproduce its function declarations.
+
+SIRCL components
+  src/transport/sircl_roce_proxy.c and src/transport/fake_verbs/infiniband/verbs.h are copies of
+  SIRCL files. The kernels in kernels/sircl_kernels.cu, kernels/sircl_common.cuh and
+  kernels/sircl_links.cu are CUDA C++ ports of SIRCL's kernels. SIRCL's one-shot and all-gather
+  kernels, device intrinsics and progress-thread protocol derive from RoCEnante, the b12x one-shot
+  RoCE collectives by Local Inference Lab and its contributors (https://github.com/local-inference-lab,
+  b12x commit 236ddff04a5f5064084b46464800b70b34ec7d8c), licensed under the Apache License,
+  Version 2.0. vendor/SIRCL-NOTICE reproduces SIRCL's NOTICE; SOURCE_SNAPSHOT.json records the
+  SIRCL files this library follows.
+
+libibverbs header code
+  The RDMA transport is compiled against <infiniband/verbs.h> from rdma-core and contains code from
+  that header's inline functions, used under the OpenIB.org BSD license. The copyright notices,
+  conditions and disclaimer are in LICENSES/rdma-core-verbs.txt.
+
+CUDA
+  The kernel packs in kernels/prebuilt/ were compiled with the NVIDIA CUDA Toolkit 13.3 (nvcc
+  V13.3.73) and contain object code generated from CUDA Toolkit headers. That object code is
+  distributed under the NVIDIA CUDA Toolkit End User License Agreement
+  (https://docs.nvidia.com/cuda/eula/) and is not licensed under the Apache License. See
+  LICENSES/CUDA-NOTICE.txt.
+
+Trademarks
+  NVIDIA, NCCL, CUDA, DGX and DGX Spark are trademarks and/or registered trademarks of NVIDIA
+  Corporation in the United States and other countries. Other names may be trademarks of their
+  respective owners.

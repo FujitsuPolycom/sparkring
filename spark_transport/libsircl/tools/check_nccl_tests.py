@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Evaluate the pair's nccl-tests exit criteria from both ranks' outputs (RUNBOOK.md sections 3.4 and 3.5).
+
+Reads, in each rank's output directory of ``tools/nccl_tests_pair.sh run``, the job manifest
+``jobs.tsv`` (one row per line run: the job, its log file, its exit status), the logs it names and every
+``receipt.rank*.json``, and prints one verdict per criterion:
+
+- every output directory has a job manifest, every rank ran the same jobs in the same order, and, with
+  ``--expect-lines FILE`` (the lines file given to the runner, or any file of "<binary> <arguments>" rows),
+  every expected job ran;
+- every job exited 0 on every rank;
+- every job completed: one rank's log (nccl-tests prints on its main rank only) has data rows, its sweep
+  reached its largest size (a row at least ``-e`` divided by ``-f``), "Out of bounds values : 0 OK" and the
+  footer "Collective test concluded";
+- every data row has ``#wrong`` 0, out of place and in place; an in-place ``N/A`` of ``alltoall_perf``
+  (nccl-tests runs no in-place all-to-all) is counted as not covered, never as passed or wrong;
+- every receipt has ``"forwarded":0``, no refusals, ``"healthy":true``, and all-reduce ops (transport,
+  fold, chain and ring) covering its all-reduce calls;
+- the eager out-of-place time of the 8192-byte rows is at or below ``--eager-limit-us`` (20);
+- with ``--graph-reference-us`` (the SIRCL ring harness's graph p50 at 8 KiB on the same pair), the
+  graph out-of-place time of the 8192-byte rows is within ``--graph-margin-us`` (1) of it.
+
+Exit status 0 when every evaluated criterion holds.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import re
+import shlex
+import sys
+from pathlib import Path
+
+ROW = re.compile(r"^\s*(\d+)\s+(\d+)\s+(\S+)\s+(\S+)\s+(-?\d+)\s+(.*)$")
+
+
+def number(text: str):
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def rows(log: Path):
+    """(size, type, op, out-of-place time, out wrong, in-place time, in wrong) of each data row."""
+    for line in log.read_text(errors="replace").splitlines():
+        match = ROW.match(line)
+        if not match:
+            continue
+        rest = match.group(6).split()
+        if len(rest) < 8:
+            continue
+        yield {"size": int(match.group(1)), "type": match.group(3), "op": match.group(4),
+               "out_us": number(rest[0]), "out_wrong": rest[3], "in_us": number(rest[4]), "in_wrong": rest[7]}
+
+
+def manifest(directory: Path):
+    """The job rows of a directory's jobs.tsv: (job, log name, status), or None without one."""
+    path = directory / "jobs.tsv"
+    if not path.exists():
+        return None
+    jobs = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            job, log, status = line.split("\t")
+            jobs.append((job, log, int(status)))
+    return jobs
+
+
+def option(job: str, name: str):
+    words = job.split()
+    return words[words.index(name) + 1] if name in words[:-1] else None
+
+
+def size_bytes(text: str) -> int:
+    scale = {"K": 1 << 10, "M": 1 << 20, "G": 1 << 30}
+    return int(float(text[:-1]) * scale[text[-1].upper()]) if text[-1].upper() in scale else int(text)
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("outputs", nargs="+", type=Path)
+    parser.add_argument("--expect-lines", type=Path, default=None)
+    parser.add_argument("--eager-limit-us", type=float, default=20.0)
+    parser.add_argument("--graph-reference-us", type=float, default=None)
+    parser.add_argument("--graph-margin-us", type=float, default=1.0)
+    args = parser.parse_args(argv)
+    verdicts, failed = [], False
+
+    def verdict(ok, text):
+        nonlocal failed
+        failed |= not ok
+        verdicts.append(f"{'PASS' if ok else 'FAIL'} {text}")
+
+    manifests = {directory: manifest(directory) for directory in args.outputs}
+    missing = [str(d) for d, m in manifests.items() if m is None]
+    present = {d: m for d, m in manifests.items() if m is not None}
+    orders = {tuple(job for job, _, _ in m) for m in present.values()}
+    verdict(not missing and len(orders) == 1 and bool(next(iter(orders), ())),
+            f"job manifests in {len(present)} of {len(manifests)} directories, the same jobs on every rank"
+            + (f"; no jobs.tsv in {missing}" if missing else "") + ("" if len(orders) <= 1 else "; the job lists differ"))
+    jobs = list(next(iter(orders), ()))
+    if args.expect_lines is not None:
+        expected = [" ".join(shlex.split(row)) for row in args.expect_lines.read_text().splitlines()
+                    if row.strip() and not row.lstrip().startswith("#")]
+        absent = [job for job in expected if job not in jobs]
+        verdict(not absent, f"{len(expected)} expected jobs ran" + (f"; not run: {absent}" if absent else ""))
+    bad_exit = [(str(d), job, status) for d, m in present.items() for job, _, status in m if status != 0]
+    verdict(not bad_exit, f"every job exited 0 on every rank ({sum(len(m) for m in present.values())} runs)"
+            + (f"; failed: {bad_exit[:10]}" if bad_exit else ""))
+    data, texts = {}, {}
+    for directory, m in present.items():
+        for job, log, _ in m:
+            path = directory / log
+            text = path.read_text(errors="replace") if path.exists() else ""
+            found = list(rows(path)) if path.exists() else []
+            if found:
+                data.setdefault(job, []).append((path, found))
+            texts.setdefault(job, []).append(text)
+    incomplete = []
+    for job in jobs:
+        logs = data.get(job, [])
+        whole = "\n".join(texts.get(job, []))
+        last, factor = option(job, "-e"), option(job, "-f")
+        reached = True
+        if logs and last and factor:
+            biggest = max(r["size"] for _, found in logs for r in found)
+            reached = biggest * float(factor) > size_bytes(last)
+        if not logs or not reached or "Out of bounds values : 0 OK" not in whole or "Collective test concluded" not in whole:
+            incomplete.append(job)
+    verdict(not incomplete, f"{len(jobs) - len(incomplete)} of {len(jobs)} jobs completed their sweep"
+            + (f"; incomplete: {incomplete[:10]}" if incomplete else ""))
+    every = [(path, r) for logs in data.values() for path, found in logs for r in found]
+    wrong, uncovered = [], 0
+    for path, r in every:
+        in_na = r["in_wrong"] == "N/A" and path.name.startswith("alltoall_perf")
+        uncovered += in_na
+        if r["out_wrong"] != "0" or (r["in_wrong"] != "0" and not in_na):
+            wrong.append((path.name, r["size"]))
+    verdict(not wrong, f"#wrong 0 on {len(every)} rows" + (f"; wrong: {wrong[:10]}" if wrong else ""))
+    if uncovered:
+        verdicts.append(f"INFO {uncovered} in-place all-to-all rows N/A: not covered (nccl-tests runs no in-place "
+                        "all-to-all)")
+    receipts = sorted(p for directory in args.outputs for p in directory.glob("receipt.rank*.json"))
+    bad = []
+    for path in receipts:
+        receipt = json.loads(path.read_text())
+        # libsircl-receipt/v1; receipts of builds named SIRCL-CCL carry sirclccl-receipt/v1.
+        if receipt.get("schema", "libsircl-receipt/v1") not in ("libsircl-receipt/v1", "sirclccl-receipt/v1"):
+            bad.append(f"{path.name}: schema {receipt.get('schema')!r}")
+            continue
+        ops = (sum(receipt["all_reduce"]["ops"].values()) + sum(receipt.get("fold", {}).get("ops", {}).values())
+               + receipt.get("chain", {}).get("ops", 0) + receipt.get("links", {}).get("ops", {}).get("ring_reduce", 0))
+        if (receipt["forwarded"] != 0 or any(receipt["refused"].values()) or not receipt["healthy"]
+                or ops < receipt["all_reduce"]["calls"]):
+            bad.append(path.name)
+    verdict(bool(receipts) and not bad, f"{len(receipts)} receipts forwarded 0, no refusals, healthy, ops cover calls"
+            + (f"; failing: {bad}" if bad else ""))
+    named = [(path, found) for logs in data.values() for path, found in logs]
+    eager = [(path.name, r["out_us"]) for path, found in named if "-G_0" in path.name
+             for r in found if r["size"] == 8192 and r["out_us"] is not None]
+    if eager:
+        worst = max(us for _, us in eager)
+        verdict(worst <= args.eager_limit_us, f"eager 8192-byte out-of-place time at most {worst:.2f} us "
+                f"(limit {args.eager_limit_us} us) over {len(eager)} rows")
+    graph = [(path.name, r["out_us"]) for path, found in named if "-G_20" in path.name
+             for r in found if r["size"] == 8192 and r["out_us"] is not None]
+    if graph:
+        worst = max(us for _, us in graph)
+        if args.graph_reference_us is None:
+            verdicts.append(f"INFO graph 8192-byte out-of-place time at most {worst:.2f} us over {len(graph)} rows; "
+                            "pass --graph-reference-us to evaluate the graph criterion")
+        else:
+            verdict(worst <= args.graph_reference_us + args.graph_margin_us,
+                    f"graph 8192-byte time at most {worst:.2f} us against {args.graph_reference_us} us "
+                    f"+ {args.graph_margin_us} us")
+    print("\n".join(verdicts))
+    return 1 if failed else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

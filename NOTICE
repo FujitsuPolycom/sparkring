@@ -6,7 +6,11 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 This product includes portions of NVIDIA NCCL
 (Copyright (c) 2015-2026 NVIDIA CORPORATION & AFFILIATES. All rights
 reserved.), licensed under the Apache License, Version 2.0, contained in the
-patch files under spark_transport/nccl/.
+patch files under spark_transport/nccl/, and NCCL's public header (nccl.h,
+v2.32.3-1) in spark_transport/libsircl/. libsircl is an independent
+implementation of NCCL's C interface, not NVIDIA NCCL. Its prebuilt kernel
+packs contain NVIDIA CUDA Toolkit object code distributed under the NVIDIA
+CUDA Toolkit End User License Agreement (see THIRD_PARTY_NOTICES.md).
 
 This product includes software derived from Local Inference Lab
 (https://local-inference-lab.ai/) projects: the RoCEnante transport, and
