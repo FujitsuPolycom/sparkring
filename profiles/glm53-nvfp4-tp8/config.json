@@ -18,7 +18,7 @@
   },
   "environment": {
     "VLLM_USE_V2_MODEL_RUNNER": "1",
-    "VLLM_PLUGINS": "b12x_loader,sparkring_status,sircl,glm_dsa_indexer_split,glm53full_speedups",
+    "VLLM_PLUGINS": "b12x_loader,sparkring_status,sircl,glm_dsa_indexer_split,glm53full_speedups,glm_dcp_decode_comm",
     "VLLM_WORKER_MULTIPROC_METHOD": "spawn",
     "HF_HUB_OFFLINE": "1",
     "TRANSFORMERS_OFFLINE": "1",
@@ -77,6 +77,11 @@
     "GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES": "1",
     "GLM53FULL_LATENT_SHARD": "1",
     "GLM53FULL_EH_PROJ_TP": "1",
+    "GLM_DCP_DECODE_QUERY_PACK": "0",
+    "GLM_DCP_DECODE_OVERLAP": "0",
+    "GLM_DCP_DECODE_WK_OVERLAP": "0",
+    "GLM_DCP_DECODE_SELECTION_REUSE": "0",
+    "GLM_DCP_DECODE_A2A_FUSED": "0",
     "SIRCL_FUSED_NORM": "1",
     "SIRCL_COLUMN_GATHER": "1"
   },

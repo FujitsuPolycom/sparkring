@@ -37,9 +37,9 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer and lists the vLLM plugins
-`glm_dsa_indexer_split` and `glm53full_speedups` in `vllm_plugins`. No lock in
-this package does. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
-adds both plugins to the SIRCL 0.3.0 and libsircl image and writes such a
+`glm_dsa_indexer_split`, `glm53full_speedups` and `glm_dcp_decode_comm` in
+`vllm_plugins`. No lock in this package does. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
+adds the three plugins to the SIRCL 0.3.0 and libsircl image and writes such a
 lock from that image's v3 lock
 ([derived layers](../../runtime/images/installer-images.md#derived-layers)).
 `sparkring install` refuses a lock without the plugins, because vLLM would
@@ -57,7 +57,7 @@ skip the plugins this profile names and serve without them.
 | Experts | B12X W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=1`), two CTAs per SM for small batches, 4-bit activations for prefill calls of 1,536 tokens or more, host barrier reset off |
 | Attention | B12X, with the compressed-KV gather for up to 589,824 tokens |
 | Speculative decoding | MTP, two tokens, B12X attention, draft TP8, probabilistic draft sampling; the draft's linears MXFP8 and its experts W4A16 (except `*kv_b_proj` and `*.indexer.*`). `--hf-overrides` keeps the BF16 MTP layer 78 out of the target's NVFP4 quantization |
-| vLLM plugins | `glm_dsa_indexer_split` (the DSA indexer's prefill rows split over the DCP groups, full launches) and `glm53full_speedups` (the latent projection split over TP8, row-parallel MTP `eh_proj`) |
+| vLLM plugins | `glm_dsa_indexer_split` (the DSA indexer's prefill rows split over the DCP groups, full launches) and `glm53full_speedups` (the latent projection split over TP8, row-parallel MTP `eh_proj`); `glm_dcp_decode_comm` loaded with its five items off (below) |
 | Parsers | `glm47` tool calls, `glm45` reasoning |
 
 `sparkring install`, the SIRCL launcher's `bundle --profile glm53-nvfp4-tp8`
@@ -69,6 +69,17 @@ default tuning table's `cycle-8` row; a tuning table that `sudo sparkring
 fabric tune` measured on the ring replaces them with the link settings it
 records.
 
+`glm_dcp_decode_comm` ([its guide](../../integrations/vllm/glm_dcp_decode_comm/README.md))
+changes how the DSA attention runs its decode-context-parallel collectives on
+the SIRCL DCP sessions, with exact results. The profile sets its five item
+flags (`GLM_DCP_DECODE_QUERY_PACK`, `GLM_DCP_DECODE_OVERLAP`,
+`GLM_DCP_DECODE_WK_OVERLAP`, `GLM_DCP_DECODE_SELECTION_REUSE` and
+`GLM_DCP_DECODE_A2A_FUSED`) to `0`; with every item off, its registration
+patches nothing. Turning the items on is research-only: the plugin pins
+SIRCL 0.3.1 and refuses at startup on any other SIRCL build, its
+qualification is a run with the five flags and `GLM_DCP_DECODE_AUDIT=1`, and
+no measurement of its effect on this profile exists.
+
 The B12X linear backend matters most: without it vLLM selects
 FlashInfer's CUTLASS MXFP8 kernel, and 1-stream decode falls from about 44 to
 26 tokens/s.
@@ -76,8 +87,9 @@ FlashInfer's CUTLASS MXFP8 kernel, and 1-stream decode falls from about 44 to
 ## Evidence and open items
 
 Conditions: image `af06e272` (the SIRCL 0.3.0 and libsircl image
-`816c6d6a7e96` with the plugin layer of
-[derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)),
+`816c6d6a7e96` with the first two plugins of the plugin layer of
+[derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py);
+`glm_dcp_decode_comm` was not loaded),
 checkpoint revision `b472e4ee`, this profile's settings with 8 sequences, one
 eight-Spark ring, SM clocks locked at 2,418 MHz, started outside
 `sparkring install`; 2026-10-09. The number of runs per cell is not
