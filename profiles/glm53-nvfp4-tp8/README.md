@@ -111,8 +111,23 @@ of 8 sequences (at 0K context 19.12 / 28.75 / 42.08 / 59.75 against 19.14 /
 136.6 tokens/s, the same as 8 streams. The CUDA graph capture sizes already
 reach 48 tokens (16 sequences of 3 tokens with two draft tokens).
 
-Conclusion: the profile holds the fastest GLM-5.3 TP8 configuration measured
-on that ring as of 2026-10-09. No installation of this profile has run; it is
+On the image `27e9f75c0d09` (`sparkring-dev/kraken:csf-sircl-libsircl-plugins-dcp-20261009`:
+SIRCL 0.3.1, libsircl snapshot `a3477af2` and all three plugins, with
+`glm_dcp_decode_comm`'s items off), this profile's settings with 16
+sequences, the same ring and clocks, started outside `sparkring install`:
+
+| Context | 1 stream | 2 streams | 4 streams | 8 streams |
+|---|---:|---:|---:|---:|
+| 0 | 51.6 | 73.9 | 106.9 | 153.7 |
+| 16K | 46.4 | 63.4 | 94.8 | 135.2 |
+
+Decode in output tokens/s. Time to first token: 11.77 s for a 16K prompt,
+23.89 s for 32K.
+
+Conclusion: the profile holds the fastest GLM-5.3 TP8 configuration with a
+1M-token context measured on that ring as of 2026-10-09;
+[glm53-nvfp4-tp8-dcp1](../glm53-nvfp4-tp8-dcp1/README.md) decodes faster with
+a 524,288-token context. No installation of this profile has run; it is
 not serving-qualified.
 
 Open items:
