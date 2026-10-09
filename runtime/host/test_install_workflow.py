@@ -239,6 +239,8 @@ def machine(tmp_path, monkeypatch, sparks):
         events.append(("previous" if path == previous else "candidate") + ":" + action)
         return {"verified": True}
     monkeypatch.setattr(flow.retained_source, "apply", operation)
+    monkeypatch.setattr(flow, "settle_memory", lambda path, **kwargs: events.append(
+        ("previous" if path == previous else "candidate") + ":settle-memory") or [])
     return events, previous, Assets, operation
 
 
@@ -257,6 +259,8 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert assets.prepared["plan"]["approval"] == "command-line" and assets.prepared["receipts"] == {0: [], 1: []}
     assert events.index("update-workers") < events.index("fill-missing-image") < events.index("previous:down")
     assert events.index("prepare:model-check") < events.index("previous:down") < events.index("candidate:up") < events.index("candidate:verify")
+    # The page cache drops and memory settles right before the start (runtime.host.memory_settle).
+    assert events.index("candidate:settle-memory") == events.index("candidate:up") - 1
     assert "Progress:" in out.err and "Model ready:" in out.err
     assert rollout.active(controller.STATE) != previous
 
@@ -386,7 +390,8 @@ def test_installing_the_active_model_again_restarts_it_when_it_does_not_serve(ma
     assert command() == 0
     out = capsys.readouterr()
     assert json.loads(out.out)["state"] == "complete"
-    assert events[events.index("serving"):] == ["serving", "candidate:down", "candidate:up", "candidate:verify"]
+    assert events[events.index("serving"):] == ["serving", "candidate:down", "candidate:settle-memory", "candidate:up",
+                                                "candidate:verify"]
     assert "The installed model does not serve on every Spark" in out.err
 
 
@@ -536,7 +541,7 @@ def test_failed_start_recovers_previous_using_the_same_public_command(machine, m
     assert command() == 2
     result = json.loads(capsys.readouterr().out)
     assert result["transaction"]["state"] == "failed-recovered"
-    assert events[-4:] == ["candidate:down", "previous:down", "previous:up", "previous:verify"]
+    assert events[-5:] == ["candidate:down", "previous:down", "previous:settle-memory", "previous:up", "previous:verify"]
     assert rollout.active(controller.STATE) == previous
 
 

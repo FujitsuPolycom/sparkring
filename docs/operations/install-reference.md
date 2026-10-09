@@ -172,14 +172,34 @@ starts:
   NVIDIA's `nvidia-cdi-refresh.service`, which DGX OS ships disabled, so the
   specification is written at every boot, and starts it when the
   specification is missing.
-- **Memory.** Immediately before start, each Spark writes back dirty pages,
-  drops its clean page cache and reclaimable kernel caches, and compacts free
-  memory. A GB10's GPU allocates from the same memory, so the model starts
-  from cleared memory whatever the Spark read before, and reads its weights
-  from disk.
+- **Memory.** A GB10's GPU allocates from the same memory as the CPU, so the
+  page cache that checkpoint reads and the previous model leave behind counts
+  against the free memory vLLM checks at startup (`--gpu-memory-utilization`
+  of the total). Before any container of the deployment starts, Node A has
+  every Spark of the deployment write back dirty pages and drop its page,
+  dentry and inode caches, then reads `MemAvailable` every 5 s until two
+  readings differ by less than 256 MiB on every Spark (at most 180 s) and
+  prints each Spark's available memory. When a Spark has less available
+  memory than vLLM asks for, the start is refused with each such Spark's
+  available memory, total and vLLM's share, and a switch recovers the
+  previous model. Then, immediately before its container starts, each Spark
+  drops its caches again and compacts free memory, so the model starts from
+  cleared memory and reads its weights from disk. Every installer profile
+  sets `--gpu-memory-utilization`; all but the DeepSeek-V4.1-Flash profiles
+  also fix the KV cache size with `--kv-cache-memory-bytes`, so the page
+  cache cannot shrink their KV pool, only stop their start.
 
 Once the model serves, the run releases what older deployments hold on the
 Sparks ([automatic release](#automatic-release)).
+
+The installer does not manage the page cache while a model serves. Another
+team's GB10 notes (not reproduced here) report that the page cache took
+CUDA-visible memory one for one (a 37 GiB cache cost 47.4 GiB of CUDA memory)
+and that they flush the cache periodically and set `vm.swappiness=10`. Both
+are host settings that SparkRing neither applies nor has measured
+(**unsupported**); a site that adopts them owns them, for example
+`sudo sysctl -w vm.swappiness=10` (DGX OS default 60) and a timer that runs
+`sync; echo 3 | sudo tee /proc/sys/vm/drop_caches`.
 
 ### Running the command again
 

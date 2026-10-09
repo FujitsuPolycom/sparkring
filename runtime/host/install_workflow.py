@@ -66,6 +66,7 @@ from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, cont
                           fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
                           recovery, retained_source, retention, rollout, settings, spread, topology)
 from runtime.host import placement as placements
+from runtime.host import memory_settle
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
@@ -925,6 +926,23 @@ def _permits(check, facts, permitted, rank, managed):
         return False
 
 
+def settle_memory(directory, *, run=None, say=print):
+    """Drop the page cache on every Spark of the deployment in ``directory`` and wait for settled memory before
+    its vLLM starts (runtime.host.memory_settle); a Spark with less available memory than vLLM asks for
+    refuses the start. vLLM's ask is rank 0's --gpu-memory-utilization of the total, read from the rendered
+    container of a Compose-rendered deployment; another backend's start drops caches without that check."""
+    lock = installer.load(directory)
+    utilization = None
+    if lock.get("backend") == "compose":
+        utilization, _ = memory_settle.requested(installer.specifications(lock, only_rank=0)[0].command)
+    if run is None:
+        from scripts.installer_runner import ssh
+
+        def run(host, argv):
+            return ssh(host, argv, timeout=300)
+    return memory_settle.settle([row["host"] for row in lock["site"]["ranks"]], utilization, run=run, say=say)
+
+
 def check_managed_namespace(lock):
     if lock["backend"] != "glm-managed":
         return
@@ -1410,6 +1428,8 @@ def execute(args):
         def apply(path, operation):
             if operation == "up" and placements.of_directory(path) is not None:
                 park_ring(cluster)
+            if operation == "up":
+                settle_memory(path)
             return retained_source.apply(path, operation, cache=cache)
 
         def prepare(path):
