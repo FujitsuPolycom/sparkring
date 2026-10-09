@@ -158,7 +158,7 @@ def preflight(image, facts, arguments, *, packs=None, manifest=None):
         if (library.get("identity") or {}).get("library") != libsircl.PLUGIN_NAME:
             problems.append("the host library does not identify itself as libsircl (sirclGetInfo)")
     if not library.get("fail_stop"):
-        problems.append(libsircl.fail_stop_missing("of the host build"))
+        problems.append(libsircl.fail_stop_missing("the host libsircl build"))
     cuda = facts.get("cuda") or {}
     if not cuda.get("driver_api"):
         problems.append(f"the image finds no CUDA driver: {cuda.get('error')}")

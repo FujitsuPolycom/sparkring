@@ -254,7 +254,7 @@ def test_two_pipeline_stages_and_expert_parallelism_on_grouped_all_gathers_pass(
 def test_a_library_without_the_fail_stop_mode_is_refused():
     value = image()
     value["libsircl"]["fail_stop"] = False
-    with pytest.raises(transport.TransportError, match="no fail-stop mode .LIBSIRCL_FAIL_STOP."):
+    with pytest.raises(transport.TransportError, match=r"the image's libsircl \(snapshot [0-9a-f]{8}\) has no fail-stop mode .LIBSIRCL_FAIL_STOP."):
         transport.choose(value, document("pair", 2), backend="libsircl")
     _, section = deployment(TP2, "pair", 2, [0, 1])
     section["libsircl"]["fail_stop"] = False

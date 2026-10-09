@@ -150,7 +150,7 @@ def test_an_image_libsircl_can_run_passes_the_preflight():
     ({"machine": "x86_64"}, [], "not arm64/aarch64"),
     ({"glibc": "2.31"}, [], "needs glibc 2.34, and the image has 2.31"),
     ({"library.load": "GLIBC_2.34 not found"}, [], "does not load in the image: GLIBC_2.34 not found"),
-    ({"library.fail_stop": False}, [], "no fail-stop mode"),
+    ({"library.fail_stop": False}, [], "the host libsircl build has no fail-stop mode"),
     ({"library.nccl_version": 23203}, [], "NCCL API level 23203"),
     ({"library.identity": {"library": "nccl"}}, [], "does not identify itself as libsircl"),
     ({"library.missing": ["ncclCommShrink"]}, [], "binds ncclCommShrink, which the host libsircl does not export"),

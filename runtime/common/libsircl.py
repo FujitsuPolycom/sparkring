@@ -212,15 +212,20 @@ def unavailable(image_value, document):
         return f"image {image_value.get('name')} carries no libsircl layer"
     block = image_lock.libsircl(image_value)
     if not block["fail_stop"]:
-        return fail_stop_missing(block["snapshot"])
+        return fail_stop_missing(image_library(block["snapshot"]))
     return fabric_unavailable(document)
 
 
-def fail_stop_missing(snapshot):
-    return (f"the image's libsircl (snapshot {snapshot[:8]}) has no fail-stop mode ({FAIL_STOP_VARIABLE}): vLLM's "
-            "PyNccl checks only that each call was queued, and a wait timeout that poisons a communicator does not "
-            "fail the step whose output it spoiled; build the layer from a snapshot whose library reads "
-            f"{FAIL_STOP_VARIABLE}")
+def image_library(snapshot):
+    """How a refusal names the libsircl of an image layer built from vendored snapshot ``snapshot``."""
+    return f"the image's libsircl (snapshot {snapshot[:8]})"
+
+
+def fail_stop_missing(library):
+    """Why a libsircl build without the fail-stop mode is refused; ``library`` names that build."""
+    return (f"{library} has no fail-stop mode ({FAIL_STOP_VARIABLE}): vLLM's PyNccl checks only that each call was "
+            "queued, and a wait timeout that poisons a communicator does not fail the step whose output it spoiled; "
+            f"use a libsircl built from a snapshot whose library reads {FAIL_STOP_VARIABLE}")
 
 
 def fabric_unavailable(document):
@@ -446,7 +451,7 @@ def refusals(profile_environment, arguments):
 def library_environment(block):
     """The libsircl settings of every container: the checked library, fail-stop, its NCCL API level, the verbs
     transport and the receipt prefix."""
-    _require(block["fail_stop"], fail_stop_missing(block["snapshot"]))
+    _require(block["fail_stop"], fail_stop_missing(image_library(block["snapshot"])))
     return {LIBRARY_VARIABLE: block["library"]["path"], DIGEST_VARIABLE: block["library"]["sha256"],
             FAIL_STOP_VARIABLE: "1", "LIBSIRCL_NCCL_API_VERSION": str(NCCL_API_VERSION),
             "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RECEIPT": RECEIPT_PREFIX}
