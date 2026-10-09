@@ -1,0 +1,2 @@
+rank 0 engine core, W-S+ start, 2026-10-09 17:51 UTC:
+ValueError: KV cache layout LBNHC cannot express this model's mixed page sizes ([16896, 83968, 147456]); a backend should declare block-outermost supported layouts (e.g. BLHNC), or set VLLM_KV_CACHE_LAYOUT=BLHNC.
