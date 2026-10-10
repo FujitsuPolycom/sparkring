@@ -10,7 +10,7 @@
   },
   "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
   "guide": "profiles/deepseek-v41-flash-tp8/README.md",
-  "evidence_scope": "The settings of the four-Spark profile deepseek-v41-flash-tp4 at tensor-parallel size 8 (DSpark5 with adaptive verification, Engram tables on disk, 16 sequences). Runs only on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring; no image lock in this package lists it, so it installs only with a development image lock (v3) whose image carries the SIRCL layer and lists the profile. No installation of this profile has run on hardware; the four-Spark profile served on SIRCL at TP4 on a four-Spark line of an eight-Spark ring through SIRCL's launcher. Not serving-qualified.",
+  "evidence_scope": "The settings of the four-Spark profile deepseek-v41-flash-tp4 at tensor-parallel size 8 (DSpark5 with adaptive verification, Engram tables on disk, 16 sequences). Runs only on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring; it installs on an image lock (v3) whose image carries the SIRCL layer and lists the profile, such as the default image's, release 2026.10.2's. No installation of this profile has run on hardware; the four-Spark profile served on SIRCL at TP4 on a four-Spark line of an eight-Spark ring through SIRCL's launcher. Not serving-qualified.",
   "overrides": [],
   "launcher": {
     "kind": "python",

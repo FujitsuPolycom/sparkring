@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+  "image_config_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "registry_manifest_digest": "sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x@sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.6",
+  "derivation": {
+    "parent_release": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+    "parent_image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f",
+    "layers": [
+      "Kraken CSF sources: the 49 Python files of SparkRing's vLLM bc9ea774 and B12X cc36aa6f merges, which read the GLM-5.3-Flash CSF checkpoint (runtime/images/derive_kraken_csf_sources.py, runtime/images/compositions/kraken-csf-sources-20261007/sources.json)",
+      "SIRCL 0.3.2 ring sessions, native ABI 9: wheel sparkring_sircl-0.3.2-py3-none-any.whl and the prebuilt roce_proxy-09db871538819191.so and p2p_proxy-c8ccfcb93ffa2d6a.so (runtime/images/sircl_layer.py), the SIRCL layer of image 1a8c10354eb0",
+      "libsircl 0.6.0 built from spark_transport/libsircl (git tree 030419b8a2b61acc1a74010308a1c3e758863e2f) with its four kernel packs, the fail-stop mode, NCCL API level 22705 and the vLLM general plugin libsircl (runtime/images/libsircl_layer.py)",
+      "GLM-5.3 vLLM general plugins glm_dsa_indexer_split 1.1.0, glm53full_speedups 1.1.0 and glm_dcp_decode_comm 2.0.1 (runtime/images/derive_glm53_plugins.py)",
+      "runtime-status 0.3.6 in place of 0.3.4, built from integrations/vllm/runtime_status tree de6358a86f8c95b5792ac028305911ab9365bd45 (runtime/images/derived_layer.py)"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

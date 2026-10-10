@@ -11,10 +11,9 @@ This page is the release record. [RELEASE_NOTES.md](RELEASE_NOTES.md) is the
 summary for users, and [status.json](status.json) states the same status for
 programs.
 
-Status: **implemented**; release maturity **candidate**. The image is built and
-its lock is recorded. It is not in a registry. Every pending gate under
-[Qualification](#qualification) must pass before publication; the
-`relay-marker` and `publication` gates complete with it
+Status: **implemented**; release maturity **candidate**. The image is in the
+registry as `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`; GitHub pre-release `2026.10.2` carries the
+package built from this tree and the relay marker
 ([publication](#publication)).
 
 Most of the evidence below ran on image `1a8c10354eb0`, built from commit
@@ -33,8 +32,8 @@ against 0.3.4. Each evidence item names its image.
 | Tag on the Sparks that hold it | `sparkring-dev/kraken:csf-sircl032-libsircl060cd-plugins-status036-20261010` |
 | Source commit of the build | `d3d3315863a63e3e5848acbc47d788251a32278d`. The SIRCL, libsircl, plugin, runtime-status and image-layer sources the image carries are byte-identical in this branch: `spark_transport/libsircl` is tree `030419b8`, the lock's `source_tree`. The default tuning table has the measured `cycle-4` row, which installations take from the installing package |
 | Lock | [installer-image-d3d33158.json](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010/installer-image-d3d33158.json), SHA-256 `ed4332d92f03086f60679f7e4e78e053a5c08c899ecd56a4c809afccbee8598d`, 13 profiles ([image record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010.md)) |
-| Registry reference | **Pending (`publication`).** `ghcr.io/fujitsupolycom/sparkring:dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` and the manifest digest that publication records |
-| Size | 31,884,969,464 bytes (29.7 GiB) unpacked. The lock's 15,310,065,070 download bytes are an upper bound; publication replaces them with the registry's compressed size. Against 2026.10.1's image the image adds 6 layers, a 38.9 MB delta archive |
+| Registry reference | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`, tagged `ghcr.io/fujitsupolycom/sparkring:dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`; manifest and configuration checked without credentials |
+| Size | 31,884,969,464 bytes (29.7 GiB) unpacked; 15,280,315,686 bytes (14.2 GiB) to download in 51 layers. A Spark that holds 2026.10.1's image downloads the 6 layers this image adds, 8,707,366 bytes (8.3 MiB) |
 | Parent and rollback image | `2026.10.1`: `dev-20261004-kraken-cuda1342-nccl2323-status034`, `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad`, on the prepared transport |
 
 ## Layers
@@ -388,9 +387,9 @@ the serving A/B runner started the model. None is serving qualification.
 | `glm53-tp8-release-image`: GLM-5.3 TP8 installed on image `1a8c10354eb0` | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `libsircl-ring8-release-image`: the libsircl gate on image `1a8c10354eb0` | passed | [record](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md) |
 | `clean-room-audit`: the clean-room acceptance audit | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
-| `relay-marker`: the relay marker binary of source `c64c74535c06`, compiled on an arm64 Spark with `gcc` and `libibverbs-dev` by `python3 scripts/build_deb.py --relay-marker require` ([release procedure](../../../docs/development/releases.md)), published as the release asset `sparkring-relay-marker-c64c74535c06-arm64` and named with its SHA-256 and URL in [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json), which names none; package builds without a compiler, `install.sh` among them, stop until it does. No arm64 compiler is available offline, and the release build compiles again and refuses a binary that differs from the recorded one | **pending** | — |
+| `relay-marker`: the relay marker binary of source `c64c74535c06`, compiled on an arm64 Spark with `gcc` and `libibverbs-dev` by `python3 scripts/build_deb.py --relay-marker require` ([release procedure](../../../docs/development/releases.md)), SHA-256 `014784297b40f32b2d717c51ad8d423243ca045548bd1877a55b18efe4c91e71`, named with the URL of release asset `sparkring-relay-marker-c64c74535c06-arm64` in [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json); package builds without a compiler, `install.sh` among them, take that binary | passed | [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json) |
 | `compose-v3`: Compose rendering and the Install Builder on this release's lock: `compose.runtime_lock` renders a v3 lock on its v2 fields, and the page's Default card is the checkpoint `sparkring install` installs on the image (`install_default`). With this release's publication records and a stand-in digest in a scratch checkout, `python scripts/generate_compose_builder.py --verify --cases 20` passed every case of 15 images | passed | [compose.py](../../common/compose.py), [compose-builder.md](../../../docs/operations/compose-builder.md#model-and-checkpoint) |
-| `publication`: registry push, anonymous manifest and configuration check, and the publication records | **pending** | — |
+| `publication`: registry push, anonymous manifest and configuration check of `sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`, and the publication records | passed | [publication.json](publication.json) |
 
 The image's lock records the default tuning table of its build
 (`tuning_defaults_sha256` `c6f82805…`), which has no `cycle-4` row.
@@ -422,14 +421,14 @@ row ([release procedure](../../../docs/development/releases.md)).
 
 ## Publication
 
-Publication pushes the image to `ghcr.io/fujitsupolycom/sparkring` under the
-release name, checks the manifest and configuration without credentials, and
-then records, in one commit:
+The image is published as `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`, tagged with the release name;
+its manifest and configuration were checked without credentials. These
+records name it:
 
-- `installer-image.json` in this directory: the lock above with the registry
+- [installer-image.json](installer-image.json): the lock above with the registry
   reference as `image_reference` and the registry's compressed size as
   `download_bytes`;
-- `publication.json` (`sparkring-shared-image-publication/v1`), whose
+- [publication.json](publication.json) (`sparkring-shared-image-publication/v1`), whose
   `derivation.parent_release` is `dev-20261004-kraken-cuda1342-nccl2323-status034`,
   so the image keeps the parent's capabilities, `--save-cpu`'s shared-memory
   reader window among them;

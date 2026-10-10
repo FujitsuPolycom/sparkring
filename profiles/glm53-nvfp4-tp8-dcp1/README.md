@@ -27,15 +27,16 @@ rows' measurements and their conditions are below.
 
 ## Install
 
-1. Use an image lock whose image carries the GLM-5.3 plugin layer and that
-   lists this profile (below). The installer refuses any other image.
+1. Use the default image, release 2026.10.2's, whose lock lists this
+   profile, or another image lock of the kind below. The installer refuses
+   any other image.
 2. Lock the GPU clocks on every Spark of the ring, which the installer does
    not do (`sudo nvidia-smi -lgc 2418,2418`; `sudo nvidia-smi -rgc` or a
    reboot reverts it). The measured results below ran with it.
 3. Install:
 
    ```bash
-   sudo sparkring install --profile glm53-nvfp4-tp8-dcp1 --image-lock LOCK
+   sudo sparkring install --profile glm53-nvfp4-tp8-dcp1
    ```
 
 Downloads, storage and the fabric are those of
@@ -47,7 +48,8 @@ Downloads, storage and the fabric are those of
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer, lists the vLLM plugins
 `glm_dsa_indexer_split` and `glm53full_speedups` in `vllm_plugins` and lists
-this profile in `profiles`. The package carries one: `installer-image-ddcd1ae6.json`
+this profile in `profiles`. The default image's lock, release 2026.10.2's, is one; the package also
+carries `installer-image-ddcd1ae6.json`
 of image `27e9f75c0d09` ([image record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md)), for Sparks that
 hold that image.
 [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)

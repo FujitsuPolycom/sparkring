@@ -97,8 +97,14 @@ def test_without_a_fabric_document_the_installation_runs_on_the_prepared_transpo
     assert refused["field"] == "transport" and "--transport sircl cannot run here" in refused["message"]
 
 
-def test_the_default_image_keeps_the_prepared_transport_and_its_deployment_identity(machine, capsys):  # noqa: F811
+def test_an_image_without_sircl_keeps_the_prepared_transport_and_its_deployment_identity(machine, capsys):  # noqa: F811
+    # The default image carries SIRCL; on a cluster without a fabric document it runs the prepared transport.
     assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json"]) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert "transport" not in deployment(result)
+    assert result["transport"]["backend"] == "prepared" and "no fabric document" in result["transport"]["reason"]
+    # 2026.10.1's image carries no SIRCL layer.
+    assert sparkring.main(["install", "--profile", PROFILE, "--image", "2026.10.1", "--yes", "--json"]) == 0
     result = json.loads(capsys.readouterr().out)
     assert "transport" not in deployment(result)
     assert result["transport"]["backend"] == "prepared" and "carries no SIRCL layer" in result["transport"]["reason"]

@@ -11,8 +11,9 @@ Status: Experimental.
 
 ## Install
 
-1. Build an image with the GLM-5.3 plugin layer and its lock (below). The
-   installer refuses any other image.
+1. Use the default image, release 2026.10.2's, whose lock lists this
+   profile, or another image lock of the kind below. The installer refuses
+   any other image.
 2. Lock the GPU clocks on every Spark of the ring. The installer does not do
    this:
 
@@ -22,10 +23,10 @@ Status: Experimental.
 
    The lock lasts until `sudo nvidia-smi -rgc` or a reboot. The measured
    results below ran with it.
-3. Install:
+3. Install, on the default image or with `--image-lock LOCK`:
 
    ```bash
-   sudo sparkring install --profile glm53-nvfp4-tp8 --image-lock LOCK
+   sudo sparkring install --profile glm53-nvfp4-tp8
    ```
 
 Each Spark holds the whole 433.0 GiB checkpoint; a blank Spark needs about
@@ -38,7 +39,8 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 The profile needs an image lock of schema `sparkring-installer-image/v3`
 whose image carries the SIRCL layer and lists the vLLM plugins
 `glm_dsa_indexer_split`, `glm53full_speedups` and `glm_dcp_decode_comm` in
-`vllm_plugins`. The package carries two such locks, of the SIRCL 0.3.1, libsircl
+`vllm_plugins`. The default image's lock, release 2026.10.2's, is one; the package also carries two such
+locks, of the SIRCL 0.3.1, libsircl
 and GLM-5.3 plugin image `27e9f75c0d09` ([image record](../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md)), for
 Sparks that hold that image. [derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)
 adds the three plugins to a SIRCL and libsircl image and writes such a

@@ -699,11 +699,14 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
     lock = installer.load(result["deployment"])
     assert result["nodes"] == 4 and "native_mesh" not in lock["site_input"]
     assert [r["host_ip"] for r in lock["site"]["ranks"]] == [f"192.0.2.{110 + rank}" for rank in range(4)]
-    # The adopted mesh records no model roots; each rank's row names the cluster's checkpoint directory.
-    checkpoint = installer.checkpoint_directory("test", installer.setup.selection(profile))
+    # The adopted mesh records no model roots; each rank's row names the cluster's checkpoint directory, of the
+    # checkpoint the default image installs (the profile's preferred one where its vLLM reads it).
+    from runtime.common import image_lock
+    preferred = image_lock.preferred_checkpoint(image_lock.default(), profile)
+    checkpoint = installer.checkpoint_directory("test", installer.setup.selection(profile, preferred))
     assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(checkpoint, False)] * 4
-    # Every installer profile runs on the shared image without an explicit lock.
-    assert lock["image_runtime"] == installer.installer_image.default_lock()
+    # Every installer profile runs on the default image, on its v2 fields, without an explicit lock.
+    assert lock["image_runtime"] == image_lock.v2_view(image_lock.default())
     assert result["image_id"] == lock["image_runtime"]["image_id"] and lock["backend"] == "compose"
 
 
@@ -776,8 +779,9 @@ def test_a_pair_installs_the_qad_checkpoint_with_its_own_kv_limit_and_refuses_nv
     refused = json.loads(capsys.readouterr().out)
     assert refused["field"] == "checkpoint_name" and "lists: csf, nvfp4-qad, nvfp4-spark" in refused["message"]
     assert len(sparks.surveys) == surveyed
-    # The default image's vLLM cannot read the CSF checkpoint, which the pair prefers where it can.
-    assert sparkring.main(["install", "--profile", profile, "--checkpoint", "csf", "--yes", "--json"]) == 3
+    # 2026.10.1's vLLM cannot read the CSF checkpoint, which the pair prefers where it can.
+    assert sparkring.main(["install", "--profile", profile, "--image", "2026.10.1", "--checkpoint", "csf", "--yes",
+                           "--json"]) == 3
     refused = json.loads(capsys.readouterr().out)
     assert refused["field"] == "checkpoint_name" and "(--checkpoint csf) needs an image whose vLLM is the pinned " \
         "build sparkring-kraken-beta-20261007-bc9ea774" in refused["message"]
@@ -1538,7 +1542,9 @@ def test_a_named_image_installs_its_lock_and_the_default_name_installs_no_lock(m
 
     named = planned("--image", "statusrows")
     assert named == planned("--image-lock", str(RELEASES / STATUSROWS / "installer-image.json"))
-    assert planned("--image", installer_image.DEFAULT_LOCK.parent.name) == planned() != named
+    from runtime.common import image_lock
+    assert planned("--image", image_lock.default_row()["name"]) == planned() != named
+    assert planned("--image", "2026.10.1") == planned("--image-lock", str(installer_image.DEFAULT_LOCK)) != planned()
     # A release tag names the image that release published, here the rollback image of the default.
     rollback = RELEASES / "dev-20261001-kraken-cuda1342-nccl2323-status034" / "installer-image.json"
     assert planned("--image", "2026.10.0") == planned("--image-lock", str(rollback)) != planned()
@@ -1578,7 +1584,8 @@ def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(m
 def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sparks, capsys):
     # Node 0 already built the compile cache of this image and checkpoint and holds the image; Node 1 holds
     # neither the image nor any image it derives from.
-    target = installer_image.default_lock()
+    from runtime.common import image_lock
+    target = image_lock.v2_view(image_lock.default())
     sparks.images = lambda host, ids: ids[:1] if host.endswith(".10") else []
     sparks.caches = lambda host, paths: {path: {"files": 640, "bytes": 380 * 10 ** 6, "complete": True}
                                          if host.endswith(".10") else None for path in paths}
@@ -1594,8 +1601,8 @@ def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sp
     # Node 0 keeps the relay's copy of the layers Node 1 lacks, unless its deployment directory is elsewhere.
     relay = first["storage"]["relay_bytes"]
     assert relay in (0, target["download_bytes"]) and first["required_bytes"] == relay
-    assert ("    needs 55.9 GiB free on /: 51.9 GiB for the whole image (no image it derives from is present), "
-            "4 GiB for the compile cache; 300 GiB free") in lines
+    assert (f"    needs {(whole + 4 * GIB) / GIB:.1f} GiB free on /: {whole / GIB:.1f} GiB for the whole image "
+            "(no image it derives from is present), 4 GiB for the compile cache; 300 GiB free") in lines
 
 
 def test_replanning_after_a_linked_file_changed(machine, sparks, capsys):

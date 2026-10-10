@@ -16,12 +16,12 @@ compressed. Only vLLM's `nvfp4_csf` quantization and loader in the sources
 above read it, so a profile can make it the default only where its image
 carries them: an installer image whose lock lists SIRCL's pinned vLLM build
 `sparkring-kraken-beta-20261007-bc9ea774` in `sircl.vllm_pins`, such as the
-image of the
+default installer image of release 2026.10.2 and the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md).
 
 | Profiles | Default checkpoint | Reason |
 |---|---|---|
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | CSF (`csf`) on an image that reads it; NVFP4-Spark (`nvfp4-spark`) on every other image, the default installer image among them | Installer images without the CSF sources, 2026.10.1 among them, also list them, so each image keeps a default it can serve; `--checkpoint nvfp4-spark` and `--checkpoint nvfp4-qad` select the others ([checkpoint names](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)) |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | CSF (`csf`) on an image that reads it; NVFP4-Spark (`nvfp4-spark`) on every other image, 2026.10.1's among them | Installer images without the CSF sources also list them, so each image keeps a default it can serve; `--checkpoint nvfp4-spark` and `--checkpoint nvfp4-qad` select the others ([checkpoint names](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)) |
 | `glm53-flash-csf-tp8` | CSF, its only checkpoint | Runs only on SIRCL ring sessions, on an image whose lock lists the pinned build |
 | `glm53-flash-spark-tp2-dcp1`, `glm53-flash-spark-tp2-dcp1-nocache`, `glm53-flash-spark-tp2-dcp1-sparkcache`, `glm53-flash-spark-tp4-dcp1`, `glm53-flash-spark-tp4-dcp1-nocache`, `glm53-flash-spark-tp4-dcp1-sparkcache`, `glm53-flash-spark-tp4-dcp4`, `glm53-flash-spark-tp4-dcp4-sparkcache` | NVFP4-Spark | Their releases, `shared-2026.09.3` and `sparkring-r33-dcp4`, are published native images with neither the `nvfp4_csf` loader nor its B12X kernels |
 | `glm53-flash-spark-tp4-switched` | NVFP4-Spark | Its release, `glm53-source`, builds its image from the [GLM source lock](../runtime/sparkring/source_image/glm53-tp4-lock.json), without the CSF sources |

@@ -7,7 +7,8 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
+| Installer image | The `sparkring install` profiles, the 13 its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| 2026.10.1 installer image | `sparkring install --image 2026.10.1`, and [Compose](compose.md) exports | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -15,7 +16,38 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20261004-kraken-cuda1342-nccl2323-status034`.
+Development image of release 2026.10.2, tag
+`dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, built in five layers on
+the [2026.10.1 installer image](#2026101-installer-image). The download is
+14.2 GiB and the unpacked image 29.7 GiB; a Spark that holds
+2026.10.1's image downloads the 6 layers it adds, 8.3 MiB.
+
+| Layer | Adds |
+|---|---|
+| Kraken CSF sources | The vLLM and B12X sources that read GLM-5.3-Flash's CSF checkpoint ([derive_kraken_csf_sources.py](../../runtime/images/derive_kraken_csf_sources.py)) |
+| SIRCL 0.3.2 | SIRCL ring sessions and their two prebuilt native libraries ([SIRCL layer](../../runtime/images/installer-images.md#sircl-layer)) |
+| libsircl 0.6.0 | SIRCL's NCCL-API library, built from `spark_transport/libsircl` with its kernel packs and fail-stop mode; it creates a communicator on the current device when no context is current ([libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)) |
+| GLM-5.3 plugins | The vLLM general plugins `glm_dsa_indexer_split` 1.1.0, `glm53full_speedups` 1.1.0 and `glm_dcp_decode_comm` 2.0.1 ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)) |
+| runtime-status 0.3.6 | The status dashboard, which names the collective transport and the SIRCL version of the tensor-parallel group ([derived_layer.py](../../runtime/images/derived_layer.py)) |
+
+- The [installer image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
+  (`sparkring-installer-image/v3`) lists its 13 profiles and pins the
+  image's identity.
+- The [release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
+  states its layers, evidence and limitations.
+
+On a fabric that `sudo sparkring setup` recorded, `sparkring install` runs
+profiles on this image with SIRCL ring sessions and NCCL off
+([transport and receipts](install-reference.md#transport-and-receipts)), and
+on the prepared transport elsewhere. Its GLM-5.3-Flash profiles install the
+CSF checkpoint by default
+([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+
+## 2026.10.1 installer image
+
+Development image of release 2026.10.1, tag
+`dev-20261004-kraken-cuda1342-nccl2323-status034`: the parent and rollback
+image of 2026.10.2 (`--image 2026.10.1`) and the image of Compose exports.
 The download is 14.2 GiB and the unpacked image 29.7 GiB. It shares 32 of its
 45 registry layers with `dev-20261001-kraken-cuda1342-nccl2323-status034`, so
 a Spark that holds that image downloads the other 13, about 3.8 GiB.

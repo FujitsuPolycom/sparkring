@@ -9,15 +9,13 @@ API on port 8015 as `DeepSeek-V4.1-Flash-TP8`, with no API key. Status:
 Experimental.
 
 The eight ranks reach each other through ConnectX relays, so only SIRCL ring
-sessions carry the model's collectives, with NCCL off. No image lock in this
-package lists the profile: install it with a development image lock
-(schema v3) whose image carries the SIRCL layer and lists
-`deepseek-v41-flash-tp8`. The
-[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
-builds such an image and lock:
+sessions carry the model's collectives, with NCCL off. It installs on an
+image whose lock (schema v3) carries the SIRCL layer and lists
+`deepseek-v41-flash-tp8`, such as the default image, release 2026.10.2's
+([release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)):
 
 ```bash
-sudo sparkring install --profile deepseek-v41-flash-tp8 --image-lock LOCK
+sudo sparkring install --profile deepseek-v41-flash-tp8
 ```
 
 Each Spark holds the whole 475.3 GiB checkpoint; a blank Spark needs about

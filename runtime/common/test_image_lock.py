@@ -127,9 +127,30 @@ def test_an_archived_image_is_never_the_default_but_stays_selectable(releases, m
     assert image_lock.lock_path(published["name"]) is not None
 
 
-def test_without_a_published_sircl_image_the_installer_default_is_unchanged():
+def without_published_sircl_images(monkeypatch):
+    """Drop the release tags that publish an image whose lock carries SIRCL, as before the first such release."""
+    locks = {row["name"]: row["lock"] for row in installer_image.catalog()}
+    tags = {tag: name for tag, name in installer_image.release_tags().items()
+            if not (image_lock.schema(locks.get(name, {})) == image_lock.SCHEMA_V3
+                    and "sircl" in locks[name]["transports"])}
+    monkeypatch.setattr(installer_image, "release_tags", lambda: tags)
+
+
+def test_without_a_published_sircl_image_the_installer_default_is_unchanged(monkeypatch):
+    without_published_sircl_images(monkeypatch)
     assert image_lock.default() == installer_image.default_lock()
     assert image_lock.for_profile("qwen38-flash-next-tp2") == installer_image.default_lock()
+
+
+def test_the_installer_default_is_the_newest_published_sircl_release():
+    row = image_lock.default_row()
+    assert row["name"] == "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036" and row["tags"] == ["2026.10.2"]
+    value = image_lock.default()
+    assert image_lock.schema(value) == image_lock.SCHEMA_V3 and "sircl" in value["transports"]
+    assert value["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
+    assert image_lock.for_profile("qwen38-flash-next-tp2") == value
+    # Compose exports keep installer_image's default, the v2 image of 2026.10.1.
+    assert installer_image.default_lock()["name"] == "dev-20261004-kraken-cuda1342-nccl2323-status034"
 
 
 def test_an_explicit_lock_that_does_not_list_the_profile_names_the_images_that_do(releases):
@@ -158,7 +179,7 @@ def with_eight_spark_profiles(**changes):
     return sircl_lock(profiles=profiles, **changes)
 
 
-def test_only_a_v3_lock_whose_image_carries_sircl_lists_eight_spark_profiles():
+def test_only_a_v3_lock_whose_image_carries_sircl_lists_eight_spark_profiles(monkeypatch):
     value = with_eight_spark_profiles()
     assert image_lock.validate(value, TP8) is value and image_lock.for_profile(TP8, value) is value
     assert image_lock.sircl_only(value) == sorted(installer_image.SIRCL_ONLY)
@@ -169,8 +190,11 @@ def test_only_a_v3_lock_whose_image_carries_sircl_lists_eight_spark_profiles():
     v2 = dict(installer_image.default_lock(), profiles=sorted({*installer_image.default_lock()["profiles"], TP8}))
     with pytest.raises(ValueError, match="run only on SIRCL ring sessions"):
         image_lock.validate(v2, "qwen38-flash-next-tp2")
+    # The published default image carries SIRCL and lists the profile; a v2 default refuses it and names that image.
+    assert image_lock.for_profile(TP8) == image_lock.default()
+    without_published_sircl_images(monkeypatch)
     with pytest.raises(ValueError, match=f"{TP8} runs only on SIRCL ring sessions, and image .* carries no SIRCL "
-                                         "layer; images that run it: none in this package"):
+                                         "layer; images that run it: dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"):
         image_lock.for_profile(TP8)
 
 
@@ -364,7 +388,9 @@ def test_a_profile_that_loads_added_plugins_runs_only_on_a_lock_that_lists_them(
         image_lock.for_profile(TP8, partial)
     with pytest.raises(ValueError, match="glm_dsa_indexer_split, glm53full_speedups .* no added vLLM plugin"):
         image_lock.for_profile(TP8, with_eight_spark_profiles())
-    # A v1 or v2 lock lists no added plugin, so the shared image is refused as well.
+    # The published default image lists both plugins; a v1 or v2 lock lists no added plugin and is refused.
+    assert image_lock.for_profile("qwen38-flash-next-tp2") == image_lock.default()
+    without_published_sircl_images(monkeypatch)
     with pytest.raises(ValueError, match="qwen38-flash-next-tp2 loads the vLLM plugins"):
         image_lock.for_profile("qwen38-flash-next-tp2")
 

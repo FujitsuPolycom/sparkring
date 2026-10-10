@@ -355,7 +355,8 @@ def test_an_arc_that_is_not_the_profiles_group_is_refused_before_any_change(ring
 
 
 def test_without_sircl_an_arc_of_a_larger_ring_is_refused(ring8, capsys):
-    assert sparkring.main(["install", "--yes", "--json", "--profile", QWEN_TP4, "--on", "4-7"]) == 3
+    # 2026.10.1's image carries no SIRCL layer.
+    assert sparkring.main(["install", "--yes", "--json", "--profile", QWEN_TP4, "--on", "4-7", "--image", "2026.10.1"]) == 3
     refused = result(capsys)
     assert refused["field"] == "placement"
     assert refused["message"].startswith("The prepared transport runs a pair, a four-Spark ring and the ring's halves; "

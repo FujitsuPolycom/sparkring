@@ -7,9 +7,6 @@ release's image by default. `main`, `install.sh` from `main` and the
 [release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
 has the full evidence and gates.
 
-> **Pending:** lines marked **Pending** are filled in, with their records,
-> before this release is published.
-
 ## What SIRCL is
 
 SIRCL is SparkRing's own collective-communication layer for DGX Sparks
@@ -35,8 +32,8 @@ it. It's SparkRing's own implementation under Apache-2.0, not NVIDIA NCCL.
 
 ## What's in it
 
-Installer image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`: 2026.10.1's
-image plus SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 plugins.
+Installer image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`
+(`ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`): 2026.10.1's image plus SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 plugins.
 
 - Collectives run on SIRCL with NCCL off on any fabric that `sparkring setup`
   recorded.
@@ -91,7 +88,7 @@ sudo sparkring install --profile PROFILE --image 2026.10.2
 sudo sparkring check --report ~/sparkring-report
 ```
 
-A Spark that holds the 2026.10.1 image downloads only the layers this image adds (**Pending:** their size).
+A Spark that holds the 2026.10.1 image downloads only the 6 layers this image adds, 8.3 MiB.
 
 To tune SIRCL to your cables, run `sudo sparkring fabric tune --execute`
 while no model serves, then install again. It takes up to half an hour per

@@ -12,9 +12,10 @@
     "build_commit": "d3d3315863a63e3e5848acbc47d788251a32278d",
     "lock": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010/installer-image-d3d33158.json",
     "lock_sha256": "ed4332d92f03086f60679f7e4e78e053a5c08c899ecd56a4c809afccbee8598d",
-    "registry_reference": null,
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
     "image_bytes": 31884969464,
-    "delta_bytes_from_rollback": 38871040
+    "delta_bytes_from_rollback": 38871040,
+    "download_bytes": 15280315686
   },
   "rollback": {
     "release": "2026.10.1",
@@ -356,9 +357,9 @@
     },
     {
       "id": "relay-marker",
-      "result": "pending",
-      "scope": "the relay marker binary of source c64c74535c06, compiled on an arm64 Spark with gcc and libibverbs-dev by python3 scripts/build_deb.py --relay-marker require, published as release asset sparkring-relay-marker-c64c74535c06-arm64 and named with its SHA-256 and URL in spark_transport/fabric/relay-marker-artifact.json, which names none; package builds without a compiler, install.sh among them, stop until it does",
-      "record": null
+      "result": "passed",
+      "scope": "the relay marker binary of source c64c74535c06, SHA-256 014784297b40f32b2d717c51ad8d423243ca045548bd1877a55b18efe4c91e71, compiled on an arm64 Spark by python3 scripts/build_deb.py --relay-marker require and named with the URL of release asset sparkring-relay-marker-c64c74535c06-arm64",
+      "record": "spark_transport/fabric/relay-marker-artifact.json"
     },
     {
       "id": "compose-v3",
@@ -368,14 +369,18 @@
     },
     {
       "id": "publication",
-      "result": "pending",
-      "scope": "registry push, anonymous manifest and configuration check, publication records and the relay marker release asset",
-      "record": null
+      "result": "passed",
+      "scope": "registry push of ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911, anonymous manifest and configuration check, and the publication records",
+      "record": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/publication.json"
     }
   ],
   "evidence_image": {
     "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
     "scope": "most evidence entries ran on this image: the same SIRCL layer, CSF sources and GLM-5.3 plugin sources as the release image; its libsircl is tree dbf36074 (the release image's 030419b8 adds the current-device fix) and its dashboard runtime-status 0.3.4 (the release image's 0.3.6)",
     "lock": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json"
+  },
+  "github_release": {
+    "tag": "2026.10.2",
+    "prerelease": true
   }
 }

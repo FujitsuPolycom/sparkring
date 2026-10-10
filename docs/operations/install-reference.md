@@ -460,7 +460,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, the default image among them | MTP, three tokens (MTP3) |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
@@ -475,11 +475,12 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   ([Another checkpoint of a profile](#another-checkpoint-of-a-profile)).
 - The GLM-5.3-Flash CSF checkpoint needs an image whose vLLM is SIRCL's
   pinned build `sparkring-kraken-beta-20261007-bc9ea774`, listed in the
-  lock's `sircl.vllm_pins`, such as the image that the
+  lock's `sircl.vllm_pins`, such as the default image of release 2026.10.2
+  and the image that the
   [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
   builds. On such an image the GLM-5.3-Flash profiles of two and four Sparks
-  install it without `--checkpoint`; on every other image, including the
-  default image, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
+  install it without `--checkpoint`; on every other image, 2026.10.1's
+  among them, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
   the CSF checkpoint, and the installer refuses it on any other image.
 - `glm53-flash-tp2` and `glm53-flash-tp4` are other names of
   `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`, whose IDs
@@ -530,8 +531,8 @@ images that run that profile.
   another checkpoint. Running the command without `--image` returns to the
   default image; naming the default image is the same as leaving `--image`
   out.
-- The profiles' measurements and checks were made on the default image. On
-  another image, each Spark checks before the model starts that the image
+- Each profile's measurements name the image they ran on. On an image other
+  than the default, each Spark checks before the model starts that the image
   has what the profile needs, and the installation stops if it does not.
 - A Spark downloads an image it does not hold; an image built on one the
   Spark holds downloads only its added layers. Compile caches are kept per
@@ -2169,8 +2170,9 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
-    names no release it derives from, so this case does not arise for it;
+    download-size differences. The default image, `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`,
+    derives from 2026.10.1's: a Spark that holds 2026.10.1's image loads at
+    most 36.7 MiB of layers and needs 4.1 GiB;
   - no image it derives from: the unpacked size plus the download size plus
     8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
     same applies on Docker's containerd image store, into which SparkRing
@@ -2221,7 +2223,7 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The serving image `dev-20261004-kraken-cuda1342-nccl2323-status034` is a
+The serving image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` is a
 14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
 image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
 figure: the need of a Spark holding neither the image nor a checkpoint file,
@@ -2522,7 +2524,7 @@ Installing again without `--checkpoint` switches back to the default.
 
 The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
 `--checkpoint`, an image whose vLLM reads the CSF checkpoint installs `csf`,
-and every other image, including the default image, installs `nvfp4-spark`.
+and every other image, 2026.10.1's among them, installs `nvfp4-spark`.
 `--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
 `--checkpoint csf` on an image that cannot read it is refused before any
 Spark changes. A checkpoint that `image_lock.CHECKPOINT_STATUS` lists, one

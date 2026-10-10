@@ -454,12 +454,16 @@ def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
         site = install_site(4 if profile.endswith("-tp4") else 2)
         for row in site["hosts"]:
             row["model"] = installer.checkpoint_directory("parity", installer.setup.selection(profile, variant))
-        lock = installer.make_lock(profile, site, "1" * 40, "2" * 64,
-                                   variant, image_runtime=installer_image.for_profile(profile))
-        root = lock["site"]["ranks"][0]["cache"]
-        for specification in installer.specifications(lock):
-            used |= {posixpath.relpath(path, root).split("/")[0] for path in storage.spec_paths(specification.document())
-                     if storage._inside(path, root) and path != root}
+        # The images of Compose exports (installer_image) and of sparkring install (image_lock), on their v2 fields.
+        from runtime.common import image_lock
+        runtimes = [installer_image.for_profile(profile), image_lock.v2_view(image_lock.for_profile(profile))]
+        for runtime in [value for number, value in enumerate(runtimes) if value not in runtimes[:number]]:
+            lock = installer.make_lock(profile, site, "1" * 40, "2" * 64, variant, image_runtime=runtime)
+            root = lock["site"]["ranks"][0]["cache"]
+            for specification in installer.specifications(lock):
+                used |= {posixpath.relpath(path, root).split("/")[0]
+                         for path in storage.spec_paths(specification.document())
+                         if storage._inside(path, root) and path != root}
     references = storage.profile_references()
     assert used == {name for name, listed in references["caches"].items() if profile in listed}
     assert all(storage.CACHE_NAME.fullmatch(name) for name in used)

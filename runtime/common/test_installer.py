@@ -365,7 +365,9 @@ def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
     assert sparkring.main(["init", "--model", "glm53", "--site", str(path)]) == 0
     assert calls[0][0][1] == installer.DEFAULTS["glm53", 2]
-    assert calls[0][1]["image_runtime"] == installer.installer_image.default_lock()
+    # The image sparkring install uses, on its v2 fields.
+    from runtime.common import image_lock
+    assert calls[0][1]["image_runtime"] == image_lock.v2_view(image_lock.default())
     assert "No hosts changed" in capsys.readouterr().out
 
 

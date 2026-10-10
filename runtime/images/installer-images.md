@@ -6,8 +6,10 @@ a builder in [builders.json](builders.json); the entry's `releases` field names
 it. The [repository layout check](../../scripts/check_repository_layout.py)
 requires a builder for every release that has an `installer-image.json` lock.
 
-The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`, is built
-in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
+Release 2026.10.1's image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
+which the default image of release 2026.10.2 is built on
+([release record](../releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)),
+is built in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
 that [external_context.py](external_context.py) prepares from SparkRing's merges
 of Local Inference Lab's Karmic Kraken beta vLLM and B12X branches and from the
 integration assets of `dev-20261001-statusrows-cuda1342-nccl2323-status034`,

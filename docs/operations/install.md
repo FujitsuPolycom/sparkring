@@ -2,9 +2,10 @@
 
 `sparkring install` sets up two to eight cabled DGX Sparks and starts a
 model on all of them, or several models on separate groups of them. Run it on
-Node A, the Spark connected to your network. On the published images a model
-runs on a pair, a four-Spark ring or half of that ring; an image with SIRCL
-ring sessions runs models on lines and rings of up to eight Sparks
+Node A, the Spark connected to your network. On an image without SIRCL ring
+sessions, such as 2026.10.1's, a model runs on a pair, a four-Spark ring or
+half of that ring; the default image, 2026.10.2's, has SIRCL ring sessions
+and runs models on lines and rings of up to eight Sparks
 ([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)).
 
 [All commands and flags](commands.md) · [Reference](install-reference.md)
@@ -65,10 +66,10 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
   third-party hybrid (research-only). GLM profiles install the CSF
-  checkpoint on an image whose vLLM reads it (implemented; installations
-  passed the installer's checks and a 256-request correctness screen) and
-  NVFP4-Spark
-  on every other image, the default image among them; add
+  checkpoint on an image whose vLLM reads it, the default image among
+  them (implemented; installations passed the installer's checks and a
+  256-request correctness screen), and NVFP4-Spark on every other image,
+  2026.10.1's among them; add
   `--checkpoint nvfp4-spark` for NVFP4-Spark on any image,
   `--checkpoint nvfp4-qad` for Local Inference Lab's QAD checkpoint, or on
   four Sparks `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On

@@ -247,7 +247,7 @@ def test_capabilities_follow_each_image_s_own_layer_and_its_parents():
     assert {name for name, capabilities in found.items() if "shm_reader_window" in capabilities} == {
         "dev-20260930-spinwait-cuda1342-nccl2323-status033", "dev-20261001-portgid-cuda1342-nccl2323-status033",
         "dev-20261001-statusrows-cuda1342-nccl2323-status034", "dev-20261001-kraken-cuda1342-nccl2323-status034",
-        "dev-20261004-kraken-cuda1342-nccl2323-status034"}
+        "dev-20261004-kraken-cuda1342-nccl2323-status034", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"}
     assert found[installer_image.default_lock()["name"]] == ("shm_reader_window",)
     for name in ("shared-2026.09.3", "unrecorded-release", "../escape", None):
         assert installer_image.capabilities(name) == ()
@@ -366,10 +366,12 @@ def test_release_lock_lists_every_installer_profile_on_one_image():
 def test_replaced_profile_ids_keep_release_locks_valid_and_name_their_replacement():
     locks = sorted((installer_image.ROOT / "runtime/releases").glob("*/installer-image.json"))
     listed = set()
+    from runtime.common import image_lock
     for path in locks:
         value = json.loads(path.read_text(encoding="utf-8"))
-        for profile in installer_image.profiles_of(value):
-            installer_image.validate(value, profile)
+        # v1 and v2 locks through installer_image, v3 locks through image_lock.
+        for profile in image_lock.profiles_of(value):
+            image_lock.validate(value, profile)
             listed.add(profile)
     assert set(profiles.REPLACED) <= listed
     assert not set(profiles.REPLACED) & set(installer_image.default_lock()["profiles"])
