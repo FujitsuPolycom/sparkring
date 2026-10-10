@@ -238,10 +238,7 @@ CHECKPOINT_BUILDS = {
 # The status of a checkpoint in CHECKPOINT_BUILDS until an installation of it passes the installer's checks;
 # the plan states it (checkpoint_notice), because a profile installs such a checkpoint without --checkpoint on
 # an image that reads it. Remove an entry when a record shows an installation of that checkpoint that passed.
-CHECKPOINT_STATUS = {
-    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
-        "research-only: no installation of it has passed the installer's checks",
-}
+CHECKPOINT_STATUS: dict[str, str] = {}
 
 
 def checkpoint_notice(value, profile, card, *, preferred):

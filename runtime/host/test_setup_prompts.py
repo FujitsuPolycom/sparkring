@@ -302,3 +302,31 @@ def test_repeated_setup_lists_the_worker_update():
     line = "  - install Node A's SparkRing revision on workers that run another one"
     assert line in single_uplink.scope_lines(args, fresh=False)
     assert line not in single_uplink.scope_lines(args, fresh=True)
+
+
+def test_adoption_refuses_unit_overrides_before_any_change(four_sparks, monkeypatch, tmp_path):
+    found, plan, calls, targets = four_sparks
+    answered = controller.discovery.ssh
+
+    def ssh(host, argv, **options):
+        if argv[3:5] == ["node", "unit-overrides"] and host == found[2]["facts"]["ssh_target"]:
+            calls.append((host, list(argv)))
+            return json.dumps({"overrides": ["/etc/systemd/system/sparkring-fabric.service"]})
+        return answered(host, argv, **options)
+    monkeypatch.setattr(controller.discovery, "ssh", ssh)
+    with pytest.raises(ValueError, match=r"sparkring-fabric.service\. Remove or rename those files .*Nothing has "
+                                         r"been changed"):
+        controller.setup([*targets, "--adopt", "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "a")])
+    assert not [argv for _, argv in calls if argv[3:5] == ["node", "adopt"]]
+
+
+def test_a_unit_file_or_drop_in_in_etc_overrides_the_package_unit_and_an_enable_link_does_not(tmp_path):
+    from runtime.host import node
+    units = tmp_path / "etc/systemd/system"
+    (units / "multi-user.target.wants").mkdir(parents=True)
+    assert node.unit_overrides(root=tmp_path) == []
+    (units / "sparkring-fabric.service").write_text("[Service]")
+    (units / "sparkring-relay-marker.service.d").mkdir()
+    (units / "sparkring-relay-marker.service.d/override.conf").write_text("[Service]")
+    assert node.unit_overrides(root=tmp_path) == ["/etc/systemd/system/sparkring-fabric.service",
+                                                  "/etc/systemd/system/sparkring-relay-marker.service.d/override.conf"]

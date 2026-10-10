@@ -1,5 +1,5 @@
 {
- "generated_at": "3a00820ddd4b57e02a0ce07f2ca10c78da2a25d4",
+ "generated_at": "d08286033b3024448eb03c7d093d1ffddf7d5c9a",
  "plans": {
   "prepared": {
    "printed": [
@@ -110,7 +110,7 @@
      "reviewed": true,
      "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
     },
-    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-i3ed2a469fe5b",
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-i37a9a8a82c5f",
     "group": {
      "api_position": 0,
      "positions": [
@@ -269,7 +269,7 @@
      "reviewed": true,
      "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
     },
-    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-i336bc27bff2d",
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-id685c01b5f80",
     "group": {
      "api_position": 0,
      "positions": [
@@ -323,7 +323,7 @@
      "tuning": {
       "row": "pair",
       "row_source": "measured",
-      "sha256": "c6f82805e1024af133637ae8900f0a397e31af955a2fa47da68de5a5b1b1ad79",
+      "sha256": "92bd95e66a4093deb1a58a9af5930fa7c46fc4caeac1e16e03ab3c9c8c304f52",
       "source": "defaults"
      }
     }

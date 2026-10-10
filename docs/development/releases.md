@@ -94,24 +94,36 @@ R37; `lil` alone names a separate launcher tool
 ([lil integration](../../integrations/lil/README.md)).
 
 The default tuning table's rows are the accepted defaults until a
-measurement replaces them: the `pair`, `path-4` and `cycle-8` rows' settings
-are measured, each row names its evidence, and other group sizes, such as
-`cycle-4`, run on SIRCL's own rules through the `path` and `cycle` rows. The
+measurement replaces them: the `pair`, `path-4`, `cycle-4` and `cycle-8` rows
+are measured, each row names its evidence, and other group sizes, such as a
+cycle of six, run on SIRCL's own rules through the `path` and `cycle` rows. The
 table names the SIRCL version and ABI of `spark_transport/sircl` and, under
 `compatible`, any other build of that ABI whose sessions keep the rows, each
 with the reason its difference changes no choice a row makes; a release whose
 SIRCL layer is neither runs none of them. A change of the package's SIRCL
 version fails `test_transport.py` until the table names that version, and
-every shipped v3 lock's SIRCL build must be one the table names. To replace one, such as the `cycle-4` row that SIRCL's
-rules serve while no measurement exists, run `sudo sparkring fabric tune --execute` on the owner's
+every shipped v3 lock's SIRCL build must be one the table names. To replace one, or to measure a size
+that SIRCL's rules serve while no measurement exists, run `sudo sparkring fabric tune --execute` on the owner's
 fabric of that shape with the release's image, copy Node A's
 `/var/lib/sparkring/controller/sircl-tuning.json` and
 `/etc/sparkring/fabric/sircl-tuning/`, and run
 `python scripts/promote_sircl_tuning.py --measured COPY --tables DIRECTORY --row cycle-4`.
-It prints the change; `--write` writes the row's SIRCL table to
-`runtime/common/sircl-tuning/` and the row, as `measured`, to the default
-table ([promote_sircl_tuning.py](../../scripts/promote_sircl_tuning.py)). Record
-the fabric, image, drivers and harness run in the release's performance record.
+A row measured on several fabrics of the same shape, such as two separate
+cycles of four Sparks, comes from SIRCL ring-harness tunes of each fabric's
+whole group with the release's image: run
+`python scripts/promote_sircl_tuning.py --row cycle-4 --ring RING_A --ring RING_B --image-lock LOCK`,
+where each ring directory holds the fabric document, the Sparks' drivers and
+the harness's tune run. The merged SIRCL table judges every candidate by its
+slower fabric's median, drops a candidate that some fabric did not measure
+exactly, and the command prints every size at which the fabrics' own tables
+choose differently. Either command prints the change; `--write` writes the row's SIRCL
+table to `runtime/common/sircl-tuning/` and the row, as `measured` with an
+`evidence` text naming the fabrics, runs, image, SIRCL build and drivers, to
+the default table ([promote_sircl_tuning.py](../../scripts/promote_sircl_tuning.py)).
+Sessions of a SIRCL build the table lists as `compatible` take the row's
+settings, and only sessions of the measured build take the SIRCL table's
+choices. Record the fabric, image, drivers and harness run in the release's
+performance record.
 The image built afterwards records the new `tuning_defaults_sha256`.
 
 A release's SparkRing package carries the relay marker compiled for arm64.

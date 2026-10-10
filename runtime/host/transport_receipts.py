@@ -29,8 +29,10 @@ checks (``sparkring_sircl.vllm.serve.checks``):
   rank also holds a decode-context-parallel receipt with a SIRCL session;
 - each tensor-parallel and decode-context-parallel session decided from the
   measured tuning table the deployment's transport section matched for its
-  kind of session (none: SIRCL's rules), and with a ``large_blocks`` tuning
-  setting its sessions report that grid cap;
+  kind of session (none: SIRCL's rules, or the built-in plan of the group's
+  shape that a session whose group is its whole fabric takes, named
+  ``builtin:<shape>``), and with a ``large_blocks`` tuning setting its
+  sessions report that grid cap;
 - every tensor-parallel session reports the link slots, link slot, chain slot
   and large-message piece that the tuning row sets or, where the row leaves
   them unset, the matched SIRCL table records
@@ -244,6 +246,52 @@ def nccl_mode_findings(receipts, mode):
     return lines, problems
 
 
+BUILTIN_PREFIX = "builtin:"
+
+
+def builtin_shape(record):
+    """The group shape of the SIRCL built-in plan that ``record``'s session decides from, or None.
+
+    A SIRCL session that matches no measured tuning table, and whose group is its whole fabric, takes the
+    built-in plan of its group shape where SIRCL has one (``sparkring_sircl.tuning.BUILTIN_PLANS``: a pair
+    and the cycle of eight). Its receipt then names that plan's hash as its table, and the session
+    statistics name the table's source ``builtin:<shape>``."""
+    stats = record.get("session_stats")
+    info = stats.get("tuning") if isinstance(stats, dict) else None
+    path = info.get("path") if isinstance(info, dict) else None
+    if not isinstance(path, str) or not path.startswith(BUILTIN_PREFIX):
+        return None
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    shape = path[len(BUILTIN_PREFIX):]
+    return shape if shape in sircl_tuning.BUILTIN_PLANS else None
+
+
+def tuning_findings(checks, receipts, expected):
+    """``(lines, problems, builtin lines)``: the SIRCL launcher's tuning-table check of ``receipts`` against
+    ``expected`` (``checks.tuning_findings``), in which a session that takes its shape's built-in plan where
+    the plan matched no measured table (``expected`` None for its kind) decides as SIRCL's rules choose.
+
+    The built-in plan's hash depends on the session's own facts (its kernels and native library), so it
+    cannot be known before the session starts; the check accepts it by its source, ``builtin:<shape>``, for
+    a shape that has a built-in plan, and names those sessions on their own line."""
+    lines, _ = checks.tuning_findings(receipts, {})
+    builtin, judged = {}, {}
+    for rank, records in receipts.items():
+        for record in records:
+            group = str(record.get("group", ""))
+            shape = builtin_shape(record)
+            if shape is not None and group.split(":")[0] in expected and expected[group.split(":")[0]] is None:
+                builtin.setdefault((shape, record.get("tuning")), []).append(f"rank {rank} group {group}")
+            else:
+                judged.setdefault(rank, []).append(record)
+    _, problems = checks.tuning_findings(judged, expected)
+    notes = [f"tuning: SIRCL's built-in plan for {shape} (table {table}) decides for " + ", ".join(sessions[:8])
+             + (f" and {len(sessions) - 8} more" if len(sessions) > 8 else "")
+             + "; no measured table matched, so the plan stands in for the rules"
+             for (shape, table), sessions in sorted(builtin.items(), key=lambda item: tuple(map(str, item[0])))]
+    return lines, problems, notes
+
+
 def evaluate(lock, reports, *, now=time.time):
     """The ``sparkring-transport-verdict/v1`` document of a SIRCL deployment's reports."""
     from spark_transport.sircl.sparkring_sircl.vllm.serve import checks
@@ -279,8 +327,8 @@ def evaluate(lock, reports, *, now=time.time):
     expected = {kind: (entry["hash"] if entry is not None else None)
                 for kind, entry in (("tp", transport.session_table(section)),
                                     *((("dcp", transport.session_table(section, "dcp")),) if dcp > 1 else ()))}
-    tuning_lines, tuning_problems = checks.tuning_findings(receipts, expected)
-    lines += tuning_lines
+    tuning_lines, tuning_problems, builtin_lines = tuning_findings(checks, receipts, expected)
+    lines += tuning_lines + builtin_lines
     problems += tuning_problems
     blocks = section["tuning"]["settings"].get("large_blocks")
     if blocks is not None:

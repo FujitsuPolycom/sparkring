@@ -7,6 +7,11 @@
       "settings": {},
       "source": "rules"
     },
+    "cycle-4": {
+      "evidence": "SIRCL ring harness tune (python -m sparkring_sircl.ring tune, 8 per-rank sizes of 4096 to 67108864 bytes, 8 rotated buffers) of the whole cycle of 4 Sparks on 2 separate rings: fabrics 097062777e17, f1cb76795938, runs 20261010-001824-tune4-a, 20261010-002309-tune4-b; image dev-20261009-kraken-csf-sircl032-libsircl-plugins (1a8c10354eb0, SIRCL 0.3.2, ABI 9), each Spark's driver and kernel by position: fabric 097062777e17: positions 0-3 GPU driver 580.173.02, kernel 6.17.0-1029-nvidia; fabric f1cb76795938: positions 0-1 GPU driver 580.178.04, kernel 7.0.0-1019-nvidia; positions 2-3 GPU driver 580.173.02, kernel 6.17.0-1029-nvidia. Each candidate's time at a size is the slower ring's median, the choice the fastest of those: 1256 measurements exact on every ring, 8 dropped as exact on fewer; the rings' own tables choose differently at 29 of 64 measured points; table df333d97acb1a4b2",
+      "settings": {},
+      "source": "measured"
+    },
     "cycle-8": {
       "evidence": "GLM-5.3 at TP8 with NCCL off on a ring of eight: 16 link slots of 512 KiB raised 8-stream decode 119.5 -> 126.5 tok/s and a 28 KiB one-shot limit with farthest-first posting gave steps/s +1-4 % (SIRCL 0.2.0, performance/enhancements.json, entry sircl-cycle8-tuning-row); the serving A/B runner's GLM-5.3 TP8 configurations on image 816c6d6a7e96 (SIRCL 0.3.0) ran with the same capacity, dispatch ceiling and link slots",
       "settings": {
@@ -66,5 +71,10 @@
     "version": "0.3.2"
   },
   "source": "defaults",
-  "tables": []
+  "tables": [
+    {
+      "path": "runtime/common/sircl-tuning/cycle-4.json",
+      "sha256": "3b8f02ba71e406d8ae2e8ae21428afafc3949c6287439f5cfbe04042a508a580"
+    }
+  ]
 }

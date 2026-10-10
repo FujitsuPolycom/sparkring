@@ -590,13 +590,20 @@ SIRCL's settings come from a tuning table that chooses only among SIRCL's own
 algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
-`path-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
+`path-4`, `cycle-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
 `measured`; `design`, settings from the SIRCL install design that no
 measurement has confirmed; or `rules`, where SIRCL's sessions derive their own
 settings. A row may also state its evidence. The shipped rows are the accepted
-defaults until `sudo sparkring fabric tune` measures a fabric: a `cycle-4`
-group, which has no row of its own, runs on SIRCL's own rules through the
-`cycle` row. The `pair` and `path-4` rows hold the ring schedules with which
+defaults until `sudo sparkring fabric tune` measures a fabric; a group size
+without a row of its own, such as a cycle of six, runs on SIRCL's own rules
+through the `path` or `cycle` row. The `cycle-4` row names a measured SIRCL
+table (`runtime/common/sircl-tuning/cycle-4.json`): per collective, per-rank
+size and mode, the algorithm, schedule, piece and launch grid that SIRCL's ring
+harness measured fastest on two separate cycles of four Sparks, each candidate
+judged by the slower cycle, with 8 link slots of 1 MiB; the row adds no setting
+of its own ([record](../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md)).
+Sessions of SIRCL 0.3.2 take the table; sessions of the compatible 0.3.1 take
+the row, whose rules then choose. The `pair` and `path-4` rows hold the ring schedules with which
 the two- and four-Spark profiles were measured on pairs and paths of four Sparks
 of a ring of eight: ring all-reduces, all-gathers and reduce-scatters above a
 64 KiB one-shot limit, with 1 MiB link pieces and slot
@@ -2518,9 +2525,10 @@ The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
 and every other image, including the default image, installs `nvfp4-spark`.
 `--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
 `--checkpoint csf` on an image that cannot read it is refused before any
-Spark changes. While `csf` is research-only, every plan that installs it
-prints a `Note:` with that status and, when the image chose it, the
-`--checkpoint nvfp4-spark` alternative (`image_lock.CHECKPOINT_STATUS`).
+Spark changes. A checkpoint that `image_lock.CHECKPOINT_STATUS` lists, one
+with no installation that passed the installer's checks, gets a `Note:` in
+every plan that installs it with that status and, when the image chose it,
+the profile's default checkpoint; `csf` is not listed.
 `sparkring images` does not list the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
 which reads it; its lock is selected with `--image-lock`:
@@ -2630,8 +2638,13 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
-- The `csf` entries of both GLM profiles are **research-only**: no
-  installation of either has run on Sparks. Their quantization, loader, W4A16
+- The `csf` entries of both GLM profiles are **research-only**: one
+  installation of each, on four and on two Sparks of a ring of eight,
+  passed the installer's 7 functional checks and its transport check on
+  the SIRCL 0.3.2 image `1a8c10354eb0`, with no correctness screen, decode
+  measurement or soak
+  ([record](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
+  Their quantization, loader, W4A16
   decode and draft MoE backend are those of `glm53-flash-csf-tp8`
   ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
   SIRCL's serve launcher served this checkpoint with the pair profile's

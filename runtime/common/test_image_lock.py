@@ -284,7 +284,7 @@ GLM_PROFILES = ("glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4")
 
 
 @pytest.mark.parametrize("profile", GLM_PROFILES)
-def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_it(profile):
+def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_it(profile, monkeypatch):
     pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
     assert image_lock.preferred_checkpoint(pinned, profile) == "csf"
     # The default image, a SIRCL image of another vLLM build and the lock's v2 view keep the default checkpoint.
@@ -296,7 +296,13 @@ def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_
         key: value for key, value in CSF.items() if key != "target_variant"}
     assert image_lock.checkpoint_problem(pinned, card) is None
     assert "(--checkpoint csf)" in image_lock.checkpoint_problem(installer_image.default_lock(), card)
-    # The plan states the checkpoint's status, and how to install the default when the image chose it.
+    # An installation of the CSF checkpoint passed the installer's checks, so its plans state no status.
+    assert image_lock.checkpoint_notice(pinned, profile, card, preferred=True) is None
+    # A checkpoint with a recorded status: the plan states it, and how to install the default when the image
+    # chose it.
+    key = f"{card['model_repository']}@{card['model_revision']}"
+    monkeypatch.setitem(image_lock.CHECKPOINT_STATUS, key, "research-only: no installation of it has passed the "
+                                                           "installer's checks")
     preferred = image_lock.checkpoint_notice(pinned, profile, card, preferred=True)
     assert preferred.startswith("Checkpoint csf (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
                                 "dec48abd33ef) is research-only: no installation of it has passed")
