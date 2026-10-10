@@ -55,6 +55,7 @@ import inspect
 import json
 import os
 from pathlib import Path, PurePosixPath
+import shlex
 import subprocess
 import sys
 import time
@@ -926,11 +927,19 @@ def _permits(check, facts, permitted, rank, managed):
         return False
 
 
+# Prints "true" while the named container runs, and nothing when it is stopped or absent.
+CONTAINER_RUNNING = "docker --context default inspect --format '{{{{.State.Running}}}}' {name} 2>/dev/null || true"
+
+
 def settle_memory(directory, *, run=None, say=print):
     """Drop the page cache on every Spark of the deployment in ``directory`` and wait for settled memory before
     its vLLM starts (runtime.host.memory_settle); a Spark with less available memory than vLLM asks for
     refuses the start. vLLM's ask is rank 0's --gpu-memory-utilization of the total, read from the rendered
-    container of a Compose-rendered deployment; another backend's start drops caches without that check."""
+    container of a Compose-rendered deployment; another backend's start drops caches without that check.
+
+    A Spark where this deployment's own rank container already runs is left out: its model holds that memory,
+    and the start keeps the running container (an installation repeated while it serves). When the model runs
+    on every Spark of the deployment, nothing is settled and nothing is refused."""
     lock = installer.load(directory)
     utilization = None
     if lock.get("backend") == "compose":
@@ -940,7 +949,13 @@ def settle_memory(directory, *, run=None, say=print):
 
         def run(host, argv):
             return ssh(host, argv, timeout=300)
-    return memory_settle.settle([row["host"] for row in lock["site"]["ranks"]], utilization, run=run, say=say)
+    hosts = [row["host"] for row in lock["site"]["ranks"]
+             if run(row["host"], ["sh", "-c", CONTAINER_RUNNING.format(
+                 name=shlex.quote(installer.container_name(lock, row["rank"])))]).strip() != "true"]
+    if not hosts:
+        say("Memory settle skipped: this deployment's model already runs on every Spark.")
+        return []
+    return memory_settle.settle(hosts, utilization, run=run, say=say)
 
 
 def check_managed_namespace(lock):
