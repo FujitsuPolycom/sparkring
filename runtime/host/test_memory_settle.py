@@ -84,8 +84,8 @@ def test_memory_that_does_not_settle_is_read_until_the_deadline():
 
 def test_the_installation_reads_vllms_share_from_rank_0s_container(monkeypatch, tmp_path):
     from runtime.common import installer
-    lock = {"backend": "compose", "site": {"ranks": [{"rank": 0, "host": "operator@192.0.2.10"},
-                                                     {"rank": 1, "host": "operator@192.0.2.11"}]}}
+    lock = {"backend": "compose", "site": {"name": "pair-a", "ranks": [{"rank": 0, "host": "operator@192.0.2.10"},
+                                                                       {"rank": 1, "host": "operator@192.0.2.11"}]}}
     monkeypatch.setattr(installer, "load", lambda directory: lock)
     monkeypatch.setattr(installer, "specifications", lambda value, only_rank=None: [
         SimpleNamespace(command=("serve", "/models/target", "--gpu-memory-utilization", "0.85"))])
@@ -100,3 +100,34 @@ def test_the_installation_reads_vllms_share_from_rank_0s_container(monkeypatch, 
     lock["backend"] = "glm-managed"
     REAL_SETTLE_MEMORY(tmp_path, run=lambda host, argv: "")
     assert seen["utilization"] is None
+
+
+def test_a_repeated_installation_leaves_out_the_sparks_where_its_model_already_runs(monkeypatch, tmp_path):
+    from runtime.common import installer
+    lock = {"backend": "compose", "site": {"name": "pair-a", "ranks": [{"rank": 0, "host": "operator@192.0.2.10"},
+                                                                       {"rank": 1, "host": "operator@192.0.2.11"}]}}
+    monkeypatch.setattr(installer, "load", lambda directory: lock)
+    monkeypatch.setattr(installer, "specifications", lambda value, only_rank=None: [
+        SimpleNamespace(command=("serve", "/models/target", "--gpu-memory-utilization", "0.85"))])
+    seen = {}
+
+    def settle(hosts, utilization, **kwargs):
+        seen["hosts"] = hosts
+        return [{"host": host} for host in hosts]
+    monkeypatch.setattr(memory_settle, "settle", settle)
+    running = {"operator@192.0.2.10"}
+    asked = []
+
+    def run(host, argv):
+        asked.append((host, argv[-1]))
+        return "true\n" if host in running else ""
+    # Rank 0's container of this deployment runs, rank 1's does not: only rank 1's Spark settles.
+    assert REAL_SETTLE_MEMORY(tmp_path, run=run, say=lambda line: None) == [{"host": "operator@192.0.2.11"}]
+    assert seen["hosts"] == ["operator@192.0.2.11"]
+    assert "inspect --format '{{.State.Running}}' sr-pair-a-r0" in asked[0][1]
+    # Running on every Spark (the same installation repeated while it serves): nothing settles or refuses.
+    running.add("operator@192.0.2.11")
+    seen.clear()
+    said = []
+    assert REAL_SETTLE_MEMORY(tmp_path, run=run, say=said.append) == []
+    assert seen == {} and said == ["Memory settle skipped: this deployment's model already runs on every Spark."]
