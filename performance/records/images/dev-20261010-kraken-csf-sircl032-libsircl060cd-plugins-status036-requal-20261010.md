@@ -1,13 +1,16 @@
-# Requalification of installer image `d52737a109e0` on two rings of four Sparks
+# Requalification of installer image `d52737a109e0` on two rings of four and a ring of eight Sparks
 
 Lane: **public-functional**. Status: **live-validated** (not accepted).
 Evidence scope: **installer image
 `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b`
-on eight NVIDIA DGX Sparks (GB10) cabled as two independent rings of four,
-2026-10-10 09:50–11:57 UTC: libsircl's image gate on each ring, installer
+on eight NVIDIA DGX Sparks (GB10), 2026-10-10: cabled as two independent
+rings of four (09:50–11:57 UTC), libsircl's image gate on each ring, installer
 smoke tests of a SIRCL and a libsircl deployment with known-answer requests and
 `sparkring check`, and two measured starts of the CSF checkpoint at
-tensor-parallel size 4 against two starts of image `1a8c10354eb0`.** The
+tensor-parallel size 4 against two starts of image `1a8c10354eb0`; cabled as
+one ring of eight (12:25–13:38 UTC), libsircl's image gate against image
+`1a8c10354eb0`'s and one measured installation of GLM-5.3 at tensor-parallel
+size 8.** The
 image is built from commit `d3d33158` of branch
 `claude/release-2026.10.2-rc2`, release 2026.10.2 with libsircl's
 current-device fix; image `1a8c10354eb0` is the image that
@@ -40,11 +43,16 @@ The layers above the base, against image `1a8c10354eb0`:
   and 1 run GPU driver 580.178.04 with kernel 7.0.0-1019, its positions 2 and
   3 and all of ring A driver 580.173.02 with kernel 6.17.0-1029. One rank per
   Spark.
+- **Ring of eight:** the same Sparks recabled as one cycle of eight (fabric
+  `2bf46dcd8537`, cluster `ring8b`), positions 0 to 7 in the order of the
+  ring8 gate's ranks, one rank per Spark.
 - **Installer on each ring's Node A:** ring A's runs sparkring
   `0.1.0~dev.1791594745+git6555b89b5042`, ring B's
   `0.1.0~dev.1791614917+git7013807b3036`. Neither is the installer of commit
   `d3d33158`; both validate a v3 lock and the libsircl transport with the same
-  code (`runtime/common/image_lock.py`, `runtime/common/libsircl.py`).
+  code (`runtime/common/image_lock.py`, `runtime/common/libsircl.py`). On
+  the ring of eight, Node A ran the installer package built from commit
+  `200d6b9c`.
 - **Every installation:** `sparkring install --plan --json` first, refused
   unless it downloads nothing and stops nothing; then `--yes`, three
   known-answer requests (`17 × 23`, the capital of France, `ring` reversed),
@@ -70,13 +78,20 @@ The layers above the base, against image `1a8c10354eb0`:
 | `gate-ring4-image-d52737a109e0-20261010T105303Z` | A, both rings at once | PASS | 24.33, 24.16, 23.21, 5.26 |
 | `gate-ring4-image-d52737a109e0-20261010T105303Z` | B, both rings at once | PASS | 24.30, 24.12, 23.18, 5.39 |
 | [`gate-ring4-image-1a8c10354eb0-20261010T005453Z`](../transport/libsircl-ring4-image-1a8c10354eb0-20261010.md) (image `1a8c10354eb0`) | A and B at once | PASS | A 24.31, 24.20, 23.29, 5.28; B 24.25, 24.12, 23.21, 5.36 |
+| `gate-ring8-image-d52737a109e0-20261010T131847Z` | the cycle of eight | PASS | 24.33, 24.14, 23.92, 1.94 |
+| [`gate-ring8-image-1a8c10354eb0-20261009T185859Z`](../transport/libsircl-ring8-image-1a8c10354eb0-20261009.md) (image `1a8c10354eb0`) | the cycle of eight | PASS | 24.32, 24.12, 23.94, 1.94 |
 
-Each pass: every rank's library and kernel packs match the lock and the layer
-receipt (4 of 4 ranks); every communicator receipt names the packs (136); the
-bit-exact check passes with point-to-point channels off and on; nccl-tests
-`off-coll`, `on-coll`, `ring-coll` and `on-p2p` report no wrong value and no
-refusal; every four-rank default communicator takes the cycle plan (48 of 48)
-and runs within 1.15 times the ring schedules from 8 MiB (24 of 24 sizes).
+Each pass on a ring of four: every rank's library and kernel packs match the
+lock and the layer receipt (4 of 4 ranks); every communicator receipt names
+the packs (136); the bit-exact check passes with point-to-point channels off
+and on; nccl-tests `off-coll`, `on-coll`, `ring-coll` and `on-p2p` report no
+wrong value and no refusal; every four-rank default communicator takes the
+cycle plan (48 of 48) and runs within 1.15 times the ring schedules from 8 MiB
+(24 of 24 sizes). On the cycle of eight the same checks pass with 8 of 8
+ranks, 272 receipts, 16 bit-exact rank runs and 96 of 96 eight-rank
+communicators on the cycle plan, `off-p2p` and `on-budget` refused as the
+planner expects (40 relayed ordered pairs without a window), and its
+all-reduce at 256 MiB takes 19,309 µs against image `1a8c10354eb0`'s 19,314 µs.
 
 ### Installer smoke tests
 
@@ -95,6 +110,22 @@ refused and no forwarded call, names kernel pack `16033e7d…` and the startup
 flag-wait regime. With the CSF checkpoint and thinking off, the known-answer
 replies hold the model's reasoning before the answer in `content`; each
 contains the expected answer.
+
+### GLM-5.3 TP8 on the ring of eight
+
+`glm53-nvfp4-tp8` on positions 0 to 7 on this image: the installation
+completed in 668 s; the known-answer requests passed 3 of 3; `sparkring check` passed, with the transport verdict
+as expected (SIRCL carries every collective). One measured start, 12:55 UTC,
+with the CSF starts' metrics and GPU clocks not locked
+([start](dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010/d52737a109e0-glm53-nvfp4-tp8-start1/tables.txt)):
+
+| Context | Aggregate decode tok/s at 1 / 2 / 4 / 8 streams | Engine steps/s at 1 / 2 / 4 / 8 streams |
+|---|---|---|
+| 0k | 49.0 / 71.5 / 102.2 / 143.0 | 19.35 / 28.70 / 41.44 / 58.18 |
+| 16k | 44.2 / 62.2 / 89.6 / 129.8 | 18.70 / 26.73 / 38.78 / 56.44 |
+| 32k | 44.8 / 65.8 / 95.5 / 139.4 | 18.06 / 26.97 / 38.96 / 56.99 |
+
+Time to first token: 10.60 s at 8k, 12.63 s at 16k, 26.01 s at 32k.
 
 ### CSF TP4 starts
 
@@ -123,11 +154,12 @@ clocks after each measurement were 2405–2411 MHz with no throttle reason.
 
 ## Conclusion
 
-- The image passes libsircl's gate on both rings, with the bandwidth of
-  image `1a8c10354eb0`'s gate within 0.1 GB/s at 256 MiB in every collective,
-  and every installation on it completes, downloads nothing, answers the
-  known-answer requests and passes `sparkring check`'s functional checks; the
-  SIRCL deployments' transport verdicts are as expected.
+- The image passes libsircl's gate on each ring of four and on the ring of
+  eight, with the bandwidth of image `1a8c10354eb0`'s gates within 0.1 GB/s at
+  256 MiB in every collective, and every installation on it completes,
+  downloads nothing, answers the known-answer requests and passes
+  `sparkring check`'s functional checks; the SIRCL deployments' transport
+  verdicts are as expected, GLM-5.3 at TP8 included.
 - Its CSF TP4 decode is 2.2% below image `1a8c10354eb0`'s in the median cell
   (mean 2.3%; 9 of 12 cells below both of its starts), where those two starts
   differ from each other by a median of 2.1% (at most 6.5%). The SIRCL layer

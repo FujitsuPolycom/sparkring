@@ -1,0 +1,11 @@
+{
+ "profile": "glm53-nvfp4-tp8",
+ "checkpoint": null,
+ "served_model_name": "GLM-5.3-NVFP4-TP8",
+ "port": 8015,
+ "context_limit": 1048576,
+ "metrics": "phase1-16k",
+ "deviations": [],
+ "measured_at": "2026-10-10T12:55:24Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}
