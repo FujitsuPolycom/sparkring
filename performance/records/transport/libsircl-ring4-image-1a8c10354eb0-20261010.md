@@ -1,11 +1,11 @@
-# libsircl 0.6.0 of the release image on two rings of four Sparks
+# libsircl 0.6.0 of image 1a8c10354eb0 on two rings of four Sparks
 
 Lane: **public-functional**. Status: **implemented**. Evidence scope:
 **live-validated collectives of the libsircl library that installer image
 `1a8c10354eb0` carries, on two four-Spark rings at once, with nccl-tests and
 libsircl's own checks; no serving measurement**. This record is gate
-`gate-ring4-image-1a8c10354eb0-20261010T005453Z` of release 2026.10.2
-([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)),
+`gate-ring4-image-1a8c10354eb0-20261010T005453Z`, evidence of release 2026.10.2
+([release record](../../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)),
 the four-Spark counterpart of the
 [gate on the cycle of eight](libsircl-ring8-image-1a8c10354eb0-20261009.md).
 
@@ -63,7 +63,7 @@ Every check passed on both rings:
   comparisons per ring (256 MiB: 16,551 µs on ring A and 16,562 µs on ring B,
   24.3 GB/s).
 
-Conclusion: the release image's libsircl is correct on both rings of four
+Conclusion: image `1a8c10354eb0`'s libsircl is correct on both rings of four
 and runs the cycle plan by default; the two rings agree within 1 % at
 256 MiB. Broadcast reaches 5.3 GB/s: libsircl has no ring broadcast
 (unsupported at bandwidth). Limitations: no NCCL comparison; one run per

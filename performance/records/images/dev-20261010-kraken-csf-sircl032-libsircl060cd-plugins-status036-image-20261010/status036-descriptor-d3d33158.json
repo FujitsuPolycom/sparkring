@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "rc2-status036",
+  "parent_lock": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-rc2-status036.json",
+  "purpose": "runtime-status 0.3.6, which names the collective transport and SIRCL version of the tensor-parallel group on the dashboard and labels the image's b12x communication bundle, replaces 0.3.4 (source commit 0520de9f7ed8cfd9e713978341d793f7d46f9294, component tree de6358a86f8c95b5792ac028305911ab9365bd45, archive time 1791579839; image build commit d3d33158)",
+  "files": {},
+  "runtime_status": {
+    "wheel": {
+      "path": "sparkring_runtime_status-0.3.6-py3-none-any.whl",
+      "sha256": "d3142703993265b55fe22e0248a3939149e974747c79944c323149e9c73a306e"
+    },
+    "source_archive": {
+      "path": "sparkring-runtime-status-0.3.6-source.tar.gz",
+      "sha256": "601909476ad5a696a6e9fa162cfbcfb779ee0ed6c3b6a2724d92649208b66a2c"
+    }
+  }
+}

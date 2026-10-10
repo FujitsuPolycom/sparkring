@@ -4,7 +4,7 @@ Pre-release for testing. Packages built from tag `2026.10.2` install this
 release's image by default. `main`, `install.sh` from `main` and the
 [Install Builder](https://fujitsupolycom.github.io/sparkring/) stay on
 2026.10.1 until this release merges. The
-[release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)
+[release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
 has the full evidence and gates.
 
 > **Pending:** lines marked **Pending** are filled in, with their records,
@@ -20,8 +20,8 @@ NCCL for vLLM's tensor-parallel and decode-context-parallel collectives.
   cabled to each other are reached through the ConnectX-7's hardware relay on
   the Sparks in between, so a ring of four or eight behaves like one fabric.
 - It picks a schedule by message size: one-shot for small messages, two-shot
-  for medium, a ring for large. It also fuses the all-reduce with the
-  following RMSNorm.
+  for medium, a ring for large. For GLM-5.3 it can also fuse the all-reduce
+  with the following RMSNorm.
 - Its settings come from a tuning table measured on real rings. You can
   measure your own with `sudo sparkring fabric tune`.
 - On eight Sparks, measured through libsircl, a 4 KiB all-reduce takes about
@@ -35,7 +35,7 @@ it. It's SparkRing's own implementation under Apache-2.0, not NVIDIA NCCL.
 
 ## What's in it
 
-Installer image `dev-20261009-kraken-csf-sircl032-libsircl-plugins`: 2026.10.1's
+Installer image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`: 2026.10.1's
 image plus SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 plugins.
 
 - Collectives run on SIRCL with NCCL off on any fabric that `sparkring setup`
@@ -57,7 +57,7 @@ Decode at 32K context, output tok/s:
 |---|---|---|---|---|---|
 | GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 24.4 s |
 | GLM-5.3-Flash | CSF | 4 | `glm53-flash-nvfp4-spark-tp4` | 64.2 / 126.6 / 218.7 | 10.5 s |
-| GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 130.4 | 15.3 s |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 123.2 | 15.3 s |
 | Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 7.0 s |
 | Qwen3.8-Flash-Next | QAD step 5500, MXFP8 attention | 2 | `qwen38-flash-next-tp2` | 51.1 / 117.1 / 179.0 | 8.4 s |
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 7.6 s |
@@ -74,12 +74,9 @@ CPU checks and the release-safety scan pass.
 
 ## Known issues
 
-- `--transport libsircl` fails vLLM's startup on a TP2 pair ("NCCL error:
-  invalid usage"). Under investigation.
-- Qwen3.8-Flash-Next TP4 measured lower than expected on a ring of four.
-  Under investigation.
+- Installed libsircl deployments report `ok: false` in `sparkring check`,
+  because the installer doesn't judge libsircl receipts yet.
 - libsircl's broadcast is slow.
-- This image's status page doesn't show SIRCL yet; `sparkring status` does.
 
 ## Try it
 

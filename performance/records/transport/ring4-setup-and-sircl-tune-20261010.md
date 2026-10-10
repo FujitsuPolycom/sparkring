@@ -10,7 +10,7 @@ within each ring.
 This record holds the verdicts of the setup runs, whose outputs are not in
 the repository, and of the tunes, whose runs and merge the
 [SIRCL tune record](sircl-cycle4-tune-two-rings-20261009.md) holds. It belongs to release 2026.10.2
-([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
+([release record](../../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
 
 ## Setup
 

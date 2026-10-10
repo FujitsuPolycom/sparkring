@@ -80,7 +80,7 @@ guides in the [profile catalog](profiles/README.md).
 ## Results on SIRCL ring sessions
 
 Release 2026.10.2's image runs the collectives on SIRCL ring sessions with
-NCCL off ([release record](runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
+NCCL off ([release record](runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
 These results are Experimental: one eight-Spark ring, GPU clocks locked, the
 [serving A/B runner](performance/harnesses/serving_ab/README.md) instead of
 `sparkring install`, temperature 0, no prompt context, median of two starts.
@@ -98,7 +98,12 @@ Two Sparks were a cabled pair and four Sparks four consecutive Sparks of the
 ring of eight, whose ends reach each other through relays. Both images
 precede the 2026.10.2 image, whose SIRCL is 0.3.2.
 
-`sparkring install` with the 2026.10.2 image installed `glm53-nvfp4-tp8` on
+The installations below ran on image `1a8c10354eb0`, which has the 2026.10.2
+image's SIRCL layer, CSF sources and GLM-5.3 plugin sources; the 2026.10.2
+image adds libsircl's current-device fix and runtime-status 0.3.6
+([release record](runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
+
+`sparkring install` with that image installed `glm53-nvfp4-tp8` on
 the whole ring, both GLM-5.3-Flash profiles on CSF and `qwen38-flash-next-tp2`,
 once each with GPU clocks not locked; each passed `sparkring check`'s
 functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
@@ -112,10 +117,11 @@ functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
 - On a four-Spark ring, `sparkring install` deployments of the four-Spark
   GLM-5.3-Flash CSF and DeepSeek profiles decoded within a few percent of the
   table's four-Spark rows (median -0.8 % and +0.9 %; GPU clocks locked, one
-  start each). The Qwen profile's 8.9 % gap to the table's row is under
-  investigation; its cause is not separated, because that row used checkpoint
-  `qad-step5500-mxfp8-attention` and the install the default
-  `qad-step5500-ple1000` ([record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
+  start each). The Qwen profile's 8.9 % gap to the table's row is the
+  checkpoint: that row used `qad-step5500-mxfp8-attention`, which on the same
+  ring decodes 6-8 % faster than the profile's default `qad-step5500-ple1000`
+  ([record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md),
+  [checkpoint control](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-starts-qwen-control-20261010.md)).
 
 ## Documentation
 

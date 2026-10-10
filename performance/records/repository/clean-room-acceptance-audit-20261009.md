@@ -21,10 +21,11 @@ only the audited trees, the verdicts and their scope.
 definition is in the audit's report. The verdicts of the three GLM-5.3
 plugins state no count of lines to rewrite.
 
-## Scope against release 2026.10.2's image
+## Scope against the images of release 2026.10.2's evidence
 
-Image `1a8c10354eb0` was built from commit `c7c35fe0`
-([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)):
+Image `1a8c10354eb0` was built from commit `c7c35fe0`; release 2026.10.2's
+image, `d52737a109e0`, from commit `d3d33158`
+([release record](../../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)):
 
 - `spark_transport/sircl`, `glm_dsa_indexer_split` and `glm53full_speedups`
   have the audited trees at `c7c35fe0`.
@@ -32,9 +33,15 @@ Image `1a8c10354eb0` was built from commit `c7c35fe0`
   It differs from the audited tree only in its version: the version strings
   of its README, `__init__.py` and dist-info `METADATA`, and the dist-info
   directory's name.
-- The image's libsircl is the audited tree
+- Image `1a8c10354eb0`'s libsircl is the audited tree
   `dbf3607484dd47df4cf6c8238eb5b3272466effb`, and its vLLM plugin `libsircl`
   is the audited `integrations/vllm/libsircl` of `c7c35fe0`.
+- Image `d52737a109e0` has the same SIRCL, plugin and `integrations/vllm/libsircl`
+  trees. Its libsircl, tree `030419b8a2b61acc1a74010308a1c3e758863e2f`, is
+  the audited tree with the current-device change (commits `c4f3a1af` and
+  `05458d35`: `src/api.c`, `src/cuda_api.c`, `src/engine.c`, their headers,
+  tests, emulation suite, README and STATUS; 12 files), which this audit did
+  not cover.
 
 ## Limitations
 

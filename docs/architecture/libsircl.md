@@ -20,7 +20,7 @@ installer prints that status in every plan that selects it.
 |---|---|---|
 | Source of record | [`spark_transport/libsircl/`](../../spark_transport/libsircl/README.md) | implemented |
 | vLLM general plugin `libsircl` | [`integrations/vllm/libsircl/`](../../integrations/vllm/libsircl/README.md) | research-only |
-| Image layer `installer-libsircl-layer` | [`runtime/images/libsircl_layer.py`](../../runtime/images/libsircl_layer.py) | research-only; image `1a8c10354eb0`, release 2026.10.2's, carries libsircl 0.6.0 that it built from source tree `dbf36074` ([release record](../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md), [gate on eight Sparks](../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md)) |
+| Image layer `installer-libsircl-layer` | [`runtime/images/libsircl_layer.py`](../../runtime/images/libsircl_layer.py) | research-only; image `d52737a109e0`, release 2026.10.2's, carries libsircl 0.6.0 that it built from source tree `030419b8` ([release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)); image `1a8c10354eb0` carries the same library from tree `dbf36074`, without the current-device change ([gate on eight Sparks](../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md)) |
 | Installer transport `libsircl` | [`runtime/common/libsircl.py`](../../runtime/common/libsircl.py) | research-only |
 | Stock-image option | [`runtime/common/stock_image.py`](../../runtime/common/stock_image.py), [`runtime/host/stock_install.py`](../../runtime/host/stock_install.py) | research-only; plans and checks only |
 
@@ -55,8 +55,8 @@ tree `dbf36074`): on the cycle of eight
 ([gate](../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md))
 and on two rings of four
 ([gate](../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
-STATUS.md is part of that source tree, so it keeps the tree's bytes and
-does not list these runs. The installer's libsircl transport
+STATUS.md is part of the source tree that an image records, so it changes
+only with the library's source and does not list these runs. The installer's libsircl transport
 (`runtime/common/libsircl.py`) carries six routing variables per rank and
 refuses a planner row with others. For a group of four consecutive Sparks (a
 path of four, or four positions of the ring of eight) this snapshot's planner

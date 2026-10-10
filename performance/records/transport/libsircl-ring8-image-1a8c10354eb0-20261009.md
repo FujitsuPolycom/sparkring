@@ -1,11 +1,12 @@
-# libsircl 0.6.0 of the release image on the cycle of eight Sparks
+# libsircl 0.6.0 of image 1a8c10354eb0 on the cycle of eight Sparks
 
 Lane: **public-functional**. Status: **implemented**. Evidence scope:
 **live-validated collectives of the libsircl library that installer image
 `1a8c10354eb0` carries, with nccl-tests and libsircl's own checks; no serving
 measurement**. This record is gate
-`gate-ring8-image-1a8c10354eb0-20261009T185859Z` of release 2026.10.2
-([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
+`gate-ring8-image-1a8c10354eb0-20261009T185859Z`, evidence of release 2026.10.2
+([release record](../../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)). Release 2026.10.2's image, `d52737a109e0`, carries this library with one
+change, the current-device fix of source tree `030419b8`.
 
 ## Conditions
 
@@ -65,7 +66,7 @@ Every check passed:
   timing sweep (24 size comparisons; 256 MiB: 19,288 against 19,290 µs eager;
   4 KiB: 18.2 µs).
 
-Conclusion: the release image's libsircl is correct on the cycle of eight
+Conclusion: image `1a8c10354eb0`'s libsircl is correct on the cycle of eight
 and runs the cycle plan by default; its 256 MiB all-reduce reaches 24.3 GB/s
 bus bandwidth against NVIDIA NCCL 2.32.3's 23.6 GB/s in the `a3477af2` gate.
 Broadcast stays at 1.9 GB/s against NCCL's 24.2 GB/s: libsircl has no ring
