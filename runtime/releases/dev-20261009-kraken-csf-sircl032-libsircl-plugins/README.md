@@ -355,7 +355,9 @@ then records, in one commit:
   [installer-releases.json](../installer-releases.json).
 
 Listing the release in installer-releases.json makes it the image of every
-`sparkring install` without `--image`, with SIRCL as its transport where the
-fabric carries it. The rollback is `--image 2026.10.1`, the prepared
-transport on the parent image; its deployments keep their site
-configuration.
+`sparkring install` without `--image` from a package built from this tree,
+with SIRCL as its transport where the fabric carries it. GitHub release
+`2026.10.2` is a pre-release on tag `2026.10.2`; `main`, packages built from
+it and the Install Builder keep 2026.10.1 until this tree merges into
+`main`. The rollback is `--image 2026.10.1`, the prepared transport on the
+parent image; its deployments keep their site configuration.

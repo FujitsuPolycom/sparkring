@@ -8,6 +8,11 @@ release 2026.10.1's image. The
 [release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)
 has its identity, layers, evidence and gates.
 
+2026.10.2 is a GitHub pre-release for testing. Packages built from tag
+`2026.10.2` install this image by default. `main`, `install.sh` from `main`
+and the [Install Builder](https://fujitsupolycom.github.io/sparkring/) keep
+2026.10.1 until this release reaches `main`.
+
 > **Pending:** lines marked **Pending** are filled in, with their records,
 > before this release is published.
 
@@ -195,30 +200,43 @@ context. The items below it state their own conditions.
   SIRCL's sessions or the collective transport. `sudo sparkring status` and
   `sudo sparkring check` do.
 
-## Upgrade from 2026.10.1
+## Test this pre-release
 
-1. Install the 2026.10.2 package on Node A:
+Run these on Node A, the Spark connected to your network. Each `--plan`
+changes nothing; every other step asks before it changes a Spark.
+
+1. Build and install the 2026.10.2 package from its tag. The script and
+   `--ref` must name the same tag; this step changes only Node A's package:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/2026.10.2/install.sh | bash -s -- --ref 2026.10.2 --package-only
    ```
 
-2. Record the fabric if this cluster has no fabric document. When
-   `sudo sparkring fabric show` says so, run `sudo sparkring setup --plan`,
-   read it, then `sudo sparkring setup`.
-3. Preview the installation and look for this release's image and
-   `Transport: sircl`:
+2. Record the fabric if this cluster has none. When
+   `sudo sparkring fabric show` prints `This cluster has no fabric document`,
+   review and run setup:
 
    ```bash
-   sudo sparkring install --profile PROFILE --plan
+   sudo sparkring setup --plan
+   sudo sparkring setup
    ```
 
-4. Install. A Spark that holds the 2026.10.1 image downloads only the
-   layers this image adds (**Pending:** their size). GLM-5.3-Flash profiles
-   also download the CSF checkpoint unless you add `--checkpoint nvfp4-spark`.
+3. Preview the installation of a profile from the
+   [profile table](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/README.md#profiles).
+   Expect image `dev-20261009-kraken-csf-sircl032-libsircl-plugins` and
+   `Transport: sircl on every collective, NCCL off`:
 
    ```bash
-   sudo sparkring install --profile PROFILE
+   sudo sparkring install --profile PROFILE --image 2026.10.2 --plan
+   ```
+
+4. Install and check. A Spark that holds the 2026.10.1 image downloads only
+   the layers this image adds (**Pending:** their size). GLM-5.3-Flash
+   profiles also download the CSF checkpoint unless you add
+   `--checkpoint nvfp4-spark`.
+
+   ```bash
+   sudo sparkring install --profile PROFILE --image 2026.10.2
    sudo sparkring check --report ~/sparkring-report
    ```
 
@@ -229,7 +247,29 @@ context. The items below it state their own conditions.
    sudo sparkring fabric tune --execute
    ```
 
-To go back, `sudo sparkring install --profile PROFILE --image 2026.10.1`
-runs the profile on 2026.10.1's image and transport, and
-`--transport prepared` keeps this image on the prepared transport
-([another image](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#another-image)).
+6. Report the result, passed or failed: zip the directory that
+   `sparkring check --report` names, review it, and attach it to a GitHub
+   issue titled `[test] 2026.10.2 PROFILE` or to the 2026.10.2 pull request.
+   The report replaces addresses, host names, MAC addresses and account
+   names.
+
+## Go back to 2026.10.1
+
+- Keep the 2026.10.2 package and run a profile on 2026.10.1's image and its
+  prepared transport
+  ([another image](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#another-image)):
+
+  ```bash
+  sudo sparkring install --profile PROFILE --image 2026.10.1
+  ```
+
+- Or keep this image on the prepared transport with
+  `--transport prepared`.
+- Or reinstall the package of `main`, whose default image is 2026.10.1's.
+  `install.sh` asks before it replaces the package with that earlier
+  version. Reinstalling it on a cluster that the 2026.10.2 package's setup
+  re-formed has not been tested:
+
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --package-only
+  ```
