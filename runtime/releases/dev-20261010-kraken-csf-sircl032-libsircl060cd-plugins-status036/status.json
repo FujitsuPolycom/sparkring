@@ -250,6 +250,17 @@
       "scope": "one sparkring install of glm53-flash-nvfp4-spark-tp4 on csf under 66 rounds of the acceptance screen's requests, 20 minutes; a short soak, not qualification",
       "result": "2,112 requests, 0 errors, 0 degenerate, 0 wrong; memory flat; engine steps/s within 3.4 % of the median",
       "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-soak-20261010.md"
+    },
+    {
+      "id": "release-image-requal",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), ConnectX-7 RoCE, as two rings of four and as one ring of eight",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "libsircl's image gate on each layout; installations of qwen38-flash-next-tp2 --transport libsircl, glm53-flash-nvfp4-spark-tp4 (CSF) and glm53-nvfp4-tp8, one run each, GPU clocks not locked; two CSF TP4 starts against two of image 1a8c10354eb0",
+      "result": "every gate and installation passed; GLM-5.3 TP8 44.8 / 65.8 / 95.5 / 139.4 output tok/s at 1 / 2 / 4 / 8 streams and 32K; CSF TP4 decode -2.2 % median against image 1a8c10354eb0",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md"
     }
   ],
   "gates": [
@@ -261,9 +272,9 @@
     },
     {
       "id": "release-image-requal",
-      "result": "pending",
-      "scope": "image d52737a109e0 requalified on Sparks: its libsircl gate and installations",
-      "record": null
+      "result": "passed",
+      "scope": "image d52737a109e0 on two rings of four and a ring of eight: libsircl's image gate passed on each, within 0.1 GB/s of image 1a8c10354eb0's at 256 MiB; libsircl pairs, CSF TP4 and GLM-5.3 TP8 installed, answered the known-answer requests and passed sparkring check's functional checks; CSF TP4 decode 2.2 % below image 1a8c10354eb0's in the median cell, within start-to-start spread",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md"
     },
     {
       "id": "clean-room-audit-030419b8",

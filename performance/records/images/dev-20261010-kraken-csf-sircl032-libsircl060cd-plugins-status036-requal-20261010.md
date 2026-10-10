@@ -13,9 +13,9 @@ one ring of eight (12:25–13:38 UTC), libsircl's image gate against image
 size 8.** The
 image is built from commit `d3d33158` of branch
 `claude/release-2026.10.2-rc2`, release 2026.10.2 with libsircl's
-current-device fix; image `1a8c10354eb0` is the image that
-[release 2026.10.2's record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)
-names.
+current-device fix; image `1a8c10354eb0` is the image most of
+[release 2026.10.2's record](../../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)'s
+evidence ran on.
 
 ## Image
 

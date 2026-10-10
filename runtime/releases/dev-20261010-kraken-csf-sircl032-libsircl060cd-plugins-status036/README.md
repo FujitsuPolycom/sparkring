@@ -218,7 +218,8 @@ the serving A/B runner started the model. None is serving qualification.
   deployment on a cabled pair: vLLM loaded, captured its CUDA graphs and
   answered two known-answer requests
   ([libsircl status](../../../spark_transport/libsircl/STATUS.md)). The
-  release image's own requalification is the `release-image-requal` gate.
+  release image's own requalification, with its libsircl, passed:
+  [Release image requalification](#release-image-requalification).
 
 ### Two rings of four Sparks: setup, SIRCL tune and libsircl
 
@@ -324,6 +325,31 @@ the serving A/B runner started the model. None is serving qualification.
   [soak](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-soak-20261010.md),
   [ring-B checks](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-ring-b-checks-20261010.md).
 
+### Release image requalification
+
+- Lane **public-functional**. Status **implemented**. Maturity
+  **live-validated**, not accepted.
+- Hardware: the eight Sparks as two rings of four, then as one ring of
+  eight; one rank per Spark.
+- libsircl's image gate passed on each ring of four and on the ring of
+  eight, within 0.1 GB/s of image `1a8c10354eb0`'s gates at 256 MiB in every
+  collective (all-reduce of 256 MiB on the ring of eight: 19,309 µs against
+  19,314 µs).
+- Installations, one run each, GPU clocks not locked: `qwen38-flash-next-tp2
+  --transport libsircl` on a pair of each ring of four, the CSF checkpoint
+  of `glm53-flash-nvfp4-spark-tp4` on both rings, and `glm53-nvfp4-tp8` on the
+  ring of eight. Every one completed without a download, answered three
+  known-answer requests and passed `sparkring check`'s functional checks;
+  the SIRCL deployments' transport verdicts were as expected, and the
+  libsircl deployments' verdict is `unknown`, so `ok` is false.
+  `glm53-nvfp4-tp8` decoded 44.8 / 65.8 / 95.5 / 139.4 output tok/s at 1 / 2
+  / 4 / 8 streams and 32K context.
+- Two CSF TP4 starts decoded 2.2 % below image `1a8c10354eb0`'s two in the
+  median cell, where those two starts differ from each other by a median of
+  2.1 %; two starts per image do not separate the difference from
+  start-to-start variation.
+- Record: [requalification](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md).
+
 ### Clean-room acceptance audit
 
 - Verdicts: SIRCL 0.3.2 (`spark_transport/sircl` at `1273183e`, the image's
@@ -343,7 +369,7 @@ the serving A/B runner started the model. None is serving qualification.
 | Gate | Result | Record |
 |---|---|---|
 | Image `d52737a109e0` built from `d3d33158` and its lock validated for its 13 profiles | passed | [image record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010.md) |
-| `release-image-requal`: image `d52737a109e0` requalified on Sparks: its libsircl gate and installations | **pending** | — |
+| `release-image-requal`: image `d52737a109e0` requalified on Sparks: its libsircl gate on two rings of four and the ring of eight, and its installations | passed | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md) |
 | `clean-room-audit-030419b8`: the clean-room acceptance audit of libsircl tree `030419b8`, the release image's | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
 | SIRCL one-shot all-reduce and all-gather on the eight-Spark ring | passed (status qualified) | [SIRCL status](../../../spark_transport/sircl/STATUS.md#component-status) |
 | Serving A/B measurements of two, four and eight Sparks recorded | passed (status research-only) | [Evidence](#evidence) |
