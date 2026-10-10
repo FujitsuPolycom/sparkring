@@ -289,7 +289,7 @@ the serving A/B runner started the model. None is serving qualification.
   `qad-step5500-ple1000` +2.1 % and +3.3 % in the median, with the first
   token of a 32K prompt within 2 %; GLM-5.3-Flash on its default `csf`
   checkpoint decodes +7.8 % and +8.8 % against 2026.10.1's NVFP4-Spark
-  ([2026.10.2 against 2026.10.1](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-vs-2026.10.1-tp4-20261010.md)).
+  ([image 1a8c1035 against 2026.10.1](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-vs-2026.10.1-tp4-20261010.md)).
 - The measured `cycle-4` table against SIRCL's own rules, GLM-5.3-Flash CSF
   TP4 on ring A, one start per arm: the first token of an 8K-32K prompt comes
   7.6-9.3 % sooner; decode engine steps per second move -0.5 % in the median
@@ -308,7 +308,7 @@ the serving A/B runner started the model. None is serving qualification.
   [CSF correctness screens](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md),
   [TP4 on a ring of four](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md),
   [second starts and Qwen control](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-starts-qwen-control-20261010.md),
-  [2026.10.2 against 2026.10.1](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-vs-2026.10.1-tp4-20261010.md),
+  [image 1a8c1035 against 2026.10.1](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-vs-2026.10.1-tp4-20261010.md),
   [table against rules](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-tuning-row-vs-rules-20261010.md),
   [soak](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-soak-20261010.md),
   [ring-B checks](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-ring-b-checks-20261010.md).
