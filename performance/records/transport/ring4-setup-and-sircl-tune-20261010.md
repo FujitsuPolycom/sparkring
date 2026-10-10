@@ -8,7 +8,7 @@ rings of four (ring A and ring B) with ConnectX-7 RoCE. Positions are 0 to 3
 within each ring.
 
 This record holds the verdicts of the setup runs, whose outputs are not in
-the repository, and of the tunes, whose tables and merge the
+the repository, and of the tunes, whose runs and merge the
 [SIRCL tune record](sircl-cycle4-tune-two-rings-20261009.md) holds. It belongs to release 2026.10.2
 ([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
 
@@ -37,7 +37,7 @@ the repository, and of the tunes, whose tables and merge the
 - **Use:** the measured `cycle-4` row of the default tuning table
   ([sircl-tuning-defaults.json](../../../runtime/common/sircl-tuning-defaults.json))
   merges these tunes; the [SIRCL tune record](sircl-cycle4-tune-two-rings-20261009.md)
-  holds the runs, both rings' tables and the merge.
+  holds the runs, both rings' table digests and the merge.
 
 ## Limitations
 

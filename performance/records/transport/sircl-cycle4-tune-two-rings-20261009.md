@@ -49,9 +49,9 @@ holds the measurement behind its `cycle-4` row and the SIRCL table that row name
 | A | `097062777e17` | `20261010-001824-tune4-a` | 30 min | 1,102, 1,102 | `bff6cee56c7d342c` |
 | B | `f1cb76795938` | `20261010-002309-tune4-b` | 29 min | 1,098, 1,098 | `9f4c93ab51a28faf` |
 
-Both runs passed. The rings ran at the same time, each on its own four Sparks. Each ring's table is kept
-beside this record ([ring A](sircl-cycle4-tune-two-rings-20261009/ring-097062777e17.json),
-[ring B](sircl-cycle4-tune-two-rings-20261009/ring-f1cb76795938.json)).
+Both runs passed. The rings ran at the same time, each on its own four Sparks. The rings' own tables
+(digests `bff6cee56c7d342c` and `9f4c93ab51a28faf`) are held in the maintainer's run archive, not in the
+repository; the merged table, [cycle-4.json](../../../runtime/common/sircl-tuning/cycle-4.json), is.
 
 `scripts/promote_sircl_tuning.py --row cycle-4 --ring A --ring B` merged the two tables:
 
