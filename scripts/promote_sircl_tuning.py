@@ -104,10 +104,17 @@ def _check_build(defaults, version, abi):
 
 
 def _drivers_text(drivers):
-    """``GPU driver D, kernel K`` of driver rows ``{"gpu", "kernel"}``, every distinct value named."""
-    gpus = sorted({str(row.get("gpu")) for row in drivers if row.get("gpu")})
-    kernels = sorted({str(row.get("kernel")) for row in drivers if row.get("kernel")})
-    return f"GPU driver {', '.join(gpus) or 'unrecorded'}, kernel {', '.join(kernels) or 'unrecorded'}"
+    """Each position's GPU driver and kernel, of driver rows ``{"gpu", "kernel"}`` in position order, with
+    consecutive positions of one driver and kernel joined: ``positions 0-1 GPU driver D, kernel K; position 2 ...``."""
+    runs = []
+    for position, row in enumerate(drivers):
+        pair = (str(row.get("gpu") or "unrecorded"), str(row.get("kernel") or "unrecorded"))
+        if runs and runs[-1][2] == pair:
+            runs[-1][1] = position
+        else:
+            runs.append([position, position, pair])
+    return "; ".join(f"{'position' if first == last else 'positions'} {first}{'' if first == last else f'-{last}'} GPU "
+                     f"driver {pair[0]}, kernel {pair[1]}" for first, last, pair in runs)
 
 
 def _place(defaults, row, settings, evidence, data, measured_at, *, root=ROOT):
@@ -175,7 +182,8 @@ def promote(defaults, measured, row, tables, *, root=ROOT):
     runs = ", ".join(f"{name} {run}" for name, run in sorted((binding["harness"].get("runs") or {}).items()))
     evidence = (f"sparkring fabric tune on fabric {measured['fabric'][7:19]} with image {binding['image']} (SIRCL "
                 f"{measured['sircl']['version']}, ABI {measured['sircl']['abi_version']}), "
-                f"{_drivers_text(list(binding['drivers'].values()))}, {binding['harness'].get('sizes')} sweep, harness "
+                f"{_drivers_text([binding['drivers'][key] for key in sorted(binding['drivers'], key=int)])}, "
+                f"{binding['harness'].get('sizes')} sweep, harness "
                 f"runs {runs or 'unrecorded'}; table {tuning.document_hash(json.loads(data))}")
     value, relative = _place(defaults, row, measured_row["settings"], evidence, data, measured["measured_at"],
                              root=root)
@@ -312,13 +320,13 @@ def promote_rings(defaults, directories, row, image_value, *, root=ROOT):
     sizes = rings[0]["sizes"]
     kind, count = transport.row_group(row)
     sweep = (f"{len(sizes)} per-rank sizes of {sizes[0]} to {sizes[-1]} bytes" if sizes else "sizes unrecorded")
-    drivers = [row_ for ring in rings for row_ in ring["drivers"]]
+    drivers = "; ".join(f"fabric {ring['fabric'][7:19]}: {_drivers_text(ring['drivers'])}" for ring in rings)
     evidence = (f"SIRCL ring harness tune (python -m sparkring_sircl.ring tune, {sweep}, "
                 f"{rings[0]['conditions']['rotate_buffers']} rotated buffers) of the whole {kind} of {count} Sparks on "
                 f"{len(rings)} separate rings: fabrics {', '.join(ring['fabric'][7:19] for ring in rings)}, runs "
                 f"{', '.join(ring['run'] for ring in rings)}; image {image_value['name']} "
                 f"({image_value['image_id'][7:19]}, SIRCL {sircl['version']}, ABI {sircl['abi_version']}), "
-                f"{_drivers_text(drivers)}. Each candidate's time at a size is the slower ring's median, the choice the "
+                f"each Spark's driver and kernel by position: {drivers}. Each candidate's time at a size is the slower ring's median, the choice the "
                 f"fastest of those: {kept} measurements exact on every ring, {dropped} dropped as exact on fewer; the "
                 f"rings' own tables choose differently at {len(lines)} of {points} measured points; table "
                 f"{tuning.document_hash(document)}")

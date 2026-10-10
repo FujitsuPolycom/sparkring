@@ -36,7 +36,7 @@ def test_a_measured_cycle4_row_replaces_the_rule_its_groups_took(tmp_path, measu
                                                                  "settings": {"link_slots": 12, "link_slot": 1048576}}
     # The evidence names the fabric, the image and its SIRCL build, the drivers and the measured table.
     assert row["evidence"].startswith(f"sparkring fabric tune on fabric {cycle['id'][7:19]} with image {image['name']} "
-                                      f"(SIRCL {image['sircl']['version']}, ABI 9), GPU driver 580.95.05")
+                                      f"(SIRCL {image['sircl']['version']}, ABI 9), position 0 GPU driver 580.95.05")
     assert row["evidence"].endswith(f"table {tuning.document_hash(json.loads(data))}")
     assert promoted["tables"] == [{"path": relative, "sha256": digest}] and promoted["measured_at"] == "2026-10-09"
     assert promoted["source"] == "defaults" and promoted["fabric"] is None and promoted["image_id"] is None
@@ -90,6 +90,7 @@ TIMES_A = {("graph", 8192, "oneshot"): 14.0, ("graph", 8192, "twoshot"): 30.0, (
 TIMES_B = {("graph", 8192, "oneshot"): 15.0, ("graph", 8192, "twoshot"): 31.0,
            ("graph", 8388608, "ring"): 850.0, ("graph", 8388608, "chain"): 700.0}
 DRIVERS = {"gpu": "580.95.05", "kernel": "6.11.0-1016-nvidia"}
+NEWER = {"gpu": "580.178.04", "kernel": "7.0.0-1019-nvidia"}
 
 
 def choice(name):
@@ -105,7 +106,7 @@ def other_ring(value):
     return fabric_document.validate(value)
 
 
-def ring_tune(root, label, value, image, times, *, session=SESSION, status="passed"):
+def ring_tune(root, label, value, image, times, *, session=SESSION, status="passed", drivers=None):
     """A ring's --ring directory: its fabric document, drivers and one tune run of its whole cycle whose exact
     cases took ``times`` ({(mode, bytes, choice name): p50 us}), with the table the harness builds from them."""
     directory = root / f"ring-{label}"
@@ -114,7 +115,7 @@ def ring_tune(root, label, value, image, times, *, session=SESSION, status="pass
     folder.mkdir(parents=True)
     (directory / "fabric.json").write_text(json.dumps(value), encoding="utf-8")
     size = int(value["size"])
-    (directory / "facts.json").write_text(json.dumps({"positions": [DRIVERS] * size}), encoding="utf-8")
+    (directory / "facts.json").write_text(json.dumps({"positions": drivers or [DRIVERS] * size}), encoding="utf-8")
     topology = transport.group_topology(transport.sircl_layout(value), list(range(size)))
     plan = {"run_id": run, "image": image["image_id"], "options": {"rotate_buffers": 8, "tune_sizes": [8192, 8388608]},
             "groups": [{"index": 0, "global_ranks": list(range(size)), "layout": topology.session_layout(),
@@ -138,7 +139,9 @@ def rings(tmp_path):
     image = sircl_lock()
     a = document("cycle", 4)
     b = other_ring(a)
-    return image, a, b, [ring_tune(tmp_path, "a", a, image, TIMES_A), ring_tune(tmp_path, "b", b, image, TIMES_B)]
+    # Ring b's first two Sparks run a newer driver and kernel than its others and every Spark of ring a.
+    return image, a, b, [ring_tune(tmp_path, "a", a, image, TIMES_A),
+                         ring_tune(tmp_path, "b", b, image, TIMES_B, drivers=[NEWER, NEWER, DRIVERS, DRIVERS])]
 
 
 def test_two_rings_merge_into_one_cycle4_row_judged_by_the_slower_ring(tmp_path, rings):
@@ -162,7 +165,10 @@ def test_two_rings_merge_into_one_cycle4_row_judged_by_the_slower_ring(tmp_path,
     row = promoted["layouts"]["cycle-4"]
     assert row["source"] == "measured" and row["settings"] == transport.measured_row(defaults, "cycle-4", {}, table)
     for text in (a["id"][7:19], b["id"][7:19], "20261010-0100a-tune4", "20261010-0100b-tune4",
-                 f"SIRCL {image['sircl']['version']}, ABI 9", "GPU driver 580.95.05, kernel 6.11.0-1016-nvidia",
+                 f"SIRCL {image['sircl']['version']}, ABI 9",
+                 f"fabric {a['id'][7:19]}: positions 0-3 GPU driver 580.95.05, kernel 6.11.0-1016-nvidia; fabric "
+                 f"{b['id'][7:19]}: positions 0-1 GPU driver 580.178.04, kernel 7.0.0-1019-nvidia; positions 2-3 GPU "
+                 "driver 580.95.05, kernel 6.11.0-1016-nvidia",
                  "4 measurements exact on every ring, 1 dropped", f"table {tuning.document_hash(table)}"):
         assert text in row["evidence"], text
     assert promoted["tables"] == [{"path": relative, "sha256": hashlib.sha256(data).hexdigest()}]
