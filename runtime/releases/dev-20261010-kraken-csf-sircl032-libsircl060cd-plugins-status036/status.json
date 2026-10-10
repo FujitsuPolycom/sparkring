@@ -267,9 +267,9 @@
     },
     {
       "id": "clean-room-audit-030419b8",
-      "result": "pending",
-      "scope": "the clean-room acceptance audit of libsircl tree 030419b8's current-device change (commit c4f3a1af)",
-      "record": null
+      "result": "passed",
+      "scope": "acceptance audit of libsircl at d3d33158 (tree 030419b8, the release image's): PASS on 114 files, 0 lines to rewrite, 515 counted, all idioms; integrations/vllm/libsircl and the NCCL files byte-identical to tree dbf36074's and not measured again",
+      "record": "performance/records/repository/clean-room-acceptance-audit-20261009.md"
     },
     {
       "id": "sircl-collectives",

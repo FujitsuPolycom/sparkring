@@ -327,9 +327,9 @@ the serving A/B runner started the model. None is serving qualification.
   (tree `dbf36074`, image `1a8c10354eb0`'s) PASS with 0 lines to rewrite,
   and its vLLM plugin `integrations/vllm/libsircl` PASS. The report stays
   outside the repository because it quotes excluded-origin text. The release
-  image's libsircl, tree `030419b8`, adds the current-device change
-  (commit `c4f3a1af`), which the audit did not cover: gate
-  `clean-room-audit-030419b8`.
+  image's libsircl, tree `030419b8` (`dbf36074` with the current-device
+  change), PASS on 114 files with 0 lines to rewrite and 515 counted, all
+  idioms; the 3 lines more are generic POSIX mutex calls in `src/engine.c`.
 - Record: [clean-room acceptance audit](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md).
 
 ## Qualification
@@ -338,7 +338,7 @@ the serving A/B runner started the model. None is serving qualification.
 |---|---|---|
 | Image `d52737a109e0` built from `d3d33158` and its lock validated for its 13 profiles | passed | [image record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010.md) |
 | `release-image-requal`: image `d52737a109e0` requalified on Sparks: its libsircl gate and installations | **pending** | — |
-| `clean-room-audit-030419b8`: the clean-room acceptance audit of libsircl tree `030419b8`'s current-device change | **pending** | — |
+| `clean-room-audit-030419b8`: the clean-room acceptance audit of libsircl tree `030419b8`, the release image's | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
 | SIRCL one-shot all-reduce and all-gather on the eight-Spark ring | passed (status qualified) | [SIRCL status](../../../spark_transport/sircl/STATUS.md#component-status) |
 | Serving A/B measurements of two, four and eight Sparks recorded | passed (status research-only) | [Evidence](#evidence) |
 | `ring8-installer`: installer runs on the eight-Spark ring with image `1a8c10354eb0`'s lock | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
