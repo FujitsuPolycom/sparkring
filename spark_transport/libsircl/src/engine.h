@@ -21,6 +21,11 @@ typedef struct sccl_engine sccl_engine;
 /* The calling thread's current CUDA context, or NULL. Communicators bind to the
  * context current when they are created. */
 sccl_CUcontext sccl_engine_current_context(void);
+/* The context of a communicator created on a thread with no current context: the
+ * current CUDA device's primary context, made current on the calling thread
+ * (engine.c). NULL, with the reason in `err`, when the device is unknown or its
+ * context cannot be retained. */
+sccl_CUcontext sccl_engine_device_context(char *err, size_t len);
 
 /* Collective setup over the communicator's bootstrap (every rank calls it).
  * `position` (0-63) identifies this process in the route map, the same in every

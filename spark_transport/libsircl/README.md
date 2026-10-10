@@ -25,6 +25,21 @@ gives the build, emulation and hardware commands.
   `NCCL_DEBUG` set to `VERSION`, `WARN`, `INFO` or `TRACE`, the first communicator creation of a
   process writes one stderr line, `libsircl <version> (SIRCL's NCCL-compatible C API; not NVIDIA NCCL),
   NCCL API level <level>`, so a framework log that prints an NCCL version can be traced to libsircl.
+- A communicator runs on the CUDA context current on the thread that creates it. When none is current,
+  it runs on the current CUDA device's primary context, as NVIDIA NCCL does: the device the
+  application's CUDA runtime has selected for that thread (its `cudaGetDevice`, when the runtime is in
+  the process's global scope; libsircl loads no runtime of its own), else the only visible device.
+  libsircl retains that primary context once per process and device, keeps the reference for the life
+  of the process, and makes it current on the creating thread, so the application's later runtime calls
+  use the same context. Frameworks reach this case: vLLM's PyNccl creates its first communicator after
+  `torch.accelerator.set_device_index` (which creates no context for the device already current) and
+  before its first allocation. With several devices and no runtime to report the thread's selected
+  device, the creation is refused with `ncclInvalidUsage`, naming the reason.
+- A communicator that cannot be created (`ncclCommInitRank`, `ncclCommInitRankConfig` in blocking mode,
+  `ncclCommSplit`) writes one stderr line, `libsircl: communicator creation failed (<result>): <reason>`,
+  the text `ncclGetLastError` returns, whatever `NCCL_DEBUG` says: frameworks commonly report only
+  `ncclGetErrorString`. With `NCCL_DEBUG` set to `WARN`, `INFO` or `TRACE`, every failed call writes
+  `libsircl: <result>: <reason>`.
 - `include/nccl.h` is NVIDIA's 2.32.3 header with marked changes (`NCCL_VERSION_CODE` 23203), used
   only to build libsircl.
 - The name `libsircl` without a suffix means this library; SIRCL's own test libraries are named

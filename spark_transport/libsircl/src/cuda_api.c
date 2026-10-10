@@ -36,6 +36,7 @@ static void load(void) {
   SYM(CtxGetDevice, "cuCtxGetDevice");
   SYM(CtxSynchronize, "cuCtxSynchronize");
   SYM(DeviceGet, "cuDeviceGet");
+  SYM(DeviceGetCount, "cuDeviceGetCount");
   SYM(DeviceGetAttribute, "cuDeviceGetAttribute");
   SYM(DevicePrimaryCtxRetain, "cuDevicePrimaryCtxRetain");
   SYM(ModuleLoadData, "cuModuleLoadData");
@@ -85,6 +86,14 @@ const sccl_cuda *sccl_cuda_get(void) {
 }
 
 const char *sccl_cuda_error(void) { return load_error[0] ? load_error : "no error"; }
+
+int sccl_cuda_runtime_device(void) {
+  int (*get_device)(int *) = NULL;
+  *(void **)(&get_device) = dlsym(RTLD_DEFAULT, "cudaGetDevice");
+  int device = -1;
+  if (!get_device || get_device(&device) != 0 || device < 0) return -1;
+  return device;
+}
 
 const char *sccl_cuda_result_text(sccl_CUresult result) {
   static _Thread_local char text[160];

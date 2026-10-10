@@ -505,6 +505,64 @@ sccl_CUcontext sccl_engine_current_context(void) {
   return ctx;
 }
 
+/* A communicator created on a thread with no current CUDA context runs on the current CUDA device, as NVIDIA
+ * NCCL's does (ncclCommInitRank uses the device cudaSetDevice selected): the device the application's CUDA
+ * runtime has selected for this thread (sccl_cuda_runtime_device), else the only device the process sees.
+ * Frameworks select the device without creating its context (torch's set_device skips cudaSetDevice when the
+ * device is already current) and allocate only after the communicator exists, so no context may be current
+ * yet. The device's primary context is the one the runtime itself uses: it is retained once per process and
+ * device, the reference kept for the life of the process as the runtime keeps its own, and made current on
+ * the calling thread, so the application's later runtime calls find the device initialized. */
+#define DEVICE_CONTEXTS 64
+sccl_CUcontext sccl_engine_device_context(char *err, size_t len) {
+  static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+  static sccl_CUcontext retained[DEVICE_CONTEXTS];
+  cu = sccl_cuda_get();
+  if (!cu) {
+    put_error(err, len, "no current CUDA context, and the CUDA driver is unavailable: %s", sccl_cuda_error());
+    return NULL;
+  }
+  int ordinal = sccl_cuda_runtime_device();
+  if (ordinal < 0) {
+    int count = 0;
+    if (cu->DeviceGetCount(&count) != SCCL_CUDA_SUCCESS) count = 0;
+    if (count != 1) {
+      put_error(err, len, "no current CUDA context, and the current CUDA device is unknown (no CUDA runtime in the "
+                "process, %d devices visible): select the device and create its context (cudaSetDevice, then "
+                "cudaFree(0)) before creating the communicator", count);
+      return NULL;
+    }
+    ordinal = 0;
+  }
+  if (ordinal >= DEVICE_CONTEXTS) {
+    put_error(err, len, "no current CUDA context, and the current CUDA device %d is beyond the %d this library "
+              "tracks", ordinal, DEVICE_CONTEXTS);
+    return NULL;
+  }
+  sccl_CUresult result = SCCL_CUDA_SUCCESS;
+  pthread_mutex_lock(&lock);
+  sccl_CUcontext ctx = retained[ordinal];
+  if (!ctx) {
+    sccl_CUdevice device;
+    result = cu->DeviceGet(&device, ordinal);
+    if (result == SCCL_CUDA_SUCCESS) result = cu->DevicePrimaryCtxRetain(&ctx, device);
+    if (result == SCCL_CUDA_SUCCESS && ctx) retained[ordinal] = ctx;
+  }
+  pthread_mutex_unlock(&lock);
+  if (result != SCCL_CUDA_SUCCESS || !ctx) {
+    put_error(err, len, "no current CUDA context, and device %d's primary context cannot be retained: %s", ordinal,
+              sccl_cuda_result_text(result));
+    return NULL;
+  }
+  result = cu->CtxSetCurrent(ctx);
+  if (result != SCCL_CUDA_SUCCESS) {
+    put_error(err, len, "no current CUDA context, and device %d's primary context cannot be made current: %s",
+              ordinal, sccl_cuda_result_text(result));
+    return NULL;
+  }
+  return ctx;
+}
+
 /* -- settings -------------------------------------------------------------------------------- */
 
 static int env_u64(const char *name, uint64_t fallback, uint64_t lo, uint64_t hi, uint64_t *out, char *err,

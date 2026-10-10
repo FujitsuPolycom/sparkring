@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """CPU checks of the collective entry points and the engine's refusals. No GPU or RDMA device is used.
 
-Each check runs in a fresh process: the library must load and answer without a CUDA context, refuse
-communicator creation without one (naming the reason), and refuse collectives on CPU-only test
-communicators and unknown handles with NCCL's result codes.
+Each check runs in a fresh process: the library must load and answer without a CUDA context, create a
+communicator on a thread without one on the current device's primary context (and refuse, naming the
+reason, when that device is unknown), and refuse collectives on CPU-only test communicators and unknown
+handles with NCCL's result codes. The checks of communicator creation run on the stand-in CUDA driver
+(tests/fake_cuda.c, build/fake-cuda/libcuda.so.1), so they do not depend on the host's GPU.
 """
 import argparse
 import json
@@ -14,6 +16,7 @@ import unittest
 from pathlib import Path
 
 LIBRARY = Path(__file__).resolve().parents[1] / "build" / "libsircl.so"
+FAKE_DRIVER = LIBRARY.parent / "fake-cuda"
 PRELUDE = '''import ctypes as C, json, sys
 class U(C.Structure): _fields_=[("b",C.c_ubyte*128)]
 l=C.CDLL(sys.argv[1])
@@ -97,14 +100,71 @@ print(r, r2)'''
         self.assertEqual(quiet.returncode, 0, quiet.stderr)
         self.assertNotIn("libsircl ", quiet.stderr)
 
-    def test_init_without_cuda_context_is_refused_with_reason(self):
+    def creation(self, env, *, runtime=False):
+        """One ncclCommInitRank of a one-rank communicator on the stand-in driver, on a thread without a current
+        context; LIBSIRCL_TRANSPORT=bogus makes the engine refuse right after the context step, before any device
+        work. ``runtime`` brings the stand-in's cudaGetDevice into the global scope, as a framework's CUDA runtime
+        is. Returns (result, ncclGetLastError, (retains, retained device, cuCtxSetCurrent calls), stderr)."""
+        load = (f"g=C.CDLL({str(FAKE_DRIVER / 'libcuda.so.1')!r}, mode=C.RTLD_GLOBAL)\n" if runtime else
+                f"g=C.CDLL({str(FAKE_DRIVER / 'libcuda.so.1')!r})\n")
+        environment = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus", "FAKE_CUDA_NO_CONTEXT": "1",
+                       "LD_LIBRARY_PATH": f"{FAKE_DRIVER}:{os.environ.get('LD_LIBRARY_PATH', '')}", "NCCL_DEBUG": ""}
+        environment.update(env)
+        out = run(load + '''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
+n=[C.c_int(),C.c_int(),C.c_int()]; g.sccl_fake_cuda_contexts(*[C.byref(v) for v in n])
+print(json.dumps({"result":r,"message":l.ncclGetLastError(None).decode(),"contexts":[v.value for v in n]}))''',
+                  environment)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        return data["result"], data["message"], tuple(data["contexts"]), out.stderr
+
+    def test_init_without_cuda_context_uses_the_only_devices_primary_context(self):
+        # vLLM's PyNccl creates its first communicator after torch selected the device but before any CUDA
+        # allocation, so no context is current: NVIDIA NCCL then uses the current device, and so does libsircl.
+        result, message, contexts, stderr = self.creation({"FAKE_CUDA_DEVICES": "1"})
+        self.assertNotIn("no current CUDA context", message)
+        self.assertIn("LIBSIRCL_TRANSPORT=bogus", message)   # the engine ran past the context step
+        self.assertEqual(contexts, (1, 0, 1))                # device 0's primary context, retained, made current
+        self.assertNotEqual(result, 0)
+        # The refused creation names its reason on stderr whatever NCCL_DEBUG says.
+        self.assertIn("libsircl: communicator creation failed (", stderr)
+        self.assertIn("LIBSIRCL_TRANSPORT=bogus", stderr)
+
+    def test_init_without_cuda_context_uses_the_runtimes_current_device(self):
+        result, message, contexts, _ = self.creation({"FAKE_CUDA_DEVICES": "2", "FAKE_CUDA_RUNTIME_DEVICE": "1"},
+                                                     runtime=True)
+        self.assertIn("LIBSIRCL_TRANSPORT=bogus", message)
+        self.assertEqual(contexts, (1, 1, 1))
+
+    def test_init_without_cuda_context_is_refused_when_the_device_is_unknown(self):
+        # Two devices and no CUDA runtime in the process: no device can be chosen, so the creation is refused,
+        # naming the reason, and no primary context is retained.
+        result, message, contexts, stderr = self.creation({"FAKE_CUDA_DEVICES": "2"})
+        self.assertEqual(result, 5)
+        self.assertIn("no current CUDA context, and the current CUDA device is unknown", message)
+        self.assertEqual(contexts, (0, -1, 0))
+        self.assertIn("libsircl: communicator creation failed (invalid usage): no current CUDA context", stderr)
+
+    def test_init_without_a_cuda_driver_is_refused_with_reason(self):
         out = run('''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
 c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
-print(r, c.value is None, l.ncclGetLastError(None).decode())''', {"LIBSIRCL_BOOTSTRAP_ONLY": ""})
+print(r, c.value is None, l.ncclGetLastError(None).decode())''',
+                  {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LD_LIBRARY_PATH": str(FAKE_DRIVER / "absent"),
+                   "LD_PRELOAD": "", "LIBSIRCL_TRANSPORT": "bogus"})
         self.assertEqual(out.returncode, 0, out.stderr)
         code, empty, message = out.stdout.split(" ", 2)
+        if "CUDA driver is unavailable" not in message:
+            self.skipTest("this host's libcuda.so.1 is found outside LD_LIBRARY_PATH")
         self.assertEqual((code, empty), ("5", "True"))
-        self.assertIn("no current CUDA context", message)
+        self.assertIn("no current CUDA context, and the CUDA driver is unavailable", message)
+
+    def test_nccl_debug_names_the_reason_of_every_failed_call(self):
+        quiet = run("print(l.ncclGetVersion(None))", {"NCCL_DEBUG": ""})
+        loud = run("print(l.ncclGetVersion(None))", {"NCCL_DEBUG": "WARN"})
+        self.assertEqual((quiet.stdout.strip(), loud.stdout.strip()), ("4", "4"))
+        self.assertNotIn("version output is NULL", quiet.stderr)
+        self.assertIn("libsircl: invalid argument: version output is NULL", loud.stderr)
 
     def test_collectives_on_cpu_communicators_and_unknown_handles(self):
         out = run('''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0

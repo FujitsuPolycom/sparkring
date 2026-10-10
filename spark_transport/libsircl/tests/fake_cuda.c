@@ -4,7 +4,12 @@
  * symbols of each; cuModuleGetFunction succeeds only for a name every cubin of the module defines (one
  * cubin per GPU architecture, so an entry missing for one architecture fails), else returns
  * CUDA_ERROR_NOT_FOUND (500) as the driver does. FAKE_CUDA_HIDE=<name> hides one symbol, for negative
- * controls. Every other entry point succeeds and does nothing. Test infrastructure only. */
+ * controls. For the engine's CPU tests of communicator creation, FAKE_CUDA_NO_CONTEXT=1 starts every thread
+ * without a current context until cuCtxSetCurrent, FAKE_CUDA_DEVICES sets the visible devices (default 1),
+ * cudaGetDevice stands in for a CUDA runtime's (FAKE_CUDA_RUNTIME_DEVICE; it fails when that is unset), found
+ * only when a test loads this library into the global scope, and sccl_fake_cuda_contexts reports the primary
+ * context retains, the last retained device and the cuCtxSetCurrent calls. Every other entry point succeeds
+ * and does nothing. Test infrastructure only. */
 #define _POSIX_C_SOURCE 200809L
 #include <stdint.h>
 #include <stdlib.h>
@@ -23,6 +28,8 @@ typedef struct {
 static module_t modules[MAX_MODULES];
 static int nmodules, lookups;
 static int context_token;
+static _Thread_local void *current_context;
+static int retains, retained_device = -1, set_currents;
 
 static uint16_t u16(const uint8_t *p) { return (uint16_t)(p[0] | p[1] << 8); }
 static uint32_t u32(const uint8_t *p) { return (uint32_t)u16(p) | (uint32_t)u16(p + 2) << 16; }
@@ -124,8 +131,43 @@ EXPORT int cuGetErrorString(int error, const char **text) {
   return 0;
 }
 EXPORT int cuCtxGetCurrent(void **ctx) {
+  const char *none = getenv("FAKE_CUDA_NO_CONTEXT");
+  *ctx = none && !strcmp(none, "1") ? current_context : &context_token;
+  return 0;
+}
+EXPORT int cuCtxSetCurrent(void *ctx) {
+  ++set_currents;
+  current_context = ctx;
+  return 0;
+}
+EXPORT int cuDeviceGetCount(int *count) {
+  const char *text = getenv("FAKE_CUDA_DEVICES");
+  *count = text ? atoi(text) : 1;
+  return 0;
+}
+EXPORT int cuDeviceGet(int *device, int ordinal) {
+  int count = 0;
+  cuDeviceGetCount(&count);
+  if (ordinal < 0 || ordinal >= count) return 101; /* CUDA_ERROR_INVALID_DEVICE */
+  *device = ordinal;
+  return 0;
+}
+EXPORT int cuDevicePrimaryCtxRetain(void **ctx, int device) {
+  ++retains;
+  retained_device = device;
   *ctx = &context_token;
   return 0;
+}
+EXPORT int cudaGetDevice(int *device) {
+  const char *text = getenv("FAKE_CUDA_RUNTIME_DEVICE");
+  if (!text) return 100; /* cudaErrorNoDevice */
+  *device = atoi(text);
+  return 0;
+}
+EXPORT void sccl_fake_cuda_contexts(int *retain_calls, int *device, int *set_current_calls) {
+  *retain_calls = retains;
+  *device = retained_device;
+  *set_current_calls = set_currents;
 }
 EXPORT int cuCtxPopCurrent_v2(void **ctx) {
   if (ctx) *ctx = &context_token;
@@ -138,12 +180,9 @@ EXPORT int cuModuleUnload(void *module) { return module ? 0 : 400; }
 /* Every other entry point src/cuda_api.c binds: present, never used by the check. */
 #define UNUSED_ENTRY(name) \
   EXPORT int name(void) { return 0; }
-UNUSED_ENTRY(cuCtxSetCurrent)
 UNUSED_ENTRY(cuCtxGetDevice)
 UNUSED_ENTRY(cuCtxSynchronize)
-UNUSED_ENTRY(cuDeviceGet)
 UNUSED_ENTRY(cuDeviceGetAttribute)
-UNUSED_ENTRY(cuDevicePrimaryCtxRetain)
 UNUSED_ENTRY(cuLaunchKernel)
 UNUSED_ENTRY(cuMemAlloc_v2)
 UNUSED_ENTRY(cuMemFree_v2)

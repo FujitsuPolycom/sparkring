@@ -129,6 +129,14 @@ code=$?
 if [ $code -eq 0 ]; then note "PASS fail-stop w4: $(tail -1 "$OUT/fail-stop-w4.log")"; else
   note "FAIL fail-stop w4 (exit $code): $(tail -1 "$OUT/fail-stop-w4.log"); $OUT/fail-stop-w4.log"
   failures=$((failures + 1)); fi
+# Communicator creation as vLLM's PyNccl does it: the device selected without a CUDA context, the communicator
+# created before any allocation, then a warm-up all-reduce of a tensor allocated afterwards (one rank).
+LIBSIRCL_TRANSPORT=emulation timeout 300 "$PY" tests/emulation/init_without_context.py --library "$LIB" \
+  > "$OUT/init-without-context.log" 2>&1
+code=$?
+if [ $code -eq 0 ]; then note "PASS init without a context: $(tail -1 "$OUT/init-without-context.log")"; else
+  note "FAIL init without a context (exit $code): $(tail -1 "$OUT/init-without-context.log")"
+  failures=$((failures + 1)); fi
 # Point-to-point channels on communicators of more than two ranks (LIBSIRCL_P2P_CHANNELS=on): the library run
 # of four ranks with channels on (collectives as without them), then every case of p2p_channels.py: four and
 # eight ranks with every ordered pair at once, a subset of pairs while the other ranks idle, a pipeline chain
