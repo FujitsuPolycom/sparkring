@@ -16,6 +16,7 @@ import urllib.request
 import uuid
 import math
 
+from performance.harnesses import dashboard_quiet
 from performance.harnesses.validation.prefill_probe import events
 
 
@@ -251,6 +252,7 @@ class Harness:
         p.add_argument("--samples", type=int, default=3)
         if self.require_prefix:
             p.add_argument("--container-prefix", required=True)
+        dashboard_quiet.add_argument(p)
         args = p.parse_args()
         try:
             sizes = list(map(int, args.sizes.split(",")))
@@ -277,6 +279,13 @@ class Harness:
             )
         with args.output.open("x", encoding="utf-8") as output:
             output.write(json.dumps({"phase": args.phase, "rows": []}) + "\n")
+        # The SparkRing dashboard sends no request while this waits for an idle server and measures
+        # (performance/harnesses/dashboard_quiet.py); Node A is the rank-0 SSH target unless named.
+        target = args.dashboard_ssh or os.environ.get("BENCH_RANK0_SSH")
+        with dashboard_quiet.held("prefill_checks", ssh=dashboard_quiet.ssh_for(target)) as quiet:
+            self.measure(args, sizes, quiet)
+
+    def measure(self, args, sizes, quiet):
         deadline = time.monotonic() + 1200
         announced = False
         while not self.ready():
@@ -294,7 +303,7 @@ class Harness:
 
         def save():
             args.output.write_text(
-                json.dumps({"phase": args.phase, "rows": rows}, indent=2),
+                json.dumps({"phase": args.phase, "dashboard_quiet": quiet, "rows": rows}, indent=2),
                 encoding="utf-8",
             )
 

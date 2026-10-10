@@ -1,11 +1,36 @@
 """Measure exact-length cold Qwen prefills with reusable, disjoint token fixtures."""
 
 import argparse
+import contextlib
 import hashlib
 import json
+import os
 from pathlib import Path
+import sys
 import time
 import urllib.request
+
+# The SparkRing dashboard's quiet mode while this measures (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[3]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
+
+
+def add_quiet_argument(parser):
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this measures "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
 
 
 def main():
@@ -17,6 +42,7 @@ def main():
     parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--lengths", type=int, nargs="+", default=[16384, 32768])
     parser.add_argument("--trials", type=int, default=3)
+    add_quiet_argument(parser)
     args = parser.parse_args()
     if args.trials < 1 or any(n < 128 or n >= 262144 for n in args.lengths):
         parser.error("Use positive trial count and input lengths in [128,262143]")
@@ -80,6 +106,11 @@ def main():
     if args.prepare_only:
         print(json.dumps({"fixture_sha256": digest, "cases": len(cases)}))
         return
+    with quiet_mode("qwen_prefill", args.dashboard_ssh) as quiet:
+        measure(args, cases, digest, quiet, post)
+
+
+def measure(args, cases, digest, quiet, post):
     results = []
     for case in cases:
         start = time.monotonic()
@@ -97,7 +128,7 @@ def main():
         results.append({**result, "response": response})
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
-            json.dumps({"fixture_sha256": digest, "samples": results}, indent=2) + "\n"
+            json.dumps({"fixture_sha256": digest, "dashboard_quiet": quiet, "samples": results}, indent=2) + "\n"
         )
         print(json.dumps(result), flush=True)
 

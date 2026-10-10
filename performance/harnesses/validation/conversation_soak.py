@@ -15,7 +15,7 @@ import uuid
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from needle_hunt import base_url  # noqa: E402
-from prefill_probe import build_text, events, has_token, request, tokens  # noqa: E402
+from prefill_probe import add_quiet_argument, build_text, events, has_token, quiet_mode, request, tokens  # noqa: E402
 
 SCHEMA = "sparkring-conversation-soak/v1"
 
@@ -210,12 +210,12 @@ def summarize(records):
             "cache_interpretation": "server-reported cached tokens; no inference of local hit, external restore, or recompute"}
 
 
-def execute(config, output):
+def execute(config, output, *, dashboard_ssh=None):
     lock, stop = threading.Lock(), threading.Event()
     records, consumed = [], 0
     image = config.get("image_data")
     safe_config = {key: value for key, value in config.items() if key not in ("api_key", "image_data")}
-    with Path(output).open("x", encoding="utf-8") as stream:
+    with Path(output).open("x", encoding="utf-8") as stream, quiet_mode("conversation_soak", dashboard_ssh) as quiet:
         def emit(record):
             with lock:
                 records.append(record)
@@ -224,7 +224,7 @@ def execute(config, output):
                 stream.flush()
                 print(line, flush=True)
 
-        emit({"type": "start", "schema": SCHEMA, "config": safe_config,
+        emit({"type": "start", "schema": SCHEMA, "config": safe_config, "dashboard_quiet": dict(quiet),
               "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
               "http_helper_sha256": hashlib.sha256(Path(__file__).with_name("prefill_probe.py").read_bytes()).hexdigest(),
               "started_unix": time.time()})
@@ -301,6 +301,7 @@ def execute(config, output):
         summary["soak_prompt_tokens_admitted"] = consumed
         summary["success"] = not summary["errors"] and summary["soak_turns"] > 0
         summary["completed_unix"] = time.time()
+        summary["dashboard_quiet"] = dict(quiet)
         emit(summary)
     return 0 if summary["success"] else 2
 
@@ -328,6 +329,7 @@ def main():
     parser.add_argument("--probe-repeats", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=900, help="HTTP inactivity timeout, not a wall-clock deadline")
     parser.add_argument("--api-key-env", default="OPENAI_API_KEY")
+    add_quiet_argument(parser)
     parser.add_argument("--chat-template-kwargs", default="{}")
     parser.add_argument("--metadata", default="{}", help="JSON evidence identities; do not include credentials")
     parser.add_argument("--image", type=Path, help="Optional local PNG or JPEG, at most 4 MiB")
@@ -387,7 +389,7 @@ def main():
         parser.error("Execution requires --endpoint and --output")
     config["api_key"] = os.environ.get(args.api_key_env, "")
     config["image_data"] = image_data
-    return execute(config, args.output)
+    return execute(config, args.output, dashboard_ssh=args.dashboard_ssh)
 
 
 if __name__ == "__main__":

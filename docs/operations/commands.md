@@ -500,6 +500,17 @@ sudo sparkring dashboard disable       # off for good, across reboots, setups an
 sudo sparkring dashboard enable
 ```
 
+A measurement holds quiet mode with a holder of its own, so overlapping
+measurements and an operator's `quiet on` never end each other's pause:
+`quiet hold --label NAME` prints the holder id, and `quiet release ID` ends
+that hold. A hold lapses when its process exits or after 12 hours.
+`quiet status` lists every hold. The repository's benchmark harnesses take
+the hold themselves while they send load, on Node A over SSH with
+`--dashboard-ssh TARGET` or `SPARKRING_DASHBOARD_SSH`, and record in each
+result whether quiet mode was on. `performance/harnesses/qwen_prefill.py`
+does not, because a published record pins its bytes; wrap it as
+[profile validation](profile-validation.md) wraps the benchmark.
+
 | Command or flag | Meaning |
 |---|---|
 | `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves |
@@ -511,6 +522,7 @@ sudo sparkring dashboard enable
 | `serve --password-file FILE` | Require HTTP Basic authentication, user `sparkring`, with the password in FILE |
 | `serve --cpus LIST` | CPUs to run on instead of the efficiency cores |
 | `quiet on`, `quiet off` | Pause or resume every request |
+| `quiet hold --label NAME`, `quiet release ID`, `quiet status` | A measurement's own pause, its end, and every pause held |
 
 Like the model API, the page has no key unless `--password-file` gives one. It
 shows host names, addresses and model settings, so keep Node A on a trusted

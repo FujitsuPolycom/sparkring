@@ -150,13 +150,27 @@ def _install_flags(arguments):
     return "".join(f" {argument}" for argument in shown)
 
 
+def _dashboard_line(field):
+    """The Conditions line that says whether the SparkRing dashboard was quiet during the measurement."""
+    state = field.get("state")
+    if state == "on":
+        return ("- **Dashboard:** quiet mode was on while the harness measured, so the SparkRing dashboard sent "
+                "no request to the model.")
+    if state == "dashboard absent":
+        return "- **Dashboard:** dashboard absent; nothing else polled the model's metrics."
+    detail = f" ({field['detail']})" if field.get("detail") else ""
+    return (f"- **Dashboard:** quiet mode was not held{detail}; the SparkRing dashboard may have read the "
+            "model's `/metrics` during the measurement.")
+
+
 def render(*, profile, name, record_dir, repo_root, files, install=None, source=None, install_arguments=(),
-           functional=None, stress=None, summary=None, status=None, client, harness_revision):
+           functional=None, stress=None, summary=None, status=None, client, harness_revision, dashboard_quiet=None):
     """Return the record's Markdown.
 
     `files` maps roles to file names in the record directory;
     `install_arguments` are the arguments the installer received after
-    `--profile ID --yes --json`.
+    `--profile ID --yes --json`; `dashboard_quiet` is the measurement's
+    dashboard quiet-mode field (performance/harnesses/dashboard_quiet.py).
     """
     status = status or profile.status
     if status not in STATUSES:
@@ -208,8 +222,10 @@ def render(*, profile, name, record_dir, repo_root, files, install=None, source=
     lines += [f"- **Cluster:** one {cluster} (`{profile.topology}`).",
               f"- **Client:** {client} sent every request.",
               f"- **Harness:** [`accept_profile.py`]({root}/performance/harnesses/acceptance/accept_profile.py) "
-              f"at commit `{harness_revision}`.",
-              "", "## Measurement", ""]
+              f"at commit `{harness_revision}`."]
+    if dashboard_quiet:
+        lines.append(_dashboard_line(dashboard_quiet))
+    lines += ["", "## Measurement", ""]
     if functional:
         skipped = [f"{r['name']} ({r['detail']})" for r in functional["checks"] if r["status"] == "SKIP"]
         lines.append("- **Functional checks:** counting, arithmetic and code with the profile's thinking-off "

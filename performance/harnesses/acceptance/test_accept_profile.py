@@ -261,3 +261,64 @@ def test_thinking_switch_override_reaches_every_direct_request(tmp_path):
 def test_entry_point_is_a_script_path():
     assert Path(accept_profile.__file__).name == "accept_profile.py"
     assert accept_profile.ROOT == Path(__file__).resolve().parents[3]
+
+
+class Quiet:
+    """Stands in for dashboard_quiet.held: records the hold, its release and the steps between them."""
+
+    def __init__(self, harness, state="on"):
+        self.harness, self.state, self.events = harness, state, []
+
+    def __call__(self, label, **kwargs):
+        import contextlib
+        quiet = self
+
+        @contextlib.contextmanager
+        def held():
+            quiet.events.append(("hold", label, kwargs["ssh"][-1] if kwargs.get("ssh") else None,
+                                 len(quiet.harness.model.requests)))
+            try:
+                yield {"state": quiet.state, "where": kwargs.get("where"), "holder": "accept_profile-0-ab12cd34",
+                       "was_on_before": False, "service": "active", "detail": None}
+            finally:
+                quiet.events.append(("release", len(quiet.harness.model.requests), len(quiet.harness.bench.calls)))
+        return held()
+
+
+def test_the_dashboard_is_quiet_from_the_first_request_to_the_end_and_every_result_says_so(tmp_path):
+    require_repository_drive(tmp_path)
+    h = Harness(tmp_path)
+    quiet = Quiet(h)
+    env = h.env()
+    env.quiet = quiet
+    assert accept_profile.main(h.args(), env=env) == 0
+    # Held on Node A before the first request (after the installation) and released after the benchmark.
+    assert quiet.events[0] == ("hold", "accept_profile", f"code@{LAN}", 0)
+    assert quiet.events[1][0] == "release" and quiet.events[1][1] > 0 and quiet.events[1][2] == 1
+    for step in ("readiness", "functional", "stress", "throughput"):
+        assert json.loads((h.out / f"{step}.json").read_text())["dashboard_quiet"]["state"] == "on"
+    assert "dashboard_quiet" not in json.loads((h.out / "install.json").read_text())
+    markdown = (h.records / f"{NAME}.md").read_text()
+    assert "- **Dashboard:** quiet mode was on while the harness measured" in markdown
+
+
+def test_a_failed_step_still_releases_the_hold(tmp_path):
+    h = Harness(tmp_path, model=FakeModel("Another-Model"))
+    quiet = Quiet(h)
+    env = h.env()
+    env.quiet = quiet
+    assert accept_profile.main(h.args("--ready-timeout", "1", install_source=None), env=env) == 1
+    assert [event[0] for event in quiet.events] == ["hold", "release"]
+    # Without --node-a or --dashboard-ssh the hold is asked of the client itself.
+    assert quiet.events[0][2] is None
+
+
+def test_an_absent_dashboard_is_recorded_and_the_run_goes_on(tmp_path):
+    require_repository_drive(tmp_path)
+    h = Harness(tmp_path)
+    quiet = Quiet(h, state="dashboard absent")
+    env = h.env()
+    env.quiet = quiet
+    assert accept_profile.main(h.args(), env=env) == 0
+    assert json.loads((h.out / "throughput.json").read_text())["dashboard_quiet"]["state"] == "dashboard absent"
+    assert "- **Dashboard:** dashboard absent" in (h.records / f"{NAME}.md").read_text()

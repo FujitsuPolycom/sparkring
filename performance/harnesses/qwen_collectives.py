@@ -1,12 +1,37 @@
 """Bounded C1/C8 comparison with disjoint cold prefixes and a warm decode pass."""
 
 import concurrent.futures
+import contextlib
 import json
+import os
+import sys
 import threading
 import time
 import urllib.request
 from pathlib import Path
 import argparse
+
+# The SparkRing dashboard's quiet mode while this measures (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
+
+
+def add_quiet_argument(parser):
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this measures "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument(
@@ -17,6 +42,7 @@ parser.add_argument("--label", required=True)
 parser.add_argument("--output", required=True, type=Path)
 parser.add_argument("--trials", type=int, default=2)
 parser.add_argument("--fixture-id", default="", help="use the same fresh identifier for matched arms to avoid earlier prefix-cache entries")
+add_quiet_argument(parser)
 args = parser.parse_args()
 if not args.label.replace("-", "").isalnum() or args.trials < 1:
     parser.error("Use an alphanumeric label and positive trial count")
@@ -84,27 +110,33 @@ def request(index, barrier, trial):
     }
 
 
-results = []
-for trial in range(args.trials):
-    for c in [1, 8]:
-        for phase in ["cold", "warm"]:
-            barrier = threading.Barrier(c)
-            with concurrent.futures.ThreadPoolExecutor(c) as pool:
-                rows = list(
-                    pool.map(lambda i: request(i, barrier, f"{trial}-{c}"), range(c))
-                )
-            wall = max(r["end"] for r in rows) - min(r["start"] for r in rows)
-            decode = max(r["end"] for r in rows) - min(r["first"] for r in rows)
-            tokens = sum(r["usage"]["completion_tokens"] for r in rows)
-            summary = {
-                "fixture_id": args.fixture_id,
-                "trial": trial,
-                "c": c,
-                "phase": phase,
-                "aggregate_wall_tps": tokens / wall,
-                "aggregate_decode_window_tps": (tokens - c) / decode,
-                "mean_ttft": sum(r["ttft"] for r in rows) / c,
-            }
-            results.append({"summary": summary, "requests": rows})
-            (ROOT / (label + ".json")).write_text(json.dumps(results, indent=2) + "\n")
-            print(json.dumps(summary), flush=True)
+def measure(quiet):
+    results = []
+    for trial in range(args.trials):
+        for c in [1, 8]:
+            for phase in ["cold", "warm"]:
+                barrier = threading.Barrier(c)
+                with concurrent.futures.ThreadPoolExecutor(c) as pool:
+                    rows = list(
+                        pool.map(lambda i: request(i, barrier, f"{trial}-{c}"), range(c))
+                    )
+                wall = max(r["end"] for r in rows) - min(r["start"] for r in rows)
+                decode = max(r["end"] for r in rows) - min(r["first"] for r in rows)
+                tokens = sum(r["usage"]["completion_tokens"] for r in rows)
+                summary = {
+                    "fixture_id": args.fixture_id,
+                    "trial": trial,
+                    "c": c,
+                    "phase": phase,
+                    "aggregate_wall_tps": tokens / wall,
+                    "aggregate_decode_window_tps": (tokens - c) / decode,
+                    "mean_ttft": sum(r["ttft"] for r in rows) / c,
+                }
+                summary["dashboard_quiet"] = dict(quiet)
+                results.append({"summary": summary, "requests": rows})
+                (ROOT / (label + ".json")).write_text(json.dumps(results, indent=2) + "\n")
+                print(json.dumps(summary), flush=True)
+
+
+with quiet_mode("qwen_collectives", args.dashboard_ssh) as quiet:
+    measure(quiet)

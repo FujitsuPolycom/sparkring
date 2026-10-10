@@ -52,9 +52,13 @@ Invariants
 - The module starts no process: no SSH, no ``docker``, no ``ping``. Log
   viewing is on demand by the operator: the page shows the command that
   prints a model's log, and the operator runs it.
-- With the quiet file (QUIET_PATH) present, no request is sent at all, from
-  the next one-second cycle on, for measurements that must see no outside
-  traffic.
+- While quiet mode is held, no request is sent at all, from the next
+  one-second cycle on, for measurements that must see no outside traffic. An
+  operator holds it with the quiet file (QUIET_PATH, ``sparkring dashboard quiet
+  on``); a measurement holds it with a holder file of its own
+  (``quiet hold``/``quiet release``), so measurements that overlap, or an
+  operator's hold, never end each other's. A holder lapses when its process has
+  exited or after its time to live.
 - The service lowers its own priority (``lower_priority``): idle CPU
   scheduling, nice 19 and, on a Spark, the CPUs outside the fastest class as
   SIRCL's classifier finds them (the Cortex-A725 cores of a GB10), so serving
@@ -88,6 +92,11 @@ FABRIC_PATH = Path("/etc/sparkring/fabric/topology.json")
 NODE_STATUS_PATH = Path("/run/sparkring/status.json")
 RECOVERY_PATH = Path("/var/lib/sparkring/recovery.json")
 QUIET_PATH = Path("/run/sparkring/dashboard.quiet")
+# One file per measurement that holds quiet mode, beside QUIET_PATH (quiet_holders_directory).
+QUIET_HOLDERS = "dashboard-quiet"
+QUIET_SCHEMA = "sparkring-dashboard-quiet/v1"
+QUIET_TTL_SECONDS = 12 * 3600
+QUIET_LABEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,39}")
 PAGE = Path(__file__).with_name("dashboard.html")
 
 # The only paths the collector requests: the model list, vLLM's Prometheus metrics and the
@@ -674,9 +683,9 @@ class Collector:
     # -- one cycle -------------------------------------------------------------------------
     def cycle(self, now=None) -> None:
         now = self.clock() if now is None else now
-        # The quiet file is checked on every cycle (one stat a second), so `quiet on` takes effect
-        # before a measurement that starts right after it.
-        self.quiet = bool(self.quiet_path and self.quiet_path.exists())
+        # Quiet mode is checked on every cycle (a stat and a small directory listing a second), so a
+        # hold takes effect before a measurement that starts right after it.
+        self.quiet = bool(self.quiet_path and quiet_state(self.quiet_path, now)["quiet"])
         if self.quiet:
             return
         if now >= self.next_files:
@@ -1111,15 +1120,95 @@ def serve(args) -> int:
     return 0
 
 
+def quiet_holders_directory(quiet_path: Path) -> Path:
+    return Path(quiet_path).parent / QUIET_HOLDERS
+
+
+def _process_alive(pid) -> bool:
+    """Whether process `pid` of this host runs. Only POSIX can ask without side effects; elsewhere
+    a holder's process counts as running and its time to live ends it."""
+    if os.name != "posix":
+        return True
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True        # another user's process, such as a root harness seen by the dashboard's user
+    return True
+
+
+def quiet_state(quiet_path: Path, now: float, *, alive=_process_alive) -> dict:
+    """{"quiet", "operator", "holders"}: whether quiet mode is held, by the operator's quiet file and
+    by which live measurement holders."""
+    operator = Path(quiet_path).exists()
+    holders = []
+    try:
+        entries = sorted(quiet_holders_directory(quiet_path).glob("*.json"))
+    except OSError:
+        entries = []
+    for entry in entries:
+        try:
+            holder = json.loads(entry.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(holder, dict) or holder.get("schema") != QUIET_SCHEMA:
+            continue
+        until, pid = holder.get("until"), holder.get("pid")
+        if not isinstance(until, (int, float)) or until <= now:
+            continue
+        if type(pid) is int and pid > 0 and holder.get("host") == socket.gethostname() and not alive(pid):
+            continue
+        holders.append({"id": entry.stem, "label": holder.get("label"), "pid": pid, "since": holder.get("since"),
+                        "until": until})
+    return {"quiet": operator or bool(holders), "operator": operator, "holders": holders}
+
+
+def quiet_hold(quiet_path: Path, label: str, *, pid=None, ttl=QUIET_TTL_SECONDS, now=None) -> dict:
+    """Hold quiet mode for one measurement; returns its holder id and whether quiet mode was already held."""
+    if not QUIET_LABEL_RE.fullmatch(label or ""):
+        raise ValueError(f"a holder label is 1 to 40 letters, digits, '.', '_' or '-', not {label!r}")
+    if not (type(ttl) is int and 1 <= ttl <= 7 * 24 * 3600):
+        raise ValueError("a holder's time to live is 1 s to 7 days")
+    now = time.time() if now is None else now
+    before = quiet_state(quiet_path, now)
+    directory = quiet_holders_directory(quiet_path)
+    directory.mkdir(parents=True, exist_ok=True)
+    holder_id = f"{label}-{pid or 0}-{os.urandom(4).hex()}"
+    path = directory / f"{holder_id}.json"
+    temporary = path.with_name(path.name + ".writing")
+    temporary.write_text(json.dumps({"schema": QUIET_SCHEMA, "label": label, "pid": pid, "host": socket.gethostname(),
+                                     "since": now, "until": now + ttl}) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return {"holder": holder_id, "was_quiet": before["quiet"], "until": now + ttl}
+
+
+def quiet_release(quiet_path: Path, holder_id: str) -> dict:
+    """End one measurement's hold; quiet mode stays on while the operator or another holder holds it."""
+    if not QUIET_LABEL_RE.fullmatch(holder_id.split("-", 1)[0]) or "/" in holder_id or "\\" in holder_id:
+        raise ValueError(f"not a quiet holder id: {holder_id!r}")
+    (quiet_holders_directory(quiet_path) / f"{holder_id}.json").unlink(missing_ok=True)
+    return {"released": holder_id, "still_quiet": quiet_state(quiet_path, time.time())["quiet"]}
+
+
 def quiet(args) -> int:
     path = Path(args.quiet_file)
     if args.state == "on":
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("The SparkRing dashboard sends no request while this file exists.\n", encoding="utf-8")
         print(f"Dashboard paused: {path} exists; it sends no request until sparkring dashboard quiet off.")
-    else:
+    elif args.state == "off":
         path.unlink(missing_ok=True)
-        print("Dashboard collecting again.")
+        holders = quiet_state(path, time.time())["holders"]
+        print("Dashboard collecting again." if not holders else
+              "The operator's pause is off; the dashboard stays quiet while these measurements hold it: "
+              + ", ".join(f"{h['label']} (pid {h['pid']})" for h in holders))
+    elif args.state == "status":
+        print(json.dumps(quiet_state(path, time.time()), indent=2))
+    elif args.state == "hold":
+        print(json.dumps(quiet_hold(path, args.label, pid=args.pid, ttl=args.ttl)))
+    else:
+        print(json.dumps(quiet_release(path, args.holder)))
     return 0
 
 
@@ -1141,8 +1230,13 @@ def main(argv=None) -> int:
     run.add_argument("--no-node-status", action="store_true", help="do not read this host's sparkring-agent status")
     out = commands.add_parser("export", help="write the site file from the deployment records (Node A, sudo)")
     out.add_argument("--output", default=str(SITE_PATH))
-    hush = commands.add_parser("quiet", help="pause or resume all requests, for example around a measurement")
-    hush.add_argument("state", choices=("on", "off"))
+    hush = commands.add_parser("quiet", help="pause or resume all requests, for example around a measurement: "
+                                             "on/off for an operator; hold/release for a measurement; status")
+    hush.add_argument("state", choices=("on", "off", "status", "hold", "release"))
+    hush.add_argument("holder", nargs="?", help="release: the holder id that hold printed")
+    hush.add_argument("--label", help="hold: the measurement's name, such as serving_ab")
+    hush.add_argument("--pid", type=int, help="hold: the measurement's process; the hold lapses when it exits")
+    hush.add_argument("--ttl", type=int, default=QUIET_TTL_SECONDS, help="hold: seconds after which the hold lapses")
     hush.add_argument("--quiet-file", default=str(QUIET_PATH))
     commands.add_parser("disable", help="stop the service and keep it off across reboots, setups and upgrades (sudo)")
     commands.add_parser("enable", help="turn the service back on (sudo)")
@@ -1152,6 +1246,10 @@ def main(argv=None) -> int:
             if bool(args.fabric) != bool(args.site) or len(args.fabric or ()) != len(args.site or ()):
                 raise ValueError("give --fabric and --site together, once per fabric")
             return serve(args)
+        if args.command == "quiet" and args.state == "hold" and not args.label:
+            raise ValueError("quiet hold needs --label")
+        if args.command == "quiet" and args.state == "release" and not args.holder:
+            raise ValueError("quiet release needs the holder id that quiet hold printed")
         if args.command in ("export", "enable", "disable"):
             # Root actions; their module may start systemctl, which the collector never does.
             from runtime.host import dashboard_admin

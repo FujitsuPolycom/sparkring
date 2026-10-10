@@ -269,6 +269,8 @@ def test_main_retains_warm_and_measured_output_rows(harness, monkeypatch, tmp_pa
     harness.main()
     receipt = json.loads(output.read_text())
     assert receipt["phase"] == "prefill"
+    # The harness tests hold nothing (performance/harnesses/conftest.py); the receipt still says so.
+    assert receipt["dashboard_quiet"]["state"] == "not held"
     assert [
         (row["phase"], row["sample"], row["tokens"]) for row in receipt["rows"]
     ] == [

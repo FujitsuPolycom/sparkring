@@ -23,11 +23,24 @@ another client sends during the cell still counts, so measurements need an API t
 
 A server without the metrics returns at once, as the benchmark's ``wait_server_idle`` does; a server that
 does not become idle within IDLE_TIMEOUT_SECONDS lets the step start anyway.
+
+While the benchmark runs, the SparkRing dashboard on Node A holds its quiet mode
+(performance/harnesses/dashboard_quiet.py): run by the serving A/B runner, this program records the
+runner's hold; run on its own, it holds quiet mode on SPARKRING_DASHBOARD_SSH (Node A's SSH target), or on
+this host without one. Every argument goes to the benchmark, so the target comes from the environment.
+The outcome is written beside the benchmark's ``--output`` file as ``<output>.dashboard-quiet.json``.
 """
 import functools
 import importlib.util
+import json
+import os
 import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[3]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from performance.harnesses import dashboard_quiet  # noqa: E402
 
 IDLE_TIMEOUT_SECONDS = 900.0
 IDLE_STABLE_SECONDS = 1.0
@@ -62,13 +75,32 @@ def patch(module):
     return module
 
 
+def output_of(arguments):
+    """The benchmark's --output path in ``arguments``, or None."""
+    for index, argument in enumerate(arguments):
+        if argument == "--output" and index + 1 < len(arguments):
+            return Path(arguments[index + 1])
+        if argument.startswith("--output="):
+            return Path(argument.split("=", 1)[1])
+    return None
+
+
 def main() -> None:
     bench = Path(sys.argv[1]) / "llm_decode_bench.py"
     spec = importlib.util.spec_from_file_location("llm_decode_bench_campaign", bench)
     module = importlib.util.module_from_spec(spec)
-    sys.argv = [str(bench)] + sys.argv[2:]
+    arguments = sys.argv[2:]
+    sys.argv = [str(bench)] + arguments
     spec.loader.exec_module(module)
-    patch(module).main()
+    output = output_of(arguments)
+    target = os.environ.get(dashboard_quiet.TARGET_VARIABLE)
+    with dashboard_quiet.held("bench_run", ssh=dashboard_quiet.ssh_for(target)) as quiet:
+        try:
+            patch(module).main()
+        finally:
+            if output is not None:
+                record = output.with_name(output.name + ".dashboard-quiet.json")
+                record.write_text(json.dumps(quiet, indent=1) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

@@ -570,3 +570,66 @@ def test_the_service_runs_unprivileged_at_idle_priority():
     assert not [line for line in unit.splitlines() if "ssh" in line.lower() and not line.startswith("#")]
     assert "sparkring-dashboard.service" in (ROOT / "packaging" / "debian" / "prerm").read_text(encoding="utf-8")
 
+
+# -- quiet holders -------------------------------------------------------------------------------------
+def test_overlapping_measurements_hold_quiet_mode_until_the_last_one_releases_it(tmp_path):
+    quiet = tmp_path / "run" / "dashboard.quiet"
+    now = 1_790_000_000.0
+    first = dashboard.quiet_hold(quiet, "serving_ab", now=now)
+    assert first["was_quiet"] is False and dashboard.quiet_state(quiet, now)["quiet"]
+    second = dashboard.quiet_hold(quiet, "accept_profile", now=now + 1)
+    assert second["was_quiet"] is True
+    dashboard.quiet_release(quiet, first["holder"])
+    state = dashboard.quiet_state(quiet, now + 2)
+    assert state["quiet"] and [h["label"] for h in state["holders"]] == ["accept_profile"]
+    dashboard.quiet_release(quiet, second["holder"])
+    assert dashboard.quiet_state(quiet, now + 3) == {"quiet": False, "operator": False, "holders": []}
+
+
+def test_an_operators_pause_outlasts_every_measurement_and_holders_lapse(tmp_path):
+    quiet = tmp_path / "run" / "dashboard.quiet"
+    quiet.parent.mkdir(parents=True)
+    quiet.write_text("paused\n")
+    now = 1_790_000_000.0
+    held = dashboard.quiet_hold(quiet, "measure_api", ttl=60, now=now)
+    assert held["was_quiet"] is True
+    dashboard.quiet_release(quiet, held["holder"])
+    assert dashboard.quiet_state(quiet, now)["quiet"] is True          # the operator's pause stays
+    quiet.unlink()
+    dashboard.quiet_hold(quiet, "measure_api", ttl=60, now=now)
+    assert dashboard.quiet_state(quiet, now + 59)["quiet"] is True
+    assert dashboard.quiet_state(quiet, now + 61)["quiet"] is False    # its time to live ended
+    # A holder whose process exited (a harness killed outright) lapses at once.
+    dashboard.quiet_hold(quiet, "killed", pid=4242, now=now + 61)
+    assert dashboard.quiet_state(quiet, now + 62, alive=lambda pid: pid != 4242)["quiet"] is False
+    assert dashboard.quiet_state(quiet, now + 62, alive=lambda pid: True)["quiet"] is True
+
+
+def test_a_holder_stops_the_collector_on_its_next_cycle(tmp_path):
+    quiet = tmp_path / "quiet"
+    found, api, clock = collector(tmp_path, quiet=quiet)
+    run_for(found, clock, 10, viewer=True)
+    api.requests.clear()
+    held = dashboard.quiet_hold(quiet, "serving_ab", now=clock.now)
+    run_for(found, clock, 60, viewer=True)
+    assert api.requests == []
+    dashboard.quiet_release(quiet, held["holder"])
+    run_for(found, clock, 10, viewer=True)
+    assert "/metrics" in paths_of(api)
+
+
+@pytest.mark.parametrize("label", ["", "../etc", "a" * 41, "x y"])
+def test_holder_labels_are_plain_names(tmp_path, label):
+    with pytest.raises(ValueError):
+        dashboard.quiet_hold(tmp_path / "quiet", label)
+
+
+def test_the_quiet_command_holds_and_releases(tmp_path, capsys):
+    quiet = tmp_path / "dashboard.quiet"
+    assert dashboard.main(["quiet", "hold", "--label", "serving_ab", "--quiet-file", str(quiet)]) == 0
+    holder = json.loads(capsys.readouterr().out)["holder"]
+    assert dashboard.main(["quiet", "status", "--quiet-file", str(quiet)]) == 0
+    assert json.loads(capsys.readouterr().out)["quiet"] is True
+    assert dashboard.main(["quiet", "release", holder, "--quiet-file", str(quiet)]) == 0
+    assert json.loads(capsys.readouterr().out) == {"released": holder, "still_quiet": False}
+    assert dashboard.main(["quiet", "hold", "--quiet-file", str(quiet)]) == 2

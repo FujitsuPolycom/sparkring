@@ -117,3 +117,28 @@ def test_identical_repetition_reuses_prompt_seed(tmp_path):
 def test_rejects_credential_urls(url):
     with pytest.raises(ValueError):
         hunt.base_url(url)
+
+
+def test_the_receipt_says_whether_the_dashboard_was_quiet(tmp_path, monkeypatch):
+    """The start and summary records carry the dashboard quiet-mode field; the hold comes after the
+    receipt path was claimed and ends with the run."""
+    import contextlib
+    events = []
+
+    @contextlib.contextmanager
+    def held(label, target=None):
+        events.append(("hold", label, target))
+        field = {"state": "on", "where": "Node A", "holder": "needle_hunt-0-ab12cd34"}
+        yield field
+        events.append(("release",))
+    monkeypatch.setattr(hunt, "quiet_mode", held)
+    post, _ = fake_post()
+    assert hunt.execute(config(), tmp_path / "receipt.jsonl", post=post, dashboard_ssh="root@192.0.2.10") == 0
+    records = [json.loads(line) for line in (tmp_path / "receipt.jsonl").read_text().splitlines()]
+    assert records[0]["dashboard_quiet"]["state"] == records[-1]["dashboard_quiet"]["state"] == "on"
+    assert events == [("hold", "needle_hunt", "root@192.0.2.10"), ("release",)]
+    path = tmp_path / "taken.jsonl"
+    path.write_text("preserve")
+    with pytest.raises(FileExistsError):
+        hunt.execute(config(), path, post=post)
+    assert len(events) == 2                                  # nothing is held for a refused receipt
