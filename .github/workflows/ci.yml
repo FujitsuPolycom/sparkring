@@ -64,7 +64,17 @@ jobs:
           python runtime/images/composition.py runtime/images/sparkring-r35
           python -m pytest runtime/images -q
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport --ignore=spark_transport/sircl runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm integrations/b12x runtime/common runtime/host runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py -q -rs
+        run: |
+          # The glm53full_speedups and glm_dsa_indexer_split tests import the GLM-5.3 image's vLLM and B12X
+          # sources while they are collected, from the directory SPARKRING_GLM53_IMAGE_SOURCES names (their
+          # READMEs). The runner has no image, so without that variable they are left out, with a notice;
+          # the glm_dcp_decode_comm tests skip the checks that need the image themselves.
+          image_tests=()
+          if [ -z "${SPARKRING_GLM53_IMAGE_SOURCES:-}" ]; then
+            echo "::notice title=GLM-5.3 plugin tests skipped::integrations/vllm/glm53full_speedups/tests and integrations/vllm/glm_dsa_indexer_split/tests need SPARKRING_GLM53_IMAGE_SOURCES, a directory of the target image's vllm/ and b12x/ Python sources"
+            image_tests=(--ignore=integrations/vllm/glm53full_speedups/tests --ignore=integrations/vllm/glm_dsa_indexer_split/tests)
+          fi
+          python -m pytest spark_transport --ignore=spark_transport/sircl runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm integrations/b12x runtime/common runtime/host runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py "${image_tests[@]}" -q -rs
 
   sircl:
     name: SIRCL ring sessions
