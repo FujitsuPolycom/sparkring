@@ -162,10 +162,15 @@ the serving A/B runner started the model. None is serving qualification.
   | `qwen38-flash-next-qad-tp4` | Qwen3.8-Flash-Next QAD step 5500 with MXFP8 attention | path of four | 91.0 / 143.6 / 218.5 / 310.6 | 6.8 s |
   | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash `dba1be0a40aa`, `SIRCL_FUSED_NORM=1` | path of four | 61.9 / 94.3 / 138.8 / 181.9 | 7.6 s |
 
-- At 32K context, the release notes' speed table takes the two-Spark rows
-  from these runs: GLM-5.3-Flash CSF 39.5 / 87.1 at 1 / 4 streams and
-  Qwen3.8-Flash-Next 51.1 / 117.1 / 179.0 at 1 / 4 / 8 streams, output
-  tokens/s, medians of the two starts. CSF's 8-stream cell, 123.2 tok/s, is
+- At 32K context, the release notes' speed table takes its GLM-5.3-Flash
+  CSF two-Spark row from these runs: 39.5 / 87.1 output tokens/s at 1 / 4
+  streams, medians of the two starts. Its Qwen3.8-Flash-Next two-Spark row
+  is the profile's default checkpoint, `qad-step5500-ple1000`, installed on
+  a pair of a ring of four with image `1a8c10354eb0` and measured once with
+  the same runner metrics: 42.9 / 109.9 / 162.9 at 1 / 4 / 8 streams and
+  8.98 s to the first token of a 32K prompt ([ring-B checks](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-ring-b-checks-20261010.md)).
+  These runs measured the `qad-step5500-mxfp8-attention` checkpoint instead
+  (51.1 / 117.1 / 179.0). CSF's 8-stream cell, 123.2 tok/s, is
   the two repeats of that cell on a pair of a ring of four with image
   `1a8c10354eb0` whose readiness gate opened before an outside request
   arrived (123.2 and 123.3 tok/s; [ring-B checks](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-ring-b-checks-20261010.md)). In these runs

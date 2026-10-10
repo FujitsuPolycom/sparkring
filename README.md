@@ -63,9 +63,10 @@ Decode at 32K context, output tok/s:
 | GLM-5.3-Flash | CSF | 4 | `glm53-flash-nvfp4-spark-tp4` | 64.2 / 126.6 / 218.7 | 3,127 |
 | GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 123.2 | 2,138 |
 | Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 4,666 |
-| Qwen3.8-Flash-Next | QAD step 5500, MXFP8 attention | 2 | `qwen38-flash-next-tp2` | 51.1 / 117.1 / 179.0 | 3,917 |
+| Qwen3.8-Flash-Next | QAD step 5500 | 2 | `qwen38-flash-next-tp2` | 42.9 / 109.9 / 162.9 | 3,649 |
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 |
 
+On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes 6–8 % faster than the default checkpoint in the median of two starts on the same ring; it was not compared on two Sparks.
 Each row's record is under `performance/records/`.
 
 ## Documentation
