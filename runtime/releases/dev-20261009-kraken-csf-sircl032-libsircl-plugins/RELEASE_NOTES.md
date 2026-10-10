@@ -154,8 +154,15 @@ context. The items below it state their own conditions.
   ([setup and tune](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
 - **Pending:** the installer scenarios on the rings of four.
-- **Pending:** in-place TP4 measurements on a ring of four of GLM-5.3-Flash
-  CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next.
+- `sparkring install` on a ring of four with the release image (GPU clocks
+  locked, one measured start each, research-only): GLM-5.3-Flash CSF and
+  DeepSeek-V4.1-Flash decoded within a few percent of the same profiles on
+  four Sparks of the ring of eight (median -0.8 % and +0.9 %).
+  Qwen3.8-Flash-Next decoded 8.9 % slower on its default checkpoint than the
+  MXFP8-attention checkpoint had on the path of four
+  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
+- **Pending:** the MXFP8-attention checkpoint of Qwen3.8-Flash-Next on a ring
+  of four, which separates checkpoint from topology in that gap.
 
 ## Known limitations
 

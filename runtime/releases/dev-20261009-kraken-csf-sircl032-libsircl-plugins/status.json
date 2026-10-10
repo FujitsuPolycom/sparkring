@@ -253,8 +253,14 @@
     },
     {
       "id": "ring4-benchmark",
+      "result": "passed",
+      "scope": "sparkring install of glm53-flash-nvfp4-spark-tp4 (CSF), deepseek-v41-flash-tp4 and qwen38-flash-next-qad-tp4 on the release image on a ring of four, each measured once through its API (research-only); against a path of four, median output tok/s -0.8 % (CSF), +0.9 % (DeepSeek), -8.9 % (Qwen, another checkpoint)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"
+    },
+    {
+      "id": "ring4-qwen-control",
       "result": "pending",
-      "scope": "in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next",
+      "scope": "Qwen3.8-Flash-Next qad-step5500-mxfp8-attention on a ring of four, separating the checkpoint from the topology in the 8.9 % gap to the path of four",
       "record": null
     },
     {

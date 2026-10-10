@@ -105,8 +105,13 @@ functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
 16K context ([installer record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
 
 - **Pending:** the installer scenarios on four-Spark rings.
-- **Pending:** in-place measurements of the four-Spark GLM-5.3-Flash CSF,
-  DeepSeek and Qwen profiles on a four-Spark ring.
+- On a four-Spark ring, `sparkring install` deployments of the four-Spark
+  GLM-5.3-Flash CSF and DeepSeek profiles decoded within a few percent of the
+  table's four-Spark rows (median -0.8 % and +0.9 %; GPU clocks locked, one
+  start each). The Qwen profile on its default checkpoint decoded 8.9 % below
+  the table's MXFP8-attention row
+  ([record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
+- **Pending:** the Qwen MXFP8-attention checkpoint on a four-Spark ring.
 
 ## Documentation
 

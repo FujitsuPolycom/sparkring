@@ -25,7 +25,7 @@ is not in a registry. Every pending gate under
 | Image release name | `dev-20261009-kraken-csf-sircl032-libsircl-plugins`, the lock's `name` |
 | Image configuration ID | `sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952` |
 | Tag on the Sparks that hold it | `sparkring-dev/kraken:csf-sircl032-libsircl-plugins-20261009` |
-| Source commit of the build | `c7c35fe0b24cb37d13a7a85c23d3281648ecf847`. The SIRCL and plugin sources the image carries are unchanged in this branch; libsircl's differs only in its `STATUS.md`. The default tuning table adds the measured `cycle-4` row, which installations take from the installing package |
+| Source commit of the build | `c7c35fe0b24cb37d13a7a85c23d3281648ecf847`. The SIRCL, libsircl and plugin sources the image carries are unchanged in this branch: `spark_transport/libsircl` is tree `dbf36074`, the lock's `source_tree`. The default tuning table adds the measured `cycle-4` row, which installations take from the installing package |
 | Lock | [installer-image-c7c35fe0.json](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json), SHA-256 `3bbcdfe378d7b0ad1577bb1e4e83517a428310a00fe5f388a35b79a4f2c95958`, 13 profiles ([image record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009.md)) |
 | Registry reference | **Pending (`publication`).** `ghcr.io/fujitsupolycom/sparkring:dev-20261009-kraken-csf-sircl032-libsircl-plugins` and the manifest digest that publication records |
 | Size | 31,883,141,118 bytes (29.7 GiB) unpacked. The lock's 15,308,236,724 download bytes are an upper bound; publication replaces them with the registry's compressed size |
@@ -199,8 +199,8 @@ deployment, and none is serving qualification.
 ### Two rings of four Sparks: setup, SIRCL tune and libsircl
 
 - Lane **public-functional**. Status **implemented**. Maturity
-  **live-validated** for the setups and the libsircl gate; no serving
-  measurement on the rings of four is recorded.
+  **live-validated** for the setups and the libsircl gate; the TP4 serving
+  measurements below are research-only.
 - Hardware: the eight Sparks recabled as two independent rings of four
   (ring A and ring B), one rank per Spark. Ring B's positions 0 and 1 ran GPU
   driver 580.178.04 with kernel 7.0.0-1019, its positions 2 and 3 driver
@@ -219,8 +219,29 @@ deployment, and none is serving qualification.
   comparisons per ring. All-reduce of 256 MiB: 16.55 ms, 24.3 GB/s bus
   bandwidth, on both rings, which agree within 1 %. Broadcast reaches
   5.3 GB/s.
+- TP4 serving on a ring of four, research-only: `sparkring install` of
+  `glm53-flash-nvfp4-spark-tp4` (CSF), `deepseek-v41-flash-tp4` and
+  `qwen38-flash-next-qad-tp4` (step 5500) on the release image, GPU clocks
+  locked at 2,418 MHz, the default table's `cycle-4` row, each deployment
+  measured once through its API by the serving A/B runner. Against the same
+  profiles on a path of four Sparks of the ring of eight (image
+  `816c6d6a7e96`, SIRCL 0.3.0), on the cells both measured (0K and 32K):
+
+  | Install | Output tok/s, median (range) | Accepted tokens per step, largest difference |
+  |---|---|---|
+  | GLM-5.3-Flash CSF | -0.8 % (-3.6 % to +0.7 %) | 0.08 |
+  | DeepSeek-V4.1-Flash | +0.9 % (-4.9 % to +4.8 %) | 0.07 |
+  | Qwen3.8-Flash-Next | -8.9 % (-16.1 % to -1.4 %) | 0.10 |
+
+  CSF and DeepSeek-V4.1-Flash decode on the ring of four within the spread
+  of the path of four. Qwen3.8-Flash-Next's install ran its default
+  checkpoint and the path of four ran `qad-step5500-mxfp8-attention`, so the
+  8.9 % gap does not separate checkpoint from topology; a run of the
+  MXFP8-attention checkpoint on the ring of four is pending. Each comparison
+  also changes the image, the SIRCL build and the transport settings.
 - Records: [setup and SIRCL tune](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
-  [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md).
+  [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md),
+  [TP4 on a ring of four](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md).
 
 ### Clean-room acceptance audit
 
@@ -243,7 +264,8 @@ deployment, and none is serving qualification.
 | `ring8-installer`: installer runs on the eight-Spark ring with the release lock | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `ring4-install`: the installer scenarios on the rings of four | **pending** | — |
-| `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next | **pending** | — |
+| `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next; CSF and DeepSeek within the spread of a path of four | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md) |
+| `ring4-qwen-control`: Qwen3.8-Flash-Next's `qad-step5500-mxfp8-attention` checkpoint on a ring of four, which separates the checkpoint from the topology in its 8.9 % gap to the path of four | **pending** | — |
 | `ring4-sircl-tune`: SIRCL's ring-harness tune of the `cycle-4` group shape on both rings | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table | passed | [record](../../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md) |
 | `ring4-libsircl-gate`: the libsircl gate on a cycle of four | passed | [record](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md) |
