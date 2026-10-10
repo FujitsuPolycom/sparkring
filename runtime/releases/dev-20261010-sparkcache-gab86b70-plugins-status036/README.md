@@ -3,12 +3,12 @@
 Status: **research-only**. This release directory holds the build recipe of a
 derived installer image that no Spark has built yet; `installer-image.json`
 appears here when `runtime/images/derived_layer.py record` or `build` writes it
-(see [the layer's README](../../runtime/images/compositions/installer-sparkcache-gab86b70/README.md)).
+(see [the layer's README](../../images/compositions/installer-sparkcache-gab86b70/README.md)).
 
 The image is installer image `sha256:d52737a109e0…` (release
 `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`) plus one
 Python-only derived layer,
-[id `sparkcache-gab86b70`](../../runtime/images/compositions/installer-sparkcache-gab86b70/descriptor.json),
+[id `sparkcache-gab86b70`](../../images/compositions/installer-sparkcache-gab86b70/descriptor.json),
 which adds the SparkCache connector-job lease contract
 `vllm-connector-jobs-gab86b70.json` and restates the three SparkCache verifier
 files that load it. The layer adds no native file, no transport file and no

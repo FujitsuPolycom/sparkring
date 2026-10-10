@@ -32,7 +32,7 @@ The parent image keeps its own lease contract,
 `/opt/sparkring/contracts/vllm-connector-jobs-eugr-<16 hex>.json`, whose
 `vllm/envs.py` fingerprint the image's CSF layer replaced; deployments that
 point `spark_cache_async_page_capture_lease_contract` at it still refuse. The
-profiles of the [SparkCache variants](../../../profiles/glm53-flash-nvfp4-sparkcache-tp4/README.md)
+profiles of the [SparkCache variants](../../../../profiles/glm53-flash-nvfp4-sparkcache-tp4/README.md)
 point at this layer's contract instead.
 
 ## Build
