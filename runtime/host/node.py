@@ -690,7 +690,12 @@ def workspace(operator, name, *, root="/", account=None):
     operator, or accept them when they exist and belong to that operator.
 
     The controller state directory (``/var/lib/sparkring/controller``) may also belong to root: a setup whose
-    operator signed in as root left it so, and every command that uses it runs as root."""
+    operator signed in as root left it so, and every command that uses it runs as root.
+
+    A root operator accepts both whoever owns them. A re-form signs in as root, and Sparks recabled into a
+    layout they had before find that cluster's workspace, with its checkpoints and caches, owned by the account
+    that set it up; root manages every workspace, and nothing in it changes owner. Another operator is refused a
+    workspace that a different account owns."""
     if account is None:
         import pwd
         account = pwd.getpwnam(operator)
@@ -702,7 +707,7 @@ def workspace(operator, name, *, root="/", account=None):
     for directory in (path, controller):
         if directory.exists():
             owners = (account.pw_uid, 0) if directory == controller else (account.pw_uid,)
-            if directory.stat().st_uid not in owners:
+            if account.pw_uid != 0 and directory.stat().st_uid not in owners:
                 raise ValueError("State/workspace belongs to another operator: " + str(directory))
         else:
             directory.mkdir(parents=True, mode=0o700)
