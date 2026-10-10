@@ -62,7 +62,7 @@ import urllib.error
 import urllib.request
 
 from runtime.common import compose, installer, process_lock
-from runtime.host import controller, discovery, node, progress, retained_source
+from runtime.host import controller, discovery, host_load, node, progress, retained_source
 
 SCHEMA = "sparkring-recovery/v1"
 TIMER = "sparkring-recover.timer"
@@ -270,17 +270,47 @@ def _last_line(error):
     return (str(error).strip().splitlines() or ["no answer"])[-1][:node.ERROR_TEXT]
 
 
+def local_target():
+    """Node A's own SSH target: rank 0 of the controller's cluster record (``controller.model_site``
+    makes it the controller), or None without a record.
+
+    The recovery timer runs on Node A. It reads Node A's own rank here, in process or as a local
+    command, instead of signing in to itself: every SSH login opens a logind session, and the
+    timer's run each minute leaked them on Node A until logind's session table was full."""
+    try:
+        return installer.read(controller.STATE / "cluster.json")["plan"]["spec"]["hosts"][0]["host"]
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return None
+
+
+def local_status(host):
+    """This Spark's ``sparkring node status`` document, read in process."""
+    return node.status()
+
+
+def local_command(host, args, *, timeout=180):
+    """Run ``args`` on this Spark, as ``discovery.ssh`` runs them on another; returns stdout."""
+    result = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
+    if result.returncode:
+        raise RuntimeError(f"{host}: {result.stderr.strip()}")
+    return result.stdout
+
+
 def node_documents(hosts, *, invoke=None):
     """Each Spark's cached ``sparkring node status`` document by SSH target.
 
     A Spark that cannot be read gets ``{"state": "unreachable", "error": ...}``.
     The node command marks a document older than 90 seconds ``stale`` and
-    reports ``agent-unavailable`` before its agent wrote one.
+    reports ``agent-unavailable`` before its agent wrote one. Node A's own
+    document is read in process (``local_target``).
     """
     invoke = invoke or discovery.ssh
+    local = local_target()
 
     def one(host):
         try:
+            if host == local:
+                return local_status(host)
             return json.loads(invoke(host, ["/usr/bin/sparkring", "node", "status"]))
         except READ_ERRORS as error:
             return {"state": "unreachable", "error": _last_line(error)}
@@ -302,12 +332,16 @@ def probe_containers(lock, *, invoke=None):
     read has ``running`` None and ``error``.
     """
     invoke = invoke or discovery.ssh
+    local = local_target()
 
     def one(row):
-        prefix = [] if row["host"].startswith("root@") else ["sudo", "-n"]
+        here = row["host"] == local
+        # Node A's own rank: a local process of the timer, which runs as root, instead of SSH to itself.
+        prefix = [] if here or row["host"].startswith("root@") else ["sudo", "-n"]
+        run = local_command if here else invoke
         try:
-            value = json.loads(invoke(row["host"], prefix + ["python3", "-I", "-B", "-c", CONTAINER, row["name"],
-                                                             compose.LABEL, lock["id"]]))
+            value = json.loads(run(row["host"], prefix + ["python3", "-I", "-B", "-c", CONTAINER, row["name"],
+                                                          compose.LABEL, lock["id"]]))
             return {"rank": row["rank"], "host": row["host"], **value}
         except READ_ERRORS as error:
             return {"rank": row["rank"], "host": row["host"], "name": row["name"], "running": None,
@@ -675,6 +709,9 @@ def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     found = controller.active_deployments()
     if not found:
         return _outcome("idle", "No model deployment is active")
+    # With the host-load setting recovery_ssh_reuse, SSH goes through sparkring-ssh-mux.service's
+    # master connections instead of a new login per command (runtime.host.host_load).
+    invoke = invoke or host_load.recovery_invoke()
     results = [check_one(directory, now=now, invoke=invoke, api=api, apply=apply, tunnel=tunnel)
                for _, directory in found]
     if len(results) == 1:

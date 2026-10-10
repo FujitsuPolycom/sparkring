@@ -33,6 +33,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
 | [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable` | Serve a read-only web page of the ring and its models (Experimental) |
+| [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Show or change where and how often the host agent and the recovery timer run |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
@@ -515,6 +516,32 @@ Like the model API, the page has no key unless `--password-file` gives one. It
 shows host names, addresses and model settings, so keep Node A on a trusted
 network. The site file and the fabric document hold the site's addresses; keep
 copies of them out of Git.
+
+## host-load
+
+`sparkring host-load` shows or changes where and how often SparkRing's own
+periodic work runs on a Spark that serves a model. Status: **Experimental**;
+without settings every job runs as it always has.
+
+```bash
+sudo sparkring host-load show --all
+sudo sparkring host-load set placement=efficiency agent_serving_interval=120 --all
+sudo sparkring host-load set recovery_ssh_reuse=on        # on Node A
+```
+
+| Setting | Values | Meaning |
+|---|---|---|
+| `placement` | `default`, `efficiency` | `efficiency` runs the host agent, the recovery timer and its SSH master connections on the efficiency cores at idle priority, through systemd drop-ins |
+| `agent_serving_interval` | 30 to 600 seconds (default 30) | Seconds between the host agent's observations while a model container runs on the Spark |
+| `recovery_ssh_reuse` | `on`, `off` (default `off`) | The recovery timer's SSH commands share one connection per Spark, kept by `sparkring-ssh-mux.service`, instead of signing in each time |
+| `control_refresh_interval` | 20 to 900 seconds (default 20) | Seconds between the administration tunnel's periodic checks. Link changes and ConnectX driver restarts start a check at once, and a check that leaves the tunnel moving between paths starts the next one 20 s later |
+
+`--all` applies the change to every Spark of the recorded fabric from Node A;
+without it, to this Spark only (`sparkring node host-load` is the per-Spark
+form). Settings live in `/etc/sparkring/host-load.json`. A change takes effect
+without a reinstall or a model restart: placement restarts the host agent,
+which serves no model, and an interval change restarts only its timer. The
+recovery timer reads Node A's own status and container without SSH.
 
 ## logs
 

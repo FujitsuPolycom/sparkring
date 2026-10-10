@@ -221,8 +221,10 @@ def build(root, output, *, version=None, marker="prebuilt", marker_binary=None):
         bin_dir = package / "usr/bin"
         units = package / "usr/lib/systemd/system"
         generators = package / "usr/lib/systemd/system-generators"
+        dispatchers = package / "usr/lib/NetworkManager/dispatcher.d"
+        udev_rules = package / "usr/lib/udev/rules.d"
         control = package / "DEBIAN"
-        for directory in (bin_dir, units, generators, control):
+        for directory in (bin_dir, units, generators, dispatchers, udev_rules, control):
             directory.mkdir(parents=True)
         templates = payload / "packaging/debian"
         shutil.copyfile(templates / "sparkring", bin_dir / "sparkring")
@@ -232,6 +234,11 @@ def build(root, output, *, version=None, marker="prebuilt", marker_binary=None):
         shutil.copyfile(templates / "sparkring-hairpin-mesh-check", generator)
         for unit in [*templates.glob("*.service"), *templates.glob("*.timer")]:
             shutil.copyfile(unit, units / unit.name)
+        # A change of an administration link (NetworkManager) or a re-created ConnectX interface
+        # (udev, a driver restart) starts the administration tunnel's check at once.
+        dispatcher = dispatchers / "90-sparkring-control-link"
+        shutil.copyfile(templates / "sparkring-control-link", dispatcher)
+        shutil.copyfile(templates / "90-sparkring-control.rules", udev_rules / "90-sparkring-control.rules")
         for name in ("postinst", "prerm", "postrm"):
             shutil.copyfile(templates / name, control / name)
         size = sum(p.stat().st_size for p in package.rglob("*") if p.is_file()) // 1024
@@ -250,7 +257,8 @@ Description: SparkRing host setup and profile deployment controller
 """, encoding="utf-8")
         # Do not ship machine-specific state or conffiles. initialize generates
         # per-node identity once; approved fabric state is retained on removal.
-        executables = {bin_dir / "sparkring", generator, *(control / n for n in ("postinst", "prerm", "postrm"))}
+        executables = {bin_dir / "sparkring", generator, dispatcher,
+                       *(control / n for n in ("postinst", "prerm", "postrm"))}
         marker_bytes = None
         if built is not None:
             executables.add(payload / MARKER_PATH)

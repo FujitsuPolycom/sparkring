@@ -949,18 +949,11 @@ def log_commands(hostname, container) -> dict:
 
 # -- process placement -------------------------------------------------------------------------
 def efficiency_cpus(root: Path | None = None, cpuinfo: Path | None = None) -> set | None:
-    """The online CPUs outside the fastest class (on GB10 the ten Cortex-A725 cores), or None on a
-    host whose cores are all of one class, which leaves the placement unchanged.
-
-    The classes come from SIRCL's classifier (spark_transport/sircl/sparkring_sircl/cpus.py): Arm
-    part numbers first, then cpu_capacity and cpuinfo_max_freq within a tolerance, because one
-    GB10 X925 core reports a higher capacity than its siblings. SIRCL's serving threads and its
-    progress thread use the fastest class."""
-    from spark_transport.sircl.sparkring_sircl import cpus
-    options = {key: value for key, value in (("root", root), ("cpuinfo", cpuinfo)) if value is not None}
-    online, fastest, source = cpus.classify(**options)
-    rest = set(online) - set(fastest)
-    return rest if source != "uniform" and rest else None
+    """The CPUs outside the fastest class (on GB10 the Cortex-A725 cores), or None on a host whose
+    cores are all of one class: runtime.host.host_load.efficiency_cpus, which the host agent's and
+    the recovery timer's placement drop-ins use too."""
+    from runtime.host import host_load
+    return host_load.efficiency_cpus(root, cpuinfo)
 
 
 def lower_priority(cpu_list: str | None = None) -> list:

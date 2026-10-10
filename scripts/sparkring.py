@@ -186,6 +186,8 @@ def _parser() -> argparse.ArgumentParser:
                                           "table, boot units and SIRCL's measured tuning table (Node A)")
     subcommands.add_parser("check", help="check the running models: functional requests and, on SIRCL, which transport "
                                          "carried each collective; --report writes the tester bundle (Node A)")
+    subcommands.add_parser("host-load", help="show or change where and how often the host agent and recovery timer "
+                                             "run, on this Spark or with --all on every Spark (Node A)")
     subcommands.add_parser("dashboard", help="serve a read-only web page of the fabric's Sparks and models: GET requests "
                                              "for metrics and status only, no inference request, no SSH")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
@@ -239,6 +241,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "check":
         from runtime.host.check import main as check_main
         return check_main(raw[1:])
+    if raw and raw[0] == "host-load":
+        from runtime.host.host_load import main as host_load_main
+        return host_load_main(raw[1:])
     if raw and raw[0] == "dashboard":
         from runtime.host.dashboard import main as dashboard_main
         return dashboard_main(raw[1:])

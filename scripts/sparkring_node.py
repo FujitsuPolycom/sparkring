@@ -51,6 +51,11 @@ def main(argv=None):
     workspace.add_argument("--name", required=True)
     agent = commands.add_parser("agent")
     agent.add_argument("--once", action="store_true")
+    host_load = commands.add_parser("host-load", help="show or change where and how often the host agent and the "
+                                                      "recovery timer run (runtime/host/host_load.py)")
+    host_load.add_argument("host_load_args", nargs=argparse.REMAINDER)
+    commands.add_parser("ssh-mux", help="keep the recovery timer's SSH master connections; run by "
+                                        "sparkring-ssh-mux.service on Node A")
     commands.add_parser("relay-markers", help="run this Spark's relay markers until stopped "
                                               "(sparkring-relay-marker.service)")
     commands.add_parser("relay-marker-check", help="check the installed package's relay marker against the "
@@ -87,6 +92,7 @@ def main(argv=None):
     if args.action == "hairpin" and args.hairpin_action == "apply" and args.boot and not args.dry_run:
         parser.error("--boot requires --dry-run")
     unprivileged = ((args.action == "status" and not args.refresh)
+                    or (args.action == "host-load" and args.host_load_args[:1] == ["show"])
                     or (args.action == "hairpin" and args.hairpin_action == "status" and not args.busy))
     try:
         if not unprivileged and (not hasattr(os, "geteuid") or os.geteuid() != 0):
@@ -150,6 +156,12 @@ def main(argv=None):
         elif args.action == "agent":
             node.agent(once=args.once)
             return 0
+        elif args.action == "host-load":
+            from runtime.host import host_load
+            result = host_load.node_main(args.host_load_args)
+        elif args.action == "ssh-mux":
+            from runtime.host import host_load
+            return host_load.mux_main()
         elif args.action == "relay-markers":
             return node.relay_markers()
         elif args.action == "relay-marker-check":

@@ -1154,26 +1154,42 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
 
 
 def status(*, root="/", now=time.time):
+    from runtime.host import host_load
     try:
         result = read(root, "/run/sparkring/status.json")
     except FileNotFoundError:
         return {"state": "agent-unavailable", "next_action": "systemctl status sparkring-agent", "hardware_qualified": False}
     age = now() - result["observed_at"]
     result["age_seconds"] = round(age, 1)
-    if age < -5 or age > 90:
+    # 90 s, or longer for an agent that host_load paces slower while a model serves.
+    if age < -5 or age > host_load.stale_after(result):
         result.update(state="stale", next_action="systemctl status sparkring-agent")
     return result
 
 
-def agent(*, root="/", once=False):
+def agent(*, root="/", once=False, sleep=time.sleep):
     """Record this Spark's status every AGENT_INTERVAL seconds, restoring approved fabric routes and settings first.
 
     Package installation restarts sparkring-agent.service, so an updated
     package restores missing routes and differing settings without setup or a
-    reboot.
+    reboot. While a SparkRing model container runs here, the host-load setting
+    ``agent_serving_interval`` (runtime.host.host_load) can lengthen the
+    interval; the document then records ``interval_seconds`` so that readers
+    judge its age by it. The setting is read again every AGENT_INTERVAL
+    seconds, so lowering it ends a long wait.
     """
+    from runtime.host import host_load
     while True:
-        save(root, "/run/sparkring/status.json", snapshot(root=root, repair=True))
+        document = snapshot(root=root, repair=True)
+        interval = host_load.agent_interval(document, root=root)
+        if interval != AGENT_INTERVAL:
+            document = {**document, "interval_seconds": interval}
+        save(root, "/run/sparkring/status.json", document)
         if once:
             return
-        time.sleep(AGENT_INTERVAL)
+        waited = 0
+        while waited < interval:
+            step = min(AGENT_INTERVAL, interval - waited)
+            sleep(step)
+            waited += step
+            interval = min(interval, host_load.agent_interval(document, root=root))

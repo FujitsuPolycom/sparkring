@@ -1,5 +1,5 @@
 [Unit]
-Description=Keep the approved SparkRing administration path available
+Description=Check the SparkRing administration tunnel every 20 s (host-load setting control_refresh_interval)
 
 [Timer]
 OnBootSec=30

@@ -1,6 +1,8 @@
 """Shared fixtures of the host tests: no test enables or queries a systemd unit of the machine running it,
 no setup simulation runs the fabric bandwidth test on the machine running it or over SSH, and no
 installation drops page caches or reads memory on a Spark before its start."""
+import json
+
 import pytest
 
 
@@ -39,3 +41,13 @@ def no_dashboard_service(monkeypatch):
     monkeypatch.setattr(dashboard_admin, "refresh_site", lambda **kwargs: True)
     monkeypatch.setattr(dashboard_admin, "after_setup", lambda **kwargs: True)
 
+
+@pytest.fixture(autouse=True)
+def recovery_reads_node_a_like_the_others(monkeypatch):
+    """Route the recovery timer's reads of Node A's own rank through ``discovery.ssh`` as for every other
+    Spark, so the tests' fake SSH answers them instead of this machine's status file and Docker.
+    ``runtime.host.test_host_load`` tests the local reads through ``REAL_LOCAL_STATUS`` and ``REAL_LOCAL_COMMAND``."""
+    from runtime.host import discovery, recovery
+    monkeypatch.setattr(recovery, "local_status",
+                        lambda host: json.loads(discovery.ssh(host, ["/usr/bin/sparkring", "node", "status"])))
+    monkeypatch.setattr(recovery, "local_command", lambda host, args, **kwargs: discovery.ssh(host, args))

@@ -1,5 +1,5 @@
 [Unit]
-Description=Refresh approved SparkRing control endpoints after interface reload
+Description=Check and repair the SparkRing administration tunnel: links, endpoints, firewall rules and DNS (started by its timer, link changes and ConnectX driver restarts)
 After=network-online.target
 ConditionPathExists=/etc/sparkring/control.json
 
