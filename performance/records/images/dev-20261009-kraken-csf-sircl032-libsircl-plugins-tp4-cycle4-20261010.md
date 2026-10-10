@@ -62,6 +62,6 @@ Ring of four against path of four, on the cells both measured (0K and 32K):
 
 ## Conclusion
 
-GLM-5.3-Flash CSF and DeepSeek-V4.1-Flash decode on a ring of four within a few percent of the path of four. Qwen3.8-Flash-Next's 8.9 % gap is under investigation; its cause is not separated, because the path-of-four run used checkpoint `qad-step5500-mxfp8-attention` and the install the default `qad-step5500-ple1000`.
+GLM-5.3-Flash CSF and DeepSeek-V4.1-Flash decode on a ring of four within a few percent of the path of four. Qwen3.8-Flash-Next's 8.9 % gap is its checkpoint: the path-of-four run used `qad-step5500-mxfp8-attention` and the install the default `qad-step5500-ple1000`, and on the same ring the former decodes +6.3 % and +7.8 % over the latter ([checkpoint control](dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-starts-qwen-control-20261010.md)).
 
 Each comparison also changes the image and SIRCL build, the transport settings and, for GLM-5.3-Flash CSF, the serving settings (the path-of-four run used the runner's CSF overrides; the install used the profile's `csf` entry, asynchronous scheduling and 16 sequences). One measured start per install.
