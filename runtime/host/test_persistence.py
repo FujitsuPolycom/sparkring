@@ -789,3 +789,29 @@ def test_the_workspace_accepts_a_root_owned_controller_directory(tmp_path, monke
         node.workspace("operator", "ring8", root=tmp_path, account=account)
     (tmp_path / "srv/sparkring/ring8").rmdir()
     assert node.workspace("operator", "ring8", root=tmp_path, account=account)["controller"] == str(controller)
+
+
+def test_a_reform_as_root_accepts_the_workspace_another_account_set_up(tmp_path, monkeypatch):
+    """Sparks recabled into a ring they formed before: the re-form signs in as root and finds that ring's
+    workspace, with its checkpoints, owned by the account that set it up. Root takes it as it is; another
+    operator is still refused."""
+    from types import SimpleNamespace
+    from runtime.host import node
+    workspace = tmp_path / "srv/sparkring/ring8"
+    (workspace / "checkpoints").mkdir(parents=True)
+    real = Path.stat
+
+    def stat(self, *args, **kwargs):
+        found = real(self, *args, **kwargs)
+        # The earlier setup's account (uid 1001) owns the workspace; the controller state belongs to root.
+        return SimpleNamespace(st_uid=1001 if self == workspace else 0, st_mode=found.st_mode)
+    monkeypatch.setattr(Path, "stat", stat)
+    chowned = []
+    monkeypatch.setattr(node.os, "chown", lambda path, uid, gid: chowned.append(Path(path)), raising=False)
+    root = SimpleNamespace(pw_uid=0, pw_gid=0)
+    assert node.workspace("root", "ring8", root=tmp_path, account=root)["workspace"] == str(workspace)
+    # Only the controller directory, which did not exist, was created and given to root; the workspace kept
+    # its owner and its contents.
+    assert chowned == [tmp_path / "var/lib/sparkring/controller"] and (workspace / "checkpoints").is_dir()
+    with pytest.raises(ValueError, match="belongs to another operator: .*ring8"):
+        node.workspace("operator", "ring8", root=tmp_path, account=SimpleNamespace(pw_uid=1002, pw_gid=1002))
