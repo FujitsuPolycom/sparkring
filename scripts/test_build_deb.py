@@ -26,7 +26,9 @@ def payload_with_source(tmp_path, **record):
         (payload / relative).parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(ROOT / relative, payload / relative)
     path = payload / build_deb.MARKER_RECORD
-    path.write_text(json.dumps({**json.loads(path.read_text(encoding="utf-8")), **record}), encoding="utf-8")
+    # The binary is unpublished unless ``record`` names one, whichever binary the committed record names.
+    fields = {"binary_sha256": None, "download_url": None, **record}
+    path.write_text(json.dumps({**json.loads(path.read_text(encoding="utf-8")), **fields}), encoding="utf-8")
     return payload, payload / build_deb.MARKER_SOURCE
 
 
@@ -159,9 +161,14 @@ def test_skip_builds_no_marker_and_other_modes_are_refused(tmp_path):
 def test_the_package_records_the_marker_and_the_build_writes_it_beside_the_package(tmp_path, monkeypatch):
     import tarfile
     source = tmp_path / "source.tar"
+    # The record with an unpublished binary, whichever binary the committed record names.
+    unpublished = tmp_path / "relay-marker-artifact.json"
+    unpublished.write_text(json.dumps({**json.loads((ROOT / build_deb.MARKER_RECORD).read_text(encoding="utf-8")),
+                                       "binary_sha256": None, "download_url": None}), encoding="utf-8")
     with tarfile.open(source, "w") as tar:
-        for relative in ("packaging/debian", build_deb.MARKER_SOURCE, build_deb.MARKER_RECORD):
+        for relative in ("packaging/debian", build_deb.MARKER_SOURCE):
             tar.add(ROOT / relative, arcname=relative)
+        tar.add(unpublished, arcname=build_deb.MARKER_RECORD)
     binary = tmp_path / "marker"
     binary.write_bytes(MARKER)
     seen = {}
