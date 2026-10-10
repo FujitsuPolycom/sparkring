@@ -1,5 +1,11 @@
 # SparkRing 2026.10.2
 
+This project is based on GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD by Local
+Inference Lab, Inc., a non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
+Lab License, Version 1.0.
+
 Pre-release for testing. Packages built from tag `2026.10.2` install this
 release's image by default. `main`, `install.sh` from `main` and the
 [Install Builder](https://fujitsupolycom.github.io/sparkring/) stay on
