@@ -32,7 +32,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
-| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable` | Serve a read-only web page of the ring and its models (Experimental) |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable`, `tui` | Serve a read-only web page of the ring and its models, and show it in a terminal (Experimental) |
 | [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Show or change where and how often the host agent and the recovery timer run |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
@@ -511,6 +511,27 @@ result whether quiet mode was on. `performance/harnesses/qwen_prefill.py`
 does not, because a published record pins its bytes; wrap it as
 [profile validation](profile-validation.md) wraps the benchmark.
 
+`sparkring dashboard tui` shows the same status in a terminal on Node A, over
+SSH if need be. Its header gives the models serving, Sparks busy, requests
+running, total output rate, the data's age and the read period; below it the
+ring shows each model's arc in its colour, and each model has a card with its
+state, TP size and arc, transport, uptime, output rate, running requests, KV
+use and budget, draft acceptance length and first-token time. `d` expands the
+selected card: model, endpoint, layout, arc, transport, head container,
+output and prompt rates, graphs of the last hour's output rate and KV use,
+requests, KV budget with the concurrency it allows at the maximum context,
+latency with prefix-cache hits, totals, settings, parsers, image, the log
+command, and per Spark its rank, LAN address, memory and free disk. Free disk
+below 2 % of the root filesystem is red, below 5 % yellow.
+
+The terminal view reads the service's `/api/status` on this Spark and nothing
+else: it sends no request to any model and opens no SSH session, and an
+address of another host is refused before a connection opens. While it is
+open it counts as a viewer, as the page does, so the service reads `/metrics`
+every 5 s; `--passive` leaves the service at its 60 s reads. The view needs
+Python's `curses` module, which Linux has; `--once` prints one frame as text
+anywhere.
+
 | Command or flag | Meaning |
 |---|---|
 | `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves |
@@ -523,6 +544,10 @@ does not, because a published record pins its bytes; wrap it as
 | `serve --cpus LIST` | CPUs to run on instead of the efficiency cores |
 | `quiet on`, `quiet off` | Pause or resume every request |
 | `quiet hold --label NAME`, `quiet release ID`, `quiet status` | A measurement's own pause, its end, and every pause held |
+| `tui` | The status in this terminal. Keys: up and down (or `j`, `k`) select a model, `d` or space expands its card, `e` shows events, `r` reads at once, `-` and `=` lengthen or shorten the read period, `q` quits |
+| `tui --once`, `--details`, `--events`, `--width N` | Print one frame as text and exit; `--details` expands every card, `--events` adds recent events |
+| `tui --passive` | Do not count as a viewer: the service keeps reading each model's `/metrics` once a minute |
+| `tui --url URL`, `tui --password-file FILE` | The service's address on this Spark when `serve --bind` moved it, and its password when it has one |
 
 Like the model API, the page has no key unless `--password-file` gives one. It
 shows host names, addresses and model settings, so keep Node A on a trusted

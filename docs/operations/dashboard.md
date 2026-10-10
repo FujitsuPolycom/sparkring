@@ -106,6 +106,19 @@ http://NODE_A_LAN_ADDRESS:8090/
 It sends no inference request and opens no SSH session. The
 [command reference](commands.md#dashboard) lists what it reads and how often.
 
+The same status shows in a terminal on Node A, for example over SSH:
+
+```bash
+sparkring dashboard tui            # q quits; d expands the selected model's card
+sparkring dashboard tui --once     # one frame as plain text
+```
+
+It reads the page's service on Node A and sends nothing to any other Spark
+itself. Like an open page, it makes the service read each model's metrics
+every 5 s instead of every minute; `--passive` leaves the service's reads
+unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
+and free disk, which is red below 2 % of the disk.
+
 ## Source
 
 SparkRing's runtime-status vLLM plugin serves the page. Its source, response

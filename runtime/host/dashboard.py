@@ -6,6 +6,8 @@ The page shows each fabric's ring of Sparks with the arc every model serves
 from, and per model its state, output tokens per second, requests, KV cache
 use and budget, draft acceptance, first-token time, prefix-cache hits,
 serving settings, collective transport, image and per-Spark memory and disk.
+``sparkring dashboard tui`` (``runtime.host.dashboard_tui``) shows the same
+status document in a terminal, read from this service.
 
 Where its data comes from
 -------------------------
@@ -28,8 +30,9 @@ Where its data comes from
 
 - HTTP GET requests to each deployment's API, through ``ReadOnlyClient``:
 
-  - ``/metrics`` every METRICS_VIEWED_SECONDS while a browser shows the page
-    (it fetched ``/api/status`` within VIEWER_SECONDS), else every
+  - ``/metrics`` every METRICS_VIEWED_SECONDS while a browser or the terminal
+    view shows the status (it fetched ``/api/status`` within VIEWER_SECONDS;
+    ``/api/status?viewer=passive`` does not count), else every
     METRICS_UNVIEWED_SECONDS. The vllm:cache_config_info gauge in it gives the
     KV cache budget;
   - ``/v1/models`` every MODELS_SECONDS while the model serves, for its served
@@ -857,7 +860,7 @@ class Collector:
             spark = hostnames.get(position, {})
             up = True if serving else (False if model.state == "offline" and position == positions[0] else None)
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
-                           "up": up, "position": position})
+                           "lan_address": spark.get("lan_address"), "up": up, "position": position})
         return {
             "id": model.id, "name": run_name(positions), "profile": row.get("profile"),
             "state": model.state, "state_label": LABELS.get(model.state, "Checking"), "state_since": since,
@@ -1050,7 +1053,8 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
             if path == "/":
                 return self._send(200, page, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
             if path == "/api/status":
-                collector.mark_viewed()
+                if params.get("viewer") != "passive":   # sparkring dashboard tui --passive
+                    collector.mark_viewed()
                 return self._json(200, collector.snapshot())
             if path == "/api/refresh":
                 accepted = collector.request_runtime(params.get("model", ""))
@@ -1240,8 +1244,12 @@ def main(argv=None) -> int:
     hush.add_argument("--quiet-file", default=str(QUIET_PATH))
     commands.add_parser("disable", help="stop the service and keep it off across reboots, setups and upgrades (sudo)")
     commands.add_parser("enable", help="turn the service back on (sudo)")
+    from runtime.host import dashboard_tui     # a reader of this service's /api/status; collects nothing
+    dashboard_tui.add_parser(commands)
     args = parser.parse_args(argv)
     try:
+        if args.command == "tui":
+            return dashboard_tui.main(args)
         if args.command == "serve":
             if bool(args.fabric) != bool(args.site) or len(args.fabric or ()) != len(args.site or ()):
                 raise ValueError("give --fabric and --site together, once per fabric")

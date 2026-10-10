@@ -188,8 +188,9 @@ def _parser() -> argparse.ArgumentParser:
                                          "carried each collective; --report writes the tester bundle (Node A)")
     subcommands.add_parser("host-load", help="show or change where and how often the host agent and recovery timer "
                                              "run, on this Spark or with --all on every Spark (Node A)")
-    subcommands.add_parser("dashboard", help="serve a read-only web page of the fabric's Sparks and models: GET requests "
-                                             "for metrics and status only, no inference request, no SSH")
+    subcommands.add_parser("dashboard", help="serve a read-only web page of the fabric's Sparks and models (GET requests "
+                                             "for metrics and status only, no inference request, no SSH); tui shows "
+                                             "it in this terminal")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
