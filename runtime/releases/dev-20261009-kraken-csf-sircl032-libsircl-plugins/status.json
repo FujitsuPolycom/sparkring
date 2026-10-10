@@ -54,8 +54,8 @@
       "id": "libsircl-transport",
       "version": "0.6.0",
       "status": "research-only",
-      "scope": "sparkring install --transport libsircl",
-      "record": "docs/architecture/libsircl.md"
+      "scope": "sparkring install --transport libsircl; at TP2 on a pair of a ring of four vLLM's initialization failed with NCCL error: invalid usage, cause under investigation in vLLM's own communicator setup (workers already start with spawn; a standalone ncclCommInitRank with the deployment's settings, with and without the container's LD_PRELOAD, succeeded)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md"
     },
     {
       "id": "glm53-plugins",
@@ -247,9 +247,9 @@
     },
     {
       "id": "ring4-install",
-      "result": "pending",
-      "scope": "the installer scenarios on the rings of four",
-      "record": null
+      "result": "passed",
+      "scope": "sparkring install on two rings of four with the release lock, one run each (research-only): seven installations of GLM-5.3-Flash CSF, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash at TP4 and TP2, a model switch and two pairs serving at once, each passing sparkring check and three known-answer questions on SIRCL with NCCL absent; --transport libsircl at TP2 failed vLLM's initialization (NCCL error: invalid usage), cause under investigation",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md"
     },
     {
       "id": "ring4-benchmark",

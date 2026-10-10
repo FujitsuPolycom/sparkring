@@ -199,8 +199,8 @@ deployment, and none is serving qualification.
 ### Two rings of four Sparks: setup, SIRCL tune and libsircl
 
 - Lane **public-functional**. Status **implemented**. Maturity
-  **live-validated** for the setups and the libsircl gate; the TP4 serving
-  measurements below are research-only.
+  **live-validated** for the setups and the libsircl gate; the installer
+  scenarios and TP4 serving measurements below are research-only.
 - Hardware: the eight Sparks recabled as two independent rings of four
   (ring A and ring B), one rank per Spark. Ring B's positions 0 and 1 ran GPU
   driver 580.178.04 with kernel 7.0.0-1019, its positions 2 and 3 driver
@@ -239,8 +239,20 @@ deployment, and none is serving qualification.
   `qad-step5500-mxfp8-attention` and the install the default
   `qad-step5500-ple1000`. Each comparison also changes the image, the SIRCL
   build and the transport settings.
+- Installer scenarios, research-only, GPU clocks not locked, one run each:
+  with the release lock, `sparkring install` installed GLM-5.3-Flash CSF at
+  TP4, switched it to Qwen3.8-Flash-Next and back, ran GLM-5.3-Flash CSF and
+  Qwen3.8-Flash-Next on the two pairs of one ring at once (ring A), and
+  installed DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next at TP4 (ring B). Each
+  of these seven installations passed `sparkring check`'s seven checks and
+  three known-answer questions, on SIRCL ring sessions with NCCL absent; the
+  four-Spark sessions took the measured `cycle-4` row and the pairs the
+  `pair` row. `--transport libsircl` on a pair of ring B failed vLLM's
+  initialization (below). Six plan-only refusals and plans behaved as
+  expected.
 - Records: [setup and SIRCL tune](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md),
+  [installer scenarios](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md),
   [TP4 on a ring of four](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md).
 
 ### Clean-room acceptance audit
@@ -263,7 +275,7 @@ deployment, and none is serving qualification.
 | Serving A/B measurements of two, four and eight Sparks recorded | passed (status research-only) | [Evidence](#evidence) |
 | `ring8-installer`: installer runs on the eight-Spark ring with the release lock | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
-| `ring4-install`: the installer scenarios on the rings of four | **pending** | — |
+| `ring4-install`: the installer scenarios on the rings of four | passed (status research-only); the libsircl pair failed | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md) |
 | `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next; CSF and DeepSeek within the spread of a path of four, Qwen's 8.9 % gap under investigation | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md) |
 | `ring4-sircl-tune`: SIRCL's ring-harness tune of the `cycle-4` group shape on both rings | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table | passed | [record](../../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md) |
@@ -284,7 +296,17 @@ row ([release procedure](../../../docs/development/releases.md)).
 
 - `--transport libsircl` is research-only: no serving measurement uses it,
   the installer does not judge its receipts (verdict `unknown`), and it runs
-  without decode-context parallelism.
+  without decode-context parallelism. At TP2 on a pair of a ring of four,
+  vLLM's initialization failed with `NCCL error: invalid usage` from
+  `ncclCommInitRank`; its cause is under investigation. Two causes are
+  excluded: the profile already starts vLLM's workers with `spawn`, so no
+  state inherited through `fork` is involved, and a standalone
+  `ncclCommInitRank` on the same pair with the deployment's libsircl, SIRCL
+  and NCCL settings created the communicator, with and without the
+  container's `LD_PRELOAD`. The failure is in vLLM's own setup of the
+  communicator; vLLM reports only the error's name, and libsircl's
+  `ncclGetLastError` message, which vLLM does not read, is the diagnosis's
+  following input.
 - libsircl's broadcast on a cycle of eight reaches 1.9 GB/s against NVIDIA
   NCCL's 24.2 GB/s: it has no ring broadcast (unsupported). The default
   `sircl` transport does not use libsircl.

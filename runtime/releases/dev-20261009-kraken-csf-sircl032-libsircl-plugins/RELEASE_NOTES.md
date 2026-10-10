@@ -153,7 +153,12 @@ context. The items below it state their own conditions.
   all-reduce of 16.55 ms (24.3 GB/s) on each
   ([setup and tune](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
-- **Pending:** the installer scenarios on the rings of four.
+- `sparkring install` on the rings of four with the release image (GPU
+  clocks not locked, one run each): GLM-5.3-Flash CSF, Qwen3.8-Flash-Next and
+  DeepSeek-V4.1-Flash on four Sparks, a switch between two models and back,
+  and two pairs of one ring serving at once; all seven installations passed
+  `sparkring check` and three known-answer questions on SIRCL, NCCL absent
+  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md)).
 - `sparkring install` on a ring of four with the release image (GPU clocks
   locked, one measured start each, research-only): GLM-5.3-Flash CSF and
   DeepSeek-V4.1-Flash decoded within a few percent of the same profiles on
@@ -167,7 +172,12 @@ context. The items below it state their own conditions.
 ## Known limitations
 
 - `--transport libsircl` is research-only, has no serving measurement, runs
-  without decode-context parallelism, and its receipts are not judged.
+  without decode-context parallelism, and its receipts are not judged. At
+  two Sparks on a ring of four it failed vLLM's initialization with
+  `NCCL error: invalid usage`; the cause, in vLLM's own setup of the
+  communicator, is under investigation. vLLM's workers already start with
+  `spawn`, and a standalone initialization with the deployment's settings
+  and the container's `LD_PRELOAD` succeeded on the same pair.
 - libsircl's broadcast on a ring of eight reaches 1.9 GB/s against NCCL's
   24.2 GB/s (unsupported). The default `sircl` transport does not use
   libsircl.

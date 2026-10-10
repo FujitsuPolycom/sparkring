@@ -104,7 +104,11 @@ once each with GPU clocks not locked; each passed `sparkring check`'s
 functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
 16K context ([installer record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
 
-- **Pending:** the installer scenarios on four-Spark rings.
+- On two four-Spark rings, `sparkring install` installed the four-Spark
+  GLM-5.3-Flash CSF, Qwen and DeepSeek profiles and two pairs serving at
+  once; all seven installations passed `sparkring check` on SIRCL, once each
+  with GPU clocks not locked
+  ([installer record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md)).
 - On a four-Spark ring, `sparkring install` deployments of the four-Spark
   GLM-5.3-Flash CSF and DeepSeek profiles decoded within a few percent of the
   table's four-Spark rows (median -0.8 % and +0.9 %; GPU clocks locked, one
