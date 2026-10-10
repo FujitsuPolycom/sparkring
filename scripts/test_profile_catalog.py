@@ -172,7 +172,7 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
         table.append(line)
     rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip() for line in table}
     assert rows == {'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-qad-tp4': 'on · xhigh',
-                    'glm53-flash-nvfp4-spark-tp2': 'always · max', 'glm53-flash-nvfp4-spark-tp4': 'always · max',
+                    'glm53-flash-tp2': 'always · max', 'glm53-flash-tp4': 'always · max',
                     'glm53-nvfp4-tp8': 'always · max',
                     'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
                     'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
