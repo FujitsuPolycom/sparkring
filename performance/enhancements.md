@@ -219,7 +219,7 @@ Measured without a gain, not adopted:
 - Category: Kernel or backend setting: B12X or vLLM kernel choice, quantized-weight path, or the image whose sources a deployment runs.
 - Models: GLM-5.3, GLM-5.3-Flash, Qwen3.8-Flash-Next, Swift-1.5-Qwen3.8-Flash-Next, MiMo-V2.6-Flash-MOPD. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `qwen38-flash-next-tp2-sparkcache`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `qwen38-flash-next-tp2-sparkcache`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
 - Measured (TP8/DCP4, image SIRCL 0.3.0 and libsircl image (816c6d6a)): decode-step profile without --linear-backend and with MXFP8 linears: FlashInferCutlassMxfp8LinearKernel 51 of 93 ms per step, 828 GEMMs at 62 us each, M = 3 tokens. Evidence: private record 2026-10-08: GLM-5.3 TP8 decode profile.
 - Measured (TP8/DCP4, 1 streams, context 0, local-inference-lab/GLM-5.3-NVFP4@b472e4ee): --linear-backend b12x against no --linear-backend, with MXFP8 dense linears: decode 11.1 -> 17.8 steps/s (+61 %), 26.6 -> 46.0 tok/s; the image is not recorded with the result. Evidence: private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B.
 - Evidence: private record 2026-10-08: GLM-5.3 TP8 decode profile; private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B.
@@ -362,7 +362,7 @@ Measured without a gain, not adopted:
 - Category: Collective transport setting: SIRCL ring sessions, NCCL or the prepared RoCEnante transport.
 - Models: DeepSeek-V4.1-Flash, GLM-5.3-Flash, Qwen3.8-Flash-Next, Swift-1.5-Qwen3.8-Flash-Next, MiMo-V2.6-Flash-MOPD. Sizes: 2/4.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `swift15-qwen38-flash-next-tp4`.
+- Profiles that turn it on: `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `swift15-qwen38-flash-next-tp4`.
 - Measured (TP4/DCP1, context 16K-128K, deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a, image dev-20260927-h2dstaging-cuda1342-nccl2323-status031): prefill 4-9 % faster than with it off. Evidence: [performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md](records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
 - Evidence: [performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md](records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
 
@@ -385,7 +385,7 @@ Measured without a gain, not adopted:
 - Category: Speculative-decoding setting: drafter, draft depth, draft sampling and verification, draft quantization.
 - Models: Qwen3.8-Flash-Next, Swift-1.5-Qwen3.8-Flash-Next, DeepSeek-V4.1-Flash, GLM-5.3-Flash, GLM-5.3. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `deepseek-v41-flash-tp4`, `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
+- Profiles that turn it on: `deepseek-v41-flash-tp4`, `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
 - Measured (local-inference-lab/Qwen3.8-Flash-Next-NVFP4): +10-14 % tok/s at TP2 and TP4. Evidence: private record 2026-09: Qwen3.8 session archive.
 - Measured (TP4/DCP1, 4-16 streams, context 0, deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a, image dev-20260927-h2dstaging-cuda1342-nccl2323-status031): with adaptive verification and block rejection: 138.9 / 195.2 / 260.9 against 130.5 / 184.6 / 252.9 tok/s at 4 / 8 / 16 streams. Evidence: [performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md](records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md).
 - Evidence: [performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md](records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md); private record 2026-09: Qwen3.8 session archive.
@@ -410,7 +410,7 @@ Measured without a gain, not adopted:
 - Category: Kernel or backend setting: B12X or vLLM kernel choice, quantized-weight path, or the image whose sources a deployment runs.
 - Models: GLM-5.3-Flash, GLM-5.3. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
 - Measured (TP4/DCP1, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay): 4-bit activations decode 3-7 % slower than W4A16. Evidence: private record 2026-10-07..08: SIRCL ring results, section 13.
 - Evidence: [profiles/glm53-flash-csf-tp8/README.md](../profiles/glm53-flash-csf-tp8/README.md); private record 2026-10-07..08: SIRCL ring results.
 
@@ -423,7 +423,7 @@ Measured without a gain, not adopted:
 - Availability: from Kraken CSF sources, SIRCL 0.3.0 and libsircl image (816c6d6a), SIRCL 0.3.1, libsircl and GLM-5.3 plugin image (27e9f75c), SIRCL 0.3.2, libsircl and GLM-5.3 plugin image (1a8c1035), 2026.10.2.
 - Requires: [`b12x-w4a16-experts`](#b12x-w4a16-experts).
 - Trade-off: GLM-5.3 prefill -2.9 %.
-- Profiles that turn it on: `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
+- Profiles that turn it on: `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
 - Measured (TP8/DCP4, 1-8 streams, context 16K, local-inference-lab/GLM-5.3-NVFP4@b472e4ee, image dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace backport): decode +3.2 / +4.0 / +2.7 / +3.8 % at 1 / 2 / 4 / 8 streams; prefill -2.9 %. Evidence: private record 2026-10-06: GLM-5.3 TP8 session notes.
 - Measured (TP4/DCP1, 4-16 streams, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay): steps/s +3-6 % at 4-16 users (101.8 -> 107.5 at 16), tok/s 246.5 -> 268.1 at 16 users; prefill unchanged. Evidence: private record 2026-10-07..08: SIRCL ring results, section 13.
 - Measured (TP2/DCP1, 1-8 streams, context 0K, 32K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image SIRCL 0.3.0 and libsircl image (816c6d6a)): part of the measured CSF configuration with SIRCL ring schedules: 15.3 / 49.6 steps/s at 1 / 8 streams; not measured alone. Evidence: [performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md](records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md).
@@ -470,7 +470,7 @@ Measured without a gain, not adopted:
 - Category: vLLM general plugin, image feature hook or cache connector.
 - Models: GLM-5.3, GLM-5.3-Flash, Qwen3.8-Flash-Next. Sizes: 2/4 (DCP 1); 8.
 - Availability: from shared 2026.09.3. Port: the Kraken images carry no SparkCache connector; SparkCache runs on the shared 2026.09.3 image.
-- Profiles that turn it on: `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-tp2-sparkcache`.
+- Profiles that turn it on: `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-tp2-sparkcache`.
 - Measured (TP8/DCP4, 1 streams, context 64K, 128K, local-inference-lab/GLM-5.3-NVFP4@b472e4ee, image dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace SparkCache build): after a restart, TTFT 54.3 -> 2.5 s at 64K and 112.1 -> 2.8 s at 128K. Evidence: private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T34.
 - Measured (TP4/DCP1, 1 streams, local-inference-lab/GLM-5.3-Flash-NVFP4-Spark, image shared-2026.09.0-rc.1): exact keys after restarts, all four ranks restored 7,680 and 8,192 tokens. Evidence: [performance/records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md](records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md).
 - Evidence: [profiles/README.md](../profiles/README.md); [performance/records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md](records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md); [performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md](records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md); private record 2026-10-05..08: GLM-5.3 TP8 overnight test series.
@@ -687,7 +687,7 @@ Measured without a gain, not adopted:
 - Availability: from 2026.10.0, 2026.10.1, shared 2026.09.3.
 - Refused at TP 8 by vLLM glm5next mhc_prefill_sharding.py (startup, every rank): "GLM mHC configuration admission failed: GLM mHC row ownership requires TP2 or TP4, a 4096/8192-token ceiling, and graph capture sizes below that ceiling".
 - Refused at TP 2, DCP 2/4/8 by vLLM glm5next mhc_prefill_sharding.py (startup, every rank): "GLM mHC configuration admission failed: GLM mHC row ownership requires BF16 H4096 and TP2/DCP1 or TP4/DCP1,2,4 with PP1/DP1/PCP1 and no expert or sequence parallelism".
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`.
 - Measured (TP4/DCP1, context 16K, 64K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree): prefill 12-14 % faster than with it off, decode equal. Evidence: [spark_transport/sircl/sparkring_sircl/vllm/shims.json](../spark_transport/sircl/sparkring_sircl/vllm/shims.json).
 - Measured (TP4/DCP1, local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a6082410, image dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree): prefill 3.7 % faster than with it off. Evidence: [spark_transport/sircl/sparkring_sircl/vllm/shims.json](../spark_transport/sircl/sparkring_sircl/vllm/shims.json).
 - Measured (TP2/DCP2, 8 streams, context 64K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image a research overlay of the CSF sources): +1 % prefill at 64K, +3 % decode at 8 streams; the DCP1 on/off control is not measured. Evidence: private record 2026-10-08: eight-Spark evening results.
@@ -703,7 +703,7 @@ Measured without a gain, not adopted:
 - Availability: from 2026.10.0, 2026.10.1.
 - Refused at TP 8 by vLLM recurrent_prefill_checkpoint.py (startup, every rank): "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported".
 - Refused at TP 2, DCP 2/4/8 by vLLM recurrent_prefill_checkpoint.py (startup, every rank): "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported".
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`.
 - Measured (TP2/DCP1, 1-8 streams, context 0K, 32K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image SIRCL 0.3.0 and libsircl image (816c6d6a)): with the CSF checkpoint, two-CTA W4A16 experts and SIRCL ring schedules, GPU clocks locked, against the same configuration without --async-scheduling, KDA prefill coalescing and the four-Spark draft settings: TTFT 3.80 / 15.33 s against 4.41 / 15.90 s at 8K / 32K, decode steps within 3 % except one start's 32K / 8-stream cell; the three were not measured apart. Evidence: [performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md](records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md).
 - Evidence: [profiles/glm53-flash-nvfp4-spark-tp4/config.json](../profiles/glm53-flash-nvfp4-spark-tp4/config.json); [performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md](records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md); source: vllm@bc9ea774 vllm/v1/core/recurrent_prefill_checkpoint.py (validate_coalescing_config).
 
@@ -715,7 +715,7 @@ Measured without a gain, not adopted:
 - Models: GLM-5.3-Flash. Sizes: 2/4/8 (DCP 1).
 - Availability: from Kraken CSF sources.
 - Requires: [`b12x-w4a16-experts`](#b12x-w4a16-experts).
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2:csf`, `glm53-flash-nvfp4-spark-tp4:csf`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`.
 - Measured (TP4/DCP1, 1-8 streams, context 0K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image SIRCL 0.3.2, libsircl and GLM-5.3 plugin image (1a8c1035)): sparkring install on a ring of four and on a pair (TP2) of another: 7 of 7 functional checks and 256 of 256 correctness-screen responses each, none degenerate, wrong or failed. Evidence: [performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md](records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md).
 - Measured (TP2/DCP1, 1, 8 streams, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay): 15.5 / 45.0 against 14.8 / 42.3 steps/s at 1 / 8 streams; 8-stream tok/s 111.8 -> 119.1; prefill within 1-3 %; one run. Evidence: private record 2026-10-07..08: SIRCL ring results, section 13.
 - Measured (TP4/DCP1, 1-16 streams, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay): decode steps equal at 1-8 users, +4 % at 16; prefill equal to NVFP4-Spark once mHC sharding is on. Evidence: private record 2026-10-07..08: SIRCL ring results, section 13.
@@ -739,7 +739,7 @@ Measured without a gain, not adopted:
 - Category: vLLM engine setting: scheduling, parallel layout, sequence count, CUDA graphs and compilation.
 - Models: GLM-5.3-Flash. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`.
 - Measured (TP4/DCP4, 8 streams, context about 6K, local-inference-lab/GLM-5.3-Flash-NVFP4-Spark, image ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136): median aggregate 57.07 against 56.16 tok/s; median maximum TTFT 20.82 against 21.66 s. Evidence: [performance/records/glm53-flash/scheduler-cadence-20260902.md](records/glm53-flash/scheduler-cadence-20260902.md).
 - Evidence: [performance/records/glm53-flash/scheduler-cadence-20260902.md](records/glm53-flash/scheduler-cadence-20260902.md).
 
@@ -750,7 +750,7 @@ Measured without a gain, not adopted:
 - Category: vLLM engine setting: scheduling, parallel layout, sequence count, CUDA graphs and compilation.
 - Models: GLM-5.3-Flash, GLM-5.3. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`.
 - Measured (TP2/DCP1, 1-8 streams, context 0K, 32K, local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd, image SIRCL 0.3.0 and libsircl image (816c6d6a)): with the CSF checkpoint, two-CTA W4A16 experts and SIRCL ring schedules, GPU clocks locked, against the same configuration without --async-scheduling, KDA prefill coalescing and the four-Spark draft settings: TTFT 3.80 / 15.33 s against 4.41 / 15.90 s at 8K / 32K, decode steps within 3 % except one start's 32K / 8-stream cell; the three were not measured apart. Evidence: [performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md](records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md).
 - Evidence: [profiles/glm53-flash-nvfp4-spark-tp4/config.json](../profiles/glm53-flash-nvfp4-spark-tp4/config.json); [profiles/glm53-flash-nvfp4-spark-tp2/config.json](../profiles/glm53-flash-nvfp4-spark-tp2/config.json); [performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md](records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md).
 
@@ -805,7 +805,7 @@ Measured without a gain, not adopted:
 - Category: Kernel or backend setting: B12X or vLLM kernel choice, quantized-weight path, or the image whose sources a deployment runs.
 - Models: GLM-5.3-Flash, Qwen3.8-Flash-Next, Swift-1.5-Qwen3.8-Flash-Next. Sizes: any.
 - Availability: from 2026.10.0, 2026.10.1.
-- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-spark-tp4-switched`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `qwen38-flash-next-tp2-sparkcache`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
+- Profiles that turn it on: `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`, `glm53-flash-spark-tp4-switched`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-qad-tp4-sparkcache`, `qwen38-flash-next-qad-tp8`, `qwen38-flash-next-tp2`, `qwen38-flash-next-tp2-sparkcache`, `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4`.
 - Evidence: [profiles/glm53-flash-nvfp4-spark-tp4/config.json](../profiles/glm53-flash-nvfp4-spark-tp4/config.json); source: vllm@bc9ea774 vllm/envs.py (VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH).
 
 ### `qwen38-mxfp8-attention-checkpoint`
