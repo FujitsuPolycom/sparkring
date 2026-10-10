@@ -84,6 +84,11 @@ Like the model API, the dashboard has no key and listens on every interface of
 `API_HOST`. It shows hostnames, NIC MAC addresses and software versions, so keep
 that Spark on a trusted network ([Security](install.md#security)).
 
+## Every model on one page
+
+[`sparkring dashboard`](commands.md#dashboard) (Experimental) shows the ring and
+every model of the fabric on one page and links each model to this page.
+
 ## Source
 
 SparkRing's runtime-status vLLM plugin serves the page. Its source, response

@@ -1,0 +1,607 @@
+{
+ "title": "SparkRing",
+ "generated_at": 1791508525.1916468,
+ "service_started": 1791435729.7696612,
+ "poll_seconds": 5.0,
+ "groups": [
+  {
+   "id": "ring8",
+   "name": "Spark ring",
+   "kind": "ring",
+   "sparks": [
+    {
+     "name": "spark0",
+     "address": "192.0.2.10",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 0
+    },
+    {
+     "name": "spark1",
+     "address": "192.0.2.11",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 1
+    },
+    {
+     "name": "spark2",
+     "address": "192.0.2.12",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 2
+    },
+    {
+     "name": "spark3",
+     "address": "192.0.2.13",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 3
+    },
+    {
+     "name": "spark4",
+     "address": "192.0.2.14",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 4
+    },
+    {
+     "name": "spark5",
+     "address": "192.0.2.15",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 5
+    },
+    {
+     "name": "spark6",
+     "address": "192.0.2.16",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 6
+    },
+    {
+     "name": "spark7",
+     "address": "192.0.2.17",
+     "up": true,
+     "since": 1791435729.770597,
+     "position": 7
+    }
+   ],
+   "members": [],
+   "size": 8
+  }
+ ],
+ "ring": {
+  "id": "ring8",
+  "name": "Spark ring",
+  "size": 8,
+  "positions": [
+   {
+    "position": 0,
+    "name": "spark0",
+    "short": "0",
+    "address": "192.0.2.10",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   },
+   {
+    "position": 1,
+    "name": "spark1",
+    "short": "1",
+    "address": "192.0.2.11",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   },
+   {
+    "position": 2,
+    "name": "spark2",
+    "short": "2",
+    "address": "192.0.2.12",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   },
+   {
+    "position": 3,
+    "name": "spark3",
+    "short": "3",
+    "address": "192.0.2.13",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": [
+     "netadm"
+    ]
+   },
+   {
+    "position": 4,
+    "name": "spark4",
+    "short": "4",
+    "address": "192.0.2.14",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": [
+     "netadm"
+    ]
+   },
+   {
+    "position": 5,
+    "name": "spark5",
+    "short": "5",
+    "address": "192.0.2.15",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   },
+   {
+    "position": 6,
+    "name": "spark6",
+    "short": "6",
+    "address": "192.0.2.16",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   },
+   {
+    "position": 7,
+    "name": "spark7",
+    "short": "7",
+    "address": "192.0.2.17",
+    "up": true,
+    "since": 1791435729.770597,
+    "ssh_user": "operator",
+    "ssh": {
+     "state": "ok",
+     "at": 1791508390.4126306,
+     "detail": null
+    },
+    "member": null,
+    "members": [],
+    "run": null,
+    "containers": []
+   }
+  ],
+  "runs": [],
+  "discovery": {
+   "ports": [
+    8000,
+    8015,
+    8017,
+    8018,
+    8019,
+    8020,
+    8021
+   ],
+   "every_seconds": 15.0,
+   "ssh_every_seconds": 300.0,
+   "at": 1791508510.4133935,
+   "ssh_at": 1791508390.4126306,
+   "endpoints": 0
+  }
+ },
+ "events": [
+  {
+   "at": 1791507784.3351085,
+   "stack": "tp8-0-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791507509.3250194,
+   "stack": "tp8-0-7",
+   "text": "Serving: GLM-5.3-NVFP4-TP8 · positions 0–7 on spark0:8015",
+   "kind": "serving"
+  },
+  {
+   "at": 1791506329.0105913,
+   "stack": "tp2-2-3",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791506219.2763302,
+   "stack": "tp4-4-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791506083.9377801,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791505933.9975379,
+   "stack": "tp2-2-3",
+   "text": "Serving: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 · positions 2–3 on spark2:8000",
+   "kind": "serving"
+  },
+  {
+   "at": 1791505814.2526102,
+   "stack": "tp4-4-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP4 · positions 4–7 on spark4:8015",
+   "kind": "serving"
+  },
+  {
+   "at": 1791505708.9245777,
+   "stack": "tp2-0-1",
+   "text": "Serving: MiMo-V2.6-Flash-MOPD-TP2 · positions 0–1 on spark0:8020",
+   "kind": "serving"
+  },
+  {
+   "at": 1791505524.1366029,
+   "stack": "tp2-2-3",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791505514.0344927,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791505473.9605327,
+   "stack": "tp4-4-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791505139.121948,
+   "stack": "tp2-2-3",
+   "text": "Serving: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 · positions 2–3 on spark2:8000",
+   "kind": "serving"
+  },
+  {
+   "at": 1791505124.020594,
+   "stack": "tp2-0-1",
+   "text": "Serving: MiMo-V2.6-Flash-MOPD-TP2 · positions 0–1 on spark0:8020",
+   "kind": "serving"
+  },
+  {
+   "at": 1791505048.945114,
+   "stack": "tp4-4-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP4 · positions 4–7 on spark4:8015",
+   "kind": "serving"
+  },
+  {
+   "at": 1791504944.2255633,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791504934.1593728,
+   "stack": "tp2-2-3",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791504879.101296,
+   "stack": "tp4-4-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791504794.2203097,
+   "stack": "tp2-0-1",
+   "text": "Serving: MiMo-V2.6-Flash-MOPD-TP2 · positions 0–1 on spark0:8020",
+   "kind": "serving"
+  },
+  {
+   "at": 1791504539.14625,
+   "stack": "tp2-2-3",
+   "text": "Serving: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 · positions 2–3 on spark2:8000",
+   "kind": "serving"
+  },
+  {
+   "at": 1791504464.085825,
+   "stack": "tp4-4-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP4 · positions 4–7 on spark4:8015",
+   "kind": "serving"
+  },
+  {
+   "at": 1791504349.006501,
+   "stack": "tp2-2-3",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791504293.9786947,
+   "stack": "tp4-4-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791504194.002748,
+   "stack": "tp2-2-3",
+   "text": "Serving: Qwen3.8-Flash-Next-NVFP4-QAD-TP2 · positions 2–3 on spark2:8000",
+   "kind": "serving"
+  },
+  {
+   "at": 1791504133.973137,
+   "stack": "tp4-4-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP4 · positions 4–7 on spark4:8015",
+   "kind": "serving"
+  },
+  {
+   "at": 1791503084.1234927,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791502469.1018033,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791502278.96934,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791501643.9480703,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791501299.2385361,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791500669.2156713,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791500484.0731623,
+   "stack": "ab-tp2-s",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791499858.9819682,
+   "stack": "ab-tp2-s",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791499669.088375,
+   "stack": "ab-tp2-s",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791499034.0650184,
+   "stack": "ab-tp2-s",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791498848.987906,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791498223.965957,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791497983.8553028,
+   "stack": "ab-tp2-s",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791497533.8409686,
+   "stack": "ab-tp2-s",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791497334.0000331,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791496873.9835174,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791496688.971891,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791496228.955922,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791496043.9813902,
+   "stack": "ab-tp2-s",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791495583.9657784,
+   "stack": "ab-tp2-s",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791495399.0153952,
+   "stack": "tp2-0-1",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791495209.0104063,
+   "stack": "tp2-0-1",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791494348.923854,
+   "stack": "ab-tp2-s",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791494173.9181693,
+   "stack": "ab-tp2-s",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 0–1 on spark0:8017",
+   "kind": "serving"
+  },
+  {
+   "at": 1791474868.9603589,
+   "stack": "csf-tp2-dcp2-6-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791474858.6547666,
+   "stack": "tp2-4-5",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791474103.9346318,
+   "stack": "csf-tp2-dcp2-6-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 6–7 on spark6:8019",
+   "kind": "serving"
+  },
+  {
+   "at": 1791474088.6265619,
+   "stack": "tp2-4-5",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 4–5 on spark4:8018",
+   "kind": "serving"
+  },
+  {
+   "at": 1791473139.6569045,
+   "stack": "csf-tp2-dcp2-6-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791473134.6566088,
+   "stack": "tp2-4-5",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791440068.5471637,
+   "stack": "csf-tp2-dcp2-6-7",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 6–7 on spark6:8019",
+   "kind": "serving"
+  },
+  {
+   "at": 1791440023.5192401,
+   "stack": "tp2-4-5",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 4–5 on spark4:8018",
+   "kind": "serving"
+  },
+  {
+   "at": 1791438388.6936471,
+   "stack": "tp2-4-5",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791438383.497543,
+   "stack": "csf-tp2-dcp2-mhc-6-7",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791438378.345359,
+   "stack": "csf-tp2-dcp2-2-3",
+   "text": "No model running",
+   "kind": "stopped"
+  },
+  {
+   "at": 1791438058.334251,
+   "stack": "csf-tp2-dcp2-2-3",
+   "text": "Serving: GLM-5.3-Flash-NVFP4-Spark-TP2 · positions 2–3 on spark2:8020",
+   "kind": "serving"
+  }
+ ]
+}

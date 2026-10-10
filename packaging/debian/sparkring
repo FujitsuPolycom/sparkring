@@ -7,5 +7,9 @@ if sys.argv[1:2] == ["node"]:
     # the mesh start check, import none of the operator CLI's modules.
     from scripts.sparkring_node import main as node_main
     raise SystemExit(node_main(sys.argv[2:]))
+if sys.argv[1:2] == ["dashboard"]:
+    # The dashboard service stays small: it imports none of the operator CLI's modules either.
+    from runtime.host.dashboard import main as dashboard_main
+    raise SystemExit(dashboard_main(sys.argv[2:]))
 from scripts.sparkring import main
 raise SystemExit(main())

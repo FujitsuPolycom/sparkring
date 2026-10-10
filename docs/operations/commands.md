@@ -32,6 +32,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet` | Serve a read-only web page of the ring and its models (Experimental) |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
@@ -470,6 +471,43 @@ and account names with placeholders and keeps fabric addresses. A file that
 still names a private item is left out and listed in its `report.json`.
 Review the files, then attach the directory to a
 [Test report](https://github.com/FujitsuPolycom/sparkring/issues/new?template=test_report.yml) issue.
+
+## dashboard
+
+`sparkring dashboard serve` serves a web page of the fabric's ring and every
+recorded model: state, output rate, requests, KV cache use and budget, draft
+acceptance, settings and the last automatic-recovery check. Status:
+**Experimental**; it has offline tests only.
+
+It reads files on Node A and sends only GET requests: `/metrics` every 5 s
+while a browser shows the page and every 60 s otherwise, `/v1/models` every
+60 s, and the model's [status report](dashboard.md) once per model start. It
+sends no inference request, opens no SSH session, starts no process and runs
+at idle priority on the efficiency cores. Each card shows the command that
+prints the model's log; the page itself reads no log.
+
+```bash
+sudo sparkring dashboard export                           # after install, up or down
+sudo systemctl enable --now sparkring-dashboard.service   # serves http://NODE_A_LAN_ADDRESS:8090/
+sudo sparkring dashboard quiet on                         # no request at all, for a benchmark
+sudo sparkring dashboard quiet off
+```
+
+| Command or flag | Meaning |
+|---|---|
+| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names |
+| `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host |
+| `serve --port N` | Port (default 8090) |
+| `serve --fabric FILE --site FILE` | Another fabric's document and site file, once per fabric, for one page of several rings on another host |
+| `serve --name NAME` | A host name browsers may use for the page; requests naming another host are refused |
+| `serve --password-file FILE` | Require HTTP Basic authentication, user `sparkring`, with the password in FILE |
+| `serve --cpus LIST` | CPUs to run on instead of the efficiency cores |
+| `quiet on`, `quiet off` | Pause or resume every request |
+
+Like the model API, the page has no key unless `--password-file` gives one. It
+shows host names, addresses and model settings, so keep Node A on a trusted
+network. The site file and the fabric document hold the site's addresses; keep
+copies of them out of Git.
 
 ## logs
 
