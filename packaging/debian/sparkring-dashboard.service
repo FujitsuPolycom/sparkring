@@ -5,6 +5,8 @@ After=network-online.target
 Wants=network-online.target
 # Node A holds the controller's copy of the fabric document; other Sparks run no dashboard.
 ConditionPathExists=/var/lib/sparkring/controller/fabric.json
+# sudo sparkring dashboard disable writes this file; the dashboard then stays off.
+ConditionPathExists=!/etc/sparkring/dashboard.disabled
 
 [Service]
 Type=simple

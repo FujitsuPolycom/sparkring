@@ -585,5 +585,7 @@ def main(argv=None, *, follow=None):
     # cable is a warning with its repair steps; setup never fails here.
     bandwidth = fabric_bandwidth.after_setup(base, cluster)
     fabric.finish_setup(base, cluster, directory, bandwidth=bandwidth)
+    from runtime.host import dashboard_admin
+    dashboard_admin.after_setup()
     print("Setup complete. Choose a model: sparkring models")
     return 0

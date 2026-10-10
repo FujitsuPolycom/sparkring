@@ -1118,59 +1118,6 @@ def serve(args) -> int:
     return 0
 
 
-# -- export: the site file, from the controller's records (Node A, root) -------------------------
-def site_from_records(state_root: Path) -> dict:
-    """The sparkring-dashboard-site/v1 document of every slot's active deployment on this controller.
-
-    Each row: the deployment's directory name as `id`, its profile, served model name, positions
-    (the whole fabric or the slot's arc), the API address and port SparkRing's own checks use,
-    the display URL when one is recorded, whether its last operation stopped it, and the
-    container name of each rank when the lock renders them."""
-    from runtime.common import installer
-    from runtime.host import api_endpoint, controller
-    from runtime.host import placement as placements
-    rows = []
-    size = None
-    try:
-        size = controller.recorded_layout()["size"]
-    except (ValueError, OSError, KeyError):
-        pass
-    for slot in placements.slots(state_root):
-        directory = placements.recorded(state_root, slot)
-        if not placements.exists(directory):
-            continue
-        lock = installer.read(Path(directory) / "deployment.lock.json")
-        connection = installer.connection(lock)
-        host = urllib.parse.urlsplit(connection["api_url"]).hostname
-        positions = list(slot) if slot else list(range(size or len(lock["site"]["ranks"])))
-        shown = api_endpoint.recorded(directory)
-        containers = []
-        try:
-            for spec, rank in zip(installer.specifications(lock), lock["site"]["ranks"], strict=True):
-                name = getattr(spec, "name", None)
-                if isinstance(name, str) and CONTAINER_RE.fullmatch(name):
-                    containers.append({"position": positions[rank["rank"]], "name": name})
-        except (ValueError, KeyError, TypeError, IndexError, OSError):
-            containers = []
-        rows.append({"id": Path(directory).name, "profile": placements.profile_of(directory),
-                     "model": connection["model"], "positions": positions, "api_host": host,
-                     "api_port": connection["port"],
-                     "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,
-                     "stopped": placements.stopped(directory), "containers": containers})
-    return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows}
-
-
-def export(args) -> int:
-    from runtime.host import controller, node
-    if not hasattr(os, "geteuid") or os.geteuid() != 0:
-        raise ValueError("Run sudo sparkring dashboard export on Node A: the deployment records are root's")
-    site = site_from_records(controller.STATE)
-    output = Path(args.output)
-    node.save(output.parent, output.name, site, mode=0o644)
-    print(f"Wrote {output}: {len(site['deployments'])} deployment(s).")
-    return 0
-
-
 def quiet(args) -> int:
     path = Path(args.quiet_file)
     if args.state == "on":
@@ -1204,16 +1151,21 @@ def main(argv=None) -> int:
     hush = commands.add_parser("quiet", help="pause or resume all requests, for example around a measurement")
     hush.add_argument("state", choices=("on", "off"))
     hush.add_argument("--quiet-file", default=str(QUIET_PATH))
+    commands.add_parser("disable", help="stop the service and keep it off across reboots, setups and upgrades (sudo)")
+    commands.add_parser("enable", help="turn the service back on (sudo)")
     args = parser.parse_args(argv)
     try:
         if args.command == "serve":
             if bool(args.fabric) != bool(args.site) or len(args.fabric or ()) != len(args.site or ()):
                 raise ValueError("give --fabric and --site together, once per fabric")
             return serve(args)
-        if args.command == "export":
-            return export(args)
+        if args.command in ("export", "enable", "disable"):
+            # Root actions; their module may start systemctl, which the collector never does.
+            from runtime.host import dashboard_admin
+            return (dashboard_admin.export(args.output) if args.command == "export"
+                    else dashboard_admin.switch(args.command))
         return quiet(args)
-    except (ValueError, OSError) as error:
+    except (ValueError, OSError, RuntimeError) as error:
         print("SparkRing: " + str(error), file=sys.stderr)
         return 2
 

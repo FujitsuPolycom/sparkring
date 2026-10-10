@@ -1640,6 +1640,11 @@ def main(argv=None):
                     result["transaction"] = installer.read(journal)
                     break
             progress.failure(str(error))
+        if not args.plan:
+            # The run may have changed deployment records, whether it finished or not; a failed
+            # refresh prints one line and never changes the result.
+            from runtime.host import dashboard_admin
+            dashboard_admin.refresh_site()
         if result["state"] == "complete":
             if (result.get("hairpin") or {}).get("required"):
                 print(hairpin_ring.complete_text(len(result["hairpin"].get("ranks") or []) or 4))

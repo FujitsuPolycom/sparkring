@@ -86,8 +86,25 @@ that Spark on a trusted network ([Security](install.md#security)).
 
 ## Every model on one page
 
-[`sparkring dashboard`](commands.md#dashboard) (Experimental) shows the ring and
-every model of the fabric on one page and links each model to this page.
+Node A also serves one page for the whole ring (Experimental):
+
+```text
+http://NODE_A_LAN_ADDRESS:8090/
+```
+
+- `NODE_A_LAN_ADDRESS` is the address setup recorded for Node A's own LAN
+  connection, where the model API of a model on Node A serves; without one,
+  Node A's management address. Setup's plan prints the exact address.
+- It listens on that address only, never on the fabric or the administration
+  network, and on port 8090.
+- It shows the ring and every model of the fabric, and links each model to the
+  page above.
+- Installing the SparkRing package or running `sudo sparkring setup` turns it
+  on. `sudo sparkring dashboard disable` turns it off for good, across reboots,
+  setups and upgrades; `sudo sparkring dashboard enable` turns it back on.
+
+It sends no inference request and opens no SSH session. The
+[command reference](commands.md#dashboard) lists what it reads and how often.
 
 ## Source
 

@@ -20,7 +20,7 @@ import sys
 import time
 
 from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
-from runtime.host import discovery, fabric, hairpin_ring, node, relays, topology
+from runtime.host import dashboard_admin, discovery, fabric, hairpin_ring, node, relays, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -114,6 +114,7 @@ def summarize(plan, *, observe_only=False, api_address=None):
             # Adoption restarts no function, so its lines never announce a restart.
             print("    ConnectX hairpin: " + hairpin_ring.summary_line(row, adopt=observe_only))
     print("Existing networking will be verified and recorded." if observe_only else "Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
+    print(dashboard_admin.plan_line(api_address, plan["spec"]["hosts"][0].get("management_address")))
 
 
 def _sync_workers(plan, directory):
@@ -406,6 +407,7 @@ def setup(argv=None):
     # A degraded cable is a warning with its repair steps; setup never fails here.
     bandwidth = fabric_bandwidth.after_setup(STATE, cluster)
     fabric.finish_setup(STATE, cluster, directory, bandwidth=bandwidth)
+    dashboard_admin.after_setup()
     print("Network configured. Choose a model: sparkring models")
     return 0
 
@@ -1088,7 +1090,12 @@ def _setup_lock(argv):
 def main(argv):
     try:
         if argv[0] != "setup":
-            return lifecycle(argv)
+            try:
+                return lifecycle(argv)
+            finally:
+                # up and down change deployment records, whether they finish or fail.
+                if argv[0] in ("up", "down"):
+                    dashboard_admin.refresh_site()
         with _setup_lock(argv):
             if not any(flag in argv for flag in ("--node", "--inventory")):
                 from runtime.host.single_uplink import main as uplink_main

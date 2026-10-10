@@ -32,7 +32,7 @@ sudo sparkring logs --follow                                 # follow progress
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
-| [`dashboard`](#dashboard) | Node A | `export`, `quiet` | Serve a read-only web page of the ring and its models (Experimental) |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable` | Serve a read-only web page of the ring and its models (Experimental) |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
@@ -479,6 +479,12 @@ recorded model: state, output rate, requests, KV cache use and budget, draft
 acceptance, settings and the last automatic-recovery check. Status:
 **Experimental**; it has offline tests only.
 
+It runs on Node A as `sparkring-dashboard.service` at
+`http://NODE_A_LAN_ADDRESS:8090/` ([where it listens](dashboard.md#every-model-on-one-page)).
+Installing the package or running `sudo sparkring setup` turns it on.
+`install`, `up`, `down` and automatic recovery refresh its site file when they
+finish; a failed refresh prints one line and never stops them.
+
 It reads files on Node A and sends only GET requests: `/metrics` every 5 s
 while a browser shows the page and every 60 s otherwise, `/v1/models` every
 60 s, and the model's [status report](dashboard.md) once per model start. It
@@ -487,15 +493,16 @@ at idle priority on the efficiency cores. Each card shows the command that
 prints the model's log; the page itself reads no log.
 
 ```bash
-sudo sparkring dashboard export                           # after install, up or down
-sudo systemctl enable --now sparkring-dashboard.service   # serves http://NODE_A_LAN_ADDRESS:8090/
-sudo sparkring dashboard quiet on                         # no request at all, for a benchmark
+sudo sparkring dashboard quiet on      # no request at all, for a benchmark
 sudo sparkring dashboard quiet off
+sudo sparkring dashboard disable       # off for good, across reboots, setups and upgrades
+sudo sparkring dashboard enable
 ```
 
 | Command or flag | Meaning |
 |---|---|
-| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names |
+| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves |
+| `enable`, `disable` | Turn the service on, or off for good (`/etc/sparkring/dashboard.disabled` records the choice) |
 | `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host |
 | `serve --port N` | Port (default 8090) |
 | `serve --fabric FILE --site FILE` | Another fabric's document and site file, once per fabric, for one page of several rings on another host |

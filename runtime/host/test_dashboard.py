@@ -570,33 +570,3 @@ def test_the_service_runs_unprivileged_at_idle_priority():
     assert not [line for line in unit.splitlines() if "ssh" in line.lower() and not line.startswith("#")]
     assert "sparkring-dashboard.service" in (ROOT / "packaging" / "debian" / "prerm").read_text(encoding="utf-8")
 
-
-def test_export_writes_the_active_deployments_of_every_slot(tmp_path, monkeypatch):
-    from runtime.common import installer
-    from runtime.host import controller
-    state = tmp_path / "controller"
-    for name, placement in (("whole", None), ("profile-on-2-3", [2, 3])):
-        directory = state / "deployments" / name
-        directory.mkdir(parents=True)
-        site = {"ranks": [{"rank": 0}, {"rank": 1}], **({"placement": placement} if placement else {})}
-        (directory / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "p-" + name},
-                                                                   "site": site}))
-        slot = state if placement is None else state / "slots" / "2-3"
-        slot.mkdir(parents=True, exist_ok=True)
-        (slot / "active.json").write_text(json.dumps({"path": str(directory)}))
-    (state / "deployments" / "whole" / "state.json").write_text(json.dumps({"operation": "down", "complete": True}))
-    monkeypatch.setattr(controller, "recorded_layout", lambda: {"size": 4})
-    monkeypatch.setattr(installer, "connection", lambda lock: {
-        "api_url": "http://192.0.2.12:8015/v1" if lock["site"].get("placement") else f"http://{NODE_A_LAN}:8000/v1",
-        "model": "M", "port": 8015 if lock["site"].get("placement") else 8000})
-    monkeypatch.setattr(installer, "specifications", lambda lock: [type("Spec", (), {"name": f"c-r{i}"})()
-                                                                   for i in range(2)])
-    site = dashboard.site_from_records(state)
-    assert site["schema"] == dashboard.SITE_SCHEMA
-    whole, arc = site["deployments"]
-    assert (whole["positions"], whole["api_host"], whole["api_port"], whole["stopped"]) == ([0, 1, 2, 3], NODE_A_LAN,
-                                                                                         8000, True)
-    assert (arc["id"], arc["positions"], arc["api_host"], arc["stopped"]) == ("profile-on-2-3", [2, 3], "192.0.2.12",
-                                                                             True)
-    assert arc["containers"] == [{"position": 2, "name": "c-r0"}, {"position": 3, "name": "c-r1"}]
-    assert dashboard.deployments_from_site(json.loads(json.dumps(site)), 4)[1]["api_port"] == 8015

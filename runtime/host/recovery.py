@@ -860,6 +860,8 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
                 progress.failure(traceback.format_exc())
             after = saved_state(directory)
             succeeded = error is None and after.get("operation") == "up" and after.get("complete")
+            from runtime.host import dashboard_admin
+            dashboard_admin.refresh_site()
             print("Automatic recovery finished: the model started." if succeeded
                   else "Automatic recovery failed: " + (error or "the model operation did not complete"))
     finished = now()

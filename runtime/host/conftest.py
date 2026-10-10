@@ -28,3 +28,14 @@ def no_memory_settle(monkeypatch):
     the deployment over SSH. ``runtime.host.test_memory_settle`` tests it through ``REAL_SETTLE_MEMORY``."""
     from runtime.host import install_workflow
     monkeypatch.setattr(install_workflow, "settle_memory", lambda directory, **kwargs: [])
+
+
+@pytest.fixture(autouse=True)
+def no_dashboard_service(monkeypatch):
+    """Replace the dashboard's site-file refresh and its start at the end of setup, which would write
+    /var/lib/sparkring/dashboard/site.json and call systemctl on the machine running the tests.
+    ``runtime.host.test_dashboard_admin`` tests them through ``REAL_REFRESH_SITE`` and ``REAL_AFTER_SETUP``."""
+    from runtime.host import dashboard_admin
+    monkeypatch.setattr(dashboard_admin, "refresh_site", lambda **kwargs: True)
+    monkeypatch.setattr(dashboard_admin, "after_setup", lambda **kwargs: True)
+

@@ -10,6 +10,12 @@ if [ "$1" = configure ]; then
         systemctl enable --now avahi-daemon.service lldpd.service
         systemctl enable sparkring-agent.service
         systemctl restart sparkring-agent.service
+        # The dashboard is on by default and starts only on Node A (its unit's conditions);
+        # sudo sparkring dashboard disable records /etc/sparkring/dashboard.disabled and keeps it off.
+        if [ ! -e /etc/sparkring/dashboard.disabled ]; then
+            systemctl enable sparkring-dashboard.service
+            systemctl restart sparkring-dashboard.service || echo "SparkRing: the dashboard did not start; systemctl status sparkring-dashboard" >&2
+        fi
         # Restore the units that were enabled when the package was last
         # removed (recorded by prerm). Administration units start at once so
         # the installer can reach this node. The fabric, relay marker and
