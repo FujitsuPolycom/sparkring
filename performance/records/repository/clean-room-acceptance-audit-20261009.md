@@ -14,11 +14,12 @@ only the audited trees, the verdicts and their scope.
 | `glm_dsa_indexer_split` 1.1.0, `integrations/vllm/glm_dsa_indexer_split` | commit `cf478504`, tree `732600626129` | PASS | not stated |
 | `glm53full_speedups` 1.1.0, `integrations/vllm/glm53full_speedups` | commit `cf478504`, tree `5ba140c1d908` | PASS | not stated |
 | `glm_dcp_decode_comm`, `integrations/vllm/glm_dcp_decode_comm` | commit `cf478504`, tree `f3bc9bf7ef29` | PASS | not stated |
-| libsircl 0.6.0, `spark_transport/libsircl` | not named in this record | PASS | 0 |
+| libsircl 0.6.0, `spark_transport/libsircl` | commit `c7c35fe0`, tree `dbf3607484dd47df4cf6c8238eb5b3272466effb` | PASS on 113 files; 512 counted, all idioms | 0 |
+| vLLM general plugin `libsircl`, `integrations/vllm/libsircl` | commit `c7c35fe0`, tree `b6bdd22755bc` | PASS | 0 |
 
-"Counted idioms" is a count the audit reports for SIRCL; its definition is
-in the audit's report. The verdicts of the three plugins state no count of
-lines to rewrite.
+"Counted idioms" is a count the audit reports for SIRCL and libsircl; its
+definition is in the audit's report. The verdicts of the three GLM-5.3
+plugins state no count of lines to rewrite.
 
 ## Scope against release 2026.10.2's image
 
@@ -31,9 +32,9 @@ Image `1a8c10354eb0` was built from commit `c7c35fe0`
   It differs from the audited tree only in its version: the version strings
   of its README, `__init__.py` and dist-info `METADATA`, and the dist-info
   directory's name.
-- The image's libsircl is tree `dbf3607484dd47df4cf6c8238eb5b3272466effb`.
-  This record does not name the libsircl tree the audit covered; the audit's
-  report does.
+- The image's libsircl is the audited tree
+  `dbf3607484dd47df4cf6c8238eb5b3272466effb`, and its vLLM plugin `libsircl`
+  is the audited `integrations/vllm/libsircl` of `c7c35fe0`.
 
 ## Limitations
 

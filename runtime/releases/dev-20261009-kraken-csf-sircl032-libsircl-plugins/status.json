@@ -172,6 +172,17 @@
       "scope": "the image's libsircl.so.0.6.0 (source tree dbf36074) on every rank; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
       "result": "every verdict passed; the cycle plan in every eight-rank default communicator, within 1.15x of the ring schedules from 8 MiB; 256 MiB all-reduce 19,288 us eager, nccl-tests 19,314 us (24.32 GB/s bus); 4 KiB 18.23 us eager; broadcast 1.94 GB/s",
       "record": "performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md"
+    },
+    {
+      "id": "libsircl-ring4-release-image",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "two independent rings of four DGX Sparks, one rank per Spark; ring B's positions 0-1 on driver 580.178.04 (kernel 7.0.0-1019), 2-3 on 580.173.02 (kernel 6.17.0-1029)",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "the image's libsircl.so.0.6.0 (source tree dbf36074) on both rings at once; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
+      "result": "every verdict passed on both rings; on-budget passed as the planner expects; cycle plan from 8 MiB on 24 of 24 comparisons per ring; 256 MiB all-reduce 16.55 ms (24.3 GB/s bus) on both rings, within 1 %; broadcast 5.3 GB/s",
+      "record": "performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md"
     }
   ],
   "gates": [
@@ -208,7 +219,7 @@
     {
       "id": "clean-room-audit",
       "result": "passed",
-      "scope": "acceptance audit of SIRCL 0.3.2 (1273183e, 0 lines to rewrite, 522 counted idioms), the three GLM-5.3 plugins (cf478504) and libsircl 0.6.0 (0 lines to rewrite); the record does not name the audited libsircl tree",
+      "scope": "acceptance audit of SIRCL 0.3.2 (1273183e, 0 lines to rewrite, 522 counted idioms), the three GLM-5.3 plugins (cf478504) and libsircl 0.6.0 at c7c35fe0 (tree dbf36074, 0 lines to rewrite) with its vLLM plugin",
       "record": "performance/records/repository/clean-room-acceptance-audit-20261009.md"
     },
     {
@@ -219,9 +230,9 @@
     },
     {
       "id": "ring4-setup",
-      "result": "pending",
-      "scope": "sudo sparkring setup --re-form on each of two rings of four",
-      "record": null
+      "result": "passed",
+      "scope": "sudo sparkring setup --re-form on each of two rings of four, with the re-form fixes of e2590e79: exit status 0 and 'Fabric verified: 4 cables on 4 Sparks (cycle-4)' on both; cables 212.7-213.4 Gb/s",
+      "record": "performance/records/transport/ring4-setup-and-sircl-tune-20261010.md"
     },
     {
       "id": "ring4-install",
@@ -237,15 +248,21 @@
     },
     {
       "id": "ring4-sircl-tune",
+      "result": "passed",
+      "scope": "SIRCL's ring-harness quick tune of the cycle-4 group shape on both rings: 1,102 and 1,098 cases, every output exact",
+      "record": "performance/records/transport/ring4-setup-and-sircl-tune-20261010.md"
+    },
+    {
+      "id": "cycle4-row-promotion",
       "result": "pending",
-      "scope": "sudo sparkring fabric tune of the cycle-4 group shape and its promotion to the default tuning table",
+      "scope": "the measured cycle-4 row in runtime/common/sircl-tuning-defaults.json, from branch claude/cycle4-tuning-promotion",
       "record": null
     },
     {
       "id": "ring4-libsircl-gate",
-      "result": "pending",
-      "scope": "the libsircl gate on a cycle of four",
-      "record": null
+      "result": "passed",
+      "scope": "the libsircl gate of the release image on both rings of four",
+      "record": "performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md"
     },
     {
       "id": "relay-marker",

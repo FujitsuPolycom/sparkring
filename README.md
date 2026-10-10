@@ -100,8 +100,8 @@ precede the 2026.10.2 image, whose SIRCL is 0.3.2.
 
 - **Pending:** installer qualification of the 2026.10.2 image on the
   eight-Spark ring.
-- **Pending:** the same profiles on four-Spark rings: setup, TP4
-  installations, the TP4 benchmark and the four-Spark SIRCL tuning row.
+- **Pending:** the four-Spark profiles installed and benchmarked on a ring of
+  four, and the ring of four's measured SIRCL tuning row.
 
 ## Documentation
 

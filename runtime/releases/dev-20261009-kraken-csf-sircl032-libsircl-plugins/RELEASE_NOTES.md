@@ -138,9 +138,14 @@ runner rather than `sparkring install`; two measured starts each, temperature
 - **Pending (installer round 1 on 1a8c1035):** GLM-5.3 on eight Sparks
   installed with `sparkring install` on the release image.
 - **Pending:** installer qualification on the eight-Spark ring.
-- **Pending:** four-Spark rings: setup with `--re-form`, TP4 installations,
-  the TP4 benchmark, SIRCL's `cycle-4` tuning row and the libsircl gate on a
-  ring of four.
+- Two rings of four (the eight Sparks recabled): `sudo sparkring setup --re-form`
+  verified both fabrics; SIRCL's quick tune of a ring of four passed on both,
+  every output exact; libsircl's gate passed on both, with a 256 MiB
+  all-reduce of 16.55 ms (24.3 GB/s) on each
+  ([setup and tune](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
+  [libsircl](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
+- **Pending:** TP4 installations and the TP4 benchmark on a ring of four,
+  and the measured `cycle-4` tuning row in the default table.
 
 ## Known limitations
 

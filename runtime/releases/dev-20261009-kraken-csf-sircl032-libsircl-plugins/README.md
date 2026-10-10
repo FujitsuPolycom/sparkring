@@ -177,16 +177,41 @@ deployment, and none is serving qualification.
   Broadcast stays at 1.9 GB/s.
 - Record: [libsircl of the release image on eight Sparks](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md).
 
+### Two rings of four Sparks: setup, SIRCL tune and libsircl
+
+- Lane **public-functional**. Status **implemented**. Maturity
+  **live-validated** for the setups and the libsircl gate; no serving
+  measurement on the rings of four is recorded.
+- Hardware: the eight Sparks recabled as two independent rings of four
+  (ring A and ring B), one rank per Spark. Ring B's positions 0 and 1 ran GPU
+  driver 580.178.04 with kernel 7.0.0-1019, its positions 2 and 3 driver
+  580.173.02 with kernel 6.17.0-1029.
+- Setup: `sudo sparkring setup --re-form` finished with exit status 0 on both
+  rings, with `Fabric verified: 4 cables on 4 Sparks (cycle-4)`; cables
+  measured 212.7 to 213.4 Gb/s. The package held the re-form fixes of commit
+  `e2590e79`.
+- SIRCL tune: the ring harness's quick tune of the `cycle-4` group shape
+  passed on both rings, 1,102 and 1,098 cases, every output exact. The
+  promoted `cycle-4` row comes from branch `claude/cycle4-tuning-promotion`.
+- libsircl of the release image on both rings at once: byte checks, the
+  bit-exact check and nccl-tests passed; `on-budget` passed, as the planner
+  expects on a ring of four; the cycle plan held from 8 MiB on 24 of 24
+  comparisons per ring. All-reduce of 256 MiB: 16.55 ms, 24.3 GB/s bus
+  bandwidth, on both rings, which agree within 1 %. Broadcast reaches
+  5.3 GB/s.
+- Records: [setup and SIRCL tune](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
+  [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md).
+
 ### Clean-room acceptance audit
 
 - Verdicts: SIRCL 0.3.2 (`spark_transport/sircl` at `1273183e`, the image's
   tree) PASS with 0 lines to rewrite and 522 counted idioms; the three GLM-5.3
   plugins PASS at `cf478504` (`glm_dcp_decode_comm` 2.0.1 differs from the
-  audited tree only in its version strings); libsircl 0.6.0 PASS with 0 lines
-  to rewrite. The report stays outside the repository because it quotes
-  excluded-origin text.
+  audited tree only in its version strings); libsircl 0.6.0 at `c7c35fe0`
+  (tree `dbf36074`, the image's) PASS with 0 lines to rewrite, and its vLLM
+  plugin `integrations/vllm/libsircl` PASS. The report stays outside the
+  repository because it quotes excluded-origin text.
 - Record: [clean-room acceptance audit](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md).
-  It does not name the libsircl tree the audit covered.
 
 ## Qualification
 
@@ -196,11 +221,12 @@ deployment, and none is serving qualification.
 | SIRCL one-shot all-reduce and all-gather on the eight-Spark ring | passed (status qualified) | [SIRCL status](../../../spark_transport/sircl/STATUS.md#component-status) |
 | Serving A/B measurements of two, four and eight Sparks recorded | passed (status research-only) | [Evidence](#evidence) |
 | `ring8-installer`: installer qualification rounds on the eight-Spark ring with the release lock | **pending** | — |
-| `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | **pending** | — |
+| `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `ring4-install`: TP4 installations on the rings of four | **pending** | — |
 | `ring4-benchmark`: the TP4 benchmark on a ring of four | **pending** | — |
-| `ring4-sircl-tune`: `sudo sparkring fabric tune` for the `cycle-4` group shape and its promotion to the default table | **pending** | — |
-| `ring4-libsircl-gate`: the libsircl gate on a cycle of four | **pending** | — |
+| `ring4-sircl-tune`: SIRCL's ring-harness tune of the `cycle-4` group shape on both rings | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
+| `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table, from branch `claude/cycle4-tuning-promotion` | **pending** | — |
+| `ring4-libsircl-gate`: the libsircl gate on a cycle of four | passed | [record](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md) |
 | `glm53-tp8-release-image`: GLM-5.3 TP8 installed on the release image (installer round 1 on 1a8c1035) | **pending record** | — |
 | `libsircl-ring8-release-image`: the libsircl gate on the release image | passed | [record](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md) |
 | `clean-room-audit`: the clean-room acceptance audit | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
@@ -228,7 +254,7 @@ installing package ([release procedure](../../../docs/development/releases.md)).
 - MiMo-V2.6-Flash-MOPD and Swift-1.5 profiles run on SIRCL sessions with no
   SIRCL serving record in the repository.
 - A cycle of four, the four-Spark ring, has no measured tuning row until the
-  `ring4-sircl-tune` gate passes; its sessions take SIRCL's own rules.
+  `cycle4-row-promotion` gate passes; its sessions take SIRCL's own rules.
 - Every measurement above locked the GPU clocks, which the installer does
   not do.
 - The image's dashboard (runtime-status 0.3.4) shows neither SIRCL's session
