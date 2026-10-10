@@ -354,7 +354,9 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     toolchain profiles return the canonical envelope that
     runtime/common/installer.py adapts itself.
     """
-    if profile_id not in SUPPORTED and profile_id not in FABRIC_PROFILES:
+    from runtime.common import installer_image as image_locks
+    if (profile_id not in SUPPORTED and profile_id not in FABRIC_PROFILES
+            and profile_id not in image_locks.SPARKCACHE_VARIANTS):
         raise ValueError(
             "Compose adapter unsupported for "
             + str(profile_id)

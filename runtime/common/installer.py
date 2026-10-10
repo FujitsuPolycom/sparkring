@@ -456,7 +456,9 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     card, site = lock["selection"], lock["site"]
     if lock["backend"] != "compose":
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
-    rendered_by_compose = card["profile"] in compose.SUPPORTED or card["profile"] in compose.FABRIC_PROFILES
+    from runtime.common import installer_image as image_locks
+    rendered_by_compose = (card["profile"] in compose.SUPPORTED or card["profile"] in compose.FABRIC_PROFILES
+                           or card["profile"] in image_locks.SPARKCACHE_VARIANTS)
     if rendered_by_compose:
         specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"])
         if "image_runtime" in lock:

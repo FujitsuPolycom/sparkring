@@ -96,6 +96,38 @@ def read_on_spark(host, argv):
     return ssh(host, argv, timeout=60)
 
 
+def connector_state(lock):
+    """The SparkCache connector state of a deployment, or None when it enables no connector.
+
+    Read from the deployment's own rendered rank 0: the environment names the
+    persistent root, and the ``--kv-transfer-config`` argument names the
+    connector, its model profile, lease mode, lease contract and checkpoint
+    identity. No Spark is contacted.
+    """
+    try:
+        spec = installer.specifications(lock)[0]
+    except (OSError, ValueError, KeyError):
+        return None
+    environment, command = spec.environment, list(spec.command)
+    if environment.get("SPARKCACHE_ENABLED") != "1":
+        return None
+    if "--kv-transfer-config" not in command:
+        return {"enabled": True, "problem": "SPARKCACHE_ENABLED=1 without --kv-transfer-config"}
+    connector = json.loads(command[command.index("--kv-transfer-config") + 1])
+    if connector.get("kv_connector") != "SparkContextCacheConnector":
+        return {"enabled": True, "problem": "--kv-transfer-config names " + str(connector.get("kv_connector"))}
+    extra = connector.get("kv_connector_extra_config") or {}
+    identity = str(extra.get("spark_cache_target_checkpoint_sha256", ""))
+    return {
+        "enabled": True,
+        "model_profile": extra.get("spark_cache_model_profile"),
+        "lease_mode": extra.get("spark_cache_async_page_capture_lease_mode"),
+        "lease_contract": extra.get("spark_cache_async_page_capture_lease_contract"),
+        "cache_root": environment.get("SPARK_CONTEXT_CACHE_ROOT") or extra.get("spark_cache_root"),
+        "checkpoint_identity": identity[:12] + "…" if identity else None,
+    }
+
+
 def run(on=None, *, client=None, say=print, read=None):
     """``sparkring-check/v1`` of every deployment checked; ``read(host, argv)`` runs the GPU clock query."""
     cache = controller.STATE / "retained-sources"
@@ -120,11 +152,16 @@ def run(on=None, *, client=None, say=print, read=None):
         gpus = gpu_clocks.check(lock["site"]["ranks"], run=read)
         for line in gpu_clocks.lines(gpus):
             say("  " + line)
+        connector = connector_state(lock)
+        if connector is not None:
+            say("  SparkCache: " + json.dumps(connector, sort_keys=True))
         ok = (checked.get("ok", False) and verdict.get("verdict", "as-expected") == "as-expected"
-              and not any(row["attention"] for row in gpus))
+              and not any(row["attention"] for row in gpus)
+              and not (connector or {}).get("problem"))
         rows.append({"deployment": str(directory), "profile": lock["selection"]["profile"],
                      "placement": list(slot) if slot else None, "api_url": shown["api_url"],
-                     "functional": checked, "transport": verdict, "gpu": gpus, "ok": ok})
+                     "functional": checked, "transport": verdict, "gpu": gpus,
+                     "sparkcache": connector, "ok": ok})
     return {"schema": SCHEMA, "checked_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "deployments": rows, "ok": bool(rows) and all(row["ok"] for row in rows)}
 

@@ -55,6 +55,13 @@ QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
              "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+# Opt-in SparkCache variants of the GLM-5.3-Flash installer profiles. They enable
+# the SparkContextCacheConnector (--kv-transfer-config) and serve the CSF
+# checkpoint only, so no published image lock lists them: only the lock that the
+# derived layer runtime/images/compositions/installer-sparkcache-gab86b70
+# records lists them, and every other image refuses the profile.
+SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4")
+SUPPORTED = (*SUPPORTED, *SPARKCACHE_VARIANTS)
 # Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
 # runtime/common/image_lock.py): the research-only profiles whose ranks reach each other through
 # relays (profiles.relayed_research). A lock's profile list may name them beside SUPPORTED; only

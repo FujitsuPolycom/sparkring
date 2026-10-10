@@ -126,6 +126,14 @@
       "path": "profiles/glm53-flash-nvfp4-spark-tp4/profile.json"
     },
     {
+      "id": "glm53-flash-nvfp4-sparkcache-tp2",
+      "path": "profiles/glm53-flash-nvfp4-sparkcache-tp2/profile.json"
+    },
+    {
+      "id": "glm53-flash-nvfp4-sparkcache-tp4",
+      "path": "profiles/glm53-flash-nvfp4-sparkcache-tp4/profile.json"
+    },
+    {
       "id": "mimo-v26-flash-mopd-tp2",
       "path": "profiles/mimo-v26-flash-mopd-tp2/profile.json"
     },
