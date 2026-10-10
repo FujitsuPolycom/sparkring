@@ -268,7 +268,12 @@ the serving A/B runner started the model. None is serving qualification.
   four-Spark rows from these installs at 32K context, its eight-Spark row from
   [GLM-5.3 on eight Sparks](#glm-53-on-eight-sparks-two-token-mtp) and its
   two-Spark rows from
-  [two and four Sparks](#two-and-four-sparks-on-sircl-ring-sessions).
+  [two and four Sparks](#two-and-four-sparks-on-sircl-ring-sessions). Its
+  prefill column divides 32,768 prompt tokens by each row's median time to
+  the first token of a 32K prompt. 32,768 is the serving A/B runner's prompt
+  target, which each run's `summary.json` records; the runner calibrates the
+  tokenized prompt to within 0.5 % of it, and the records do not keep vLLM's
+  prompt-token count of each request.
 - Installer scenarios, research-only, GPU clocks not locked, one run each:
   with image `1a8c10354eb0`'s lock, `sparkring install` installed GLM-5.3-Flash CSF at
   TP4, switched it to Qwen3.8-Flash-Next and back, ran GLM-5.3-Flash CSF and

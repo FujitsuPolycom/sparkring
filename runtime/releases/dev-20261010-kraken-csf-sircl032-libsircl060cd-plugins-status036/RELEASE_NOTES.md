@@ -53,14 +53,14 @@ image plus SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 plugins.
 
 Decode at 32K context, output tok/s:
 
-| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | First token, 32K prompt |
+| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | Prefill, 32K prompt (tok/s) |
 |---|---|---|---|---|---|
-| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 24.4 s |
-| GLM-5.3-Flash | CSF | 4 | `glm53-flash-nvfp4-spark-tp4` | 64.2 / 126.6 / 218.7 | 10.5 s |
-| GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 123.2 | 15.3 s |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 7.0 s |
-| Qwen3.8-Flash-Next | QAD step 5500, MXFP8 attention | 2 | `qwen38-flash-next-tp2` | 51.1 / 117.1 / 179.0 | 8.4 s |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 7.6 s |
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 1,343 |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-nvfp4-spark-tp4` | 64.2 / 126.6 / 218.7 | 3,127 |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 123.2 | 2,138 |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 4,666 |
+| Qwen3.8-Flash-Next | QAD step 5500, MXFP8 attention | 2 | `qwen38-flash-next-tp2` | 51.1 / 117.1 / 179.0 | 3,917 |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 |
 
 Each row's record is under `performance/records/`.
 
