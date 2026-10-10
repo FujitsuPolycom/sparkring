@@ -2497,9 +2497,10 @@ The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
 and every other image, including the default image, installs `nvfp4-spark`.
 `--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
 `--checkpoint csf` on an image that cannot read it is refused before any
-Spark changes. While `csf` is research-only, every plan that installs it
-prints a `Note:` with that status and, when the image chose it, the
-`--checkpoint nvfp4-spark` alternative (`image_lock.CHECKPOINT_STATUS`).
+Spark changes. A checkpoint that `image_lock.CHECKPOINT_STATUS` lists, one
+with no installation that passed the installer's checks, gets a `Note:` in
+every plan that installs it with that status and, when the image chose it,
+the profile's default checkpoint; `csf` is not listed.
 `sparkring images` does not list the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
 which reads it; its lock is selected with `--image-lock`:
@@ -2609,8 +2610,13 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
-- The `csf` entries of both GLM profiles are **research-only**: no
-  installation of either has run on Sparks. Their quantization, loader, W4A16
+- The `csf` entries of both GLM profiles are **research-only**: one
+  installation of each, on four and on two Sparks of a ring of eight,
+  passed the installer's 7 functional checks and its transport check on
+  the SIRCL 0.3.2 image `1a8c10354eb0`, with no correctness screen, decode
+  measurement or soak
+  ([record](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
+  Their quantization, loader, W4A16
   decode and draft MoE backend are those of `glm53-flash-csf-tp8`
   ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
   SIRCL's serve launcher served this checkpoint with the pair profile's
