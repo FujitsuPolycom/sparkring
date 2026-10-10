@@ -1,0 +1,26 @@
+[
+ {
+  "end_minutes": 4.8,
+  "steps_s": 2.74,
+  "prompt_tok_s": 2102.6,
+  "output_tok_s": 22.0
+ },
+ {
+  "end_minutes": 9.6,
+  "steps_s": 2.78,
+  "prompt_tok_s": 2155.2,
+  "output_tok_s": 22.7
+ },
+ {
+  "end_minutes": 14.3,
+  "steps_s": 2.9,
+  "prompt_tok_s": 2157.3,
+  "output_tok_s": 23.1
+ },
+ {
+  "end_minutes": 19.1,
+  "steps_s": 2.89,
+  "prompt_tok_s": 2179.2,
+  "output_tok_s": 22.9
+ }
+]
