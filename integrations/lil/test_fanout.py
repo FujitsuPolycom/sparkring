@@ -26,7 +26,7 @@ def test_direction_and_verified_publication(pull):
         run,
         "rank0",
         "rank1",
-        "cody@192.0.2.1",
+        "analyst@192.0.2.1",
         "/srv/test/source",
         "/srv/test/result",
         sha,

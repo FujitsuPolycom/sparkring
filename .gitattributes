@@ -35,6 +35,11 @@ runtime/transport_profiles/tp2-rocenante-adaptive/LICENSE -text whitespace=cr-at
 # and rewrites relative Markdown links for their destination directories.
 integrations/vllm/** text eol=lf
 spark_transport/fabric/** text eol=lf
+# SIRCL ring sessions name the native library and the staged tree by content digests.
+spark_transport/sircl/** text eol=lf
+# libsircl keeps its stored bytes on every platform: its build checks the SIRCL native sources it carries
+# against their recorded SHA-256 and refuses carriage returns in them, and its kernel packs are binary.
+spark_transport/libsircl/** -text
 profiles/** text eol=lf
 
 runtime/releases/**/*.tar.gz -text

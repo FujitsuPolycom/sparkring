@@ -46,6 +46,61 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert names["qad-step-4000"]["changes"] == ["VLLM_MXFP8_LM_HEAD=1", "speculative moe_backend: b12x"]
     assert names["qad-step5500-mxfp8-attention"]["derived"]
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
+    # The CSF checkpoint needs a vLLM build the default image lacks: the page does not offer it there.
+    assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
+            if profile["id"].startswith("glm53-flash-nvfp4-spark-")} == {
+        "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "nvfp4-qad"],
+        "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4"]}
+
+
+def test_a_checkpoint_only_some_vllm_builds_read_is_offered_on_an_image_that_reads_it():
+    from runtime.common import image_lock
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    profile = export.profile_data("glm53-flash-nvfp4-spark-tp2", image_lock.v2_view(pinned), "csf-image", pinned)
+    named = {checkpoint["name"]: checkpoint for checkpoint in profile["checkpoints"]}
+    assert list(named) == ["nvfp4-spark", "csf", "nvfp4-qad"]
+    assert named["csf"]["status"] == "research-only" and named["csf"]["served_model_name"] == "GLM-5.3-Flash-CSF-TP2"
+    assert "--quantization nvfp4_csf" in named["csf"]["changes"]
+
+
+def csf_image_profile(profile_id="glm53-flash-nvfp4-spark-tp2"):
+    """``profile_id`` on an image whose lock pins the vLLM build that reads the CSF checkpoint, as image_data gives it."""
+    from runtime.common import image_lock
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    return export.profile_data(profile_id, image_lock.v2_view(pinned), "csf-image", pinned)
+
+
+def test_the_default_card_is_the_checkpoint_install_installs_on_the_image(data):
+    """``install_default`` marks the checkpoint `sparkring install` installs without --checkpoint: the profile's
+    preferred checkpoint on an image that reads it (image_lock.preferred_checkpoint), else its own (``default``)."""
+    for profile in data["profiles"]:
+        assert [checkpoint["install_default"] for checkpoint in profile["checkpoints"]] == [
+            checkpoint["default"] for checkpoint in profile["checkpoints"]]
+    marks = {checkpoint["name"]: (checkpoint["default"], checkpoint["install_default"])
+             for checkpoint in csf_image_profile()["checkpoints"]}
+    assert marks == {"nvfp4-spark": (True, False), "csf": (False, True), "nvfp4-qad": (False, False)}
+
+
+def test_commands_name_the_checkpoint_install_and_render_each_need(data, node):
+    """On an image that reads CSF, install takes CSF without --checkpoint and render needs `--checkpoint csf`;
+    the profile's own checkpoint needs --checkpoint for install only."""
+    found = run_engine(node, """
+const { profile, meta } = value, name = E.installDefaultName(profile);
+console.log(JSON.stringify([name, ...[name, 'nvfp4-spark'].map(n => {
+  const checkpoint = E.checkpointOf(profile, n);
+  return [E.installCommand(profile, checkpoint, {}, meta, { form: 'installed', approval: 'ask' }),
+          E.renderCommand(profile, checkpoint, {}, { name: 'pair' })];
+})]));""", {"profile": csf_image_profile(), "meta": meta_of(data)})
+    install = "sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image csf-image"
+    render = "sparkring compose render glm53-flash-nvfp4-spark-tp2 --site pair.site.yaml --output pair --image csf-image"
+    assert found == ["csf", [install, render + " --checkpoint csf"], [install + " --checkpoint nvfp4-spark", render]]
+    # On the default image the profile's own checkpoint is both defaults.
+    default = next(profile for profile in data["profiles"] if profile["id"] == "glm53-flash-nvfp4-spark-tp2")
+    assert run_engine(node, "console.log(JSON.stringify(E.installDefaultName(value)))", default) is None
 
 
 def test_profiles_and_checkpoints_carry_their_status_and_purpose(data):

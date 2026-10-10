@@ -11,8 +11,8 @@ NETDEVS = {(0, 0): "enp1s0f0np0", (0, 1): "enP2p1s0f0np0", (1, 0): "enp1s0f1np1"
 
 
 def captured():
-    """Four Sparks of two former pairs, recabled into one loop: spark-aa42 and spark-931e (pair "tp2"),
-    spark-3286 and spark-0a0f (pair "sparkring"). Two cables join equal ports."""
+    """Four Sparks of two former pairs, recabled into one loop: spark-e and spark-d (pair "tp2"),
+    spark-b and spark-a (pair "sparkring"). Two cables join equal ports."""
     document = json.loads((FIXTURES / "recabled-pairs.json").read_text(encoding="utf-8"))
     return {s["hostname"]: cabling.from_capture(s["hostname"], s["lldp"], s["addresses"]) for s in document["sparks"]}
 
@@ -60,21 +60,21 @@ def ring(order_ports):
 
 def test_captured_loop_names_the_one_swap_and_the_ring_order():
     sparks = captured()
-    result = cabling.diagnose(list(sparks.values()), "spark-3286")
+    result = cabling.diagnose(list(sparks.values()), "spark-b")
     assert result["layout"] == "ring" and not result["ready"]
-    assert result["fix"] == ["On spark-aa42, swap its two cables (port 0 ↔ port 1)."]
-    assert result["order_names"] == ["spark-3286", "spark-0a0f", "spark-931e", "spark-aa42"]
+    assert result["fix"] == ["On spark-e, swap its two cables (port 0 ↔ port 1)."]
+    assert result["order_names"] == ["spark-b", "spark-a", "spark-d", "spark-e"]
     assert cabling.lines(result) == [
         "Cables:",
-        "  spark-3286 port 0 ↔ spark-0a0f port 1",
-        "  spark-0a0f port 0 ↔ spark-931e port 1",
-        "  spark-931e port 0 ↔ spark-aa42 port 0",
-        "  spark-aa42 port 1 ↔ spark-3286 port 1",
+        "  spark-b port 0 ↔ spark-a port 1",
+        "  spark-a port 0 ↔ spark-d port 1",
+        "  spark-d port 0 ↔ spark-e port 0",
+        "  spark-e port 1 ↔ spark-b port 1",
         "The four Sparks form a loop, but 2 cables join the same port number at both ends. "
         "In a ring, every cable runs from port 0 of one Spark to port 1 of the next.",
         "To fix:",
-        "  On spark-aa42, swap its two cables (port 0 ↔ port 1).",
-        "Ring order after the fix: spark-3286 → spark-0a0f → spark-931e → spark-aa42",
+        "  On spark-e, swap its two cables (port 0 ↔ port 1).",
+        "Ring order after the fix: spark-b → spark-a → spark-d → spark-e",
     ]
     # Every cable is confirmed from both ends, and same-chassis sibling observations are ignored.
     assert all(len(cable["seen_from"]) == 2 for cable in result["cables"])
@@ -82,38 +82,38 @@ def test_captured_loop_names_the_one_swap_and_the_ring_order():
 
 
 def test_captured_loop_from_another_node_a_keeps_the_swap_off_node_a():
-    result = cabling.diagnose(list(captured().values()), "spark-aa42")
-    # Swapping spark-aa42 alone fixes the loop; the alternative swaps the other three.
-    assert result["fix"] == ["On spark-aa42, swap its two cables (port 0 ↔ port 1)."]
-    assert result["order_names"] == ["spark-aa42", "spark-3286", "spark-0a0f", "spark-931e"]
+    result = cabling.diagnose(list(captured().values()), "spark-e")
+    # Swapping spark-e alone fixes the loop; the alternative swaps the other three.
+    assert result["fix"] == ["On spark-e, swap its two cables (port 0 ↔ port 1)."]
+    assert result["order_names"] == ["spark-e", "spark-b", "spark-a", "spark-d"]
 
 
 def test_setup_check_refuses_the_captured_loop_with_the_physical_fix():
-    result = cabling.diagnose(list(captured().values()), "spark-3286", strict=True, whole=True)
-    assert result["fix"] == ["On spark-aa42, swap its two cables (port 0 ↔ port 1)."] and not result["ready"]
+    result = cabling.diagnose(list(captured().values()), "spark-b", strict=True, whole=True)
+    assert result["fix"] == ["On spark-e, swap its two cables (port 0 ↔ port 1)."] and not result["ready"]
     error = cabling.CablingError(result)
     assert str(error) == (
         "Fabric cabling: The four Sparks form a loop, but 2 cables join the same port number at both ends. "
-        "In a ring, every cable runs from port 0 of one Spark to port 1 of the next. To fix: On spark-aa42, swap its "
-        "two cables (port 0 ↔ port 1). Then the ring order is spark-3286 → spark-0a0f → spark-931e → spark-aa42. "
+        "In a ring, every cable runs from port 0 of one Spark to port 1 of the next. To fix: On spark-e, swap its "
+        "two cables (port 0 ↔ port 1). Then the ring order is spark-b → spark-a → spark-d → spark-e. "
         "sparkring cabling shows the cables.")
     # The lines below the error add the cables it describes.
-    assert error.details["lines"] == ["Cables:", "  spark-3286 port 0 ↔ spark-0a0f port 1",
-                                      "  spark-0a0f port 0 ↔ spark-931e port 1", "  spark-931e port 0 ↔ spark-aa42 port 0",
-                                      "  spark-aa42 port 1 ↔ spark-3286 port 1"]
+    assert error.details["lines"] == ["Cables:", "  spark-b port 0 ↔ spark-a port 1",
+                                      "  spark-a port 0 ↔ spark-d port 1", "  spark-d port 0 ↔ spark-e port 0",
+                                      "  spark-e port 1 ↔ spark-b port 1"]
 
 
 def test_captured_pair_on_port_one_of_the_worker_moves_one_cable_end():
     sparks = captured()
-    pair = [sparks["spark-3286"], sparks["spark-0a0f"]]
+    pair = [sparks["spark-b"], sparks["spark-a"]]
     for spark in pair:
-        spark["lldp"] = [row for row in spark["lldp"] if row["hostname"] in ("spark-3286", "spark-0a0f")]
-    result = cabling.diagnose(pair, "spark-3286")
+        spark["lldp"] = [row for row in spark["lldp"] if row["hostname"] in ("spark-b", "spark-a")]
+    result = cabling.diagnose(pair, "spark-b")
     assert result["layout"] == "pair" and not result["ready"]
-    assert result["summary"] == ("Pair: spark-0a0f port 1 ↔ spark-3286 port 0, but no cable joins the two ports 0. "
+    assert result["summary"] == ("Pair: spark-a port 1 ↔ spark-b port 0, but no cable joins the two ports 0. "
                                  "Pair models use port 0 on both Sparks.")
-    assert result["fix"] == ["On spark-0a0f, move the cable from port 1 to port 0."]
-    assert result["order_names"] == ["spark-3286", "spark-0a0f"]
+    assert result["fix"] == ["On spark-a, move the cable from port 1 to port 0."]
+    assert result["order_names"] == ["spark-b", "spark-a"]
 
 
 @pytest.mark.parametrize("cables, fix, ready", [
@@ -159,15 +159,21 @@ def test_a_port_in_two_cables_is_a_disagreement_not_a_layout():
     assert "spark-a port 0 sees more than one far port" in result["summary"]
 
 
-def test_loose_cable_names_the_two_free_ports():
+def test_loose_cable_leaves_a_line_from_node_a_and_names_the_two_free_ports():
     # The loop spark-a → b → c → d → a with the d-to-a cable unplugged: both ends report no carrier.
     sparks = synthetic(4, ring([(0, 1)] * 4)[:3])
     result = cabling.diagnose(sparks, "spark-a")
-    assert result["layout"] == "ring" and not result["ready"]
-    assert result["summary"].startswith("Four Sparks are cabled in a line: spark-d port 0 and spark-a port 1 have no "
-                                        "cable (missing or loose).")
-    assert result["fix"] == ["Connect a cable from spark-d port 0 to spark-a port 1."]
+    assert result["layout"] == "path" and result["ready"] and result["layout_name"] == "path-4"
+    assert result["summary"] == "Four-Spark line (path-4) from Node A, cabled as SparkRing needs."
+    assert result["notes"] == ["spark-d port 0 and spark-a port 1 are free; a cable from the first to the second "
+                               "makes a cycle-4."]
     assert result["order_names"] == ["spark-a", "spark-b", "spark-c", "spark-d"]
+    # Seen from a Spark inside the line, the line becomes a ring with its last cable.
+    inside = cabling.diagnose(sparks, "spark-b")
+    assert inside["layout"] == "ring" and not inside["ready"]
+    assert inside["summary"].startswith("Four Sparks are cabled in a line: spark-d port 0 and spark-a port 1 have no "
+                                        "cable (missing or loose).")
+    assert inside["fix"] == ["Connect a cable from spark-d port 0 to spark-a port 1."]
 
 
 def test_line_with_a_link_whose_far_end_is_unseen_is_incomplete():
@@ -176,12 +182,11 @@ def test_line_with_a_link_whose_far_end_is_unseen_is_incomplete():
     assert result["layout"] == "incomplete" and not result["fix"]
 
 
-def test_three_sparks_are_not_supported():
+def test_three_sparks_in_a_line_are_a_path():
     sparks = synthetic(3, [((0, 0), (1, 1)), ((1, 0), (2, 1))])
     result = cabling.diagnose(sparks, "spark-a")
-    assert result["layout"] == "unsupported"
-    assert result["summary"] == ("Three Sparks are cabled together (spark-a, spark-b, spark-c). SparkRing needs two "
-                                 "Sparks (a pair) or four (a ring). Free ports: spark-a port 1, spark-c port 0.")
+    assert (result["layout"], result["layout_name"], result["ready"]) == ("path", "path-3", True)
+    assert result["free"] == ["spark-a port 1", "spark-c port 0"]
 
 
 def test_duplicate_cable_in_a_four_spark_set():

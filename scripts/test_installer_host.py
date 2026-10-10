@@ -135,7 +135,7 @@ def test_only_a_ring_half_parks_the_ring_mesh(tmp_path, monkeypatch):
     assert host.perform("ring-parked", lock, 0) == {"ok": True}
     assert calls == ["park", "check"]
     del lock["site"]["placement"]
-    with pytest.raises(ValueError, match="Only a deployment on half of a four-Spark ring"):
+    with pytest.raises(ValueError, match="Only a deployment on part of the fabric parks"):
         host.perform("ring-park", lock, 0)
 
 
@@ -202,7 +202,7 @@ def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch)
     monkeypatch.setattr(host, "admit_image", lambda lock: {})
     monkeypatch.setattr(host, "verify_model", lambda *a, **k: None)
     monkeypatch.setattr(host, "check_runtime_binding", lambda *a, **k: None)
-    monkeypatch.setattr(host.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(host.toolchain_profiles, "verify_model_paths", lambda *a: None)
     monkeypatch.setattr(compose, "check_project_containers", lambda *a, **k: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
     assert host.perform("start", lock, 0) == {"ok": True}

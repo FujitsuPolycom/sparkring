@@ -2,8 +2,8 @@
 
 ``sparkring-recover.timer`` runs ``sparkring recover --auto`` a minute after
 the previous run ends. One run (``check``) observes each active deployment:
-the whole cluster's, and on a four-Spark ring each half's
-(``runtime.host.placement``). When a model stopped serving, the run starts it
+the whole cluster's, and each group's on a fabric that serves models on
+part of its Sparks (``runtime.host.placement``). When a model stopped serving, the run starts it
 again through the deployment's own lifecycle code (``retained_source.apply``),
 as the operator's commands do:
 
@@ -989,7 +989,7 @@ def main(argv=None):
                     print(f"{item['state']}: {item['summary']}")
             return 1 if result["state"] == "failed" else 0
         if args.action in ("on", "off"):
-            # Applies to every slot's active deployment: the whole cluster's and each ring half's.
+            # Applies to every slot's active deployment: the whole cluster's and each arc's.
             found = [directory for _, directory in controller.active_deployments()] or [None]
             documents, lines = [], []
             for directory in found:

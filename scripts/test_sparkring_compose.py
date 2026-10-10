@@ -397,13 +397,13 @@ def test_preflight_checks_idle_gpu_for_every_stopped_owner(deployment, tmp_path,
         path.mkdir()
         rank[name] = str(path)
     metadata, _ = coordinator.profiles.load(manifest["profile"])
-    profile = coordinator.qwen_flash_next.read(coordinator.ROOT / metadata["configuration"]["path"])
+    profile = coordinator.toolchain_profiles.read(coordinator.ROOT / metadata["configuration"]["path"])
     present = inspected(spec, manifest) if state is not None else None
     if present:
         present["State"].update(Running=state == "running", Status=state)
     monkeypatch.setattr(coordinator.sys, "platform", "linux")
     monkeypatch.setattr(coordinator, "container", lambda _: present)
-    monkeypatch.setattr(coordinator.qwen_flash_next, "verify_model_paths", lambda *a: None)
+    monkeypatch.setattr(coordinator.toolchain_profiles, "verify_model_paths", lambda *a: None)
     monkeypatch.setattr(coordinator.ports, "check_tcp_bind", lambda *a: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
     path_type = type(tmp_path)
@@ -489,7 +489,9 @@ def test_render_selects_another_installer_image(tmp_path):
     assert coordinator.main(["render", "qwen38-flash-next-tp2", "--site", str(site), "--output", str(output),
                              "--image", other["name"]]) == 0
     manifest, files = compose.load_deployment(output)
-    assert manifest["image_runtime"] == other["lock"]
+    # A v3 image's export records its v2 fields (compose.runtime_lock); a v1 or v2 lock is recorded unchanged.
+    from runtime.common import image_lock
+    assert manifest["image_runtime"] == image_lock.v2_view(other["lock"])
     assert other["lock"]["image_reference"] in files["rank0/compose.yaml"]
     assert compose.named_image(None) is None
     assert compose.named_image(installer_image.catalog()[0]["name"]) is None

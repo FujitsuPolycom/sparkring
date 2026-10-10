@@ -1,26 +1,32 @@
 # Install SparkRing
 
-`sparkring install` sets up two or four cabled DGX Sparks and starts one model.
-Run it on Node A, the Spark connected to your network.
+`sparkring install` sets up two to eight cabled DGX Sparks and starts a
+model on all of them, or several models on separate groups of them. Run it on
+Node A, the Spark connected to your network. On an image without SIRCL ring
+sessions, such as 2026.10.1's, a model runs on a pair, a four-Spark ring or
+half of that ring; the default image, 2026.10.2's, has SIRCL ring sessions
+and runs models on lines and rings of up to eight Sparks
+([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)).
 
 [All commands and flags](commands.md) · [Reference](install-reference.md)
 
 ## Requirements
 
-- Two or four DGX Sparks on the same DGX OS (Ubuntu 24.04 ARM64) with working
+- Two to eight DGX Sparks on the same DGX OS (Ubuntu 24.04 ARM64) with working
   NVIDIA drivers, Docker, NVIDIA Container Toolkit, NetworkManager and SSH.
   Setup does not install drivers or firmware.
 - Root or sudo on every Spark.
-- Cables: a pair connects port p0 to p0; a four-Spark ring connects each
-  Spark's p0 to the next Spark's p1. p0 is the QSFP port next to the 10GbE
-  (RJ45) port. `sudo sparkring cabling` checks them and names any cable to
-  move.
+- Cables: a pair connects port p0 to p0; a ring connects each Spark's p0 to
+  the next Spark's p1, and a line does the same from Node A without the last
+  cable. p0 is the QSFP port next to the 10GbE (RJ45) port.
+  `sudo sparkring cabling` checks them, prints which port leads to which
+  Spark and names any cable to move.
 - Node A on your network with outbound HTTPS to `github.com`,
   `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
   mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
-  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift or
-  547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
+  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift,
+  505 GiB for GLM-5.3 or 547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
   of an earlier `sparkring install` needs about 47 GiB less.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)
@@ -34,8 +40,10 @@ Run it on Node A, the Spark connected to your network.
 
 </details>
 
-Not supported: six-Spark rings, other port layouts, and Docker's containerd
-image store ([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
+Not supported: one model on a line of six or more Sparks, a model on other
+than a pair, a four-Spark ring or its halves without an image that carries
+SIRCL ring sessions, other port layouts, and Docker's containerd image store
+([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
 
 ## Install
 
@@ -57,10 +65,15 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step 5500
   with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
-  third-party hybrid (research-only). GLM profiles install NVFP4-Spark; add `--checkpoint nvfp4-qad`
-  for Local Inference Lab's QAD checkpoint, or on four Sparks
-  `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On two Sparks, QAD
-  runs with a shorter context window
+  third-party hybrid (research-only). GLM profiles install the CSF
+  checkpoint on an image whose vLLM reads it, the default image among
+  them (implemented; installations passed the installer's checks and a
+  256-request correctness screen), and NVFP4-Spark on every other image,
+  2026.10.1's among them; add
+  `--checkpoint nvfp4-spark` for NVFP4-Spark on any image,
+  `--checkpoint nvfp4-qad` for Local Inference Lab's QAD checkpoint, or on
+  four Sparks `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On
+  two Sparks, QAD runs with a shorter context window
   ([checkpoints](install-reference.md#another-checkpoint-of-a-profile)).
 - `--download-limit 850Mbit` caps the model download from Hugging Face
   ([details](install-reference.md#limit-the-download-rate)).
@@ -83,14 +96,37 @@ package.
 ## Four-Spark rings
 
 The installer applies a ConnectX driver setting (hairpin) on every Spark and
-repeats it at each boot, which adds about 30 seconds. After a reboot, start the
-model with the same install command. If `sudo sparkring status` shows
-`needs-attention`, run `sudo sparkring hairpin` on Node A.
-[More about the setting](install-reference.md#four-spark-rings).
+repeats it at each boot, which adds about 30 seconds. It also installs the
+fabric's [relay table](install-reference.md#the-relay-table), which the Sparks
+restore at every boot. After a reboot, `sudo sparkring fabric verify` checks
+the fabric; start the model with the same install command. If
+`sudo sparkring status` shows `needs-attention`, run `sudo sparkring hairpin`
+on Node A. [More about the setting](install-reference.md#four-spark-rings).
 
 A ring can also serve two two-Spark models, one on each half:
 `sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
 [Two models on one ring](install-reference.md#two-models-on-one-ring).
+
+To tune SIRCL to your own cables, run `sudo sparkring fabric tune --execute`
+while no model serves, then install again. It takes up to half an hour per
+group shape. [Measure the tuning table](install-reference.md#measure-the-tuning-table).
+
+## Several models on one fabric
+
+`--on` puts a model on consecutive Sparks and leaves the others to other
+models. On an eight-Spark ring with an image that carries SIRCL ring
+sessions:
+
+```bash
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 0-3
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 4-7
+```
+
+Each group serves its API on its first Spark; `sudo sparkring status` prints
+one block per group, and `--on` names the group for `down`, `up` and `check`.
+Four pairs (`--on 0,1` to `--on 6,7`) or a group across the cable to Node A
+(`--on 6-1`) work the same way. [Models on part of the
+fabric](install-reference.md#models-on-part-of-the-fabric).
 
 ## Reuse a model already on disk
 

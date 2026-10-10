@@ -22,6 +22,9 @@ Find the page for what you want to do.
 - [Install reference](operations/install-reference.md): serving settings,
   checkpoints, [two models on one ring](operations/install-reference.md#two-models-on-one-ring),
   storage and security.
+- [Enhancements by model](../performance/enhancements.md): every speed
+  enhancement, how to enable it and its measured gain; check a deployment
+  with `python scripts/check_enhancements.py PROFILE`.
 
 ## Troubleshoot
 
@@ -46,7 +49,9 @@ Find the page for what you want to do.
 
 - [Architecture](architecture/overview.md): topology, serving container and
   collective path.
-- [SIRCL](architecture/sircl.md): the native four-rank collective transport.
+- [SIRCL](architecture/sircl.md): SparkRing's collective transport for 2 to 8
+  Sparks, with ring sessions and the four-rank native sessions of retained
+  images.
 - [What is a SparkRing image?](operations/images.md)
 - [Profile catalog](../profiles/README.md): every saved deployment
   configuration and its guide.

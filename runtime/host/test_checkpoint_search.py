@@ -87,8 +87,8 @@ class Host:
     def __init__(self, base):
         self.root = base / "host"
         self.mounts = [(21, 1, "259:2", "/", "/", "ext4", "/dev/nvme0n1p2")]
-        self.users = [("root", 0, "/root"), ("code", 1000, "/home/code")]
-        for directory in ("/root", "/home/code", "/etc", "/proc/self", "/var/tmp", "/srv"):
+        self.users = [("root", 0, "/root"), ("operator", 1000, "/home/operator")]
+        for directory in ("/root", "/home/operator", "/etc", "/proc/self", "/var/tmp", "/srv"):
             self.path(directory).mkdir(parents=True, exist_ok=True)
         self.save()
 
@@ -212,7 +212,7 @@ def clock(monkeypatch):
 
 
 def settings(host, **changes):
-    return search.options(**{"owned": OWNED, "operator": "code", "root": str(host.root), "small_file_bytes": 1024,
+    return search.options(**{"owned": OWNED, "operator": "operator", "root": str(host.root), "small_file_bytes": 1024,
                              "hash_bytes": 1 << 20, **changes})
 
 
@@ -300,7 +300,7 @@ def test_probe_source_runs_in_a_fresh_interpreter_with_an_empty_environment(tmp_
 @POSIX
 def test_hf_cache_is_identified_by_blob_names_without_reading_weights(tmp_path, monkeypatch):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     host.cache(hub, REPO, REVISION, {name: CONTENT[name] for name in REQUIRED})
     opened = []
     real_open = os.open
@@ -316,7 +316,7 @@ def test_hf_cache_is_identified_by_blob_names_without_reading_weights(tmp_path, 
     assert states(found) == {name: ("match", "hub-named") for name in REQUIRED}
     assert found["files"][WEIGHTS[0]]["source"] == f"{hub}/{REPO}/blobs/{sha256(CONTENT[WEIGHTS[0]])}"
     assert found["files"][WEIGHTS[0]]["kind"] == "blob" and found["counts"]["match"] == len(REQUIRED)
-    assert found["home"] == {"account": "code", "kind": "operator"} and "hub" in found["found_by"]
+    assert found["home"] == {"account": "operator", "kind": "operator"} and "hub" in found["found_by"]
     # Blob names identify content: no blob or snapshot file is opened, only refs.
     assert not [path for path in host_paths(host, opened) if "/blobs/" in path or "/snapshots/" in path]
     assert [path for path in host_paths(host, opened) if path.endswith("/refs/main")]
@@ -325,7 +325,7 @@ def test_hf_cache_is_identified_by_blob_names_without_reading_weights(tmp_path, 
 @POSIX
 def test_shared_blob_store_two_hop_links_resolve_inside_the_hub(tmp_path):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     host.cache(hub, REPO, REVISION, {name: CONTENT[name] for name in REQUIRED}, store=True)
     # A second hub whose store holds a pinned blob that no repository folder links to.
     other = "/root/.cache/huggingface/hub"
@@ -349,7 +349,7 @@ def test_shared_blob_store_two_hop_links_resolve_inside_the_hub(tmp_path):
 
 def test_hf_cache_without_symlinks_is_classified_from_snapshot_files(tmp_path):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     host.cache(hub, REPO, REVISION, {name: CONTENT[name] for name in REQUIRED}, symlinks=False,
                refs={"main": REVISION})
     result = run(host)
@@ -363,7 +363,7 @@ def test_hf_cache_without_symlinks_is_classified_from_snapshot_files(tmp_path):
 @POSIX
 def test_blob_links_leaving_the_hub_or_looping_are_rejected_quickly(tmp_path, monkeypatch):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     contents = {name: CONTENT[name] for name in REQUIRED if name not in WEIGHTS}
     folder = host.cache(hub, REPO, REVISION, contents)
     host.write("/var/lib/outside/blob-data", CONTENT[WEIGHTS[0]])
@@ -397,7 +397,7 @@ def test_blob_links_leaving_the_hub_or_looping_are_rejected_quickly(tmp_path, mo
 @POSIX
 def test_every_repository_folder_is_checked_by_content(tmp_path):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     renamed = host.cache(hub, REPO + "-4p89", "b184bb5650367c3e934c7849407be9da3671e7f5",
                          {name: CONTENT[name] for name in REQUIRED})
     fork = host.cache(hub, "models--huginnfork--Qwen3.8-Flash-Next-NVFP4-Abliterated", MAIN,
@@ -453,7 +453,7 @@ def test_arbitrarily_named_folders_are_found_and_small_files_hashed_within_budge
 @POSIX
 def test_main_revision_cache_supplies_everything_but_config(tmp_path):
     host = Host(tmp_path)
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     folder = host.cache(hub, REPO, MAIN, {**{name: CONTENT[name] for name in REQUIRED}, "config.json": MAIN_CONFIG},
                         refs={"main": MAIN, "pr/4": MAIN})
     found = candidate(run(host), folder)
@@ -473,7 +473,7 @@ def test_partial_downloads_are_partial_seeds(tmp_path):
     local = host.local_dir("/var/tmp/models/interrupted",
                            contents={name: CONTENT[name] for name in REQUIRED if name != WEIGHTS[1]})
     host.write(f"{local}/.cache/huggingface/download/abc.{sha256(CONTENT[WEIGHTS[1]])}.incomplete", b"partial")
-    hub = "/home/code/.cache/huggingface/hub"
+    hub = "/home/operator/.cache/huggingface/hub"
     cache = host.cache(hub, REPO, REVISION, {name: CONTENT[name] for name in REQUIRED})
     os.unlink(host.path(f"{cache}/blobs/{sha256(CONTENT[WEIGHTS[2]])}"))
     # A git clone whose working tree holds LFS pointers; git-lfs fetched two objects.
@@ -559,9 +559,9 @@ def test_network_and_automount_paths_are_never_touched(tmp_path, monkeypatch, do
         host.cache(share + "/hub", REPO, REVISION, {name: CONTENT[name] for name in REQUIRED})
     named = []
     if case == "home-symlink":
-        host.symlink("/home/code/models", "/srv/spark-share/qwen")
-        host.symlink("/home/code/.cache/huggingface/hub", "/srv/spark-share/hub")
-        host.symlink("/home/code/share", "/mnt/synologytwo")
+        host.symlink("/home/operator/models", "/srv/spark-share/qwen")
+        host.symlink("/home/operator/.cache/huggingface/hub", "/srv/spark-share/hub")
+        host.symlink("/home/operator/share", "/mnt/synologytwo")
     elif case == "docker":
         docker.containers.append({"Id": "c1", "Config": {"Env": ["HF_HOME=/data/hf"]}, "Args": [],
                                   "Mounts": [{"Type": "bind", "Source": "/srv/spark-share/qwen",
@@ -627,7 +627,7 @@ def test_the_whole_survey_has_a_deadline_and_lists_what_it_left(tmp_path, monkey
     host = Host(tmp_path)
     contents = {name: CONTENT[name] for name in REQUIRED}
     host.cache("/root/.cache/huggingface/hub", REPO, REVISION, contents, symlinks=False)
-    host.cache("/home/code/.cache/huggingface/hub", REPO, REVISION, contents, symlinks=False)
+    host.cache("/home/operator/.cache/huggingface/hub", REPO, REVISION, contents, symlinks=False)
     folder = host.copy("/var/tmp/models/qwen")
     real_scandir = os.scandir
 
@@ -642,7 +642,7 @@ def test_the_whole_survey_has_a_deadline_and_lists_what_it_left(tmp_path, monkey
     assert (search["complete"], search["stopped"], search["passes"]) == (False, "time", 1)
     # Nothing is examined after the deadline: neither the hubs' repository folders nor the walk's roots.
     assert paths(result) == set() and folder not in paths(result)
-    assert "/home/code/.cache/huggingface/hub" in search["unvisited"]["/home"]["paths"]
+    assert "/home/operator/.cache/huggingface/hub" in search["unvisited"]["/home"]["paths"]
     assert search["unvisited"]["/var/tmp/models"] == {"count": 1, "paths": ["/var/tmp/models"]}
     # Paths in homes other than the operator's are counted, not shown.
     assert search["unvisited"]["/root"]["count"] >= 2 and "paths" not in search["unvisited"]["/root"]
@@ -752,17 +752,17 @@ def test_declared_cache_variables_are_parsed_not_executed(tmp_path):
     host.write("/etc/profile.d/hf.sh", "BASE=/var/lib/hf-b\nexport HF_HOME=${BASE}/home\n"
                "export HF_HUB_CACHE=$(touch /tmp/pwned)\nexport TRANSFORMERS_CACHE=`touch /tmp/pwned`\n"
                "export XDG_CACHE_HOME=$UNKNOWN/x\nexport HUGGINGFACE_HUB_CACHE='$HOME/literal'\n")
-    host.write("/home/code/.config/fish/config.fish", "set -gx HUGGINGFACE_HUB_CACHE /var/lib/hf-c\n")
+    host.write("/home/operator/.config/fish/config.fish", "set -gx HUGGINGFACE_HUB_CACHE /var/lib/hf-c\n")
     host.write("/etc/systemd/system/vllm.service",
                '[Service]\nEnvironment=HF_HOME=/var/lib/hf-d "XDG_CACHE_HOME=/var/lib/hf-e"\n'
                "Environment=HF_HUB_CACHE=$HOME/ignored\n")
     host.write("/etc/systemd/system/vllm.service.d/override.conf", '[Service]\nEnvironment="HF_HUB_CACHE=/var/lib/hf-f"\n')
-    host.write("/home/code/.bashrc", "export TRANSFORMERS_CACHE=~/tc  # models\n")
+    host.write("/home/operator/.bashrc", "export TRANSFORMERS_CACHE=~/tc  # models\n")
     ctx = context(host)
     roots = search.declared_hub_roots(ctx, search.accounts(ctx))
-    assert roots == sorted(["/var/lib/hf-a", "/root/hf-home/hub", "/home/code/hf-home/hub", "/var/lib/hf-b/home/hub",
+    assert roots == sorted(["/var/lib/hf-a", "/root/hf-home/hub", "/home/operator/hf-home/hub", "/var/lib/hf-b/home/hub",
                             "/var/lib/hf-c", "/var/lib/hf-d/hub", "/var/lib/hf-e/huggingface/hub", "/var/lib/hf-f",
-                            "/home/code/tc"])
+                            "/home/operator/tc"])
     assert not host.path("/tmp/pwned").exists()
     folder = host.cache("/var/lib/hf-b/home/hub", REPO, REVISION, {name: CONTENT[name] for name in REQUIRED},
                         symlinks=False)
@@ -771,30 +771,30 @@ def test_declared_cache_variables_are_parsed_not_executed(tmp_path):
 
 def test_other_accounts_dotfiles_are_not_read_and_their_homes_are_listed_not_used(tmp_path, monkeypatch):
     host = Host(tmp_path)
-    host.user("cody", 1001, "/home/cody")
+    host.user("analyst", 1001, "/home/analyst")
     host.user("vllm", 998, "/var/lib/vllm")
-    host.write("/home/cody/.bashrc", "export HF_HOME=/opt/a/b/c/hf\n")
+    host.write("/home/analyst/.bashrc", "export HF_HOME=/opt/a/b/c/hf\n")
     contents = {name: CONTENT[name] for name in REQUIRED}
     hidden = host.cache("/opt/a/b/c/hf/hub", REPO, REVISION, contents, symlinks=False)
-    private_cache = host.cache("/home/cody/.cache/huggingface/hub", REPO, REVISION, contents, symlinks=False)
-    private_copy = host.copy("/home/cody/models/qwen")
+    private_cache = host.cache("/home/analyst/.cache/huggingface/hub", REPO, REVISION, contents, symlinks=False)
+    private_copy = host.copy("/home/analyst/models/qwen")
     service = host.copy("/var/lib/vllm/models/qwen")
-    host.write("/home/code/.bashrc", "# the operator's start-up file\n")
+    host.write("/home/operator/.bashrc", "# the operator's start-up file\n")
     opened = record_access(monkeypatch, calls=("open",))
     result = run(host)
     # The operator's start-up files are read; another account's are not, and
     # nothing in another account's home is read beyond cache metadata.
-    assert "/home/code/.bashrc" in host_paths(host, opened)
-    assert [path for path in host_paths(host, opened) if path.startswith("/home/cody")] == \
-        [f"/home/cody/.cache/huggingface/hub/{REPO}/refs/main"]
-    assert not [path for path in paths(result) if path.startswith(("/home/cody", hidden))]
+    assert "/home/operator/.bashrc" in host_paths(host, opened)
+    assert [path for path in host_paths(host, opened) if path.startswith("/home/analyst")] == \
+        [f"/home/analyst/.cache/huggingface/hub/{REPO}/refs/main"]
+    assert not [path for path in paths(result) if path.startswith(("/home/analyst", hidden))]
     reasons = {item["path"]: (item["reason"], item["home"]) for item in result["not_used"]}
-    private = ("in cody's home, another account", {"account": "cody", "kind": "private"})
+    private = ("in analyst's home, another account", {"account": "analyst", "kind": "private"})
     assert reasons[private_copy] == private and reasons[private_cache + "/snapshots/" + REVISION] == private
     assert candidate(result, service)["home"] == {"account": "vllm", "kind": "service"}
     chosen = run(host, named=[private_copy])
     used = candidate(chosen, private_copy)
-    assert "named" in used["found_by"] and used["home"] == {"account": "cody", "kind": "private"}
+    assert "named" in used["found_by"] and used["home"] == {"account": "analyst", "kind": "private"}
     assert used["exact"] is True
     assert chosen["named"] == [{"path": private_copy, "resolved": private_copy, "extra": [], "symlinks": [],
                                 "state": "exact"}]
@@ -809,8 +809,8 @@ def test_ignore_marker_excludes_a_folder_in_every_group(tmp_path, docker):
         host.write(folder + "/.sparkring-ignore", b"")
     host.copy("/data/skip/qwen")
     host.write("/data/skip/.sparkring-ignore", b"")
-    host.cache("/home/code/.cache/huggingface/hub", REPO, REVISION, contents)
-    host.write("/home/code/.cache/huggingface/.sparkring-ignore", b"")
+    host.cache("/home/operator/.cache/huggingface/hub", REPO, REVISION, contents)
+    host.write("/home/operator/.cache/huggingface/.sparkring-ignore", b"")
     hub = "/root/.cache/huggingface/hub"
     host.cache(hub, REPO, REVISION, contents)
     host.write(f"{hub}/{REPO}/.sparkring-ignore", b"")

@@ -1,0 +1,303 @@
+{
+ "schema": "glm-dcp-decode-audit-summary/v1",
+ "run_id": "mx-glm53-dcp-audit",
+ "label": "W-S+",
+ "flags": {
+  "GLM_DCP_DECODE_QUERY_PACK": "1",
+  "GLM_DCP_DECODE_OVERLAP": "1",
+  "GLM_DCP_DECODE_WK_OVERLAP": "1",
+  "GLM_DCP_DECODE_SELECTION_REUSE": "1",
+  "GLM_DCP_DECODE_A2A_FUSED": "1",
+  "GLM_DCP_DECODE_AUDIT": "1"
+ },
+ "ranks": [
+  {
+   "rank": 0,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": false
+  },
+  {
+   "rank": 1,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 2,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 3,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 4,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 5,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 6,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  },
+  {
+   "rank": 7,
+   "enabled": "glm_dcp_decode_comm 2.0.0: enabled GLM_DCP_DECODE_OVERLAP=1, GLM_DCP_DECODE_WK_OVERLAP=1, GLM_DCP_DECODE_QUERY_PACK=1, GLM_DCP_DECODE_SELECTION_REUSE=1, GLM_DCP_DECODE_A2A_FUSED=1, GLM_DCP_DECODE_AUDIT=1 (communication stream priority -1) on SIRCL 0.3.1",
+   "patch_refused": 0,
+   "audit_lines": 61,
+   "audit_lines_with_a_difference": 0,
+   "last_report_time": "10-09 13:36:18",
+   "last_counters": {
+    "combine": {
+     "calls": 3252,
+     "words_compared": 127107072,
+     "differ": 0
+    },
+    "gathered_query": {
+     "calls": 2776,
+     "words_compared": 2211655680,
+     "differ": 0
+    },
+    "query": {
+     "calls": 96571,
+     "words_compared": 3664055808,
+     "differ": 0
+    },
+    "selection": {
+     "calls": 47386,
+     "words_compared": 881553564,
+     "differ": 0
+    },
+    "wk": {
+     "calls": 26550,
+     "words_compared": 35294560,
+     "differ": 0
+    }
+   },
+   "workers_killed_after_sigterm": true
+  }
+ ]
+}

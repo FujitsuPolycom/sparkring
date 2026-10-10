@@ -35,7 +35,7 @@ def selection(profile_id, variant=None, root=profiles.ROOT):
     checkpoints = source.get("checkpoints", {})
     if checkpoints:
         # A serving profile's checkpoints table pins each checkpoint's
-        # repository and revision; runtime/common/qwen_flash_next.py applies
+        # repository and revision; runtime/common/toolchain_profiles.py applies
         # the checkpoint's settings. A derived checkpoint's selection names its
         # base, whose files the installer acquires before it derives the rest
         # (runtime/common/derived_checkpoint.py).

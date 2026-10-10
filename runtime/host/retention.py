@@ -17,9 +17,10 @@ A deployment is kept while any of these holds (``REASONS``):
 
 - ``active``, ``rollback``, ``switching``: it is the active deployment
   (``active.json``), the rollback target or the candidate of an unfinished
-  model switch (``transaction.json``; ``checkpoints.roles``). On a four-Spark
-  ring each half keeps these records too (``runtime.host.placement``), and the
-  models a switch stopped on other Sparks are rollback targets.
+  model switch (``transaction.json``; ``checkpoints.roles``). Each arc of
+  the fabric that serves a model keeps these records too
+  (``runtime.host.placement``), and the models a switch stopped on its Sparks
+  are rollback targets.
 - ``running``: its model container runs on a Spark.
 - ``mesh``: a SparkRing mesh installed on a Spark uses its workspace
   (``storage.installed_meshes``). On a four-Spark ring the deployment that

@@ -1,0 +1,8 @@
+{
+  "schema": "sparkring-relay-marker-artifact/v1",
+  "source": "spark_transport/fabric/relay_marker.c",
+  "source_sha256": "c64c74535c06230e5c5f06d8a04becc2669e36276eba16d80288f4b9155dca1f",
+  "architecture": "arm64",
+  "binary_sha256": "014784297b40f32b2d717c51ad8d423243ca045548bd1877a55b18efe4c91e71",
+  "download_url": "https://github.com/FujitsuPolycom/sparkring/releases/download/2026.10.2/sparkring-relay-marker-c64c74535c06-arm64"
+}

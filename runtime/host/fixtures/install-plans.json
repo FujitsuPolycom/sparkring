@@ -1,0 +1,334 @@
+{
+ "generated_at": "d08286033b3024448eb03c7d093d1ffddf7d5c9a",
+ "plans": {
+  "prepared": {
+   "printed": [
+    "SparkRing install. Progress: <tmp>/logs/install.log",
+    "Follow from another terminal: sudo sparkring logs --follow",
+    "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
+    "Install qwen38-flash-next-tp2 on 2 Sparks.",
+    "Transport: prepared (--transport prepared)",
+    "Update workers and prepare assets; then replace the current model.",
+    "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
+    "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",
+    "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB",
+    "Searched spark-10 in 1.2 s and spark-11 in 1.2 s.",
+    "",
+    "Node 0 spark-10 -> /srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+    "    from /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da",
+    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by operator",
+    "        53 of 53 files identified by SparkRing's earlier checksums",
+    "    hard-link 41 weight files (no copy, no extra space); copy 12 other files (56.1 MB)",
+    "    needs 4.1 GiB free on /: 89.2 MB for checkpoint files, 4 GiB for the compile cache; 300 GiB free",
+    "Node 1 spark-11: as Node 0 (300 GiB free)",
+    "",
+    "SparkRing checks the SHA-256 of every file before it links or copies it (about 20 s to 5 minutes per Spark); later starts compare recorded file identities and re-hash any file that changed.",
+    "SparkRing only reads your copies and adds hard links to their weight files; it never writes, moves or deletes them.",
+    "While this checkpoint directory exists, deleting a linked copy does not free its disk space (see sudo sparkring checkpoints).",
+    "Nothing is downloaded.",
+    "Plan saved. Install it with sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json --transport prepared --yes."
+   ],
+   "result": {
+    "api_url": "http://192.0.2.10:8000/v1",
+    "checkpoint": {
+     "approval": null,
+     "command": "sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json --transport prepared",
+     "hub_bytes": 0,
+     "hub_files": [],
+     "nodes": [
+      {
+       "bytes": {
+        "copy": 56080100,
+        "hub": 0,
+        "link": 110131860580,
+        "pool": 0,
+        "present": 0,
+        "receive": 0
+       },
+       "free_bytes": 322122547200,
+       "host": "root@192.0.2.10",
+       "hostname": "spark-10",
+       "mode": "owned",
+       "not_used": [],
+       "path": "/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+       "rank": 0,
+       "required_bytes": 4384156631,
+       "search": {
+        "complete": true,
+        "not_searched": [],
+        "seconds": 1.2,
+        "unvisited": {}
+       },
+       "sources": [
+        {
+         "branches": [],
+         "commit": "60215d26cf5e42c2db6128774032d57fc62678da",
+         "files": 53,
+         "home": null,
+         "layout": "local-dir",
+         "path": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da"
+        }
+       ]
+      },
+      {
+       "bytes": {
+        "copy": 56080100,
+        "hub": 0,
+        "link": 110131860580,
+        "pool": 0,
+        "present": 0,
+        "receive": 0
+       },
+       "free_bytes": 322122547200,
+       "host": "root@192.0.2.11",
+       "hostname": "spark-11",
+       "mode": "owned",
+       "not_used": [],
+       "path": "/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+       "rank": 1,
+       "required_bytes": 4384156631,
+       "search": {
+        "complete": true,
+        "not_searched": [],
+        "seconds": 1.2,
+        "unvisited": {}
+       },
+       "sources": [
+        {
+         "branches": [],
+         "commit": "60215d26cf5e42c2db6128774032d57fc62678da",
+         "files": 53,
+         "home": null,
+         "layout": "local-dir",
+         "path": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da"
+        }
+       ]
+      }
+     ],
+     "refreshed_receipts": 0,
+     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+     "reviewed": true,
+     "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
+    },
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-i37a9a8a82c5f",
+    "group": {
+     "api_position": 0,
+     "positions": [
+      0,
+      1
+     ],
+     "shape": "pair"
+    },
+    "image_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+    "nodes": 2,
+    "port": 8000,
+    "profile": "qwen38-flash-next-tp2",
+    "replaces": "<tmp>/state/deployments/previous",
+    "schema": "sparkring-install-result/v1",
+    "serving": {},
+    "spread": {
+     "bootstrap_order": [
+      {
+       "hops": 1,
+       "position": 1,
+       "via": 0
+      }
+     ],
+     "fabric_id": "sha256:e80b8cd1f253c431af9d559d9412bc98d33d466658f7565bd3ce13b9d92bf0ad",
+     "fallbacks": [],
+     "hop_limit": 1,
+     "layout": "pair",
+     "pipelines": [],
+     "schema": "sparkring-spread-plan/v1",
+     "sha256": "5caadb05b72c8cb3decd55ac6dbb417106ece47cb4994b280f4724b5d8af2f1b"
+    },
+    "state": "planned",
+    "steps": [
+     "verify-fabric",
+     "update-workers",
+     "prepare-images-and-checkpoints",
+     "switch-model",
+     "verify-serving"
+    ],
+    "transport": {
+     "backend": "prepared",
+     "reason": null
+    }
+   }
+  },
+  "sircl": {
+   "printed": [
+    "SparkRing install. Progress: <tmp>/logs/install.log",
+    "Follow from another terminal: sudo sparkring logs --follow",
+    "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
+    "Install qwen38-flash-next-tp2 on 2 Sparks.",
+    "Transport: sircl on every collective, NCCL off (default table, pair)",
+    "  SIRCL group: pair at positions 0, 1; 2 lanes per peer, no relays",
+    "  NCCL: opt-in only (auto); tables choose among SIRCL options",
+    "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring",
+    "Update workers and prepare assets; then replace the current model.",
+    "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
+    "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",
+    "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB",
+    "Searched spark-10 in 1.2 s and spark-11 in 1.2 s.",
+    "",
+    "Node 0 spark-10 -> /srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+    "    from /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da",
+    "        Hugging Face download folder, commit 60215d26cf5e (the pinned revision), files owned by operator",
+    "        53 of 53 files identified by SparkRing's earlier checksums",
+    "    hard-link 41 weight files (no copy, no extra space); copy 12 other files (56.1 MB)",
+    "    needs 4.1 GiB free on /: 89.2 MB for checkpoint files, 4 GiB for the compile cache; 300 GiB free",
+    "Node 1 spark-11: as Node 0 (300 GiB free)",
+    "",
+    "SparkRing checks the SHA-256 of every file before it links or copies it (about 20 s to 5 minutes per Spark); later starts compare recorded file identities and re-hash any file that changed.",
+    "SparkRing only reads your copies and adds hard links to their weight files; it never writes, moves or deletes them.",
+    "While this checkpoint directory exists, deleting a linked copy does not free its disk space (see sudo sparkring checkpoints).",
+    "Nothing is downloaded.",
+    "Plan saved. Install it with sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json --yes."
+   ],
+   "result": {
+    "api_url": "http://192.0.2.10:8000/v1",
+    "checkpoint": {
+     "approval": null,
+     "command": "sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json",
+     "hub_bytes": 0,
+     "hub_files": [],
+     "nodes": [
+      {
+       "bytes": {
+        "copy": 56080100,
+        "hub": 0,
+        "link": 110131860580,
+        "pool": 0,
+        "present": 0,
+        "receive": 0
+       },
+       "free_bytes": 322122547200,
+       "host": "root@192.0.2.10",
+       "hostname": "spark-10",
+       "mode": "owned",
+       "not_used": [],
+       "path": "/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+       "rank": 0,
+       "required_bytes": 4384156631,
+       "search": {
+        "complete": true,
+        "not_searched": [],
+        "seconds": 1.2,
+        "unvisited": {}
+       },
+       "sources": [
+        {
+         "branches": [],
+         "commit": "60215d26cf5e42c2db6128774032d57fc62678da",
+         "files": 53,
+         "home": null,
+         "layout": "local-dir",
+         "path": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da"
+        }
+       ]
+      },
+      {
+       "bytes": {
+        "copy": 56080100,
+        "hub": 0,
+        "link": 110131860580,
+        "pool": 0,
+        "present": 0,
+        "receive": 0
+       },
+       "free_bytes": 322122547200,
+       "host": "root@192.0.2.11",
+       "hostname": "spark-11",
+       "mode": "owned",
+       "not_used": [],
+       "path": "/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da",
+       "rank": 1,
+       "required_bytes": 4384156631,
+       "search": {
+        "complete": true,
+        "not_searched": [],
+        "seconds": 1.2,
+        "unvisited": {}
+       },
+       "sources": [
+        {
+         "branches": [],
+         "commit": "60215d26cf5e42c2db6128774032d57fc62678da",
+         "files": 53,
+         "home": null,
+         "layout": "local-dir",
+         "path": "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/60215d26cf5e42c2db6128774032d57fc62678da"
+        }
+       ]
+      }
+     ],
+     "refreshed_receipts": 0,
+     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+     "reviewed": true,
+     "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
+    },
+    "deployment": "<tmp>/state/deployments/qwen38-flash-next-tp2-id685c01b5f80",
+    "group": {
+     "api_position": 0,
+     "positions": [
+      0,
+      1
+     ],
+     "shape": "pair"
+    },
+    "image_id": "sha256:5555555555555555555555555555555555555555555555555555555555555555",
+    "model": "Qwen3.8-Flash-Next-NVFP4-QAD-TP2",
+    "nodes": 2,
+    "port": 8000,
+    "profile": "qwen38-flash-next-tp2",
+    "replaces": "<tmp>/state/deployments/previous",
+    "schema": "sparkring-install-result/v1",
+    "serving": {},
+    "spread": {
+     "bootstrap_order": [
+      {
+       "hops": 1,
+       "position": 1,
+       "via": 0
+      }
+     ],
+     "fabric_id": "sha256:e80b8cd1f253c431af9d559d9412bc98d33d466658f7565bd3ce13b9d92bf0ad",
+     "fallbacks": [],
+     "hop_limit": 1,
+     "layout": "pair",
+     "pipelines": [],
+     "schema": "sparkring-spread-plan/v1",
+     "sha256": "5caadb05b72c8cb3decd55ac6dbb417106ece47cb4994b280f4724b5d8af2f1b"
+    },
+    "state": "planned",
+    "steps": [
+     "verify-fabric",
+     "update-workers",
+     "prepare-images-and-checkpoints",
+     "switch-model",
+     "verify-serving"
+    ],
+    "transport": {
+     "backend": "sircl",
+     "expected": "SIRCL carries every collective; NCCL creates no communicator",
+     "fabric": "sha256:e80b8cd1f253c431af9d559d9412bc98d33d466658f7565bd3ce13b9d92bf0ad",
+     "group": "pair",
+     "nccl": "never",
+     "positions": [
+      0,
+      1
+     ],
+     "tuning": {
+      "row": "pair",
+      "row_source": "measured",
+      "sha256": "92bd95e66a4093deb1a58a9af5930fa7c46fc4caeac1e16e03ab3c9c8c304f52",
+      "source": "defaults"
+     }
+    }
+   }
+  }
+ },
+ "schema": "sparkring-install-plans/v1"
+}

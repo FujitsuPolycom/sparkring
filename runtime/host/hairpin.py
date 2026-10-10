@@ -73,6 +73,7 @@ import subprocess
 import sys
 import time
 
+from runtime.common import fabric_layout
 from runtime.host import node
 from scripts import hairpin_setting as rule
 
@@ -101,6 +102,8 @@ BUSY_UNITS = ("sparkring-mesh.service", "sparkring-*-mesh.service",
               "sparkring-mesh-model.service", "sparkring-*-model.service")
 MESH_UNITS = ("sparkring-mesh.service", "sparkring-*-mesh.service")
 TUNNEL_INTERFACE = "sr-control"
+# The TC preferences of the fabric relay table (runtime/host/relays.py: 10 + relays left, at most 8).
+RELAY_PREFERENCES = (11, 18)
 
 # Time limits in seconds. A run first waits up to PRESENT for the approved
 # functions (a boot run also up to UDEV for udev). BUDGET[mode] then covers the
@@ -345,7 +348,7 @@ def cut_off_advice(function, *, head):
 
 def message_restart(function, cause, advice=RETRY):
     """M1 and M2: a restart failed or did not finish; later functions stay untouched."""
-    return (PREFIX + f"{_function_name(function)}: {_clause(cause)}. Later functions were not restarted; four-Spark "
+    return (PREFIX + f"{_function_name(function)}: {_clause(cause)}. Later functions were not restarted; relayed "
             "forwarding stays off on this Spark and its mesh does not start. Boot runs on this Spark restart "
             "nothing until a live retry succeeds." + advice)
 
@@ -382,7 +385,7 @@ def message_m12(record):
     cause = record_cause(record)
     return (PREFIX + f"boot restarts are suspended on this Spark because the restart of {record.get('netdev')} "
             f"(pci/{record.get('pci_address')}) {outcome} during an earlier boot ({_utc(record.get('time'))})"
-            + (f": {cause}" if cause else "") + ". Nothing was restarted; four-Spark forwarding stays off and its "
+            + (f": {cause}" if cause else "") + ". Nothing was restarted; relayed forwarding stays off and its "
             "mesh does not start. On Node A, sudo sparkring hairpin retries it live.")
 
 
@@ -419,9 +422,15 @@ def message_m16(hostname, row):
             "hairpin setting is in effect and restarts nothing.")
 
 
-def message_m17(size):
-    return (PREFIX + f"this Spark's fabric record describes a {size}-Spark setup; the hairpin setting applies "
-            "to four-Spark rings only. Remove the approval with sudo sparkring node hairpin revoke.")
+def message_m17(document):
+    """M17: the fabric record ``document`` places this Spark where it relays nothing."""
+    try:
+        where = f"position {document['rank']} of a {fabric_layout.name(node.record_layout(document))}"
+    except (KeyError, TypeError, ValueError):
+        where = f"a {document.get('size') if isinstance(document, dict) else 'different'}-Spark setup"
+    return (PREFIX + f"this Spark's fabric record describes {where}, where this Spark relays nothing between its "
+            "cables; the hairpin setting applies to Sparks that relay. Remove the approval with sudo sparkring "
+            "node hairpin revoke.")
 
 
 def check_cause(what, seconds):
@@ -435,7 +444,7 @@ def message_m18(function, what, seconds):
 
 
 def message_m20(function):
-    return (PREFIX + f"hardware TC offload is off and fixed on {function['netdev']}; four-Spark forwarding "
+    return (PREFIX + f"hardware TC offload is off and fixed on {function['netdev']}; relayed forwarding "
             "cannot use this function.")
 
 
@@ -497,10 +506,32 @@ def locked(host):
 
 def fabric_size(host):
     """The size in /etc/sparkring/fabric.json, or None when the file does not exist."""
+    document = fabric_record(host)
+    return document.get("size") if isinstance(document, dict) else None
+
+
+def fabric_record(host):
+    """/etc/sparkring/fabric.json, or None when the file does not exist."""
     document, error = _read_optional(host, FABRIC)
     if error:
         raise HairpinError(PREFIX + "cannot read the fabric record " + error, "fabric")
-    return document.get("size") if isinstance(document, dict) else None
+    return document
+
+
+def record_relays(document):
+    """Whether a fabric record places its Spark where it relays between its cables (``node.relays_hairpin``).
+
+    None when there is no record or its layout cannot be read.
+    """
+    if not isinstance(document, dict):
+        return None
+    try:
+        if not isinstance(document.get("rank"), int):
+            # A record without its position: every Spark of a ring of four relays.
+            return fabric_layout.relayed(node.record_layout(document))
+        return node.relays_hairpin(document)
+    except (KeyError, TypeError, ValueError):
+        return None
 
 
 def _node_id(host):
@@ -538,7 +569,7 @@ def validate_approval(record, node_id):
 
 
 def load_approval(host):
-    """The validated approval; stops with M17 on a Spark whose fabric record is not four-Spark."""
+    """The validated approval; stops with M17 on a Spark whose fabric record places it where it relays nothing."""
     document, error = _read_optional(host, APPROVAL)
     if error:
         raise HairpinError(PREFIX + "cannot read the approval " + error + ". Nothing was changed.", "approval")
@@ -551,9 +582,9 @@ def load_approval(host):
         raise HairpinError(PREFIX + f"cannot read this Spark's identity {NODE}: {failure}. Nothing was changed.",
                            "approval") from None
     record = validate_approval(document, identity)
-    size = fabric_size(host)
-    if size is not None and size != 4:
-        raise HairpinError(message_m17(size), "M17")
+    fabric = fabric_record(host)
+    if record_relays(fabric) is False:
+        raise HairpinError(message_m17(fabric), "M17")
     return record
 
 
@@ -820,8 +851,10 @@ def busy_findings(host, functions, mode, tunnels=None):
 
     Units: mesh and model units that are not inactive or failed, or whose
     control group still lists processes. Forwarding: TC ingress filters on a
-    fabric netdev. RDMA: queue pairs or protection domains with a PID on a
-    fabric RDMA device. Live runs also check GPU compute processes and that
+    fabric netdev other than the fabric relay table's (preferences 11 to 18,
+    which ``sparkring-fabric.service`` installs again after the restart).
+    RDMA: queue pairs or protection domains with a PID on a fabric RDMA
+    device. Live runs also check GPU compute processes and that
     NetworkManager will bring each addressed function back by itself.
     """
     findings = []
@@ -845,6 +878,9 @@ def busy_findings(host, functions, mode, tunnels=None):
     for function in functions:
         result = host.command(["tc", "-j", "filter", "show", "dev", function["netdev"], "ingress"], READ)
         rules = _json(result)
+        if isinstance(rules, list):
+            rules = [rule for rule in rules if not (isinstance(rule, dict) and isinstance(rule.get("pref"), int)
+                                                    and RELAY_PREFERENCES[0] <= rule["pref"] <= RELAY_PREFERENCES[1])]
         if not result.ok or (result.stdout.strip() and not isinstance(rules, list)):
             findings.append({"kind": "forwarding", "netdev": function["netdev"],
                              "detail": f"cannot read forwarding rules on {function['netdev']}: {result.reason()}"})
@@ -1280,9 +1316,14 @@ class Run:
                           function=function)
 
     def _follow_up(self):
-        """Restore routes and sysctls, which the restarts removed, and every administration endpoint."""
+        """Restore routes, sysctls and the relay table, which the restarts removed, and every administration endpoint.
+
+        The relay markers start again too: a restart removed their rules with
+        their RDMA device.
+        """
         host = self.host
-        requests = [["systemctl", "--no-block", "try-restart", "sparkring-fabric.service"]]
+        requests = [["systemctl", "--no-block", "try-restart", "sparkring-fabric.service"],
+                    ["systemctl", "--no-block", "try-restart", "sparkring-relay-marker.service"]]
         if node.location(host.root, CONTROL).exists():
             requests.append(["systemctl", "--no-block", "start", "sparkring-control-refresh.service"])
         for argv in requests:
@@ -1465,9 +1506,9 @@ def approve(*, host=None):
     """Record this Spark's approval of the setting. Never enables, starts or restarts anything."""
     host = host or Host()
     with locked(host):
-        size = fabric_size(host)
-        if size is not None and size != 4:
-            raise HairpinError(message_m17(size), "M17")
+        fabric = fabric_record(host)
+        if record_relays(fabric) is False:
+            raise HairpinError(message_m17(fabric), "M17")
         record = {"schema": APPROVAL_SCHEMA, "node_id": _node_id(host), "parameters": dict(rule.PARAMETERS),
                   "hw_tc_offload": True, "functions": derive_functions(host)}
         existing, error = _read_optional(host, APPROVAL)
@@ -1522,7 +1563,8 @@ def _status_functions(host, approval, fabric, facts):
     """(functions, source) for status: the approval's, the fabric record's, or this Spark's fixed devices."""
     if approval is not None:
         return _sorted_functions(approval["functions"]), "approval"
-    interfaces = fabric.get("interfaces") if isinstance(fabric, dict) and fabric.get("size") == 4 else None
+    interfaces = (fabric.get("interfaces") if isinstance(fabric, dict) and len(fabric.get("interfaces") or []) == 4
+                  else None)
     rows = []
     if interfaces:
         for port in interfaces:
@@ -1574,7 +1616,7 @@ def status(*, facts=None, busy=False, root="/", run=None, host=None):
     fabric, error = _read_optional(host, FABRIC)
     if error:
         read_errors.append(error)
-    size = fabric.get("size") if isinstance(fabric, dict) else None
+    relaying = record_relays(fabric)
     try:
         functions, source = _status_functions(host, approval, fabric, facts)
     except (ValueError, KeyError, TypeError, AttributeError, OSError) as failure:
@@ -1602,17 +1644,18 @@ def status(*, facts=None, busy=False, root="/", run=None, host=None):
     in_effect = len(rows) == 4 and all(row["state"] == rule.IN_EFFECT for row in rows)
     kernel_off = KERNEL_OPTION in (host.text("/proc/cmdline") or "").split()
     warnings = []
-    if size == 4 and in_effect and not (approval and armed):
+    if relaying and in_effect and not (approval and armed):
         warnings.append("ConnectX hairpin setting is in effect but not applied at boot; on Node A: sudo sparkring hairpin")
     if suspended:
         warnings.append(f"boot restarts suspended since {suspension_text(suspended)}; on Node A: sudo sparkring "
                         "hairpin retries it live")
-    if kernel_off and (size == 4 or approval_info["present"]):
+    if kernel_off and (relaying or approval_info["present"]):
         warnings.append(f"{UNIT} does not run in this boot ({KERNEL_OPTION} on the kernel command line); reboot "
                         "without the option to apply the ConnectX hairpin setting")
-    if approval_info["present"] and size is not None and size != 4:
-        warnings.append("hairpin approval on a Spark that is not in a four-Spark ring: sudo sparkring node hairpin revoke")
-    if size == 4 and facts is None:
+    if approval_info["present"] and relaying is False:
+        warnings.append("hairpin approval on a Spark that does not relay between its cables: sudo sparkring node "
+                        "hairpin revoke")
+    if relaying and facts is None:
         warnings += node.mesh_units_without_start_check(root=host.root, run=host.run)
     try:
         from runtime.common import distribution
@@ -1656,7 +1699,7 @@ def require(unit, *, host=None):
     rows, reason = [], None
     if error or not isinstance(document, dict):
         reason = "its fabric record cannot be read (" + (error or "not an object") + ")"
-    elif document.get("size") == 2:
+    elif record_relays(document) is False:
         _unblock(host, unit)
         return 0
     else:

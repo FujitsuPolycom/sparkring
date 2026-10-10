@@ -18,7 +18,7 @@
   ],
   "launcher": {
     "kind": "bash",
-    "path": "scripts/qwen38_dgx4_serve.sh",
+    "path": "scripts/qwen38_ring4_serve.sh",
     "actions": [
       "--check",
       "--run"

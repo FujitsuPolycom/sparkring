@@ -68,6 +68,13 @@ python3 scripts/build_deb.py
 ```
 
 - To pin a commit, run `git checkout --detach COMMIT` before building.
+- The package ships the relay marker prebuilt
+  ([relay table](#the-relay-table)): the build downloads the binary that
+  [`relay-marker-artifact.json`](../../spark_transport/fabric/relay-marker-artifact.json)
+  publishes for the commit's marker source and checks its SHA-256. It
+  compiles nothing. Without Internet access, `--relay-marker-binary PATH`
+  ships a copy of that binary instead. When the record names no published
+  binary for the source, the build stops and says so.
 - The builder writes the package and a `.sha256` file to `.sparkring/dist/`
   (`--output DIR` for another directory), refuses to overwrite a package
   there, and prints the package path, its SHA-256, the source `revision` and
@@ -139,6 +146,13 @@ port it uses ([API endpoint](#api-endpoint)); Enter keeps both. Setup
 signs in to each Spark once; that Spark's inventory identifies its other
 fabric functions and return paths.
 
+Before it asks, the plan prints a `Warning:` line for each check of the
+[enhancement catalog](../../performance/enhancements.md) (`checks` in
+`performance/enhancements.json`) that rank 0's rendered container meets, such
+as MXFP8 or NVFP4 dense linears without `--linear-backend`, which run on a
+slow default kernel. No catalog profile meets one; a warning names a changed
+setting to review before approving.
+
 ### What a run does
 
 It updates workers from Node A's package through a bundle of the package and
@@ -158,14 +172,34 @@ starts:
   NVIDIA's `nvidia-cdi-refresh.service`, which DGX OS ships disabled, so the
   specification is written at every boot, and starts it when the
   specification is missing.
-- **Memory.** Immediately before start, each Spark writes back dirty pages,
-  drops its clean page cache and reclaimable kernel caches, and compacts free
-  memory. A GB10's GPU allocates from the same memory, so the model starts
-  from cleared memory whatever the Spark read before, and reads its weights
-  from disk.
+- **Memory.** A GB10's GPU allocates from the same memory as the CPU, so the
+  page cache that checkpoint reads and the previous model leave behind counts
+  against the free memory vLLM checks at startup (`--gpu-memory-utilization`
+  of the total). Before any container of the deployment starts, Node A has
+  every Spark of the deployment write back dirty pages and drop its page,
+  dentry and inode caches, then reads `MemAvailable` every 5 s until two
+  readings differ by less than 256 MiB on every Spark (at most 180 s) and
+  prints each Spark's available memory. When a Spark has less available
+  memory than vLLM asks for, the start is refused with each such Spark's
+  available memory, total and vLLM's share, and a switch recovers the
+  previous model. Then, immediately before its container starts, each Spark
+  drops its caches again and compacts free memory, so the model starts from
+  cleared memory and reads its weights from disk. Every installer profile
+  sets `--gpu-memory-utilization`; all but the DeepSeek-V4.1-Flash profiles
+  also fix the KV cache size with `--kv-cache-memory-bytes`, so the page
+  cache cannot shrink their KV pool, only stop their start.
 
 Once the model serves, the run releases what older deployments hold on the
 Sparks ([automatic release](#automatic-release)).
+
+The installer does not manage the page cache while a model serves. Another
+team's GB10 notes (not reproduced here) report that the page cache took
+CUDA-visible memory one for one (a 37 GiB cache cost 47.4 GiB of CUDA memory)
+and that they flush the cache periodically and set `vm.swappiness=10`. Both
+are host settings that SparkRing neither applies nor has measured
+(**unsupported**); a site that adopts them owns them, for example
+`sudo sysctl -w vm.swappiness=10` (DGX OS default 60) and a timer that runs
+`sync; echo 3 | sudo tee /proc/sys/vm/drop_caches`.
 
 ### Running the command again
 
@@ -379,7 +413,8 @@ sudo sparkring logs --follow
 
 ## Serving image and profiles
 
-Every installer profile runs on one shared ARM64 serving image, pinned by the
+Every installer profile of two or four Sparks runs on one shared ARM64
+serving image, pinned by the
 [installer image lock](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json)
 (`sparkring-installer-image/v2`):
 
@@ -389,7 +424,7 @@ Every installer profile runs on one shared ARM64 serving image, pinned by the
 | Tag | `dev-20261004-kraken-cuda1342-nccl2323-status034` |
 | Configuration | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Base image | `eugr/spark-vllm-b12x` nightly-20261001, `sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052` |
-| vLLM and B12X | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
+| vLLM and B12X (Local Inference Lab's GB10 kernel library) | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
 
 The image adds two layers to that base: SparkRing's vLLM and B12X sources
 with its transports, features, SparkCache assets and runtime-status dashboard
@@ -403,6 +438,21 @@ integration assets and toolchain, and the vLLM and B12X sources of branches
 `sparkring/kraken-beta-20261001`; `--image 2026.10.0` selects it
 ([Another image](#another-image)).
 
+Installer image names read `dev-DATE-CHANGE-cudaNNNN-ncclNNNN-statusNNN`:
+
+| Part | Meaning |
+|---|---|
+| `dev` | SparkRing's development image series; a GitHub release tag such as `2026.10.1` publishes one |
+| DATE | The day the image was composed |
+| CHANGE | Where present, what the image adds over its parent, or its image line: `kraken` is the line built on Local Inference Lab's `karmic-kraken-beta` vLLM and B12X branches |
+| `cuda1342`, `nccl2323` | CUDA 13.4.2 and NCCL 2.32.3. One image, `dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034`, spells CUDA 13.4.2 `cu1342` |
+| `status034` | Runtime-status dashboard 0.3.4 |
+
+Older guides name Local Inference Lab's vLLM releases R33, R35 and R37 of its
+Jovian Judgement line. `jovian-r33` is SparkRing's ARM64 rebuild of R33. LIL
+abbreviates Local Inference Lab, as in the compositions `lil-r37-*` built on
+R37 ([image names](../development/releases.md)).
+
 `sparkring models` lists exact model/version/quantization/topology profiles,
 including guide-only ones with their guides, and marks only these as
 installer-supported; family names such as `qwen` are ambiguous and rejected:
@@ -410,16 +460,50 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | Profiles | Checkpoint | Speculative decoding |
 |---|---|---|
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
-| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4` | MTP3 |
+| `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
+| `glm53-flash-csf-tp8` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef` | MTP, three tokens (MTP3) |
+| `glm53-nvfp4-tp8` | GLM-5.3 NVFP4, revision `b472e4ee53f6` | MTP, two tokens, probabilistic drafting |
+| `deepseek-v41-flash-tp8` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
+| `qwen38-flash-next-qad-tp8` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` | MTP, three tokens, probabilistic drafting |
 
-- The table names each profile's default checkpoint. The Qwen profiles and
-  `glm53-flash-nvfp4-spark-tp4` also install other checkpoints
+- The table names each profile's default checkpoint. The Qwen profiles of
+  two and four Sparks and the GLM-5.3-Flash profiles of two and four Sparks
+  also install other checkpoints
   ([Another checkpoint of a profile](#another-checkpoint-of-a-profile)).
-- All installer profiles run with SparkCache off and vLLM's native prefix
-  cache on.
+- The GLM-5.3-Flash CSF checkpoint needs an image whose vLLM is SIRCL's
+  pinned build `sparkring-kraken-beta-20261007-bc9ea774`, listed in the
+  lock's `sircl.vllm_pins`, such as the default image of release 2026.10.2
+  and the image that the
+  [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+  builds. On such an image the GLM-5.3-Flash profiles of two and four Sparks
+  install it without `--checkpoint`; on every other image, 2026.10.1's
+  among them, they install NVFP4-Spark. `glm53-flash-csf-tp8` serves only
+  the CSF checkpoint, and the installer refuses it on any other image.
+- `glm53-flash-tp2` and `glm53-flash-tp4` are other names of
+  `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`, whose IDs
+  name the checkpoint they install where CSF cannot be read. `install
+  --profile`, `up`, `status`, `down` and `images --profile` accept them; the
+  deployment, its records and its status keep the profile ID.
+- `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
+  `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
+  off), which the GLM-5.3 plugin layer
+  ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
+  adds; it needs an image whose lock lists all three in `vllm_plugins`, and
+  the installer refuses it on any other image.
+- All installer profiles run with vLLM's native prefix cache on and
+  SparkCache off. SparkCache is the external connector that keeps the prefix
+  KV cache on disk across restarts.
+- The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
+  eight-Spark ring and only on SIRCL ring sessions. No image lock this
+  package carries lists them: they install with `--image-lock FILE`, a
+  development lock (`sparkring-installer-image/v3`) whose image carries the
+  SIRCL layer and lists them. They are listed in the research catalog,
+  [research-catalog.json](../../profiles/research-catalog.json), outside every
+  Compose deployment's identity. They have no Compose files
+  ([Models on part of the fabric](#models-on-part-of-the-fabric)).
 - Profiles that select other images, such as the `shared-2026.09.3` release,
   keep their own guides; `sparkring install` does not install them.
 - `--image NAME` runs a profile on another installer image this package
@@ -447,14 +531,144 @@ images that run that profile.
   another checkpoint. Running the command without `--image` returns to the
   default image; naming the default image is the same as leaving `--image`
   out.
-- The profiles' measurements and checks were made on the default image. On
-  another image, each Spark checks before the model starts that the image
+- Each profile's measurements name the image they ran on. On an image other
+  than the default, each Spark checks before the model starts that the image
   has what the profile needs, and the installation stops if it does not.
 - A Spark downloads an image it does not hold; an image built on one the
   Spark holds downloads only its added layers. Compile caches are kept per
   image, so a profile's first start on an image compiles its kernels again.
 - `sudo sparkring up PROFILE --image NAME` selects an image for a deployment
   the same way.
+
+### Transport and receipts
+
+A deployment's collectives run on one of these transports:
+
+| Transport | Where it runs | NCCL |
+|---|---|---|
+| `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
+| `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+| `nccl`, vLLM's PyNccl alone | Any installer image, on a recorded fabric, on a group NCCL's cabling rule holds for: a cabled pair or a whole cycle; only with `--transport nccl` | Every collective; on a whole cycle with NCCL's ring settings |
+| `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
+
+`sudo sparkring install` chooses `sircl` wherever it can run and says so
+before it asks: `Transport: sircl on every collective, NCCL off (...)`, or
+`Transport: prepared, because ...` with the reason. `sparkring images` lists
+the transports each image carries.
+
+- `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
+  with the reason where it cannot run; nothing changes.
+- `--transport nccl` runs every collective on vLLM's PyNccl with SIRCL and
+  the RoCEnante slot off. Each rank's `NCCL_IB_HCA` names the RDMA devices
+  of its own lanes from the fabric document; a group whose ranks reach each
+  other through relays, such as four Sparks of a ring of eight, is refused.
+  It writes no SIRCL receipts, so the transport verdict names the backend
+  only.
+- `--transport libsircl` runs vLLM's PyNccl on libsircl, SIRCL's
+  NCCL-compatible C library, with SIRCL's adapter and RoCEnante off. It is
+  research-only and never the default; it runs on pairs, paths and whole
+  cycles of up to eight Sparks, without decode-context parallelism, on an
+  image whose libsircl has the fail-stop mode, and stops with the reason
+  elsewhere. The installer does not judge libsircl's
+  receipts, so the transport verdict is `unknown`
+  ([design](../architecture/libsircl.md)).
+- `--image REF --transport libsircl --plan`, with a registry reference or
+  image ID as `REF`, plans a stock vLLM image with libsircl as its NCCL
+  instead of an installer profile. It checks every Spark read-only and
+  writes each rank's Compose file; SparkRing does not start or manage that
+  deployment ([stock-image option](../architecture/libsircl.md#stock-image-option)).
+- `--nccl auto` lets NCCL carry the collectives the cabling allows: every
+  collective on a pair, NCCL's ring algorithm on a whole cycle, none across
+  relays. `--nccl never` is the default; `topology` is another name for
+  `auto`. `--nccl` applies to SIRCL deployments only. The plan states the
+  rule: `NCCL: opt-in only (auto); tables choose among SIRCL options`.
+- The transport, the NCCL setting, the fabric and the tuning table are part
+  of the deployment, so another choice installs a separate deployment. A
+  deployment made on another fabric does not start; `sudo sparkring install`
+  makes one on the recorded fabric.
+
+SIRCL's settings come from a tuning table that chooses only among SIRCL's own
+algorithms, schedules, pieces and launch grids. The package carries a default
+table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
+(`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
+`path-4`, `cycle-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
+`measured`; `design`, settings from the SIRCL install design that no
+measurement has confirmed; or `rules`, where SIRCL's sessions derive their own
+settings. A row may also state its evidence. The shipped rows are the accepted
+defaults until `sudo sparkring fabric tune` measures a fabric; a group size
+without a row of its own, such as a cycle of six, runs on SIRCL's own rules
+through the `path` or `cycle` row. The `cycle-4` row names a measured SIRCL
+table (`runtime/common/sircl-tuning/cycle-4.json`): per collective, per-rank
+size and mode, the algorithm, schedule, piece and launch grid that SIRCL's ring
+harness measured fastest on two separate cycles of four Sparks, each candidate
+judged by the slower cycle, with 8 link slots of 1 MiB; the row adds no setting
+of its own ([record](../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md)).
+Sessions of SIRCL 0.3.2 take the table; sessions of the compatible 0.3.1 take
+the row, whose rules then choose. The `pair` and `path-4` rows hold the ring schedules with which
+the two- and four-Spark profiles were measured on pairs and paths of four Sparks
+of a ring of eight: ring all-reduces, all-gathers and reduce-scatters above a
+64 KiB one-shot limit, with 1 MiB link pieces and slot
+([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+The `cycle-8` row holds the settings with which GLM-5.3 served at TP8 with NCCL
+off on an eight-Spark ring: a 1 MiB all-reduce capacity and dispatch ceiling, a
+28 KiB one-shot limit and 16 link slots of 512 KiB. A table that names
+a measured SIRCL tuning table (`sircl-tuning-table/v1`) for a group mounts it
+for that group's sessions, and each session's setup agreement carries its
+hash, so every rank decides from the same table. With decode-context
+parallelism, the sessions of the decode-context-parallel groups take the
+table measured for groups of their size, such as `path-4` for the groups of
+four in an eight-Spark ring. A SIRCL table records the
+session settings its choices ran under (link slots, link slot, chain slot and
+large-message piece); the session applies those the row leaves unset, and a
+row that sets fewer link slots or a smaller link slot than the table's is
+refused. The row's settings reach the tensor-parallel session only. A table's marks of where NCCL measured faster never route a call to
+NCCL. Without a table or a row setting, a session takes twice its ranks in link
+slots, at least 8.
+
+A table's rows apply only to sessions of the SIRCL builds it names (`sircl`:
+version and ABI). The default table names SIRCL 0.3.2, the version of
+`spark_transport/sircl`, and lists SIRCL 0.3.1 under `compatible`, with the
+recorded reason: 0.3.2 changes no kernel, schedule, op or launch grid that a
+row's settings choose. Sessions of either build, including those of image
+`27e9f75c0d09` (SIRCL 0.3.1), take the default rows. On an image whose SIRCL
+layer is another version, such as 0.3.0, no default row applies, the sessions
+derive their own settings, and the plan says `the default table is for
+another SIRCL build`. A measured table names only the build it was measured
+with.
+
+A profile's environment pins at most SIRCL's fused-norm and column-gather
+switches (`SIRCL_FUSED_NORM`, `SIRCL_COLUMN_GATHER`); the installer refuses
+any other `SIRCL_*` variable in a profile, so session sizes and schedules come
+only from the tuning table. The `nccl` and `libsircl` transports drop the
+profile's switches, and the prepared transport reads none of them.
+
+`sudo sparkring fabric tune` measures this fabric and writes
+`/var/lib/sparkring/controller/sircl-tuning.json`
+([measure the tuning table](#measure-the-tuning-table)). While its fabric,
+image and drivers hold, it replaces the default table and the installation
+says so: `Transport: sircl on every collective, NCCL off (measured on this
+fabric DATE, cycle-4)`. When they no longer hold, the installation names the
+change in a `Note:` line and uses the default table.
+
+After the model answers, the installation reads every rank's SIRCL receipts
+and the NCCL lines of its model log and judges them:
+
+- each rank's tensor-parallel group is ready and ran all-reduces on SIRCL;
+- with NCCL off, no group built PyNccl or sent a collective to NCCL, and no
+  log shows an NCCL communicator (the containers log NCCL's initialization for
+  this check);
+- with decode-context parallelism, every rank also has a
+  decode-context-parallel group with a SIRCL session;
+- the sessions decided from the tuning table the deployment recorded, and
+  report the link slots, link slot, chain slot and large-message piece that
+  the row or, where it sets none, the table sets;
+- each receipt names the deployment's NCCL mode.
+
+The summary card's `Transport:` line shows the verdict, for example
+`sircl, NCCL: absent`. A differing verdict is reported; the model keeps
+serving. The receipts and the verdict are kept in the deployment's directory
+on Node A under `receipts/<time>/`; `sudo sparkring status` prints the last
+verdict and `sudo sparkring check` repeats the check.
 
 ### Serving settings
 
@@ -767,11 +981,75 @@ the held layers, checks each loaded layer against the configuration and tags
 the image `127.0.0.1:5255/<repository>:<image-lock name>`. A node holding
 none pulls.
 
+On a cluster with a recorded [fabric document](#the-fabric-document), a worker
+that holds none of the image's layers receives them along the cables instead
+([Spreading along the cables](#spreading-along-the-cables)); the relay then
+serves only nodes that hold leading layers and Node A itself.
+
 Image distribution starts first, overlapping the prerequisite and source
 checks. Checkpoint preparation waits until every node holds the image,
 because downloads run the image's own Hugging Face client and every
 checkpoint write is checked against free space after the image is in place;
 image admission follows.
+
+### Spreading along the cables
+
+Status: implemented and tested offline with simulated Sparks
+(`runtime/host/test_spread.py`); not yet qualified on Spark hardware.
+
+On a cluster whose Node A holds the fabric document, `sparkring install`
+spreads the serving image and the checkpoint from one source Spark to the
+others as pipelines along the cables (`runtime/host/spread.py`):
+
+- **Order.** Node A reaches the Sparks by the fewest cables, both ways round a
+  cycle and the only way along a path, each through the Spark before it; no
+  route is longer than the number of Sparks minus one. Workers that run
+  another SparkRing revision receive Node A's package in this order.
+- **Directions.** An asset leaves its source through both of its ports. On a
+  cycle each Spark is reached the shorter way; on a cycle of eight from Node A,
+  `0 → 1 → 2 → 3 → 4` and `0 → 7 → 6 → 5`. On a path it runs to the end.
+- **Pipelining.** Each Spark of a chain receives every file in chunks over
+  both functions of the cable from the Spark before it, writes and hashes each
+  chunk, and sends it to the next Spark before the next chunk arrives. The
+  farthest Spark therefore finishes about one chunk later per cable than the
+  first, not one whole copy later. A Spark that already holds a file, or holds
+  the image in Docker, forwards without writing. A disk that stops taking
+  chunks for 60 seconds loses that file, which is sent again, while the chain
+  runs on; each Spark buffers at most 16 chunks of 8 MiB per stream.
+- **Image.** Node A downloads each registry layer once and is the source; each
+  worker without layers writes the layers to
+  `/var/lib/sparkring/spread/images/<image digest>/`, hashes every one again
+  once all are present and only then imports them with `docker load`. The
+  directory is removed after the import. A worker that holds leading layers
+  loads the rest through the registry relay.
+- **Checkpoint.** The checkpoint plan's donor is the source; every file is
+  placed in SparkRing's checkpoint directory only after its SHA-256 matches the
+  pin.
+- **Repairs.** A file that arrives with another SHA-256 is sent again from the
+  Spark before, which verified its copy. Sparks after a Spark that stopped
+  answering are reached from the other direction of a cycle.
+- **Resuming.** A file a Spark wrote only partly, because a Spark or cable
+  stopped mid-file, is sent again from its first byte; the partial copy is
+  never extended. A file already placed with its pinned SHA-256 is reused and
+  not sent again, so repeating the command sends only what is missing.
+
+The install plan prints the spread before the checkpoint plan: the order, each
+pipeline and the bytes each Spark writes. It is saved in
+`checkpoint-plan.json` as `spread` (`sparkring-spread-plan/v1`) and is bounded
+with it by a reviewed plan ([Plan approval](#plan-approval)).
+
+| Event | Result |
+|---|---|
+| A Spark stops answering mid-spread | The install stops with `needs_input` (field `spark`), for example `spark-e (position 4) stopped answering during the checkpoint spread; positions 0-3 and 5-7 hold the complete checkpoint, position 4 holds 23 of 53 files. Power it on and repeat the same command; the spread resumes.` On a path the Sparks after it wait. Placed files stay; repeating the command sends only what is missing |
+| A cable is down | On a cycle the spread goes round it. On a path the Sparks beyond it receive over the administration network (slower): `cable 3 (spark-d port 0 ↔ spark-e port 1) is down; positions 4-7 receive over the admin network instead of the fabric (slower). Reseat the cable and run sudo sparkring fabric verify.` A cable recorded as `failed` in the fabric document is planned that way from the start |
+| Node A cannot reach a Spark | `needs_input` (field `spark`): `positions 0-5 are set up; spark-g (position 6) was not reached over cable 5; check the cable and repeat the same command.` |
+
+A cluster set up before the fabric document existed keeps the relay for the
+image and copies checkpoint files cable by cable, level by level.
+
+`sudo sparkring fabric spread-check` is a user command: it runs the same
+spread with test files on any recorded layout and prints each Spark's finish
+time ([fabric](commands.md#fabric)).
 
 ### Without a reachable registry
 
@@ -899,8 +1177,9 @@ Log lines beginning `RoCEnante rank` tell which rank was late and why.
 ### Automatic recovery
 
 Node A restarts the model by itself. Once a minute
-(`sparkring-recover.timer`), it checks the active model, or each half's model
-on a [ring that serves two](#two-models-on-one-ring), and, for the first four
+(`sparkring-recover.timer`), it checks the active model, or each group's
+model on a [fabric that serves several](#models-on-part-of-the-fabric), and,
+for the first four
 rows of the table, runs the same `up`, or `down` and then `up`, that the
 table names. It acts only when all of these hold:
 
@@ -1086,16 +1365,27 @@ IPv4/MTU settings, so its administration path survives renumbering.
 - **Pair:** a cable between port 0 (p0) of both Sparks. Pair profiles use
   port 0 on both Sparks. A second cable between the two ports 1 only carries
   the [admin tunnel's](#admin-tunnel) fallback path.
-- **Four-Spark ring:** one loop in which every cable runs from port 0 of one
-  Spark to port 1 (p1) of the next. Node A is rank 0; the Spark on its port 0
-  is rank 1, and so on.
+- **Ring (cycle) of three to eight Sparks:** one loop in which every cable
+  runs from port 0 of one Spark to port 1 (p1) of the next. Node A is
+  position (rank) 0; the Spark on its port 0 is position 1, and so on.
+- **Line (path) of three to eight Sparks:** the same rule without the
+  closing cable, starting at Node A. Node A's port 1 and the last Spark's
+  port 0 stay free.
 
-The serving images rely on these ports, so setup never remaps them. When the
-cables differ, setup stops and names the change: a cable end to move, or a
-Spark whose two cables to swap, and the ring order afterwards.
-`sudo sparkring cabling` prints the same advice without setting anything up
-([command](commands.md#cabling)). For a loop it names the fewest swaps;
-when two choices tie, it leaves Node A's cables alone.
+Addresses, port roles and the serving images' four-Spark transport rely on
+these ports, so setup never remaps them. When the cables differ, setup stops
+and names the change: a cable end to move, a Spark whose two cables to swap,
+or, for a line that does not start at Node A, the cable that closes it into a
+ring and the end Sparks on which setup can run instead.
+`sudo sparkring cabling` prints the same advice and the port-to-Spark map
+without setting anything up ([command](commands.md#cabling)). For a loop it
+names the fewest swaps; when two choices tie, it leaves Node A's cables alone.
+
+On the published installer images, whose transport is the prepared one, the
+installer's profiles run on a pair, a four-Spark ring and its halves. On an
+image that carries SIRCL ring sessions they run on every layout setup forms
+([fabrics of up to eight Sparks](#fabrics-of-up-to-eight-sparks)), on all its
+Sparks or on some ([models on part of the fabric](#models-on-part-of-the-fabric)).
 
 ### Cable speed
 
@@ -1153,10 +1443,11 @@ for another setup of the Sparks counts as never measured.
 
 ## Re-form Sparks into another pair or ring
 
-Sparks that belonged to other SparkRing clusters can form another pair or ring:
+Sparks that belonged to other SparkRing clusters can form another pair, line
+or ring:
 
-1. Cable them as a [pair or ring](#cabling); `sudo sparkring cabling` names
-   any cable to move.
+1. Cable them as a [pair, line or ring](#cabling); `sudo sparkring cabling`
+   names any cable to move.
 2. Stop their models: on each Spark that was a Node A,
    `sudo sparkring down --execute`.
 3. On the Spark that becomes Node A, review, then set up:
@@ -1197,18 +1488,207 @@ Sparks up as on a first setup, with renumbered fabric addresses.
 - Each Spark keeps its own identity, `/etc/sparkring/node.json`.
 - Run setup again after an interruption; it skips finished steps.
 
+## Fabrics of up to eight Sparks
+
+Setup forms a pair, a ring of three to eight Sparks or a line of three to
+eight ([cabling](#cabling)), installs what lets every Spark reach every
+other, makes it survive a reboot, verifies it and records it.
+
+### Addresses on any layout
+
+Cable e runs from position e's port 0 to position e+1's port 1; a ring's
+last cable returns to position 0. It carries two `/24` subnets, the (2e)th
+and (2e+1)th of the fabric network, one per ConnectX function; the port-0
+end is `.1` and the other end `.2`. Setup keeps compatible addresses a Spark
+already has.
+
+- With up to four cables setup uses `198.18.0.0/21`, with more
+  `198.18.0.0/20`. Both start at the same subnet, so cables 0 to 3 keep their
+  addresses. `--fabric-cidr` names another network; setup refuses one that
+  is too small, such as a `/21` for more than four cables.
+- Each Spark routes to every cable it is not on through its neighbor: on a
+  ring the shorter way, on a line the only way. Each Spark between two cables
+  forwards between them ([fabric addresses and
+  routes](#fabric-addresses-and-routes)).
+- The admin network takes a `/29` for up to six Sparks. With seven or eight,
+  setup uses the `/28` that contains the default `/29`; a subnet named with
+  `--control-cidr` is used as it is.
+
+### The relay table
+
+Sparks two or more cables apart reach each other through the Sparks between
+them, whose ConnectX cards pass RDMA traffic on in hardware. Setup installs
+one relay table for the whole fabric. It serves every pair of Sparks at once,
+for every transport:
+
+- each Spark has a `/32` route and a permanent neighbor entry (protocol 82)
+  toward each Spark it shares no cable with;
+- each Spark between two cables has ConnectX ingress rules (`tc` flower,
+  `skip_sw`, preferences 11 to 17) that pass a packet on to the next Spark;
+- each Spark runs one relay marker process per fabric RDMA device
+  (`sparkring-relay-marker`). It tags RDMA packets to relayed Sparks with how
+  many relays remain (EtherType `0x88b4` plus that number).
+- On a four-Spark ring the markers also tag the four-Spark transport's
+  two-hop traffic (UDP source port 65535). Four-Spark models then need no
+  per-deployment [mesh service](#the-rings-mesh).
+
+The table comes from SIRCL's relay plan for the whole fabric, so it carries
+every lane SIRCL derives. Routes with more than three relays, on lines of
+five or more Sparks, are research-only. Every Spark between two cables needs
+the [ConnectX hairpin setting](#the-hairpin-setting).
+
+The relay marker ships prebuilt in the SparkRing package, so no Spark
+compiles it and Sparks need neither `gcc` nor `libibverbs-dev`. The release
+build compiles it once for arm64; every other package build takes the
+published binary ([Build from a full clone](#build-from-a-full-clone)). The
+package records the binary's SHA-256 in `distribution.json` (`relay_marker`).
+Package installation fails when the installed binary is missing or differs
+from it, and each Spark checks the digest again before it starts a marker.
+A package built for package tests without the marker (`--relay-marker skip`)
+installs no relay table: four-Spark models then use their mesh service, and
+setup's plan says so.
+
+### Boot and reboot
+
+At boot, in order:
+
+1. `sparkring-hairpin.service` applies the ConnectX hairpin setting.
+2. `sparkring-fabric.service` adds the routes, settings, forwarding rules and
+   the relay table.
+3. `sparkring-relay-marker.service` starts the markers, and starts them again
+   when one stops, as after a ConnectX driver restart.
+4. The admin network starts, and `sparkring-recover.timer` restarts the
+   active model ([automatic recovery](#automatic-recovery)).
+
+`sparkring-agent` adds back, every 30 seconds, routes and relay objects that
+a link change removed. After a reboot, `sudo sparkring fabric verify`
+confirms the fabric.
+
+### The fabric document
+
+Setup ends by recording the fabric document (`sparkring-fabric/v1`) in
+`/var/lib/sparkring/controller/fabric.json` on Node A and the same bytes in
+`/etc/sparkring/fabric/topology.json` on every Spark. It lists:
+
+- each Spark's position, node identity and management address;
+- both ports of each Spark, with the cable and the far end, and each
+  function's network interface, RDMA device, MAC, role and address;
+- the cables with their subnets and last measured health;
+- the hairpin requirement, the relay plan's digest and whether boot units
+  restore it;
+- the transports the fabric can carry: `sircl`, and `prepared` on a pair or a
+  four-Spark ring;
+- the verification setup ran before it recorded the document.
+
+Its `id` is a digest of the Sparks, ports and cables; addresses, names and
+health can change without changing it. The relay plan (`relay-plan.json`)
+lies beside it on Node A. `sparkring fabric show` prints both
+([command](commands.md#fabric)). SIRCL reads device names from the document
+that `SIRCL_FABRIC_DOCUMENT` names.
+
+### Verify the fabric
+
+`sudo sparkring fabric verify` checks every Spark:
+
+- links, addresses, MTU and [RoCE GID index 3](#roce-gid-index-3);
+- the approved routes and forwarding settings;
+- the hairpin setting where the Spark relays;
+- every relay route, neighbor entry, ingress rule and marker;
+- that the boot units are enabled and the Spark's copy of the document is
+  the recorded one;
+- that every other Spark's fabric addresses answer ICMP. Relayed addresses
+  answer through the kernel's forwarding, so this checks routes, not the
+  hardware relays.
+
+`--traffic light` adds one bidirectional RDMA write test per relayed lane,
+about 10 seconds each, which crosses the hardware relays. It is refused while
+a model serves unless `--while-serving` is given. Each run writes
+`fabric-verify-TIME.json` in `/var/lib/sparkring/controller/fabric-reports/`.
+Setup runs the same checks before it records the document.
+
+### Measure the tuning table
+
+`sudo sparkring fabric tune` prints what it would measure;
+`sudo sparkring fabric tune --execute` measures
+([flags](commands.md#fabric-tune)). Without it, deployments use the default
+table, measured on the owner's fabric. The measurement:
+
+- times, with SIRCL's ring harness, every SIRCL candidate of the all-reduce,
+  all-gather, reduce-scatter and all-to-all from 4 KiB to 128 MiB per rank,
+  eagerly and in CUDA graph replay: one-shot and two-shot at each launch grid
+  (latency), and from 256 KiB the two-shot pieces, the chain and the ring at
+  each piece (crossover). NCCL is not measured;
+- measures one group of each shape a deployment can use: on a cycle the pair,
+  the paths of 3 to 5 Sparks shorter than the cycle, and the whole cycle; on a
+  path the pairs and paths shorter than it. A deployment on any positions of
+  that shape uses the group's measurement;
+- cannot measure a pair cabled port 0 to port 0, or every Spark of a path:
+  the ring harness describes the Sparks as a cycle. Those groups keep the
+  default table's row;
+- runs one container per rank on GPU 0 of the measured Sparks and fills the
+  fabric. It holds the installation lock, so nothing installs or starts while
+  it runs, and refuses while a model serves unless `--stop-serving` stops it
+  first. A stopped model stays stopped;
+- takes at most `--layout-timeout` (30 minutes) per group, plus staging and
+  checks; the plan prints the worst case. `--max-hours` leaves the groups that
+  do not fit for the next run, and a repeated command keeps the groups already
+  measured.
+
+It writes `/var/lib/sparkring/controller/sircl-tuning.json` on Node A and the
+measured SIRCL tables to `/etc/sparkring/fabric/sircl-tuning/` on every Spark,
+each named by its SHA-256. The table records:
+
+| Field | What it binds |
+|---|---|
+| `fabric` | The fabric document's identity: another cabling, Spark or port invalidates it |
+| `image_id`, `binding.image`, `binding.tuning_key` | The installer image and its SIRCL build: another image, SIRCL version or SIRCL source invalidates it |
+| `binding.drivers` | Each Spark's GPU driver and kernel: a change on Node A invalidates it; the measurement refuses Sparks whose drivers differ |
+| `layouts` | `measured` rows: the default table's settings for that group shape, except the link slots and link slot that the row's measured SIRCL table records, which replace them; `default:<source>` rows carried from the default table |
+| `tables` | The measured SIRCL tables, each with the session settings its choices ran under (link slots, link slot, chain slot, large-message piece) |
+
+A measured `cycle-8` row therefore keeps the default row's 1 MiB capacity and
+dispatch ceiling and 28 KiB one-shot limit, and its sessions take the link
+slots and link slot measured on this fabric. The installation plan states the
+rule on a `Measured row` line.
+
+A deployment records the table's digest in its lock, mounts the SIRCL tables
+of its tensor-parallel group and its decode-context-parallel groups read-only
+in every rank's container and checks each Spark's copy before a container
+starts. Its receipts must show that every session decided
+from that table and uses the table's settings. A deployment made before the
+measurement keeps its own table; `sudo sparkring install` makes another one on
+the measured table. `sudo sparkring status` prints which table installations
+use, and `sudo sparkring fabric tune --distribute` copies the tables to a
+Spark that lost them.
+
+The harness measures this package's SIRCL sources built inside the image. It
+refuses when they differ from the image's SIRCL layer, because the image's
+sessions would not take the table; install the package the image was built
+with, or name its image with `--image`.
+
+### Change the layout
+
+A cluster whose Sparks are now cabled as another layout, such as a ring that
+lost a cable, stops setup with both layouts named. Restore the cables, or
+run `sudo sparkring setup --re-form` to set the Sparks up again as they are
+cabled; it moves each Spark's setup aside first, as a
+[re-form](#re-form-sparks-into-another-pair-or-ring) does. Adding or removing
+a Spark re-forms the cluster without the flag.
+
 ## Four-Spark rings
 
-Four-Spark rings need the ConnectX hairpin setting on every Spark; pairs do
-not use it. SparkRing applies it itself; a first installation needs no flag or
-separate step.
+Rings of four or more Sparks need the ConnectX hairpin setting on every Spark,
+and lines of three or more on every Spark between two cables; pairs and
+three-Spark rings do not use it. SparkRing applies it itself; a first
+installation needs no flag or separate step.
 
 ### The hairpin setting
 
 Every four-Spark installer profile (`qwen38-flash-next-qad-tp4`,
 `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp4`,
 `deepseek-v41-flash-tp4` and `swift15-qwen38-flash-next-tp4`) relays traffic
-between nonadjacent Sparks through ConnectX hardware forwarding. That needs,
+between nonadjacent Sparks through ConnectX hardware forwarding, as does the
+[relay table](#the-relay-table) on any layout. That needs,
 on each of a Spark's four ConnectX functions, a hairpin queue of 8192 packets
 (`hairpin_queue_size`), four hairpin queues (`hairpin_num_queues`) and
 hardware TC offload.
@@ -1297,14 +1777,15 @@ On a Spark:
 ### Fabric addresses and routes
 
 Each cable carries two `/24` subnets, one per ConnectX function of its
-ports. With the default fabric network (`--fabric-cidr 198.18.0.0/21`), the
-cable from port 0 of rank e to port 1 of rank e+1 (rank 0 after rank 3)
-uses `198.18.(2e).0/24` and `198.18.(2e+1).0/24`; compatible addresses that
-setup kept may differ. Each Spark reaches the two cables it is not on
-through a neighbor: one static route per subnet, over the shorter side of
-the ring, for example `198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on
-rank 0. Setup records these approved routes in `/etc/sparkring/fabric.json`;
-a pair has none.
+ports ([addresses on any layout](#addresses-on-any-layout)). On a four-Spark
+ring with the default fabric network, the cable from port 0 of rank e to
+port 1 of rank e+1 (rank 0 after rank 3) uses `198.18.(2e).0/24` and
+`198.18.(2e+1).0/24`; compatible addresses that setup kept may differ. Each
+Spark reaches the cables it is not on through a neighbor: one static route per
+subnet, over the shorter side of a ring, for example
+`198.18.4.0/24 via 198.18.6.1 dev enp1s0f1np1` on rank 0. Setup records these
+approved routes, and the Spark's part of the [relay table](#the-relay-table),
+in `/etc/sparkring/fabric.json`; a pair has no routes.
 
 - **At boot**, `sparkring-fabric.service` adds the routes, sets each fabric
   function's per-interface settings (`net.ipv4.conf.IFACE.forwarding=1` and
@@ -1337,6 +1818,15 @@ a pair has none.
   restores routes and settings this way without setup or a reboot.
 
 ### The ring's mesh
+
+On a ring whose fabric document records a relay table that boot units
+restore, four-Spark installer profiles use that table: each rank's deployment
+refers to the fabric document, no mesh service is installed, and the ring
+check before the model starts checks the table and its markers on every
+Spark. A deployment that still has a mesh service does not start beside the
+table's markers; install it again. The rest of this section describes the
+mesh service that carries the two-hop paths on rings set up without the
+relay table.
 
 Every four-Spark installer profile runs on a native mesh; the installer
 renders each rank's container from the profile's shared container
@@ -1428,6 +1918,69 @@ deployment created. When those containers are created again, for example
 after `docker container prune` removed them while the model was stopped, the
 deployment's next `up` installs its mesh services again for the new
 containers, in the same way.
+
+## Models on part of the fabric
+
+A fabric serves one model on all its Sparks, or several models side by side
+on runs of consecutive Sparks that share no Spark. `--on` names the Sparks of
+one model:
+
+```bash
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 0-3   # positions 0 to 3
+sudo sparkring install --profile FOUR_SPARK_PROFILE --on 4-7   # positions 4 to 7, beside it
+sudo sparkring install --profile TWO_SPARK_PROFILE --on 6,7    # stops the model on 4-7, then serves on 6 and 7
+sudo sparkring install --profile EIGHT_SPARK_PROFILE           # every Spark, which stops the others
+```
+
+- **Which Sparks.** `--on` takes consecutive positions in cable order, as a
+  list (`0,1`, `6,7,0,1`) or as the first and last position (`0-3`, `4-7`). On
+  a ring a group may cross the cable to Node A: `--on 6-1` is positions 6, 7,
+  0 and 1. The group has the profile's number of Sparks; `--on` naming every
+  Spark from Node A on is the same as no `--on`. On a pair, `--on` is refused.
+- **Ranks and API.** Rank `r` runs on the `r`-th Spark of the group, so its
+  first Spark serves the API at the profile's port: Node A's address when the
+  group starts at Node A, otherwise that Spark's own LAN address, or its
+  administration address, which only Node A reaches, when it has no LAN
+  connection. `Model ready:` and `sudo sparkring status` print each group's
+  URL.
+- **Which transport.** The prepared transport of the published images runs a
+  pair, a four-Spark ring and that ring's [halves](#two-models-on-one-ring),
+  `--on 0,1` and `--on 2,3`. Every other group needs [SIRCL ring
+  sessions](#transport-and-receipts): two Sparks that share a cable, a line of
+  three to five Sparks, or every Spark of a ring of three to eight. A line of
+  six or more Sparks is not supported: its end Sparks are four or more relays
+  apart, and SIRCL's lanes cross at most three. The installation names the
+  reason before it changes anything.
+- **What stops.** A group's installation replaces the model of the same group
+  and stops every model on a Spark it uses; models on other Sparks keep
+  serving. The plan lists each model it stops (`It stops PROFILE on Sparks
+  0-3.`), and the run asks before it stops one outside the named group;
+  `--yes` approves that.
+- **Without `--on`.** A profile of fewer Sparks than the fabric goes on the
+  one group, of those that divide the fabric from Node A (the halves of a
+  four-Spark ring for two Sparks, positions 0-3 and 4-7 of an eight-Spark ring
+  for four), on whose Sparks no model runs; the run says which. When several
+  or none are free, it asks for `--on`. A profile of more Sparks than the
+  fabric is refused with the installer profiles that fit.
+- **Its own Sparks.** A group's checkpoint plan and model steps call its
+  Sparks Node 0 onwards and name their host names; its checkpoint moves
+  between its own Sparks over their shared cables. A group of more than two
+  Sparks bootstraps over their management addresses, because the relays carry
+  only tagged RDMA traffic, and checks the fabric's [relay
+  table](#the-relay-table) on every Spark before it starts.
+- **Hairpin.** An installation on part of the fabric applies no ConnectX
+  hairpin change: a driver restart would interrupt the models beside it. A
+  Spark that relays the group's traffic (an inner Spark of a line) must have
+  the [setting](#the-hairpin-setting) in effect, which setup applies; the
+  installation stops and names `sudo sparkring setup` otherwise.
+
+`sudo sparkring status` prints one block per group: `Sparks 4-7:`, its shape,
+positions and API Spark (`Group: path-4 at positions 4, 5, 6, 7; API on
+Spark 4`), the saved operation, the transport and the API URL. `sudo sparkring
+down --on 4-7 --execute`, `up --on 4-7` and `check --on 4-7` act on one group;
+with several recorded, `up` and `down` without a profile ask for `--on`.
+[Automatic recovery](#automatic-recovery) restarts only the group that stopped
+serving.
 
 ## Two models on one ring
 
@@ -1617,8 +2170,9 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
-    names no release it derives from, so this case does not arise for it;
+    download-size differences. The default image, `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`,
+    derives from 2026.10.1's: a Spark that holds 2026.10.1's image loads at
+    most 36.7 MiB of layers and needs 4.1 GiB;
   - no image it derives from: the unpacked size plus the download size plus
     8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
     same applies on Docker's containerd image store, into which SparkRing
@@ -1669,7 +2223,7 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The serving image `dev-20261004-kraken-cuda1342-nccl2323-status034` is a
+The serving image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` is a
 14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
 image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
 figure: the need of a Spark holding neither the image nor a checkpoint file,
@@ -1685,6 +2239,8 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.7 GiB |
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
+| GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
+| GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
 
 The derived Qwen checkpoint, `--checkpoint qad-step5500-mxfp8-attention`,
@@ -1966,6 +2522,24 @@ listed one with the settings it needs, as its own deployment with its own
 pinned revision and checkpoint directory; an unlisted name changes nothing.
 Installing again without `--checkpoint` switches back to the default.
 
+The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`: without
+`--checkpoint`, an image whose vLLM reads the CSF checkpoint installs `csf`,
+and every other image, 2026.10.1's among them, installs `nvfp4-spark`.
+`--checkpoint nvfp4-spark` installs NVFP4-Spark on either image, and
+`--checkpoint csf` on an image that cannot read it is refused before any
+Spark changes. A checkpoint that `image_lock.CHECKPOINT_STATUS` lists, one
+with no installation that passed the installer's checks, gets a `Note:` in
+every plan that installs it with that status and, when the image chose it,
+the profile's default checkpoint; `csf` is not listed.
+`sparkring images` does not list the image of the
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
+which reads it; its lock is selected with `--image-lock`:
+
+```bash
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK --checkpoint nvfp4-spark
+```
+
 ```bash
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
@@ -1980,9 +2554,11 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
-| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default on an image that cannot read `csf`) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
+| `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) with two CTAs per SM for small-M experts (`B12X_W4A16_SMALL_M_OCCUPANCY=2`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
-| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `nvfp4-spark` (default on an image that cannot read `csf`) | GLM-5.3-Flash NVFP4-Spark, as above | — |
+| `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode with two CTAs per SM for small-M experts; KDA prefill coalescing (`VLLM_B12X_KDA_PREFILL_COALESCING=1`); the draft's experts on the Marlin MoE backend instead of Humming, with the four-Spark profile's draft tensor parallelism, probabilistic draft sampling and standard rejection; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
 
@@ -2064,6 +2640,41 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
+- The `csf` entries of both GLM profiles are **implemented** on the SIRCL
+  0.3.2 image `1a8c10354eb0`: installations on four and on two Sparks, of a
+  ring of eight and of rings of four, passed the installer's 7 functional
+  checks and its transport check
+  ([ring of eight](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md),
+  [rings of four](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md)); on four
+  Sparks the installation decoded 67.5 / 225.9 tok/s at 1 / 8 streams
+  without context and 65.6 / 214.5 at 16K tokens in one measured series
+  (rings-of-four record); and on four and on two Sparks a 256-request
+  correctness screen returned no degenerate, wrong or failed response
+  ([screens](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md)).
+  Qualification still needs a soak.
+  Their quantization, loader, W4A16
+  decode and draft MoE backend are those of `glm53-flash-csf-tp8`
+  ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
+  SIRCL's serve launcher served this checkpoint with the pair profile's
+  10 GiB of KV cache and 1,048,576-token context window, the same
+  quantization, loader and draft backend and the CSF source overlay instead
+  of the image's sources, and its check passed
+  ([measured results](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#measured-results));
+  that row records no change to the profile's environment, which does not
+  force W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=0`). By their pin manifests the
+  CSF weights take 2.3 GiB less than NVFP4-Spark's on each Spark of a ring
+  and 4.6 GiB less on each Spark of a pair. The ring's entry takes the 37 GiB
+  of KV cache of the QAD entry and of the eight-Spark profile, 3 GiB less
+  than NVFP4-Spark's; the pair's entry keeps the pair's 10 GiB. Neither has a
+  measured KV capacity or host memory headroom.
+- The serving A/B runner measured the `csf` entries' settings, with SIRCL's
+  ring schedules, on a pair and on a path of four Sparks of a ring of eight
+  ([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
+  Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
+  repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1` and
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`. A checkpoint entry changes only
+  variables the profile already sets, and these profiles set neither, so
+  `csf` runs without them, as `glm53-flash-csf-tp8` does.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its
@@ -2191,10 +2802,11 @@ using it.
 **SparkRing never writes, moves or deletes files it did not create.**
 
 Copies between Sparks travel over the fabric cables outward from a Spark that
-holds the checkpoint. The receiver binds only its fabric addresses and
-accepts only the sender's address and a one-time token sent over
-administration SSH. If a direct copy fails, rsync over administration SSH
-fills in: it sends only files the receiver lacks, into an empty staging
+holds the checkpoint; with a fabric document they run as pipelines
+([Spreading along the cables](#spreading-along-the-cables)). Each receiver
+binds only its fabric addresses and accepts only the sending Spark's address
+and a one-time token sent over administration SSH. Where the fabric cannot
+carry a copy, rsync over administration SSH fills in: it sends only files the receiver lacks, into an empty staging
 directory beside SparkRing's directory, reading them without changing their
 access times (`--open-noatime`, which needs rsync 3.2.3 or later on both ends;
 Ubuntu 24.04 ships 3.2.7). Each received file is placed only after its
@@ -2234,7 +2846,10 @@ bound, so repeating `--yes` stops again: review the changed plan with
   `--cache-path` and `--image-lock` options, which identify the deployment.
 - With `--json`, the result carries a plan summary as `checkpoint`; the full
   plan, with each file's action, is `checkpoint-plan.json` in the result's
-  `deployment` directory.
+  `deployment` directory. The result also carries the spread plan as `spread`.
+- The spread plan stays within the reviewed one while the fabric is the same,
+  no Spark writes more than 1 GiB beyond it and no Spark receives over the
+  administration network what the reviewed plan sent over the cables.
 
 ### Options
 

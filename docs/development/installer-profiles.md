@@ -1,8 +1,10 @@
 # Contributing an installer profile
 
-An installer profile is a profile that `sparkring install` sets up end to end on a cabled pair or
-four-Spark ring: one pinned checkpoint and its serving settings, on the serving image that all installer
-profiles share. The default installer image lock, `runtime/releases/<release>/installer-image.json`
+An installer profile is a profile that `sparkring install` sets up end to end on its group of cabled
+Sparks: two, four or eight, on all Sparks of the fabric or on some of them
+([models on part of the fabric](../operations/install-reference.md#models-on-part-of-the-fabric)). It is
+one pinned checkpoint and its serving settings, on the shared serving image of an installer image lock.
+The default installer image lock, `runtime/releases/<release>/installer-image.json`
 (`installer_image.DEFAULT_LOCK`), pins that image and lists the admitted profiles;
 `python -c "from runtime.common.installer_image import DEFAULT_LOCK as L; print(L.parent.name)"` prints
 `<release>`. Examples: [`deepseek-v41-flash-tp4`](../../profiles/deepseek-v41-flash-tp4/profile.json)
@@ -37,14 +39,14 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 
 | File | Field | Value |
 |---|---|---|
-| `profile.json` | `id` | Directory name, ending `-tp2` or `-tp4`; test fixtures take the host count from the suffix |
+| `profile.json` | `id` | Directory name, ending `-tp2`, `-tp4` or `-tp8`; test fixtures take the host count from the suffix |
 | `profile.json` | `release` | `runtime/releases/<release>/release.json` |
-| `profile.json` | `launcher` | `path` `runtime/common/qwen_flash_next.py`, `actions` `["plan"]`, `fixed_args` `["--profile", "profiles/<id>/config.json"]` |
+| `profile.json` | `launcher` | `path` `runtime/common/toolchain_profiles.py`, `actions` `["plan"]`, `fixed_args` `["--profile", "profiles/<id>/config.json"]` |
 | `profile.json` | `recommendation` | `recommended`; the generated summary then hides non-recommended rows with the same repository, topology, node count and engine |
 | `config.json` | `model` | `repository`, 40-hex `revision`, and `config_sha256` and `index_sha256` from the pin manifest |
-| `config.json` | `topology` | `direct-pair-2` or `direct-cycle-4`, matching `--tensor-parallel-size` and `--nnodes` |
+| `config.json` | `topology` | `direct-pair-2`, `direct-cycle-4` or `direct-cycle-8`, matching `--tensor-parallel-size` and `--nnodes` |
 | `config.json` | `image_extension` | `toolchain`: the image comes from the lock |
-| `config.json` | `served_model_name` | Ends `-TP2` or `-TP4` |
+| `config.json` | `served_model_name` | Ends `-TP2`, `-TP4` or `-TP8` |
 | `config.json` | `cache_namespace` | Model family; names the compile-cache directories (default `qwen-flash-next`) |
 | `config.json` | `vllm_args` | `--port` (API port; no test fixes it; existing profiles use 8000, 8015 or 8020) and `--enable-prefix-caching`; no `--kv-transfer-config` |
 | `config.json` | `environment` | `SPARKCACHE_ENABLED` `0`; `VLLM_QWEN3_8_*` and `QWEN_*` only for a Qwen3.8-Flash-Next-architecture checkpoint (`installer_image.QWEN4_EXP`); omit `SPARKRING_TOOL_CHOICE_CONTRACT`, which the installer sets to `1` ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md#installer-images)), unless the profile opts out with `0` |
@@ -55,16 +57,16 @@ or `profiles/glm53-flash-nvfp4-spark-tp2/` (two Sparks) and set:
 
 | Path | Symbol or field | If missing |
 |---|---|---|
-| `profiles/catalog.json` | `{"id", "path"}` entry | `Unknown profile`; no catalog row, no `SHA256SUMS` |
+| `profiles/catalog.json`, or `profiles/research-catalog.json` for a research-only profile | `{"id", "path"}` entry | `Unknown profile`; no catalog row, no `SHA256SUMS` |
 | `runtime/common/installer_image.py` | `SUPPORTED` (read as `installer.INSTALLABLE`); also `QWEN4_EXP` for a Qwen3.8-Flash-Next-architecture checkpoint | `This profile uses its own guide`, and a lock that lists it fails validation for every profile; outside `QWEN4_EXP`, admission skips the image's Qwen feature and HC-mode checks |
 | `runtime/releases/<release>/installer-image.json` | `profiles`, sorted; any edit changes every installer deployment's identity | `<id> is not admitted on image lock …` |
 | `runtime/releases/<release>/release.json` | `sha256` of the `installer-image.json` input | No profile of the release loads: `release input changed` |
-| `runtime/common/qwen_flash_next.py` | `TOOLCHAIN_CONFIGS` | Rendering refuses: `Select an unchanged canonical serving configuration` |
+| `runtime/common/toolchain_profiles.py` | `TOOLCHAIN_CONFIGS` | Rendering refuses: `Select an unchanged canonical serving configuration` |
 | `runtime/common/compose.py` | `TOOLCHAIN` (pair) or `TOOLCHAIN_TP4` (ring) | `Compose adapter unsupported`; a ring outside `TOOLCHAIN_TP4` gets no mesh fabric reference |
 | `profiles/checkpoints/<owner>--<name>/<revision>.json` | Pin manifest: size, SHA-256, Git blob and LFS identities of every file; generated by `scripts/pin_checkpoint.py` | `No pin manifest …; generate it with scripts/pin_checkpoint.py` |
 | `profiles/storage-planning.json` | Optional with a pin manifest: `checkpoint_allowance_gib["<owner>/<name>"]`, whole GiB reserved for a revision of that repository without one | `No storage allowance for this checkpoint` from `setup.storage_plan` (`sparkring setup storage`; a host that pulls the image under `sparkring up`) when the revision has neither |
 | `profiles/model-names.json` | `models`, `quant_labels`, `publishers["<owner>"]` | `generate_profiles.py` stops: `needs a standard display name` or `needs a credited publisher` |
-| `profiles/thinking.json` | `checkpoints["<repository>@<revision>"]`, naming the behaviour of each checkpoint the profile lists; a chat template not yet read needs a behaviour that lists its SHA-256 from the pin manifest ([thinking](../../runtime/common/thinking.py)) | `generate_profiles.py` stops: `has no thinking record` for the README row; `runtime/common/test_thinking.py` fails; `--reasoning-effort` and `--thinking off` are refused as not recorded |
+| `profiles/thinking.json`, or `profiles/research-thinking.json` for a checkpoint only research-only profiles serve | `checkpoints["<repository>@<revision>"]`, naming the behaviour of each checkpoint the profile lists; a chat template not yet read needs a behaviour that lists its SHA-256 from the pin manifest ([thinking](../../runtime/common/thinking.py)) | `generate_profiles.py` stops: `has no thinking record` for the README row; `runtime/common/test_thinking.py` fails; `--reasoning-effort` and `--thinking off` are refused as not recorded |
 | `runtime/common/installer.py`, `scripts/sparkring_installer.py` | Optional: `DEFAULTS` and `--model` choices | `sparkring.py init --model` offers no family default |
 | `performance/profile-capacity.json` | Optional: KV capacity record (`tokens`, `source`, `witness`, `conditions`); `kv_bytes_per_rank` at measurement, `checkpoint` when the measured checkpoint is not the profile's default, `kv_evidence` when `source` does not state the KV bytes, and `checkpoints` with further measurements by checkpoint name (`tokens`, `source`, `witness`, `kv_bytes_per_rank`, `conditions`). Every `source` is a repository file that contains its `witness` text; `generate_profiles.py` refuses a record or checkpoint measurement without one | The catalog's KV column shows `—`; the Install Builder shows no token estimate |
 
@@ -80,7 +82,7 @@ Hand-maintained pages, which no check compares with the code:
 
 - `docs/operations/install-reference.md`: the profile table in [Serving image and profiles](../operations/install-reference.md#serving-image-and-profiles), the ring list in Four-Spark rings, API ports in Security and host exposure, and checkpoint sizes, files and headroom, and blank-Spark totals in Downloads, storage and outbound hosts.
 - In `docs/operations/`: `install.md` (free disk), `images.md` (profile count), `compose.md` (profile list), `compose-files.md` (rank files).
-- [`README.md` Profiles](../../README.md#profiles): `--profile` value, API port, checkpoint link and publisher, measured rates or `—`. `generate_profiles.py` fills the Thinking column from `profiles/thinking.json`.
+- [`README.md` Profiles](../../README.md#profiles): model, checkpoint link and publisher, Sparks, `--profile` value and API port. `generate_profiles.py` fills the Thinking column from `profiles/thinking.json`.
 - `docs/operations/install-reference.md`: the table in [Thinking](../operations/install-reference.md#thinking).
 
 ## Steps
@@ -96,13 +98,13 @@ From the repository root, with `requirements-dev.txt` installed ([testing](testi
 5. `touch profiles/<id>/SHA256SUMS`, then repeat step 1; it also writes that file.
 6. Checkpoint GiB, files-and-headroom GiB and blank-Spark GiB for the pages above, as `required_space` in `runtime/host/checkpoint_plan.py` counts them with the default image's whole pull and the compile cache allowance:
    `python -c "import json,sys;from runtime.common import installer_image as i;from runtime.host import install_space as w;p=json.load(open(sys.argv[1]));s=json.load(open('profiles/storage-planning.json'));r=[f['size'] for n,f in p['files'].items() if n not in p['optional']];G=2**30;c=sum(r)+min(max(r),16*G);print(round(sum(r)/G,1),round(c/G,1),round((c+w.whole_bytes(i.default_lock()))/G+s['compile_cache_allowance_gib'],1))" profiles/checkpoints/OWNER--NAME/COMMIT.json`
-7. `python scripts/generate_profiles.py`, then `python scripts/generate_compose_examples.py`. Commit every rewritten file: each Compose deployment label hashes `profiles/catalog.json` and, for installer profiles, the lock.
+7. `python scripts/generate_profiles.py`, then `python scripts/generate_compose_examples.py`. Commit every rewritten file: each Compose deployment label hashes `profiles/catalog.json`, `profiles/thinking.json` and, for installer profiles, the lock. A research-only profile changes no Compose export (see [Research-only profiles](#research-only-profiles)).
 8. Check; `git add` first, because the last two commands scan tracked files only:
    ```bash
    python scripts/check_repository_layout.py
    python scripts/generate_compose_examples.py --check
    python scripts/profiles.py resolve <id>
-   python -m pytest scripts/test_profile_catalog.py scripts/test_pin_checkpoint.py runtime/common/test_installer_image.py runtime/common/test_installer.py runtime/common/test_compose_installer.py runtime/common/test_qwen_flash_next.py runtime/host/test_install_workflow.py -q -rs
+   python -m pytest scripts/test_profile_catalog.py scripts/test_pin_checkpoint.py runtime/common/test_installer_image.py runtime/common/test_installer.py runtime/common/test_compose_installer.py runtime/common/test_toolchain_profiles.py runtime/host/test_install_workflow.py -q -rs
    python scripts/check_markdown_links.py .
    python scripts/check_release_safety.py .
    ```
@@ -113,12 +115,12 @@ From the repository root, with `requirements-dev.txt` installed ([testing](testi
 A profile that serves more than one checkpoint of the same architecture lists
 them in `config.json` instead of repeating the profile; `sudo sparkring install
 --checkpoint NAME` selects one. `checkpoint` names the default and
-`checkpoints` maps each name to an entry; `runtime/common/qwen_flash_next.py`
+`checkpoints` maps each name to an entry; `runtime/common/toolchain_profiles.py`
 (`checkpoint_names`, `checkpoint_settings`) validates and applies it. Examples:
 the Qwen profiles (two branches of one repository),
-`glm53-flash-nvfp4-spark-tp4` (three repositories) and
-`glm53-flash-nvfp4-spark-tp2` (two repositories; the second with a smaller KV
-cache and context window).
+`glm53-flash-nvfp4-spark-tp4` (four repositories) and
+`glm53-flash-nvfp4-spark-tp2` (three repositories; the QAD entry with a smaller
+KV cache and context window).
 
 | Entry key | Value |
 |---|---|
@@ -134,11 +136,23 @@ entry needs its pin manifest (steps 1–2 below), from which storage planning
 takes its sizes. It keeps no `SHA256SUMS` file: the
 installer checks its files against the pin manifest. Register it in `LISTED`
 in `scripts/test_pin_checkpoint.py`, add render assertions for its settings to
-`runtime/common/test_qwen_flash_next.py`, and list it in
+`runtime/common/test_toolchain_profiles.py`, and list it in
 [Another checkpoint of a profile](../operations/install-reference.md#another-checkpoint-of-a-profile)
 with its size in the Downloads table. Without `--checkpoint`, the profile
-installs its default checkpoint with unchanged settings; each other name is a
-separate deployment.
+installs its preferred checkpoint on an image that reads it and otherwise its
+default checkpoint with unchanged settings; each other name is a separate
+deployment.
+
+`preferred_checkpoint` optionally names another published entry that only
+some vLLM builds read (`runtime/common/image_lock.py` `CHECKPOINT_BUILDS`).
+Without `--checkpoint`, `sparkring install` and `sparkring up` install it on
+an image whose lock lists one of those builds in `sircl.vllm_pins`
+(`image_lock.preferred_checkpoint`), and the default entry on every other
+image. The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`. The
+default entry keeps the profile's own settings, so the profile's
+`SHA256SUMS`, its Compose exports, whose images cannot read the preferred
+checkpoint, and every reader of the profile's top-level command describe the
+default entry.
 
 A derived entry describes a checkpoint that no repository publishes: the
 installer acquires its base like any checkpoint, then writes the derived
@@ -157,6 +171,47 @@ another revision, manifest name and `model`. Register a derived entry in
 `DERIVED` in `scripts/test_pin_checkpoint.py`, cover it in
 `runtime/common/test_derived_checkpoint.py`, and list it with its storage
 figures in the install reference.
+
+## Profiles of eight Sparks
+
+A profile of eight Sparks (`-tp8`, `direct-cycle-8`) runs on every Spark of an eight-Spark ring. Its ranks
+reach each other through relays, so only SIRCL ring sessions run it, and it differs from the profiles
+above:
+
+- It has no `compose/` directory: a Compose deployment runs the prepared transport, and
+  `compose.build` refuses it. `config.json` has no `transport` key; the SIRCL adapter
+  (`runtime/common/transport.py`) owns the transport, and each rank's site row carries the fabric
+  document reference of the relay table (`relays.group_reference`).
+- It is admitted only by an image lock `sparkring-installer-image/v3` whose image carries the SIRCL
+  layer and lists it; a v1 or v2 lock that lists it is refused (`image_lock.sircl_only`).
+- A `--decode-context-parallel-size` above 1 gives each decode-context-parallel group a SIRCL session of
+  its own (`transport.dcp_groups`, `SIRCL_GROUPS=tp,dcp`).
+
+| Path | Symbol or field | If missing |
+|---|---|---|
+| `runtime/common/installer_image.py` | `SIRCL_ONLY` instead of `SUPPORTED`; also `QWEN4_EXP` for a Qwen3.8-Flash-Next-architecture checkpoint | `This profile uses its own guide` |
+| `runtime/common/compose.py` | `FABRIC_PROFILES` | `Compose adapter unsupported` |
+| `runtime/common/toolchain_profiles.py` | `FABRIC_CONFIGS` | `Select an unchanged canonical serving configuration` |
+
+`runtime/common/test_installer_image.py` (`SIRCL_ONLY`) holds the three lists equal, and
+`runtime/common/test_transport.py` renders every such profile on SIRCL on an eight-Spark ring.
+
+SIRCL's fused-norm and column-gather switches that a profile measured with (`SIRCL_FUSED_NORM`,
+`SIRCL_COLUMN_GATHER`; `sparkring_sircl.vllm.serve.plan.PROFILE_VARIABLES`) go in its `environment`. The
+installer passes them to every rank, and the SIRCL launcher's `bundle --profile` and the serving A/B runner
+read the same values. Any other `SIRCL_*` variable in a profile is refused: SIRCL's session sizes come from
+the tuning row and tables (`runtime/common/sircl-tuning-defaults.json`, `sudo sparkring fabric tune`).
+
+A profile whose `VLLM_PLUGINS` names a vLLM plugin that an image layer adds, beyond `b12x_loader`,
+`sparkring_status`, `sircl` and `libsircl`, runs only on an image whose v3 lock lists that plugin in
+`vllm_plugins` (`image_lock.plugin_problem`); the layer declares it in `Layer.plugins`
+([derived layers](../../runtime/images/installer-images.md#derived-layers)). `glm53-nvfp4-tp8` is one.
+
+A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF checkpoint, is registered in
+`runtime/common/image_lock.py` `CHECKPOINT_BUILDS` with the pinned vLLM builds of
+`sparkring_sircl.vllm.pins` that read it; the installer refuses it on an image whose lock lists none of
+them in `sircl.vllm_pins`, `sparkring compose render` refuses it on its image lock, and the Install
+Builder does not offer it there.
 
 ## Invariants the tests enforce
 
@@ -180,3 +235,38 @@ figures in the install reference.
 - [ ] Validation, per the [PR template](../../.github/PULL_REQUEST_TEMPLATE.md): the CPU checks run and their skips, and any hardware run. CPU tests do not validate CUDA, RDMA, serving or performance; hardware is not required, and maintainers own release qualification. `install.sh --ref BRANCH --repository URL --profile <id>`, with `install.sh` fetched from the same ref, installs a pushed branch ([Get the package](../operations/install-reference.md#get-the-package)).
 - [ ] Compatibility: the lock is part of `installer.make_lock`'s digest and of the instance hash in `runtime/host/install_workflow.py`, so editing it gives every installer profile a separate deployment on a later `sparkring install`.
 - [ ] Credit: the checkpoint publisher in `profiles/model-names.json` `publishers` and in the `README.md` row. A profile guide opens by naming the checkpoint repository, its publisher and, for a derived checkpoint, the original model and its maker ([example](../../profiles/glm53-flash-spark-tp2-dcp1/README.md)). The repository holds no weights and no checkpoint license ([License](../../README.md#license)); list copied or adapted code and its license in [third-party notices](../../THIRD_PARTY_NOTICES.md).
+
+## Research-only profiles
+
+A research-only installer profile you add is listed in
+[research-catalog.json](../../profiles/research-catalog.json) instead of
+[catalog.json](../../profiles/catalog.json), and the thinking records of
+checkpoints that only research-only profiles serve go in
+[research-thinking.json](../../profiles/research-thinking.json). Discovery,
+resolution and installation read both catalogs and both thinking files
+(`profiles.catalog`, `thinking.catalog`). Every Compose export's deployment
+label hashes `catalog.json` and `thinking.json` and neither research file, so
+adding, changing or removing a research-only profile changes no Compose export
+(`runtime/common/test_compose.py`).
+
+A research profile whose serving configuration's topology lets its ranks reach
+each other only through relays (`direct-cycle-8`, `profiles.RELAYED`) runs only
+on SIRCL ring sessions. `installer_image.SIRCL_ONLY`, `compose.FABRIC_PROFILES`
+and `toolchain_profiles.fabric_configs` read it from the research catalog, and it
+joins `installer_image.QWEN4_EXP` when its environment sets
+`VLLM_QWEN3_8_HC_PREFILL_MODE`. It needs none of the code registrations in the
+table above and no Compose site example.
+
+A profile graduates when its status becomes `implemented` or `qualified`. Then:
+
+1. move its row from `research-catalog.json` to `catalog.json`, and its
+   checkpoints' records from `research-thinking.json` to `thinking.json`;
+2. add the code registrations of the table above that its topology needs;
+3. regenerate the profile tables and the Compose examples (step 7), and
+   commit them: the move changes every Compose deployment label once.
+
+`profiles.research_catalog` refuses a research catalog row whose profile is not
+`research-only`, and both catalogs refuse an ID or a record that appears in
+both files. `catalog.json` also lists research-only profiles that run from
+their own guides and launchers; their rows are inside the Compose identity like
+every other row of that file.

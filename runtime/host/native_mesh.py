@@ -4,6 +4,14 @@ The existing ASIC planner, marker attestation and managed supervisor remain the
 implementation owners. This module connects them to the profile installer, and
 installs a deployment's mesh code over a stopped mesh whose installed code
 differs (update_code).
+
+On a four-Spark cycle whose fabric document records a relay table that boot
+units restore (``relays.persistent_reference``), that table carries the
+prepared transport's two-hop paths: ``select`` gives each rank a reference to
+the fabric document instead of a mesh site and plans no mesh service, and the
+ring operations (``stop_ring``, ``ring_stopped``, ``serve_ring``) check the
+table instead of a mesh unit. A cluster without such a document keeps the
+per-deployment mesh service.
 """
 import base64
 import concurrent.futures
@@ -22,7 +30,7 @@ import tempfile
 import time
 
 from runtime.common import compose, managed_deployment, profiles, qwen_mesh, setup
-from runtime.host import discovery, node, roce_gid
+from runtime.host import discovery, node, relays, roce_gid
 
 ROOT = profiles.ROOT
 COMPONENT = ROOT / "runtime/glm53-spark-mtp3-mesh"
@@ -231,8 +239,24 @@ def definitions(raw_site, cluster, profile):
             "site": site, "topology": fabric, "reference": reference, "health_port": 9976, "replaces": []}
 
 
-def select(raw_site, cluster, profile, *, fresh=False, existing_only=False, invoke=discovery.ssh):
+def select(raw_site, cluster, profile, *, fresh=False, existing_only=False, invoke=discovery.ssh, state=None):
+    """The deployment site of a four-Spark profile with each rank's ``fabric`` reference.
+
+    When the cluster's relay table is persistent (``relays.persistent_reference``
+    on Node A's state directory ``state``), every rank refers to the fabric
+    document, its bootstrap address is its management address as with a
+    mesh, and no mesh service is planned. ``existing_only`` (the managed GLM
+    backend, which owns its own mesh) skips that. Otherwise an existing mesh
+    is reused, or with ``fresh`` replaced, or a mesh service is planned.
+    """
     result = copy.deepcopy(raw_site)
+    if not existing_only:
+        from runtime.host import controller
+        reference = relays.persistent_reference(controller.STATE if state is None else state, cluster)
+        if reference is not None:
+            for row, host in zip(result["hosts"], cluster["plan"]["spec"]["hosts"], strict=True):
+                row.update(fabric=dict(reference), fabric_ip=row["management_ip"], interface=host["management_netdev"])
+            return result
     observed = [json.loads(invoke(row["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
                 for rank, row in enumerate(result["hosts"])]
     # A reported mesh may be stopped or fail its ring check; the ring step of
@@ -778,6 +802,9 @@ def stop_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen
     mesh whose ring check fails stops. A Spark on which another SparkRing mesh
     unit is active is left unchanged.
     """
+    if relays.is_reference(reference):
+        # The relay table is fabric-level: nothing stops with a deployment.
+        return {"ok": True, "unit": None, "action": "none", "relays": "fabric", "repaired": []}
     selected = mesh_layout(qwen_mesh.validate_site_reference(reference)["site_path"])
     state, repaired, others = _settle(selected, reference, rank, hcas, gid, host_ip, call, check, stale)
     result = {"ok": True, "unit": selected["mesh_unit"], "action": state,
@@ -791,8 +818,10 @@ def ring_stopped(reference, rank, hcas, gid, host_ip, *, call=node.call, check=q
     """Verify stop_ring without changing anything: this Spark's mesh is stopped or passes its ring check.
 
     Another active SparkRing mesh unit also passes: stop_ring leaves it, and
-    the ring check reports it.
+    the ring check reports it. A relay table reference passes: nothing stops.
     """
+    if relays.is_reference(reference):
+        return {"ok": True}
     unit = mesh_unit(qwen_mesh.validate_site_reference(reference)["site_path"])
     if unit in _active_mesh_units(call):
         check(reference, rank, hcas, gid, host_ip)
@@ -816,7 +845,18 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
     the installed code differs; a running mesh keeps the code it started with.
     A Spark on which another SparkRing mesh unit is active is left unchanged;
     the ring check then reports it.
+
+    A reference to the fabric document serves the relay table instead
+    (``serve_relays``). A mesh is not started on a Spark whose fabric record
+    holds relay markers: they and the mesh's markers would claim the same
+    RDMA transmit packets, so such a deployment must be installed again.
     """
+    if relays.is_reference(reference):
+        return serve_relays(reference, rank, hcas, gid, host_ip, call=call, sleep=sleep, clock=clock)
+    if relay_markers_recorded():
+        raise ValueError("This Spark's fabric relay table carries the four-Spark two-hop paths, and this "
+                         "deployment's mesh service would conflict with its markers. Install the model again with "
+                         "sudo sparkring install so that it uses the relay table.")
     selected = mesh_layout(qwen_mesh.validate_site_reference(reference)["site_path"])
     unit = selected["mesh_unit"]
     state, repaired, others = _settle(selected, reference, rank, hcas, gid, host_ip, call, check, stale)
@@ -843,6 +883,99 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
             sleep(3)
     return {"ok": True, "unit": unit, "action": action, "repaired": [netdev for netdev, _ in repaired],
             "code": refreshed}
+
+
+def relay_markers_recorded(*, root="/"):
+    """Whether this Spark's fabric record holds relay markers (``runtime/host/relays.py``)."""
+    try:
+        record = node.read(root, "/etc/sparkring/fabric.json")
+    except (OSError, ValueError):
+        return False
+    return bool((record.get("relays") or {}).get("markers")) if isinstance(record, dict) else False
+
+
+def check_ring(reference, rank, hcas, gid, host_ip):
+    """The read-only ring check of a deployment's ``fabric`` reference: the relay table or a mesh."""
+    if relays.is_reference(reference):
+        return relays.check_reference(reference, rank, hcas, gid, host_ip)
+    return qwen_mesh.check(reference, rank, hcas, gid, host_ip)
+
+
+def serve_relays(reference, rank, hcas, gid, host_ip, *, call=node.call, check=relays.check_reference,
+                 sleep=time.sleep, clock=time.monotonic, root="/"):
+    """Prepare this Spark's relay table for a four-Spark deployment and wait until its ring check passes.
+
+    Ports whose RoCE GID index 3 lost the IPv4 address, as on the neighbors
+    of a restarted Spark, get it again (``roce_gid.serve``); that removes the
+    relay routes through them, so the record's missing relay objects are then
+    added (``relays.restore``) before the check, which waits for the markers
+    up to RING_READY_SECONDS.
+    """
+    repaired = roce_gid.serve(hcas, gid, call=call)
+    table = node.read(root, "/etc/sparkring/fabric.json").get("relays") or {}
+    rows = relays.restore(table, call=call, root=root)
+    deadline = clock() + RING_READY_SECONDS
+    while True:
+        try:
+            check(reference, rank, hcas, gid, host_ip)
+            break
+        except CHECK_FAILURES as error:
+            if clock() >= deadline:
+                raise ValueError(f"The relay table's ring check still fails after {RING_READY_SECONDS} s: {error}") \
+                    from None
+            sleep(3)
+    return {"ok": True, "unit": None, "action": "checked", "relays": "fabric",
+            "repaired": repaired.get("repaired", []) if isinstance(repaired, dict) else [],
+            "restored": sum(row["state"] == "restored" for row in rows)}
+
+
+def group_position(lock, rank):
+    """The fabric position of a deployment's rank: its arc's ``rank``-th Spark, or ``rank`` on every Spark."""
+    placement = lock["site"].get("placement")
+    return placement[rank] if placement else rank
+
+
+def serve_group(reference, position, gid, host_ip, *, call=node.call, check=relays.check_position,
+                sleep=time.sleep, clock=time.monotonic, root="/"):
+    """Prepare this Spark's relay table for a SIRCL group and wait until its relay check passes.
+
+    The SIRCL counterpart of ``serve_relays``: the ports of this position's
+    cabled functions whose RoCE GID index 3 lost the IPv4 address get it
+    again, the record's missing relay objects are added (``relays.restore``),
+    and ``relays.check_position`` must pass within RING_READY_SECONDS.
+    """
+    repaired = roce_gid.serve(relays.position_devices(position, root=root), gid, call=call)
+    table = node.read(root, "/etc/sparkring/fabric.json").get("relays") or {}
+    rows = relays.restore(table, call=call, root=root)
+    deadline = clock() + RING_READY_SECONDS
+    while True:
+        try:
+            check(reference, position, gid, host_ip, root=root)
+            break
+        except CHECK_FAILURES as error:
+            if clock() >= deadline:
+                raise ValueError(f"The relay table's check still fails after {RING_READY_SECONDS} s: {error}") \
+                    from None
+            sleep(3)
+    return {"ok": True, "unit": None, "action": "checked", "relays": "fabric", "position": position,
+            "repaired": repaired.get("repaired", []) if isinstance(repaired, dict) else [],
+            "restored": sum(row["state"] == "restored" for row in rows)}
+
+
+def group_operation(operation, lock, rank):
+    """``ring-stop``, ``ring-stopped``, ``ring-serve`` or ``ring-check`` of a SIRCL deployment's rank.
+
+    A SIRCL group's relays are the fabric's own table, which no deployment
+    stops; serving checks it and restores what a restarted neighbor removed.
+    """
+    row = lock["site"]["ranks"][rank]
+    position = group_position(lock, rank)
+    if operation in ("ring-stop", "ring-stopped"):
+        return {"ok": True, "unit": None, "action": "none", "relays": "fabric", "repaired": []}
+    if operation == "ring-serve":
+        return serve_group(row["fabric"], position, row["gid"], row["host_ip"])
+    relays.check_position(row["fabric"], position, row["gid"], row["host_ip"])
+    return {"ok": True}
 
 
 def operate_local(lock, rank, operation):

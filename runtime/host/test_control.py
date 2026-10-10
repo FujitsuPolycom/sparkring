@@ -51,8 +51,10 @@ def test_management_prefix_conflict_and_disconnected_graph_are_rejected():
     with pytest.raises(ValueError, match="overlaps"):
         control.plan(nodes, edges, "0")
     nodes[0]["routes"] = []
-    with pytest.raises(ValueError, match="pair or"):
-        control.plan(nodes, edges[:-1], "0")
+    # A ring without one cable is a line; without two it leaves a Spark unconnected.
+    assert len(control.plan(nodes, edges[:-1], "0")) == len(nodes)
+    with pytest.raises(ValueError, match="a pair, a line or a ring"):
+        control.plan(nodes, edges[:-2], "0")
 
 
 def test_no_uplink_sharing_never_adds_default_route_or_nat():
@@ -98,16 +100,29 @@ def test_download_limit_is_a_settings_file_preference(tmp_path):
 
 def test_ssh_hops_resolve_link_scope_on_the_jump_host_and_keep_key_local(tmp_path):
     route = [{"user": "root", "address": "fe80::1", "interface": "port0", "port": 22},
-             {"user": "cody", "address": "fe80::2", "interface": "port1", "port": 22}]
+             {"user": "analyst", "address": "fe80::2", "interface": "port1", "port": 22}]
     command = bootstrap.ssh_argv(route, tmp_path, identity=tmp_path / "private")
     proxy = next(a.removeprefix("ProxyCommand=") for a in command if a.startswith("ProxyCommand="))
     nested = shlex.split(proxy)
     assert nested[nested.index("-W") + 1] == "[fe80::2%%port1]:22"
-    assert command[-1] == "cody@fe80::2%port1"
+    assert command[-1] == "analyst@fe80::2%port1"
     assert "ForwardAgent=yes" not in json.dumps(command)
     assert "StrictHostKeyChecking=yes" in command
     assert command[command.index("-i") + 1] == str(tmp_path / "private")
     assert nested[nested.index("-i") + 1] == str(tmp_path / "private")
+
+
+def test_the_controller_key_is_offered_before_the_accounts_own_default_keys(tmp_path):
+    """A Spark whose account trusts Node A's own key signs in before setup installs the controller key."""
+    route = [{"user": "operator", "address": "192.0.2.10", "interface": None, "port": 22}]
+    home = tmp_path / "home"
+    (home / ".ssh").mkdir(parents=True)
+    for name in ("id_ed25519", "id_rsa"):
+        (home / ".ssh" / name).write_text("key")
+    command = bootstrap.ssh_argv(route, tmp_path, identity=tmp_path / "private", home=home)
+    keys = [command[index + 1] for index, token in enumerate(command) if token == "-i"]
+    assert keys == [str(tmp_path / "private"), str(home / ".ssh" / "id_ed25519"), str(home / ".ssh" / "id_rsa")]
+    assert bootstrap.default_identities(tmp_path / "nobody") == []
 
 
 def test_bootstrap_does_not_invent_an_identity_file_when_using_existing_ssh_auth(tmp_path):
@@ -234,26 +249,26 @@ def test_discovery_names_skipped_addresses_when_no_pair_is_found():
 
     with pytest.raises(ValueError, match="refused SSH on port 22"):
         bootstrap.discover(Refused(a, b))
-    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two or four\. Skipped neighbor addresses "
+    with pytest.raises(ValueError, match=r"Found 1 Spark \(a\); setup needs two to eight\. Skipped neighbor addresses "
                                          r"that did not answer: fe80::6531:4cc1:4038:6c3d on a's port0 \(no echo reply\)\."):
         bootstrap.discover(PairSSH(a, b), select=lambda peer: False)
 
 
 @pytest.mark.parametrize("errors, cause", [
-    ("code@fe80::2%port0: Permission denied (publickey,password).\n", "did not accept the password or account code"),
+    ("operator@fe80::2%port0: Permission denied (publickey,password).\n", "did not accept the password or account operator"),
     ("ssh: connect to host fe80::2%port0 port 22: Connection refused\n", "--worker-bundle"),
     ("ssh: connect to host fe80::2%port0 port 22: Connection timed out\n", "did not answer SSH"),
     ("Connection closed by fe80::2%port0 port 22\n", "about 2 minutes"),
     ("Host key verification failed.\n", "has no recorded SSH host key yet"),
     ("kex_exchange_identification: read: Connection reset by peer\n", "closed the SSH connection"),
-    ("something unexpected\n", "SSH sign-in to code@fe80::2 on port0 failed"),
+    ("something unexpected\n", "SSH sign-in to operator@fe80::2 on port0 failed"),
 ])
 def test_login_failure_names_the_cause_and_keeps_the_ssh_message(tmp_path, errors, cause):
     def run(argv, **kwargs):
         kwargs["stderr"].write("Warning: Permanently added 'fe80::2%port0' (ED25519) to the list of known hosts.\n" + errors)
         return subprocess.CompletedProcess(argv, 255)
 
-    route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+    route = [{"user": "operator", "address": "fe80::2", "interface": "port0", "port": 22}]
     with pytest.raises(ValueError) as failure:
         bootstrap.SSH(tmp_path, run=run).login(route)
     message = str(failure.value)
@@ -277,7 +292,7 @@ def test_a_changed_host_key_is_told_apart_from_an_unknown_one(tmp_path):
             kwargs["stderr"].write(errors)
             return subprocess.CompletedProcess(argv, 255)
 
-        route = [{"user": "code", "address": "fe80::2", "interface": "port0", "port": 22}]
+        route = [{"user": "operator", "address": "fe80::2", "interface": "port0", "port": 22}]
         with pytest.raises(ValueError) as failure:
             bootstrap.SSH(tmp_path, run=run).login(route)
         messages.append(str(failure.value))

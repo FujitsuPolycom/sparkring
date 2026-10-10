@@ -3,8 +3,9 @@
 A Spark keeps the setup of the cluster it belonged to: Node A's controller
 record (``/var/lib/sparkring/controller``), the admin network (``sr-control``:
 ``/etc/sparkring/control.json`` and its services), the fabric record
-(``/etc/sparkring/fabric.json``) and its boot service, automatic recovery,
-mesh services and the ConnectX hairpin approval. Setup refuses a second
+(``/etc/sparkring/fabric.json``) with its boot service and, on a fabric that
+relays, its relay table and relay marker service, automatic recovery, mesh
+services and the ConnectX hairpin approval. Setup refuses a second
 cluster on top of that state: a node keeps the admin network configuration it
 has and refuses another one.
 
@@ -21,7 +22,11 @@ cabled Spark holds such state, setup re-forms them:
    discovery (the worker preparation of ``sparkring setup --worker-bundle``);
    Node A runs ``retire`` last. ``retire`` moves the state into
    ``/var/lib/sparkring/retired/STAMP/`` (kept, never deleted), disables the
-   cluster's services and writes a receipt with restore steps.
+   cluster's services, removes the routes and relay table that its fabric
+   record lists and writes a receipt with restore steps. A worker runs
+   ``retire`` again after its preparation for the link-local step; that run
+   keeps the preparation's SSH service (``sparkring-seed.service`` and its
+   two files), through which setup then signs in.
 4. Setup continues as a fresh setup of the cabled Sparks and renumbers their
    fabric addresses (the ``--reset-links`` behavior). Fabric IPv4 addresses
    that SparkRing did not set are listed in step 1; setup backs up each
@@ -112,7 +117,10 @@ def prior_state():
     result["fabric"] = None if fabric is None else {
         "cluster_id": fabric.get("cluster_id"), "rank": fabric.get("rank"), "size": fabric.get("size"),
         "interfaces": [{"netdev": p.get("netdev"), "address": p.get("address")} for p in fabric.get("interfaces") or []],
-        "routes": len(fabric.get("routes") or []), "forwarding": len(fabric.get("forwarding") or [])}
+        "routes": len(fabric.get("routes") or []), "forwarding": len(fabric.get("forwarding") or []),
+        "relays": {key: len((fabric.get("relays") or {}).get(key) or []) for key in ("routes", "neighbours", "filters",
+                                                                                     "markers")}
+        if fabric.get("relays") else None}
     result["files"] = {path: os.path.lexists(path) for path in (
         "/etc/sparkring/hairpin.json", "/etc/sparkring/seed_keys", "/etc/wireguard/sr-control.conf",
         "/var/lib/sparkring/recovery.json")}
@@ -121,7 +129,8 @@ def prior_state():
     result["units"] = {name: unit(name) for name in (
         "sparkring-recover.timer", "sparkring-recover.service", "sparkring-control.service",
         "sparkring-access.service", "sparkring-control-refresh.timer", "sparkring-dns.service",
-        "sparkring-fabric.service", "sparkring-hairpin.service", "sparkring-seed.service")}
+        "sparkring-fabric.service", "sparkring-hairpin.service", "sparkring-seed.service",
+        "sparkring-relay-marker.service")}
     meshes = sorted({Path(p).name for pattern in ("sparkring-mesh.service", "sparkring-*-mesh.service")
                      for p in glob.glob("/etc/systemd/system/" + pattern)})
     result["mesh"] = [dict(unit(name), unit=name) for name in meshes]
@@ -162,7 +171,14 @@ def retire(order, call=None, root="/"):
     directory moves. With ``link_local`` (the default), the last step sets
     each fabric function's NetworkManager connection to
     ``ipv6.addr-gen-mode eui64`` and reactivates it, except on the netdevs in
-    ``skip_link_local``. Moved paths keep their modes below
+    ``skip_link_local``. With ``keep_preparation`` (the worker's run after its
+    preparation) the preparation's SSH service ``sparkring-seed.service`` and
+    its files ``/etc/sparkring/seed_keys`` and ``seed_sshd_config`` stay:
+    setup signs in through them next. A fabric record with a relay table
+    (``relays``) has its ingress rules (by device and preference), relay
+    routes and permanent neighbor entries removed after its boot service and
+    ``sparkring-relay-marker.service`` stop, so the next fabric's relay table
+    installs on clean functions. Moved paths keep their modes below
     ``/var/lib/sparkring/retired/STAMP/`` with their original path, and
     ``receipt.json`` there names every change and how to restore it. Each
     step skips what is already gone, so a repeated run is safe. Raises
@@ -241,10 +257,15 @@ def retire(order, call=None, root="/"):
 
     meshes = sorted({p.name for pattern in ("sparkring-mesh.service", "sparkring-*-mesh.service")
                      for p in (base / "etc/systemd/system").glob(pattern)})
-    # The refresh timer goes first: its service starts the admin network and fabric services again.
+    preparation = bool(order.get("keep_preparation"))
+    # The refresh timer goes first: its service starts the admin network and fabric services again. The relay
+    # markers stop before the fabric service, whose relay table the agent no longer restores once it stops.
     for unit in [*meshes, "sparkring-hairpin.service", "sparkring-control-refresh.timer",
                  "sparkring-control-refresh.service", "sparkring-access.service", "sparkring-dns.service",
-                 "sparkring-control.service", "sparkring-seed.service", "sparkring-fabric.service"]:
+                 "sparkring-control.service", "sparkring-seed.service", "sparkring-relay-marker.service",
+                 "sparkring-fabric.service"]:
+        if preparation and unit == "sparkring-seed.service":
+            continue
         enabled, active = state(unit)
         if enabled == "enabled" or active in ("active", "activating"):
             run(["systemctl", "disable", "--now", unit])
@@ -272,6 +293,19 @@ def retire(order, call=None, root="/"):
             argv = ["ip", "route", "del", route["destination"], "via", route["via"], "dev", route["dev"]]
             run(argv, accepted=(0, 2))
             receipt["removed"].append("route " + " ".join(argv[3:]))
+        # The relay table's objects would otherwise stay on the functions: the next relay table adds only the
+        # objects it finds missing, so an old ingress rule at one of its preferences would stay in its place.
+        table = fabric.get("relays") or {}
+        for rule in table.get("filters") or []:
+            run(["tc", "filter", "del", "dev", rule["dev"], "ingress", "pref", str(rule["pref"])],
+                accepted=range(256))
+            receipt["removed"].append(f"relay ingress rule pref {rule['pref']} on {rule['dev']}")
+        for route in table.get("routes") or []:
+            run(["ip", "route", "del", route["dst"], "dev", route["dev"]], accepted=(0, 2))
+            receipt["removed"].append(f"relay route {route['dst']} dev {route['dev']}")
+        for neighbour in table.get("neighbours") or []:
+            run(["ip", "neigh", "del", neighbour["addr"], "dev", neighbour["dev"]], accepted=(0, 2))
+            receipt["removed"].append(f"relay neighbor {neighbour['addr']} dev {neighbour['dev']}")
     # Firewall rules carry the owner in their comment: sparkring-control (admin network) or sparkring:ID (fabric).
     for binary, table in (("iptables", "filter"), ("iptables", "nat"), ("ip6tables", "filter")):
         for line in quiet([binary, "-w", "-t", table, "-S"]).splitlines():
@@ -292,11 +326,14 @@ def retire(order, call=None, root="/"):
         receipt["moved"].append({"from": path, "to": "/var/lib/sparkring/retired/" + order["stamp"] + path})
         save()
 
+    seed_files = ("/etc/sparkring/seed_keys", "/etc/sparkring/seed_sshd_config")
     for path in ("/etc/sparkring/control.json", "/etc/wireguard/sr-control.conf", "/etc/sparkring/controller_keys",
-                 "/etc/sparkring/sshd_config", "/etc/sparkring/dnsmasq.conf", "/etc/sparkring/seed_keys",
-                 "/etc/sparkring/seed_sshd_config", "/etc/sparkring/fabric.json", "/etc/sparkring/hairpin.json",
+                 "/etc/sparkring/sshd_config", "/etc/sparkring/dnsmasq.conf", *seed_files,
+                 "/etc/sparkring/fabric.json", "/etc/sparkring/hairpin.json",
                  "/var/lib/sparkring/hairpin-attempts.json", "/var/lib/sparkring/recovery.json",
                  "/root/.ssh/sparkring_config", "/root/.ssh/sparkring_known_hosts"):
+        if preparation and path in seed_files:
+            continue
         move(path)
     controller = base / "var/lib/sparkring/controller"
     keep = {Path(path) for path in order.get("keep") or ()}
@@ -459,8 +496,14 @@ def items(spark, *, node_a=False):
     fabric = state.get("fabric")
     if fabric:
         size = fabric.get("size")
+        relays = fabric.get("relays") or {}
+        removed = (["its routes removed"] if fabric.get("routes") else []) + (
+            [f"its relay table removed ({relays.get('routes', 0)} routes, {relays.get('neighbours', 0)} permanent "
+             f"neighbor entries, {relays.get('filters', 0)} ConnectX ingress rules)"
+             + (" and its relay markers stopped" if relays.get("markers") else "")] if relays else [])
         lines.append(f"fabric record (rank {fabric.get('rank')} of {size} Sparks): moved aside; its boot service is "
-                     "turned off" + (" and its routes removed" if fabric.get("routes") else ""))
+                     "turned off" + "".join((" and " if index == len(removed) - 1 else ", ") + text
+                                            for index, text in enumerate(removed)))
     for mesh in state.get("mesh") or []:
         if mesh.get("enabled") == "enabled" or mesh.get("active") == "active":
             lines.append(f"mesh service {mesh['unit']}: stopped and turned off")
@@ -553,7 +596,7 @@ def plan_lines(value):
     lines.append(f"Moved state stays in /var/lib/sparkring/retired/{value['stamp']}/ on each Spark, with a receipt "
                  "that lists how to restore it.")
     lines.append("Checkpoints, images and caches in /srv/sparkring stay where they are.")
-    shape = "pair" if value["layout"] == "pair" else "ring"
+    shape = {"pair": "pair", "ring": "ring", "path": "line"}.get(value["layout"], "ring")
     lines.append(f"Then setup sets up the {shape} " + " → ".join(value["order"]) + " like a first setup and renumbers "
                  "its fabric addresses.")
     if value["blockers"]:
@@ -564,7 +607,8 @@ def plan_lines(value):
 
 def worker_script(order, install):
     """Root program for one worker: ``retire`` without its link-local step, the worker bundle's installer and
-    preparation, then ``retire`` again, which finds its other steps done and sets the link-local form.
+    preparation, then ``retire`` again with ``keep_preparation``, which finds its other steps done, keeps the
+    preparation's SSH service that setup signs in through next, and sets the link-local form.
 
     Reactivating a fabric connection can end an SSH session that runs over
     that function, so the link-local step comes last and ignores the hangup.
@@ -574,7 +618,7 @@ def worker_script(order, install):
             + "retire(dict(order, link_local=False))\n"
             + f"subprocess.run(['python3', '-I', {install!r}, '--apply', '--prepare', '--yes'], check=True)\n"
             + "signal.signal(signal.SIGHUP, signal.SIG_IGN)\n"
-            + "retire(order)\n")
+            + "retire(dict(order, keep_preparation=True))\n")
 
 
 def journal(value, receipts, *, complete, root="/"):

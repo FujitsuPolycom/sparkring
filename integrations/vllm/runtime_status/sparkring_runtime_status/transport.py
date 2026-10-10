@@ -7,6 +7,7 @@ Negotiated link rates are not measured bandwidth. No backend is imported here.
 from __future__ import annotations
 
 from itertools import islice
+import json
 import os
 from pathlib import Path
 import re
@@ -191,13 +192,85 @@ def _group(group):
     return result, names, markers
 
 
+SIRCL_RECEIPT_BYTES = 1 << 20
+SIRCL_FIELDS = (('tp_sircl_session', 'session'), ('tp_sircl_state', 'state'), ('tp_sircl_nccl', 'nccl'),
+                ('tp_sircl_pynccl', 'pynccl'), ('tp_sircl_fabric', 'fabric'), ('tp_sircl_relays', 'relays'),
+                ('tp_sircl_lanes', 'lanes'))
+
+
+def sircl(tp_group, environ, *, now=time.time):
+    """This worker's tensor-parallel SIRCL receipt, read from ``SIRCL_RECEIPT_DIR`` without importing SIRCL.
+
+    SIRCL's adapter writes ``rank<global rank>-tp*.json`` per group. Facts
+    are the session identity, state, NCCL policy, PyNccl, fabric, the most
+    relays on a lane, the lanes per peer and the receipt's age; they say what
+    the group was set up with, not which backend a request used.
+    """
+    facts = {key: _fact(source='sircl_receipt', reason='no_sircl_receipt') for key, _ in SIRCL_FIELDS}
+    facts['tp_sircl_receipt_age_s'] = _fact(source='sircl_receipt', reason='no_sircl_receipt')
+    directory = environ.get('SIRCL_RECEIPT_DIR') if environ.get('SIRCL_MODE') == 'custom' else None
+    rank = _integer(stored(tp_group, 'rank'))
+    if not directory or rank is MISSING:
+        return facts
+    entries, _ = _children(Path(directory), 64)
+    names = sorted(entry for entry in entries if re.fullmatch(rf'rank{rank}-tp(?:-[0-9]+)?\.json', entry.name))
+    if not names:
+        return facts
+    try:
+        info = names[0].stat()
+        if info.st_size > SIRCL_RECEIPT_BYTES:
+            return facts
+        record = json.loads(names[0].read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return facts
+    if type(record) is not dict or record.get('schema') != 'sircl-vllm-receipt/v1':
+        return facts
+    for key, field in SIRCL_FIELDS:
+        facts[key] = _fact(record.get(field, MISSING), source='sircl_receipt', reason='field_not_in_receipt')
+    facts['tp_sircl_receipt_age_s'] = _fact(max(0, int(now() - info.st_mtime)), source='sircl_receipt')
+    facts['tp_sircl_receipt_age_s']['unit'] = 's'
+    return facts
+
+
+SIRCL_LAYER_RECEIPT = Path('/opt/sparkring/receipts/sircl-layer.json')
+
+
+def sircl_version(receipt=SIRCL_LAYER_RECEIPT):
+    """The SIRCL version the image's SIRCL layer receipt records (``sparkring-sircl-layer/v1``), or MISSING."""
+    try:
+        if receipt.stat().st_size > SIRCL_RECEIPT_BYTES:
+            return MISSING
+        record = json.loads(receipt.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return MISSING
+    version = record.get('version') if type(record) is dict and record.get('schema') == 'sparkring-sircl-layer/v1' else None
+    return version if type(version) is str and re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', version) else MISSING
+
+
+def collective_transport(effective):
+    """Which transport carries this worker's tensor-parallel collectives (``sircl``, ``rocenante`` or ``nccl``),
+    from facts already collected.
+
+    A SIRCL receipt of the group means SIRCL's session carries them, also where SIRCL's shim takes the b12x
+    RoCE slot (``VLLM_ENABLE_ROCE_ALLREDUCE=1``); otherwise an enabled RoCEnante communicator, else NCCL when
+    vLLM built its communicator. The image's b12x communication bundle (provenance) names what the image
+    carries, not this."""
+    if effective.get('tp_sircl_session', {}).get('state') == 'known':
+        return _fact('sircl', source='sircl_receipt')
+    if effective.get('tp_rocenante_enabled', {}).get('value') is True:
+        return _fact('rocenante', source='resident_rocenante_communicator')
+    if effective.get('tp_nccl_version', {}).get('state') == 'known':
+        return _fact('nccl', source='resident_nccl_communicator')
+    return _fact(source='resident_transport_facts', reason='no_tp_communicator')
+
+
 def snapshot(*, modules, environ, sysfs_root=Path('/sys')):
     """Read existing groups and selected NICs; configuration flags prove no use.
 
     The caller owns configured-environment collection. No functions from
-    parallel_state, communicator objects or their runtimes are invoked.
+    parallel_state, communicator objects or their runtimes are invoked. The
+    SIRCL facts come from this worker's receipt file (``sircl``).
     """
-    del environ
     parallel = modules.get('vllm.distributed.parallel_state')
     groups, selections, markers = {}, {}, {}
     for role in ROLES:
@@ -220,6 +293,11 @@ def snapshot(*, modules, environ, sysfs_root=Path('/sys')):
         ('tp_nccl_version', 'nccl', 'version'), ('tp_nccl_library_path', 'nccl', 'library_path'),
         ('tp_roce_hcas', 'rocenante', 'hcas'), ('tp_roce_gid_index', 'rocenante', 'gid_index'),
         ('tp_roce_pci_domains', 'rocenante', 'pci_domains'))}
+    effective.update(sircl(stored(parallel, '_TP'), environ))
+    effective['tp_collective_transport'] = collective_transport(effective)
+    effective['tp_sircl_version'] = (_fact(sircl_version(), source='sircl_layer_receipt', reason='no_sircl_layer_receipt')
+                                     if effective['tp_collective_transport'].get('value') == 'sircl'
+                                     else _fact(source='sircl_layer_receipt', reason='sircl_not_the_transport'))
     return {'state': 'known' if any(g['state'] == 'known' for g in groups.values()) else 'unknown',
             'source': 'passive_resident_transport_and_sysfs', 'collected_at_unix_ns': time.time_ns(),
             'groups': groups, 'nics': nics, 'nics_truncated': len(all_names) > MAX_HCAS,

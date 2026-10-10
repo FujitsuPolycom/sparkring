@@ -809,7 +809,7 @@ def test_a_live_restart_waits_for_addresses_and_brings_the_connection_up_once(tm
     assert spark.apply() == 0
     ups = [c for c in spark.calls if c[:3] == ["nmcli", "--wait", "10"]]
     assert [c[-1] for c in ups] == ["uuid-0", "uuid-1", "uuid-2", "uuid-3"]
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"]]
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"]]
 
 
 def test_addresses_that_do_not_return_give_a_check_failure(tmp_path):
@@ -829,7 +829,7 @@ def test_addresses_that_do_not_return_give_a_check_failure(tmp_path):
     assert state["class"] == "check" and "but its fabric addresses did not return within 30 s" in state["error"]
     assert spark.records()[-1]["state"] == "check-failed" and spark.restarted() == [BDF["cw_primary"]]
     # The restart removed routes, so the follow-up still runs.
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"]]
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"]]
 
 
 def test_a_live_restart_waits_for_the_rdma_port_and_gid_index_3(tmp_path):
@@ -875,7 +875,8 @@ def test_the_follow_up_runs_only_after_a_restart_and_refreshes_control_when_reco
     spark = Spark(tmp_path / "restart")
     spark.control()
     assert spark.apply() == 0
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["start", "sparkring-control-refresh.service"]]
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"],
+                              ["start", "sparkring-control-refresh.service"]]
 
 
 def test_a_tunnel_function_refreshes_its_own_peer_and_pings_across_it(tmp_path):
@@ -1077,7 +1078,7 @@ def test_a_stop_during_the_last_live_restart_still_checks_once_and_requests_the_
     spark.on_reload = lambda pci: host.stop() if pci == BDF["ccw_secondary"] else None
     assert hairpin.apply(host=host) == 0
     assert "[fe80::2%enP2p1s0f1np1]:51871" in [c[-1] for c in spark.calls if c[:2] == ["wg", "set"]]
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"],
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"],
                               ["start", "sparkring-control-refresh.service"]]
     state = spark.read(hairpin.STATE)
     assert state["stopped_on_request"] and state["error"] is None and state["armed"]
@@ -1098,7 +1099,7 @@ def test_a_stop_that_ends_a_check_is_the_runs_error(tmp_path):
     # The endpoint was still set again, and the tunnel was pinged once instead of for 30 s.
     assert "[fe80::2%enP2p1s0f1np1]:51871" in [c[-1] for c in spark.calls if c[:2] == ["wg", "set"]]
     assert len([c for c in spark.calls if c[0] == "ping" and c[-1] == "10.253.255.1"]) == 1
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"],
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"],
                               ["start", "sparkring-control-refresh.service"]]
 
 
@@ -1112,7 +1113,7 @@ def test_a_stop_during_the_address_wait_records_the_unchecked_addresses(tmp_path
     assert not [c for c in spark.calls if c[:3] == ["nmcli", "--wait", "10"]]
     state = spark.read(hairpin.STATE)
     assert state["class"] == "signal" and "the stop ended the check of its fabric addresses" in state["error"]
-    assert spark.requests == [["try-restart", "sparkring-fabric.service"]]
+    assert spark.requests == [["try-restart", "sparkring-fabric.service"], ["try-restart", "sparkring-relay-marker.service"]]
 
 
 def test_a_stop_before_arming_leaves_the_unit_disabled_and_fails(tmp_path):
@@ -1287,7 +1288,7 @@ def test_status_warns_about_a_setting_that_is_not_armed_and_a_suspension(tmp_pat
         "failed: busy); on Node A: sudo sparkring hairpin retries it live")
     pair = Spark(tmp_path / "pair", fabric=2)
     assert hairpin.status(host=pair.host())["warnings"] == [
-        "hairpin approval on a Spark that is not in a four-Spark ring: sudo sparkring node hairpin revoke"]
+        "hairpin approval on a Spark that does not relay between its cables: sudo sparkring node hairpin revoke"]
 
 
 def test_status_without_approval_reads_the_fabric_record_functions(tmp_path):

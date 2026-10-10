@@ -5,10 +5,14 @@ with this transport. The bounded two/four-rank probe qualification below
 applies to the unpaced manifest `7d8beed57e54`.
 The profile identity `tp2-rocenante-adaptive-prepared` bridges SparkRing's
 adaptive peer-path transport to B12X's prepared execution API. It is separate
-from the immutable `tp2-rocenante-adaptive` source bundle.
+from the immutable `tp2-rocenante-adaptive` source bundle. It is the prepared
+B12X RoCE transport bundle; the `tp2-` name is kept for compatibility, and
+profiles of two and four Sparks select it alike. When SIRCL is loaded it
+replaces this bundle's all-reduce slot.
 
-The default installer image,
-`dev-20261004-kraken-cuda1342-nccl2323-status034`, carries the same transport
+Release 2026.10.1's installer image,
+`dev-20261004-kraken-cuda1342-nccl2323-status034`, the parent of release
+2026.10.2's default image, carries the same transport
 files as `dev-20261001-portgid-cuda1342-nccl2323-status033` and pins transport
 manifest `fee0680b6dc6`; its rollback image,
 `dev-20261001-kraken-cuda1342-nccl2323-status034`, carries the same files and

@@ -62,8 +62,30 @@
       "releases": [
         "dev-20260927-b12xcache-cuda1342-nccl2323-status032",
         "dev-20260928-plainstatus-cuda1342-nccl2323-status033",
-        "dev-20261001-statusrows-cuda1342-nccl2323-status034"
+        "dev-20261001-statusrows-cuda1342-nccl2323-status034",
+        "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"
       ]
+    },
+    {
+      "id": "installer-kraken-csf-sources",
+      "path": "runtime/images/derive_kraken_csf_sources.py",
+      "kind": "python",
+      "reason": "Derive a kraken-line installer image whose vLLM and B12X Python sources are SparkRing's merges vLLM bc9ea774 and B12X cc36aa6f of Local Inference Lab's integration/karmic-kraken-beta, which read the GLM-5.3-Flash CSF checkpoint, over dev-20261004-kraken-cuda1342-nccl2323-status034; runtime/images/compositions/kraken-csf-sources-20261007/sources.json pins its 49 files in the parent and in the merges. Its unpublished result is the parent of the SIRCL layer of dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034."
+    },
+    {
+      "id": "installer-sircl-layer",
+      "path": "runtime/images/sircl_layer.py",
+      "kind": "python",
+      "reason": "Add SIRCL ring sessions to a kraken-line installer image: the reproducible sparkring_sircl wheel in site-packages and both native libraries compiled in a network-less container of the parent image, recorded in its external-base receipt; prepare does not invoke Docker, and record probes and admits the built image and writes its sparkring-installer-image/v3 lock.",
+      "releases": [
+        "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034"
+      ]
+    },
+    {
+      "id": "installer-libsircl-layer",
+      "path": "runtime/images/libsircl_layer.py",
+      "kind": "python",
+      "reason": "Add libsircl, SIRCL's NCCL-compatible C library, to a kraken-line installer image with a v3 lock: the library built from the committed spark_transport/libsircl source (recorded by its git tree id) in a network-less container of the parent image, its notices and the vLLM general plugin libsircl, recorded in its external-base receipt; prepare does not invoke Docker, and record probes, checks the layer and admits the built image and writes its v3 lock with the libsircl transport. Research-only; no release lists it."
     },
     {
       "id": "installer-transport-window",

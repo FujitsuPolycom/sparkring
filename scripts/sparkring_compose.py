@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from runtime.common import compose, ports, profiles, qwen_flash_next  # noqa: E402
+from runtime.common import compose, ports, profiles, toolchain_profiles  # noqa: E402
 from runtime.common import serving as serving_settings  # noqa: E402
 from scripts import deploy_engine  # noqa: E402
 
@@ -237,8 +237,8 @@ def preflight(rank, site, spec, image, profile, manifest):
             raise ValueError("Host paths overlap after resolving symlinks")
     if not os.access(paths[1], os.W_OK):
         raise ValueError("Cache directory is not writable")
-    qwen_flash_next.verify_model_paths(profile, paths[0], paths[1])
-    if qwen_flash_next.node_count(profile) == 4:
+    toolchain_profiles.verify_model_paths(profile, paths[0], paths[1])
+    if toolchain_profiles.node_count(profile) == 4:
         from runtime.common import qwen_mesh
         qwen_mesh.check(rank["fabric"], rank["rank"], rank["hcas"], rank["gid"], rank["host_ip"])
     if not Path("/dev/infiniband").is_dir():
@@ -322,7 +322,7 @@ def host_operation(operation, payload):
         labels={compose.LABEL: manifest["id"], "io.sparkring.rank": str(number)},
     )
     metadata, _ = profiles.load(manifest["profile"])
-    profile = qwen_flash_next.read(ROOT / metadata["configuration"]["path"])
+    profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
     target = stage_path(rank, manifest)
     exports = {
         "compose.yaml": files[f"rank{number}/compose.yaml"],
@@ -341,9 +341,9 @@ def host_operation(operation, payload):
             kwargs.setdefault("text", False)
             return run(argv, **kwargs)
 
-        result = qwen_flash_next.verify_image(
+        result = toolchain_profiles.verify_image(
             spec.image_id,
-            **qwen_flash_next.image_verification_options(
+            **toolchain_profiles.image_verification_options(
                 profile, local_source_extension=manifest.get("local_source_extension"),
             ),
             run=image_run,
@@ -358,7 +358,7 @@ def host_operation(operation, payload):
             stream.write(compose.encoded(receipt))
         path.chmod(0o600)
     elif operation == "admitted":
-        receipt = qwen_flash_next.read(target / "admission.json")
+        receipt = toolchain_profiles.read(target / "admission.json")
         info = json.loads(run(["docker", "image", "inspect", image]).stdout)[0]
         if (
             receipt["deployment"] != manifest["id"]

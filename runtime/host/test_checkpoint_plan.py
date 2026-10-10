@@ -53,16 +53,16 @@ LAYERS = install_space.image_need(LINEAGE, {"images": [PARENT["image_id"]], "con
                                   POLICY["image_bytes"])
 NOW = datetime.datetime(2026, 9, 26, 2, 0, tzinfo=datetime.timezone.utc)
 DEV, MOUNT = 66306, 29
-HOSTNAMES = {2: ["spark-aa42", "spark-931e"], 4: ["spark-edfd", "spark-ebb8", "spark-ebee", "spark-4a87"]}
+HOSTNAMES = {2: ["spark-e", "spark-d"], 4: ["spark-h", "spark-f", "spark-g", "spark-c"]}
 # SSH targets use documentation addresses (RFC 5737).
 SSH = {2: ["root@192.0.2.1", "root@192.0.2.2"],
        4: ["root@198.51.100.1", "root@198.51.100.2", "root@198.51.100.3", "root@198.51.100.4"]}
 FOLDER = "/var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/" + REV
 NEAR_MISS = ("/var/tmp/models/local-inference-lab--Qwen3.8-Flash-Next-NVFP4-4p89/"
              "b184bb5650367c3e934c7849407be9da3671e7f5")
-MAIN_CACHE = "/home/code/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
-CODY_CACHE = "/home/cody/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
-OPERATOR = {"account": "code", "kind": "operator"}
+MAIN_CACHE = "/home/operator/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
+ANALYST_CACHE = "/home/analyst/.cache/huggingface/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
+OPERATOR = {"account": "operator", "kind": "operator"}
 
 
 def cluster(count):
@@ -85,7 +85,7 @@ def identity(path, name, device):
 
 
 def candidate(path, names=None, *, layout="local-dir", evidence="recorded", state="match", device=DEV,
-              mount_id=MOUNT, home=None, owner="code", commit=REV, branches=(), sparkring=False,
+              mount_id=MOUNT, home=None, owner="operator", commit=REV, branches=(), sparkring=False,
               found_by=("folder",), mode=0o644, blobs=False, overrides=None, **extra):
     names = REQUIRED if names is None else names
     files = {}
@@ -107,7 +107,7 @@ def candidate(path, names=None, *, layout="local-dir", evidence="recorded", stat
 
 def survey(host, count=2, *, candidates=(), free_gib=291, not_used=(), network=("/mnt/synologytwo",),
            complete=True, seconds=1.2, entries=81234, owned_files=None, userns=False, stopped=None,
-           unvisited=None, named=None, operator="code", free_bytes=None):
+           unvisited=None, named=None, operator="operator", free_bytes=None):
     return {"schema": "sparkring-checkpoint-survey/v1", "host": host, "repository": REPO, "revision": REV,
             "operator": operator, "docker": {"userns": userns, "driver": "overlay2"},
             "owned": {"path": owned_path(count), "probe_path": f"/srv/sparkring/{cluster(count)}", "mount_point": "/",
@@ -220,6 +220,34 @@ def test_node_a_pools_from_peers_before_downloading_what_no_spark_holds():
     assert text[-1].startswith("Downloads ") and text[-1].endswith(" from huggingface.co on Node 0.")
 
 
+def test_the_sparks_of_a_line_pool_and_receive_only_from_cable_neighbors():
+    """Four Sparks of a larger ring form a line: Node 3 is three cables from Node 0, not one."""
+    first, last = set(WEIGHTS[:10]) | set(SMALL), set(WEIGHTS[10:20])
+    hosts = HOSTNAMES[4]
+    surveys = [survey(hosts[0], 4),
+               survey(hosts[1], 4, candidates=[candidate("/data/one", sorted(first))]),
+               survey(hosts[2], 4),
+               survey(hosts[3], 4, candidates=[candidate("/data/three", sorted(last))])]
+    ring = make(surveys)
+    line = make(surveys, line=True)
+    assert "line" not in ring and line["line"] is True
+    assert [item["transport"] for item in ring["distribution"]["pool"]] == ["fabric", "fabric"]
+    assert line["distribution"]["pool"] == [{"source": 1, "names": sorted(first), "transport": "fabric"},
+                                            {"source": 3, "names": sorted(last), "transport": "rsync"}]
+    assert [(r["source"], r["target"]) for r in line["distribution"]["receive"]] == [(0, 1), (1, 2), (2, 3)]
+    # The executed distribution follows the approved plan's shape.
+    assert [(r["source"], r["target"]) for r in cp.redistribute(line, [None] * 4)["receive"]] == [
+        (0, 1), (1, 2), (2, 3)]
+    # A line is the path of its Sparks: the plan that the install makes with both the flag and the
+    # deployment's layout distributes the same way, and a plan that records only the flag reads as that path.
+    path = {"shape": "path", "size": 4}
+    both = make(surveys, line=True, layout=path)
+    assert both["line"] is True and both["layout"] == path and both["distribution"] == line["distribution"]
+    assert cp.plan_layout(line) == path and cp.plan_layout(ring) is None
+    with pytest.raises(ValueError, match="not a cycle"):
+        make(surveys, line=True, layout={"shape": "cycle", "size": 4})
+
+
 def test_a_complete_worker_is_the_donor_and_nothing_is_downloaded():
     hosts = HOSTNAMES[4]
     half = sorted(set(WEIGHTS[:18]) | set(SMALL))
@@ -268,7 +296,7 @@ def order_cases():
                  candidate("/a/download", evidence="hub-metadata"), weight_file, []),
         "completeness": (candidate("/z/complete"), candidate("/a/partial", [weight_file, *WEIGHTS[5:8]]), weight_file,
                          []),
-        "home": (candidate("/z/data"), candidate("/a/home/code/qwen", home=OPERATOR), weight_file, []),
+        "home": (candidate("/z/data"), candidate("/a/home/operator/qwen", home=OPERATOR), weight_file, []),
         "slow-copies": (candidate("/z/nvme"), candidate("/a/usb", rotational=True), small_file, []),
         "path": (candidate("/a/one"), candidate("/b/two"), weight_file, []),
     }
@@ -298,21 +326,21 @@ def test_a_complete_spark_is_preferred_to_copying_from_a_slow_disk():
 
 def test_copies_in_other_accounts_homes_are_listed_but_used_only_when_named():
     hosts = HOSTNAMES[4]
-    cody = candidate(CODY_CACHE, layout="hf-cache", evidence="hub-named", blobs=True, owner="cody",
-                     home={"account": "cody", "kind": "private"})
-    surveys = [survey(hosts[0], 4, operator="dooner"), survey(hosts[1], 4, candidates=[candidate(FOLDER)]),
-               survey(hosts[2], 4, candidates=[cody], operator="dooner"), survey(hosts[3], 4)]
-    unnamed = make(surveys, operator="dooner")
+    analyst = candidate(ANALYST_CACHE, layout="hf-cache", evidence="hub-named", blobs=True, owner="analyst",
+                     home={"account": "analyst", "kind": "private"})
+    surveys = [survey(hosts[0], 4, operator="admin"), survey(hosts[1], 4, candidates=[candidate(FOLDER)]),
+               survey(hosts[2], 4, candidates=[analyst], operator="admin"), survey(hosts[3], 4)]
+    unnamed = make(surveys, operator="admin")
     node = unnamed["nodes"][2]
     assert actions(node, "receive") == REQUIRED
-    assert node["not_used"] == [{"path": CODY_CACHE, "reason": "in cody's home, another account",
-                                 "option": f"--model-path 2={CODY_CACHE}"}]
+    assert node["not_used"] == [{"path": ANALYST_CACHE, "reason": "in analyst's home, another account",
+                                 "option": f"--model-path 2={ANALYST_CACHE}"}]
     # The JSON summary names the copy it did not use and the option that would use it.
     assert cp.summary(unnamed)["nodes"][2]["not_used"] == node["not_used"]
-    named = make(surveys, operator="dooner", named=[f"2={CODY_CACHE}"])
+    named = make(surveys, operator="admin", named=[f"2={ANALYST_CACHE}"])
     node = named["nodes"][2]
     assert actions(node, "link") == WEIGHTS and actions(node, "copy") == SMALL and node["not_used"] == []
-    assert any(line.strip() == "Hugging Face cache, snapshot 629bc3218833 (the pinned revision), in cody's home "
+    assert any(line.strip() == "Hugging Face cache, snapshot 629bc3218833 (the pinned revision), in analyst's home "
                                "(another account)" for line in cp.describe(named))
 
 
@@ -374,9 +402,9 @@ def test_named_copy_on_another_filesystem_is_in_place_only_if_exact():
     assert actions(node, "in-place") == REQUIRED and node["write_bytes"] == 0
     assert cp.summary(result)["nodes"][3]["bytes"]["in_place"] == TOTAL_BYTES
     text = cp.describe(result)
-    start = text.index(f"Node 3 spark-4a87: serve {usb} in place, read-only")
+    start = text.index(f"Node 3 spark-c: serve {usb} in place, read-only")
     assert text[start:start + 3] == [
-        f"Node 3 spark-4a87: serve {usb} in place, read-only",
+        f"Node 3 spark-c: serve {usb} in place, read-only",
         "    named with --model-path 3=...; on another filesystem than /srv/sparkring, and it holds exactly the "
         "pinned files",
         "    The model will not start while that folder is changed or missing."]
@@ -421,14 +449,14 @@ def test_in_place_copy_that_changed_after_planning_is_refused():
     assert result["nodes"][3]["mode"] == "in-place" and result["nodes"][3]["in_place"]["state"] == "changed"
     # The suggested command repeats the request without the named copy, so SparkRing assembles its own.
     assert result["problems"] == [{"field": "model_path", "rank": 3, "message": (
-        "Node 3 spark-4a87: /mnt/usb/qwen differs from the pinned revision in config.json and also holds "
+        "Node 3 spark-c: /mnt/usb/qwen differs from the pinned revision in config.json and also holds "
         "added_tokens.json, which the serving engine would load. SparkRing never changes your copy and serves a "
         "named folder in place only when it holds exactly the pinned files. Change the folder yourself, or install "
         "without naming it on Node 3 so that SparkRing assembles its own copy: sudo sparkring install --profile "
         "qwen38-flash-next-qad-tp4 --model-path /data/other --cache-path /mnt/fast/cache --plan.")}]
     # The plan line above that message no longer says the copy is exact.
     text = cp.describe(result)
-    start = text.index("Node 3 spark-4a87: serve /mnt/usb/qwen in place, read-only")
+    start = text.index("Node 3 spark-c: serve /mnt/usb/qwen in place, read-only")
     assert text[start + 1] == ("    named with --model-path 3=...; on another filesystem than /srv/sparkring; it no "
                                "longer holds exactly the pinned files (see below)")
     # A Spark whose search failed was not checked; the plan says so instead of calling the copy exact.
@@ -450,16 +478,16 @@ def test_in_place_copy_that_changed_after_planning_is_refused():
     ("mount-point", "is a mount point;"),
 ])
 def test_checkpoint_directories_the_rank_operations_refuse_stop_the_plan(state, text):
-    refused = survey("spark-aa42", candidates=[candidate(FOLDER)])
+    refused = survey("spark-e", candidates=[candidate(FOLDER)])
     refused["owned"]["state"] = state
-    result = make([refused, survey("spark-931e", candidates=[candidate(FOLDER)])])
+    result = make([refused, survey("spark-d", candidates=[candidate(FOLDER)])])
     [problem] = result["problems"]
     assert (problem["field"], problem["rank"]) == ("storage", 0)
-    assert problem["message"].startswith(f"Node 0 spark-aa42: {owned_path(2)} {text}")
+    assert problem["message"].startswith(f"Node 0 spark-e: {owned_path(2)} {text}")
     assert problem["message"].endswith(" Nothing has been changed.")
-    fine = survey("spark-aa42", candidates=[candidate(FOLDER)])
+    fine = survey("spark-e", candidates=[candidate(FOLDER)])
     fine["owned"]["state"] = "owned"
-    assert make([fine, survey("spark-931e", candidates=[candidate(FOLDER)])])["problems"] == []
+    assert make([fine, survey("spark-d", candidates=[candidate(FOLDER)])])["problems"] == []
 
 
 def test_named_paths_the_survey_excludes_are_listed_not_reported_missing():
@@ -558,7 +586,7 @@ def test_headroom_is_the_largest_written_file_up_to_16_gib(tmp_path, monkeypatch
     assert cp.headroom(SIZES.values()) == max(SIZES.values()) == 4548275968
     assert cp.headroom([]) == 0
     # A Spark that downloads the whole checkpoint: the plan names the cap.
-    plan = cp.plan(DEEPSEEK, [survey("spark-aa42", free_gib=44), survey("spark-931e")], rows(2), policy=POLICY, now=NOW)
+    plan = cp.plan(DEEPSEEK, [survey("spark-e", free_gib=44), survey("spark-d")], rows(2), policy=POLICY, now=NOW)
     node = plan["nodes"][0]
     assert node["storage"]["largest_bytes"] == max(sizes) and node["storage"]["headroom_bytes"] == 16 * GIB
     assert node["required_bytes"] == sum(sizes) + 16 * GIB + 4 * GIB
@@ -619,17 +647,17 @@ def test_describe_matches_the_documented_lines():
                                     "needs a second pass).")
     assert cp.describe(result) == [
         "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 629bc3218833: 48 files, 98.6 GiB",
-        "Searched spark-aa42 in 1.2 s and spark-931e in 0.9 s. Not searched: /mnt/synologytwo (network storage; "
+        "Searched spark-e in 1.2 s and spark-d in 0.9 s. Not searched: /mnt/synologytwo (network storage; "
         "name a copy there with --model-path N=PATH).",
         "",
-        f"Node 0 spark-aa42 -> {owned_path(2)}",
+        f"Node 0 spark-e -> {owned_path(2)}",
         f"    from {FOLDER}",
-        "        Hugging Face download folder, commit 629bc3218833 (the pinned revision), files owned by code",
+        "        Hugging Face download folder, commit 629bc3218833 (the pinned revision), files owned by operator",
         "        48 of 48 files identified by SparkRing's earlier checksums",
         "    hard-link 36 weight files (no copy, no extra space); copy 12 other files (56.5 MB)",
         "    needs 4.1 GiB free on /: 89.8 MB for checkpoint files, 4 GiB for the compile cache; 291 GiB free",
         f"    not used: {NEAR_MISS} (another checkpoint: its index differs)",
-        "Node 1 spark-931e: as Node 0 (308 GiB free)",
+        "Node 1 spark-d: as Node 0 (308 GiB free)",
         "",
         "Also updates the recorded file identities of the retained deployments that serve the linked folder: "
         "qwen38-flash-next-tp2-i0123456789ab",
@@ -649,8 +677,8 @@ def test_describe_matches_the_documented_lines():
     main = candidate(MAIN_CACHE, [n for n in REQUIRED if n != "config.json"], layout="hf-cache", evidence="hub-named",
                      blobs=True, commit=MAIN, branches=["main"], home=OPERATOR,
                      overrides={"config.json": {"state": "differs"}})
-    lines = stripped(make([survey("spark-aa42", candidates=[main]), survey("spark-931e", candidates=[main])]))
-    for line in ("Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in code's home (the operator's)",
+    lines = stripped(make([survey("spark-e", candidates=[main]), survey("spark-d", candidates=[main])]))
+    for line in ("Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in operator's home (the operator's)",
                  "47 of 48 files identified by their blob names; config.json differs from the pinned revision",
                  "hard-link 36 weight files (no copy, no extra space); copy 11 other files (56.4 MB)",
                  "config.json (110 KB) is downloaded once on Node 0 from huggingface.co and copied over the fabric"):
@@ -658,8 +686,8 @@ def test_describe_matches_the_documented_lines():
 
     plain = candidate("/data/qwen-copy", layout="folder", evidence="size", state="size-only", commit=None,
                       overrides={name: {"state": "match", "evidence": "hashed"} for name in SMALL})
-    lines = stripped(make([survey("spark-aa42", candidates=[plain]), survey("spark-931e")]))
-    for line in ("from /data/qwen-copy", "plain folder, files owned by code",
+    lines = stripped(make([survey("spark-e", candidates=[plain]), survey("spark-d")]))
+    for line in ("from /data/qwen-copy", "plain folder, files owned by operator",
                  "12 small files checked by SHA-256; 36 weight files match by name and size only",
                  "SparkRing hashes them before linking. If any differs, SparkRing stops before downloading a "
                  "replacement.",
@@ -667,19 +695,19 @@ def test_describe_matches_the_documented_lines():
         assert line in lines
 
     hosts = HOSTNAMES[4]
-    cody = candidate(CODY_CACHE, layout="hf-cache", evidence="hub-named", blobs=True, owner="cody",
-                     home={"account": "cody", "kind": "private"})
+    analyst = candidate(ANALYST_CACHE, layout="hf-cache", evidence="hub-named", blobs=True, owner="analyst",
+                     home={"account": "analyst", "kind": "private"})
     ring = make([survey(hosts[0], 4), survey(hosts[1], 4, candidates=[candidate(FOLDER)]),
-                 survey(hosts[2], 4, candidates=[cody], free_gib=623, entries=81402, seconds=2.4), survey(hosts[3], 4)],
-                operator="dooner")
+                 survey(hosts[2], 4, candidates=[analyst], free_gib=623, entries=81402, seconds=2.4), survey(hosts[3], 4)],
+                operator="admin")
     lines = stripped(ring)
-    for line in ("Node 2 spark-ebee: no copy found (searched 81,402 folder entries in 2.4 s)",
+    for line in ("Node 2 spark-g: no copy found (searched 81,402 folder entries in 2.4 s)",
                  "receives 48 files (98.6 GiB) from Node 1 over the fabric; needs 106.9 GiB free on /: 102.9 GiB for "
                  "checkpoint files, 4 GiB for the compile cache; 623 GiB free",
-                 f"not used: {CODY_CACHE} (in cody's home, another account); use it with --model-path 2={CODY_CACHE}"):
+                 f"not used: {ANALYST_CACHE} (in analyst's home, another account); use it with --model-path 2={ANALYST_CACHE}"):
         assert line in lines
 
-    nothing = make([survey("spark-aa42"), survey("spark-931e")])
+    nothing = make([survey("spark-e"), survey("spark-d")])
     lines = cp.describe(nothing)
     assert ("No Spark holds the checkpoint: Node 0 downloads it once from huggingface.co (98.6 GiB) and copies it to "
             "the other Sparks over the fabric.") in lines
@@ -693,36 +721,36 @@ def envelope_case(name):
                         blobs=True)
     usb = "/mnt/usb/qwen"
     exact = candidate(usb, device=2049, mount_id=51)
-    reviewed = [survey("spark-aa42", candidates=[cache]), survey("spark-931e")]
+    reviewed = [survey("spark-e", candidates=[cache]), survey("spark-d")]
     options = {}
     if name == "equal":
         fresh = reviewed
     elif name == "smaller":
-        reviewed = [survey("spark-aa42", candidates=[cache]),
-                    survey("spark-931e", candidates=[candidate(FOLDER, [n for n in REQUIRED if n != WEIGHTS[0]])])]
-        fresh = [survey("spark-aa42", candidates=[cache]), survey("spark-931e", candidates=[candidate(FOLDER)])]
+        reviewed = [survey("spark-e", candidates=[cache]),
+                    survey("spark-d", candidates=[candidate(FOLDER, [n for n in REQUIRED if n != WEIGHTS[0]])])]
+        fresh = [survey("spark-e", candidates=[cache]), survey("spark-d", candidates=[candidate(FOLDER)])]
     elif name == "added-source":
-        fresh = [survey("spark-aa42", candidates=[cache]), survey("spark-931e", candidates=[candidate(FOLDER)])]
+        fresh = [survey("spark-e", candidates=[cache]), survey("spark-d", candidates=[candidate(FOLDER)])]
     elif name == "growth-within-tolerance":
-        reviewed = [survey("spark-aa42", candidates=[cache]),
-                    survey("spark-931e", candidates=[candidate(FOLDER, [n for n in REQUIRED if n != "vocab.json"])])]
-        fresh = [survey("spark-aa42", candidates=[cache]),
-                 survey("spark-931e", candidates=[candidate(FOLDER, [n for n in REQUIRED if n not in (
+        reviewed = [survey("spark-e", candidates=[cache]),
+                    survey("spark-d", candidates=[candidate(FOLDER, [n for n in REQUIRED if n != "vocab.json"])])]
+        fresh = [survey("spark-e", candidates=[cache]),
+                 survey("spark-d", candidates=[candidate(FOLDER, [n for n in REQUIRED if n not in (
                      "vocab.json", "tokenizer.json")])])]
     elif name == "download":
-        fresh = [survey("spark-aa42", candidates=[without]), survey("spark-931e")]
+        fresh = [survey("spark-e", candidates=[without]), survey("spark-d")]
     elif name == "writes":
-        reviewed = [survey("spark-aa42", candidates=[cache]), survey("spark-931e", candidates=[candidate(FOLDER)])]
-        fresh = [survey("spark-aa42", candidates=[cache]), survey("spark-931e")]
+        reviewed = [survey("spark-e", candidates=[cache]), survey("spark-d", candidates=[candidate(FOLDER)])]
+        fresh = [survey("spark-e", candidates=[cache]), survey("spark-d")]
     elif name == "mode":
         options = {"named": [f"1={usb}"]}
-        reviewed = [survey("spark-aa42", candidates=[cache]), survey("spark-931e", candidates=[exact])]
-        fresh = [survey("spark-aa42", candidates=[cache]), survey("spark-931e", candidates=[
+        reviewed = [survey("spark-e", candidates=[cache]), survey("spark-d", candidates=[exact])]
+        fresh = [survey("spark-e", candidates=[cache]), survey("spark-d", candidates=[
             candidate(usb, device=2049, mount_id=51, extra=["added_tokens.json"])])]
     elif name == "sources":
         directory = f"/srv/sparkring/lab/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/{REV}"
-        fresh = [survey("spark-aa42", candidates=[cache, candidate(directory, WEIGHTS[:1], sparkring=True,
-                                                                   layout="sparkring")]), survey("spark-931e")]
+        fresh = [survey("spark-e", candidates=[cache, candidate(directory, WEIGHTS[:1], sparkring=True,
+                                                                   layout="sparkring")]), survey("spark-d")]
     return make(reviewed, **options), make(fresh, **options)
 
 
@@ -741,7 +769,7 @@ def test_envelope_accepts_equal_or_smaller_plans_and_rejects_growth(name, kinds)
                    for i in items)
     if name == "download":
         assert cp.envelope_message(items) == (
-            "The checkpoint plan differs from the plan reviewed with --plan: Node 0 spark-aa42 would download 1.68 GiB "
+            "The checkpoint plan differs from the plan reviewed with --plan: Node 0 spark-e would download 1.68 GiB "
             "from huggingface.co (model-00002-of-00036.safetensors), which the reviewed plan took from "
             "/var/tmp/sparkring-test/hf/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4, where that file is "
             "absent. Nothing was changed. Review the plan again with sudo sparkring install --plan, then repeat sudo "
@@ -751,19 +779,19 @@ def test_envelope_accepts_equal_or_smaller_plans_and_rejects_growth(name, kinds)
 
 
 def test_attention_items():
-    nothing = make([survey("spark-aa42"), survey("spark-931e", complete=False, stopped="time",
+    nothing = make([survey("spark-e"), survey("spark-d", complete=False, stopped="time",
                                                    unvisited={"/home": 2}, seconds=40.3)])
     items = cp.attention(nothing)
     assert [item["kind"] for item in items] == ["download", "search-incomplete"]
     assert cp.attention_message(items) == (
-        "The checkpoint plan downloads 98.6 GiB from huggingface.co on Node 0 spark-aa42, and the search on Node 1 "
-        "spark-931e stopped at its time limit (not searched: 2 folders under /home). Setup's approval did not show "
+        "The checkpoint plan downloads 98.6 GiB from huggingface.co on Node 0 spark-e, and the search on Node 1 "
+        "spark-d stopped at its time limit (not searched: 2 folders under /home). Setup's approval did not show "
         "this plan. Review it with sudo sparkring install --plan, or approve it with sudo sparkring install --yes. "
         "Nothing has been changed.")
     assert cp.summary(nothing)["nodes"][1]["search"]["unvisited"] == {"/home": 2}
-    assert "The search on spark-931e stopped at its time limit (not searched: 2 folders under /home)." in \
+    assert "The search on spark-d stopped at its time limit (not searched: 2 folders under /home)." in \
         cp.describe(nothing)[1]
-    failed = make([survey("spark-aa42", candidates=[candidate(FOLDER)]), TimeoutError("ssh: timed out after 150 s")])
+    failed = make([survey("spark-e", candidates=[candidate(FOLDER)]), TimeoutError("ssh: timed out after 150 s")])
     items = cp.attention(failed)
     assert items == [{"kind": "search-failed", "rank": 1,
                       "text": "the search on Node 1 root@192.0.2.2 failed (ssh: timed out after 150 s)"}]
@@ -792,7 +820,7 @@ def test_storage_messages_match_the_documented_text():
                 + [survey(hosts[rank], 4, candidates=[candidate(FOLDER)]) for rank in (1, 2, 3)])
     assert actions(ring["nodes"][0], "receive") == REQUIRED
     assert ring["problems"] == [{"field": "storage", "rank": 0, "message": (
-        "Node 0 spark-edfd needs 106.9 GiB free on / to receive the checkpoint: 98.6 GiB of checkpoint files, "
+        "Node 0 spark-h needs 106.9 GiB free on / to receive the checkpoint: 98.6 GiB of checkpoint files, "
         "4.2 GiB of headroom (the largest file), 4 GiB for the compile cache; 44.0 GiB is free. Free another 62.9 GiB "
         "there, or put a copy of the pinned checkpoint on that filesystem: SparkRing hard-links its weight files, so "
         "it would need 4.1 GiB. sudo sparkring storage lists the SparkRing data on each Spark that no deployment "
@@ -812,10 +840,10 @@ def test_storage_messages_match_the_documented_text():
            "--plan. The running model has not been stopped." in message
     main_copy = candidate("/mnt/usb/qwen", device=2049, mount_id=51, commit=MAIN, branches=["main"],
                           overrides={"config.json": {"state": "differs"}})
-    pair = make([survey("spark-aa42", candidates=[candidate(FOLDER)]),
-                 survey("spark-931e", candidates=[main_copy], free_gib=44)], named=["1=/mnt/usb/qwen"])
+    pair = make([survey("spark-e", candidates=[candidate(FOLDER)]),
+                 survey("spark-d", candidates=[main_copy], free_gib=44)], named=["1=/mnt/usb/qwen"])
     assert pair["problems"] == [{"field": "storage", "rank": 1, "message": (
-        "Node 1 spark-931e: /mnt/usb/qwen is on another filesystem and holds the main branch's config.json, so "
+        "Node 1 spark-d: /mnt/usb/qwen is on another filesystem and holds the main branch's config.json, so "
         "SparkRing cannot serve it in place, and copying it needs 106.9 GiB free on / (44.0 GiB free). To make that "
         "folder an exact copy yourself: hf download local-inference-lab/Qwen3.8-Flash-Next-NVFP4 config.json "
         "--revision 629bc3218833a38b475b719f34aa571666f4a03e --local-dir /mnt/usb/qwen (this changes your folder; "
@@ -831,7 +859,7 @@ def lookalike_plan():
     folder = "/var/tmp/sparkring-test/lookalike"
     plain = candidate(folder, layout="folder", evidence="size", state="size-only",
                       overrides={name: {"state": "match", "evidence": "hashed"} for name in SMALL})
-    return make([survey("spark-aa42", candidates=[plain]), survey("spark-931e")]), folder
+    return make([survey("spark-e", candidates=[plain]), survey("spark-d")]), folder
 
 
 def test_guard_reports_unplanned_downloads_and_writes():
@@ -844,7 +872,7 @@ def test_guard_reports_unplanned_downloads_and_writes():
     items = cp.unplanned(approved, results)
     assert [item["kind"] for item in items] == ["download"]
     assert cp.unplanned_message(items) == (
-        "Node 0 spark-aa42: 2 files in /var/tmp/sparkring-test/lookalike are not the pinned model's "
+        "Node 0 spark-e: 2 files in /var/tmp/sparkring-test/lookalike are not the pinned model's "
         "(model-00002-of-00036.safetensors, model-00005-of-00036.safetensors); that folder holds another fine-tune "
         "or damaged files. No Spark holds the pinned files, so they need 3.35 GiB from huggingface.co, which the "
         "approved plan did not include. Nothing was downloaded and the running model was not changed. Review the "
@@ -853,14 +881,14 @@ def test_guard_reports_unplanned_downloads_and_writes():
     assert cp.unplanned(approved, within) == []
     assert cp.redistribute(approved, within)["receive"][0]["names"] == REQUIRED
 
-    linked = make([survey("spark-aa42", candidates=[candidate(FOLDER)]),
-                   survey("spark-931e", candidates=[candidate("/data/models/qwen")])])
+    linked = make([survey("spark-e", candidates=[candidate(FOLDER)]),
+                   survey("spark-d", candidates=[candidate("/data/models/qwen")])])
     results = [{"verified": {n: [] for n in REQUIRED}, "bytes_written": SMALL_BYTES},
                {"verified": {n: [] for n in SMALL}, "bytes_written": SMALL_BYTES,
                 "missing": [{"name": n, "reason": "EXDEV", "source": f"/data/models/qwen/{n}"} for n in WEIGHTS]}]
     items = cp.unplanned(linked, results)
     assert cp.unplanned_message(items) == (
-        f"Node 1 spark-931e: hard links from /data/models/qwen into {owned_path(2)} failed (they are different mounts "
+        f"Node 1 spark-d: hard links from /data/models/qwen into {owned_path(2)} failed (they are different mounts "
         "of one filesystem), so 98.6 GiB must be received over the fabric instead, which the approved plan did not "
         "include. Nothing more was written; the running model was not changed. Review the resulting plan with sudo "
         "sparkring install --plan.")
@@ -870,7 +898,7 @@ def test_guard_reports_unplanned_downloads_and_writes():
                 "--profile qwen38-flash-next-tp2"}
     items = cp.unplanned(reviewed, immutable)
     assert cp.unplanned_message(items, reviewed["command"]) == (
-        f"Node 1 spark-931e: hard links from /data/models/qwen into {owned_path(2)} failed (the files are immutable "
+        f"Node 1 spark-d: hard links from /data/models/qwen into {owned_path(2)} failed (the files are immutable "
         "or append-only), so 98.6 GiB must be received over the fabric instead, which the approved plan did not "
         "include. SparkRing does not change those files: remove the attribute yourself (lsattr shows it), name "
         "another copy with --model-path 1=PATH, or repeat sudo sparkring install --profile qwen38-flash-next-tp2 "
@@ -910,7 +938,7 @@ def test_install_command_repeats_the_deployment_request():
 
 
 def test_adoption_input_and_saved_plan():
-    result = make(owner_copy_surveys(2), operator="code", named=["/unused"])
+    result = make(owner_copy_surveys(2), operator="operator", named=["/unused"])
     entry = cp.adoption(result, 1, receipts=["/srv/sparkring/tp2/x/installer/model.json"])
     assert entry["tolerance_bytes"] == GIB and entry["receipts"] == ["/srv/sparkring/tp2/x/installer/model.json"]
     assert sorted(entry["files"]) == REQUIRED
@@ -918,7 +946,7 @@ def test_adoption_input_and_saved_plan():
                                           "identity": identity(FOLDER, WEIGHTS[0], DEV), "size": SIZES[WEIGHTS[0]]}
     assert result["schema"] == "sparkring-checkpoint-plan/v1" and result["reviewed"] is False
     assert result["pins_sha256"] == cp.pins_digest(PINS) and result["created_at"] == "2026-09-26T02:00:00+00:00"
-    assert result["operator"] == "code" and result["named"] == [{"rank": None, "path": "/unused"}]
+    assert result["operator"] == "operator" and result["named"] == [{"rank": None, "path": "/unused"}]
     assert result["problems"][0]["message"] == "--model-path /unused exists on no Spark. Nothing has been changed."
     again = json.loads(json.dumps(result))
     assert cp.describe(again) == cp.describe(result) and cp.summary(again) == cp.summary(result)

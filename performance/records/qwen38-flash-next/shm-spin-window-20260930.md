@@ -13,7 +13,7 @@ speed?
 
 ## Conditions
 
-- Two directly cabled DGX Sparks (spark-3286 rank 0, spark-0a0f rank 1),
+- Two directly cabled DGX Sparks (spark-b rank 0, spark-a rank 1),
   profile `qwen38-flash-next-tp2`, checkpoint `qad-step5500-ple1000`.
 - Image `dev-20260930-spinwait-cuda1342-nccl2323-status033` (image
   `sha256:fcb20b0ce839`), derived from

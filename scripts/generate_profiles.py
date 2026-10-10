@@ -20,6 +20,28 @@ STATUS_LABELS = {
     'research-only': 'Experimental',
     'unsupported': 'Unsupported',
 }
+# The Network cell of each topology in runtime.common.profiles.TOPOLOGIES. A
+# pair is two Sparks cabled to each other and a ring of N connects each Spark
+# to the next (docs/operations/install.md#requirements). The RoCEnante mesh
+# rows run most collectives on SIRCL and only admitted rows on RoCEnante
+# (runtime/glm53-spark-mtp3-mesh/README.md); the pair of the
+# tp2-rocenante-adaptive topology runs that B12X RoCE bundle. The topology IDs
+# stay in the profile contracts.
+TOPOLOGY_LABELS = {
+    'direct-pair-2': 'pair',
+    'direct-cycle-4': 'ring of 4',
+    'direct-cycle-8': 'ring of 8',
+    'sparkring-rocenante-mesh': 'RoCEnante mesh (SIRCL carries most collectives)',
+    'tp2-rocenante-adaptive': 'pair (RoCEnante adaptive bundle)',
+    'switched': 'switched',
+}
+
+
+def topology_label(topology):
+    """The Network cell of ``topology``; a topology without a label is refused."""
+    if topology not in TOPOLOGY_LABELS:
+        raise ValueError(f'Profile topology {topology} needs a Network label in TOPOLOGY_LABELS')
+    return TOPOLOGY_LABELS[topology]
 
 
 def compact_tokens(tokens):
@@ -272,6 +294,8 @@ def profile_catalog_table(rows, names, root):
              'capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.',
              'Switched support is a separate network configuration and has no switched-hardware qualification.', '',
              '## Configuration variants', '',
+             'Network names the cabling: a pair is two Sparks cabled to each other, and a ring of 4 or 8 connects',
+             'each Spark to the next ([requirements](docs/operations/install.md#requirements)).', '',
              'Profile IDs identify saved configurations. Guide status describes the primary quickstart;',
              'record links preserve configuration evidence when the guide selects a different release.', '']
     groups, retired = {}, []
@@ -297,7 +321,7 @@ def profile_catalog_table(rows, names, root):
             label = p['id'] + (' (default)' if p['recommendation'] == 'recommended' else '')
             cache_cell = 'On' if cached else 'Off (in dev)' if p['id'] in developing else 'Off'
             record_link = f" · [record](profiles/{p['id']}/profile.json)" if 'quickstart_status' in p else ''
-            lines.append(f"| {parallel} | {r['topology']} | {cache_cell} | {STATUS_LABELS[quickstart_status(p)]} | [{label}]({quickstart_path(p)}){record_link} |")
+            lines.append(f"| {parallel} | {topology_label(r['topology'])} | {cache_cell} | {STATUS_LABELS[quickstart_status(p)]} | [{label}]({quickstart_path(p)}){record_link} |")
         lines += ['', '</details>', '']
     lines += ['### Retired profiles', '', '<details>', '<summary>Retired configurations</summary>', '',
               'Retained for compatibility and historical evidence; use an active deployment above for setup.', '']
@@ -319,9 +343,11 @@ def thinking_column(text, root=ROOT):
     The repository README's installer table, whose header starts with
     INSTALLER_TABLE, is maintained by hand except this column: each row's
     cell is thinking.summary of the profile in its `--profile` value column,
-    such as ``on · xhigh``. A table without the column, or a row whose profile
-    has no record, is refused.
+    such as ``on · xhigh``. That column may name a profile by an alias of
+    runtime.host.models.ALIASES, which selects the profile it stands for. A
+    table without the column, or a row whose profile has no record, is refused.
     """
+    from runtime.host.models import canonical
     lines = text.split('\n')
     header = next((number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE)), None)
     if header is None:
@@ -336,7 +362,7 @@ def thinking_column(text, root=ROOT):
         if len(cells) != len(names):
             raise ValueError('README.md installer profile table rows require every column')
         profile = cells[profile_column].strip('`')
-        record = thinking.of(profile, root=root)
+        record = thinking.of(canonical(profile), root=root)
         if record is None:
             raise ValueError(f'README.md installer profile {profile} has no thinking record in {thinking.CATALOG}')
         cells[column] = thinking.summary(record)

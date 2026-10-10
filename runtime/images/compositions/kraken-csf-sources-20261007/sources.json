@@ -1,0 +1,401 @@
+{
+  "schema": "sparkring-source-payload/v1",
+  "purpose": "Python sources that turn the vLLM and B12X packages of dev-20261004-kraken-cuda1342-nccl2323-status034 into SparkRing's merges of Local Inference Lab's integration/karmic-kraken-beta branches at the commits below, which read the GLM-5.3-Flash CSF checkpoint (nvfp4_csf quantization and loader)",
+  "parent_release": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+  "parent_image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f",
+  "site_packages": "/usr/local/lib/python3.12/dist-packages/",
+  "payload": {
+    "file": "csf_payload.tar",
+    "sha256": "05ba9d1c6e5ac005c0279901b911afc78b7d74a792c06a359ee2aed854c53c84",
+    "bytes": 3635200
+  },
+  "sources": {
+    "vllm": {
+      "commit": "bc9ea7744bc73d1f45cf3232d5de1b8f823919ae",
+      "branch": "FujitsuPolycom/vllm sparkring/kraken-beta-20261007",
+      "image_commit": "d51b4181acc06622357c81dc8e0be46ad96a0779",
+      "image_branch": "FujitsuPolycom/vllm sparkring/kraken-beta-20261004",
+      "upstream_commit": "89f1ceecd713a820def8df032df8c109dc02b9f4",
+      "upstream_branch": "local-inference-lab/vllm integration/karmic-kraken-beta"
+    },
+    "b12x": {
+      "commit": "cc36aa6f1e93c31eb51668f7bfcc59046990548b",
+      "branch": "FujitsuPolycom/b12x sparkring/kraken-beta-20261007",
+      "image_commit": "a850d8ebde9b23674e0b76949c2e87161baf3ec4",
+      "image_branch": "FujitsuPolycom/b12x sparkring/kraken-beta-20261004",
+      "upstream_commit": "236ddff04a5f5064084b46464800b70b34ec7d8c",
+      "upstream_branch": "local-inference-lab/b12x integration/karmic-kraken-beta"
+    }
+  },
+  "transport_sources": [
+    {
+      "path": "b12x/preparation/__init__.py",
+      "sha256": "e6d534fb66d94a38055798e30bea81ab95b25b8113210bb40d991790c2afbf78"
+    },
+    {
+      "path": "b12x/preparation/types.py",
+      "sha256": "d5ef6544b4844f2cbaaa627dba0cf2b871393f4a2b2d6136454d388c3a0f1fc7"
+    },
+    {
+      "path": "b12x/preparation/tuning.py",
+      "sha256": "5eb916d0758733d2ea6e012cede295513cbd8add348e7880ca2ec54013713cff"
+    },
+    {
+      "path": "b12x/preparation/session.py",
+      "sha256": "d3c55771100a2b53e1e03322cbfbb20235cb19c7285024c30be8674136daaaf6"
+    },
+    {
+      "path": "b12x/_lib/compile_plan.py",
+      "sha256": "434e065e94cb773863c072e07ef4b1ff2d9f5d72076b84fece4102b682bacf0e"
+    },
+    {
+      "path": "b12x/_lib/program_cache.py",
+      "sha256": "836a7d2d1c1f33c066d5522878dfc98d4bc639f35b8fe16f52f5e312b9372619"
+    }
+  ],
+  "files": [
+    {
+      "path": "b12x/_lib/intrinsics.py",
+      "package": "b12x",
+      "inherited_sha256": "4f6d8cef53bc23a355f9bc5a0a2e37750b9123467f32d5158280b7b34f94181c",
+      "sha256": "d3cc39cd8576115b53cfccc61185d1cd5db11104e06312612bad96da1e13baf5",
+      "bytes": 249682
+    },
+    {
+      "path": "b12x/_lib/quant/mxfp4_csf_inline.py",
+      "package": "b12x",
+      "inherited_sha256": null,
+      "sha256": "b61b99179d90f646f1863436ae82b45235cf713ee09e351312f99c4cde9fbe7c",
+      "bytes": 22101
+    },
+    {
+      "path": "b12x/_lib/quant/nvfp4_csf.py",
+      "package": "b12x",
+      "inherited_sha256": "55a942c0eb32250cb90d11b0ba31d9c358d0040b31dbfa81262a204886693c42",
+      "sha256": "7e4d9051ff3d6ad2a805692464ba95f7297c0b960de5c9ff5b64343b3bfacbf6",
+      "bytes": 35289
+    },
+    {
+      "path": "b12x/_lib/quant/nvfp4_csf_packed.py",
+      "package": "b12x",
+      "inherited_sha256": "b7cf8867d1a998abc3f2b48e1e5a902f8163bfde56bfcf2894a25e1166d9dffa",
+      "sha256": "39dbb555082a5d43ca37f51959991d233a81f93ab439798e79f9b56432927b90",
+      "bytes": 23163
+    },
+    {
+      "path": "b12x/attention/dsa_indexer/_tuning.py",
+      "package": "b12x",
+      "inherited_sha256": "1ef14116b5fc2b273d7c4c102f0021af2250734faa5b2866d85ff507eebde0a8",
+      "sha256": "15b335118ec469eb35cceed63af618a1463f0c2f2cb5e16f10b20eff2c7e7b27",
+      "bytes": 8490
+    },
+    {
+      "path": "b12x/moe/_shared/execution.py",
+      "package": "b12x",
+      "inherited_sha256": "f15b99ebb2aa4291ab2e2e9f7350e0cbbf32a66ec018ee21e256c9675721a6c7",
+      "sha256": "a1fcc3157e60d0e0e0bd13c970af5728b51863b1cbaa382891d76ce86bdaa090",
+      "bytes": 51131
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/dynamic.py",
+      "package": "b12x",
+      "inherited_sha256": "bd5e01d7593bc956e76393e3099c2fbe1fe0128ffcfc04afec79b434d241c5cc",
+      "sha256": "4ae3863ab7e72972eb930d3b2ebf5cf05625d8db74664edb24a5f0c7fdc4de40",
+      "bytes": 538583
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/silu.py",
+      "package": "b12x",
+      "inherited_sha256": "798376040e140af11eacbbcbe42d1d2eedd0c0dd37869eb4054a9c2a5a4f4464",
+      "sha256": "bb3522c2cc00028af4ccf9af1d77d1f645dc0106469e23ee06af521ae4f483fe",
+      "bytes": 8173
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a16/kernel.py",
+      "package": "b12x",
+      "inherited_sha256": "b4b53af6f8f846e8b7f0f995952003b403c3b40bf1b75857834610ac6cf34e53",
+      "sha256": "035a768d253905df5d29ec00e333530612a1f01c6e93c2b1d6096fb6efff49ec",
+      "bytes": 583380
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a16/prefill_a4.py",
+      "package": "b12x",
+      "inherited_sha256": "f1095a23c9362931ae7cd3997f5cb560b38b2b5c934af938b26fb8ce2fddc158",
+      "sha256": "8d8f2f8b1ccce5e51343f1ed4f4d4a73d84234f9f45526c5c8fc031c80a94c2e",
+      "bytes": 48922
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a8_compact_micro.py",
+      "package": "b12x",
+      "inherited_sha256": "0d3630ca9d45846f7fbb57782b9f05d5a074ac408621480e6273bedb3205de9f",
+      "sha256": "e574f77448980465bc35572dc63c15ceec09020677a1c11fb586bcfd82a1b3df",
+      "bytes": 14889
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a8_compact_projection.py",
+      "package": "b12x",
+      "inherited_sha256": "880d65dac6570e1795ccfef379eb3758e474d3133f469eb837146751e2bb1339",
+      "sha256": "4ff78fb46ef6fa3973e9d781ea1d50fe91b08477c06fdcd2b6802597256227e4",
+      "bytes": 19767
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a8_phase1.py",
+      "package": "b12x",
+      "inherited_sha256": "224038306aca2f88944bc20910a85aeb812cce395439d5bfb85dda5100cb713c",
+      "sha256": "fa6e56a552a5ad998d31f9a100dbc2d65bbf28726e67eff64309a0eba7699dd7",
+      "bytes": 58059
+    },
+    {
+      "path": "b12x/moe/_shared/kernels/w4a8_phase2.py",
+      "package": "b12x",
+      "inherited_sha256": "cb2ff6c57857add68455d3490db41976bd692ed3e634dad8d0fe293dc29292fb",
+      "sha256": "6ff2e334056d947c97c3dadaa0f5a373e2590457ac57772220a12a15bd0c0fb8",
+      "bytes": 38635
+    },
+    {
+      "path": "b12x/moe/fused_moe/__init__.py",
+      "package": "b12x",
+      "inherited_sha256": "1262392836fdfad21fccc2760e0a69f64fc42f37a43b4b1b2902dc65ff46d308",
+      "sha256": "132fc7e019448017fa06d93509411872291dcaff060490aa68118f35196ebd87",
+      "bytes": 5184
+    },
+    {
+      "path": "b12x/moe/fused_moe/_impl.py",
+      "package": "b12x",
+      "inherited_sha256": "5ea855f0f332d7d9c263af4a96aa4131d70429d8b34e7da5e2ff15cfc47f5505",
+      "sha256": "9e9e79f478e4f0cbe30f3ca0f6be34e5950032f740a8d966c20956c75bbdec10",
+      "bytes": 548470
+    },
+    {
+      "path": "b12x/moe/fused_moe/_preparation.py",
+      "package": "b12x",
+      "inherited_sha256": "07c0982b3eeefb0e3e0c4e0f4cbfc46605a62ade243a8df3b8a79f55fade1bdf",
+      "sha256": "ccc89ffc9284ac8298ff490396ff9ca29aa7eb7395173278b2195d548f0aba19",
+      "bytes": 62027
+    },
+    {
+      "path": "b12x/moe/fused_moe/api.py",
+      "package": "b12x",
+      "inherited_sha256": "85dac6a67b24dd125b33ca57f1a660618b310d7051e69bac936f33d5f5480932",
+      "sha256": "07e6ae6038704ab62395fb9e54417957efadc6c5465349332295d224c8437b8d",
+      "bytes": 9999
+    },
+    {
+      "path": "b12x/moe/fused_moe/planning.py",
+      "package": "b12x",
+      "inherited_sha256": "a688d0b276f11fd169f20a576f4d35d8bdc936c911398cd20566294edef3a951",
+      "sha256": "b28ac86500aa0b91db62264ae2edf29d5926ef63cb41cb0bc9de557ce1d2de06",
+      "bytes": 36119
+    },
+    {
+      "path": "b12x/moe/fused_moe/weights.py",
+      "package": "b12x",
+      "inherited_sha256": "5f5085105ba8079216da3f821bbe9d6eb2b0f0273b5b4358b5aebf05abac5c6c",
+      "sha256": "48ec000407a1469c76c1a1db18acbd3cecbae8271f542d189e08d52433b8fadb",
+      "bytes": 10651
+    },
+    {
+      "path": "vllm/config/speculative.py",
+      "package": "vllm",
+      "inherited_sha256": "e38be6139cfc45381c730acba16ba04f25f51e51dc1133c0731738029af04617",
+      "sha256": "09bdbc832614112311051d58101e41d583e24f23f8b2a4d8c7c7c455d5702f21",
+      "bytes": 95464
+    },
+    {
+      "path": "vllm/distributed/device_communicators/b12x_pcie_all_reduce.py",
+      "package": "vllm",
+      "inherited_sha256": "e431bfec41dc1b04547ab945670e633d3af70458d90019c93c624626cd561ec2",
+      "sha256": "06034b5133ee03c472eee9329d55b459d1f1df20c424dca583dec2a4d944a685",
+      "bytes": 39297
+    },
+    {
+      "path": "vllm/envs.py",
+      "package": "vllm",
+      "inherited_sha256": "910025ebb7e0a2916129eae915adf23bc99be7b0c0e39a4a5f25af54ef56b584",
+      "sha256": "34edc8a28a74ab515282adc0ef2a45063f730bb751ca087b38cd4085492a0583",
+      "bytes": 134902
+    },
+    {
+      "path": "vllm/model_executor/layers/fused_moe/b12x.py",
+      "package": "vllm",
+      "inherited_sha256": "c6b3a0b3320f04c0146c4263ecebcf0e4aca21861958a11228df2466b95f7b5f",
+      "sha256": "ba0c4d1c4891c95d65e0fb736e31eac4c355b7ed495923e8aff5f3821f377bb0",
+      "bytes": 44312
+    },
+    {
+      "path": "vllm/model_executor/layers/fused_moe/routed_experts.py",
+      "package": "vllm",
+      "inherited_sha256": "5736d3e04476be4d41fb49de1242e89ac25f01e13037396582cb82b9a139f340",
+      "sha256": "781463f48167881feb6feb25701be2594b8c35483d874590ab5a06552f2f3ba7",
+      "bytes": 54295
+    },
+    {
+      "path": "vllm/model_executor/layers/l2_prefetch.py",
+      "package": "vllm",
+      "inherited_sha256": null,
+      "sha256": "828cba2e03d12111ee65e4633388a05745caf4cc0a476239dfafd9dc664301c2",
+      "bytes": 14224
+    },
+    {
+      "path": "vllm/model_executor/layers/quantization/modelopt.py",
+      "package": "vllm",
+      "inherited_sha256": "e86ae97078bfdd263417c5b164fec38fc1fc4da5d2c60a1dda73b06f9fce601b",
+      "sha256": "8c90bb4369de456f27eb1d67273a2d92e9f8f8674675fd7f36d63511f67838a1",
+      "bytes": 105381
+    },
+    {
+      "path": "vllm/model_executor/layers/quantization/nvfp4_csf.py",
+      "package": "vllm",
+      "inherited_sha256": "841bbc44be2b113e64815314154e987d311df33a365f46fc66b6f3e2f084345a",
+      "sha256": "90998984fca1bb2ebd0e9daa99dfe8868b1875cdddf0262093d0af67ad84a70a",
+      "bytes": 16828
+    },
+    {
+      "path": "vllm/model_executor/model_loader/__init__.py",
+      "package": "vllm",
+      "inherited_sha256": "8bd73046c29e37df7c3638bc2e2b35a5ea5bd1f06b1f982ff37f2561dc158a57",
+      "sha256": "0ff830639a2829a60b5e7579093fe76c5f177eacb94208b2fcea3fc69a47cc83",
+      "bytes": 5679
+    },
+    {
+      "path": "vllm/model_executor/model_loader/csf_utils.py",
+      "package": "vllm",
+      "inherited_sha256": "90746fe65dc586485aa02dc89752757acedfc65e100201d3630887fc7b81651e",
+      "sha256": "856db026a87ca28fecec85cd7379d299441b179059f6f48fcfa70419a29063fd",
+      "bytes": 4316
+    },
+    {
+      "path": "vllm/model_executor/model_loader/mxfp4_csf_loader.py",
+      "package": "vllm",
+      "inherited_sha256": "ffb14089203b19aeccde56c795404a01de518cd73662dd442330a973f2dc53e8",
+      "sha256": "cfe0928516c898d1aa035fb15eea453a98fa94e9f227173e7f4f848b72343e21",
+      "bytes": 11801
+    },
+    {
+      "path": "vllm/model_executor/model_loader/nvfp4_csf_loader.py",
+      "package": "vllm",
+      "inherited_sha256": "989c98b8d634538ff571bcfcf462fa333c08cc7de58c99f322b69c308ef748b2",
+      "sha256": "066f67fb5187bbaf002a2e0bb4dad16ea18307e459d5ef36b005146c09b0227e",
+      "bytes": 18732
+    },
+    {
+      "path": "vllm/model_executor/models/config.py",
+      "package": "vllm",
+      "inherited_sha256": "bfcb7715ff0a6a5ae938d8159f27daa3c6a25105dcf4c15ba896e44e6e431982",
+      "sha256": "726862e4d7bd9951d315678a285ad9ae5731214fdf10b9bffc479b73a2a4cfb8",
+      "bytes": 66034
+    },
+    {
+      "path": "vllm/model_executor/models/deepseek_v2.py",
+      "package": "vllm",
+      "inherited_sha256": "6b94f488d33eca66ac9299c68c98f22d6a7ef293b70a410fa6c8987bd66d9517",
+      "sha256": "112a2d92e4f80a2e9a3baa567571f0b22c491bf8c18a1dbba2e9259e9b36692a",
+      "bytes": 79313
+    },
+    {
+      "path": "vllm/models/common/ops/fused_allreduce_rms_norm.py",
+      "package": "vllm",
+      "inherited_sha256": "036e07b212f3154fb58a26da97c18015315cc736f89097eac1b733456d4c3e4c",
+      "sha256": "664180169082cb65241bd9b82497d669e552ebb1f063c2e0b23657b3707dd080",
+      "bytes": 2982
+    },
+    {
+      "path": "vllm/models/deepseek_v32/attention.py",
+      "package": "vllm",
+      "inherited_sha256": "a3a3a784e798a3669e75527f724e9b2d549f0e4c025b2f4524026dc0244f0e39",
+      "sha256": "c1358e677002658c848247758c45ef5543eec9c5122bc3b36e2e5c4447c68bd6",
+      "bytes": 29453
+    },
+    {
+      "path": "vllm/models/deepseek_v32/nvidia/b12x.py",
+      "package": "vllm",
+      "inherited_sha256": "168fe90e560823a3edaa7199e8a5c9771d267e7c820b373ed09bb1cf2679109a",
+      "sha256": "2412da9bec4b3597064395c4c78b0d93c1235153fe3e55df4b9dba6dcde4942d",
+      "bytes": 2737
+    },
+    {
+      "path": "vllm/models/deepseek_v32/nvidia/model.py",
+      "package": "vllm",
+      "inherited_sha256": "21bdc3be9140a80f8dc2338684d8fa37f34bb2d0481ddee13a67677402e4fdec",
+      "sha256": "03c85e81a225a0de3312bf62830ff836c8f0c9d894e7fee4381e5510f366cd10",
+      "bytes": 20750
+    },
+    {
+      "path": "vllm/models/deepseek_v32/nvidia/mtp.py",
+      "package": "vllm",
+      "inherited_sha256": "4f6aff45c22aa2bae41c9505db8c079552f7f91835ac7727146099dcdfdf10d5",
+      "sha256": "103516ab5c596f9851172fdaf86c67cb5435d1ca2781fc80268d5d61dbcb3456",
+      "bytes": 21000
+    },
+    {
+      "path": "vllm/models/glm5next/common/multimodal.py",
+      "package": "vllm",
+      "inherited_sha256": "0e57a3b11c5a9d937804e713a25df38a0c781811b7add19240a4a4acd5aaeb96",
+      "sha256": "711e1af6a02f31251b62a356f05aad097e4bf41aac2fb3333f70ca5d36e5d87e",
+      "bytes": 34252
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/model.py",
+      "package": "vllm",
+      "inherited_sha256": "23b4af130ebd443274a79695dd5a94871df6243ff9d6b66aa1fc254b298f89d1",
+      "sha256": "1576615576632007e80fbb7138996b0f4fe4cfdbeb1695841ee0e3cef2210791",
+      "bytes": 74998
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/mtp_draft_head.py",
+      "package": "vllm",
+      "inherited_sha256": "e9c2a1184fff74a59a463b42769d2920132eb2b3b37d632553c4c8aeb6798410",
+      "sha256": "abb836c06a5d01f8c0568e0ce1ed6b005b83021267b9308a65d6a66b725bc487",
+      "bytes": 6719
+    },
+    {
+      "path": "vllm/v1/attention/backends/dflash_attn/__init__.py",
+      "package": "vllm",
+      "inherited_sha256": "535d143d72b982ddea0137a399a832d393ffb18da940bf96128a020891efd3ab",
+      "sha256": "f66e156d033053f8555c29b255c29f996fb94f6aecae0e51e40beda51b1a429e",
+      "bytes": 10894
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/b12x_indexer.py",
+      "package": "vllm",
+      "inherited_sha256": "d10ad7cb445ce7269731c7f5e7f2a9fc9dcc76a2cbec26d380427e52b8eeb510",
+      "sha256": "e1841ab03516e9f58e52400491ed5a11db7826c4a676f49c427a9e6246210ae2",
+      "bytes": 36150
+    },
+    {
+      "path": "vllm/v1/attention/backends/mla/b12x_mla_sparse.py",
+      "package": "vllm",
+      "inherited_sha256": "ef33ae3042b18dbe67b0189afaad872adb5efc7a75605e4bf42f7088ea85b685",
+      "sha256": "28ba243901a980b3c0ea75fd03c16d589e352dd8727fe6f7d7c879f71daf74c8",
+      "bytes": 92752
+    },
+    {
+      "path": "vllm/v1/attention/backends/utils.py",
+      "package": "vllm",
+      "inherited_sha256": "a2a947fedbe8301f109e0301bd35e6b1bb08a1041838206a54945b0a926c484c",
+      "sha256": "0512afbbb6f8dfa6dc3da54564d289d8e062c0527573e5e7ec4782e2c395d9d6",
+      "bytes": 51367
+    },
+    {
+      "path": "vllm/v1/attention/ops/cp_common.py",
+      "package": "vllm",
+      "inherited_sha256": "a8f15ca69d7224c8dad5f254a47703efc364a1e4b5c05248da1d646312c3782f",
+      "sha256": "95b446397d038f90ed782cf3e1745c8a548236c91f7d8ed40c0bed7885493587",
+      "bytes": 7913
+    },
+    {
+      "path": "vllm/v1/attention/ops/dcp.py",
+      "package": "vllm",
+      "inherited_sha256": "17586fe1dbf702e05757b1acba1926b2ad7341501c1d10d233e9d57720b919a2",
+      "sha256": "5cc592b1baa5defd47336d19be4002fe0f98827134ebbd755ef9364350456a53",
+      "bytes": 59357
+    },
+    {
+      "path": "vllm/v1/worker/gpu_worker.py",
+      "package": "vllm",
+      "inherited_sha256": "989330be6dca8f5068032b6fe4f0f6276b31fef8bea491443a9f6c7cafd038bd",
+      "sha256": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948",
+      "bytes": 79602
+    }
+  ]
+}

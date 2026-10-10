@@ -1,4 +1,4 @@
-"""Measure the RDMA bandwidth of each fabric cable of the recorded pair or four-Spark ring.
+"""Measure the RDMA bandwidth of each fabric cable of the recorded pair, line or ring.
 
 Status: implemented. The measurement is the one in
 ``performance/records/transport/fabric-cable-bandwidth-20261002.md``; no
@@ -29,8 +29,8 @@ keeps equal to each function's IPv4 address; the check reads that entry on
 both ends first and reports a function whose entry holds something else
 instead of testing it.
 
-The measured cables are the pair's cable between the ports 0, or the four
-ring cables from port 0 of rank r to port 1 of rank r+1. Every function's
+The measured cables are the pair's cable between the ports 0, or the line's
+or ring's cables from port 0 of rank r to port 1 of rank r+1. Every function's
 ends and addresses come from the setup plan in the cluster record. A pair's
 cable between the ports 1 has no fabric addresses and is not measured.
 
@@ -58,8 +58,8 @@ import sys
 import threading
 import time
 
-from runtime.common import installer
-from runtime.host import cabling, discovery, node, placement
+from runtime.common import fabric_layout, installer
+from runtime.host import cabling, discovery, node, placement, topology
 
 SCHEMA = "sparkring-fabric-bandwidth/v1"
 # The latest result, in the controller directory beside cluster.json.
@@ -118,13 +118,8 @@ def cables(plan):
     addresses are not on one subnet also carries ``problem``.
     """
     hosts = plan["spec"]["hosts"]
-    size = len(hosts)
-    if size == 2:
-        layout = [(0, "cw", 1, "cw")]
-    elif size == 4:
-        layout = [(rank, "cw", (rank + 1) % 4, "ccw") for rank in range(4)]
-    else:
-        raise ValueError("The cluster record holds neither a pair nor a four-Spark ring")
+    layout = [(first[0], "cw" if first[1] == 0 else "ccw", second[0], "cw" if second[1] == 0 else "ccw")
+              for _, first, second in fabric_layout.cables(topology.layout_of(plan))]
     names = hostnames(plan)
     result = []
     for low, low_side, high, high_side in layout:
@@ -145,8 +140,8 @@ def cables(plan):
                                   f"{ends[1]['netdev']} on {ends[1]['hostname']} are not on one subnet; "
                                   "sudo sparkring setup reviews the fabric")
             functions.append(row)
-        result.append({"ends": [{"rank": low, "hostname": names[low], "port": 0},
-                                {"rank": high, "hostname": names[high], "port": 0 if size == 2 else 1}],
+        result.append({"ends": [{"rank": low, "hostname": names[low], "port": 0 if low_side == "cw" else 1},
+                                {"rank": high, "hostname": names[high], "port": 0 if high_side == "cw" else 1}],
                        "functions": functions})
     return result
 
@@ -179,11 +174,11 @@ def serving(state_root, size):
 
     A slot's active deployment serves unless its last operation is a
     completed ``down`` (``placement.stopped``). The whole cluster's model
-    (placement None) uses every Spark; a ring half's model uses that half's
-    two Sparks.
+    (placement None) uses every Spark; a model on an arc uses the arc's
+    Sparks.
     """
     found = {}
-    for slot, directory in placement.actives(state_root, size).items():
+    for slot, directory in placement.actives(state_root).items():
         if placement.stopped(directory):
             continue
         for rank in range(size) if slot is None else slot:
@@ -627,7 +622,8 @@ def check(cluster, *, access, busy=None, allow_serving=False, say=None, now=time
         if cable["verdict"] == DEGRADED:
             cable["repair"] = repair_lines(cable)
     return {"schema": SCHEMA, "measured_at": now(), "cluster_id": plan.get("id"),
-            "layout": "pair" if len(plan["spec"]["hosts"]) == 2 else "ring", "threshold_gbps": HEALTHY_GBPS,
+            "layout": {"pair": "pair", "cycle": "ring", "path": "line"}[topology.layout_of(plan)["shape"]],
+            "layout_name": fabric_layout.name(topology.layout_of(plan)), "threshold_gbps": HEALTHY_GBPS,
             "test": {"program": "ib_write_bw", "bidirectional": True, "message_bytes": MESSAGE_BYTES,
                      "seconds": SECONDS, "gid_index": GID_INDEX},
             "verdict": overall(found), "notes": unmeasured(plan), "cables": found}
@@ -823,7 +819,7 @@ def command(*, json_output=False, allow_serving=False, state_root=None, access=N
     from runtime.host import controller
     root = Path(state_root or controller.STATE)
     if not (root / "cluster.json").exists():
-        raise ValueError(f"No pair or ring is recorded on this Spark; {COMMAND} runs on Node A after "
+        raise ValueError(f"No fabric is recorded on this Spark; {COMMAND} runs on Node A after "
                          "sudo sparkring setup")
     cluster = installer.read(root / "cluster.json")
     size = len(cluster["plan"]["spec"]["hosts"])

@@ -1,0 +1,91 @@
+{
+  "archived": false,
+  "composition_sha256": "104545500d1a7d0999b393fecdd2af3b281f94d4a883faea4736a132bd3b81f1",
+  "download_bytes": 15310065070,
+  "image_bytes": 31884969464,
+  "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+  "image_reference": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+  "libsircl": {
+    "fail_stop": true,
+    "library": {
+      "path": "/opt/sparkring/libsircl/lib/libsircl.so.0.6.0",
+      "sha256": "ffdba5b24a2b22680465a2f130473bc6197cb3cacc2c0590b0d6fe884cc170e9"
+    },
+    "nccl_api_version": 22705,
+    "plugin": {
+      "name": "libsircl",
+      "path": "/usr/local/lib/python3.12/dist-packages/sparkring_libsircl.py",
+      "sha256": "5fc198e4c80c116946d7ec7d6e3a971daae99278f09babed1b8d44dda8e3116d"
+    },
+    "receipt": {
+      "path": "/opt/sparkring/receipts/libsircl-layer.json",
+      "sha256": "f7586741d71f76f514bd0c6fb922719198fa121ddc106c89bf334fef591fd09b"
+    },
+    "source_tree": "030419b8a2b61acc1a74010308a1c3e758863e2f",
+    "version": "0.6.0"
+  },
+  "line": "kraken",
+  "name": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "parent_receipt_sha256": "d339d328dca91b7935b917118ba802256a08d6ca0ac67bb2b6519528434face8",
+  "profiles": [
+    "deepseek-v41-flash-tp4",
+    "deepseek-v41-flash-tp8",
+    "glm53-flash-csf-tp8",
+    "glm53-flash-nvfp4-spark-tp2",
+    "glm53-flash-nvfp4-spark-tp4",
+    "glm53-nvfp4-tp8",
+    "glm53-nvfp4-tp8-dcp1",
+    "mimo-v26-flash-mopd-tp2",
+    "mimo-v26-flash-mopd-tp4",
+    "qwen38-flash-next-qad-tp4",
+    "qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp4"
+  ],
+  "schema": "sparkring-installer-image/v3",
+  "sircl": {
+    "abi_version": 9,
+    "native": {
+      "path": "/opt/sparkring/sircl/lib/roce_proxy-09db871538819191.so",
+      "sha256": "c97f72d2a7d1bb1661436ec5f9c84cb08b5bf9a766688b1c372d869864a0cee4",
+      "source_digest": "09db871538819191"
+    },
+    "p2p": {
+      "path": "/opt/sparkring/sircl/lib/p2p_proxy-c8ccfcb93ffa2d6a.so",
+      "sha256": "f3719a24fa424cd98d05109641a5cfeaae4e5e54a8e59c11093167617a457ead",
+      "source_digest": "c8ccfcb93ffa2d6a"
+    },
+    "receipt": {
+      "path": "/opt/sparkring/receipts/sircl-layer.json",
+      "sha256": "8caf591c612d86eda0f1add9bf7ff18ecfe7aaf3fa798d4054c200de86c9e247"
+    },
+    "tuning_key": {
+      "kernels": "00f8d50c2cc5d98c",
+      "native": "09db871538819191",
+      "sircl": "0.3.2/abi9"
+    },
+    "version": "0.3.2",
+    "vllm_pins": [
+      "sparkring-kraken-beta-20261007-bc9ea774"
+    ],
+    "wheel": {
+      "name": "sparkring_sircl-0.3.2-py3-none-any.whl",
+      "sha256": "29f22e356669879f3d3ccc0d86982e6e93b83ac03eab2a9f14e0f1a82fa58347"
+    }
+  },
+  "status_version": "0.3.6",
+  "toolchain_receipt_sha256": "f2f45b76f5979e85e8f0b230e34e56b4b2e729baea726be161242712a0049eb0",
+  "transport_manifest_sha256": "fee0680b6dc62a6826ee0e4b0ae35af6fb82e5f4404dd3c76428c13997712da4",
+  "transport_profile": "tp2-rocenante-adaptive-prepared",
+  "transports": [
+    "libsircl",
+    "prepared",
+    "sircl"
+  ],
+  "tuning_defaults_sha256": "c6f82805e1024af133637ae8900f0a397e31af955a2fa47da68de5a5b1b1ad79",
+  "vllm_plugins": {
+    "glm53full_speedups": "1.1.0",
+    "glm_dcp_decode_comm": "2.0.1",
+    "glm_dsa_indexer_split": "1.1.0"
+  }
+}

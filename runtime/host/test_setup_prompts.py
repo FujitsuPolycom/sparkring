@@ -1,6 +1,7 @@
 """Setup asks once, recognizes known Sparks without new logins and records host keys it trusts."""
 import argparse
 import json
+from pathlib import Path
 
 import pytest
 
@@ -31,11 +32,11 @@ def test_setup_summary_is_one_question(monkeypatch, capsys):
     monkeypatch.setattr(controller.sys.stdin, "isatty", lambda: True)
     asked = []
     monkeypatch.setattr("builtins.input", lambda prompt: asked.append(prompt) or "")
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     single_uplink.approve(args, fresh=True, follow="then install qwen38-flash-next-tp2 and start it")
     out = capsys.readouterr().out
     assert asked == ["Proceed? [Y/n]: "]
-    assert "sign in as cody" in out and "host key on first contact" in out and "qwen38-flash-next-tp2" in out
+    assert "sign in as analyst" in out and "host key on first contact" in out and "qwen38-flash-next-tp2" in out
     # A fresh setup does not know the ring size, so the one question also covers the ConnectX restarts.
     assert "about 8 seconds" in out and "now and at every boot" in out
     assert out.index("ConnectX hairpin setting") < out.index("qwen38-flash-next-tp2")
@@ -43,7 +44,7 @@ def test_setup_summary_is_one_question(monkeypatch, capsys):
 
 def test_yes_prints_the_approved_scope_without_asking(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda prompt: pytest.fail("--yes asked a question"))
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     single_uplink.announce(args, fresh=False, follow="then install qwen38-flash-next-qad-tp4 and start it", four=True)
     out = capsys.readouterr().out
     assert out.startswith("Approved with --yes:\n")
@@ -51,7 +52,7 @@ def test_yes_prints_the_approved_scope_without_asking(monkeypatch, capsys):
 
 
 def test_hairpin_scope_is_listed_for_fresh_and_four_spark_setups_only(tmp_path):
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     assert single_uplink.ring_state(tmp_path) == (True, True)
     (tmp_path / "enrolled.json").write_text('{"targets": ["root@192.0.2.10", "root@192.0.2.11"]}')
     fresh, four = single_uplink.ring_state(tmp_path)
@@ -95,7 +96,7 @@ def test_setup_prints_needs_input_details(tmp_path, monkeypatch, capsys):
 
 
 def test_approved_logins_record_new_host_keys_in_a_listed_file(tmp_path):
-    route = [{"user": "cody", "address": "fe80::2", "interface": "port0", "port": 22}]
+    route = [{"user": "analyst", "address": "fe80::2", "interface": "port0", "port": 22}]
     approved = bootstrap.ssh_argv(route, tmp_path, interactive=True, trust_new=True)
     assert "StrictHostKeyChecking=accept-new" in approved and "HashKnownHosts=no" in approved
     assert f"UserKnownHostsFile={tmp_path / 'known_hosts'} ~/.ssh/known_hosts" in approved
@@ -169,6 +170,7 @@ def test_setup_with_nodes_passes_its_approval_to_the_hairpin_step(four_sparks, m
     found[3]["hairpin"] = document(plan, 3, hairpin_setting.DEFAULT, approved=False, armed=False)
     received = []
     monkeypatch.setattr(controller, "apply", lambda value, directory, **options: received.append(options) or value)
+    monkeypatch.setattr(controller.fabric, "finish_setup", lambda *args, **options: None)
     assert controller.setup([*targets, "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "setup")]) == 0
     assert [options["approved"] for options in received] == [True]
     assert ("    ConnectX hairpin: restart 4 functions after addressing (1024 -> 8192), about 8 s link loss each"
@@ -192,7 +194,19 @@ def test_adoption_on_four_sparks_records_the_setting_without_restarting(four_spa
             {"rank": rank, "after": hairpin_ring.KEPT if rank < 3 else hairpin_ring.RESTART} for rank in range(4)])
         return value
     monkeypatch.setattr(controller.hairpin_ring, "ensure", ensure)
+    finished = []
+    monkeypatch.setattr(controller.fabric, "finish_setup", lambda state, cluster, directory, **options: finished.append(
+        Path(directory)))
+    # Node A records another cluster, which adoption moves aside before it records this one.
+    from runtime.common import installer
+    installer.write(controller.STATE / "cluster.json", {"plan": {"id": "another-cluster"}})
     assert controller.setup([*targets, "--adopt", "--apply", "--skip-enroll", "--output", str(tmp_path / "adopt")]) == 0
+    # Adoption records the fabric document and relay plan it prepared, and moves differing node records aside.
+    assert finished == [tmp_path / "adopt"] and (tmp_path / "adopt" / controller.fabric.PREPARED_DOCUMENT).exists()
+    assert all(argv[3:6] == ["node", "adopt", "--retire-existing"] for _, argv in calls if argv[3:5] == ["node", "adopt"])
+    [retired] = (controller.STATE.parent / "retired").iterdir()
+    assert json.loads((retired / "cluster.json").read_text())["plan"]["id"] == "another-cluster"
+    assert installer.read(controller.STATE / "cluster.json")["plan"]["id"] == plan["id"]
     assert prompts == ["Record this verified existing fabric without network changes, and record the ConnectX hairpin "
                        "setting that is in effect and apply it at every boot (no driver restart)? [y/N]: "]
     # The hairpin step runs once, after node adopt on every Spark, and never restarts a function.
@@ -247,7 +261,8 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
         monkeypatch.setattr(single_uplink.bootstrap, "discover", lambda transport, found=found, **options: found)
         assert single_uplink.main(["--plan"]) == 0
         out = capsys.readouterr().out
-        listed = "Setup of these Sparks also includes this step:\n" + "\n".join(single_uplink.HAIRPIN_SCOPE) in out
+        listed = ("Setup of these Sparks also includes these steps where their layout relays:\n"
+                  + "\n".join(single_uplink.HAIRPIN_SCOPE + single_uplink.RELAY_SCOPE)) in out
         assert listed is (count == 4)
 
 
@@ -283,7 +298,35 @@ def test_setup_installs_node_a_revision_on_other_workers_before_planning(tmp_pat
 
 
 def test_repeated_setup_lists_the_worker_update():
-    args = argparse.Namespace(ssh_user="cody", ssh_port=22, no_share_internet=False)
+    args = argparse.Namespace(ssh_user="analyst", ssh_port=22, no_share_internet=False)
     line = "  - install Node A's SparkRing revision on workers that run another one"
     assert line in single_uplink.scope_lines(args, fresh=False)
     assert line not in single_uplink.scope_lines(args, fresh=True)
+
+
+def test_adoption_refuses_unit_overrides_before_any_change(four_sparks, monkeypatch, tmp_path):
+    found, plan, calls, targets = four_sparks
+    answered = controller.discovery.ssh
+
+    def ssh(host, argv, **options):
+        if argv[3:5] == ["node", "unit-overrides"] and host == found[2]["facts"]["ssh_target"]:
+            calls.append((host, list(argv)))
+            return json.dumps({"overrides": ["/etc/systemd/system/sparkring-fabric.service"]})
+        return answered(host, argv, **options)
+    monkeypatch.setattr(controller.discovery, "ssh", ssh)
+    with pytest.raises(ValueError, match=r"sparkring-fabric.service\. Remove or rename those files .*Nothing has "
+                                         r"been changed"):
+        controller.setup([*targets, "--adopt", "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "a")])
+    assert not [argv for _, argv in calls if argv[3:5] == ["node", "adopt"]]
+
+
+def test_a_unit_file_or_drop_in_in_etc_overrides_the_package_unit_and_an_enable_link_does_not(tmp_path):
+    from runtime.host import node
+    units = tmp_path / "etc/systemd/system"
+    (units / "multi-user.target.wants").mkdir(parents=True)
+    assert node.unit_overrides(root=tmp_path) == []
+    (units / "sparkring-fabric.service").write_text("[Service]")
+    (units / "sparkring-relay-marker.service.d").mkdir()
+    (units / "sparkring-relay-marker.service.d/override.conf").write_text("[Service]")
+    assert node.unit_overrides(root=tmp_path) == ["/etc/systemd/system/sparkring-fabric.service",
+                                                  "/etc/systemd/system/sparkring-relay-marker.service.d/override.conf"]

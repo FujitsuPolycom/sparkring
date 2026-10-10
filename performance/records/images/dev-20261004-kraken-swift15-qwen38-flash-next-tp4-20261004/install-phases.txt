@@ -12,14 +12,14 @@ Looking for existing copies of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0
 Install swift15-qwen38-flash-next-tp4 on 4 Sparks.
 Update workers and prepare assets; then start the selected model.
 Checkpoint ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2: 95 files, 173.7 GiB
-Searched spark-3286 in 4.1 s, spark-0a0f in 2.2 s, spark-931e in 3.7 s and spark-aa42 in 5.5 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-b in 4.1 s, spark-a in 2.2 s, spark-d in 3.7 s and spark-e in 5.5 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-3286 -> /srv/sparkring/dgx4-2/checkpoints/ukisai--Swift-1.5-Qwen3.8-Flash-Next-NVFP4/3ff0520224f264a2d0ac4ab56ece8f2f13aadb38
+Node 0 spark-b -> /srv/sparkring/dgx4-2/checkpoints/ukisai--Swift-1.5-Qwen3.8-Flash-Next-NVFP4/3ff0520224f264a2d0ac4ab56ece8f2f13aadb38
     95 of 95 files already in place
     needs no free space on / (2267 GiB free)
-Node 1 spark-0a0f: as Node 0 (2318 GiB free)
-Node 2 spark-931e: as Node 0 (1896 GiB free)
-Node 3 spark-aa42: as Node 0 (1711 GiB free)
+Node 1 spark-a: as Node 0 (2318 GiB free)
+Node 2 spark-d: as Node 0 (1896 GiB free)
+Node 3 spark-e: as Node 0 (1711 GiB free)
 
 Nothing is downloaded.
 Node 0: Check host before preparing assets

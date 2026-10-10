@@ -52,9 +52,20 @@ QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 # Profiles whose checkpoints use the Qwen3.8-Flash-Next (Qwen4Exp) architecture,
 # including derivatives of other publishers. They run the image's Qwen collective
 # features and HC modes, which admission requires and ``adapt`` configures.
-QWEN4_EXP = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
-SUPPORTED = (*QWEN4_EXP, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4",
-             "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
+SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
+             "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
+# Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
+# runtime/common/image_lock.py): the research-only profiles whose ranks reach each other through
+# relays (profiles.relayed_research). A lock's profile list may name them beside SUPPORTED; only
+# image_lock admits a lock that does. They are read from profiles.RESEARCH_CATALOG, which no
+# Compose label hashes, so adding one changes no Compose export.
+_RELAYED = profiles.relayed_research()
+SIRCL_ONLY = tuple(_RELAYED)
+# A relayed research profile runs the Qwen3.8-Flash-Next architecture when its configuration selects
+# the Qwen HC prefill mode, which ``adapt`` and admission configure as for QWEN4_EXP_PREPARED.
+QWEN4_EXP = (*QWEN4_EXP_PREPARED, *(profile for profile, path in _RELAYED.items()
+                                    if "VLLM_QWEN3_8_HC_PREFILL_MODE" in profiles.read_json(path)["environment"]))
 # A v2 lock may also list IDs in profiles.REPLACED, so that the locks of other
 # releases in runtime/releases keep validating; ``for_profile`` refuses those IDs
 # and names the catalog profile that replaces each.
@@ -91,7 +102,7 @@ def validate(value, profile):
     else:
         listed = value["profiles"]
         if (not isinstance(listed, list) or not listed or listed != sorted(set(listed))
-                or not set(listed) <= set(SUPPORTED) | set(profiles.REPLACED)):
+                or not set(listed) <= set(SUPPORTED) | set(SIRCL_ONLY) | set(profiles.REPLACED)):
             raise ValueError("A v2 image lock lists sorted, distinct, supported installer profiles")
         if profile not in listed:
             raise ValueError(f"{profile} is not admitted on image lock {value['name']}")
@@ -322,16 +333,25 @@ def adapt(spec, value, *, binding, source_root, profile=None):
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
 
+def profile_nodes(profile):
+    """The number of Sparks installer profile ``profile`` runs on: its configuration's
+    ``--tensor-parallel-size``, one rank per Spark."""
+    metadata, _ = profiles.load(profile)
+    arguments = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))["vllm_args"]
+    return int(arguments[arguments.index("--tensor-parallel-size") + 1])
+
+
 def admit(value, *, run, profile=None, nodes=None, environment=None):
     """Verify the local image against the lock before any model downtime.
 
     ``profile`` and ``nodes`` select model-specific capability checks. They
-    default to the single profile of a v1 lock. ``environment`` is the Qwen
-    serving environment; it defaults to the profile's configuration.
+    default to the single profile of a v1 lock and to the profile's tensor
+    parallelism (``profile_nodes``). ``environment`` is the Qwen serving
+    environment; it defaults to the profile's configuration.
     """
     profile = profile if profile is not None else profiles_of(value)[0]
     validate(value, profile)
-    nodes = nodes if nodes is not None else (4 if profile.endswith("tp4") else 2)
+    nodes = nodes if nodes is not None else profile_nodes(profile)
     image = json.loads(run(["docker", "image", "inspect", value["image_id"]]).stdout)[0]
     if (image.get("Id") != value["image_id"] or image.get("Os") != "linux" or image.get("Architecture") != "arm64"
             or image.get("Config", {}).get("Entrypoint") != list(ENTRYPOINT)):

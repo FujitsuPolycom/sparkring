@@ -1,0 +1,21 @@
+[Unit]
+Description=Run the SparkRing relay markers that tag RDMA traffic for the fabric relay table
+Wants=sparkring-fabric.service
+After=sparkring-hairpin.service sparkring-fabric.service
+ConditionPathExists=/etc/sparkring/fabric.json
+# A marker exits when its RDMA device goes away, as during a ConnectX driver
+# restart; the unit starts every marker again until the device returns.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sparkring node relay-markers
+Restart=on-failure
+RestartSec=5
+# The supervisor and each marker receive SIGTERM; a marker removes its rules
+# when it exits.
+TimeoutStopSec=30
+UMask=0022
+
+[Install]
+WantedBy=multi-user.target

@@ -27,11 +27,11 @@ import uuid
 
 import pytest
 
-from runtime.common import distribution, installer, installer_image
+from runtime.common import distribution, fabric_document, installer, installer_image
 from runtime.host import checkpoint_place as place
-from runtime.host import (api_endpoint, checkpoint_plan, control, controller, hairpin, hairpin_ring, install_assets,
-                          install_space, install_workflow as flow, node, rollout, single_uplink, test_hairpin,
-                          topology)
+from runtime.host import (api_endpoint, checkpoint_plan, control, controller, fabric, hairpin, hairpin_ring,
+                          install_assets, install_space, install_workflow as flow, node, rollout, single_uplink,
+                          test_hairpin, topology)
 from runtime.host.install_errors import NeedsInput
 from runtime.host.test_appliance import nodes
 from runtime.host.test_fabric_ssh import cluster as fabric_cluster
@@ -93,7 +93,7 @@ def copy_candidate(pins, path=FOLDER, *, without=(), differs=(), device=DEVICE, 
         files[name] = {"state": "differs" if name in differs else "match",
                        "evidence": "hashed" if name in differs else "recorded", "size": entry["size"],
                        "source": path + "/" + name, "kind": "file", "identity": [device, 1000 + number],
-                       "owner": "code", "mode": 0o644, "mount_id": mount_id}
+                       "owner": "operator", "mode": 0o644, "mount_id": mount_id}
     counts = {state: sum(1 for value in files.values() if value["state"] == state)
               for state in ("match", "differs", "size-only", "missing", "incomplete")}
     return {"path": path, "layout": "local-dir", "found_by": ["folder"], "commit": pins["revision"], "branches": [],
@@ -182,7 +182,7 @@ class Sparks:
 def sparks(monkeypatch):
     value = Sparks()
     monkeypatch.setattr(flow.discovery, "ssh", value)
-    monkeypatch.setenv("SUDO_USER", "code")
+    monkeypatch.setenv("SUDO_USER", "operator")
     return value
 
 
@@ -239,6 +239,8 @@ def machine(tmp_path, monkeypatch, sparks):
         events.append(("previous" if path == previous else "candidate") + ":" + action)
         return {"verified": True}
     monkeypatch.setattr(flow.retained_source, "apply", operation)
+    monkeypatch.setattr(flow, "settle_memory", lambda path, **kwargs: events.append(
+        ("previous" if path == previous else "candidate") + ":settle-memory") or [])
     return events, previous, Assets, operation
 
 
@@ -257,6 +259,8 @@ def test_documented_command_updates_prepares_switches_and_emits_only_json(machin
     assert assets.prepared["plan"]["approval"] == "command-line" and assets.prepared["receipts"] == {0: [], 1: []}
     assert events.index("update-workers") < events.index("fill-missing-image") < events.index("previous:down")
     assert events.index("prepare:model-check") < events.index("previous:down") < events.index("candidate:up") < events.index("candidate:verify")
+    # The page cache drops and memory settles right before the start (runtime.host.memory_settle).
+    assert events.index("candidate:settle-memory") == events.index("candidate:up") - 1
     assert "Progress:" in out.err and "Model ready:" in out.err
     assert rollout.active(controller.STATE) != previous
 
@@ -386,7 +390,8 @@ def test_installing_the_active_model_again_restarts_it_when_it_does_not_serve(ma
     assert command() == 0
     out = capsys.readouterr()
     assert json.loads(out.out)["state"] == "complete"
-    assert events[events.index("serving"):] == ["serving", "candidate:down", "candidate:up", "candidate:verify"]
+    assert events[events.index("serving"):] == ["serving", "candidate:down", "candidate:settle-memory", "candidate:up",
+                                                "candidate:verify"]
     assert "The installed model does not serve on every Spark" in out.err
 
 
@@ -536,7 +541,7 @@ def test_failed_start_recovers_previous_using_the_same_public_command(machine, m
     assert command() == 2
     result = json.loads(capsys.readouterr().out)
     assert result["transaction"]["state"] == "failed-recovered"
-    assert events[-4:] == ["candidate:down", "previous:down", "previous:up", "previous:verify"]
+    assert events[-5:] == ["candidate:down", "previous:down", "previous:settle-memory", "previous:up", "previous:verify"]
     assert rollout.active(controller.STATE) == previous
 
 
@@ -694,12 +699,30 @@ def test_tp4_command_adopts_the_discovered_mesh_without_network_changes(machine,
     lock = installer.load(result["deployment"])
     assert result["nodes"] == 4 and "native_mesh" not in lock["site_input"]
     assert [r["host_ip"] for r in lock["site"]["ranks"]] == [f"192.0.2.{110 + rank}" for rank in range(4)]
-    # The adopted mesh records no model roots; each rank's row names the cluster's checkpoint directory.
-    checkpoint = installer.checkpoint_directory("test", installer.setup.selection(profile))
+    # The adopted mesh records no model roots; each rank's row names the cluster's checkpoint directory, of the
+    # checkpoint the default image installs (the profile's preferred one where its vLLM reads it).
+    from runtime.common import image_lock
+    preferred = image_lock.preferred_checkpoint(image_lock.default(), profile)
+    checkpoint = installer.checkpoint_directory("test", installer.setup.selection(profile, preferred))
     assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(checkpoint, False)] * 4
-    # Every installer profile runs on the shared image without an explicit lock.
-    assert lock["image_runtime"] == installer.installer_image.default_lock()
+    # Every installer profile runs on the default image, on its v2 fields, without an explicit lock.
+    assert lock["image_runtime"] == image_lock.v2_view(image_lock.default())
     assert result["image_id"] == lock["image_runtime"]["image_id"] and lock["backend"] == "compose"
+
+
+def test_an_alias_installs_the_deployment_of_its_profile_id(machine, sparks, monkeypatch, capsys):
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                              "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    assert sparkring.main(["install", "--profile", "glm53-flash-tp4", "--yes", "--json"]) == 0
+    aliased = json.loads(capsys.readouterr().out)
+    from runtime.common import installer
+    assert installer.load(aliased["deployment"])["selection"]["profile"] == "glm53-flash-nvfp4-spark-tp4"
+    assert sparkring.main(["install", "--profile", "glm53-flash-nvfp4-spark-tp4", "--yes", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == aliased["deployment"]
 
 
 @pytest.mark.parametrize("checkpoint, repository", [("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4"),
@@ -754,8 +777,15 @@ def test_a_pair_installs_the_qad_checkpoint_with_its_own_kv_limit_and_refuses_nv
     surveyed = len(sparks.surveys)
     assert sparkring.main(["install", "--profile", profile, "--checkpoint", "nvidia-nvfp4", "--yes", "--json"]) == 3
     refused = json.loads(capsys.readouterr().out)
-    assert refused["field"] == "checkpoint_name" and "lists: nvfp4-qad, nvfp4-spark" in refused["message"]
+    assert refused["field"] == "checkpoint_name" and "lists: csf, nvfp4-qad, nvfp4-spark" in refused["message"]
     assert len(sparks.surveys) == surveyed
+    # 2026.10.1's vLLM cannot read the CSF checkpoint, which the pair prefers where it can.
+    assert sparkring.main(["install", "--profile", profile, "--image", "2026.10.1", "--checkpoint", "csf", "--yes",
+                           "--json"]) == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "checkpoint_name" and "(--checkpoint csf) needs an image whose vLLM is the pinned " \
+        "build sparkring-kraken-beta-20261007-bc9ea774" in refused["message"]
+    assert "records no pinned vLLM build" in refused["message"] and len(sparks.surveys) == surveyed
 
 
 def test_wrong_node_is_refused_before_transfer(tmp_path, monkeypatch):
@@ -869,7 +899,7 @@ def test_install_surveys_every_node_in_parallel_and_prints_the_plan_after_the_he
                for node in result["checkpoint"]["nodes"])
     for host in ("root@192.0.2.10", "root@192.0.2.11"):
         [options] = sparks.options(host)
-        assert options["owned"] == DIRECTORY and options["operator"] == "code"
+        assert options["owned"] == DIRECTORY and options["operator"] == "operator"
         assert options["named"] == [] and options["ignore_local"] is False and options["root"] == "/"
         assert options["cache"] == "/srv/sparkring/test/cache"
     lines = output_lines(out.err)
@@ -1512,7 +1542,9 @@ def test_a_named_image_installs_its_lock_and_the_default_name_installs_no_lock(m
 
     named = planned("--image", "statusrows")
     assert named == planned("--image-lock", str(RELEASES / STATUSROWS / "installer-image.json"))
-    assert planned("--image", installer_image.DEFAULT_LOCK.parent.name) == planned() != named
+    from runtime.common import image_lock
+    assert planned("--image", image_lock.default_row()["name"]) == planned() != named
+    assert planned("--image", "2026.10.1") == planned("--image-lock", str(installer_image.DEFAULT_LOCK)) != planned()
     # A release tag names the image that release published, here the rollback image of the default.
     rollback = RELEASES / "dev-20261001-kraken-cuda1342-nccl2323-status034" / "installer-image.json"
     assert planned("--image", "2026.10.0") == planned("--image-lock", str(rollback)) != planned()
@@ -1552,7 +1584,8 @@ def test_a_ring_rank_holding_the_parent_image_reserves_only_the_missing_layers(m
 def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sparks, capsys):
     # Node 0 already built the compile cache of this image and checkpoint and holds the image; Node 1 holds
     # neither the image nor any image it derives from.
-    target = installer_image.default_lock()
+    from runtime.common import image_lock
+    target = image_lock.v2_view(image_lock.default())
     sparks.images = lambda host, ids: ids[:1] if host.endswith(".10") else []
     sparks.caches = lambda host, paths: {path: {"files": 640, "bytes": 380 * 10 ** 6, "complete": True}
                                          if host.endswith(".10") else None for path in paths}
@@ -1568,8 +1601,8 @@ def test_a_built_compile_cache_and_a_spark_without_any_earlier_image(machine, sp
     # Node 0 keeps the relay's copy of the layers Node 1 lacks, unless its deployment directory is elsewhere.
     relay = first["storage"]["relay_bytes"]
     assert relay in (0, target["download_bytes"]) and first["required_bytes"] == relay
-    assert ("    needs 55.9 GiB free on /: 51.9 GiB for the whole image (no image it derives from is present), "
-            "4 GiB for the compile cache; 300 GiB free") in lines
+    assert (f"    needs {(whole + 4 * GIB) / GIB:.1f} GiB free on /: {whole / GIB:.1f} GiB for the whole image "
+            "(no image it derives from is present), 4 GiB for the compile cache; 300 GiB free") in lines
 
 
 def test_replanning_after_a_linked_file_changed(machine, sparks, capsys):
@@ -1741,7 +1774,7 @@ LINUX = pytest.mark.skipif(not sys.platform.startswith("linux"), reason=(
     "the end-to-end checkpoint installation needs Linux: hard links through /proc/self/fd, flock, POSIX "
     "symlinks and loopback addresses standing in for the fabric"))
 MAIN_COMMIT = "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"
-CACHE = "/home/code/.cache/huggingface"
+CACHE = "/home/operator/.cache/huggingface"
 MAIN_CACHE = CACHE + "/hub/models--local-inference-lab--Qwen3.8-Flash-Next-NVFP4"
 # Host paths that a simulated Spark keeps below its own root directory.
 HOST_PATHS = ("/srv/", "/var/lib/sparkring/", "/home/", "/var/tmp/")
@@ -1860,7 +1893,7 @@ class SimulatedSparks:
         for rank, root in enumerate(self.roots):
             for directory in ("etc", "proc/self", "root", "home/code", "srv/sparkring/test", "var/tmp"):
                 (root / directory).mkdir(parents=True, exist_ok=True)
-            (root / "etc/passwd").write_text(f"root:x:0:0::/root:/bin/bash\ncode:x:{uid}:{uid}::/home/code:/bin/bash\n")
+            (root / "etc/passwd").write_text(f"root:x:0:0::/root:/bin/bash\noperator:x:{uid}:{uid}::/home/operator:/bin/bash\n")
             (root / "proc/self/mountinfo").write_text("21 1 259:2 / / rw,relatime shared:1 - ext4 /dev/nvme0n1p2 rw\n")
             state = base / "docker" / self.NAMES[rank]
             state.mkdir(parents=True)
@@ -2127,7 +2160,7 @@ def test_node_a_links_a_main_cache_downloads_config_once_and_streams_to_an_empty
     # The plan links the shards from the cache, copies the other files it holds,
     # and downloads only config.json, whose pinned blob the cache lacks.
     assert "Node 0 spark-10 -> " + DIRECTORY in lines and "    from " + MAIN_CACHE in lines
-    assert any(line.startswith("        Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in code's home "
+    assert any(line.startswith("        Hugging Face cache, snapshot 7c4f1bc1a2d6 (branch main), in operator's home "
                                "(the operator's)") for line in lines)
     assert "        52 of 53 files identified by their blob names; config.json differs from the pinned revision" in lines
     assert any(line.startswith("    hard-link 41 weight files (no copy, no extra space); copy 11 other files (")
@@ -2382,10 +2415,11 @@ def test_first_installation_approval_lists_the_hairpin_scope(machine, monkeypatc
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "approval"
     scope = result["details"]["scope"]
-    assert "  - on a four-Spark ring: apply the ConnectX hairpin setting that four-Spark" in scope
+    assert "    more): apply the ConnectX hairpin setting that relayed forwarding needs (a" in scope
+    assert "  - on a fabric that relays: install the relay table, so Sparks two or more" in scope
     # Terminal mode prints the same lines under the message.
     assert sparkring.main(["install", "--profile", PROFILE]) == 3
-    assert "    about 8 seconds, about 30 seconds per Spark and about 3 minutes for the" in capsys.readouterr().err
+    assert "    link is down for about 8 seconds, about 30 seconds per Spark and about 3" in capsys.readouterr().err
 
 
 # End to end: sparkring install applies the ConnectX hairpin setting on a
@@ -2578,6 +2612,8 @@ class SimulatedRing:
         monkeypatch.setattr(hairpin_ring, "DISPATCH_RETRY", 0)
         monkeypatch.setattr(controller, "collect", self.collect)
         monkeypatch.setattr(flow.discovery, "ssh", self.administration)
+        # Setup's last step reaches every Spark, Node A included, through fabric.Access.
+        monkeypatch.setattr(fabric, "Access", lambda plan, **options: RingFabricAccess(self))
         # Status documents report the same package revision as the inspect documents.
         monkeypatch.setattr(distribution, "installed", lambda root, verify=True: {"revision": "a" * 40})
 
@@ -2608,6 +2644,29 @@ class SimulatedRing:
 
     def changes(self):
         return [spark.changes() for spark in self.sparks]
+
+
+class RingFabricAccess:
+    """``fabric.Access`` on the simulated ring: the node side of setup's fabric verification and document step.
+
+    ``fabric-document`` runs the real ``fabric.install_document`` on the
+    Spark's file tree. ``fabric-check`` answers that the Spark's links,
+    addresses and record match, because the simulated Sparks have no routing
+    or traffic-control tables; ``test_fabric`` checks those rows.
+    """
+
+    def __init__(self, ring):
+        self.ring = ring
+
+    def node(self, rank, argv, *, data=None):
+        spark = self.ring.sparks[rank]
+        if argv == ["fabric-document"]:
+            return json.dumps(fabric.install_document(data, root=spark.root))
+        if argv == ["fabric-check"]:
+            fabric_document.validate(json.loads(data))
+            return json.dumps({"schema": fabric.CHECK_SCHEMA, "position": rank,
+                               "rows": [{"kind": "record", "what": "/etc/sparkring/fabric.json", "state": "ok"}]})
+        raise AssertionError(f"unexpected fabric command on rank {rank}: {argv}")
 
 
 def enrolled_ring(ring, monkeypatch):
@@ -2702,6 +2761,11 @@ def test_install_applies_the_hairpin_setting_to_a_ring_at_1024_and_repeats_as_a_
         assert all(current["hairpin"]["in_effect"] and current["hairpin"]["armed"] for current in record["plan"]["nodes"])
         [setup] = controller.STATE.glob("setups/*/setup.json")
         assert {"hairpin": "complete"} in json.loads(setup.read_text())["steps"]
+        # Setup ends by recording one fabric document on Node A and the same bytes on every Spark.
+        recorded = (controller.STATE / "fabric.json").read_text(encoding="utf-8")
+        assert json.loads(recorded)["verified"]["result"] == "healthy"
+        assert all(node.location(spark.root, fabric_document.HOST_PATH).read_text(encoding="utf-8") == recorded
+                   for spark in ring.sparks)
 
     # A second installation finds every Spark kept and changes no ConnectX function.
     changes, events = ring.changes(), list(ring.events)
@@ -2858,3 +2922,21 @@ def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported
     result = json.loads(out.out)
     assert (result["recovery"], result["auto_recover"]) == (expected, False)
     assert "  Recovery:    " + line in out.err
+
+
+def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatch):
+    """The catalog's checks run on rank 0's rendered container (catalog_warnings), so a configuration the
+    catalog names as slow is printed before the installation starts."""
+    from runtime.common.container_spec import ContainerSpec
+    rendered = {"command": ("serve", "/models/target", "--quantization-config", '{"linear":"mxfp8"}')}
+
+    def specifications(lock, *, only_rank=None, **kwargs):
+        return [ContainerSpec(name="rank0", image_id="sha256:" + "a" * 64, entrypoint=("vllm",),
+                              command=rendered["command"], environment={"VLLM_PLUGINS": "b12x_loader"}, mounts=())]
+    monkeypatch.setattr(installer, "specifications", specifications)
+    lock = {"backend": "compose"}
+    warnings = flow.catalog_warnings(lock)
+    assert len(warnings) == 1 and warnings[0].startswith("linear-backend-explicit: MXFP8 or NVFP4 dense linears")
+    rendered["command"] += ("--linear-backend", "b12x")
+    assert flow.catalog_warnings(lock) == []
+    assert flow.catalog_warnings({"backend": "glm-mesh"}) == [] and flow.catalog_warnings(None) == []

@@ -13,13 +13,14 @@ import re
 import uuid
 import zipfile
 
-from runtime.common import (compose, derived_checkpoint, distribution, installer_image, process_lock, profiles, serving,
-                            setup, tp2)
+from runtime.common import (compose, derived_checkpoint, distribution, fabric_layout, installer_image, process_lock,
+                            profiles, serving, setup, tp2)
 from scripts import deploy_engine
 
 ROOT = profiles.ROOT
-# Profiles offered by `sparkring install`, `sparkring models` and `init --model`.
-# Every one runs on the shared image selected by installer_image.DEFAULT_LOCK.
+# Profiles offered by `sparkring install`, `sparkring models` and `init --model`. Those of
+# installer_image.SUPPORTED run on the shared image selected by installer_image.DEFAULT_LOCK;
+# those of installer_image.SIRCL_ONLY run only on an image whose lock (v3) carries SIRCL.
 DEFAULTS = {
     ("glm53", 2): "glm53-flash-nvfp4-spark-tp2",
     ("glm53", 4): "glm53-flash-nvfp4-spark-tp4",
@@ -28,7 +29,7 @@ DEFAULTS = {
     ("qwen38", 2): "qwen38-flash-next-tp2",
     ("qwen38", 4): "qwen38-flash-next-qad-tp4",
 }
-INSTALLABLE = frozenset(installer_image.SUPPORTED)
+INSTALLABLE = frozenset((*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY))
 # Profiles on their published per-release images. Saved deployments of these
 # still validate and roll back, but new installations use INSTALLABLE only.
 GLM_LEGACY = {2: "glm53-flash-spark-tp2-dcp1-sparkcache", 4: "glm53-flash-spark-tp4-dcp1-sparkcache"}
@@ -200,20 +201,31 @@ def managed_workspace(name):
     return "/srv/sparkring/" + name + "-managed"
 
 
-# The ring halves a two-rank deployment may occupy on a four-Spark ring (runtime/host/placement.py).
+# The ring halves a two-rank deployment on the prepared transport may occupy on a four-Spark ring
+# (runtime/host/placement.py).
 HALVES = ((0, 1), (2, 3))
 # The RDMA devices of a pair's rank: the primary and secondary functions of ConnectX port 0.
 PAIR_HCAS = ["rocep1s0f0", "roceP2p1s0f0"]
+# The RDMA devices of a larger group's rank: port 0's then port 1's primary, then the secondaries.
+RING_HCAS = ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"]
 
 
-def site_document(raw, card, revision):
+def site_document(raw, card, revision, *, transport=None):
     """The normalized site of a deployment lock from its raw site input.
 
-    ``placement``, on a two-rank card only, names the half of a four-Spark
-    ring (``[0, 1]`` or ``[2, 3]``) whose two Sparks the rows list in rank
-    order. A row's ``hcas``, on a two-rank card only, names the rank's
-    primary and secondary RDMA devices facing its partner; a row without
-    ``hcas`` uses port 0's functions (``PAIR_HCAS``), as on a pair.
+    ``placement`` names the arc of the fabric whose Sparks the rows list in
+    rank order (``runtime/host/placement.py``): one position per rank,
+    distinct. On the prepared transport it names a half of a four-Spark ring
+    (``[0, 1]`` or ``[2, 3]``) for a two-Spark profile; a SIRCL deployment
+    (``transport``, the lock's ``transport`` section) may name any arc, which
+    ``make_lock`` checks against the section's group. A row's ``hcas``, on a
+    two-rank card only, names the rank's primary and secondary RDMA devices
+    facing its partner; a row without ``hcas`` uses port 0's functions
+    (``PAIR_HCAS``), as on a pair. A row's ``fabric`` refers to the rank's mesh
+    or relay table; a rank with one may bootstrap over its management
+    address. A SIRCL rank with ``fabric`` may list its cabled functions as
+    ``hcas``, as a Spark at the end of a line has only one port cabled;
+    otherwise a larger group's rank uses all four (``RING_HCAS``).
     """
     if not isinstance(raw, dict) or set(raw) - {"schema", "name", "workspace", "hosts", "controller_address",
                                                 "api_address", "native_mesh", "placement"}:
@@ -233,11 +245,14 @@ def site_document(raw, card, revision):
     cache_default = managed_workspace(name) + "/cache" if backend(card) == "glm-managed" else workspace + "/cache"
     if "placement" in raw:
         placement = raw["placement"]
-        if card["nodes"] != 2 or not (isinstance(placement, list) and len(placement) == 2
-                                      and all(type(item) is int for item in placement)
-                                      and tuple(placement) in HALVES):
+        listed = (isinstance(placement, list) and len(placement) == card["nodes"]
+                  and all(type(item) is int and 0 <= item < fabric_layout.MAX_SPARKS for item in placement)
+                  and len(set(placement)) == len(placement))
+        if transport is None and (card["nodes"] != 2 or not listed or tuple(placement) not in HALVES):
             raise ValueError("A placement names one half of a four-Spark ring, [0, 1] or [2, 3], for a two-Spark "
-                             "profile")
+                             "profile on the prepared transport; other placements need SIRCL ring sessions")
+        if not listed:
+            raise ValueError(f"A placement lists one distinct fabric position per rank: {card['nodes']} positions")
     for number, row in enumerate(rows):
         allowed = {"host", "management_ip", "fabric_ip", "interface", "model", "cache", "reuse_verified_model",
                    "fabric", "node_id", "hcas"}
@@ -249,18 +264,19 @@ def site_document(raw, card, revision):
         reuse = row.get("reuse_verified_model", False)
         if type(reuse) is not bool:
             raise ValueError("reuse_verified_model must be a boolean operator declaration")
-        hcas = row.get("hcas", PAIR_HCAS)
-        if "hcas" in row and (card["nodes"] != 2 or not isinstance(hcas, list) or len(hcas) != 2
-                              or len(set(hcas)) != 2
-                              or not all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
-                                         for hca in hcas)):
+        relayed = transport is not None and card["nodes"] != 2 and "fabric" in row
+        hcas = row.get("hcas", PAIR_HCAS if card["nodes"] == 2 else RING_HCAS)
+        named = isinstance(hcas, list) and all(isinstance(hca, str) and re.fullmatch(r"[A-Za-z0-9_]{1,64}", hca)
+                                               for hca in hcas) and len(set(hcas)) == len(hcas)
+        if "hcas" in row and relayed and not (named and 1 <= len(hcas) <= 4):
+            raise ValueError("A SIRCL rank's hcas name its distinct cabled RDMA devices, at most four")
+        if "hcas" in row and not relayed and (card["nodes"] != 2 or not named or len(hcas) != 2):
             raise ValueError("A two-Spark rank's hcas name its two distinct RDMA devices that face its partner")
         item = {
             "rank": number, "host": host(row["host"]),
             "management_ip": address(row["management_ip"]), "host_ip": address(row["fabric_ip"]),
             "interface": interface, "gid": 3,
-            "hcas": list(hcas) if card["nodes"] == 2 else
-                    ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"],
+            "hcas": list(hcas) if card["nodes"] == 2 or relayed else list(RING_HCAS),
             "model": str(compose.linux_path(row.get("model", workspace + "/models/" + card["model_revision"]))),
             "cache": str(compose.linux_path(row.get("cache", cache_default))),
             "repository": workspace + "/source-" + revision[:12],
@@ -272,7 +288,7 @@ def site_document(raw, card, revision):
             item["node_id"] = str(uuid.UUID(row["node_id"]))
         if backend(card) == "glm-managed" and item["cache"] != cache_default:
             raise ValueError("Managed GLM cache must remain under its dedicated backend workspace")
-        if item["host_ip"] == item["management_ip"] and not (card["nodes"] == 4 and "fabric" in row):
+        if item["host_ip"] == item["management_ip"] and not (card["nodes"] != 2 and "fabric" in row):
             raise ValueError("Management and data fabric addresses must be distinct")
         paths = [PurePosixPath(item[key]) for key in ("model", "cache", "repository", "deployment_root")]
         for i, path in enumerate(paths):
@@ -284,6 +300,9 @@ def site_document(raw, card, revision):
             item["fabric"] = row["fabric"]
         if card["profile"] in compose.TP4_PROFILES and "fabric" not in item:
             raise ValueError("This four-Spark profile needs the prepared mesh fabric reference in each host; import the existing site")
+        if card["profile"] in compose.FABRIC_PROFILES and "fabric" not in item:
+            raise ValueError("This profile's ranks reach each other through relays; each host needs the fabric "
+                             "document reference of the relay table (runtime/host/relays.py group_reference)")
         ranks.append(item)
     for field in ("host", "management_ip", "host_ip"):
         if len({r[field] for r in ranks}) != len(ranks):
@@ -309,7 +328,15 @@ def backend(card):
     return "glm-managed" if card["profile"] in (GLM_LEGACY[4], GLM_NO_CACHE[4]) else "compose"
 
 
-def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None):
+def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image_runtime=None, settings=None,
+              transport=None):
+    """The deployment lock of one request.
+
+    ``transport`` is the ``transport`` section of a deployment on SIRCL ring
+    sessions (``runtime/common/transport.py``, ``section``); a lock without
+    one runs on the prepared transport of its image, as every lock made
+    before the section existed does.
+    """
     if profile not in SUPPORTED:
         raise ValueError(f"The installer does not deploy {profile}; 'sparkring models' marks the profiles it installs, "
                          "and other profiles use their own guides")
@@ -319,7 +346,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
     if image_runtime is not None:
         from runtime.common import installer_image
         card = installer_image.selection(card, image_runtime)
-    site = site_document(raw_site, card, revision)
+    site = site_document(raw_site, card, revision, transport=transport)
     selected_backend = backend(card)
     if selected_backend == "glm-managed" and all("fabric" in row for row in site["ranks"]):
         selected_backend = "glm-existing-mesh"
@@ -333,6 +360,20 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         value["image_runtime"] = image_runtime
     if settings:
         value["serving"] = settings
+    if transport is not None:
+        from runtime.common import transport as transports
+        if selected_backend != "compose":
+            raise ValueError("SIRCL ring sessions run Compose deployments; this profile's backend is " + selected_backend)
+        validate = (transports.validate_nccl_section if transport.get("backend") == "nccl"
+                    else transports.validate_section)
+        value["transport"] = validate(transport, card, image_runtime)
+        positions = site.get("placement") or list(range(card["nodes"]))
+        if transport["group"]["positions"] != positions:
+            raise ValueError(f"The transport group runs on positions {transport['group']['positions']}; the site "
+                             f"lists positions {positions}")
+    elif card["profile"] in compose.FABRIC_PROFILES:
+        raise ValueError(f"{card['profile']} runs only on SIRCL ring sessions; its deployment needs a transport "
+                         "section")
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -340,7 +381,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
 def validate(lock):
     expected = make_lock(lock["selection"]["profile"], lock["site_input"], lock["source_revision"],
                          lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=lock.get("image_runtime"),
-                         settings=lock.get("serving"))
+                         settings=lock.get("serving"), transport=lock.get("transport"))
     if expected != lock:
         raise ValueError("Deployment lock or its profile/release inputs changed; initialize a new deployment")
     return lock
@@ -354,13 +395,17 @@ def load(directory):
     return lock
 
 
-def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None):
+def init(directory, profile, raw_site, *, variant=None, image_runtime=None, settings=None, transport=None):
     directory = Path(directory).resolve()
     if directory.exists():
         raise ValueError("Deployment directory already exists; use up/status or choose a new directory")
     # Validate user inputs before creating artifacts.
     revision = distribution.identity(ROOT)
-    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings)
+    provisional = make_lock(profile, raw_site, revision, "0" * 64, variant, image_runtime=image_runtime, settings=settings,
+                            transport=transport)
+    if transport is not None:
+        # Renders every rank with SIRCL, which refuses a profile setting its sessions cannot carry.
+        specifications(provisional)
     if settings:
         # Refuses a switch that the deployment's image cannot apply, and a
         # setting whose vLLM flag the profile does not set. A recorded
@@ -374,7 +419,7 @@ def init(directory, profile, raw_site, *, variant=None, image_runtime=None, sett
     bundle = directory / "source.bundle"
     distribution.bundle(ROOT, bundle)
     lock = make_lock(profile, raw_site, revision, hashlib.sha256(bundle.read_bytes()).hexdigest(), variant,
-                     image_runtime=image_runtime, settings=settings)
+                     image_runtime=image_runtime, settings=settings, transport=transport)
     write(directory / "site.json", raw_site)
     write(directory / "deployment.lock.json", lock)
     if lock["backend"] == "compose":
@@ -399,6 +444,10 @@ def compose_site(lock):
              for row in lock["site"]["ranks"]]
     for rank, row in zip(ranks, lock["site"]["ranks"], strict=True):
         rank["model"] = served_model(lock, row)
+        if "transport" in lock and "fabric" in row:
+            # SIRCL names each rank's devices (the transport section's devices); the container's
+            # prepared-transport device variables keep the four functions of a fully cabled Spark.
+            rank["hcas"] = list(RING_HCAS)
     return {"schema": "sparkring-compose-site/v1", "name": lock["site"]["name"],
             "master": ranks[0]["host_ip"], "ranks": ranks}
 
@@ -407,13 +456,17 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     card, site = lock["selection"], lock["site"]
     if lock["backend"] != "compose":
         raise ValueError("Managed GLM Compose files are produced by its existing staging lifecycle")
-    if card["profile"] in compose.SUPPORTED:
+    rendered_by_compose = card["profile"] in compose.SUPPORTED or card["profile"] in compose.FABRIC_PROFILES
+    if rendered_by_compose:
         specs, _ = compose.specifications(card["profile"], compose_site(lock), checkpoint=card["target_variant"])
         if "image_runtime" in lock:
             from runtime.common import installer_image
             specs = [installer_image.adapt(spec, lock["image_runtime"], binding=installer_image.binding_path(lock, row),
                                            source_root=row["repository"], profile=card["profile"])
                      for spec, row in zip(specs, site["ranks"], strict=True)]
+        if "transport" in lock:
+            from runtime.common import transport
+            specs = transport.adapt(specs, lock)
     else:
         specs = []
         for row in site["ranks"]:
@@ -432,7 +485,7 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
                               site_values={"VLLM_HOST_IP": row["host_ip"], "NCCL_SOCKET_IFNAME": row["interface"],
                                            "GLOO_SOCKET_IFNAME": row["interface"]}, **options)
             specs.append(tp2.container_spec(plan))
-    if only_rank is not None and card["profile"] in compose.SUPPORTED:
+    if only_rank is not None and rendered_by_compose:
         specs = [specs[only_rank]]
     settings = lock.get("serving") or {}
     ranks = [only_rank] if only_rank is not None else range(len(specs))
@@ -559,9 +612,13 @@ def operation_plan(lock, action):
                            phase("mesh-up", ranks, "mutates-host", "mesh-up-check"),
                            phase("mesh-gate", ranks), phase("preflight", ranks)]
             else:
-                if len(ranks) == 4 and lock["backend"] != "glm-existing-mesh":
+                relayed = all("fabric" in row for row in lock["site"]["ranks"]) and "transport" in lock
+                if (len(ranks) == 4 or relayed) and lock["backend"] != "glm-existing-mesh":
                     # A reused mesh is started, repaired and awaited on all
-                    # four ranks before the read-only ring check.
+                    # four ranks before the read-only ring check; a SIRCL
+                    # group whose ranks reach each other through relays checks
+                    # and restores the fabric's relay table on every rank
+                    # (native_mesh.group_operation).
                     phases += [phase("ring-stop", ranks, "mutates-host", "ring-stopped"),
                                phase("ring-serve", ranks, "mutates-host", "ring-check")]
                 elif len(ranks) == 2:
@@ -733,7 +790,7 @@ def export(directory, output, *, share=False):
         settings = lock.get("serving") or {}
         portable = make_lock(lock["selection"]["profile"], example, lock["source_revision"],
                              lock["bundle_sha256"], lock["selection"]["target_variant"], image_runtime=runtime,
-                             settings=settings)
+                             settings=settings, transport=lock.get("transport"))
         flags = "".join(" " + serving.label(name, value) for name, value in sorted(settings.items()))
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])

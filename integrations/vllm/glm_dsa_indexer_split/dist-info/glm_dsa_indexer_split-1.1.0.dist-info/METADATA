@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: glm-dsa-indexer-split
+Version: 1.1.0
+Summary: vLLM general plugin that splits the GLM-5.3 DSA indexer prefill rows of image 816c6d6a7e96 over the KV-shard copies of the tensor-parallel group: each decode context parallel group scores and merges its block of a step's prefill rows, and one all-gather over the tensor-parallel group fills the top-k buffer for every row on every rank
+Requires-Python: >=3.12

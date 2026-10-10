@@ -6,7 +6,8 @@
       "added_by": {
         "dev-20260930-spinwait-cuda1342-nccl2323-status033": "runtime/images/derive_spin_wait.py",
         "dev-20261001-kraken-cuda1342-nccl2323-status034": "runtime/images/compositions/external-kraken-20261001/README.md",
-        "dev-20261004-kraken-cuda1342-nccl2323-status034": "runtime/images/compositions/external-kraken-20261004/README.md"
+        "dev-20261004-kraken-cuda1342-nccl2323-status034": "runtime/images/compositions/external-kraken-20261004/README.md",
+        "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034": "runtime/images/compositions/kraken-csf-sources-20261007/README.md"
       }
     }
   }

@@ -475,7 +475,7 @@ def test_package_installs_the_mesh_check_generator_executable(tmp_path, monkeypa
 
     monkeypatch.setattr(build_deb.distribution, "identity", lambda root: "a" * 40)
     monkeypatch.setattr(build_deb, "subprocess", SimpleNamespace(run=run, check_output=lambda *a, **k: "1790000000\n"))
-    build_deb.build(tmp_path, tmp_path / "dist", version="1.0")
+    build_deb.build(tmp_path, tmp_path / "dist", version="1.0", marker="skip")
     mode, content = placed["usr/lib/systemd/system-generators/sparkring-hairpin-mesh-check"]
     assert mode == 0o755
     assert content == (PACKAGING / "sparkring-hairpin-mesh-check").read_bytes()
@@ -622,7 +622,7 @@ def test_a_deployment_from_an_earlier_package_is_planned_and_run_by_its_own_sour
     for name in ("load", "apply", "status"):
         monkeypatch.setattr(installer, name, lambda *a, **k: (_ for _ in ()).throw(changed))
     monkeypatch.setattr(installer_image, "for_profile", lambda profile, explicit=None: explicit or {"name": "newer-image"})
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     active = _deployment(tmp_path, UP_PROFILE, image="older-image")
     installer.write(tmp_path / "active.json", {"path": str(active)})
     assert controller.lifecycle(["down", "--execute"]) == 0
@@ -736,7 +736,7 @@ def test_down_of_a_named_deployment_keeps_an_installation_that_completed_meanwhi
 def test_up_or_down_of_the_active_deployment_refuses_when_an_installation_replaced_it(
         operation, tmp_path, lifecycle_calls, monkeypatch):
     from runtime.common import installer
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     active = _deployment(tmp_path, UP_PROFILE)
     installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
     installer.write(tmp_path / "active.json", {"path": str(active)})
@@ -752,7 +752,7 @@ def test_up_of_a_named_deployment_refuses_while_an_installation_that_completed_m
         tmp_path, lifecycle_calls, monkeypatch):
     from runtime.common import installer
     from runtime.host import retained_source
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     _deployment(tmp_path, UP_PROFILE + "-candidate")
     installed = _deployment(tmp_path, UP_PROFILE + "-i1234")
 
@@ -766,3 +766,52 @@ def test_up_of_a_named_deployment_refuses_while_an_installation_that_completed_m
         controller.lifecycle(["up", UP_PROFILE, "--instance", "candidate", "--execute"])
     assert (UP_PROFILE + "-candidate", "up") not in lifecycle_calls
     assert installer.read(tmp_path / "active.json")["path"] == str(installed)
+
+
+def test_the_workspace_accepts_a_root_owned_controller_directory(tmp_path, monkeypatch):
+    """A setup whose operator was root left the controller state root-owned; another operator's is refused."""
+    from types import SimpleNamespace
+    from runtime.host import node
+    controller = tmp_path / "var/lib/sparkring/controller"
+    controller.mkdir(parents=True)
+    owner = controller.stat().st_uid
+    real = Path.stat
+
+    def stat(self, *args, **kwargs):
+        found = real(self, *args, **kwargs)
+        return SimpleNamespace(st_uid=0, st_mode=found.st_mode) if self == controller else found
+    monkeypatch.setattr(Path, "stat", stat)
+    monkeypatch.setattr(node.os, "chown", lambda *args: None, raising=False)
+    account = SimpleNamespace(pw_uid=owner + 4242, pw_gid=0)
+    with pytest.raises(ValueError, match="another operator"):
+        # The cluster workspace exists and belongs to another account.
+        (tmp_path / "srv/sparkring/ring8").mkdir(parents=True)
+        node.workspace("operator", "ring8", root=tmp_path, account=account)
+    (tmp_path / "srv/sparkring/ring8").rmdir()
+    assert node.workspace("operator", "ring8", root=tmp_path, account=account)["controller"] == str(controller)
+
+
+def test_a_reform_as_root_accepts_the_workspace_another_account_set_up(tmp_path, monkeypatch):
+    """Sparks recabled into a ring they formed before: the re-form signs in as root and finds that ring's
+    workspace, with its checkpoints, owned by the account that set it up. Root takes it as it is; another
+    operator is still refused."""
+    from types import SimpleNamespace
+    from runtime.host import node
+    workspace = tmp_path / "srv/sparkring/ring8"
+    (workspace / "checkpoints").mkdir(parents=True)
+    real = Path.stat
+
+    def stat(self, *args, **kwargs):
+        found = real(self, *args, **kwargs)
+        # The earlier setup's account (uid 1001) owns the workspace; the controller state belongs to root.
+        return SimpleNamespace(st_uid=1001 if self == workspace else 0, st_mode=found.st_mode)
+    monkeypatch.setattr(Path, "stat", stat)
+    chowned = []
+    monkeypatch.setattr(node.os, "chown", lambda path, uid, gid: chowned.append(Path(path)), raising=False)
+    root = SimpleNamespace(pw_uid=0, pw_gid=0)
+    assert node.workspace("root", "ring8", root=tmp_path, account=root)["workspace"] == str(workspace)
+    # Only the controller directory, which did not exist, was created and given to root; the workspace kept
+    # its owner and its contents.
+    assert chowned == [tmp_path / "var/lib/sparkring/controller"] and (workspace / "checkpoints").is_dir()
+    with pytest.raises(ValueError, match="belongs to another operator: .*ring8"):
+        node.workspace("operator", "ring8", root=tmp_path, account=SimpleNamespace(pw_uid=1002, pw_gid=1002))

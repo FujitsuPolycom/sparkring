@@ -40,7 +40,7 @@ from types import SimpleNamespace
 import urllib.request
 
 from runtime.common import (compose, derived_checkpoint, glm_native_candidate, installer, native_candidate, ports,
-                            profiles, qwen_flash_next, setup)
+                            profiles, toolchain_profiles, setup)
 from runtime.common.container_spec import expected_inspection
 from runtime.host import checkpoint_place as place
 from scripts import deploy_engine
@@ -193,6 +193,11 @@ def admit_image(lock):
             # Qwen admission depends on the profile's HC mode and feature selection.
             "recipe": repr(installer_image.qwen_recipe(installer_image.profile_environment(card["profile"])))
             if card["profile"] in installer_image.QWEN4_EXP else None,
+            # A SIRCL deployment also admits the image's SIRCL layer (transport.admit_layer).
+            "sircl": (lock.get("transport") or {}).get("sircl"),
+            # A libsircl deployment admits the image's libsircl layer instead; the key has the field only then.
+            **({"libsircl": lock["transport"]["libsircl"]} if (lock.get("transport") or {}).get("backend")
+               == "libsircl" else {}),
         }, sort_keys=True).encode()).hexdigest()
         record = ADMISSIONS / (key + ".json")
         if record.is_file() and not record.is_symlink():
@@ -201,6 +206,11 @@ def admit_image(lock):
                 return saved["receipt"]
         receipt = installer_image.admit(lock["image_runtime"], run=run, profile=card["profile"], nodes=card["nodes"])
         loader_policy.check(card["image_id"], run=run)
+        from runtime.common import transport
+        if transport.session_backend(lock):
+            # transport.admit_layer admits the SIRCL layer, or the libsircl layer of a libsircl deployment.
+            layer = "libsircl" if lock["transport"].get("backend") == "libsircl" else "sircl"
+            receipt = {**receipt, layer: transport.admit_layer(lock, run=run)}
         try:
             ADMISSIONS.mkdir(parents=True, exist_ok=True, mode=0o700)
             deploy_engine.save_receipt(record, {"image_id": current, "receipt": receipt})
@@ -1987,21 +1997,27 @@ def perform(operation, lock, number):
     model_receipt = state / "model.json"
     if operation in MODEL_OPERATIONS:
         return model_operation(operation, lock, number, row, state)
+    from runtime.common import transport
+    if (operation in ("ring-stop", "ring-stopped", "ring-serve", "ring-check") and transport.session_backend(lock)
+            and "fabric" in row):
+        # A SIRCL or libsircl group's ranks check the fabric's relay table at their own fabric positions.
+        from runtime.host import native_mesh
+        return native_mesh.group_operation(operation, lock, number)
     if operation in ("ring-stop", "ring-stopped", "ring-serve"):
         from runtime.host import native_mesh
         step = {"ring-stop": native_mesh.stop_ring, "ring-stopped": native_mesh.ring_stopped,
                 "ring-serve": native_mesh.serve_ring}[operation]
         return step(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
     if operation == "ring-check":
-        from runtime.common import qwen_mesh
-        qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+        from runtime.host import native_mesh
+        native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
         return {"ok": True}
     if operation in ("gid-serve", "gid-check"):
         from runtime.host import roce_gid
         return (roce_gid.serve if operation == "gid-serve" else roce_gid.check)(row["hcas"], row["gid"])
     if operation in ("ring-park", "ring-parked"):
         if not lock["site"].get("placement"):
-            raise ValueError("Only a deployment on half of a four-Spark ring parks the ring's mesh")
+            raise ValueError("Only a deployment on part of the fabric parks a four-Spark ring's mesh")
         from runtime.host import native_mesh
         return native_mesh.park_local() if operation == "ring-park" else native_mesh.parked_local()
     if operation.startswith("mesh-"):
@@ -2064,6 +2080,10 @@ def perform(operation, lock, number):
             owned(spec, info, image)
         if operation == "status":
             return model_observation(lock, row, info)
+        if operation == "transport-receipts":
+            # Read-only: this rank's SIRCL receipts and what its model log says about NCCL.
+            from runtime.host import transport_receipts
+            return transport_receipts.host_report(lock, number, info)
         if operation == "owned":
             if info:
                 owned(spec, info, image)
@@ -2100,6 +2120,10 @@ def perform(operation, lock, number):
                     "Config": {"Env": info["Config"].get("Env", [])}}
         if operation in ("preflight", "create", "start"):
             receipt = admit_image(lock)
+            if "transport" in lock:
+                # SIRCL reads this Spark's fabric document; it must describe the deployment's fabric.
+                from runtime.common import transport
+                transport.check_host_document(lock["transport"])
             verify_model(lock, row, model_receipt, refresh=True)
             served = row["model"]
             views = _derived(lock, row, state)
@@ -2114,11 +2138,14 @@ def perform(operation, lock, number):
             else:
                 metadata, _ = profiles.load(card["profile"])
                 profile = profiles.read_json(profiles.local_path(metadata["configuration"]["path"]))
-                profile = qwen_flash_next.checkpoint_settings(profile, card.get("target_variant"))
-                qwen_flash_next.verify_model_paths(profile, Path(served), Path(row["cache"]))
-            if card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
-                from runtime.common import qwen_mesh
-                qwen_mesh.check(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+                profile = toolchain_profiles.checkpoint_settings(profile, card.get("target_variant"))
+                toolchain_profiles.verify_model_paths(profile, Path(served), Path(row["cache"]))
+            if transport.session_backend(lock) and "fabric" in row:
+                from runtime.host import native_mesh
+                native_mesh.group_operation("ring-check", lock, number)
+            elif card["nodes"] == 4 and not (operation == "create" and "native_mesh" in lock["site_input"]):
+                from runtime.host import native_mesh
+                native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
             if not (info and info["State"].get("Running")):
                 require_idle()
                 if number == 0 and operation == "preflight" and {"api_port", "api_bind"} & set(lock.get("serving") or {}):
@@ -2143,6 +2170,9 @@ def perform(operation, lock, number):
                         binding = local_binding_path(lock, row)
                         if read_runtime_binding(binding) is None:
                             installer.write(binding, {})
+                    if transport.session_backend(lock):
+                        # The container's receipt directory; a bind mount needs its source to exist.
+                        plain(Path(transport.receipt_directory(lock))).mkdir(parents=True, exist_ok=True)
                     run(compose.compose_command(spec.name, path) + ["create", "--no-build", "--no-recreate", "--pull", "never", "model"])
                 if "image_runtime" in lock:
                     created = owned(spec, container(spec), image)

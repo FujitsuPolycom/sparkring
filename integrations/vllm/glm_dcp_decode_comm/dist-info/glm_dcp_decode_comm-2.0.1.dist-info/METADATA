@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: glm-dcp-decode-comm
+Version: 2.0.1
+Summary: vLLM general plugin that makes the GLM-5.3 DSA decode collectives of decode context parallelism cheaper on a SIRCL DCP session of image 816c6d6a7e96, with exact results: the query built by one kernel and gathered into the attention workspace, the DCP collectives on their own stream, the indexer wk GEMM beside the latent projection, one top-k slot conversion per indexer layer and the all-to-all combine packed into the scatter op; each item off until its GLM_DCP_DECODE_* flag is 1
+Requires-Python: >=3.12

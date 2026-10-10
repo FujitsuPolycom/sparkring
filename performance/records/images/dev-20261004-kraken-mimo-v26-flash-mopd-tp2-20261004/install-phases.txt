@@ -9,17 +9,17 @@ Done: Node 2: inspect hardware, links and software (4.5s)
 Done: Node 0: inspect hardware, links and software (4.7s)
 Done: Node 3: inspect hardware, links and software (5.0s)
 Looking for existing copies of XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
-Install mimo-v26-flash-mopd-tp2 on Sparks 0 and 1 (spark-edfd, spark-ebb8). The checkpoint plan and the model steps call them Node 0 and Node 1.
+Install mimo-v26-flash-mopd-tp2 on Sparks 0 and 1 (spark-h, spark-f). The checkpoint plan and the model steps call them Node 0 and Node 1.
 It stops glm53-flash-nvfp4-spark-tp4 on all four Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e: 150 files, 165.6 GiB
-Searched spark-edfd in 16.4 s and spark-ebb8 in 12.4 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 16.4 s and spark-f in 12.4 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
     150 of 150 files already in place
     needs 4.0 GiB free on /: 4 GiB for the compile cache; 16 GiB free
     not used: /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e/dflash (another checkpoint: its index differs)
-Node 1 spark-ebb8: as Node 0 (271 GiB free)
+Node 1 spark-f: as Node 0 (271 GiB free)
 
 Nothing is downloaded.
 Refresh the package index on Node A

@@ -1,0 +1,85 @@
+# SIRCL vLLM adapter: limitations and ring checks
+
+The adapter's status is in the package's status table,
+[Component status](../../STATUS.md#component-status); serving through the
+adapter is research-only. Design: [`README.md`](README.md). Collectives vLLM
+issues: [`SURVEY.md`](SURVEY.md). Serving procedure: [`RUNBOOK.md`](RUNBOOK.md).
+
+## Limitations
+
+- **Pinned shims.** A shim installs only where the vLLM files it wraps match a
+  pinned build (`python -m sparkring_sircl.vllm.serve shims`). A group that
+  needs an unmatched shim fails setup on every rank; prefill row ownership
+  then serves with `--mhc-prefill-shard off` or `--env
+  VLLM_QWEN3_8_HC_PREFILL_MODE=off`. Without the `worker_regimes` shim,
+  sessions keep the startup flag-wait limit while serving.
+- **Calls outside the communicator.** Where NCCL may not run, a direct
+  `torch.distributed` call runs only in the forms the tripwire's carrier
+  supports and only on a group with a session; any other stops every rank
+  with `NcclAcrossRelayError`, naming the group, the operation and the
+  remedies. Models and recipes other than the catalog profiles that plan may
+  issue such calls.
+- **Refused settings.** Micro-batching on every group; where NCCL may not
+  run, the `fuse_gemm_comms` and `fuse_allreduce_rms` passes, batch-sharded
+  sampling and all-to-all backends other than `naive` and
+  `allgather_reducescatter`; with NCCL off, `--load-format instanttensor`,
+  `--enable-eplb` and `VLLM_DISTRIBUTED_USE_SPLIT_GROUP=1`.
+- **Launch shapes.** The serve launcher serves tensor parallelism from
+  `serving-profile` profiles, and decode-context parallelism (`--dcp-size`)
+  with B12X attention for the GLM-5.3-Flash checkpoints, with a KV-cache
+  interleave that is a multiple of 4 and mHC prefill sharding only at the
+  sizes a pinned vLLM build admits (`pins.MHC_ADMITS`), and for GLM-5.3,
+  whose B12X attention in image `aba309e4610c`'s vLLM needs a source change
+  that the deployment's own vLLM plugins supply. Pipeline parallelism
+  runs only through `bundle` (research-only); every group map assumes tensor
+  parallelism over all ranks.
+- **Tuning tables** choose only among SIRCL's settings; their NCCL marks
+  route no call. A launcher setting below a table's recorded session setting
+  is refused.
+- **Fused all-reduce + RMSNorm** (research-only) needs vLLM's RMSNorm on the
+  `vllm_c` provider; its bit-identity is checked in GPU emulation, not on GB10.
+- **`SIRCL_*` variables** set outside the launcher or the bundle reach the
+  tensor-parallel session unchecked.
+- **Teardown rounds on the CPU group.** A close's teardown round that did not
+  complete (a peer later than the flag-wait limit plus 5 s, or a rank that
+  closed without rounds) stays pending on the group's CPU group and can pair
+  with the next collective vLLM issues there. It arises only after a
+  failure; the group is then marked unusable for teardown rounds, so no
+  later SIRCL close adds another, and it must not carry further sessions or
+  collectives: the worker's CPU group is recreated or its processes end, as
+  at shutdown.
+- **Collectives outside a serving step.** Startup collectives the adapter
+  carries (online quantization's weight `amax` reductions through the
+  tripwire carrier, warm-up and profiling runs) have no failure check after
+  the op, and a timed-out op's outputs are not results. Local work can
+  consume one such result; the failure raises at the group's next
+  collective, at the latest at the first step's start-of-step check, before
+  the process serves. They run in the startup flag-wait regime
+  (`SIRCL_STARTUP_WAIT_S`, 600 s).
+- **Not part of the package:** restoring relay plans after a Spark reboots
+  (the relay plan installer installs and removes them; nothing restores them
+  at boot), SparkRing installer integration, and `sparkring fabric tune`
+  (tuning tables come from the ring harness's `tune` command).
+
+## Checks before relying on a layout
+
+For each layout, profile and image ([`RUNBOOK.md`](RUNBOOK.md); relay plans:
+[package runbook](../../RUNBOOK.md#relay-plan-installer)):
+
+- [ ] `python -m sparkring_sircl.fabric diff --site "$SITE" --groups <group>`
+      reports no host changes and every lane routed over its own device.
+- [ ] The ring harness passes for the layout: bit-exact, no RDMA error
+      counter change.
+- [ ] `preflight` passes; `stage` reports a pinned vLLM build, every needed
+      shim `verified` and no blocker.
+- [ ] `start --wait` reaches API ready with a `group=tp` receipt in state
+      `ready` on every rank (`nccl=none pynccl=skipped` where NCCL may not run).
+- [ ] `check --long-prompt 16384` passes; after it the receipts show
+      `wait=serving:<limit>s`.
+- [ ] Without NCCL: `check --require-no-nccl` (or `bundle-check
+      --require-no-nccl`) passes.
+- [ ] The RDMA error counters (`hw_counters` under
+      `/sys/class/infiniband/<device>/ports/1`, and `rx_out_of_buffer`) stay
+      unchanged while serving, on every group's devices.
+- [ ] Fused norm: the same tokens at temperature 0 with `--fused-norm on` and
+      `off`.

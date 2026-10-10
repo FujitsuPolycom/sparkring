@@ -365,7 +365,9 @@ def test_cli_offline_init_never_discovers_hosts(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(installer, "init", lambda *a, **k: calls.append((a, k)))
     assert sparkring.main(["init", "--model", "glm53", "--site", str(path)]) == 0
     assert calls[0][0][1] == installer.DEFAULTS["glm53", 2]
-    assert calls[0][1]["image_runtime"] == installer.installer_image.default_lock()
+    # The image sparkring install uses, on its v2 fields.
+    from runtime.common import image_lock
+    assert calls[0][1]["image_runtime"] == image_lock.v2_view(image_lock.default())
     assert "No hosts changed" in capsys.readouterr().out
 
 
@@ -448,7 +450,8 @@ def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_dire
     directories = {installer.checkpoint_directory("ring", default)}
     for name, repository, revision in (
             ("nvfp4-qad", "local-inference-lab/GLM-5.3-Flash-NVFP4", "175ae8ce3b5af842b0d0140dbeb43e9cfc557c49"),
-            ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348")):
+            ("nvidia-nvfp4", "nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"),
+            ("csf", "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be")):
         card = installer.setup.selection(GLM_RING, name)
         assert (card["target_variant"], card["model_repository"], card["model_revision"]) == (name, repository, revision)
         assert card["image_id"] == default["image_id"] and card["nodes"] == 4
@@ -460,16 +463,20 @@ def test_a_listed_checkpoint_of_another_repository_selects_its_own_pins_and_dire
         directory = installer.checkpoint_directory("ring", card)
         assert directory == f"/srv/sparkring/ring/checkpoints/{repository.replace('/', '--')}/{revision}"
         directories.add(directory)
-    assert len(directories) == 3
-    # The pair lists the QAD checkpoint, in the same directory as the ring's, and not NVIDIA's.
+    assert len(directories) == 4
+    # The pair lists the QAD and CSF checkpoints, in the same directories as the ring's, and not NVIDIA's.
     pair = installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad")
     assert (pair["model_repository"], pair["nodes"]) == ("local-inference-lab/GLM-5.3-Flash-NVFP4", 2)
     assert installer.checkpoint_directory("ring", pair) == installer.checkpoint_directory(
         "ring", installer.setup.selection(GLM_RING, "nvfp4-qad"))
     assert installer.checkpoint_pins(pair) == installer.checkpoint_pins(installer.setup.selection(GLM_RING, "nvfp4-qad"))
-    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark$"):
+    csf = installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "csf")
+    assert installer.checkpoint_directory("ring", csf) == installer.checkpoint_directory(
+        "ring", installer.setup.selection(GLM_RING, "csf")) == installer.checkpoint_directory(
+        "ring", installer.setup.selection("glm53-flash-csf-tp8"))
+    with pytest.raises(ValueError, match="lists: csf, nvfp4-qad, nvfp4-spark$"):
         installer.setup.selection("glm53-flash-nvfp4-spark-tp2", "nvidia-nvfp4")
-    with pytest.raises(ValueError, match="lists: nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
+    with pytest.raises(ValueError, match="lists: csf, nvfp4-qad, nvfp4-spark, nvidia-nvfp4"):
         installer.setup.selection(GLM_RING, "qad-step-4000")
 
 
@@ -602,7 +609,8 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
     assert installer.checkpoint_directory("tp4-installer", cards[QWEN]) != qwen
     main = {**cards[QWEN], "model_revision": "7c4f1bc1a2d6847e0cbc01ac6b823f00251de8dd"}
     assert installer.checkpoint_directory("tp2", main) == qwen.rsplit("/", 1)[0] + "/" + main["model_revision"]
-    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 5
+    # One per distinct default revision among the installable profiles.
+    assert len({installer.checkpoint_directory("tp2", card) for card in cards.values()}) == 7
     # Deployment workspaces are named after profiles, so none is the checkpoints or cache directory.
     assert not {"checkpoints", "cache"} & set(installer.profiles.catalog())
     for profile, card in cards.items():
@@ -611,7 +619,7 @@ def test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint():
                "hosts": [{"host": f"spark{n}", "management_ip": f"192.0.2.{20 + n}", "fabric_ip": f"198.18.20.{n + 1}",
                           "interface": "enp1s0f0np0", "model": model, "cache": "/srv/sparkring/tp2/cache"}
                          for n in range(card["nodes"])]}
-        if profile in compose.TP4_PROFILES:
+        if profile in compose.TP4_PROFILES or profile in compose.FABRIC_PROFILES:
             for row in raw["hosts"]:
                 row["fabric"] = {"site_path": "/srv/sparkring/mesh-site.json", "site_sha256": "0" * 64, "plan_sha256": "0" * 64}
         for row in installer.site_document(raw, card, "1" * 40)["ranks"]:

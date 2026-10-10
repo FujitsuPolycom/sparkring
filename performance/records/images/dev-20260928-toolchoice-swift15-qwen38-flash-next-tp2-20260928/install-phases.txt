@@ -8,12 +8,12 @@ Looking for existing copies of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0
 Install swift15-qwen38-flash-next-tp2 on 2 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2: 95 files, 173.7 GiB
-Searched spark-aa42 in 10.8 s and spark-931e in 8.9 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-e in 10.8 s and spark-d in 8.9 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/ukisai--Swift-1.5-Qwen3.8-Flash-Next-NVFP4/3ff0520224f264a2d0ac4ab56ece8f2f13aadb38
+Node 0 spark-e -> /srv/sparkring/tp2/checkpoints/ukisai--Swift-1.5-Qwen3.8-Flash-Next-NVFP4/3ff0520224f264a2d0ac4ab56ece8f2f13aadb38
     95 of 95 files already in place
     needs 32.0 GiB free on / (32 GiB for the compile cache; 89 GiB free)
-Node 1 spark-931e: as Node 0 (112 GiB free)
+Node 1 spark-d: as Node 0 (112 GiB free)
 
 Nothing is downloaded.
 Node 0: Check host before preparing assets

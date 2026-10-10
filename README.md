@@ -1,15 +1,21 @@
 # SparkRing
 
-SparkRing is a switchless serving stack for four NVIDIA GB10-based devices
-cabled in a ring. vLLM and SGLang serve the model; SparkRing supplies the
-collective transports over the ConnectX-7 links, the tested profiles and
-images, and a one-command installer. Two-Spark profiles built from the same
-work are included, and the installer can run two of them on one ring, one per
-pair of Sparks, each with its own API endpoint.
+SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
+
+SparkRing serves large language models on two to eight NVIDIA DGX Sparks
+cabled directly to each other over ConnectX-7, with no switch. vLLM serves the
+model; SparkRing provides the collectives (SIRCL), the tested profiles and
+images, and a one-command installer.
 
 ## Quick start
 
-1. Cable your Sparks as shown in the [requirements](docs/operations/install.md#requirements).
+1. Cable your Sparks as a pair, a ring of four or a ring of eight
+   ([requirements](docs/operations/install.md#requirements)).
 2. Pick a `--profile` from the [table below](#profiles), or build the commands
    in the [Install Builder](https://fujitsupolycom.github.io/sparkring/).
 3. On the Spark connected to your network, run:
@@ -18,43 +24,58 @@ pair of Sparks, each with its own API endpoint.
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
 ```
 
-The installer sets up every Spark, downloads and distributes the image and
-model, and prints the API address when the model is ready. It asks before it
-changes anything: `--yes` approves, `--plan` previews. Run it again to update
-or switch models.
+The installer asks before it changes anything: `--plan` previews and `--yes`
+approves, and running it again updates or switches models.
 
 More: [documentation](docs/README.md) · [commands](docs/operations/commands.md) ·
 [status dashboard](docs/operations/dashboard.md) ·
 [Docker Compose files](docs/operations/compose-files.md) ·
 [pinned install command](docs/operations/install-reference.md#get-the-package)
 
+## SIRCL
+
+SIRCL is SparkRing's collective layer for Sparks cabled without a switch, and
+it replaces NCCL for vLLM's tensor-parallel collectives. It reaches Sparks that
+aren't cabled to each other through the ConnectX-7 hardware relay. It picks its
+schedule by message size from a tuning table measured on real rings, and
+libsircl offers the same protocol behind NCCL's C API
+([architecture](docs/architecture/sircl.md)).
+
 ## Profiles
 
-| Model | Checkpoint | Sparks | `--profile` value | API port | Thinking | Decode at 16K context, 1 / 4 / 8 / 16 users (tok/s) | Prefill 64K (tok/s) |
-|---|---|---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh | 46.5 / 119 / 165 / 230 | 3,590 |
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh | 64.0 / 173 / 239 / 328 | 4,424 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 2 | `glm53-flash-nvfp4-spark-tp2` | 8000 | always · max | 36.0 / 73 / 100 / 67\* | 2,460 |
-| GLM-5.3-Flash | [NVFP4 Spark, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) | 4 | `glm53-flash-nvfp4-spark-tp4` | 8015 | always · max | 62.1 / 133 / 200 / 231 | 3,500 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on | 30.2 / 76 / 120 / 182 | 2,806 |
-| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on | 62.8 / 124 / 181 / 317 | 4,094 |
-| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high | 57.0 / 135 / 201 / 275 | 4,396 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh | 43.5 / 110 / 157 / 204 | 3,567 |
-| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh | 64.7 / 161 / 232 / 340 | 4,404 |
+| Model | Checkpoint | Sparks | `--profile` value | API port | Thinking |
+|---|---|---|---|---|---|
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh |
+| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-qad-tp4` | 8015 | on · xhigh |
+| GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 2 | `glm53-flash-tp2` | 8000 | always · max |
+| GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 4 | `glm53-flash-tp4` | 8015 | always · max |
+| GLM-5.3 | [NVFP4, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4) | 8 | `glm53-nvfp4-tp8` | 8015 | always · max |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on |
+| MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 4 | `mimo-v26-flash-mopd-tp4` | 8020 | on |
+| DeepSeek-V4.1-Flash | [FP8/MXFP4, DeepSeek](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash) | 4 | `deepseek-v41-flash-tp4` | 8015 | on · high |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh |
+| Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh |
 
-Decode is total output tokens/s with 1, 4, 8 and 16 users, each with 16K
-tokens of context; prefill is one 64K-token prompt. Two runs at temperature 1.0
-with [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
-0.7.6 on installer image `dev-20261004-kraken-cuda1342-nccl2323-status034`
-([all results, 16K–128K](performance/records/images/dev-20261004-kraken-matrix-20261004.md)).
-\* The two-Spark GLM profile serves 8 requests at a time.
+`glm53-flash-tp2` and `glm53-flash-tp4` are short names of the profile IDs
+`glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`; both names
+install the CSF checkpoint on this image. The other eight-Spark profiles are
+Experimental ([profile catalog](profiles/README.md)).
 
-Thinking is the default for requests that don't set it: *on* (a request can
-turn it off) or *always*, and its effort. `--reasoning-effort LEVEL` and
-`--thinking off` change it per install ([details](docs/operations/install-reference.md#thinking)).
+## Speed
 
-SparkCache variants and models the installer doesn't cover have their own
-guides in the [profile catalog](profiles/README.md).
+Decode at 32K context, output tok/s:
+
+| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | Prefill, 32K prompt (tok/s) |
+|---|---|---|---|---|---|
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 1,343 |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 64.2 / 126.6 / 218.7 | 3,127 |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 39.5 / 87.1 / 123.2 | 2,138 |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 4,666 |
+| Qwen3.8-Flash-Next | QAD step 5500 | 2 | `qwen38-flash-next-tp2` | 42.9 / 109.9 / 162.9 | 3,649 |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 |
+
+On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes 6–8 % faster than the default checkpoint in the median of two starts on the same ring; it was not compared on two Sparks.
+Each row's record is under `performance/records/`.
 
 ## Documentation
 

@@ -35,7 +35,7 @@
     "patched_nccl_sha256": "e69a8c240f45d10166bcd901d99db78bb63147adda66e586d8dd505c6d608b54",
     "chat_template_sha256": "4f9201169f5bacd1a494c8824470a1ef899c7024d23a2b166e42493e7efd9ac9",
     "environment_template": "scripts/config/qwen38-27b-exl3-k5k6-pair.env.example",
-    "launcher": "scripts/qwen38_dgx2_serve.sh",
+    "launcher": "scripts/qwen38_pair_serve.sh",
     "launcher_preflight_argument": "--check",
     "launcher_run_argument": "--run",
     "container_launcher": "/ws/qwen38_dgx2_serve.sh",

@@ -1,10 +1,15 @@
-"""Plan persistent ConnectX networking from a reviewed four-host inventory.
+"""Plan persistent ConnectX networking from a reviewed inventory of 2 to 8 hosts.
 
 Status: implemented for NetworkManager. This module does not run commands.
 Plans preserve previous connection UUIDs and isolate disruptive driver reloads.
 Each host reports NetworkManager changes (``action``) separately from the
-ConnectX hairpin setting (``driver_action`` and ``hairpin``), which four-rank
-plans classify per function with the rule in ``scripts/hairpin_setting.py``.
+ConnectX hairpin setting (``driver_action`` and ``hairpin``), which the plan
+classifies per function with the rule in ``scripts/hairpin_setting.py`` on
+every host that relays traffic between its cables (``hairpin_hosts``).
+
+The specification's hosts are in fabric position order. Its ``layout``
+(``runtime/common/fabric_layout.py``) names a path or a cycle; a
+specification without one is a pair (two hosts) or a four-host cycle.
 """
 
 from __future__ import annotations
@@ -15,10 +20,10 @@ import uuid
 from collections.abc import Mapping
 from pathlib import PurePosixPath
 
+from runtime.common import fabric_layout
 from scripts import hairpin_setting
 from scripts.deploy_inventory import gid_index_hint
 from scripts.hairpin_setting import HAIRPIN_QUEUE_SIZE
-from spark_transport.fabric.cx7_hairpin_diagonal.fabric import RANK_COUNT
 
 
 PLAN_SCHEMA = "sparkring-deploy-network-plan/v1"
@@ -136,16 +141,17 @@ def _prepare_spec(spec):
         if settings.get(key, value) != value:
             raise NetworkPlanError(f"The managed mesh requires {key}={value}")
     hosts = root.get("hosts")
-    if not isinstance(hosts, list) or len(hosts) not in (2, RANK_COUNT):
-        raise NetworkPlanError("hosts must contain exactly two or four ranks")
+    if not isinstance(hosts, list):
+        raise NetworkPlanError("hosts must list the selected ranks")
     count = len(hosts)
-    roles = ROLES if count == 4 else ROLES[:2]
+    layout = spec_layout(root)
     result = []
     for item in hosts:
         host = _object(item, "host")
         rank = host.get("rank")
         if type(rank) is not int or rank not in range(count):
             raise NetworkPlanError("host rank is outside the selected topology")
+        roles = fabric_layout.roles(layout, rank)
         ssh = host.get("host")
         if (
             not isinstance(ssh, str)
@@ -201,7 +207,7 @@ def _prepare_spec(spec):
         raise NetworkPlanError("hosts must contain each selected rank once")
     if len({host["host"] for host in result}) != count:
         raise NetworkPlanError("SSH hosts must be distinct")
-    _cables(result)
+    _cables(result, layout)
     owned = root.get("owned_connection_uuids", [])
     if not isinstance(owned, list):
         raise NetworkPlanError(
@@ -210,12 +216,34 @@ def _prepare_spec(spec):
     return owner, result, {_uuid(value, "owned connection") for value in owned}
 
 
-def _cables(hosts):
+def spec_layout(spec):
+    """The fabric layout of a specification: its ``layout``, or a pair or four-host cycle by host count."""
+    try:
+        if spec.get("layout") is not None:
+            layout = fabric_layout.checked(spec["layout"])
+        else:
+            layout = fabric_layout.legacy(len(spec.get("hosts") or []))
+    except ValueError as error:
+        raise NetworkPlanError(str(error)) from None
+    if layout["size"] != len(spec.get("hosts") or []):
+        raise NetworkPlanError(f"hosts must contain exactly {layout['size']} ranks for a {fabric_layout.name(layout)}")
+    return layout
+
+
+def hairpin_hosts(spec):
+    """The ranks that relay traffic between their cables and so need the ConnectX hairpin setting."""
+    layout = spec_layout(spec)
+    if not fabric_layout.relayed(layout):
+        return []
+    return [rank for rank in range(layout["size"]) if fabric_layout.forwards(layout, rank)]
+
+
+def _cables(hosts, layout):
     """Two functions share a physical cable but keep separate IPv4 subnets."""
     endpoints = [p for host in hosts for p in host["data_interfaces"]]
     if len({str(ipaddress.ip_interface(p["address"]).ip) for p in endpoints}) != len(endpoints):
         raise NetworkPlanError("Every data function needs a distinct IPv4 address")
-    if len(hosts) == 2:
+    if layout["shape"] == fabric_layout.PAIR:
         networks = []
         for role in ROLES[:2]:
             pair = [next(p for p in h["data_interfaces"] if p["role"] == role) for h in hosts]
@@ -227,15 +255,15 @@ def _cables(hosts):
             raise NetworkPlanError("Pair functions require separate subnets")
         return
     subnets = set()
-    for rank, host in enumerate(hosts):
-        ports = {p["role"]: p for p in host["data_interfaces"]}
-        peer = {p["role"]: p for p in hosts[(rank + 1) % RANK_COUNT]["data_interfaces"]}
+    for _, (first, port), (second, other_port) in fabric_layout.cables(layout):
+        ports = {p["role"]: p for p in hosts[first]["data_interfaces"]}
+        peer = {p["role"]: p for p in hosts[second]["data_interfaces"]}
         for function in ("primary", "secondary"):
-            network = ipaddress.ip_interface(ports[f"cw_{function}"]["address"]).network
-            other = ipaddress.ip_interface(peer[f"ccw_{function}"]["address"]).network
+            network = ipaddress.ip_interface(ports[fabric_layout.port_role(port, function)]["address"]).network
+            other = ipaddress.ip_interface(peer[fabric_layout.port_role(other_port, function)]["address"]).network
             if network != other:
                 raise NetworkPlanError(
-                    f"Cable {rank}-{(rank + 1) % RANK_COUNT} {function} endpoints must share a /24"
+                    f"Cable {first}-{second} {function} endpoints must share a /24"
                 )
             if network in subnets:
                 raise NetworkPlanError("Each cable function needs its own /24 subnet")
@@ -856,12 +884,13 @@ def _backups(host, inventory, functions):
 def plan_network(spec, inventory):
     """Return exact host commands; callers must recheck inventory before apply.
 
-    ``spec`` supplies owner, NetworkManager settings, and four hosts with data
+    ``spec`` supplies owner, NetworkManager settings, and 2 to 8 hosts with data
     interface roles, /24 addresses, and backup directories. ``inventory`` maps
     each SSH host to ``sparkring-deploy-host-inventory/v1``. The execution receipt
     supplies ``owned_connection_uuids`` when resuming a prepared host.
     """
     owner, hosts, owned = _prepare_spec(spec)
+    relaying = set(hairpin_hosts(spec))
     inventory = _object(inventory, "inventory")
     plans = []
     for host in hosts:
@@ -894,15 +923,16 @@ def plan_network(spec, inventory):
             records.append(record)
             apply.extend(actions)
             rollback[0:0] = reverse
-            # Pairs forward nothing between nonadjacent Sparks, so they have
-            # no hairpin requirement and no driver planning.
-            if len(hosts) == RANK_COUNT:
+            # Only a host that relays between its cables needs the hairpin
+            # setting; pairs, three-Spark cycles and the ends of a path get no
+            # driver planning.
+            if host["rank"] in relaying:
                 driver_actions, driver_reverse, row = _driver(host, port, interface, function)
                 driver.extend(driver_actions)
                 rollback[0:0] = driver_reverse
                 hairpin.append(row)
             checks = _verification(host, port, function)
-            verify.extend(checks if len(hosts) == RANK_COUNT else checks[:-2])
+            verify.extend(checks if host["rank"] in relaying else checks[:-2])
         # One unreadable function makes the whole host "unknown": its node
         # service restarts nothing while any function cannot be evaluated.
         if any(row["state"] == hairpin_setting.UNKNOWN for row in hairpin):
@@ -1030,7 +1060,7 @@ def verify_network(spec, inventory, *, hairpin=True, stale_gids=False):
     """Check a fresh inventory after preparation; command exit status is insufficient.
 
     Address, GID, RoCE and link checks raise NetworkPlanError. With ``hairpin``,
-    a four-rank host whose ConnectX hairpin setting is not in effect, or cannot
+    a relaying host (``hairpin_hosts``) whose ConnectX hairpin setting is not in effect, or cannot
     be read, then raises DriverSettingsError. ``hairpin=False`` serves callers
     that evaluate the hairpin setting separately.
 
@@ -1038,7 +1068,7 @@ def verify_network(spec, inventory, *, hairpin=True, stale_gids=False):
     IPv4 entry is listed under ``stale_gids`` instead of raising; its address,
     MTU and link are still checked. A link that went down while a model or mesh
     held that entry leaves this state on the neighbors of a restarted Spark.
-    The four-Spark ring step re-adds the address once nothing holds the entry.
+    The ring step of a model installation re-adds the address once nothing holds the entry.
     """
     plan = plan_network(spec, inventory)
     _, hosts, _ = _prepare_spec(spec)

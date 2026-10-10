@@ -751,9 +751,10 @@ def roles(state_root):
 
     The active deployment is ``active.json``'s. ``transaction.json`` names the
     rollback target (``previous``) and, while a model switch has not settled,
-    the candidate being switched to. Each half of a four-Spark ring keeps
-    its own records under ``slots/`` (``runtime.host.placement``); the models a
-    switch stopped in other slots (``displaced``) are rollback targets too.
+    the candidate being switched to. Each arc of the fabric that serves a
+    model keeps its own records under ``slots/`` (``runtime.host.placement``);
+    the models a switch stopped in other slots (``displaced``) are rollback
+    targets too.
     """
     state_root = Path(state_root)
     result = {}

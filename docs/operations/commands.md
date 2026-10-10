@@ -16,7 +16,7 @@ sudo sparkring install --profile PROFILE --plan              # print the plan, c
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model  # reuse a copy
 sudo sparkring install --profile PROFILE --checkpoint NAME   # another checkpoint the profile lists
 sudo sparkring install --profile PROFILE --image NAME        # another image from sparkring images
-sudo sparkring install --profile PROFILE --on 2,3            # a two-Spark model on half of a four-Spark ring
+sudo sparkring install --profile PROFILE --on 4-7            # a model on positions 4 to 7 of a larger ring
 sudo sparkring logs --follow                                 # follow progress
 ```
 
@@ -26,12 +26,14 @@ sudo sparkring logs --follow                                 # follow progress
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
-| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
+| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
+| [`fabric`](#fabric) | Node A | `verify`, `tune` and `spread-check` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it; time a spread along the cables |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
+| [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
-| [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that four-Spark rings need |
+| [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
 | [`storage`](#storage) | Node A | yes | Report disk use; release caches and workspaces no deployment uses |
 | [`up`, `down`](#up-and-down) | Node A | yes | Start or stop a model deployment |
@@ -57,11 +59,11 @@ serves, it releases what older deployments hold on the Sparks
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
-| `--on 0,1` or `--on 2,3` | Put a two-Spark profile on one half of a four-Spark ring ([two models on one ring](install-reference.md#two-models-on-one-ring)); default: the half that serves no model |
+| `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)); default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The published images' prepared transport runs only a four-Spark ring's halves, `0,1` and `2,3` |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
-| `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's own |
+| `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)); default: the profile's preferred checkpoint on an image whose vLLM reads it, else the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
 | `--ignore-local-copies` | Use only SparkRing's own checkpoint directories and named copies |
 | `--cache-path PATH` | Another writable compile cache on each Spark |
@@ -72,6 +74,9 @@ serves, it releases what older deployments hold on the Sparks
 | `--no-auto-recover` | Do not restart this model by itself when a Spark stops serving ([automatic recovery](install-reference.md#automatic-recovery)) |
 | `--image NAME` | Another installer image: a name or release tag from [`sparkring images`](#images) ([details](install-reference.md#another-image)); default: the installer's own image |
 | `--image-lock FILE` | Development image lock that replaces the shared installer image |
+| `--image REF --transport libsircl --libsircl-library PATH --model-path DIR --plan -- VLLM_ARGUMENTS` | Plan a stock vLLM image (a registry reference or image ID) with libsircl as its NCCL: checks every Spark and writes each rank's Compose file; research-only, plan only ([stock image](../architecture/libsircl.md#stock-image-option)) |
+| `--transport sircl`, `--transport prepared` or `--transport libsircl` | The collective transport ([transport and receipts](install-reference.md#transport-and-receipts)); default: `sircl` where the image and the recorded fabric carry it, else `prepared`; `libsircl` (research-only) only by name |
+| `--nccl never` or `--nccl auto` | NCCL on a SIRCL deployment: `never` (default) keeps it off; `auto` lets it carry what the cabling allows; `topology` is another name for `auto` |
 | `--max-images N`, `--max-videos N`, `--context-length N`, `--max-concurrency N`, `--kv-cache-gib N`, `--save-cpu` | Replace one of the profile's serving values for this deployment ([serving settings](install-reference.md#serving-settings)) |
 | `--reasoning-effort LEVEL`, `--thinking off` | How hard the model thinks, or that it doesn't, when a request doesn't say; requests can still choose ([thinking](install-reference.md#thinking)) |
 | `--api-port N` | The port of the model's API, 1024 to 65535; a serving setting ([API endpoint](install-reference.md#api-endpoint)); default: the profile's |
@@ -102,6 +107,7 @@ built version is installed.
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
 | `--ref BRANCH_TAG_OR_COMMIT`, `--repository URL` | Build another ref or repository ([Pin a commit](install-reference.md#pin-a-commit)) |
+| `--relay-marker-binary PATH` | Ship this copy of the published relay marker instead of downloading it ([Build from a full clone](install-reference.md#build-from-a-full-clone)) |
 
 `--plan` runs `sparkring install --plan` from the installed package if this
 Spark has the built version, otherwise from the built package extracted into
@@ -124,13 +130,17 @@ stops first or a plan from the extracted package ends without a result (stage
 
 ## setup
 
-`sudo sparkring setup [flags]` discovers the cabled Sparks and configures them,
-without a model. `sparkring install` runs it on first use. Sparks that belonged
-to other SparkRing clusters are
+`sudo sparkring setup [flags]` discovers the cabled Sparks (a pair, or a line
+or ring of up to eight) and configures them, without a model. `sparkring
+install` runs it on first use. Sparks that belonged to other SparkRing
+clusters are
 [re-formed](install-reference.md#re-form-sparks-into-another-pair-or-ring)
-into the pair or ring now cabled. Setup ends by measuring each cable's
-[speed](#cable-speed) when no model serves; a degraded cable is a warning
-with its repair steps, not a failure.
+into the layout now cabled. Its plan shows the layout, the port map, the
+[relay table](install-reference.md#the-relay-table) and the transports the
+fabric can carry. Setup measures each cable's [speed](#cable-speed) when no
+model serves (a degraded cable is a warning with its repair steps, not a
+failure), then verifies the fabric and records the
+[fabric document](install-reference.md#the-fabric-document) on every Spark.
 
 | Flag | Meaning |
 |---|---|
@@ -140,8 +150,9 @@ with its repair steps, not a failure.
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--ssh-user USER` | Worker account (default: the account that ran `sudo`; `root` with `--env` or port 2222) |
 | `--ssh-port 22\|2222` | Worker SSH port; 2222 reaches workers prepared with `--worker-bundle` |
-| `--control-cidr CIDR` | Administration network, an IPv4 `/29` (default `10.253.255.0/29`) |
-| `--fabric-cidr CIDR` | Fabric addresses, an IPv4 `/16` to `/21` (default `198.18.0.0/21`) |
+| `--control-cidr CIDR` | Administration network, an IPv4 `/29` or `/28` (default `10.253.255.0/29`; the `/28` containing it for seven or eight Sparks) |
+| `--fabric-cidr CIDR` | Fabric addresses, an IPv4 `/16` to `/21` with room for two `/24` per cable (default `198.18.0.0/21` up to four cables, `198.18.0.0/20` above) |
+| `--re-form` | Set the cabled Sparks up again as a new cluster, as after recabling them into another layout ([change the layout](install-reference.md#change-the-layout)) |
 | `--no-share-internet` | Do not route workers' downloads and DNS through Node A |
 | `--reset-links` | Replace incompatible fabric IPv4 settings, also without a terminal |
 | `--stop-workloads` | Stop (never remove) GPU containers that block fabric preparation |
@@ -157,7 +168,7 @@ over the cables, and accepts `--name`, `--fabric-cidr`, `--plan`, `--yes`,
 |---|---|
 | `--node USER@IP` | A management target, Node A included; repeat for each Spark, each with the same package |
 | `--apply` | Apply the reviewed plan |
-| `--adopt` | Verify and record existing networking without changing links, routes or services |
+| `--adopt` | Verify and record existing networking without changing links, addresses, NetworkManager connections or routes and without a driver restart; add only the relay table's missing objects (a route, neighbour or filter preference that is present stays as it is), enable `sparkring-fabric.service` and `sparkring-relay-marker.service`, and record the fabric document. A Spark's or Node A's record of another setup moves aside to `/var/lib/sparkring/retired/` with a receipt |
 | `--skip-enroll` | SSH keys and host trust are already configured |
 | `--inventory FILE` | Offline node records; planning only, with `--plan` |
 | `--head-id ID` | Node A's identity for `--inventory` |
@@ -173,9 +184,10 @@ Two setup actions run offline without sudo and accept `--variant`:
 ## cabling
 
 `sudo sparkring cabling [flags]` shows how the Sparks on this Spark's fabric
-cables are cabled, and what to move for a pair or a four-Spark ring. It
-changes nothing on any Spark. Setup stops with the same advice when the
-cables do not fit ([cabling rules](install-reference.md#cabling)).
+cables are cabled: the layout (`pair`, `path-N` or `cycle-N`, up to eight
+Sparks), the port-to-Spark map and free ports, or what to move. It changes
+nothing on any Spark. Setup stops with the same advice when the cables do not
+fit ([cabling rules](install-reference.md#cabling)).
 
 ```text
 Sparks read:
@@ -194,6 +206,22 @@ To fix:
 Ring order after the fix: spark-a → spark-b → spark-c → spark-d
 ```
 
+A layout cabled as SparkRing needs shows its port map:
+
+```text
+Cables:
+  spark-a port 0 ↔ spark-b port 1
+  spark-b port 0 ↔ spark-c port 1
+Three-Spark line (path-3) from Node A, cabled as SparkRing needs.
+Layout: path-3
+Ports:
+  position 0 spark-a: port 0 → position 1 spark-b port 1 (cable 0); port 1 free
+  position 1 spark-b: port 0 → position 2 spark-c port 1 (cable 1); port 1 → position 0 spark-a port 0 (cable 0)
+  position 2 spark-c: port 0 free; port 1 → position 1 spark-b port 0 (cable 1)
+Line order: spark-a → spark-b → spark-c
+Note: spark-c port 0 and spark-a port 1 are free; a cable from the first to the second makes a cycle-3.
+```
+
 It reads this Spark, the Sparks of its recorded cluster over the admin
 network, and the other Sparks on the cables. It signs in to those over the
 LAN or the cables as the account that ran `sudo`, with Node A's setup key
@@ -201,21 +229,22 @@ where they accept it; SSH asks for a password elsewhere.
 
 | Flag | Meaning |
 |---|---|
-| `--json` | One `sparkring-cabling/v1` document; with `--bandwidth`, one `sparkring-fabric-bandwidth/v1` document |
+| `--json` | One `sparkring-cabling/v2` document (the `v1` keys, plus `shape`, `layout_size`, `layout_name`, `positions`, `free` and each cable's index); with `--bandwidth`, one `sparkring-fabric-bandwidth/v1` document |
 | `--ssh-user USER` | Account for signing in to the other Sparks (default: the account that ran `sudo`) |
 | `--no-sign-in` | Read only this Spark and its recorded cluster's Sparks |
 | `--bandwidth` | Measure each cable's speed instead ([cable speed](#cable-speed)) |
 | `--while-serving` | With `--bandwidth`, also measure cables a serving model uses |
 
-It exits with 0 when the cables form a pair or ring as SparkRing needs, 1
-when a cable needs to move or not every cable could be seen, and 2 on
-failure.
+It exits with 0 when the cables form a pair, line or ring as SparkRing needs,
+1 when a cable needs to move or not every cable could be seen, and 2 on
+failure. It reads up to nine Sparks, up to seven cables away, so a Spark
+cabled beyond the eight that setup supports is named.
 
 ### Cable speed
 
-`sudo sparkring cabling --bandwidth` measures each cable of the pair or ring
-that setup recorded and saves the result for `sparkring status`. Setup runs
-it as its last step. It takes about 30 seconds per cable.
+`sudo sparkring cabling --bandwidth` measures each cable of the fabric that
+setup recorded and saves the result for `sparkring status`. Setup runs it
+before it records the fabric document. It takes about 30 seconds per cable.
 
 ```text
 Fabric bandwidth, both directions at once (190 Gb/s or more per link is healthy):
@@ -244,20 +273,117 @@ could not be measured or was skipped, and 2 when the check could not run,
 for example while a model serves on every cable.
 [Cable speed](install-reference.md#cable-speed) explains the test.
 
+## fabric
+
+`sparkring fabric show [--json]` prints the recorded
+[fabric document](install-reference.md#the-fabric-document): the layout, each
+Spark's ports and cables, cable health, the hairpin requirement, the relay
+table, the transports and the last verification. It reads only Node A.
+
+`sudo sparkring fabric verify [flags]` checks every Spark's links, addresses,
+routes, hairpin setting, relay table, markers and boot units, and the
+reachability of every other Spark's addresses
+([what it checks](install-reference.md#verify-the-fabric)). It changes
+nothing.
+
+```text
+Fabric verified: 8 cables on 8 Sparks (cycle-8), relays 96 rules and 96 routes, reboot-persistent.
+Report: /var/lib/sparkring/controller/fabric-reports/fabric-verify-20261008T100500Z.json
+```
+
+| Flag | Meaning |
+|---|---|
+| `--traffic none\|light` | `light` adds one bidirectional RDMA write test per relayed lane (about 10 seconds each); default `none` |
+| `--while-serving` | With `--traffic light`, test while a model serves |
+| `--json` | Print the `sparkring-fabric-verify/v1` report |
+
+It exits with 0 when every check passes, 1 when one fails, and 2 when it
+could not run.
+
+`sudo sparkring fabric spread-check [flags]` spreads test files from Node A
+to every Spark along the cables, as an install spreads the serving image and
+the checkpoint ([Spreading along the cables](install-reference.md#spreading-along-the-cables)).
+Run it to check a fabric's spread before an installation needs it or after
+recabling.
+It writes the files on Node A, places each on every other Spark only after its
+SHA-256 matches, prints when each Spark finished and how long after the Spark
+before it, and removes the files once every Spark holds them. It works on any
+recorded layout, including those no installer profile serves yet. A Spark that
+stops answering stops it with the message an install prints; repeating the
+command resumes: files already placed are reused, and a partly written file is
+sent again from its first byte. It changes files below `/var/lib/sparkring/spread/check` on
+every Spark and sends traffic on every cable. One line per pass and direction
+lists each Spark's position, when it finished after the start and how long
+after the Spark before it; the report is saved as
+`fabric-reports/spread-check-<time>.json` (`sparkring-spread-check/v1`) in
+Node A's controller directory.
+
+| Flag | Meaning |
+|---|---|
+| `--files N` | Number of test files; default 16 |
+| `--size MIB` | Size of each test file in MiB; default 1024 |
+| `--while-serving` | Run while a model serves |
+
+It exits with 0 when every Spark holds every file, 1 when the spread stopped
+or is incomplete, and 2 when it could not run.
+
+### fabric tune
+
+`sudo sparkring fabric tune [flags]` measures SIRCL's tuning table on this
+fabric and prints the plan; `--execute` measures. Installations made
+afterwards use the measured table instead of the release's default while the
+fabric, the image and the Sparks' drivers stay the same
+([measure the tuning table](install-reference.md#measure-the-tuning-table)).
+
+```bash
+sudo sparkring fabric tune                     # the plan; contacts nothing
+sudo sparkring fabric tune --execute           # measure every group shape this fabric serves
+sudo sparkring fabric tune --execute --quick   # every fourth size, about a quarter of the time
+```
+
+```text
+  pair: measured, table HASH
+  path-3: measured, table HASH
+  cycle-4: measured, table HASH
+Measured tuning table: /var/lib/sparkring/controller/sircl-tuning.json (sha256 DIGEST, measured DATE; rows cycle-4, pair, path-3).
+```
+
+| Flag | Meaning |
+|---|---|
+| `--execute` | Measure; without it the plan is printed and nothing is contacted |
+| `--layouts NAMES` | Group shapes to measure, such as `pair,cycle-8`; default every shape the harness can measure here |
+| `--quick` | Every fourth size, 4 KiB to 64 MiB |
+| `--image NAME` | Measure with this installer image; default the one `sparkring install` uses |
+| `--stop-serving` | Stop the serving models first; without it the command refuses while a model serves |
+| `--max-hours H` | Start no group after H hours; the rest stay pending for the next run |
+| `--layout-timeout SECONDS` | The longest measurement of one group; default 1800 |
+| `--lan-interface NAME` | The interface of the measurement's control exchange; default the management interface |
+| `--control-port PORT` | Its TCP port on the first Spark of each group; default 29650 |
+| `--fresh` | Measure every named group again instead of keeping earlier results |
+| `--distribute` | Copy the recorded measured tables to every Spark again; measures nothing |
+| `--json` | Print the plan or the result as JSON |
+
+A repeated command keeps the groups already measured and measures the rest.
+It exits with 0 when every named group was measured (or the plan printed), 1
+when a group failed or stayed pending, and 2 when it could not run.
+
 ## models
 
 `sparkring models [--json]` lists every profile (exact model, version,
 quantization and topology) and marks those `sparkring install` supports. For
 each installer profile it also shows what the model does with thinking when a
 request doesn't say, such as `on · xhigh`, and the effort levels it accepts
-([thinking](install-reference.md#thinking)).
+([thinking](install-reference.md#thinking)), the checkpoint it installs and the
+others `--checkpoint` takes, and any other name that selects it, such as
+`glm53-flash-tp4`.
 
 ## images
 
 `sparkring images [--profile PROFILE] [--json]` lists the installer images
 this package records, the default first, with the GitHub release that
-published each, its download size and the profiles it runs. `--profile`
-lists only the images that run that profile. Any listed name, release tag or
+published each, its download size, the transports it carries (`prepared`,
+`sircl`) and the profiles it runs; an archived image is marked `archived`.
+`--profile` lists only the images that run that profile. Any listed name, release tag or
 part of a name that only one image has selects that image in
 `sudo sparkring install --image NAME`.
 
@@ -266,14 +392,16 @@ part of a name that only one image has selects that image in
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
 attention, the saved model (the active deployment, or the one named) and
-automatic recovery. On a ring that serves
-[two models](install-reference.md#two-models-on-one-ring) it prints each
-half's model under `Sparks 0 and 1:` and `Sparks 2 and 3:`:
+automatic recovery. On a fabric that serves
+[several models](install-reference.md#models-on-part-of-the-fabric) it prints
+each group's model under its Sparks, such as `Sparks 0-3:` and `Sparks 4-7:`,
+with a `Group:` line naming its shape, positions and API Spark:
 
 ```text
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
 Thinking: on · xhigh (model default)
+Transport: sircl, NCCL: absent (checked 2026-10-08T10:00:00Z); sudo sparkring check repeats it
 Automatic recovery: on
 ```
 
@@ -295,6 +423,16 @@ After the Spark lines, a `Fabric bandwidth:` line shows the last
 cables, measured 3 h ago`, or `never measured`. A degraded cable follows with
 its repair steps. Status does not measure.
 
+A `SIRCL tuning:` line names the tuning table installations use: `the default
+table`, `measured on this fabric DATE for ROWS with image IMAGE`, or why a
+measured table no longer applies, such as `the GPU driver of position 0
+changed from A to B` ([measure the tuning table](install-reference.md#measure-the-tuning-table)).
+
+`Transport` names the deployment's transport and, on SIRCL ring sessions,
+the last receipt verdict ([transport and receipts](install-reference.md#transport-and-receipts)):
+`Transport check failed: ...` names the first rank and collective that
+differs.
+
 With `--refresh`, a line per model container follows the saved model. When
 the model does not serve, the first line says why and gives the command that
 fixes it ([every case](install-reference.md#when-a-model-stops-serving)):
@@ -307,8 +445,31 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 | Flag | Meaning |
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health` |
-| `--on 0,1` or `--on 2,3` | Only that half's model |
-| `--json` | Print the full observation as JSON; a ring with half models adds `slots`, one entry per half, and a recorded cluster adds `fabric_bandwidth` |
+| `--on ARC` | Only the model on those Sparks |
+| `--json` | Print the full observation as JSON; a fabric with models on part of it adds `slots`, one entry per group with its `placement` and `group`, and a recorded cluster adds `fabric_bandwidth`, `fabric` and `sircl_tuning` |
+
+## check
+
+`sudo sparkring check [flags]` checks each running model and changes no Spark.
+It sends the functional requests of the acceptance harness to the model's API
+(counting, arithmetic and code, and a tool call, an image and thinking where
+the profile serves them) and, for a model on SIRCL ring sessions, reads every
+rank's receipts and the NCCL lines of its log and judges them as the
+installation does ([transport and receipts](install-reference.md#transport-and-receipts)).
+It exits with 0 when every check passes, 1 when one fails and 2 when it cannot
+run.
+
+| Flag | Meaning |
+|---|---|
+| `--on ARC` | Only the model on those Sparks |
+| `--json` | Print `sparkring-check/v1` |
+| `--report DIR` | Also write `DIR/sparkring-report-<time>/` (`sparkring-test-report/v1`): the last installation's result, `fabric show` and the last `fabric verify` report, the status, this check, the receipts with the tuning table, the last 200 lines of the installation's details log and of each rank's model log, and Node A's package, image, DGX OS, driver, Docker, container toolkit and ConnectX firmware |
+
+The report replaces management and LAN addresses, host names, MAC addresses
+and account names with placeholders and keeps fabric addresses. A file that
+still names a private item is left out and listed in its `report.json`.
+Review the files, then attach the directory to a
+[Test report](https://github.com/FujitsuPolycom/sparkring/issues/new?template=test_report.yml) issue.
 
 ## logs
 
@@ -324,8 +485,9 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 ## hairpin
 
 `sudo sparkring hairpin [flags]` applies the ConnectX hairpin setting on every
-Spark of a four-Spark ring and at every boot. It first updates any Spark that
-runs a different SparkRing revision than Node A.
+Spark that relays between its cables (every Spark of a ring of four or more,
+every Spark but the ends of a line of three or more) and at every boot. It
+first updates any Spark that runs a different SparkRing revision than Node A.
 [More about the setting](install-reference.md#four-spark-rings).
 
 | Flag | Meaning |
@@ -456,12 +618,12 @@ with instances `i<hash>`: `sparkring down PROFILE --instance i<hash>` stops
 one of them. The deployment directories are under
 `/var/lib/sparkring/controller/deployments/`.
 
-On a ring that serves [two models](install-reference.md#two-models-on-one-ring),
-each half has its own active deployment: `sudo sparkring down --on 2,3
---execute` stops the model on Sparks 2 and 3. Without a profile or `--on`,
+On a fabric that serves [several models](install-reference.md#models-on-part-of-the-fabric),
+each group of Sparks has its own active deployment: `sudo sparkring down --on
+4-7 --execute` stops the model on Sparks 4 to 7. Without a profile or `--on`,
 `up` and `down` act on the one recorded model and ask for `--on` when there
-are several. `up` refuses to start a four-Spark model while a half's model
-runs, or a half's model while the four-Spark model runs.
+are several. `up` refuses to start a model while a model on one of its Sparks
+runs, and names the `down` command that frees them.
 
 | Flag | Meaning |
 |---|---|
@@ -470,7 +632,7 @@ runs, or a half's model while the four-Spark model runs.
 | `--json` | Print the result as JSON |
 | `--model-path PATH` | `up PROFILE` only: serve this complete copy read-only on every Spark |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
-| `--on 0,1` or `--on 2,3` | Without PROFILE: that half's model. With `up PROFILE`: a two-Spark profile on that half, as instance `on-0-1` or `on-2-3` unless `--instance` names another |
+| `--on ARC` | Without PROFILE: the model on those Sparks. With `up PROFILE`: the profile on those Sparks, as instance `on-` and the positions (`on-2-3`, `on-4-5-6-7`) unless `--instance` names another |
 | `--fresh-mesh` | `up PROFILE` only: plan replacement of an existing four-Spark mesh |
 | `--max-images N`, `--reasoning-effort LEVEL` and the other [serving settings](install-reference.md#serving-settings) | `up PROFILE` only: replace one of the profile's serving values, or the model's thinking default, for a new deployment; an existing deployment keeps its own |
 | `--allow-loopback-bind` | `up PROFILE` only: accept a loopback `--api-bind` for a new deployment |
@@ -511,6 +673,9 @@ most actions. Useful by hand:
 | `sparkring node hairpin status [--busy]` | Each ConnectX function's hairpin setting; `--busy` (needs sudo) adds what blocks a restart |
 | `sudo sparkring node hairpin apply --dry-run --boot` | The restarts the next boot performs |
 | `sudo sparkring node assets --profile PROFILE` | Where this Spark holds copies of the profile's checkpoint (read-only) |
+| `sudo sparkring node relay-markers` | Run this Spark's relay markers until stopped; `sparkring-relay-marker.service` runs it |
+| `sparkring node relay-marker-check` | Check the installed package's relay marker against the SHA-256 the package records; package installation runs it |
+| `sudo sparkring node tuning-facts [--interface NAME]` | This Spark's GPU driver and kernel, which a measured tuning table binds (read-only) |
 
 ## init and export
 

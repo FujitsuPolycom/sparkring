@@ -8,9 +8,9 @@ Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 6
 Install qwen38-flash-next-tp2 on 2 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB
-Searched spark-aa42 in 10.1 s and spark-931e in 9.2 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-e in 10.1 s and spark-d in 9.2 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
+Node 0 spark-e -> /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
     53 of 53 files already in place
     needs 32.0 GiB free on / (32 GiB for the compile cache; 90 GiB free)
     not used: /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
@@ -18,7 +18,7 @@ Node 0 spark-aa42 -> /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8
     not used: /var/tmp/models/Qwen3.8-Flash-Next-NVFP4-QAD/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--Qwen3.8-Flash-Next-NVFP4-4p89/b184bb5650367c3e934c7849407be9da3671e7f5 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--Qwen3.8-Flash-Next-NVFP4-4p89/b184bb5650367c3e934c7849407be9da3671e7f5-sglang-bf16-vision-v3 (another checkpoint: its index differs)
-Node 1 spark-931e -> /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
+Node 1 spark-d -> /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/60215d26cf5e42c2db6128774032d57fc62678da
     53 of 53 files already in place
     needs 100.0 GiB free on / (32 GiB for the compile cache, 68 GiB for the image; 113 GiB free)
     not used: /srv/sparkring/tp2/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e (another checkpoint: its index differs)

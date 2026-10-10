@@ -1,9 +1,9 @@
 2026-10-01T14:57:56-05:00  Derived checkpoint qad-step5500-mxfp8-attention (sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention at 648b194a96e5): 54 files, 100.2 GiB; 48 files are hard-linked from the base, 6 (5.6 GiB) are written by runtime/common/mxfp8_attention.py
-2026-10-01T14:57:56-05:00  Node 0 spark-3286 -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+2026-10-01T14:57:56-05:00  Node 0 spark-b -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
 2026-10-01T14:57:56-05:00      hard-links 48 files from the base (no extra space)
 2026-10-01T14:57:56-05:00      downloads 2 files of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 629bc3218833 (2.6 GiB) from huggingface.co into /srv/sparkring/sparkring/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/629bc3218833a38b475b719f34aa571666f4a03e
 2026-10-01T14:57:56-05:00      derives 6 files (5.6 GiB) in the installer image, CPU only and without network, after checking that the donor's MXFP8 tensors are the base's weights
-2026-10-01T14:57:56-05:00  Node 1 spark-0a0f -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
+2026-10-01T14:57:56-05:00  Node 1 spark-a -> /srv/sparkring/sparkring/checkpoints/sparkring-derived--Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention/648b194a96e5f130ab62702113242d8e1ddd6e76
 2026-10-01T14:57:56-05:00      hard-links 48 files from the base (no extra space)
 2026-10-01T14:57:56-05:00      receives 6 files (5.6 GiB) from Node 0 over the fabric
 2026-10-01T14:57:56-05:00  Every file is placed only after its SHA-256 equals the derived checkpoint's manifest.

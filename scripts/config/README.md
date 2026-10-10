@@ -59,7 +59,7 @@ Run the focused offline tests after changing an R7 configuration contract:
 
 ```bash
 python -m pytest \
-  scripts/test_glm35_profile.py \
+  scripts/test_glm52_exl3_profile.py \
   runtime/exl3-r7/test_exl3_r7_verify_runtime.py -q
 ```
 
@@ -189,7 +189,7 @@ by the 1M static-YaRN launch. Follow
 The pair env also records host model/cache/log paths, API and master ports,
 speculative depth, context, sequence count, and scheduler budget.
 `CACHE_HOST_PATH` is mounted at `/ws/cache`; the `/ws/cache/jit` values are
-container paths and must remain unchanged. `scripts/qwen38_dgx2_serve.sh`
+container paths and must remain unchanged. `scripts/qwen38_pair_serve.sh`
 validates and consumes the serving values inside the prepared runtime
 container.
 

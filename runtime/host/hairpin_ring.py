@@ -1,10 +1,13 @@
-"""The ConnectX hairpin setting across a four-Spark ring, driven from Node A.
+"""The ConnectX hairpin setting on every Spark of a fabric that relays between its cables, driven from Node A.
 
 Status: implemented. No hardware evidence yet for a live run over the
 administration network.
 
-Four-Spark rings relay traffic between nonadjacent Sparks through ConnectX
-hardware forwarding, which needs the hairpin setting on every fabric function
+Rings of four or more Sparks and lines of three or more relay traffic between
+nonadjacent Sparks through ConnectX hardware forwarding, which needs the
+hairpin setting on every fabric function of each Spark that sits between two
+cables (``ranks``: every Spark of such a ring, every Spark but the two ends of
+such a line)
 (``scripts/hairpin_setting.py`` holds the values and the in-effect rule). Each
 Spark applies it with its own ``sparkring-hairpin.service``
 (``runtime/host/hairpin.py``): a run of that unit restarts the functions that
@@ -15,7 +18,7 @@ operator's approval.
 
 This module works on the ring as a whole:
 
-- ``requirement(plan)`` classifies every Spark of a four-Spark plan from the
+- ``requirement(plan)`` classifies every relaying Spark of a plan from the
   ``hairpin`` status in its inspect document and its package revision:
   ``kept`` (approved, armed, in effect, boot runs not suspended), ``record``
   (no restart needed, but an approval, arming or a suspension must be
@@ -56,7 +59,7 @@ import time
 from runtime.common import installer, process_lock
 from runtime.host import control, discovery, hairpin, node, progress
 from runtime.host.install_errors import NeedsInput
-from scripts import hairpin_setting as rule
+from scripts import deploy_network, hairpin_setting as rule
 
 UNIT = "sparkring-hairpin.service"
 SPARKRING = "/usr/bin/sparkring"
@@ -90,6 +93,17 @@ TRANSIENT = ("Missing reciprocal LLDP cable evidence", "missing verified RDMA fu
 
 COMPLETE = "ConnectX hairpin setting: in effect on 4 Sparks and applied at every boot."
 PAIR = "pairs do not use the ConnectX hairpin setting"
+NOT_RELAYED = "this fabric relays nothing between its cables, so it does not use the ConnectX hairpin setting"
+
+
+def complete_text(count):
+    """The completion line for ``count`` relaying Sparks; COMPLETE for four."""
+    return f"ConnectX hairpin setting: in effect on {count} Sparks and applied at every boot."
+
+
+def ranks(plan):
+    """The ranks of a plan that relay between their cables (``deploy_network.hairpin_hosts``)."""
+    return deploy_network.hairpin_hosts(plan["spec"])
 NOTICE_SINGLE_UPLINK = ("A worker reached only through the ring cables stays unreachable if one of its restarts "
                         "fails, until it is power-cycled.")
 NO_RESTART = ["No driver restarts now. SparkRing records the setting and applies it at every boot",
@@ -254,7 +268,7 @@ def _row(rank, host, hostname, document, revision, head, fallback=None):
 
 
 def requirement(plan):
-    """Classify every Spark of a four-Spark plan; a pair gives an empty list.
+    """Classify every relaying Spark of a plan (``ranks``); a plan that relays nothing gives an empty list.
 
     Reads the ``hairpin`` status of each inspect document in ``plan["nodes"]``
     and each Spark's package revision against Node A's. A Spark without a
@@ -263,13 +277,14 @@ def requirement(plan):
     plan's ``hairpin`` rows.
     """
     nodes = plan["nodes"]
-    if len(nodes) != 4:
+    selected = ranks(plan)
+    if not selected:
         return []
     head = nodes[0].get("revision")
-    planned = plan.get("network", {}).get("hosts") or [{}] * 4
+    planned = plan.get("network", {}).get("hosts") or [{}] * len(nodes)
     return [_row(rank, host, current.get("hostname"), current.get("hairpin"), current.get("revision"), head,
                  fallback=planned[rank].get("hairpin"))
-            for rank, (current, host) in enumerate(zip(nodes, plan["spec"]["hosts"], strict=True))]
+            for rank, (current, host) in enumerate(zip(nodes, plan["spec"]["hosts"], strict=True)) if rank in selected]
 
 
 def required(rows):
@@ -396,10 +411,11 @@ def consent_lines(plan, rows):
     """
     if not required(rows):
         return []
-    header = f"Four-Spark forwarding needs the ConnectX hairpin setting (hairpin_queue_size {rule.HAIRPIN_QUEUE_SIZE})"
+    header = ("Four-Spark forwarding" if len(plan["spec"]["hosts"]) == 4 and len(rows) == 4 else "Relayed forwarding")
+    header += f" needs the ConnectX hairpin setting (hairpin_queue_size {rule.HAIRPIN_QUEUE_SIZE})"
     if record_only(rows):
         return [header + ".",
-                "It is in effect on all 4 Sparks. SparkRing records it and applies it at every boot",
+                f"It is in effect on all {len(rows)} Sparks. SparkRing records it and applies it at every boot",
                 "before networking starts (about 30 seconds per boot). No driver restarts now."]
     lines = [header + ":"]
     for row in rows:
@@ -436,7 +452,7 @@ def m7(rows, *, command=False):
     subject = "This command" if command else "This installation"
     verb = "applies" if command else "also applies"
     if record_only(rows):
-        return (f"{subject} records the ConnectX hairpin setting, already in effect on all 4 Sparks, and applies "
+        return (f"{subject} records the ConnectX hairpin setting, already in effect on all {len(rows)} Sparks, and applies "
                 "it at every boot (about 30 seconds per boot). No driver restarts now. Review with --plan, then "
                 "repeat with --yes.")
     restart = [row["rank"] for row in rows if row["state"] == RESTART]
@@ -533,15 +549,19 @@ def rank_rows(rows, plan=None):
     return result
 
 
-def not_in_effect(plan, statuses):
+def not_in_effect(plan, statuses, *, only=None):
     """M6 for ``sparkring up``: one line per Spark that lacks the setting, then the remedy; None when all have it.
 
     ``statuses`` holds each Spark's status document or the error that
-    prevented reading it.
+    prevented reading it. ``only``, when given, limits the check to those
+    ranks, such as the Sparks that relay a model's lanes on part of the fabric.
     """
     lines = []
+    relaying = ranks(plan)
     for rank, value in enumerate(statuses):
         host = plan["spec"]["hosts"][rank]
+        if rank not in relaying or (only is not None and rank not in only):
+            continue
         if not isinstance(value, dict):
             lines.append(f"rank {rank} ({host['host']}): cannot read its ConnectX hairpin status: {value}.")
             continue
@@ -699,9 +719,10 @@ class Ring:
             self.record["path"] = str(self.directory / "hairpin.json")
 
     def statuses(self):
-        """Read every Spark's status again and classify it against Node A's revision."""
+        """Read every relaying Spark's status again and classify it against Node A's revision."""
         documents = {}
-        for rank in range(4):
+        selected = ranks(self.plan)
+        for rank in sorted({0, *selected}):
             try:
                 documents[rank] = self.access.status(rank)
             except FAILURES as error:
@@ -711,6 +732,8 @@ class Ring:
         self.head = head
         rows = []
         for rank, host in enumerate(self.plan["spec"]["hosts"]):
+            if rank not in selected:
+                continue
             document = documents[rank]
             rows.append(_row(rank, host, self.plan["nodes"][rank].get("hostname"), document,
                              document.get("revision"), head))
@@ -719,12 +742,13 @@ class Ring:
 
 def ensure(plan, *, approved, restart=True, restart_approved=True, resume=False, inspect, rebuild, update_workers,
            invoke=None, run_local=None, directory=None, record=None, clock=time.monotonic, sleep=time.sleep):
-    """Bring every Spark of a four-Spark ring to ``kept``; return the resulting plan.
+    """Bring every relaying Spark of a fabric (``ranks``) to ``kept``; return the resulting plan.
 
     The caller holds ``/var/lib/sparkring/controller/install.lock``.
 
-    - A pair, or a ring whose Sparks are all ``kept``, returns the plan
-      unchanged and runs nothing.
+    - A fabric that relays nothing (a pair, a three-Spark ring), or one whose
+      relaying Sparks are all ``kept``, returns the plan unchanged and runs
+      nothing.
     - ``unknown`` Sparks stop the call with M16 before any change.
     - Without ``approved`` the call stops with M7 before any change.
     - ``update_workers()`` runs when a Spark's revision differs from Node A's;
@@ -872,8 +896,9 @@ def _idle(ring, selected, updated=()):
         except FAILURES as error:
             return [{"kind": "status", "detail": f"cannot read its hairpin status to confirm it is idle: {error}"}]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
-        findings = list(pool.map(read, range(4)))
+    count = len(plan["spec"]["hosts"])
+    with concurrent.futures.ThreadPoolExecutor(max_workers=count) as pool:
+        findings = list(pool.map(read, range(count)))
     busy = [(rank, _hostname(ring, rank), found) for rank, found in enumerate(findings) if found]
     if busy:
         raise m8(plan, sum(1 for row in selected if row["state"] == RESTART), busy, updated=updated)
@@ -887,7 +912,7 @@ def _hostname(ring, rank):
 
 
 def _expected(plan, rank):
-    """The four functions of one Spark as the plan records them, by role."""
+    """The four functions of one relaying Spark as the plan records them, by role."""
     host = plan["spec"]["hosts"][rank]
     facts = plan["inventory"]["hosts"].get(host["host"]) or {}
     pci = {row.get("device"): row.get("pci_address") for row in facts.get("rdma") or []}
@@ -1096,7 +1121,7 @@ def _reinspect(ring, inspect, rebuild, *, skip=()):
     deadline = ring.clock() + REINSPECT
     with progress.step("Re-inspect the ring after the ConnectX hairpin step"):
         while True:
-            for rank in range(4):
+            for rank in range(len(targets)):
                 try:
                     access.run(rank, ["lldpcli", "update"], timeout=SSH_LIMIT)
                 except FAILURES as error:
@@ -1126,8 +1151,8 @@ def _reinspect(ring, inspect, rebuild, *, skip=()):
 
 
 def _resume(ring):
-    """On every Spark in rank order, start the enabled mesh units that its start check refused in this boot."""
-    for rank in range(4):
+    """On every relaying Spark in rank order, start the enabled mesh units that its start check refused in this boot."""
+    for rank in ranks(ring.plan):
         entry = next((entry for entry in ring.receipt["ranks"] if entry["rank"] == rank), None)
         try:
             result = json.loads(ring.access.node(rank, ["resume"], timeout=STATUS_LIMIT))
@@ -1211,23 +1236,26 @@ def _revoke(args, cluster, interactive, context):
     from runtime.host import controller
     plan = cluster["plan"]
     access = Access(plan)
-    print("Revoke the ConnectX hairpin approval on all 4 Sparks: sparkring-hairpin.service is disabled and boot runs "
+    selected = ranks(plan)
+    print(f"Revoke the ConnectX hairpin approval on all {len(selected)} relaying Sparks: sparkring-hairpin.service "
+          "is disabled and boot runs "
           "stop. Values in effect stay until each Spark's next boot; its mesh services then stay stopped by their "
           "start check until the setting is applied again.")
-    ranks = [{"rank": rank, "host": host["host"], "hostname": node_row.get("hostname") or host["host"],
-              "before": None, "action": "revoke", "functions": [], "after": None, "error": None}
-             for rank, (host, node_row) in enumerate(zip(plan["spec"]["hosts"], plan["nodes"], strict=True))]
-    context["ranks"] = ranks
+    rows = [{"rank": rank, "host": host["host"], "hostname": node_row.get("hostname") or host["host"],
+             "before": None, "action": "revoke", "functions": [], "after": None, "error": None}
+            for rank, (host, node_row) in enumerate(zip(plan["spec"]["hosts"], plan["nodes"], strict=True))
+            if rank in selected]
+    context["ranks"] = rows
     if args.plan:
         print("Plan only; nothing was changed. Repeat without --plan to revoke it.")
-        return {"schema": RESULT_SCHEMA, "state": "planned", "ranks": ranks}
+        return {"schema": RESULT_SCHEMA, "state": "planned", "ranks": rows}
     if not args.yes:
         if not interactive:
             raise NeedsInput("Revoking the ConnectX hairpin approval needs confirmation. Review with --revoke --plan, "
                              "then repeat with --revoke --yes.", field="approval")
         controller.confirm("Revoke the ConnectX hairpin approval on every Spark?")
     failed = []
-    for row in ranks:
+    for row in rows:
         try:
             access.node(row["rank"], ["revoke"], timeout=STATUS_LIMIT)
             row["after"] = "revoked"
@@ -1236,26 +1264,26 @@ def _revoke(args, cluster, interactive, context):
             failed.append(f"rank {row['rank']}: {error}")
     if failed:
         raise RuntimeError("The ConnectX hairpin approval was not revoked everywhere: " + "; ".join(failed))
-    print("ConnectX hairpin approval revoked on 4 Sparks.")
-    return {"schema": RESULT_SCHEMA, "state": "complete", "ranks": ranks}
+    print(f"ConnectX hairpin approval revoked on {len(rows)} Sparks.")
+    return {"schema": RESULT_SCHEMA, "state": "complete", "ranks": rows}
 
 
 def execute(args, context):
     """``sparkring hairpin`` inside ``install.lock``; returns the result document."""
     from runtime.host import controller, install_workflow
-    from scripts import deploy_network
     install_workflow.require_head(command="hairpin")
     interactive = not args.json and sys.stdin.isatty()
     with process_lock.hold(controller.STATE / "install.lock"):
         path = controller.STATE / "cluster.json"
         if not path.exists():
-            raise NeedsInput("No ring is configured on this Spark. Run sudo sparkring install on Node A; on four "
-                             "Sparks it applies the ConnectX hairpin setting.", field="setup")
+            raise NeedsInput("No fabric is configured on this Spark. Run sudo sparkring install on Node A; on a "
+                             "fabric that relays it applies the ConnectX hairpin setting.", field="setup")
         cluster = installer.read(path)
         install_workflow.require_head(cluster, command="hairpin")
-        if len(cluster["plan"]["nodes"]) != 4:
-            print("SparkRing: " + PAIR + ".")
-            return {"schema": RESULT_SCHEMA, "state": "complete", "message": PAIR, "ranks": []}
+        if not ranks(cluster["plan"]):
+            message = PAIR if len(cluster["plan"]["nodes"]) == 2 else NOT_RELAYED
+            print("SparkRing: " + message + ".")
+            return {"schema": RESULT_SCHEMA, "state": "complete", "message": message, "ranks": []}
         install_workflow.check_access(cluster)
         if args.revoke:
             return _revoke(args, cluster, interactive, context)
@@ -1264,7 +1292,7 @@ def execute(args, context):
         rows = requirement(plan)
         context["ranks"] = rank_rows(rows, plan)
         if not required(rows):
-            print(COMPLETE)
+            print(complete_text(len(rows)))
             return {"schema": RESULT_SCHEMA, "state": "planned" if args.plan else "complete",
                     "ranks": context["ranks"]}
         lines = consent_lines(plan, rows)
@@ -1292,7 +1320,7 @@ def execute(args, context):
             context["ranks"] = result_ranks(rows, plan, record)
             context["receipt"] = record.get("path")
         verified = deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"], stale_gids=True)
-        print(COMPLETE)
+        print(complete_text(len(rows)))
         if verified["stale_gids"]:
             print("RoCE GID index 3 lacks the address of " + ", ".join(
                 f"{entry['host']} {entry['netdev']}" for entry in verified["stale_gids"])
@@ -1311,8 +1339,9 @@ def execute(args, context):
 def main(argv=None):
     from runtime.host import controller
     parser = argparse.ArgumentParser(prog="sparkring hairpin",
-                                     description="Apply the ConnectX hairpin setting that four-Spark forwarding needs "
-                                                 "on every Spark of this ring, and at every boot. Run on Node A.")
+                                     description="Apply the ConnectX hairpin setting that relayed forwarding needs "
+                                                 "on every Spark that relays between its cables, now and at every "
+                                                 "boot. Run on Node A.")
     parser.add_argument("--plan", action="store_true", help="show what each Spark needs; change nothing")
     parser.add_argument("--yes", action="store_true", help="approve the listed driver restarts or records on an idle ring")
     parser.add_argument("--json", action="store_true", help="emit one sparkring-hairpin-result/v1 document on stdout")

@@ -205,7 +205,7 @@ def test_the_summary_names_what_was_released():
     assert retention.summary(base) == []
     assert [retention.reason_text("recent", retain) for retain in (1, 3)] == [
         "most recent of its profile", "3 most recent of its profile"]
-    errors = [f"Node 1 spark-931e: refusal {n}" for n in range(7)]
+    errors = [f"Node 1 spark-d: refusal {n}" for n in range(7)]
     assert retention.summary({**base, "released": ["d"], "freed_bytes": gib, "errors": errors}) == [
         "Released 1 older deployment's containers, workspaces and caches: 1.0 GiB",
         "Some data stays on the Sparks; sudo sparkring storage lists it:",
@@ -478,7 +478,7 @@ def test_the_off_switch_and_a_preference_stop_automatic_release(tmp_path, spark,
                                        "timed out; nothing was released. sudo sparkring storage lists what they hold.\n")
     # A Spark whose Docker cannot be read lists no container, so a running one would look stopped.
     monkeypatch.setattr(storage, "_survey", lambda *a, **k: [{
-        "rank": 0, "host": HOSTS[0], "hostname": "spark-aa42", "package_revision": checkpoints.package_revision(),
+        "rank": 0, "host": HOSTS[0], "hostname": "spark-e", "package_revision": checkpoints.package_revision(),
         "items": [],
         "model_containers": [], "docker": {"root": None, "images": [], "error": "permission denied"}}])
     assert retention.after_operation(state, invoke, write=print)["state"] == "failed"
@@ -487,7 +487,7 @@ def test_the_off_switch_and_a_preference_stop_automatic_release(tmp_path, spark,
     # A Spark running another package lacks the batch release, and an earlier one lists no model containers.
     for other in ({"package_revision": "b" * 40}, {"model_containers": None}):
         monkeypatch.setattr(storage, "_survey", lambda *a, **k: [{
-            "rank": 0, "host": HOSTS[0], "hostname": "spark-aa42", "package_revision": checkpoints.package_revision(),
+            "rank": 0, "host": HOSTS[0], "hostname": "spark-e", "package_revision": checkpoints.package_revision(),
             "items": [], "model_containers": [], "docker": {"root": None, "images": [], "error": None}, **other}])
         assert retention.after_operation(state, invoke, write=print)["state"] == "failed"
         assert "the Sparks do not all run Node A's SparkRing package revision; nothing was released" in \
@@ -521,7 +521,7 @@ def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed
     assert retention.release_record(directory) is None
     # Once another operation ran, the record no longer applies and down runs the deployment's own stop.
     write_json(directory / "state.json", {**DOWN, "generation": 4})
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     assert controller.lifecycle(["down", PROFILE, "--instance", "iaaaaaaaaaaa4", "--execute"]) == 0
     assert calls == ["review-down", "down"]
     assert retention.release_record(directory) is None
@@ -532,7 +532,7 @@ def test_down_of_a_released_deployment_reports_it_instead_of_verifying_a_removed
 def test_up_releases_older_deployments_only_after_it_completes(tmp_path, monkeypatch, capsys):
     from runtime.host import recovery, retained_source
     monkeypatch.setattr(controller, "STATE", tmp_path)
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     monkeypatch.setattr(recovery, "started", lambda directory, enabled=None: None)
     monkeypatch.setattr(retained_source, "review", lambda directory, operation, **k: {
         "profile": PROFILE, "hosts": [HOSTS[0]], "phases": ["source", "start"]})

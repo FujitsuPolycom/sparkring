@@ -2,6 +2,7 @@
 from copy import deepcopy
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -9,6 +10,14 @@ import pytest
 from runtime.common import glm_targets
 
 CONFIG = Path(__file__).with_name("fixtures") / "glm53-nvidia-nvfp4-config.json"
+# GLM-5.3-NVFP4 at b472e4ee: its hf_quant_config.json (pinned by the checkpoint's pin manifest) and the
+# eight-Spark profile whose --hf-overrides restates it with the MTP layer excluded.
+NVFP4_QUANT = Path(__file__).with_name("fixtures") / "glm53-nvfp4-b472e4ee-hf_quant_config.json"
+NVFP4_MANIFEST = (glm_targets.ROOT / "profiles/checkpoints/local-inference-lab--GLM-5.3-NVFP4"
+                  / "b472e4ee53f6a9862da5486c56c6ca21be3dab70.json")
+NVFP4_PROFILE = glm_targets.ROOT / "profiles/glm53-nvfp4-tp8/config.json"
+# A directory holding the checkpoint's config.json, which the repository does not carry.
+NVFP4_CHECKPOINT = os.environ.get("SPARKRING_GLM53_NVFP4_CHECKPOINT")
 
 
 def test_lil_qad_is_distinct_and_has_complete_file_identities():
@@ -215,3 +224,34 @@ def test_nvidia_manifest_cannot_leave_metadata_unchecked(tmp_path, monkeypatch):
     monkeypatch.setattr(glm_targets, "RECORD", path)
     with pytest.raises(ValueError, match="lacks a pinned SHA256"):
         glm_targets.verify_download("nvidia-nvfp4", files)
+
+
+def _option(arguments, flag):
+    return arguments[arguments.index(flag) + 1]
+
+
+def test_the_glm53_tp8_profile_keeps_the_mtp_layer_out_of_the_checkpoints_nvfp4_quantization():
+    raw = NVFP4_QUANT.read_bytes()
+    manifest = json.loads(NVFP4_MANIFEST.read_bytes())
+    assert hashlib.sha256(raw).hexdigest() == manifest["files"]["hf_quant_config.json"]["sha256"]
+    quantization = json.loads(raw)
+    # The checkpoint quantizes layers 0-77 only where it does not exclude them; layer 78 is the MTP predictor.
+    layers = {int(item.split(".")[2].rstrip("*")) for item in quantization["ignore"] if item.startswith("model.layers.")}
+    assert layers == set(range(78))
+    profile = json.loads(NVFP4_PROFILE.read_bytes())
+    override = json.loads(_option(profile["vllm_args"], "--hf-overrides"))
+    assert override == glm_targets.mtp_override({"quantization_config": quantization, "num_hidden_layers": 78,
+                                                 "num_nextn_predict_layers": 1})
+    assert override["quantization_config"]["ignore"] == quantization["ignore"] + [
+        "model.language_model.layers.78*", "model.layers.78*"]
+    speculative = json.loads(_option(profile["vllm_args"], "--speculative-config"))
+    assert (speculative["method"], speculative["num_speculative_tokens"]) == ("mtp", 2)
+
+
+@pytest.mark.skipif(not NVFP4_CHECKPOINT, reason="SPARKRING_GLM53_NVFP4_CHECKPOINT names no directory with the "
+                                                 "checkpoint's config.json")
+def test_the_glm53_tp8_override_equals_the_one_the_checkpoint_config_gives():
+    raw = (Path(NVFP4_CHECKPOINT) / "config.json").read_bytes()
+    profile = json.loads(NVFP4_PROFILE.read_bytes())
+    assert hashlib.sha256(raw).hexdigest() == profile["model"]["config_sha256"]
+    assert json.loads(_option(profile["vllm_args"], "--hf-overrides")) == glm_targets.mtp_override(json.loads(raw))

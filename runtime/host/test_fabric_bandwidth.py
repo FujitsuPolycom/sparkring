@@ -381,7 +381,7 @@ def test_command_takes_the_installation_lock(tmp_path):
 
 
 def test_command_without_a_recorded_cluster_explains_where_it_runs(tmp_path):
-    with pytest.raises(ValueError, match="No pair or ring is recorded on this Spark"):
+    with pytest.raises(ValueError, match="No fabric is recorded on this Spark"):
         bandwidth.command(state_root=tmp_path, access=None)
 
 
@@ -395,8 +395,8 @@ def test_json_output_is_one_document_that_is_also_saved(tmp_path, capsys):
     document = json.loads(captured.out)
     assert captured.err.splitlines()[0] == "Measuring spark0 port 0 ↔ spark1 port 1"
     assert document == json.loads((tmp_path / bandwidth.RECORD).read_text())
-    assert set(document) == {"schema", "measured_at", "cluster_id", "layout", "threshold_gbps", "test", "verdict",
-                             "notes", "cables"}
+    assert set(document) == {"schema", "measured_at", "cluster_id", "layout", "layout_name", "threshold_gbps", "test",
+                             "verdict", "notes", "cables"}
     assert document["schema"] == "sparkring-fabric-bandwidth/v1" and document["cluster_id"] == value["plan"]["id"]
     assert document["test"] == {"program": "ib_write_bw", "bidirectional": True, "message_bytes": 1048576,
                                 "seconds": 5, "gid_index": 3}
@@ -571,10 +571,14 @@ def test_setup_with_nodes_ends_with_the_check(four_sparks, monkeypatch, tmp_path
     _, plan, _, targets = four_sparks
     monkeypatch.setattr(controller, "apply", lambda value, directory, **options: value)
     received = []
-    monkeypatch.setattr(bandwidth, "after_setup", lambda root, value: received.append((root, value)))
+    monkeypatch.setattr(bandwidth, "after_setup", lambda root, value: received.append((root, value)) or "measured")
+    monkeypatch.setattr(controller.fabric, "finish_setup",
+                        lambda root, value, directory, bandwidth: received.append(("fabric", bandwidth)))
     assert controller.setup([*targets, "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "setup")]) == 0
-    [(root, value)] = received
+    [(root, value), last] = received
     assert root == controller.STATE and value["plan"]["id"] == plan["id"]
+    # The fabric document is recorded last, with the cable health just measured.
+    assert last == ("fabric", "measured")
     assert json.loads((controller.STATE / "cluster.json").read_text())["plan"]["id"] == plan["id"]
 
 
@@ -593,8 +597,11 @@ def test_repeated_setup_ends_with_the_check(tmp_path, monkeypatch):
     monkeypatch.setattr(single_uplink.controller, "apply", lambda plan, directory, **options: plan)
     received = []
     monkeypatch.setattr(bandwidth, "after_setup", lambda root, record: received.append((root, record)))
+    monkeypatch.setattr(single_uplink.fabric, "finish_setup",
+                        lambda root, record, directory, bandwidth: received.append(("fabric", root)))
     assert single_uplink.main(["--yes"]) == 0
-    [(root, record)] = received
+    [(root, record), last] = received
+    assert last == ("fabric", controller.STATE)
     assert root == controller.STATE and record["plan"]["id"] == value["plan"]["id"]
 
 

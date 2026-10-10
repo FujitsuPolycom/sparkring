@@ -47,7 +47,7 @@ SOURCE_FILES = (
     'runtime/common/container_spec.py',
     'runtime/common/compose.py',
     'runtime/common/profiles.py',
-    'runtime/common/qwen_flash_next.py',
+    'runtime/common/toolchain_profiles.py',
     'runtime/common/cache_candidate.py',
     'runtime/common/__init__.py',
     'runtime/images/candidate_image.py',

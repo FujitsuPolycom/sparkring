@@ -6,7 +6,7 @@ import subprocess
 
 import pytest
 
-from runtime.common import candidate, feature_candidate, qwen_flash_next, source_candidate as source, test_feature_candidate
+from runtime.common import candidate, feature_candidate, toolchain_profiles, source_candidate as source, test_feature_candidate
 from runtime.common.test_feature_candidate import encoded, sha
 from runtime.images import source_extension
 
@@ -127,7 +127,7 @@ def test_declared_replacement_requires_its_actual_parent_preimage(inputs):
 @pytest.mark.parametrize("selection_kind", ["local-tp4", "local-tp2", "published"])
 def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(inputs, monkeypatch, selection_kind):
     image = inputs["image_id"]
-    base_image = qwen_flash_next.publication()["image_id"]
+    base_image = toolchain_profiles.publication()["image_id"]
     reads = {
         (image, "/opt/sparkring/receipts/candidate-installed.json"): inputs["installed_bytes"],
         (image, source.PARENT_RECEIPT): inputs["parent_bytes"],
@@ -161,15 +161,15 @@ def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(
         }))
     # Local source extensions select native-family (SparkCache) profiles; the
     # installer profiles take their image from the installer image lock.
-    filename = {"local-tp2": qwen_flash_next.CONFIG_ROOT / "sparkcache.json",
-                "local-tp4": qwen_flash_next.TP4_CACHE_CONFIG}.get(selection_kind, qwen_flash_next.TP4_CONFIG)
-    profile = qwen_flash_next.read(filename)
+    filename = {"local-tp2": toolchain_profiles.CONFIG_ROOT / "sparkcache.json",
+                "local-tp4": toolchain_profiles.TP4_CACHE_CONFIG}.get(selection_kind, toolchain_profiles.TP4_CONFIG)
+    profile = toolchain_profiles.read(filename)
     if selection_kind == "published":
         profile["image_extension"] = source.IDENTITY
-        selection = qwen_flash_next.image_verification_options(profile)
+        selection = toolchain_profiles.image_verification_options(profile)
     else:
-        selection = qwen_flash_next.image_verification_options(profile, local_source_extension=source.IDENTITY)
-    result = qwen_flash_next.verify_image(image, **selection, run=run)
+        selection = toolchain_profiles.image_verification_options(profile, local_source_extension=source.IDENTITY)
+    result = toolchain_profiles.verify_image(image, **selection, run=run)
     assert result["source_extension"]["id"] == source.IDENTITY
     assert len(calls) == 6
 
@@ -179,8 +179,8 @@ def test_live_admission_reads_receipts_and_source_verifier_from_inspected_image(
     {"Config": {"Entrypoint": ["/opt/venv/bin/python", candidate.ENTRYPOINT]}},
 ])
 def test_local_tp2_source_admission_rejects_wrong_image_platform_or_entrypoint_before_payload_reads(inputs, mutation):
-    profile = qwen_flash_next.read(qwen_flash_next.CONFIG_ROOT / "sparkcache.json")
-    selection = qwen_flash_next.image_verification_options(profile, local_source_extension=source.IDENTITY)
+    profile = toolchain_profiles.read(toolchain_profiles.CONFIG_ROOT / "sparkcache.json")
+    selection = toolchain_profiles.image_verification_options(profile, local_source_extension=source.IDENTITY)
 
     def run(argv, **kwargs):
         assert argv[1:3] == ["image", "inspect"]
@@ -190,4 +190,4 @@ def test_local_tp2_source_admission_rejects_wrong_image_platform_or_entrypoint_b
         return subprocess.CompletedProcess(argv, 0, stdout=json.dumps([observed]))
 
     with pytest.raises(ValueError, match="Image"):
-        qwen_flash_next.verify_image(inputs["image_id"], **selection, run=run)
+        toolchain_profiles.verify_image(inputs["image_id"], **selection, run=run)

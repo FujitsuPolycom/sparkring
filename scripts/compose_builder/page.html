@@ -635,7 +635,8 @@ __ENGINE__
         () => { imageData[row.name] = { status: 'failed' }; })
       .then(() => { renderAll(); changed(); });
   }
-  const slotCheckpoint = (slot, p) => slot.checkpoints[p.id] ?? null;
+  // A slot without a chosen checkpoint selects the one `sparkring install` installs on the image (E.installDefaultName).
+  const slotCheckpoint = (slot, p) => slot.checkpoints[p.id] ?? E.installDefaultName(p);
   const slotSettings = (slot, id) => (slot.settings[id] ||= {});
   const checkpointName = p => slotCheckpoint(active(), p);
   const checkpointOf = p => E.checkpointOf(p, checkpointName(p));
@@ -894,7 +895,7 @@ __ENGINE__
       const input = el('input', { type: 'radio', name: 'checkpoint', id, value: cp.name });
       input.checked = cp === current;
       input.addEventListener('change', () => {
-        selectCheckpoint(p, cp.default ? null : cp.name);
+        selectCheckpoint(p, E.installDefault(cp) ? null : cp.name);
         renderCheckpoints(); renderSettings(); renderSparks(); changed();
       });
       const details = cp.default
@@ -907,7 +908,7 @@ __ENGINE__
         el('span', { class: 'choice-body' }, el('strong', {}, cp.purpose || cp.name), el('span', { class: 'meta mono' }, cp.name),
           el('span', { class: 'meta' }, cp.model_repository + ' @ ' + rev(cp.model_revision) + served)),
         details.length ? el('ul', { class: 'changes' }, details) : null,
-        el('span', { class: 'chips' }, cp.default ? chip('Default', 'good') : null, statusChip(cp.status))));
+        el('span', { class: 'chips' }, E.installDefault(cp) ? chip('Default', 'good') : null, statusChip(cp.status))));
     }
   }
 
@@ -1247,7 +1248,7 @@ __ENGINE__
   // ---- Shared facts and the command pack -----------------------------------
   let installReady = false;
 
-  const checkpointText = cp => (cp.name ? cp.name + (cp.default ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision);
+  const checkpointText = cp => (cp.name ? cp.name + (E.installDefault(cp) ? ' (default)' : '') + ' · ' : '') + cp.model_repository + ' @ ' + rev(cp.model_revision);
   // A deployment's status and what it is: the checkpoint's own for one other than the default, else the profile's.
   const statusText = (p, cp) => statusLabel(cp.status || p.status) + ' · ' + ((cp.default ? p.purpose : cp.purpose) || p.title);
 

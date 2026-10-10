@@ -17,30 +17,30 @@ Looking for existing copies of nvidia/GLM-5.3-Flash-NVFP4 at da920bb0b9f4 on 4 S
 Install glm53-flash-nvfp4-spark-tp4 on 4 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint nvidia/GLM-5.3-Flash-NVFP4 at da920bb0b9f4: 42 files, 190.4 GiB
-Searched spark-edfd in 15.6 s, spark-ebb8 in 12.0 s, spark-ebee in 11.0 s and spark-4a87 in 13.4 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 15.6 s, spark-f in 12.0 s, spark-g in 11.0 s and spark-c in 13.4 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd: no copy found (searched 908,857 folder entries in 15.6 s)
+Node 0 spark-h: no copy found (searched 908,857 folder entries in 15.6 s)
     downloads 42 files (190.4 GiB) from huggingface.co; needs 230.8 GiB free on / (198.8 GiB for checkpoint files, 32 GiB for the compile cache; 271 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/06972cdee7280cec849aedf05a02062b3e870246 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e (another checkpoint: its index differs)
-Node 1 spark-ebb8: no copy found (searched 399,566 folder entries in 12.0 s)
+Node 1 spark-f: no copy found (searched 399,566 folder entries in 12.0 s)
     42 files (190.4 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 230.8 GiB free on / (198.8 GiB for checkpoint files, 32 GiB for the compile cache; 528 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/06972cdee7280cec849aedf05a02062b3e870246 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e (another checkpoint: its index differs)
-Node 2 spark-ebee: no copy found (searched 366,021 folder entries in 11.0 s)
+Node 2 spark-g: no copy found (searched 366,021 folder entries in 11.0 s)
     42 files (190.4 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 230.8 GiB free on / (198.8 GiB for checkpoint files, 32 GiB for the compile cache; 739 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/06972cdee7280cec849aedf05a02062b3e870246 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /var/tmp/models/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/df116c4fb16b1d37ae43d2cfd624de26ffbc832e (another checkpoint: its index differs)
-Node 3 spark-4a87: no copy found (searched 373,059 folder entries in 13.4 s)
+Node 3 spark-c: no copy found (searched 373,059 folder entries in 13.4 s)
     42 files (190.4 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 230.8 GiB free on / (198.8 GiB for checkpoint files, 32 GiB for the compile cache; 253 GiB free)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4-Spark/a608241037e4c2565356bff7ca293f2133888f88 (another checkpoint: its index differs)
     not used: /srv/sparkring/tp4-installer/checkpoints/local-inference-lab--GLM-5.3-Flash-NVFP4/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49 (another checkpoint: its index differs)

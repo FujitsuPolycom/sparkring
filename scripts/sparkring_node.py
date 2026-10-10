@@ -12,8 +12,12 @@ from runtime.host import node
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring node")
     commands = parser.add_subparsers(dest="action", required=True)
-    for name in ("initialize", "verify", "configure", "adopt", "restore", "control-key", "control-configure", "control-up"):
+    for name in ("initialize", "verify", "configure", "restore", "control-key", "control-configure", "control-up",
+                 "unit-overrides"):
         commands.add_parser(name)
+    adopting = commands.add_parser("adopt")
+    adopting.add_argument("--retire-existing", action="store_true",
+                          help="move a differing fabric record aside (with a receipt) instead of refusing")
     seed = commands.add_parser("seed")
     seed.add_argument("--key-file", required=True)
     seed.add_argument("--yes", action="store_true",
@@ -47,6 +51,19 @@ def main(argv=None):
     workspace.add_argument("--name", required=True)
     agent = commands.add_parser("agent")
     agent.add_argument("--once", action="store_true")
+    commands.add_parser("relay-markers", help="run this Spark's relay markers until stopped "
+                                              "(sparkring-relay-marker.service)")
+    commands.add_parser("relay-marker-check", help="check the installed package's relay marker against the "
+                                                   "SHA-256 the package records (the package installation runs it)")
+    commands.add_parser("fabric-check", help="check this Spark's part of the fabric that Node A sends on stdin "
+                                             "(sparkring fabric verify); reads only, apart from ICMP echo requests")
+    commands.add_parser("fabric-document", help="write the fabric document that Node A sends on stdin as this "
+                                                "Spark's copy")
+    facts = commands.add_parser("tuning-facts", help="print this Spark's GPU driver and kernel, which a measured "
+                                                     "SIRCL tuning table binds (sparkring fabric tune); reads only")
+    facts.add_argument("--interface", metavar="NAME", help="also print this interface's IPv4 address")
+    commands.add_parser("sircl-tuning", help="write the measured SIRCL tuning tables that Node A sends on stdin as "
+                                             "this Spark's copies (sparkring fabric tune)")
     status = commands.add_parser("status")
     status.add_argument("--refresh", action="store_true")
     hairpin = commands.add_parser("hairpin", help="ConnectX hairpin setting of a four-Spark ring member")
@@ -117,6 +134,8 @@ def main(argv=None):
             result = storage.node(args.release, batch=args.release_batch)
         elif args.action == "workspace":
             result = node.workspace(args.operator, args.name)
+        elif args.action == "unit-overrides":
+            result = {"overrides": node.unit_overrides()}
         elif args.action == "restore":
             result = node.restore(node.read("/", "/etc/sparkring/fabric.json"))
         elif args.action in ("verify", "configure", "adopt"):
@@ -124,13 +143,31 @@ def main(argv=None):
             if args.action == "configure":
                 result = node.configure(config)
             elif args.action == "adopt":
-                result = node.adopt(config)
+                result = node.adopt(config, retire=args.retire_existing)
             else:
                 node.observe(config)
                 result = {"verified": True, "hardware_qualified": False}
         elif args.action == "agent":
             node.agent(once=args.once)
             return 0
+        elif args.action == "relay-markers":
+            return node.relay_markers()
+        elif args.action == "relay-marker-check":
+            from runtime.host import relays
+            result = relays.check_installed()
+        elif args.action in ("fabric-check", "fabric-document"):
+            from runtime.host import fabric
+            text = sys.stdin.read()
+            if args.action == "fabric-check":
+                result = fabric.check_local(json.loads(text))
+            else:
+                result = fabric.install_document(text)
+        elif args.action in ("tuning-facts", "sircl-tuning"):
+            from runtime.host import fabric_tune
+            if args.action == "tuning-facts":
+                result = fabric_tune.local_facts(args.interface)
+            else:
+                result = fabric_tune.install_tables(sys.stdin.read())
         elif args.action == "hairpin":
             from runtime.host import hairpin
             if args.hairpin_action == "apply" and not args.dry_run:

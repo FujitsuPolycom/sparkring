@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-qad-tp8",
+  "title": "Qwen3.8-Flash-Next NVFP4 QAD on eight Sparks",
+  "recommendation": "recommended",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-qad-tp8/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/qwen38-flash-next-qad-tp8/README.md",
+  "evidence_scope": "The settings of the four-Spark profile qwen38-flash-next-qad-tp4 at tensor-parallel size 8 with its default checkpoint (step 5500), MTP3 and 262,144-token context. Runs only on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring; no image lock in this package lists it, so it installs only with a development image lock (v3) whose image carries the SIRCL layer and lists the profile. No installation of this profile has run on hardware; the four-Spark profile served on SIRCL at TP4 on a four-Spark line of an eight-Spark ring through SIRCL's launcher. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-qad-tp8/config.json"
+    ]
+  }
+}

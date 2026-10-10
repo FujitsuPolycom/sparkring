@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-nvfp4-tp8-dcp1",
+  "title": "GLM-5.3 NVFP4 on eight Sparks without decode-context parallelism",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-nvfp4-tp8-dcp1/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-nvfp4-tp8-dcp1/README.md",
+  "evidence_scope": "GLM-5.3 (744B, GlmMoeDsaForCausalLM) at tensor-parallel size 8 without decode-context parallelism, a 524,288-token context and 8 sequences, otherwise the settings of glm53-nvfp4-tp8: 43 GiB of fp8_ds_mla KV cache per Spark, two-token MTP speculative decoding, MXFP8 dense linears on the B12X linear backend, W4A16 experts, the compressed-KV gather and the vLLM plugins glm_dsa_indexer_split and glm53full_speedups, on SIRCL ring sessions with NCCL off and the fused all-reduce and RMSNorm, on all eight Sparks of an eight-Spark ring. It installs only with an image lock (v3) whose image carries the SIRCL layer and lists both plugins in vllm_plugins and this profile. A launch outside sparkring install with these settings, through the serving A/B runner on image af06e272 (the SIRCL 0.3.0 and libsircl image 816c6d6a7e96 with the GLM-5.3 plugin layer) with SM clocks locked at 2,418 MHz on one eight-Spark ring, with one measured start, reported a KV pool of 843,584 tokens and decoded 49.5 / 84.7 / 117.5 / 170.8 tokens/s at 1 / 2 / 4 / 8 streams at 0K context and 49.4 / 74.7 / 108.2 / 156.4 at 16K, with a time to first token of 10.7 s at 16K (2026-10-09; no record of this run is in performance/records). No installation of this profile has run on hardware. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-nvfp4-tp8-dcp1/config.json"
+    ]
+  }
+}

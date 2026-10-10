@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from runtime.common import profiles, qwen_flash_next  # noqa: E402
+from runtime.common import profiles, toolchain_profiles  # noqa: E402
 
 TOPOLOGY_NODES = {"direct-pair-2": 2, "direct-cycle-4": 4}
 # The installer's smoke request uses the same default for a profile without
@@ -88,7 +88,7 @@ def load(profile_id, root=ROOT, checkpoint=None):
 
     The listed checkpoint's served name, repository, revision and vLLM
     arguments replace the default's, as `sparkring install --checkpoint`
-    applies them (qwen_flash_next.checkpoint_settings). Naming the default
+    applies them (toolchain_profiles.checkpoint_settings). Naming the default
     checkpoint, or an alias of it, is the same as naming none.
     """
     profile, _ = profiles.load(profile_id, root)
@@ -97,9 +97,9 @@ def load(profile_id, root=ROOT, checkpoint=None):
         raise ValueError(f"{profile_id} is not an installer profile: its configuration is a {source['format']}")
     config = profiles.read_json(profiles.local_path(source["path"], root))
     if checkpoint is not None:
-        default, _ = qwen_flash_next.checkpoint_names(config)
-        checkpoint = qwen_flash_next.checkpoint_name(config, checkpoint)
-        config = qwen_flash_next.checkpoint_settings(config, checkpoint)
+        default, _ = toolchain_profiles.checkpoint_names(config)
+        checkpoint = toolchain_profiles.checkpoint_name(config, checkpoint)
+        config = toolchain_profiles.checkpoint_settings(config, checkpoint)
         if checkpoint == default:
             checkpoint = None
     args = [str(value) for value in config.get("vllm_args", [])]

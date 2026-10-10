@@ -6,8 +6,10 @@ a builder in [builders.json](builders.json); the entry's `releases` field names
 it. The [repository layout check](../../scripts/check_repository_layout.py)
 requires a builder for every release that has an `installer-image.json` lock.
 
-The default image, `dev-20261004-kraken-cuda1342-nccl2323-status034`, is built
-in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
+Release 2026.10.1's image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
+which the default image of release 2026.10.2 is built on
+([release record](../releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)),
+is built in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
 that [external_context.py](external_context.py) prepares from SparkRing's merges
 of Local Inference Lab's Karmic Kraken beta vLLM and B12X branches and from the
 integration assets of `dev-20261001-statusrows-cuda1342-nccl2323-status034`,
@@ -87,6 +89,11 @@ each setting needs; the installer, `sparkring compose render` and the [Install
 Builder](../../docs/operations/compose-builder.md) refuse the setting, or do
 not offer it, on an image without it. A release whose own layer adds a
 capability, such as an image built from new sources, is listed in the file.
+So is an unpublished derived release, which has no `publication.json` to name
+its parent: `dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034`
+keeps the shared-memory reader of `dev-20261004-kraken-cuda1342-nccl2323-status034`,
+as its [CSF-sources record](compositions/kraken-csf-sources-20261007/README.md)
+states.
 
 ## Derived layers
 
@@ -140,6 +147,24 @@ Python file under the descriptor rules: `pins` names the added path with
 inherited SHA-256 `None`, and the parent receipt must not record it.
 [derive_tool_choice_contract.py](derive_tool_choice_contract.py) adds the
 tool-result policy as a vLLM module and pins the `serving.py` that installs it.
+[derive_glm53_plugins.py](derive_glm53_plugins.py) adds the GLM-5.3 vLLM
+general plugins `glm_dsa_indexer_split` and `glm53full_speedups` 1.1.0 and
+`glm_dcp_decode_comm` 2.0.1 with their dist-info directories and names all
+three in `Layer.plugins`.
+
+The derived lock has its parent lock's schema. A parent with a
+`sparkring-installer-image/v3` lock, such as the SIRCL or libsircl image, gives
+a v3 lock that keeps the parent's image line, transports, default tuning table
+digest and `sircl` and `libsircl` blocks unchanged, is not archived, and lists
+the layer's plugins with the parent's in `vllm_plugins`. Its `record` also
+requires that the built image registers each listed plugin at its version in
+`vllm.general_plugins` and that the built image's external-base receipt still
+covers the kept SIRCL and libsircl layers (`transport.check_layer`,
+`libsircl.check_layer`), and runs admission through the lock's v2 fields. A v1
+or v2 parent gives the same context and lock as before, without plugins:
+`sparkring install` refuses a profile whose `VLLM_PLUGINS` names an added
+plugin on an image whose lock does not list it
+([image_lock.py](../common/image_lock.py), `plugin_problem`).
 
 The peer-wait layer's build takes the parent lock and reads the parent's
 installed bundle from the local parent image:
@@ -278,6 +303,151 @@ The Qwen decode builder is a program of the
 [installer tuning record](../../performance/records/qwen38-flash-next/installer-tuning-20260925.md#decode-image),
 which describes its inputs; it builds from the files that `qwen_decode_patch.py`
 writes and takes positional arguments.
+
+## SIRCL layer
+
+[sircl_layer.py](sircl_layer.py) (`installer-sircl-layer`) adds SIRCL ring
+sessions to a kraken-line image with a v2 lock and writes a
+`sparkring-installer-image/v3` lock
+([release procedure](../../docs/development/releases.md)). Its layer holds:
+
+- the package, installed in the serving interpreter's site-packages (the
+  `site-packages` or `dist-packages` directory where the parent receipt
+  records `vllm/__init__.py`; B12X's `b12x/integration/vllm` subpackage is
+  not one) from a
+  reproducible wheel `sparkring_sircl-<version>-py3-none-any.whl`: every
+  Python, C, header and JSON file of `spark_transport/sircl/sparkring_sircl`,
+  SparkRing's RoCE GID resolver as the top-level module `spark_roce_gid`, and a
+  dist-info directory whose entry points register the `sircl` platform and
+  general plugins. vLLM loads them only when a container's `VLLM_PLUGINS` names
+  `sircl`, so deployments on the prepared transport are unchanged;
+- `roce_proxy-<digest>.so` and `p2p_proxy-<digest>.so` in
+  `/opt/sparkring/sircl/lib`, where `<digest>` is the first 16 hexadecimal
+  digits of the SHA-256 of the C source. SIRCL's own build code compiles them
+  in a network-less container of the parent image, against that image's glibc
+  and `libibverbs.so.1`; no Spark compiles them;
+- `/opt/sparkring/receipts/sircl-layer.json` (`sparkring-sircl-layer/v1`): the
+  version, ABI, wheel, libraries, tuning key, compiler and every installed
+  file with its SHA-256.
+
+Every added file is recorded in the external-base receipt, so the image's
+`verify` checks its bytes, and `sparkring install` admits the layer by
+requiring that receipt to record the layer receipt and both libraries with the
+SHA-256 the lock names. The receipt's `capabilities.sircl` names the layer
+receipt.
+
+```bash
+python3 runtime/images/sircl_layer.py wheel --output WHEELS
+python3 runtime/images/sircl_layer.py natives --parent-lock PARENT_LOCK \
+  --wheel WHEELS/sparkring_sircl-0.3.2-py3-none-any.whl --output NATIVES
+python3 runtime/images/sircl_layer.py prepare --parent-lock PARENT_LOCK \
+  --wheel WHEELS/sparkring_sircl-0.3.2-py3-none-any.whl --natives NATIVES \
+  [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
+python3 runtime/images/sircl_layer.py build --context CONTEXT --tag sparkring:sircl \
+  --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
+```
+
+`wheel` and `prepare` are offline and the wheel's bytes depend only on the
+checkout; `natives` needs the parent image on the build host. `record` (run by
+`build`) confirms that the parent has none of the added paths, runs SIRCL's
+probe in the built image (package and entry points found in site-packages,
+both libraries present), runs the installer's admission for every profile of
+the lock and writes the v3 lock with the pinned vLLM builds the probe
+reports. The lock lists the parent lock's profiles, or those of `--profiles`,
+which may add the profiles that run only on SIRCL ring sessions and that a v2
+parent lock cannot list. The lock's `image_reference` is the local
+configuration ID until publication replaces it. The deployment's SIRCL
+sessions read the layer's libraries through `SIRCL_NATIVE_LIBRARY` and
+`SIRCL_P2P_NATIVE_LIBRARY` ([transport.py](../common/transport.py)).
+
+The SIRCL layer adds no model sources. Runtime-status 0.3.5, which adds
+SIRCL's facts to the dashboard's Transport table, enters an image through a
+[status descriptor layer](#replacing-the-runtime-status-package) below the
+SIRCL layer.
+
+## libsircl layer
+
+[libsircl_layer.py](libsircl_layer.py) (`installer-libsircl-layer`) adds
+libsircl, SIRCL's NCCL-compatible C library
+([design](../../docs/architecture/libsircl.md)), to a kraken-line image with a
+v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
+`libsircl` among its `transports` and a `libsircl` block. Status:
+**research-only**; no release lists it. The layer holds:
+
+- `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, built by libsircl's
+  own Makefile from its committed [source](../../spark_transport/libsircl/README.md)
+  (`make -j BUILD=build`, then `make check`) in a network-less container of
+  the parent image, at the fixed path `/tmp/libsircl` and with `LD_PRELOAD`
+  unset. The build compiles the four kernel packs with the parent image's
+  nvcc and embeds them;
+- libsircl's notices under `/opt/sparkring/libsircl`: `LICENSE`, `NOTICE`,
+  `vendor/NCCL-LICENSE.txt`, `vendor/SIRCL-NOTICE` and `LICENSES/`;
+- the vLLM general plugin `libsircl`
+  ([sparkring_libsircl.py](../../integrations/vllm/libsircl/README.md)) in
+  the serving interpreter's site-packages with its dist-info directory. vLLM
+  loads it only when `VLLM_PLUGINS` names `libsircl`, so the image's other
+  deployments are unchanged;
+- `/opt/sparkring/receipts/libsircl-layer.json` (`sparkring-libsircl-layer/v1`):
+  version, the source's git tree id (`source_tree`), library (path, SHA-256, SONAME `libnccl.so.2`), NCCL API
+  level, whether the library has the fail-stop mode (its bytes name
+  `LIBSIRCL_FAIL_STOP`; the transport requires it), kernel packs and
+  architectures, plugin, compiler, nvcc, build commands and every installed file
+  with its SHA-256.
+
+Every added file is recorded in the external-base receipt, whose
+`capabilities.libsircl` names the layer receipt, so the image's `verify`
+checks their bytes.
+
+```bash
+python3 runtime/images/libsircl_layer.py natives --parent-lock PARENT_LOCK --output NATIVES
+python3 runtime/images/libsircl_layer.py prepare --parent-lock PARENT_LOCK --natives NATIVES   [--base-receipt base.json --toolchain-receipt toolchain.json] --output CONTEXT
+python3 runtime/images/libsircl_layer.py build --context CONTEXT --tag sparkring:libsircl   --name RELEASE [--profiles PROFILE,PROFILE,...] --output LOCK
+```
+
+`natives` builds the files git tracks under `spark_transport/libsircl` at
+`HEAD`, refuses to start while tracked files there have changes not
+committed, and needs the parent image on the build
+host; `prepare` is offline given copied receipts. `record` (run by `build`)
+confirms that the parent has none of the added paths, probes the built image
+(the plugin's entry point, `ncclGetVersion` 22705, `sirclGetInfo` naming
+libsircl and its version, and the plugin selecting the library), checks the
+layer as installation does (`libsircl.check_layer`), runs the installer's
+admission for every profile and writes the v3 lock. `host-library
+--builder-image ID --output DIR` builds the same library in another local
+image for the stock-image option, which mounts it from the host. The
+[design](../../docs/architecture/libsircl.md#build-and-load-commands) gives
+the commands that build the layer on one Spark and load it on the others.
+
+## CSF sources of the kraken line
+
+A parent that serves the GLM-5.3-Flash CSF checkpoint needs vLLM and B12X
+sources that carry its `nvfp4_csf` quantization and loader.
+[derive_kraken_csf_sources.py](derive_kraken_csf_sources.py)
+(`installer-kraken-csf-sources`) is a code layer over
+`dev-20261004-kraken-cuda1342-nccl2323-status034` that replaces 47 and adds 2
+Python files of `vllm/` and `b12x/` in site-packages with those of SparkRing's
+merges vLLM `bc9ea774` and B12X `cc36aa6f`. Its
+[source manifest](compositions/kraken-csf-sources-20261007/README.md) pins
+each file in the parent and in the merges, and `prepare` takes the files from
+a directory that holds them at their site-packages paths (`--sources`, such as
+the CSF source overlay) or from the payload archive (`--payload`). The layer
+writes no compiled file and none of the B12X sources the prepared transport
+verifies; its provenance receipt is
+`/opt/sparkring/receipts/derived-kraken-csf-sources.json`. `record` and
+`build` are those of [derived_layer.py](derived_layer.py).
+
+The SIRCL layer over this layer makes
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034`](../releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
+whose recipe gives the build, load and check commands. Only that image's v3
+lock records the pinned vLLM build in `sircl.vllm_pins`, which the installer
+requires for the CSF checkpoint (`image_lock.CHECKPOINT_BUILDS`). An
+installation with the v2 lock of this layer alone therefore keeps each
+profile's default checkpoint and refuses `--checkpoint csf`; with the v3 lock,
+the GLM-5.3-Flash profiles of two and four Sparks install the CSF checkpoint
+by default.
+[layer_delta.py](layer_delta.py) writes a `docker load` archive of a derived
+image without the layers its parent provides, so a Spark that holds the parent
+loads only the added layers.
 
 ## Evidence
 

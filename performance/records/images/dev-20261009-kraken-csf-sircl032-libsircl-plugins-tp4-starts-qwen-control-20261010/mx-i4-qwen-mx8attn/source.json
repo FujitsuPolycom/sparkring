@@ -1,0 +1,13 @@
+{
+ "profile": "qwen38-flash-next-qad-tp4",
+ "checkpoint": "qad-step5500-mxfp8-attention",
+ "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP4",
+ "port": 8015,
+ "context_limit": 262144,
+ "metrics": "phase1-16k",
+ "deviations": [
+  "checkpoint qad-step5500-mxfp8-attention (the profile's default: qad-step5500-ple1000)"
+ ],
+ "measured_at": "2026-10-10T06:06:28Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}

@@ -9,6 +9,22 @@ import shlex
 import subprocess
 import tempfile
 
+from runtime.common import fabric_layout
+
+# The most cable hops between Node A and a Spark it reaches: the far end of an
+# eight-Spark line. A fabric of ``size`` Sparks needs at most ``size - 1``
+# (``hop_limit``).
+MAX_HOPS = fabric_layout.MAX_SPARKS - 1
+
+
+def hop_limit(size=None):
+    """The longest SSH route through the cables to any of ``size`` Sparks: ``size - 1``, or ``MAX_HOPS``."""
+    if size is None:
+        return MAX_HOPS
+    if not fabric_layout.MIN_SPARKS <= size <= fabric_layout.MAX_SPARKS:
+        raise ValueError(f"SparkRing sets up {fabric_layout.MIN_SPARKS} to {fabric_layout.MAX_SPARKS} Sparks")
+    return size - 1
+
 
 def fabric_identity(guids, machine_id):
     """A Spark's discovery identity: a hash of its RDMA node GUIDs.
@@ -163,16 +179,31 @@ def validate_hop(hop):
     return hop
 
 
-def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=False):
+# The invoking account's own SSH keys, in OpenSSH's default order. OpenSSH offers them only when no
+# identity is given on the command line, so a command that names SparkRing's controller key adds them.
+DEFAULT_IDENTITIES = ("id_ed25519", "id_ecdsa", "id_rsa")
+
+
+def default_identities(home=None):
+    """The invoking account's default private keys that exist (``~/.ssh/id_ed25519`` and so on)."""
+    directory = Path(home if home is not None else Path.home()) / ".ssh"
+    return [directory / name for name in DEFAULT_IDENTITIES if (directory / name).is_file()]
+
+
+def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=False, home=None):
     """Every hop authenticates from Node A; no private key is sent to a worker.
 
     An interactive login asks about an unknown host key, or with ``trust_new``
     records it on first contact. New keys go to a SparkRing-owned file in
     ``directory``, unhashed, so setup can print what it trusted; keys already
     in the user's known_hosts are still honored.
+
+    With ``identity`` (SparkRing's controller key) the command also offers the
+    invoking account's own default keys after it, so a Spark whose account
+    already trusts Node A's key signs in before setup has installed its own.
     """
-    if not route or len(route) > 3:
-        raise ValueError("Bootstrap SSH route requires one through three hops")
+    if not route or len(route) > MAX_HOPS:
+        raise ValueError(f"Bootstrap SSH route requires one through {MAX_HOPS} hops")
     hop = validate_hop(route[-1])
     socket_id = hashlib.sha256(json.dumps(route, sort_keys=True).encode()).hexdigest()[:20]
     check = ("accept-new" if trust_new else "ask") if interactive else "yes"
@@ -183,7 +214,7 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
                "-o", "ControlMaster=auto", "-o", "ControlPersist=600", "-o", "ControlPath=" + str(Path(directory) / socket_id),
                "-p", str(hop["port"])]
     if len(route) > 1:
-        jump = ssh_argv(route[:-1], directory, identity=identity)
+        jump = ssh_argv(route[:-1], directory, identity=identity, home=home)
         # The final zone belongs to the jump host, which resolves -W's target.
         jump[-1:-1] = ["-W", f"[{hop['address']}%{hop['interface']}]:{hop['port']}"]
         # ssh expands % tokens in ProxyCommand before the shell sees it. Each
@@ -191,6 +222,8 @@ def ssh_argv(route, directory, *, interactive=False, identity=None, trust_new=Fa
         command += ["-o", "ProxyCommand=" + shlex.join(jump).replace("%", "%%")]
     if identity is not None:
         command += ["-i", str(identity)]
+        for path in default_identities(home):
+            command += ["-i", str(path)]
     command.append(hop["user"] + "@" + hop["address"] + ("" if hop["interface"] is None else "%" + hop["interface"]))
     return command
 
@@ -247,8 +280,11 @@ class SSH:
                          capture_output=True, text=True, timeout=30)
 
 
-def discover(transport, *, user="root", port=22, select=lambda peer: True):
+def discover(transport, *, user="root", port=22, select=lambda peer: True, hops=MAX_HOPS):
     """Authenticate the Sparks reachable over fabric link-local addresses.
+
+    A neighbor is followed only on routes of at most ``hops`` cables
+    (``hop_limit`` of the expected number of Sparks).
 
     Returns the head's identity, every authenticated Spark's inventory, the
     cables between them, the SSH route to each, and warnings: Sparks that
@@ -309,7 +345,7 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
             # An unrecognized function can still lead to an already enrolled
             # machine; authenticate before assigning either identity or rank.
             route = [*routes[ident], {"user": user, "address": str(address), "interface": interface["netdev"], "port": port}]
-            if len(route) > 3 or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
+            if len(route) > min(hops, MAX_HOPS) or not select({"via": current["hostname"], "interface": interface["netdev"], "address": str(address)}):
                 continue
             try:
                 transport.login(route)
@@ -328,14 +364,16 @@ def discover(transport, *, user="root", port=22, select=lambda peer: True):
                 raise ValueError("Fabric neighbor is not Linux ARM64")
             link(ident, interface, peer["id"], matches[0], str(address))
             if peer["id"] not in nodes:
-                if len(nodes) >= 4:
-                    raise ValueError("More than four Sparks found; select a supported pair/ring")
+                if len(nodes) >= fabric_layout.MAX_SPARKS:
+                    raise ValueError(f"More than {fabric_layout.WORDS[fabric_layout.MAX_SPARKS]} Sparks found; "
+                                     "SparkRing sets up two to eight cabled Sparks")
                 nodes[peer["id"]], routes[peer["id"]] = peer, route
                 queue.append(peer["id"])
-    if len(nodes) not in (2, 4):
+    if not fabric_layout.MIN_SPARKS <= len(nodes) <= fabric_layout.MAX_SPARKS:
         found = ", ".join(n["hostname"] for n in nodes.values())
         detail = f" Skipped neighbor addresses that did not answer: {', '.join(skipped)}." if skipped else ""
-        raise ValueError(f"Found {len(nodes)} Spark{'s' if len(nodes) != 1 else ''} ({found}); setup needs two or four."
+        raise ValueError(f"Found {len(nodes)} Spark{'s' if len(nodes) != 1 else ''} ({found}); setup needs two to "
+                         "eight."
                          + detail + " Check the fabric cables and that each Spark accepts SSH.")
     by_machine = {}
     for n in nodes.values():

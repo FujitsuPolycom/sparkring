@@ -1,0 +1,16 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+ "selection": "published-immutable-reference",
+ "image": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+ "inputs": [
+  {
+   "path": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/publication.json",
+   "sha256": "b1173ba05ae3503df93b751fb7bda2bd7593cfc6c10d8e061f324e7c9d401933"
+  },
+  {
+   "path": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json",
+   "sha256": "d58cbfefedd47bd861d634c9337aa388b284c8759664d5e10580015a28ac8f79"
+  }
+ ]
+}

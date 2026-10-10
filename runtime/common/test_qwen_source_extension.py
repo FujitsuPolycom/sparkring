@@ -8,7 +8,7 @@ import sys
 
 import pytest
 
-from runtime.common import compose, qwen_flash_next as adapter, source_candidate as source
+from runtime.common import compose, toolchain_profiles as adapter, source_candidate as source
 from runtime.common.container_spec import docker_create
 from runtime.common.test_compose import compose_cli as compose_cli
 from scripts import sparkring_compose as coordinator
@@ -206,13 +206,13 @@ def test_pair_source_inventory_packages_complete_admission_ancestry(tmp_path):
 import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
-from runtime.common import source_candidate, feature_candidate, cache_candidate, qwen_flash_next
+from runtime.common import source_candidate, feature_candidate, cache_candidate, toolchain_profiles
 assert Path(source_candidate.__file__).is_relative_to(Path(sys.argv[1]))
 assert source_candidate.descriptor()['parent']['receipt_sha256']
 assert feature_candidate.descriptor()['parent']['receipt_sha256']
 assert cache_candidate.descriptor()['parent']['receipt_sha256']
-profile = qwen_flash_next.read(qwen_flash_next.CONFIG_ROOT / 'sparkcache.json')
-assert qwen_flash_next.image_verification_options(profile, local_source_extension=source_candidate.IDENTITY)['local_source_extension'] == source_candidate.IDENTITY
+profile = toolchain_profiles.read(toolchain_profiles.CONFIG_ROOT / 'sparkcache.json')
+assert toolchain_profiles.image_verification_options(profile, local_source_extension=source_candidate.IDENTITY)['local_source_extension'] == source_candidate.IDENTITY
 """
     result = subprocess.run([sys.executable, "-I", "-B", "-c", script, str(snapshot)],
                             cwd=tmp_path, capture_output=True, text=True, timeout=30)

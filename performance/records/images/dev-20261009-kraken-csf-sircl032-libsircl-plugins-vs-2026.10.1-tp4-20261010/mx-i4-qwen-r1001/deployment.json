@@ -1,0 +1,27 @@
+{
+ "profile": "qwen38-flash-next-qad-tp4",
+ "deployment": "4202ebacab3e687d031c482999b68f45a436c7dfc05812116be5ba8428beaf37",
+ "directory": "qwen38-flash-next-qad-tp4-i1b4843ebcd41",
+ "written": 1791617948.0569587,
+ "source_revision": "6555b89b50424ed01372e0d0b9be8f447518f716",
+ "backend": "compose",
+ "image_runtime": {
+  "name": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+  "image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f"
+ },
+ "selection": {
+  "release": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+  "target_variant": "qad-step5500-ple1000",
+  "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+  "model_revision": "60215d26cf5e42c2db6128774032d57fc62678da",
+  "topology": "direct-cycle-4",
+  "nodes": 4
+ },
+ "transport": {
+  "backend": null,
+  "image": null,
+  "fabric": null,
+  "group": null,
+  "tuning": null
+ }
+}

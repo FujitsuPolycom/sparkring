@@ -1,0 +1,75 @@
+{
+ "arms": [
+  "S+"
+ ],
+ "context_limit": 1048576,
+ "dcp": 4,
+ "deviations": [
+  "--speculative-config {\"method\":\"dflash\",\"model\":\"/models/draft\",\"num_speculative_tokens\":7,\"draft_tensor_parallel_size\":8,\"draft_sample_method\":\"probabilistic\",\"kv_cache_dtype\":\"fp8... (the profile's: {\"method\":\"mtp\",\"num_speculative_tokens\":2,\"attention_backend\":\"B12X\",\"draft_tensor_parallel_size\":8,\"draft_sample_method\":\"probabilistic\",\"quantization_config\":{\"linear\":\"mxfp8\",\"moe\":\"nvfp4_a16\",\"ignore\":[\"*kv_b_proj\",\"*.indexer.*\"]}})",
+  "--kv-cache-dtype-skip-layers sliding_window (the profile's: unset)",
+  "mount /srv/models/GLM-5.3-DFlash2/425aa615ce320caac34400208b30808c8f14f76c at /models/draft, read-only (not in the profile)"
+ ],
+ "image": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+ "image_lock": {
+  "name": "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp",
+  "sha256": "7ff356706dac78efec626de33186e6b737fdfd999b6190ed2880e7c2daad9581"
+ },
+ "metrics": "phase1-16k",
+ "model": {
+  "config_sha256": "55ebc619e0b6a820d27e81394254c821a8f83391db51eaa821278a78d54136c5",
+  "index_sha256": "8b1381efe25b45d5130633813b550ccbcc40a9dd8ac51fc60ee77f94a00e0ba4",
+  "repository": "local-inference-lab/GLM-5.3-NVFP4",
+  "revision": "b472e4ee53f6a9862da5486c56c6ca21be3dab70"
+ },
+ "nccl_auto_policy": null,
+ "order": [
+  [
+   "W-S+",
+   "S+",
+   true
+  ],
+  [
+   "S+1",
+   "S+",
+   false
+  ],
+  [
+   "S+2",
+   "S+",
+   false
+  ]
+ ],
+ "overrides": {
+  "environment": {},
+  "mounts": [
+   {
+    "readonly": true,
+    "source": "/srv/models/GLM-5.3-DFlash2/425aa615ce320caac34400208b30808c8f14f76c",
+    "target": "/models/draft"
+   }
+  ],
+  "vllm_arguments": {
+   "--kv-cache-dtype-skip-layers": "sliding_window",
+   "--speculative-config": "{\"method\":\"dflash\",\"model\":\"/models/draft\",\"num_speculative_tokens\":7,\"draft_tensor_parallel_size\":8,\"draft_sample_method\":\"probabilistic\",\"kv_cache_dtype\":\"fp8\",\"draft_load_config\":{\"load_format\":\"safetensors\"}}"
+  }
+ },
+ "positions": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5,
+  6,
+  7
+ ],
+ "profile": "glm53-nvfp4-tp8",
+ "roce_slot": false,
+ "run_id": "mx-t8-dflash2",
+ "schema": "serving-ab-plan/v1",
+ "served_model_name": "GLM-5.3-NVFP4-TP8",
+ "sircl_env": {
+  "SIRCL_LINK_SLOTS": "16",
+  "SIRCL_LINK_SLOT_BYTES": "524288"
+ }
+}

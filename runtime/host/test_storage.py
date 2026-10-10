@@ -20,7 +20,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from runtime.common import installer, installer_image, profiles, qwen_flash_next
+from runtime.common import installer, installer_image, profiles, toolchain_profiles
 from runtime.host import checkpoint_place as place
 from runtime.host import checkpoints, storage
 from runtime.host.test_checkpoints import REVISION, SLUG, WEIGHT, adopt, tree_state, user_copy, write_json
@@ -446,20 +446,24 @@ def test_disk_use_stops_at_its_time_limit(tmp_path):
 def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     from runtime.common.test_compose_installer import install_site
     metadata, _ = profiles.load(profile)
-    configuration = qwen_flash_next.read(profiles.ROOT / metadata["configuration"]["path"])
-    _, names = qwen_flash_next.checkpoint_names(configuration)
+    configuration = toolchain_profiles.read(profiles.ROOT / metadata["configuration"]["path"])
+    _, names = toolchain_profiles.checkpoint_names(configuration)
     used = set()
     for variant in names or [None]:
         # Every rank uses the cluster's checkpoint directory, as installations do; a derived checkpoint needs it.
         site = install_site(4 if profile.endswith("-tp4") else 2)
         for row in site["hosts"]:
             row["model"] = installer.checkpoint_directory("parity", installer.setup.selection(profile, variant))
-        lock = installer.make_lock(profile, site, "1" * 40, "2" * 64,
-                                   variant, image_runtime=installer_image.for_profile(profile))
-        root = lock["site"]["ranks"][0]["cache"]
-        for specification in installer.specifications(lock):
-            used |= {posixpath.relpath(path, root).split("/")[0] for path in storage.spec_paths(specification.document())
-                     if storage._inside(path, root) and path != root}
+        # The images of Compose exports (installer_image) and of sparkring install (image_lock), on their v2 fields.
+        from runtime.common import image_lock
+        runtimes = [installer_image.for_profile(profile), image_lock.v2_view(image_lock.for_profile(profile))]
+        for runtime in [value for number, value in enumerate(runtimes) if value not in runtimes[:number]]:
+            lock = installer.make_lock(profile, site, "1" * 40, "2" * 64, variant, image_runtime=runtime)
+            root = lock["site"]["ranks"][0]["cache"]
+            for specification in installer.specifications(lock):
+                used |= {posixpath.relpath(path, root).split("/")[0]
+                         for path in storage.spec_paths(specification.document())
+                         if storage._inside(path, root) and path != root}
     references = storage.profile_references()
     assert used == {name for name, listed in references["caches"].items() if profile in listed}
     assert all(storage.CACHE_NAME.fullmatch(name) for name in used)
@@ -467,7 +471,7 @@ def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     assert STALE_CACHE not in references["caches"] and OLD_LOCK in references["locks"][OLD_IMAGE]
 
 
-def local(items=(), *, revision="a" * 40, hostname="spark-aa42", filesystems=(), docker=None):
+def local(items=(), *, revision="a" * 40, hostname="spark-e", filesystems=(), docker=None):
     return {"schema": storage.LOCAL_SCHEMA, "hostname": hostname, "package_revision": revision,
             "filesystems": list(filesystems), "items": [dict(item) for item in items], "docker": docker,
             "measurement": {"budget_seconds": 60, "seconds": 1.0, "complete": True}}
@@ -511,7 +515,7 @@ def test_report_text_names_filesystems_and_marks_incomplete_sizes(tmp_path, caps
     assert storage.main([], state_root=canned_controller(tmp_path), invoke=spark) == 2
     printed = capsys.readouterr().out.splitlines()
     assert printed[:4] == [
-        "Node 0 spark-aa42",
+        "Node 0 spark-e",
         "    / (ext4): 3.4 TiB, 149.0 GiB free, 96% used; holds /srv/sparkring, Docker's data root /var/lib/docker",
         "         SIZE  CLASS         KIND        PATH",
         f"    12.0 GiB+  unreferenced  cache       {STALE_ITEM['path']}"]
@@ -527,7 +531,7 @@ def test_an_unreferenced_checkpoint_directory_is_released_by_the_checkpoints_com
              "revision": "f" * 40, "state": "ok", "bytes": 100 * 1024 ** 3, "frees_bytes": 2 * 1024 ** 3,
              "complete": True, "containers": []}
     replaced = {**entry, "path": path[:-1] + "e", "state": "replaced"}
-    spark = Spark({HOSTS[0]: local([entry, replaced]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([entry, replaced]), HOSTS[1]: local(hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     node = json.loads(capsys.readouterr().out)["nodes"][0]
@@ -541,19 +545,19 @@ def test_an_unreferenced_checkpoint_directory_is_released_by_the_checkpoints_com
 
 def test_a_running_container_keeps_an_unreferenced_item_out_of_the_proposal(tmp_path, capsys):
     busy = {**STALE_ITEM, "containers": ["rehearsal-r0"]}
-    spark = Spark({HOSTS[0]: local([busy]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([busy]), HOSTS[1]: local(hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     [entry] = json.loads(capsys.readouterr().out)["nodes"][0]["items"]
     assert (entry["class"], entry["release"]) == ("unreferenced", None)
     assert storage.main(["--release", busy["path"], "--yes"], state_root=state, invoke=spark) == 2
-    assert (f"Node 0 spark-aa42: running containers use {busy['path']} (rehearsal-r0); stop them first, then repeat "
+    assert (f"Node 0 spark-e: running containers use {busy['path']} (rehearsal-r0); stop them first, then repeat "
             "the release. Nothing was released.") in capsys.readouterr().err
 
 
 def test_release_refuses_mixed_package_revisions_and_unreachable_sparks(tmp_path, capsys):
     state = canned_controller(tmp_path)
-    spark = Spark({HOSTS[0]: local([STALE_ITEM]), HOSTS[1]: local(revision="b" * 40, hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([STALE_ITEM]), HOSTS[1]: local(revision="b" * 40, hostname="spark-d")})
     assert storage.main(["--release", STALE_ITEM["path"], "--yes"], state_root=state, invoke=spark) == 2
     error = capsys.readouterr().err
     assert "The Sparks run different SparkRing package revisions (Node 0 aaaaaaaaaaaa, Node 1 bbbbbbbbbbbb)" in error
@@ -759,7 +763,7 @@ def test_the_report_and_a_release_name_the_mesh_that_uses_a_workspace(tmp_path, 
     entry = {"path": path, "kind": "workspace", "deployment": "id-" + FIRST, "holds_models": False,
              "bytes": 3 * 1024 ** 2, "frees_bytes": 3 * 1024 ** 2, "files": 9, "complete": True, "mounts": [],
              "checkpoints": [], "containers": [], "meshes": [{"unit": unit, "site": site, "paths": [path + "/" + MARKER]}]}
-    spark = Spark({HOSTS[0]: local([entry]), HOSTS[1]: local([{**entry, "meshes": []}], hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([entry]), HOSTS[1]: local([{**entry, "meshes": []}], hostname="spark-d")})
     state = canned_controller(tmp_path)
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     nodes = json.loads(capsys.readouterr().out)["nodes"]
@@ -770,7 +774,7 @@ def test_the_report_and_a_release_name_the_mesh_that_uses_a_workspace(tmp_path, 
     start = next(index for index, line in enumerate(printed) if line.endswith(f"installed     workspace   {path}"))
     assert printed[start + 1].strip() == f"used by the installed mesh {unit}, whose site {site} names {path}/{MARKER}"
     assert storage.main(["--release", path, "--yes"], state_root=state, invoke=spark) == 2
-    assert (f"Node 0 spark-aa42: the installed mesh {unit}, whose site {site} names {path}/{MARKER}, uses {path}; "
+    assert (f"Node 0 spark-e: the installed mesh {unit}, whose site {site} names {path}/{MARKER}, uses {path}; "
             "SparkRing does not release it while that mesh is installed. Nothing was released.") in capsys.readouterr().err
     assert all(argv == LIST for _, argv in spark.calls)
 
@@ -808,7 +812,7 @@ def test_a_derived_checkpoint_is_installed_while_its_deployment_is_and_otherwise
         write_json(directory / f"rank{rank}" / "container.json", specification.document())
     item = {"path": served, "kind": "checkpoint", "repository": manifest["repository"], "revision": manifest["revision"],
             "state": "ok", "bytes": 100 * 1024 ** 3, "frees_bytes": 6 * 1024 ** 3, "complete": True, "containers": []}
-    spark = Spark({HOSTS[0]: local([item]), HOSTS[1]: local(hostname="spark-931e")})
+    spark = Spark({HOSTS[0]: local([item]), HOSTS[1]: local(hostname="spark-d")})
     write_json(state / "active.json", {"path": str(directory)})
     assert storage.main(["--json"], state_root=state, invoke=spark) == 0
     [entry] = json.loads(capsys.readouterr().out)["nodes"][0]["items"]

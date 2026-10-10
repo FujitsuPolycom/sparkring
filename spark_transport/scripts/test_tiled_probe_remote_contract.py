@@ -13,7 +13,7 @@ import pytest
 SCRIPTS = Path(__file__).parent
 POWERSHELL = shutil.which("pwsh")
 pytestmark = pytest.mark.skipif(POWERSHELL is None, reason="PowerShell 7 unavailable")
-LITERAL = "/tmp/Cody's folder/$(printf WRONG);`printf WRONG`"
+LITERAL = "/tmp/Analyst's folder/$(printf WRONG);`printf WRONG`"
 
 
 def run_fixture(runner, scenario, failure_rank=1):

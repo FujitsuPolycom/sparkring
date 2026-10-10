@@ -13,10 +13,11 @@ python scripts/check_markdown_links.py .
 python scripts/check_release_safety.py .
 ```
 
-The structural check validates profiles, generated exports, references, frozen
-release bytes, locked source-image profile assets (including Markdown),
-image-builder paths, managed-service source dependencies and
-maintained imports. It does not need Docker, a GPU, network access or model files.
+The structural check validates profiles, generated exports, references, the
+[enhancement catalog](../../performance/enhancements.json) and its generated
+view (`python scripts/generate_enhancements.py --check`), frozen release
+bytes, locked source-image profile assets (including Markdown), image-builder
+paths, managed-service source dependencies and maintained imports. It does not need Docker, a GPU, network access or model files.
 The link and secret scanners inspect tracked files; stage intended additions
 before running them. Review prose meaning manually using the
 [writing policy](writing.md); CI does not enforce a prose-quality score or
@@ -25,6 +26,11 @@ banned-word list. Suggestions about wording are advisory.
 For changes to Compose generation or the [Install Builder](../operations/compose-builder.md),
 also run `python -m pytest scripts/compose_builder -q` with Node.js installed;
 without Node.js the engine comparison is skipped.
+
+For changes to the SIRCL ring sessions in `spark_transport/sircl`, run
+`python -m pytest spark_transport/sircl -q` from the repository root. Its
+native simulator and binding tests need GCC on a POSIX host and skip
+elsewhere; its vLLM adapter tests need the CPU torch build.
 
 For implementation changes, run tests beside the affected component. The
 [CI workflow](../../.github/workflows/ci.yml) lists the broader suite and pinned

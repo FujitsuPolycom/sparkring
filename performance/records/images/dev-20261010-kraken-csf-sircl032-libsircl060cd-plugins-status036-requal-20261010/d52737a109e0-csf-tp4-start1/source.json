@@ -1,0 +1,13 @@
+{
+ "profile": "glm53-flash-nvfp4-spark-tp4",
+ "checkpoint": "csf",
+ "served_model_name": "GLM-5.3-Flash-CSF-TP4",
+ "port": 8015,
+ "context_limit": 1048576,
+ "metrics": "phase1-16k",
+ "deviations": [
+  "checkpoint csf (the profile's default: nvfp4-spark)"
+ ],
+ "measured_at": "2026-10-10T11:10:53Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}

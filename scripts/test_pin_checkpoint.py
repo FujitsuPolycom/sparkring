@@ -18,13 +18,17 @@ REVISION = "0123456789abcdef0123456789abcdef01234567"
 WEIGHTS = ("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors")
 COMMITTED = {
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "60215d26cf5e42c2db6128774032d57fc62678da"):
-        ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp2"],
+        ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "a608241037e4c2565356bff7ca293f2133888f88"):
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
+    ("local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be"):
+        ["glm53-flash-csf-tp8"],
+    ("local-inference-lab/GLM-5.3-NVFP4", "b472e4ee53f6a9862da5486c56c6ca21be3dab70"):
+        ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
-        ["deepseek-v41-flash-tp4"],
+        ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"],
     ("ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38"):
         ["swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"],
 }
@@ -42,6 +46,8 @@ LISTED = {
         [("glm53-flash-nvfp4-spark-tp2", "nvfp4-qad"), ("glm53-flash-nvfp4-spark-tp4", "nvfp4-qad")],
     ("nvidia/GLM-5.3-Flash-NVFP4", "da920bb0b9f4a06727223a349e55468e38352348"):
         [("glm53-flash-nvfp4-spark-tp4", "nvidia-nvfp4")],
+    ("local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be"):
+        [("glm53-flash-nvfp4-spark-tp2", "csf"), ("glm53-flash-nvfp4-spark-tp4", "csf")],
     ("JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid", "87c8f2fb738b597de99bf9a885130f4a18a94f3d"):
         [("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid"), ("qwen38-flash-next-tp2", "jmni-qad5500-hybrid")],
 }

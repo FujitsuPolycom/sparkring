@@ -9,15 +9,15 @@ Done: Node 3: inspect hardware, links and software (3.2s)
 Done: Node 2: inspect hardware, links and software (3.3s)
 Done: Node 1: inspect hardware, links and software (3.8s)
 Looking for existing copies of ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2 on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).
-Install swift15-qwen38-flash-next-tp2 on Sparks 2 and 3 (spark-931e, spark-aa42). The checkpoint plan and the model steps call them Node 0 and Node 1.
+Install swift15-qwen38-flash-next-tp2 on Sparks 2 and 3 (spark-d, spark-e). The checkpoint plan and the model steps call them Node 0 and Node 1.
 It stops deepseek-v41-flash-tp4 on all four Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4 at 3ff0520224f2: 95 files, 173.7 GiB
-Searched spark-931e in 3.3 s and spark-aa42 in 5.0 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
+Searched spark-d in 3.3 s and spark-e in 5.0 s. Not searched: /mnt/synologytwo (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-931e: no copy found (searched 122,846 folder entries in 3.3 s)
+Node 0 spark-d: no copy found (searched 122,846 folder entries in 3.3 s)
     downloads 95 files (173.7 GiB) from huggingface.co; needs 185.7 GiB free on /: 181.7 GiB for checkpoint files, 4 GiB for the compile cache; 2071 GiB free
-Node 1 spark-aa42: no copy found (searched 195,288 folder entries in 5.0 s)
+Node 1 spark-e: no copy found (searched 195,288 folder entries in 5.0 s)
     95 files (173.7 GiB) are downloaded once on Node 0 from huggingface.co and copied over the fabric; needs 185.7 GiB free on /: 181.7 GiB for checkpoint files, 4 GiB for the compile cache; 1887 GiB free
 
 No Spark holds the checkpoint: Node 0 downloads it once from huggingface.co (173.7 GiB) and copies it to the other Sparks over the fabric.

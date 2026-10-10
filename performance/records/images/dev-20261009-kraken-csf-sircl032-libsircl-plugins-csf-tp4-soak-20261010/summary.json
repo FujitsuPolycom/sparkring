@@ -1,0 +1,36 @@
+{
+ "profile": "glm53-flash-nvfp4-spark-tp4",
+ "checkpoint": "csf",
+ "model": "GLM-5.3-Flash-CSF-TP4",
+ "thinking_off": {
+  "chat_template_kwargs": {
+   "reasoning_effort": "low"
+  }
+ },
+ "started": 1791627890.610792,
+ "ended": 1791629067.0435905,
+ "rounds": 66,
+ "n": 2112,
+ "errors": 0,
+ "degenerate": 0,
+ "wrong": 0,
+ "ok": true,
+ "scrape_errors": 0,
+ "windows": [
+  {
+   "window": 0,
+   "minutes": 9.6,
+   "output_tok_s": 22.3,
+   "steps_s": 2.76
+  },
+  {
+   "window": 1,
+   "minutes": 19.1,
+   "output_tok_s": 23.0,
+   "steps_s": 2.9
+  }
+ ],
+ "ended_early": "stopped with SIGINT during a round: its requests already sent completed, its unsent requests were cancelled, and the round is not scored",
+ "planned_minutes": 120.0,
+ "measured_minutes": 19.6
+}

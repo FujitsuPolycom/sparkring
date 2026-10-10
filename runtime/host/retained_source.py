@@ -40,6 +40,10 @@ def _operation(directory, operation):
         return installer.apply(directory, operation[len("review-"):], runner=None, execute=False)
     from scripts.installer_runner import Runner
     runner = Runner(directory)
+    if operation == "transport":
+        # Read-only: every rank's SIRCL receipts and NCCL log lines, judged and recorded on Node A.
+        from runtime.host import transport_receipts
+        return transport_receipts.check(directory, runner.lock, runner)
     if operation in ("verify", "status"):
         result = installer.status(directory)
         if operation == "verify":
@@ -72,7 +76,8 @@ def review(directory, operation, *, cache, run=subprocess.run):
 
 
 def apply(directory, operation, *, cache, run=subprocess.run):
-    if operation not in ("prepare", "up", "down", "verify", "status", "saved-status", "review-up", "review-down"):
+    if operation not in ("prepare", "up", "down", "verify", "status", "saved-status", "review-up", "review-down",
+                         "transport"):
         raise ValueError("Unsupported retained deployment operation")
     directory = Path(directory).resolve()
     lock = installer.read(directory / "deployment.lock.json")

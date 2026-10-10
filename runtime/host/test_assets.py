@@ -17,7 +17,7 @@ def test_discover_returns_the_local_survey_summary(monkeypatch):
     calls = []
     folder = "/var/tmp/models/qwen"
     document = {
-        "schema": "sparkring-checkpoint-survey/v1", "host": "spark-aa42",
+        "schema": "sparkring-checkpoint-survey/v1", "host": "spark-e",
         "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "revision": "60215d26cf5e42c2db6128774032d57fc62678da",
         "operator": "root", "docker": {"userns": False, "driver": "overlay2"},
         "owned": {"path": DIRECTORY.format("tp2"), "state": "absent", "fstype": "ext4", "free_bytes": 5, "files": {}},

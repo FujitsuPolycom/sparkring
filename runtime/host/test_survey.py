@@ -7,7 +7,7 @@ from runtime.host import cabling, survey
 from runtime.host.test_cabling import FIXTURES
 
 # Documentation addresses stand in for the Sparks' LAN addresses.
-LAN = {"spark-aa42": "192.0.2.42", "spark-931e": "192.0.2.31", "spark-3286": "192.0.2.86", "spark-0a0f": "192.0.2.15"}
+LAN = {"spark-e": "192.0.2.42", "spark-d": "192.0.2.31", "spark-b": "192.0.2.86", "spark-a": "192.0.2.15"}
 
 
 def device(netdev):
@@ -70,13 +70,13 @@ class Transport:
 def scenario():
     sparks = captured()
     documents = {
-        "local": observation(sparks["spark-3286"], root=True),
-        "root@198.51.100.2": observation(sparks["spark-0a0f"], root=True),
-        LAN["spark-aa42"]: observation(sparks["spark-aa42"], root=False,
-                                       neighbors=link_local_neighbors(sparks, "spark-aa42", 0, "spark-931e", 0)),
-        LAN["spark-931e"]: observation(sparks["spark-931e"], root=False,
-                                       neighbors=link_local_neighbors(sparks, "spark-931e", 0, "spark-aa42", 0)
-                                       + link_local_neighbors(sparks, "spark-931e", 1, "spark-0a0f", 0)),
+        "local": observation(sparks["spark-b"], root=True),
+        "root@198.51.100.2": observation(sparks["spark-a"], root=True),
+        LAN["spark-e"]: observation(sparks["spark-e"], root=False,
+                                       neighbors=link_local_neighbors(sparks, "spark-e", 0, "spark-d", 0)),
+        LAN["spark-d"]: observation(sparks["spark-d"], root=False,
+                                       neighbors=link_local_neighbors(sparks, "spark-d", 0, "spark-e", 0)
+                                       + link_local_neighbors(sparks, "spark-d", 1, "spark-a", 0)),
     }
     table = {next(r["address"] for r in s["addresses"] if r["ifname"] == "enP7s7"): LAN[name] for name, s in sparks.items()}
     return documents, table
@@ -101,20 +101,20 @@ def test_survey_reaches_unrecorded_sparks_over_the_lan_and_diagnoses_the_loop():
     documents, table = scenario()
     found, transport, sweeps = run(documents, table)
     names = {spark["data"]["inventory"]["hostname"]: spark["reach"].label for spark in found["sparks"].values()}
-    assert names == {"spark-3286": "this Spark", "spark-0a0f": "the admin network at 198.51.100.2",
-                     "spark-aa42": "the LAN at 192.0.2.42 as operator", "spark-931e": "the LAN at 192.0.2.31 as operator"}
+    assert names == {"spark-b": "this Spark", "spark-a": "the admin network at 198.51.100.2",
+                     "spark-e": "the LAN at 192.0.2.42 as operator", "spark-d": "the LAN at 192.0.2.31 as operator"}
     assert sorted(transport.logins) == ["192.0.2.31", "192.0.2.42"] and sweeps == []
     # The operator's sudo needs a password there, so the program ran unprivileged after one sudo -n attempt.
     assert transport.commands.count(("192.0.2.42", "sudo")) == 1 and ("192.0.2.42", "python3") in transport.commands
     result = cabling.diagnose(survey.records(found), found["head"])
-    assert result["fix"] == ["On spark-aa42, swap its two cables (port 0 ↔ port 1)."]
-    assert result["order_names"] == ["spark-3286", "spark-0a0f", "spark-931e", "spark-aa42"]
-    # spark-3286's port 1 has no IPv6 address and spark-aa42's LLDP needs sudo: only spark-3286 sees that cable.
-    assert result["notes"] == ["spark-3286 port 1 ↔ spark-aa42 port 1 was seen only from spark-3286 "
-                               "(spark-aa42 reports nothing on port 1)"]
+    assert result["fix"] == ["On spark-e, swap its two cables (port 0 ↔ port 1)."]
+    assert result["order_names"] == ["spark-b", "spark-a", "spark-d", "spark-e"]
+    # spark-b's port 1 has no IPv6 address and spark-e's LLDP needs sudo: only spark-b sees that cable.
+    assert result["notes"] == ["spark-b port 1 ↔ spark-e port 1 was seen only from spark-b "
+                               "(spark-e reports nothing on port 1)"]
     assert sorted(survey.checked_lines(found)[2:]) == [
-        "  spark-931e: the LAN at 192.0.2.31 as operator (LLDP not readable without sudo)",
-        "  spark-aa42: the LAN at 192.0.2.42 as operator (LLDP not readable without sudo)"]
+        "  spark-d: the LAN at 192.0.2.31 as operator (LLDP not readable without sudo)",
+        "  spark-e: the LAN at 192.0.2.42 as operator (LLDP not readable without sudo)"]
 
 
 def test_survey_without_sign_in_reads_only_recorded_sparks_and_names_the_rest():
@@ -122,15 +122,15 @@ def test_survey_without_sign_in_reads_only_recorded_sparks_and_names_the_rest():
     found, transport, _ = run(documents, table, sign_in=False)
     assert transport.logins == [] and len(found["sparks"]) == 2
     result = cabling.diagnose(survey.records(found), found["head"])
-    # spark-aa42 and spark-931e are known only by name from LLDP; the cable between them was not seen.
+    # spark-e and spark-d are known only by name from LLDP; the cable between them was not seen.
     assert result["layout"] == "incomplete"
-    assert result["summary"] == ("Four Sparks are cabled in a line; spark-931e port 0 and spark-aa42 port 0 have no "
-                                 "cable seen. spark-931e and spark-aa42 were not reached, so the last cable is unknown.")
+    assert result["summary"] == ("Four Sparks are cabled in a line; spark-d port 0 and spark-e port 0 have no "
+                                 "cable seen. spark-d and spark-e were not reached, so the last cable is unknown.")
 
 
 def test_failed_sign_in_and_silent_admin_target_are_noted():
     documents, table = scenario()
-    del documents[LAN["spark-931e"]]
+    del documents[LAN["spark-d"]]
     del documents["root@198.51.100.2"]
 
     def ssh(target, argv, data=None):
@@ -196,12 +196,12 @@ def test_cabling_command_prints_what_it_read_and_the_fix(monkeypatch, capsys, tm
     assert cabling.main(["--ssh-user", "operator"]) == 1
     output = capsys.readouterr().out.splitlines()
     assert seen["recorded"] == [] and seen["user"] == "operator" and seen["sign_in"]
-    assert output[:2] == ["Sparks read:", "  spark-3286: this Spark"]
-    assert "  On spark-aa42, swap its two cables (port 0 ↔ port 1)." in output
+    assert output[:2] == ["Sparks read:", "  spark-b: this Spark"]
+    assert "  On spark-e, swap its two cables (port 0 ↔ port 1)." in output
     assert cabling.main(["--json", "--no-sign-in"]) == 1
     document = json.loads(capsys.readouterr().out)
     assert document["schema"] == cabling.SCHEMA and not seen["sign_in"]
-    assert document["order_names"] == ["spark-3286", "spark-0a0f", "spark-931e", "spark-aa42"]
+    assert document["order_names"] == ["spark-b", "spark-a", "spark-d", "spark-e"]
 
 
 def test_cabling_command_needs_root(monkeypatch, capsys):

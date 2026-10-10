@@ -1,7 +1,7 @@
-"""Ring halves: placement validation, per-rank fabric selection and API addresses."""
+"""Placements on arcs of the fabric: parsing, groups, slots, per-rank fabric selection and API addresses."""
 import pytest
 
-from runtime.common import installer
+from runtime.common import fabric_layout, installer
 from runtime.host import controller, placement
 from runtime.host.test_fabric_ssh import cluster
 
@@ -10,24 +10,80 @@ GLM = "glm53-flash-nvfp4-spark-tp2"
 TP4 = "qwen38-flash-next-qad-tp4"
 
 
-@pytest.mark.parametrize("text, expected", [("0,1", (0, 1)), ("2,3", (2, 3)), (" 2, 3", (2, 3))])
-def test_on_names_one_half_of_the_ring(text, expected):
-    assert placement.parse(text) == expected
+CYCLE4 = fabric_layout.layout("cycle", 4)
+CYCLE8 = fabric_layout.layout("cycle", 8)
+PATH6 = fabric_layout.layout("path", 6)
 
 
-@pytest.mark.parametrize("text", ["1,2", "3,0", "0,1,2,3", "0", "a,b", "", "1,0"])
-def test_other_rank_sets_are_refused_with_the_choices(text):
-    with pytest.raises(ValueError, match="use --on 0,1 or --on 2,3"):
-        placement.parse(text)
+@pytest.mark.parametrize("text, layout, expected", [
+    ("0,1", CYCLE4, (0, 1)), ("2,3", CYCLE4, (2, 3)), (" 2, 3", CYCLE4, (2, 3)), ("1,2", CYCLE4, (1, 2)),
+    ("3,0", CYCLE4, (3, 0)), ("0-3", CYCLE8, (0, 1, 2, 3)), ("4-7", CYCLE8, (4, 5, 6, 7)),
+    ("6-1", CYCLE8, (6, 7, 0, 1)), ("6,7,0,1", CYCLE8, (6, 7, 0, 1)), ("2-4", PATH6, (2, 3, 4)),
+    ("0-3", CYCLE4, None), ("0,1,2,3", CYCLE4, None), ("0-7", CYCLE8, None)])
+def test_on_names_an_arc_in_cable_order_and_every_spark_from_node_a_is_the_whole_fabric(text, layout, expected):
+    assert placement.parse(text, layout) == expected
 
 
-def test_a_half_needs_a_ring_and_a_two_spark_profile():
-    assert placement.check((2, 3), cluster_size=4, profile_nodes=2, profile=QWEN) == (2, 3)
-    assert placement.check(None, cluster_size=4, profile_nodes=4, profile=TP4) is None
-    with pytest.raises(ValueError, match="this cluster is a pair"):
-        placement.check((0, 1), cluster_size=2, profile_nodes=2, profile=QWEN)
-    with pytest.raises(ValueError, match=f"{TP4} uses all four Sparks"):
-        placement.check((0, 1), cluster_size=4, profile_nodes=4, profile=TP4)
+@pytest.mark.parametrize("text, layout, message", [
+    ("1,0", CYCLE4, "names no consecutive Sparks of this cycle-4"),
+    ("0,2", CYCLE8, "names no consecutive Sparks"),
+    ("0", CYCLE4, "names no consecutive Sparks"), ("a,b", CYCLE8, "names no consecutive Sparks"),
+    ("", CYCLE4, "names no consecutive Sparks"), ("4-1", PATH6, "names no consecutive Sparks of this path-6"),
+    ("6-8", CYCLE8, "names no consecutive Sparks"), ("3-3", CYCLE8, "names no consecutive Sparks"),
+    ("2-1", CYCLE4, "every Spark from position 2 on; a model on every Spark runs with Node A as rank 0"),
+    ("0,1", fabric_layout.layout("pair", 2), "this cluster is a pair")])
+def test_other_rank_sets_are_refused_with_the_forms_the_fabric_accepts(text, layout, message):
+    with pytest.raises(ValueError, match=message):
+        placement.parse(text, layout)
+
+
+def test_an_arc_has_a_group_shape_a_flag_a_text_and_a_slot():
+    assert placement.group(CYCLE8, (6, 7, 0, 1)) == {"shape": "path", "size": 4, "name": "path-4",
+                                                     "positions": [6, 7, 0, 1]}
+    assert placement.group(CYCLE8, None)["name"] == "cycle-8" and placement.group(CYCLE4, (2, 3))["name"] == "pair"
+    assert placement.group(PATH6, None)["name"] == "path-6"
+    assert [placement.flag(arc) for arc in ((2, 3), (4, 5, 6, 7), (6, 7, 0, 1), None)] == [
+        "--on 2,3", "--on 4-7", "--on 6-1", ""]
+    assert [placement.text(arc, 8) for arc in ((2, 3), (4, 5, 6, 7), (6, 7, 0, 1), None)] == [
+        "Sparks 2 and 3", "Sparks 4-7", "Sparks 6, 7, 0 and 1", "all eight Sparks"]
+    assert placement.text(None, 4) == "all four Sparks" and placement.text(None, 2) == "both Sparks"
+    assert placement.instance_label((6, 7, 0, 1)) == "on-6-7-0-1" and placement.instance_label((2, 3)) == "on-2-3"
+    assert placement.slot_directory("state", (4, 5, 6, 7)).as_posix() == "state/slots/4-5-6-7"
+    assert placement.forwarding_positions(CYCLE8, (6, 7, 0, 1)) == [7, 0]
+    assert placement.forwarding_positions(CYCLE8, (2, 3)) == []
+    assert placement.forwarding_positions(CYCLE8, None) == list(range(8))
+
+
+def test_lines_of_six_or_more_sparks_are_unsupported_and_cycles_of_eight_are_not():
+    assert placement.unsupported(CYCLE8, (0, 1, 2, 3, 4)) is None and placement.unsupported(CYCLE8, None) is None
+    for arc in ((0, 1, 2, 3, 4, 5), (2, 3, 4, 5, 6, 7, 0)):
+        assert "SIRCL ring sessions cross at most three relays" in placement.unsupported(CYCLE8, arc)
+    assert "line of six Sparks" in placement.unsupported(PATH6, None)
+
+
+def test_an_arc_needs_the_profiles_size():
+    assert placement.check((2, 3), layout=CYCLE4, profile_nodes=2, profile=QWEN) == (2, 3)
+    assert placement.check((4, 5, 6, 7), layout=CYCLE8, profile_nodes=4, profile=TP4) == (4, 5, 6, 7)
+    assert placement.check(None, layout=CYCLE4, profile_nodes=4, profile=TP4) is None
+    with pytest.raises(ValueError, match=f"{TP4} uses all four Sparks; --on applies to two-Spark profiles"):
+        placement.check((0, 1), layout=CYCLE4, profile_nodes=4, profile=TP4)
+    with pytest.raises(ValueError, match=f"{TP4} serves four Sparks; Sparks 0-5 are six"):
+        placement.check((0, 1, 2, 3, 4, 5), layout=CYCLE8, profile_nodes=4, profile=TP4)
+    with pytest.raises(ValueError, match="cross at most three relays"):
+        placement.check((0, 1, 2, 3, 4, 5), layout=CYCLE8, profile_nodes=6, profile="six")
+    with pytest.raises(ValueError, match="serves four Sparks and this cycle-8 has eight"):
+        placement.check(None, layout=CYCLE8, profile_nodes=4, profile=TP4)
+
+
+def test_slots_on_disjoint_arcs_do_not_conflict_and_overlapping_ones_do(tmp_path):
+    for slot in ((0, 1, 2, 3), (4, 5), (6, 7)):
+        placement.record(tmp_path, slot, tmp_path / ("d" + placement.slot_name(slot)))
+    assert placement.slots(tmp_path) == [None, (0, 1, 2, 3), (4, 5), (6, 7)]
+    assert placement.conflicting(tmp_path, (4, 5, 6, 7)) == [None, (4, 5), (6, 7)]
+    assert placement.conflicting(tmp_path, (2, 3)) == [None, (0, 1, 2, 3)]
+    assert placement.conflicting(tmp_path, None) == [(0, 1, 2, 3), (4, 5), (6, 7)]
+    (tmp_path / "slots" / "unrelated").mkdir()
+    assert placement.slots(tmp_path)[1:] == [(0, 1, 2, 3), (4, 5), (6, 7)]
 
 
 def test_each_rank_of_a_half_uses_the_port_functions_facing_its_partner():

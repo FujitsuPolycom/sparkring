@@ -111,8 +111,10 @@ build.
 
 The image command is `sleep infinity` because one identical image serves two
 roles: a persistent rank container and a verified runtime carrier. Starting a
-rank remains an explicit operator action through `/ws/qwen38_dgx2_serve.sh`
-or `/ws/qwen38_dgx4_serve.sh`;
+rank remains an explicit operator action through `/ws/qwen38_pair_serve.sh`
+or `/ws/qwen38_ring4_serve.sh`, also baked under the compatibility names that
+the pins' `layout` records, `/ws/qwen38_dgx2_serve.sh` and
+`/ws/qwen38_dgx4_serve.sh`;
 loading the image never starts a model, claims a GPU, or replaces an existing
 service.
 

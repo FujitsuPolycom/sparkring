@@ -1,193 +1,208 @@
 # SIRCL
 
-SIRCL is the **Switchless Inference RDMA Collective Layer**, SparkRing's native
-collective transport for four participating ranks. It operates on tensor
-buffers and rank groups; runtime adapters select admitted signatures for each
-model profile. The native interfaces and implementations live in
-[`spark_transport/`](../../spark_transport/README.md).
+SIRCL is the **Switchless Inference RDMA Collective Layer**, SparkRing's
+collective transport between DGX Sparks over RoCE without a switch. It
+carries tensor-parallel and decode-context-parallel collectives for groups of
+2 to 8 Sparks cabled as a pair, a path or a cycle. SIRCL is the end state of
+SparkRing's communication layer; the `prepared` RoCEnante transport and
+patched NCCL serve the published installer profiles and retained images. SIRCL
+has two session generations:
 
-Status: **implemented**. Qualification applies to the exact artifacts and
-profile conditions linked below. SIRCL is one component of SparkRing's
-communication stack alongside adapted RoCEnante communication and patched
-NCCL.
+| | Ring sessions | Four-rank native sessions |
+|---|---|---|
+| Groups | 2 to 8 ranks: pairs, paths, cycles, several independent groups on one fabric, DCP subgroups; members without a shared cable reach each other through up to three ConnectX-7 relays | exactly four ranks on a four-Spark cycle |
+| Code | [`spark_transport/sircl`](../../spark_transport/sircl/README.md): Python package `sparkring_sircl` and a native progress thread built per source digest (`roce_proxy-<digest>.so`) | [`spark_transport/`](../../spark_transport/README.md) C/C++ sources, built as `libspark_transport_capi.so` |
+| vLLM integration | platform and general plugin `sircl` ([adapter](../../spark_transport/sircl/sparkring_sircl/vllm/README.md)) | startup hooks in [`integrations/vllm`](../../integrations/vllm/README.md), turned off as a whole by `SPARK_TP4_ENABLED=0` |
+| Role | the default generation: every SIRCL deployment outside the retained images uses it | retained images and the retired profiles under [Profile use](#profile-use) |
+| Status | per component in the [ring-session status table](../../spark_transport/sircl/STATUS.md#component-status): one-shot all-reduce and all-gather **qualified** on the eight-Spark ring; serving through vLLM **research-only** | **implemented**; qualified only for the retained images named under [Profile use](#profile-use) |
+
+No profile names a transport. `sparkring install` runs an installer profile
+on ring sessions, with NCCL off, when its image carries the SIRCL layer (image
+lock v3, [SIRCL layer](../../runtime/images/installer-images.md#sircl-layer))
+and `sparkring setup` recorded the fabric with its relay table; elsewhere it
+uses the `prepared` RoCEnante transport and patched NCCL
+([transport and receipts](../operations/install-reference.md#transport-and-receipts)).
+Image `d52737a109e0`, the image of release 2026.10.2
+([release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)),
+carries SIRCL 0.3.2, libsircl 0.6.0 and the three GLM-5.3 vLLM plugins; the
+installer images of releases up to 2026.10.1 carry no SIRCL layer. The serve and bundle
+launchers also run ring sessions outside the installer ([serve and bundle
+runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md)).
+[libsircl](libsircl.md), SIRCL's NCCL-compatible C library on the same wire
+protocol, serves vLLM's PyNccl in place of NCCL with `--transport libsircl`
+(research-only).
+
+## Ring sessions
+
+A session spans the ranks of one group. Every rank reaches every peer over one
+or two lanes, each a queue pair between one local RDMA function and one
+function of the peer. A rank's route map (`SIRCL_PEER_ROUTES`) names the
+local device of every lane; lanes follow the shortest paths of the group's
+own cables, lane 0 on the primary and lane 1 on the secondary function. The
+device names are the DGX OS names unless a fabric document
+(`SIRCL_FABRIC_DOCUMENT`, schema `sparkring-fabric/v1`) names others.
+
+Members that share no cable are joined through the ConnectX-7 of every member
+between them. The relay plan tags each relayed lane's packets by destination
+with the number of relays left, and relay filters forward them out of the
+other port in hardware. A relay's hairpin queue holds 512 KiB and cannot pause
+its sender, so every relayed lane keeps a forward window of unacknowledged
+bytes within 75 % of the queue it shares.
+
+A session owns a pinned host arena registered on every opened device, a
+device command ring and a native progress thread. Kernels stage a payload and
+ring a doorbell; the progress thread writes each lane's stripe and then its
+flag. Setup is collective over the serving engine's CPU process group: ranks
+agree on every shared setting, validate every connection record, connect and
+prove every lane. A flag wait past its time limit poisons the group, and every
+later call raises. Each rank writes a receipt per group that names the
+collectives' carriers.
+
+Collectives: one-shot and two-shot all-reduce, all-gather, reduce-scatter and
+all-to-all, and large messages in pieces, as a chain between cable neighbours
+or as a ring. Every schedule gives identical bits on every rank. The
+[package README](../../spark_transport/sircl/README.md) describes the
+interface and settings; the [runbook](../../spark_transport/sircl/RUNBOOK.md)
+the ring harness and the relay plan installer.
 
 ## Implemented boundary
 
-SIRCL maintains RDMA sessions, registered arenas, and device-published command
-rings. Captured CUDA graphs submit work to established sessions through device
-command descriptors. Native progress threads perform the host protocol work
-required by the selected transport.
+Ring sessions run what the [status
+table](../../spark_transport/sircl/STATUS.md#component-status) lists:
+layouts with lanes through at most three relays, BF16, FP16 and FP32
+reductions, any plain dtype in gathers. Swing all-reduce, direct mlx5 posting
+and phase tracing are not offered by sessions. Sessions read host networking
+and never configure it.
 
-The pairwise-exchange schedule uses two perfect matchings of the physical
-cycle; bidirectional and fused variants use their own ring schedules. These
-native APIs require four ranks. Tensor geometry is validated by
-the native interface and runtime adapter; a model-independent transport does
-not imply arbitrary rank-count, dtype, or shape support. Patched NCCL has its
-own [pair/cycle configurations](../../spark_transport/nccl/README.md).
+Four-rank native sessions maintain RDMA sessions, registered arenas and
+device-published command rings for exactly four ranks on a four-Spark cycle.
+Captured CUDA graphs submit work through device command descriptors; native
+progress threads perform the host protocol. The pairwise-exchange schedule
+uses two perfect matchings of the cycle; bidirectional and fused variants use
+their own ring schedules. The native interface and the adapter validate
+tensor geometry, so a model-independent transport does not imply arbitrary
+dtype or shape support. This generation stays for the retained images and
+profiles under [Profile use](#profile-use); new layouts use ring sessions.
+Patched NCCL has its own [pair and cycle
+configurations](../../spark_transport/nccl/README.md).
 
 ## Composition with hardware-forwarded mesh
 
-The four-rank mesh profile combines SIRCL, an adapted RoCEnante all-reduce,
-and patched NCCL. RoCEnante's selected opposite-peer operations cross two
-physical links through an intermediate ConnectX-7 ASIC. The overlay delegates
-calls outside its admission rules to the saved SIRCL/NCCL backend. It does not
-extend the SIRCL C API to other rank counts.
+The `prepared` transport's four-Spark mesh composition combines four-rank
+SIRCL, an adapted RoCEnante all-reduce and patched NCCL. RoCEnante's selected
+opposite-peer operations cross two physical links through an intermediate
+ConnectX-7; calls outside its admission rules go to the saved SIRCL or NCCL
+backend. A per-deployment mesh service installs its relays. The [mesh runtime
+contract](../../runtime/glm53-spark-mtp3-mesh/README.md) identifies its
+dispatch configuration, source packages and evidence; RoCEnante's origins are
+in its [source attribution](../../third_party/b12x_roce/README.md).
 
-The [mesh runtime contract](../../runtime/glm53-spark-mtp3-mesh/README.md) identifies
-its dispatch configuration, source packages, and evidence. The
-[retired MTP3 cache/checkpoint guide](../history/glm53-cache-checkpoints.md)
-records a separately pinned serving composition, while the
-[transport overview](../../spark_transport/README.md) describes the shared components.
-RoCEnante's origins and local adaptations are recorded in its
-[source attribution](../../third_party/b12x_roce/README.md).
+Ring sessions use the same kind of hardware relay. The relay plan installer
+(`sircl-fabric`, [runbook](../../spark_transport/sircl/RUNBOOK.md#relay-plan-installer))
+derives a layout's plan from the sessions' own route module; for a whole
+eight-Spark ring it installs the universal relay table, which reaches every
+address of every Spark that shares no cable with the sender.
 
 ## Profile use
 
-The retired GLM-5.2 EXL3 3.5-bpw profile, a TP4/DCP4 configuration that
-SparkRing does not support, uses SIRCL for qualified tensor-parallel
-all-reduce and vocabulary collective families. Patched NCCL handles operations
-outside those families; DCP and indexer collectives use stock paths.
+Ring sessions: `sparkring install` serves every installer profile on them
+on an image with the SIRCL layer; its transport adapter
+([transport.py](../../runtime/common/transport.py)) sets what the serve
+launcher's plan sets for the same group. Its tuning table is the release's
+default or one that `sudo sparkring fabric tune` measured on the cluster's
+fabric with the ring harness
+([measure the tuning table](../operations/install-reference.md#measure-the-tuning-table)). The serve launcher plans the
+catalog's installer profiles on SIRCL groups; which profiles plan on
+Sparks 0-1 or 0-3 and what blocks the others is in the [serve
+runbook](../../spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md#installer-profiles-on-the-ring-of-eight).
 
-The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096 SIRCL
-CUDA-graph configuration is research-only and excluded from functional profile
-qualification. A four-rank matched comparison established native replay,
-API health, and zero overflow for the target and DSpark capture path; see the
-[DeepSeek SIRCL evidence record](../../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+Four-rank native sessions:
 
-The [GLM-5.3 DFlash2 operator image](../../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
-belongs to a retired profile; DCP4 configurations are not supported. It
-embeds a source-bound SIRCL bundle. Its receipt records **qualified** four-rank TP4/DCP4
-functional checks: capability agreement, startup, semantic inference,
-persistent SparkCache restore, concurrent store-ownership drain, and injected
-failure containment. Its artifact-bound throughput matrix is
-**research-only**; no broad SIRCL-versus-NCCL performance comparison has been
-established. A developer can replace the embedded bundle with a read-only host
-mount. Its captured width-4096 path and eager fused-prefill path use separate
-signature checks. The fused path accepts contiguous TP4 BF16 `[Q, 4096]`
-tensors from Q128 through Q8192 and uses two operation slots. Unsupported
-signatures remain on NCCL. The GLM-5.3 profile captures every eight-row DFlash
-request-batch shape from Q8 through Q128; those captured collectives use
-graph-native SIRCL with direct doorbells. The
-fused session uses four persistent QPs and two 67,109,888-byte operation
-arenas. See the
-[GLM-5.3 runtime guide](../../runtime/glm53-flash-jj-r8-gb10/README.md) and the
-[vLLM adapter contract](../../spark_transport/integrations/vllm/README.md). The
-[public SIRCL build receipt](../../runtime/glm53-flash-jj-r8-gb10/sircl-public-build-receipt.json)
-binds the native build and single-node test identity; it does not establish a
-four-rank serving result. The
-[operator-image receipt](../../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
-records the four-rank functional result and its limits.
-
-Before native construction, the GLM-5.3 adapter exchanges a capability record
-over the CPU process group. Shared protocol and artifact identities must match,
-while each rank proves its own RDMA device and GID availability. A GID index
-left unset in the launch environment is resolved per device from the host's GID
-table: the entry of type RoCE v2 that carries the device's IPv4 address. An
-index set in `SPARK_TP4_GID0`, `SPARK_TP4_GID1` or a secondary-rail variable is
-used verbatim; see the adapter's
-[GID resolution](../../integrations/vllm/README.md#roce-gid-resolution). Model
-output is checked against every process-local native session after vLLM's existing
-output synchronization. Fused kernels publish poison into mapped host control
-state so this check can reject their output without adding CUDA synchronization.
+- The retired GLM-5.2 EXL3 3.5-bpw profile, a TP4/DCP4 configuration that
+  SparkRing does not support, uses SIRCL for qualified tensor-parallel
+  all-reduce and vocabulary collective families; patched NCCL handles the
+  rest.
+- The DeepSeek-V4-Flash-0731 quickstart uses patched NCCL. Its width-4096
+  SIRCL CUDA-graph configuration is research-only; see the [DeepSeek SIRCL
+  evidence record](../../performance/records/deepseek-v4-flash/sircl-width4096-nccl-ab-20260822.md).
+- The [GLM-5.3 DFlash2 operator image](../../runtime/glm53-flash-jj-r8-gb10/glm53-dcp4-sircl-public-image-receipt.json)
+  belongs to a retired profile and embeds a source-bound SIRCL bundle. Its
+  receipt records **qualified** four-rank TP4/DCP4 functional checks:
+  capability agreement, startup, semantic inference, persistent SparkCache
+  restore, store-ownership drain and injected failure containment. Its
+  throughput matrix is **research-only**. See the [GLM-5.3 runtime
+  guide](../../runtime/glm53-flash-jj-r8-gb10/README.md) and the [vLLM
+  adapter contract](../../spark_transport/integrations/vllm/README.md).
+  Before native construction the adapter exchanges a capability record over
+  the CPU process group; an unset GID index is resolved per device from the
+  host's GID table ([GID resolution](../../integrations/vllm/README.md#roce-gid-resolution)).
+- The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL: their
+  width-5,120 tensor-parallel shape is outside four-rank SIRCL.
 
 ## Persistent host rail configuration
 
-SIRCL reads host networking but does not configure it. Every Ethernet interface
-named by a SIRCL profile must retain its IPv4 address and MTU after a reboot.
-The corresponding RoCEv2 GID must encode that IPv4 address. A transient
-`ip address add` or `ip link set` command can satisfy a same-boot check but does
-not meet this requirement.
+Every SIRCL session needs its fabric interfaces to keep their IPv4 address,
+MTU 9000 and RoCE v2 GID after a reboot. `sparkring setup` configures the
+fabric addresses of pairs and four-Spark cycles persistently; on a four-Spark
+cycle it also applies the ConnectX hairpin setting, which
+`sparkring-hairpin.service` repeats at every boot. The relay plan of a
+ring-session layout is not persistent: install it with `sircl-fabric up`
+after every boot.
 
-Managed GLM-5.3 mesh deployments require IPv6 link-local addressing to retain
-their fixed RoCEv2 GID index 3. Use the
-[mesh host setup](../GLM53_SPARK_MESH_HOST_SETUP.md#6-configure-persistent-data-ipv4-and-mtu)
-for those deployments. The helper below disables IPv6 and does not implement
-that mesh host contract.
-
-For profiles permitting disabled IPv6,
+For the four-rank profiles' dedicated secondary rails,
 [`configure_sircl_rail.py`](../../scripts/configure_sircl_rail.py) creates one
-dedicated NetworkManager profile at a time. Its default mode only validates the
-arguments and prints the complete plan. `--verify` performs read-only checks.
-`--execute` requires root plus the exact confirmation
-`CONFIGURE_SIRCL_RAIL`; it creates or updates the named profile, activates it,
-then verifies:
-
-- profile autoconnect, manual IPv4, no default route, disabled IPv6, and MTU;
-- the active connection, live address, link state, and live MTU;
-- both interfaces exist, the declared management interface owns the active
-  IPv4 default route, and the rail interface does not, before any mutation;
-- the configured RDMA port is active in Ethernet mode and exposes the expected
-  GID value, RoCEv2 type, and Ethernet device; and
-- a don't-fragment peer ping whose payload exercises the configured MTU.
-
-Run the helper locally on each rank. Replace every value below before running
-the plan. Repeat the procedure for every dedicated secondary-rail interface:
+NetworkManager profile at a time. Its default mode prints the plan;
+`--verify` performs read-only checks; `--execute` requires root and the
+confirmation `CONFIGURE_SIRCL_RAIL`. Run it on each rank:
 
 ```bash
-management_netdev='REPLACE_MANAGEMENT_NETDEV'
-rail_netdev='REPLACE_SECONDARY_NETDEV'
-rail_cidr='REPLACE_LOCAL_SECONDARY_ADDRESS/PREFIX'
-rail_peer='REPLACE_SECONDARY_PEER_ADDRESS'
-rail_rdma_device='REPLACE_SECONDARY_RDMA_DEVICE'
-rail_gid_index='REPLACE_VERIFIED_GID_INDEX'
-
 rail_args=(
-  --management-interface "${management_netdev}"
-  --interface "${rail_netdev}"
-  --address-cidr "${rail_cidr}"
-  --peer-address "${rail_peer}"
-  --rdma-device "${rail_rdma_device}"
+  --management-interface REPLACE_MANAGEMENT_NETDEV
+  --interface REPLACE_SECONDARY_NETDEV
+  --address-cidr REPLACE_LOCAL_SECONDARY_ADDRESS/PREFIX
+  --peer-address REPLACE_SECONDARY_PEER_ADDRESS
+  --rdma-device REPLACE_SECONDARY_RDMA_DEVICE
   --rdma-port 1
-  --gid-index "${rail_gid_index}"
+  --gid-index REPLACE_VERIFIED_GID_INDEX
   --mtu 9000
 )
-
-# Offline plan: validates values and prints the exact profile contract.
-python scripts/configure_sircl_rail.py "${rail_args[@]}"
-
-# Host mutation: inspect the plan before supplying the confirmation.
+python scripts/configure_sircl_rail.py "${rail_args[@]}"            # offline plan
 sudo python scripts/configure_sircl_rail.py "${rail_args[@]}" \
-  --execute --confirmation CONFIGURE_SIRCL_RAIL
-
-# Read-only validation, including the peer path.
-python scripts/configure_sircl_rail.py "${rail_args[@]}" --verify
+  --execute --confirmation CONFIGURE_SIRCL_RAIL                     # host change
+python scripts/configure_sircl_rail.py "${rail_args[@]}" --verify   # read-only check
 ```
 
-The default connection name is `sparkring-sircl-<interface>`. The helper will
-not change a profile with that name when it belongs to another interface. It
-also rejects a rail interface that is identical to the declared management
-interface. Verify both ends of every direct link and rerun `--verify` after a
-host reboot before starting a four-rank service.
-
-The
-[`secondary-rail persistence validation`](../../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
-records eight successful live rail verifications on four GB10 ranks after a
-reboot exposed non-persistent addresses. Each rail passed 23 profile, route,
-link, RDMA, GID, and peer-path checks while the public GLM-5.3 image remained
-healthy. The helper's confirmed `--execute` path has CPU-only regression
-coverage; the recorded profiles were created with equivalent NetworkManager
-commands before the helper was available.
-
-The Qwen3.8-27B EXL3 K5/K6 pair and cycle profiles use patched NCCL. Their
-width-5,120 tensor-parallel shape is unsupported by SIRCL, so neither loads a
-custom SparkRing collective adapter.
+The helper disables IPv6 on the rail. Managed GLM-5.3 mesh deployments keep
+IPv6 link-local addressing for their fixed GID index 3 and use the [mesh host
+setup](../GLM53_SPARK_MESH_HOST_SETUP.md#6-configure-persistent-data-ipv4-and-mtu)
+instead. The [secondary-rail persistence
+validation](../../runtime/glm53-flash-jj-r8-gb10/sircl-secondary-rail-persistence-live-validation.json)
+records eight rails on four GB10 ranks passing every check after a reboot.
 
 ## Operational invariants
 
-- All four ranks require one consistent topology and compatible transport
-  configuration. Each rank selects its own peers and RDMA devices from that
-  shared mapping; local device order need not be identical across ranks.
-- A collective shape not admitted to the native path must use the NCCL fallback.
-- The management network is not an RDMA cycle edge.
-- Dual-rail prefill uses both RDMA device functions associated with each
-  existing cabled cycle edge. It requires neither additional cables nor
-  diagonal rank-to-rank links.
-- Transport evidence does not establish model correctness or performance unless
-  the corresponding profile result states those conditions.
+- All N ranks of a session share one layout and one set of shared settings;
+  the setup agreement makes ranks with different values fail together. Each
+  rank derives its own lanes and devices from the shared layout.
+- NCCL runs only where the operator opts in (`SIRCL_NCCL=auto`, launchers'
+  `--nccl auto`; the default is `never`). With the opt-in, the group's
+  cabling bounds it: every collective on a pair, NCCL's ring algorithm alone
+  (`NCCL_ALGO=Ring`, `NCCL_SKIP_TREE_CONNECT=1`) on a whole cycle, nothing on
+  a path or any group with relayed lanes. A tuning table chooses only among
+  SIRCL's settings and never sends a call to NCCL.
+- A collective a session declines goes to the caller's own path; on a group
+  NCCL may not run, the vLLM adapter refuses it instead of letting NCCL
+  connect Sparks that share no cable.
+- The management network is not a fabric edge. Relays forward only tagged
+  RDMA traffic, so setup exchanges use the CPU process group.
+- Four-rank dual-rail prefill uses both RDMA functions of each cabled cycle
+  edge; it needs neither extra cables nor diagonal links.
+- Transport evidence does not establish model correctness or performance
+  unless the corresponding profile result states those conditions.
 
-Deployment commands and profile limits are in the
+Four-rank deployment commands and limits are in the
 [GLM-5.2 quickstart](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
 [GLM-5.3 four-Spark quickstart](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md),
 [DeepSeek quickstart](../operations/deepseek-0731.md),
-[Qwen3.8-27B pair quickstart](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md), and
+[Qwen3.8-27B pair quickstart](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md) and
 [Qwen3.8-27B cycle quickstart](../../profiles/qwen38-27b-exl3-k5k6/README.md).

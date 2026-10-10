@@ -56,3 +56,37 @@ def test_panel_normalization_preserves_other_numeric_assignments():
     inside = raw.replace('"top": {', '"top": {"secret": ' + value + ', ')
     for text in (outside, inside):
         assert (1, 'credential-assignment') in findings(text)
+
+
+def test_local_windows_user_paths_are_findings():
+    # Assembled from pieces so that this file holds no such path.
+    drive, users = "C:", "Users"
+    for text in (drive + "\\" + users + "\\someone\\work", json.dumps({"lead": drive + "\\" + users + "\\someone"}),
+                 drive + "/" + users + "/someone", "/mnt/c/" + users + "/someone", "Local " + "AppData" + "\\Temp"):
+        assert (1, "local-user-path") in findings(text), text
+    for text in ("C: drive", "the Users guide", "AppData is a directory name", "/mnt/data/users"):
+        assert (1, "local-user-path") not in findings(text), text
+
+
+def test_site_values_from_an_untracked_file_are_findings(tmp_path):
+    from check_release_safety import site_patterns
+    assert site_patterns(tmp_path / "absent.txt") == []
+    values = tmp_path / "site-values.txt"
+    # Synthetic values in the shapes of a site's: a host name and a locally administered MAC address.
+    values.write_text("# site\nspark-zz99\n02:00:00:12:34:56  # rank 0, port 0\n00:00:00:00:00:00\n", encoding="utf-8")
+    site = site_patterns(values)
+    assert len(site) == 2
+    for text in ("ssh spark-zz99", "SPARK-ZZ99:", "mac 02:00:00:12:34:56", "02-00-00-12-34-56",
+                 "fe80::ff:fe12:3456%enp1s0f0np0"):
+        assert (1, "site-value") in findings(text, site), text
+    for text in ("spark-zz990", "my-spark-zz99-copy", "02:00:00:12:34:57", "fe80::ff:fe12:3457"):
+        assert (1, "site-value") not in findings(text, site), text
+    assert list(findings("ssh spark-zz99")) == []
+
+
+def test_the_site_value_allowlist_names_only_frozen_inputs():
+    from check_release_safety import SITE_VALUE_ALLOWED
+    from pathlib import Path
+    frozen = (Path(__file__).resolve().parents[1] / "runtime/releases/preserved-inputs.json").read_text(encoding="utf-8")
+    for path, lines in SITE_VALUE_ALLOWED.items():
+        assert f'"{path}"' in frozen and all(isinstance(line, int) and reason for line, reason in lines.items())

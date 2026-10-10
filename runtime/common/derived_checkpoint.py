@@ -1,6 +1,6 @@
 """Derived checkpoints: checkpoints that the installer builds on the Sparks from published ones.
 
-A profile's checkpoints table (``runtime.common.qwen_flash_next.checkpoint_names``)
+A profile's checkpoints table (``runtime.common.toolchain_profiles.checkpoint_names``)
 may list an entry with a ``derived`` object, ``{"base": NAME, "donor": NAME}``,
 naming two other entries of the same table. Such an entry describes a checkpoint
 that no repository publishes: the installer writes it on every Spark from the

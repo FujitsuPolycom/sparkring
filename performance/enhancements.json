@@ -1,0 +1,1666 @@
+{
+  "schema": "sparkring-enhancements/v1",
+  "purpose": "Every speed, memory and startup enhancement that a SparkRing deployment can enable, listed once with the models and TP/DCP sizes it applies to, the exact settings that enable it, the images that carry it, its status and its measured gain with conditions and evidence. scripts/check_enhancements.py checks a deployment against it; scripts/generate_enhancements.py renders performance/enhancements.md from it. Profiles own the settings they run; this catalog does not configure anything.",
+  "related": {
+    "profile_catalog": "profiles/catalog.json",
+    "research_profiles": "profiles/research-catalog.json",
+    "model_names": "profiles/model-names.json",
+    "checkpoint_labels": "profiles/labels.json",
+    "kv_capacity": "performance/profile-capacity.json",
+    "sircl_vllm_shims": "spark_transport/sircl/sparkring_sircl/vllm/shims.json",
+    "sircl_status": "spark_transport/sircl/STATUS.md",
+    "sircl_tuning_defaults": "runtime/common/sircl-tuning-defaults.json",
+    "image_feature_activation": "runtime/images/feature_bootstrap.py",
+    "installer_image_capabilities": "runtime/releases/installer-capabilities.json",
+    "installer_release_tags": "runtime/releases/installer-releases.json",
+    "images": "docs/operations/images.md"
+  },
+  "categories": {
+    "kernel-backend": "Kernel or backend setting: B12X or vLLM kernel choice, quantized-weight path, or the image whose sources a deployment runs",
+    "speculative-decoding": "Speculative-decoding setting: drafter, draft depth, draft sampling and verification, draft quantization",
+    "checkpoint": "Checkpoint selection: a pinned repository revision, chosen with a profile's checkpoint table or another profile",
+    "transport": "Collective transport setting: SIRCL ring sessions, NCCL or the prepared RoCEnante transport",
+    "vllm-plugin": "vLLM general plugin, image feature hook or cache connector",
+    "scheduler-compile": "vLLM engine setting: scheduling, parallel layout, sequence count, CUDA graphs and compilation",
+    "host-setting": "Setting of the Spark host outside the container"
+  },
+  "sides": {
+    "decode": "decode speed: steps per second or output tokens per second",
+    "prefill": "prefill speed: prompt tokens per second or time to first token",
+    "memory": "memory or capacity: weight or KV memory per rank, KV tokens, concurrent sequences",
+    "startup": "time to a ready API, or whether the model starts at all"
+  },
+  "statuses": {
+    "implemented": "built and exercised by a profile or image; not serving-qualified",
+    "qualified": "passed the stated qualification under the stated conditions",
+    "research-only": "runs, but its evidence is light, partial or private",
+    "unsupported": "refused or not offered"
+  },
+  "images": {
+    "dev-20261001-kraken-cuda1342-nccl2323-status034": {
+      "label": "2026.10.0",
+      "release": "runtime/releases/dev-20261001-kraken-cuda1342-nccl2323-status034/release.json",
+      "image_id": "sha256:9f02bcbfee89fa092f6edf85d5915bfd73f226bd0faf7d171fe32d7f7b8f1e84",
+      "short_id": "9f02bcbfee89",
+      "parent": null,
+      "transports": ["prepared"],
+      "description": "Installer image on Local Inference Lab's first Karmic Kraken beta merge (vLLM fe0a30fc, B12X 6ca214e7); the rollback image of the installer profiles",
+      "evidence": ["runtime/images/compositions/external-kraken-20261001/README.md", "docs/operations/images.md"]
+    },
+    "dev-20261004-kraken-cuda1342-nccl2323-status034": {
+      "label": "2026.10.1",
+      "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+      "image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f",
+      "short_id": "aba309e4610c",
+      "parent": null,
+      "transports": ["prepared"],
+      "description": "Installer image of the nine sparkring install profiles: vLLM d51b4181 and B12X a850d8eb on CUDA 13.4.2 and NCCL 2.32.3, the prepared RoCEnante transport, no SIRCL layer",
+      "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "docs/operations/images.md"]
+    },
+    "dev-20261007-kraken-csf-cuda1342-nccl2323-status034": {
+      "label": "Kraken CSF sources",
+      "release": null,
+      "image_id": null,
+      "short_id": null,
+      "parent": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+      "transports": ["prepared"],
+      "description": "2026.10.1 with the 49 Python files of vLLM bc9ea774 and B12X cc36aa6f (Kraken beta merges of 2026-10-07): the CSF loader and kernels, GLM-5.3's B12X DSA attention fix, CKV gather, L2 prefetch and the W4A16 occupancy setting. An intermediate image of the SIRCL recipes; its lock stays on the build host",
+      "evidence": ["runtime/images/compositions/kraken-csf-sources-20261007/README.md", "runtime/images/compositions/kraken-csf-sources-20261007/sources.json"]
+    },
+    "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034": {
+      "label": "SIRCL 0.2.0 image (54af97d9)",
+      "release": "runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/release.json",
+      "image_id": "sha256:54af97d9ddfab285fbd81a2d351e1b5481e9b05e2fa50c9d344a71dd5684a0fa",
+      "short_id": "54af97d9ddfa",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared"],
+      "description": "The Kraken CSF sources with a SIRCL 0.2.0 layer (wheel and two prebuilt native libraries); built on one Spark and loaded on the others, not published; its lock is not in the repository",
+      "evidence": ["runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md", "private record 2026-10-08: TP8 guard reading of image 54af97d9"]
+    },
+    "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034": {
+      "label": "SIRCL 0.3.0 and libsircl image (816c6d6a)",
+      "release": null,
+      "image_id": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+      "short_id": "816c6d6a7e96",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The Kraken CSF sources with a SIRCL 0.3.0 layer built from repository commit ee4466b7 and libsircl 0.6.0 (fail-stop, NCCL API 22705); its v3 lock lists twelve profiles and SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. Built with the libsircl layer builder; its lock is not in the repository",
+      "evidence": ["docs/architecture/libsircl.md", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"]
+    },
+    "glm53-plugins-af06e272": {
+      "label": "GLM-5.3 plugin layer image (af06e272)",
+      "release": null,
+      "image_id": null,
+      "short_id": null,
+      "parent": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The SIRCL 0.3.0 and libsircl image (816c6d6a) with the GLM-5.3 plugin layer of runtime/images/derive_glm53_plugins.py, which adds the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0; image af06e272, whose full ID and lock are not in the repository. A lock that the layer's record writes from the parent's v3 lock lists both plugins in vllm_plugins",
+      "evidence": ["runtime/images/derive_glm53_plugins.py", "profiles/glm53-nvfp4-tp8/README.md"]
+    },
+    "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp": {
+      "label": "SIRCL 0.3.1, libsircl and GLM-5.3 plugin image (27e9f75c)",
+      "release": null,
+      "image_id": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+      "short_id": "27e9f75c0d09",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The Kraken CSF sources (the composition of image 816c6d6a) with a SIRCL 0.3.1 layer, libsircl 0.6.0 from snapshot a3477af2 (fail-stop, NCCL API 22705) and the GLM-5.3 plugin layer with the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0 and glm_dcp_decode_comm 2.0.0; SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774. Built on one Spark and loaded on the others, not published; its two v3 locks are in the image record. Every entry that image 816c6d6a or af06e272 carries, it carries too",
+      "evidence": ["performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-image-20261009.md"]
+    },
+    "dev-20261009-kraken-csf-sircl032-libsircl-plugins": {
+      "label": "SIRCL 0.3.2, libsircl and GLM-5.3 plugin image (1a8c1035)",
+      "release": null,
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "short_id": "1a8c10354eb0",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "The Kraken CSF sources (the composition of image 816c6d6a) with a SIRCL 0.3.2 layer (native ABI 9), libsircl 0.6.0 built from spark_transport/libsircl tree dbf36074 (fail-stop, NCCL API 22705) and the GLM-5.3 plugin layer with the vLLM general plugins glm_dsa_indexer_split and glm53full_speedups 1.1.0 and glm_dcp_decode_comm 2.0.1; SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774; its v3 lock lists 13 profiles. Built on one Spark and loaded on the others, not published; release 2026.10.2's installer measurements ran on it. Every entry that image 27e9f75c carries, it carries too, and its SIRCL 0.3.2 sessions take the measured cycle-4 row of the installing package's default tuning table",
+      "evidence": ["performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009.md"]
+    },
+    "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036": {
+      "label": "2026.10.2",
+      "release": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/release.json",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "short_id": "d52737a109e0",
+      "parent": "dev-20261007-kraken-csf-cuda1342-nccl2323-status034",
+      "transports": ["sircl", "prepared", "libsircl"],
+      "description": "Installer image of release 2026.10.2: the SIRCL 0.3.2 layer of image 1a8c10354eb0, libsircl 0.6.0 built from spark_transport/libsircl tree 030419b8 (fail-stop, NCCL API 22705, communicators created on the current device when no context is current), the GLM-5.3 plugin layer of the same sources as image 1a8c10354eb0's and runtime-status 0.3.6; its v3 lock lists 13 profiles. Every entry that image 1a8c10354eb0 carries, it carries too",
+      "evidence": ["performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010.md", "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md"]
+    },
+    "shared-2026.09.3": {
+      "label": "shared 2026.09.3",
+      "release": "runtime/releases/shared-2026.09.3/release.json",
+      "image_id": "sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855",
+      "short_id": "bc16a9819d85",
+      "parent": null,
+      "transports": ["prepared"],
+      "description": "Shared serving image of the manual-setup and SparkCache profiles; carries SparkCache and its native cache libraries",
+      "evidence": ["runtime/releases/shared-2026.09.3/README.md", "docs/operations/images.md"]
+    }
+  },
+  "checks": [
+    {
+      "id": "linear-backend-explicit",
+      "when_any": [
+        {"arg": "--quantization-config", "json": "linear", "in": ["mxfp8", "nvfp4"]},
+        {"arg": "--quantization", "in": ["modelopt_mixed", "nvfp4_csf"]}
+      ],
+      "unless_any": [
+        {"arg": "--linear-backend", "present": true}
+      ],
+      "message": "MXFP8 or NVFP4 dense linears run without an explicit --linear-backend: the Kraken images then select FlashInfer's CUTLASS MXFP8 kernel, which took 51 of 93 ms of a GLM-5.3 TP8 decode step. Set --linear-backend b12x (entry b12x-linear-backend). --quantization modelopt_fp4 alone is not flagged, because GLM-5.3-NVFP4 keeps its dense linears in BF16."
+    }
+  ],
+  "enhancements": [
+    {
+      "id": "b12x-linear-backend",
+      "title": "B12X backend for quantized dense linears",
+      "description": "Routes the dense linears that carry MXFP8 or NVFP4 weights through B12X GEMM plans. Without --linear-backend the Kraken images select FlashInfer's CUTLASS MXFP8 kernel (FlashInferCutlassMxfp8LinearKernel) for MXFP8 linears, which is slow at decode row counts.",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3", "status": "research-only"},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"arguments": {"--linear-backend": "b12x"}},
+      "detect": [{"arg": "--linear-backend", "equals": "b12x"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 61, "summary": "GLM-5.3 TP8/DCP4 with MXFP8 dense linears: 1-stream decode 11.1 -> 17.8 steps/s (+61 %), 26.6 -> 46.0 tok/s at 0K context; without the flag MXFP8 linears took 51 of 93 ms of a decode step"},
+      "measurements": [
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "decode-step profile without --linear-backend and with MXFP8 linears: FlashInferCutlassMxfp8LinearKernel 51 of 93 ms per step, 828 GEMMs at 62 us each, M = 3 tokens", "evidence": "private record 2026-10-08: GLM-5.3 TP8 decode profile"},
+        {"image": null, "tp": 8, "dcp": 4, "streams": "1", "context": "0", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "--linear-backend b12x against no --linear-backend, with MXFP8 dense linears: decode 11.1 -> 17.8 steps/s (+61 %), 26.6 -> 46.0 tok/s; the image is not recorded with the result", "evidence": "private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B"}
+      ],
+      "evidence": ["private record 2026-10-08: GLM-5.3 TP8 decode profile", "private record 2026-10-08..09: GLM-5.3 TP8 linear-backend A/B"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "b12x-selection-cache-reconciliation",
+      "title": "B12X selection-cache reconciliation",
+      "description": "When the ranks of a two- or four-Spark deployment share B12X kernel tuning, B12X reads its tuning cache only after the ranks reconcile it, so a restart reuses earlier kernel selections instead of measuring every kernel again. Images that carry it always do it; there is no switch.",
+      "category": "kernel-backend",
+      "sides": ["startup"],
+      "models": [
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4], "dcp": "any"}]},
+      "enable": {"note": "on in every image that carries it; nothing to set"},
+      "detect": [],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "restart healthy after 200-225 s instead of 652-741 s (DeepSeek-V4.1-Flash TP4)"},
+      "measurements": [
+        {"image": "dev-20260927-b12xcache-cuda1342-nccl2323-status032", "tp": 4, "dcp": 1, "streams": null, "context": null, "result": "restart healthy after 200-225 s with it, 652-741 s without", "evidence": "docs/operations/images.md"}
+      ],
+      "evidence": ["docs/operations/images.md", "integrations/b12x/selection_cache/README.md", "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"],
+      "profiles": []
+    },
+    {
+      "id": "sircl-transport",
+      "title": "SIRCL ring sessions with NCCL off",
+      "description": "SIRCL ring sessions carry the tensor-parallel and decode-context-parallel collectives over RoCE with NCCL off, instead of the prepared RoCEnante transport and NCCL. It is the only transport that runs an eight-Spark ring, whose ranks reach each other through ConnectX relays.",
+      "category": "transport",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"},
+        {"name": "GLM-5.3-Flash", "gain": {"percent": 3.4, "summary": "NVFP4-Spark TP2: verification steps/s +1.5-5.3 % in every cell against vLLM's communicator on NCCL, TTFT equal"}},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4, 8], "dcp": "any"}]},
+      "enable": {"launcher": "sudo sparkring install --profile PROFILE --image-lock LOCK, with an image lock (v3) whose image carries the SIRCL layer and a fabric document that lists sircl; NCCL stays off unless --nccl auto"},
+      "detect": [{"transport": "sircl"}],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-16", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a6082410", "result": "verification steps/s +1.5-5.3 % in every cell against vLLM's communicator on NCCL; TTFT equal", "evidence": "private record 2026-10-08: serving A/B runner results"}
+      ],
+      "evidence": ["spark_transport/sircl/STATUS.md", "spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md", "private record 2026-10-08: serving A/B runner results"],
+      "profiles": ["deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8"]
+    },
+    {
+      "id": "sircl-ring-schedules-path4",
+      "title": "SIRCL ring schedules on a path of four",
+      "description": "Runs the large all-reduces, all-gathers and reduce-scatters of a four-Spark path as SIRCL ring ops (the chain closed by its end ranks) with a 64 KiB one-shot limit and 1 MiB link pieces and slot. SIRCL's default schedule, auto, never selects the ring; its per-collective ring minimums (4, 8 and 4 MiB) are already its defaults.",
+      "category": "transport",
+      "sides": ["prefill", "decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash", "gain": {"percent": 13.5, "summary": "NVFP4-Spark TP4: 16K / 64K prefill 3,641 / 3,542 tok/s against 3,039-3,207 with chain schedules (+10-17 %), decode unchanged"}},
+        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 5.6, "summary": "QAD TP4: 64K prefill 4,203 -> 4,424 tok/s (+5.3 %) against SIRCL's defaults, decode unchanged"}},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next", "gain": {"percent": 4.3, "summary": "TP4: 64K prefill 4,245 -> 4,429 tok/s (+4.3 %)"}},
+        {"name": "DeepSeek-V4.1-Flash", "gain": {"percent": 4.5, "summary": "TP4: 64K prefill 4,141 -> 4,328 tok/s (+4.5 %), 16-stream decode 255 -> 265 tok/s (+3.9 %) against SIRCL's defaults"}}
+      ],
+      "parallelism": {"supported": [{"tp": [4], "dcp": [1]}]},
+      "enable": {
+        "environment": {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"},
+        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; the installer applies them from the path-4 row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.2 and 0.3.1 sessions"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_LARGE_SCHEDULE", "equals": "ring"},
+        {"env": "SIRCL_GATHER_SCHEDULE", "equals": "ring"},
+        {"env": "SIRCL_SCATTER_SCHEDULE", "equals": "ring"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": "1-16", "context": "16K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a6082410", "result": "prefill 3,641 / 3,542 tok/s at 16K / 64K; 1,908 with 128 KiB one-shot pieces; 3,039-3,207 with chain schedules; decode steps unchanged", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 2"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": null, "context": "64K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@60215d26", "result": "prefill 4,203 -> 4,424 tok/s against SIRCL's defaults; decode unchanged; a run without NCCL on 2026-10-08: 4,559 / 4,452 tok/s at 8K / 64K", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 7"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": "16", "context": "64K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "prefill 4,141 -> 4,328 tok/s; 16-stream decode 255 -> 265 tok/s", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 8"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": "1", "context": "64K", "checkpoint": "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "result": "prefill 4,245 -> 4,429 tok/s; 1-stream decode 65.8 -> 77.9 tok/s, following acceptance 1.99 -> 2.35", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 10"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "with the CSF checkpoint's settings and two-CTA W4A16 experts, GPU clocks locked: 25.0 / 82.5 steps/s at 1 / 8 streams, TTFT 2.56 / 10.49 s at 8K / 32K; no comparison with the defaults in that run", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "with SIRCL_FUSED_NORM=1, which made no fused call for this model, GPU clocks locked: 24.1 / 74.8 steps/s at 1 / 8 streams, TTFT 1.88 / 7.58 s at 8K / 32K; no comparison with the defaults in that run", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["spark_transport/sircl/STATUS.md", "spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md", "private record 2026-10-07..08: SIRCL ring results", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
+      "profiles": []
+    },
+    {
+      "id": "sircl-ring-schedules-pair",
+      "title": "SIRCL ring schedules on a pair",
+      "description": "The settings of entry sircl-ring-schedules-path4 on a two-Spark group: ring all-reduce, all-gather and reduce-scatter schedules above the one-shot limit, a 64 KiB one-shot limit and 1 MiB link pieces and slot. Without them a pair session derives a 128 KiB one-shot limit.",
+      "category": "transport",
+      "sides": ["prefill", "decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"]},
+        {"name": "Qwen3.8-Flash-Next", "checkpoints": ["sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention"]}
+      ],
+      "parallelism": {"supported": [{"tp": [2], "dcp": [1]}]},
+      "enable": {
+        "environment": {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring", "SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576", "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576", "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"},
+        "launcher": "SIRCL serve or bundle: --large-schedule ring --gather-schedule ring --scatter-schedule ring --oneshot-max 65536 --link-slot 1048576 --gather-link-chunk 1048576 --reduce-link-chunk 1048576 --scatter-link-chunk 1048576; the installer applies them from the pair row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.2 and 0.3.1 sessions"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_LARGE_SCHEDULE", "equals": "ring"},
+        {"env": "SIRCL_GATHER_SCHEDULE", "equals": "ring"},
+        {"env": "SIRCL_SCATTER_SCHEDULE", "equals": "ring"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "not measured against SIRCL's defaults on a pair; the serving configurations that ran them are in the evidence"},
+      "measurements": [
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "with the CSF checkpoint's settings and two-CTA W4A16 experts, GPU clocks locked: 15.3 / 49.6 steps/s at 1 / 8 streams, TTFT 4.41 / 15.90 s at 8K / 32K", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a", "result": "GPU clocks locked: 25.6 / 89.8 steps/s at 1 / 8 streams, TTFT 2.12 / 8.37 s at 8K / 32K", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
+      "profiles": []
+    },
+    {
+      "id": "sircl-cycle8-tuning-row",
+      "title": "SIRCL settings of the cycle of eight",
+      "description": "The cycle-of-eight row of SIRCL's default tuning table, measured on 2026-10-07: all-reduce capacity and dispatch ceiling 1 MiB, 16 link slots of 512 KiB and a 28 KiB one-shot limit, with each session posting its lanes to the peers with the most relays first. The installer applies the row wherever the environment leaves a setting unset, only to sessions of the SIRCL builds the default table names (0.3.2, and 0.3.1 as a compatible build with its recorded reason); sessions of another build, such as the SIRCL 0.2.0 and 0.3.0 images 54af97d9 and 816c6d6a, take SIRCL's own rules unless the settings are given, and SIRCL's serve launcher and bundle need the settings given.",
+      "category": "transport",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3", "gain": {"percent": 5.9, "summary": "16 link slots of 512 KiB: 8-stream decode 119.5 -> 126.5 tok/s (+5.9 %), prefill unchanged; farthest-first posting with the 28 KiB one-shot limit: steps/s +1-4 %"}},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {
+        "environment": {"SIRCL_ALLREDUCE_CAPACITY_BYTES": "1048576", "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES": "1048576", "SIRCL_LINK_SLOTS": "16", "SIRCL_LINK_SLOT_BYTES": "524288", "SIRCL_ONESHOT_MAX_BYTES": "28672"},
+        "launcher": "the installer applies the cycle-8 row of runtime/common/sircl-tuning-defaults.json to SIRCL 0.3.2 and 0.3.1 sessions; SIRCL serve or bundle: --capacity 1048576 --dispatch 1048576 --link-slots 16 --link-slot 524288, posting order unset"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_ALLREDUCE_CAPACITY_BYTES", "equals": "1048576", "installer_unset_means": "1048576"},
+        {"env": "SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES", "equals": "1048576", "installer_unset_means": "1048576"},
+        {"env": "SIRCL_LINK_SLOTS", "equals": "16", "installer_unset_means": "16"},
+        {"env": "SIRCL_LINK_SLOT_BYTES", "equals": "524288", "installer_unset_means": "524288"},
+        {"env": "SIRCL_ONESHOT_MAX_BYTES", "equals": "28672", "unset_means": "28672"},
+        {"env": "SIRCL_POST_ORDER", "equals": "ring-farthest", "unset_means": "ring-farthest"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "16 link slots of 512 KiB: 8-stream decode 119.5 -> 126.5 tok/s; prefill unchanged", "evidence": "private record 2026-10-08: SIRCL qualification logs"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "posting to the farthest peers first and a 28 KiB one-shot limit: steps/s +1-4 %", "evidence": "private record 2026-10-07..08: SIRCL ring results, sections 6 and 12"}
+      ],
+      "evidence": ["runtime/common/sircl-tuning-defaults.json", "spark_transport/sircl/sparkring_sircl/vllm/RUNBOOK.md", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-08: SIRCL qualification logs"],
+      "profiles": ["deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8"]
+    },
+    {
+      "id": "sircl-cycle4-tuning-row",
+      "title": "SIRCL settings of the cycle of four",
+      "description": "The measured cycle-4 row of SIRCL's default tuning table: the SIRCL table runtime/common/sircl-tuning/cycle-4.json (hash df333d97acb1a4b2), merged from SIRCL ring-harness quick tunes of two separate rings of four, with 8 link slots of 1 MiB. It decides each collective's op by size; the all-reduce runs one-shot up to about 90 KiB per rank, two-shot up to 1.2 MiB and the ring at stagger 1 above. The installer applies the row to sessions whose group is a whole cycle of four: sessions of SIRCL 0.3.2 take the table's choices and its two settings where the environment leaves them unset, and sessions of the compatible SIRCL 0.3.1 take the row, which sets nothing, and keep SIRCL's own rules.",
+      "category": "transport",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [4], "dcp": "any"}]},
+      "enable": {
+        "environment": {"SIRCL_LINK_SLOTS": "8", "SIRCL_LINK_SLOT_BYTES": "1048576"},
+        "launcher": "the installer applies the cycle-4 row of runtime/common/sircl-tuning-defaults.json, and the SIRCL table it names, to SIRCL 0.3.2 sessions of a whole cycle of four; SIRCL serve or bundle: --link-slots 8 --link-slot 1048576 with the table runtime/common/sircl-tuning/cycle-4.json"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_LINK_SLOTS", "equals": "8"},
+        {"env": "SIRCL_LINK_SLOT_BYTES", "equals": "1048576"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "sparkring install on a ring of four, GPU clocks locked, one measured start: 67.5 / 104.3 / 152.4 / 225.9 output tok/s at 1 / 2 / 4 / 8 streams and 0K; against a path of four (image 816c6d6a, SIRCL 0.3.0) median -0.8 % (-3.6 % to +0.7 %); not compared with SIRCL's own rules on a cycle of four", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"},
+        {"image": "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "sparkring install on a ring of four, GPU clocks locked, one measured start: 63.6 / 95.6 / 132.0 / 190.6 output tok/s at 1 / 2 / 4 / 8 streams and 0K; against a path of four (image 816c6d6a, SIRCL 0.3.0) median +0.9 % (-4.9 % to +4.8 %); not compared with SIRCL's own rules on a cycle of four", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"},
+        {"image": "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@60215d26", "result": "sparkring install on a ring of four, GPU clocks locked, one measured start: 81.3 / 120.5 / 201.8 / 292.7 output tok/s at 1 / 2 / 4 / 8 streams and 0K; median -8.9 % against a path of four run of checkpoint qad-step5500-mxfp8-attention, a gap under investigation whose cause the two runs do not separate", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"}
+      ],
+      "evidence": ["runtime/common/sircl-tuning-defaults.json", "performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md", "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"],
+      "profiles": []
+    },
+    {
+      "id": "sircl-column-gather",
+      "title": "SIRCL column gathers",
+      "description": "Carries an all-gather along a dimension with rows in front of it as a dimension-0 gather into staging plus one local copy, on the session's ring or chain. On by default (SIRCL_COLUMN_GATHER) in SIRCL 0.3.0. SIRCL 0.2.0 wheels built before it was added lack it, and their version number does not tell them apart from later ones.",
+      "category": "transport",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3", "gain": {"percent": 3.3, "summary": "TP8/DCP4: 16K prefill 1,378 -> 1,423 tok/s (+3.3 %)"}},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4, 8], "dcp": "any"}]},
+      "enable": {"environment": {"SIRCL_COLUMN_GATHER": "1"}, "launcher": "SIRCL serve or bundle --column-gather on, the default"},
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_COLUMN_GATHER", "in": ["1", "on", "true"], "unset_means": "1"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "implemented",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 1,378 -> 1,423 tok/s", "evidence": "private record 2026-10-08: eight-Spark evening results"}
+      ],
+      "evidence": ["spark_transport/sircl/STATUS.md", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-08: eight-Spark evening results"],
+      "profiles": ["deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8"]
+    },
+    {
+      "id": "sircl-fused-allreduce-rmsnorm",
+      "title": "SIRCL fused all-reduce, residual add and RMSNorm",
+      "description": "Runs vLLM's eager all-reduce + residual add + RMSNorm helper as one SIRCL collective where the result is bit-identical to SIRCL's all-reduce followed by vLLM's fused_add_rms_norm (the adapter shim fused_allreduce_rms_norm). vLLM's compilation pass fuse_allreduce_rms stays off; SIRCL's launcher refuses it where NCCL may not run.",
+      "category": "transport",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [4, 8], "dcp": "any"}]},
+      "enable": {"environment": {"SIRCL_FUSED_NORM": "1"}, "launcher": "SIRCL bundle --fused-norm on; the serving A/B runner's arm S+"},
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_FUSED_NORM", "equals": "1"}
+      ],
+      "requires": ["sircl-transport"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 9, "summary": "TP8/DCP4, 4 streams, 1 MiB dispatch ceiling: 41.3 steps/s, +9 %; +2 % at 1 stream with the 128 KiB ceiling; in the 1 MiB run 1-stream tok/s fell 46.8 -> 38.4"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "4", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "41.3 steps/s, 9 % more than with SIRCL_FUSED_NORM=0 (1 MiB dispatch ceiling)", "evidence": "spark_transport/sircl/sparkring_sircl/vllm/shims.json"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "1", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+2 % with the 128 KiB ceiling; with the 1 MiB ceiling 1-stream tok/s 46.8 -> 38.4 in that run", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 6"}
+      ],
+      "evidence": ["spark_transport/sircl/sparkring_sircl/vllm/shims.json", "spark_transport/sircl/STATUS.md", "private record 2026-10-07..08: SIRCL ring results", "source: vllm@ab86b707 vllm/models/deepseek_v4_1/nvidia/model.py (DeepseekV4DecoderLayer.forward: DeepSeek-V4.1-Flash's decoder never calls the fused_allreduce_rms_norm helper the shim wraps, and b12x's mHC post_pre kernel already folds each RMSNorm into its hyper-connection update)"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "sircl-ring-large-allreduce-cycle8",
+      "title": "SIRCL ring all-reduce for large messages on the cycle of eight",
+      "description": "Runs the cycle of eight's large eager all-reduces as SIRCL ring ops in 2 MiB pieces and slots with 12 link slots, instead of SIRCL's auto schedule.",
+      "category": "transport",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {
+        "environment": {"SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_LINK_CHUNK_BYTES": "2097152", "SIRCL_LINK_SLOT_BYTES": "2097152", "SIRCL_LINK_SLOTS": "12"},
+        "launcher": "SIRCL serve or bundle: --large-schedule ring --link-chunk 2097152 --link-slot 2097152 --link-slots 12"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_LARGE_SCHEDULE", "equals": "ring"}
+      ],
+      "requires": ["sircl-transport"],
+      "trade_off": "it needs 12 link slots of 2 MiB, which replace the cycle-8 row's 16 slots of 512 KiB (sircl-cycle8-tuning-row); the two were not measured together",
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 3.7, "summary": "TP8/DCP4: 16K prefill 1,327 -> 1,376 tok/s (+3.7 %), decode unchanged"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 1,327 -> 1,376 tok/s; decode unchanged", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 18"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034", "tp": 8, "dcp": 1, "streams": null, "context": null, "result": "ring harness: 64 MiB all-reduce in 5.10 ms, 128 MiB in 9.86 ms (2 MiB pieces and slots, 12 slots)", "evidence": "spark_transport/sircl/STATUS.md"}
+      ],
+      "evidence": ["spark_transport/sircl/STATUS.md", "private record 2026-10-07..08: SIRCL ring results"],
+      "profiles": []
+    },
+    {
+      "id": "nccl-large-allreduce-hybrid",
+      "title": "NCCL for large eager all-reduces beside SIRCL",
+      "description": "Lets NCCL's ring algorithm carry the tensor-parallel group's eager all-reduces above SIRCL's dispatch ceiling on a whole cycle of eight, while SIRCL keeps every other collective. NCCL is off on SIRCL deployments unless the operator opts in.",
+      "category": "transport",
+      "sides": ["prefill", "decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {
+        "environment": {"SIRCL_NCCL": "auto", "SIRCL_LARGE_ALLREDUCE": "auto"},
+        "launcher": "sparkring install --nccl auto, or SIRCL serve --nccl auto --large-allreduce auto"
+      },
+      "detect": [
+        {"transport": "sircl"},
+        {"env": "SIRCL_NCCL", "in": ["auto", "topology"]},
+        {"env": "SIRCL_LARGE_ALLREDUCE", "in": ["auto", "nccl"], "unset_means": "auto"}
+      ],
+      "requires": ["sircl-transport"],
+      "trade_off": "decode -7 % at 8 streams; NCCL runs on the fabric",
+      "provided_by": {"images": ["dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 13, "summary": "TP8/DCP4: 16K prefill 1,274 -> 1,606 tok/s (+26 %) against the SIRCL settings of that run and +13 % against the best NCCL-free prefill since (1,423); decode within 1-3 % at 1-4 streams, -7 % at 8"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 1,274 -> 1,606 tok/s; decode within 1-3 % at 1-4 streams, -7 % at 8", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 4"}
+      ],
+      "evidence": ["runtime/common/transport.py", "private record 2026-10-07..08: SIRCL ring results", "private record 2026-10-08: eight-Spark evening results"],
+      "profiles": []
+    },
+    {
+      "id": "nccl-extended-ipv4-gids",
+      "title": "NCCL on all four RoCE functions",
+      "description": "NCCL publishes the IPv4 GIDs of all four ring NIC functions (NCCL_IB_EXTENDED_IPV4_GIDS=1), so NCCL on the prepared transport uses every function.",
+      "category": "transport",
+      "sides": ["prefill"],
+      "transports": ["prepared"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash", "gain": {"percent": 6.5, "summary": "TP4: prefill 4-9 % faster from 16K to 128K than with it off"}},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4], "dcp": "any"}]},
+      "enable": {"environment": {"NCCL_IB_EXTENDED_IPV4_GIDS": "1"}},
+      "detect": [{"env": "NCCL_IB_EXTENDED_IPV4_GIDS", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": null, "context": "16K-128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "prefill 4-9 % faster than with it off", "evidence": "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"],
+      "profiles": ["deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "mimo-v26-flash-mopd-tp4", "qwen38-flash-next-qad-tp4", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "host-sm-clock-lock",
+      "title": "GPU SM clock locked at 2,418 MHz",
+      "description": "Locks every Spark's GPU SM clock at 2,418 MHz. A reboot clears it and nvidia-smi -rgc reverts it. Setting it changes the host and needs the operator's approval for the named Sparks.",
+      "category": "host-setting",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3", "gain": {"percent": 2.5, "summary": "TP8/DCP4: +2.5 % at 8 streams"}},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "MiMo-V2.6-Flash-MOPD"},
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"host": "sudo nvidia-smi -lgc 2418,2418 on every Spark of the deployment", "note": "no configuration records it: pass --enabled host-sm-clock-lock to the checker"},
+      "detect": null,
+      "provided_by": {"host": true},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": "8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+2.5 % at 8 streams", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T3"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "result": "matrix campaigns of 2026-10-08 ran with it: SM 2,405-2,411 MHz read on every Spark", "evidence": "private record 2026-10-08: matrix host conditions and image lock"}
+      ],
+      "evidence": ["private record 2026-10-05..08: GLM-5.3 TP8 overnight test series", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
+      "profiles": []
+    },
+    {
+      "id": "probabilistic-draft-sampling",
+      "title": "Probabilistic draft sampling",
+      "description": "Drafts speculative tokens by sampling from the draft distribution instead of greedily (draft_sample_method probabilistic in --speculative-config), which raises the accepted tokens per step at a temperature above zero.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 12, "summary": "TP2 / TP4: +10-14 % tok/s"}},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"},
+        {"name": "DeepSeek-V4.1-Flash", "gain": {"percent": 4.5, "summary": "TP4, with adaptive verification and block rejection: 138.9 / 195.2 / 260.9 against 130.5 / 184.6 / 252.9 tok/s at 4 / 8 / 16 streams (+3-6 %), temperature 1.0"}},
+        {"name": "GLM-5.3-Flash"},
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"speculative": {"draft_sample_method": "probabilistic"}},
+      "detect": [{"arg": "--speculative-config", "json": "draft_sample_method", "equals": "probabilistic"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": null,
+      "measurements": [
+        {"image": null, "tp": null, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "result": "+10-14 % tok/s at TP2 and TP4", "evidence": "private record 2026-09: Qwen3.8 session archive"},
+        {"image": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": "4-16", "context": "0", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "with adaptive verification and block rejection: 138.9 / 195.2 / 260.9 against 130.5 / 184.6 / 252.9 tok/s at 4 / 8 / 16 streams", "evidence": "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md", "private record 2026-09: Qwen3.8 session archive"],
+      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "mxfp8-lm-head",
+      "title": "MXFP8 target LM head",
+      "description": "Quantizes the target (verifier) LM head from BF16 to MXFP8 at load (VLLM_MXFP8_LM_HEAD=1), so each step reads about half the head's bytes. The MTP drafter's own head is unchanged.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 3, "summary": "step-4000 checkpoint, TP2 / TP4: per-step time about -3 %; installer deployments 2-5 % faster"}},
+        {"name": "GLM-5.3", "status": "research-only"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_MXFP8_LM_HEAD": "1"}},
+      "detect": [{"env": "VLLM_MXFP8_LM_HEAD", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20260925-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "per-step time about -3 %; prose / code / JSON 2-5 % above the BF16-head installer deployments (TP4 JSON +0.3 %); prefill within 3 %", "evidence": "performance/records/qwen38-flash-next/decode-ab-20260925.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "part of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone", "evidence": "private record 2026-10-08: serving A/B matrix definitions"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "checkpoint qad-step-4000 with SIRCL ring schedules, GPU clocks locked: 27.0 / 92.4 steps/s at 1 / 8 streams, TTFT 2.13 / 8.37 s at 8K / 32K; not measured against the BF16 head", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md", "performance/records/qwen38-flash-next/decode-ab-20260925.md", "profiles/labels.json"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp4:qad-step-4000", "qwen38-flash-next-tp2:qad-step-4000"]
+    },
+    {
+      "id": "b12x-w4a16-experts",
+      "title": "W4A16 routed experts",
+      "description": "Runs B12X's NVFP4 routed experts with BF16 activations (W4A16) instead of 4-bit activations (VLLM_B12X_MOE_FP4_FORCE_A16=1).",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"], "gain": {"percent": 5, "summary": "CSF TP4: 4-bit activations decode 3-7 % slower"}},
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_B12X_MOE_FP4_FORCE_A16": "1"}},
+      "detect": [{"env": "VLLM_B12X_MOE_FP4_FORCE_A16", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "4-bit activations decode 3-7 % slower than W4A16", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
+      ],
+      "evidence": ["profiles/glm53-flash-csf-tp8/README.md", "private record 2026-10-07..08: SIRCL ring results"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "b12x-w4a16-two-cta",
+      "title": "Two CTAs per SM for small-M W4A16 experts",
+      "description": "Gives small-M (8-row route block) W4A16 MoE plans two resident CTAs per SM with three pipeline stages instead of one CTA with four (B12X_W4A16_SMALL_M_OCCUPANCY=2). Narrow experts then keep DRAM busy, and most of the per-stage rebuild of compressed (CSF) scales is hidden.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3", "gain": {"percent": 3.4, "summary": "TP8/DCP4: decode +3.2 / +4.0 / +2.7 / +3.8 % at 1 / 2 / 4 / 8 streams; prefill -2.9 %"}},
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"], "gain": {"percent": 4.5, "summary": "CSF TP4 with mHC sharding: steps/s +3-6 % at 4-16 users, 16-user tok/s 246.5 -> 268.1 (+8.8 %); prefill unchanged"}}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"B12X_W4A16_SMALL_M_OCCUPANCY": "2", "VLLM_B12X_MOE_FP4_FORCE_A16": "1"}},
+      "detect": [{"env": "B12X_W4A16_SMALL_M_OCCUPANCY", "equals": "2"}],
+      "requires": ["b12x-w4a16-experts"],
+      "trade_off": "GLM-5.3 prefill -2.9 %",
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034", "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace backport", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "decode +3.2 / +4.0 / +2.7 / +3.8 % at 1 / 2 / 4 / 8 streams; prefill -2.9 %", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": "4-16", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "steps/s +3-6 % at 4-16 users (101.8 -> 107.5 at 16), tok/s 246.5 -> 268.1 at 16 users; prefill unchanged", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "part of the measured CSF configuration with SIRCL ring schedules: 15.3 / 49.6 steps/s at 1 / 8 streams; not measured alone", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "part of the measured CSF configuration with SIRCL ring schedules: 25.0 / 82.5 steps/s at 1 / 8 streams; not measured alone", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/kernel.py (_w4a16_small_m_occupancy: MoE 4-8 % faster at 4-64 tokens on GLM-5.3 TP8)", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-06: GLM-5.3 TP8 session notes", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
+      "profiles": ["glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "b12x-w4a16-a4-prefill",
+      "title": "4-bit activations for large W4A16 prefill calls",
+      "description": "With W4A16 experts, MoE calls of at least the given number of tokens run NVFP4 activations over the packed weights (B12X's A4 prefill path, B12X_W4A16_A4_PREFILL_MIN_TOKENS; 0, the default, keeps it off).",
+      "category": "kernel-backend",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"},
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"]}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"B12X_W4A16_A4_PREFILL_MIN_TOKENS": "1536"}},
+      "detect": [{"env": "B12X_W4A16_A4_PREFILL_MIN_TOKENS", "at_least": 1}],
+      "requires": ["b12x-w4a16-experts"],
+      "provided_by": {"images": ["dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "part of every measured CSF configuration and of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone"},
+      "measurements": [],
+      "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "profiles/glm53-flash-csf-tp8/README.md", "source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/prefill_a4.py (a4_prefill_min_tokens)"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "b12x-w4a16-fp32-topk-weights",
+      "title": "FP32 router weights in the W4A16 top-k combine",
+      "description": "The W4A16 top-k combine applies each FP32 router weight inside its FP32 accumulation (B12X_W4A16_FP32_TOPK_WEIGHTS=1), as the reference MoE combine does, instead of multiplying the BF16-rounded expert output by a BF16-rounded weight. A numerics setting that the measured CSF configurations carry.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"]}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"B12X_W4A16_FP32_TOPK_WEIGHTS": "1"}},
+      "detect": [{"env": "B12X_W4A16_FP32_TOPK_WEIGHTS", "equals": "1"}],
+      "requires": ["b12x-w4a16-experts"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "part of every measured CSF configuration; not measured alone"},
+      "measurements": [],
+      "evidence": ["profiles/glm53-flash-csf-tp8/README.md", "source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/kernel.py (_FP32_TOPK_WEIGHTS)"],
+      "profiles": []
+    },
+    {
+      "id": "b12x-w4a16-host-barrier-reset-off",
+      "title": "No host reset of the small-M W4A16 grid barrier",
+      "description": "Skips the host-side reset of the reusable small-M W4A16 grid-barrier state before each launch (B12X_W4A16_SMALL_M_HOST_BARRIER_RESET=0); the barrier itself resets its arrival counter and advances its epoch. B12X keeps the host reset as its default while this persistent-epoch path is evaluated.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"B12X_W4A16_SMALL_M_HOST_BARRIER_RESET": "0"}},
+      "detect": [{"env": "B12X_W4A16_SMALL_M_HOST_BARRIER_RESET", "equals": "0"}],
+      "requires": ["b12x-w4a16-experts"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "part of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone"},
+      "measurements": [],
+      "evidence": ["source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/kernel.py (_small_m_direct_host_barrier_reset_enabled)", "private record 2026-10-08: serving A/B matrix definitions"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "sparkcache-persistent-prefix",
+      "title": "SparkCache persistent prefix cache",
+      "description": "Stores prompt-prefix KV pages on each Spark's cache filesystem and restores them into later requests, also after a restart (SparkCache). The SparkCache profiles run on the shared 2026.09.3 image; the Kraken images carry no SparkCache connector.",
+      "category": "vllm-plugin",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3", "status": "research-only", "gain": {"percent": null, "summary": "TP8 after a restart: 64K TTFT 54.3 -> 2.5 s, 128K 112.1 -> 2.8 s for a restored prefix"}},
+        {"name": "GLM-5.3-Flash", "status": "qualified"},
+        {"name": "Qwen3.8-Flash-Next", "status": "qualified"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4], "dcp": [1]}, {"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"SPARKCACHE_ENABLED": "1"}, "note": "select a SparkCache profile (profiles/README.md); GLM-5.3's durable prefix cache was a workspace build in block-page mode with a KV-layout plugin"},
+      "detect": [{"env": "SPARKCACHE_ENABLED", "equals": "1"}],
+      "provided_by": {"images": ["shared-2026.09.3"], "port": "the Kraken images carry no SparkCache connector; SparkCache runs on the shared 2026.09.3 image"},
+      "status": "research-only",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace SparkCache build", "tp": 8, "dcp": 4, "streams": "1", "context": "64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "after a restart, TTFT 54.3 -> 2.5 s at 64K and 112.1 -> 2.8 s at 128K", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T34"},
+        {"image": "shared-2026.09.0-rc.1", "tp": 4, "dcp": 1, "streams": "1", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "exact keys after restarts, all four ranks restored 7,680 and 8,192 tokens", "evidence": "performance/records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md"}
+      ],
+      "evidence": ["profiles/README.md", "performance/records/glm53-flash/shared-22da81ca-tp2-tp4-cache-20260918.md", "performance/records/qwen38-flash-next/shared-22da81ca-tp2-tp4-cache-20260918.md", "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
+      "profiles": ["qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-tp2-sparkcache"]
+    },
+    {
+      "id": "glm53-dsa-b12x-attention-fix",
+      "title": "B12X DSA attention that builds GLM-5.3",
+      "description": "vLLM's B12X DSA attention class accepts the index-group builder that GlmMoeDsaForCausalLM's decoder layers pass (upstream vLLM commit e3e03644). Without it B12X attention cannot build GLM-5.3. There is no switch.",
+      "category": "kernel-backend",
+      "sides": ["startup"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"note": "an image with vLLM bc9ea774 (the Kraken CSF sources) or later"},
+      "detect": [],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "required for GLM-5.3 to start on B12X attention"},
+      "measurements": [],
+      "evidence": ["runtime/images/compositions/kraken-csf-sources-20261007/README.md", "spark_transport/sircl/sparkring_sircl/vllm/SURVEY.md", "profiles/glm53-nvfp4-tp8/README.md"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-mtp-speculative",
+      "title": "MTP speculative decoding for GLM-5.3",
+      "description": "Speculative decoding with GLM-5.3's MTP layer (layer 78) as the drafter: 2 draft tokens, B12X draft attention, draft TP 8 and probabilistic drafting. The checkpoint stores its MTP layer in BF16 but lists only layers 0-77 in its quantization ignore list, so --hf-overrides restates the checkpoint's quantization_config with model.layers.78* and model.language_model.layers.78* appended to ignore; runtime/common/glm_targets.py builds the same kind of override for NVIDIA's GLM-5.3-Flash NVFP4.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {
+        "arguments": {"--speculative-config": "{\"method\":\"mtp\",\"num_speculative_tokens\":2,\"attention_backend\":\"B12X\",\"draft_tensor_parallel_size\":8,\"draft_sample_method\":\"probabilistic\"}"},
+        "note": "--hf-overrides '{\"quantization_config\": the checkpoint's quantization_config with \"model.layers.78*\" and \"model.language_model.layers.78*\" appended to ignore}'"
+      },
+      "detect": [
+        {"arg": "--speculative-config", "json": "method", "equals": "mtp"},
+        {"arg": "--hf-overrides", "json": "quantization_config.ignore", "has_item": "model.layers.78*"}
+      ],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 55, "summary": "MTP3 against no drafting at TP8/DCP4: 27.1 vs 14.7 tok/s at 1 stream (1.85x), 113.5 vs 73.1 at 8 streams (1.55x); MTP2 +10-11 % over MTP3 at 4-8 streams"},
+      "measurements": [
+        {"image": "dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": "1, 8", "context": "0", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP3: 27.1 vs 14.7 tok/s at 1 stream, 113.5 vs 73.1 at 8 streams against no drafting (SIRCL with fused norm)", "evidence": "private record 2026-10-08: serving A/B runner results"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": "4-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP2 10-11 % faster than MTP3 at 4-8 streams", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T1"}
+      ],
+      "evidence": ["runtime/common/glm_targets.py", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-08: serving A/B runner results", "private record 2026-10-08: serving A/B matrix definitions"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-mtp-draft-online-quantization",
+      "title": "MXFP8 and NVFP4 quantization of the GLM-5.3 MTP draft",
+      "description": "Quantizes the BF16 MTP draft at load: MXFP8 linears and NVFP4 MoE with BF16 activations, leaving *kv_b_proj and the whole DSA indexer in BF16 (quantization_config inside --speculative-config). Whether the image's speculative configuration accepts the key is part of the test.",
+      "category": "speculative-decoding",
+      "sides": ["decode", "memory"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"speculative": {"quantization_config": {"linear": "mxfp8", "moe": "nvfp4_a16", "ignore": ["*kv_b_proj", "*.indexer.*"]}}},
+      "detect": [{"arg": "--speculative-config", "json": "quantization_config.linear", "equals": "mxfp8"}],
+      "requires": ["glm53-mtp-speculative"],
+      "provided_by": {"images": ["dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "under measurement on 2026-10-08 (MTP2, TP8/DCP4, image 816c6d6a7e96)"},
+      "measurements": [],
+      "evidence": ["private record 2026-10-08: serving A/B matrix definitions"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-mxfp8-linears",
+      "title": "MXFP8 dense linears for GLM-5.3",
+      "description": "Quantizes GLM-5.3's BF16 dense linears to MXFP8 at load (--quantization-config with linear mxfp8), except *kv_b_proj and the DSA indexer's wk_weights_proj, with B12X's MXFP8 activation mode auto (VLLM_B12X_MXFP8_ACTIVATION_MODE; the choices are auto, a16 and quantized).",
+      "category": "kernel-backend",
+      "sides": ["memory", "prefill", "decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {
+        "arguments": {"--quantization-config": "{\"linear\":\"mxfp8\",\"ignore\":[\"*kv_b_proj\",\"*.indexer.wk_weights_proj\"]}", "--linear-backend": "b12x"},
+        "environment": {"VLLM_B12X_MXFP8_ACTIVATION_MODE": "auto"}
+      },
+      "detect": [
+        {"arg": "--quantization-config", "json": "linear", "equals": "mxfp8"},
+        {"env": "VLLM_B12X_MXFP8_ACTIVATION_MODE", "equals": "auto"}
+      ],
+      "requires": ["b12x-linear-backend"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "weights 57.34 -> 53.07 GiB per rank; with activation mode auto, 16K prefill 1,549 tok/s (one prefill 3.8 s -> 1.57 s against the other modes)"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "weights 57.34 -> 53.07 GiB per rank; activation mode auto removed an MXFP8 prefill regression (3.8 s -> 1.57 s), 1,549 tok/s at 16K", "evidence": "private record 2026-10-05: eight-Spark session notes"}
+      ],
+      "evidence": ["profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-05: eight-Spark session notes"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-mxfp8-indexer-query",
+      "title": "MXFP8 DSA indexer query projection",
+      "description": "Keeps the DSA indexer's query projection (wq_b) in the MXFP8 set: the --quantization-config ignore list names *.indexer.wk_weights_proj, not the whole indexer (*.indexer.*).",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"note": "leave *.indexer.* out of the --quantization-config ignore list (glm53-mxfp8-linears)"},
+      "detect": [
+        {"arg": "--quantization-config", "json": "linear", "equals": "mxfp8"},
+        {"arg": "--quantization-config", "json": "ignore", "lacks_item": "*.indexer.*"}
+      ],
+      "requires": ["glm53-mxfp8-linears"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 1.4, "summary": "decode +0.2-2.2 %, prefill +1.4 %"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "decode +0.2-2.2 %, prefill +1.4 %", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T19"}
+      ],
+      "evidence": ["private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-ckv-gather",
+      "title": "Full compressed-KV gather for DCP prefill",
+      "description": "Gathers the DCP-sharded compressed KV records before B12X sparse-MLA prefill, so each rank attends every rank's records with its own query heads instead of exchanging queries and combining partial outputs (VLLM_B12X_MLA_CKV_GATHER). The image's default capacity, 524,288 tokens, is below the profile's served capacity, so VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS is raised to 589,824.",
+      "category": "kernel-backend",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [2, 4, 8]}]},
+      "enable": {"environment": {"VLLM_B12X_MLA_CKV_GATHER": "1", "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS": "589824"}},
+      "detect": [
+        {"env": "VLLM_B12X_MLA_CKV_GATHER", "in": ["1", "true", "yes", "on"]},
+        {"env": "VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS", "at_least": 589824, "unset_means": "524288"}
+      ],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 59, "summary": "16K prefill 844 -> 1,345.5 tok/s at DCP4 (+59 %), +79 % at DCP8, +5.3 % at DCP2; decode unchanged. Measured with a workspace plugin of the same design, DCP collectives on a transport outside SparkRing; the image's own path is not measured separately"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace plugin", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 844 -> 1,345.5 tok/s; +79 % at DCP8 (8-bit KV), +5.3 % at DCP2 (4-bit KV); decode unchanged", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
+      ],
+      "evidence": ["profiles/glm53-nvfp4-tp8/README.md", "source: vllm@bc9ea774 vllm/envs.py (VLLM_B12X_MLA_CKV_GATHER, VLLM_B12X_MLA_CKV_GATHER_MAX_TOKENS)", "private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-dcp-indexer-key-gather",
+      "title": "DCP index-key gather for DSA prefill",
+      "description": "In eager B12X DSA prefill under DCP, each request's sharded index keys are gathered once and the query rows are split across the tensor-parallel ranks, which then exchange only the selected indices instead of per-shard candidates (VLLM_DCP_INDEXER_KEY_GATHER=1, off by default). It addresses the same prefill step as the workspace indexer split (glm53-indexer-prefill-split); the two have not been compared.",
+      "category": "kernel-backend",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [2, 4, 8]}]},
+      "enable": {"environment": {"VLLM_DCP_INDEXER_KEY_GATHER": "1"}},
+      "detect": [{"env": "VLLM_DCP_INDEXER_KEY_GATHER", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "not measured"},
+      "measurements": [],
+      "evidence": ["source: vllm@bc9ea774 vllm/envs.py and vllm/v1/attention/backends/mla/b12x_indexer.py (VLLM_DCP_INDEXER_KEY_GATHER)", "runtime/images/compositions/kraken-csf-sources-20261007/sources.json"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-indexer-prefill-split",
+      "title": "DSA indexer prefill row split",
+      "description": "Each DCP group scores only its block of a prefill step's DSA indexer rows, and one tensor-parallel all-gather fills in the rest. The vLLM general plugin glm_dsa_indexer_split 1.1.0 (integrations/vllm/glm_dsa_indexer_split), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py); it pins the image files it wraps and refuses other versions.",
+      "category": "vllm-plugin",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [1, 2, 4]}]},
+      "enable": {"environment": {"GLM_DSA_INDEXER_SPLIT": "1", "GLM_DSA_INDEXER_SPLIT_FULL_LAUNCHES": "1"}, "plugin": "glm_dsa_indexer_split 1.1.0 in VLLM_PLUGINS"},
+      "detect": [{"env": "GLM_DSA_INDEXER_SPLIT", "equals": "1"}],
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 7, "summary": "with glm53full_speedups on image af06e272: prefill about +7 % (the set's decode steps/s +10-15 % come from glm53full_speedups); alone, as workspace plugin 1.0.0 on image aba309e4610c: 16K prefill 1,298 -> 1,402 tok/s (+8 %), +9 % at 64K, +8 % at 128K, decode unchanged, outputs bit-exact"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": null, "context": "16K, 64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "16K prefill 1,298 -> 1,400 / 1,402 tok/s, TTFT -6.9 / -7.2 % at 64K / 128K; with full launches 1,404 tok/s, TTFT -8.2 / -7.8 %; two runs per arm", "evidence": "private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B"},
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
+      ],
+      "evidence": ["private record 2026-10-07: GLM-5.3 TP8 indexer-split A/B", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-dsa-indexer-merge-auto",
+      "title": "Live-length merge choice in the DSA indexer",
+      "description": "B12X's fused DSA indexer chooses per launch, from the live length, between merging each multi-CTA decode group's partial top-2,048 lists in its last CTA or cooperatively, because its tuning space holds only the auto merge (B12X commit b87a1e1). A tuned fixed merge picked at startup on one short length chose the serial merge and made 128K-token decode indexer launches 3x slower. There is no switch.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"note": "on in the Kraken CSF sources (B12X cc36aa6f) and later; image aba309e4610c needs the workspace backport (GLM53FULL_BACKPORT_DSA_MERGE_AUTO=1)"},
+      "detect": [],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 3.9, "summary": "decode +4.7 % at 64K and +3.2 % at 128K with 2 streams; none at 16K"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace backport", "tp": 8, "dcp": 2, "streams": "2", "context": "64K, 128K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "decode +4.7 % at 64K and +3.2 % at 128K", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
+      ],
+      "evidence": ["source: b12x@cc36aa6f b12x/attention/dsa_indexer/_tuning.py (fused_merge offers auto only)", "runtime/images/compositions/kraken-csf-sources-20261007/sources.json", "private record 2026-10-06: GLM-5.3 TP8 session notes"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-allocator-split-limit",
+      "title": "Weight loading without the allocator split limit",
+      "description": "Under expandable_segments:True, vLLM loads weights without its temporary max_split_size_mb allocator limit, which would strand the pages that weights share with later allocations (upstream vLLM commit f2d1272). There is no switch beyond the allocator setting.",
+      "category": "kernel-backend",
+      "sides": ["memory"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}, "note": "on in the Kraken CSF sources (vLLM bc9ea774) and later; image aba309e4610c needs the workspace backport (GLM53FULL_BACKPORT_LOAD_SPLIT=1)"},
+      "detect": [{"env": "PYTORCH_CUDA_ALLOC_CONF", "contains": "expandable_segments:True"}],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "upstream's estimate 0.5-1 GiB more free memory per rank (at most 1.81 GiB on GLM-5.3 TP8): +16,768 to +50,432 KV tokens at DCP2; not measured on the ring"},
+      "measurements": [],
+      "evidence": ["source: vllm@bc9ea774 vllm/v1/worker/gpu_worker.py (_scoped_allocator_max_split)", "private record 2026-10-08: model-side plugin classification"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-latent-shard",
+      "title": "Latent projection split over TP8",
+      "description": "Splits GLM-5.3's fused q_a/kv_a projection over the eight tensor-parallel ranks with one all-gather instead of computing it on every rank. Part of the vLLM general plugin glm53full_speedups 1.1.0 (integrations/vllm/glm53full_speedups), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py); it pins the image files it patches and refuses other versions.",
+      "category": "vllm-plugin",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"GLM53FULL_LATENT_SHARD": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
+      "detect": [{"env": "GLM53FULL_LATENT_SHARD", "equals": "1"}],
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the row-parallel MTP eh_proj and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; not measured alone"},
+      "measurements": [
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
+      ],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-mtp-eh-proj-tp",
+      "title": "Row-parallel MTP eh_proj",
+      "description": "Makes the MTP layer's eh_proj row-parallel over the tensor-parallel ranks instead of replicated. Part of the vLLM general plugin glm53full_speedups 1.1.0 (integrations/vllm/glm53full_speedups), which the GLM-5.3 plugin layer adds (runtime/images/derive_glm53_plugins.py).",
+      "category": "vllm-plugin",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"GLM53FULL_EH_PROJ_TP": "1"}, "plugin": "glm53full_speedups 1.1.0 in VLLM_PLUGINS"},
+      "detect": [{"env": "GLM53FULL_EH_PROJ_TP", "equals": "1"}],
+      "requires": ["glm53-mtp-speculative"],
+      "provided_by": {"images": ["glm53-plugins-af06e272", "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": 10, "summary": "the plugin set on image af06e272 at TP8/DCP4 (this split, the latent split and the indexer prefill split): decode steps/s +10-15 %, prefill about +7 %; earlier, with MTP3 and the latent split on image aba309e4610c: about 6 % faster together, acceptance 96 / 89 / 72 %"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "MTP3 + MXFP8 + both splits about 6 % faster", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"},
+        {"image": "glm53-plugins-af06e272", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "the GLM-5.3 plugin set (glm_dsa_indexer_split and glm53full_speedups 1.1.0: indexer prefill row split, latent split and row-parallel MTP eh_proj) against neither plugin: decode steps/s +10-15 %, prefill about +7 %; streams and contexts are not recorded with the result", "evidence": "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"}
+      ],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification", "private record 2026-10-09: GLM-5.3 TP8 plugin-set A/B"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-indexer-priming-memory",
+      "title": "Freed DSA indexer priming buffers",
+      "description": "Publishes the B12X DSA indexer's prepared plans without the tensors of their priming calls, so those buffers (18.04 GiB per rank at a 131,072-token context, 8,192 batched tokens, 8 sequences and MTP3; 23.02 GiB at 1M) do not stay allocated on top of the KV cache, and the KV allocation can grow by that much. Implemented in the workspace plugin glm_dsa_indexer_mem for image aba309e4610c; no SparkRing image carries it.",
+      "category": "vllm-plugin",
+      "sides": ["memory"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"GLM_DSA_INDEXER_MEM": "prevent"}, "plugin": "glm_dsa_indexer_mem (workspace plugin), after a port"},
+      "detect": [{"env": "GLM_DSA_INDEXER_MEM", "equals": "prevent"}],
+      "provided_by": {"images": [], "port": "port the workspace plugin glm_dsa_indexer_mem (offline-validated against image aba309e4610c) into an image layer, after checking whether B12X cc36aa6f still keeps the priming tensors"},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "18.04 GiB per rank of priming buffers freed for the KV cache (allocation report, 2026-10-06)"},
+      "measurements": [],
+      "evidence": ["private record 2026-10-08: model-side plugin classification"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-dcp-prefill-query-replication",
+      "title": "Replicated DCP queries for prefill",
+      "description": "Computes the DCP group's absorbed queries on every rank for eager prefill batches instead of all-gathering them. Implemented in the workspace plugin glm_dcp_prefill_q_replicate for image aba309e4610c; no SparkRing image carries it. With the CKV gather on, an eligible batch takes the gather path instead.",
+      "category": "vllm-plugin",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [2, 4, 8]}]},
+      "enable": {"environment": {"GLM_DCP_PREFILL_Q_REPLICATE": "1"}, "plugin": "glm_dcp_prefill_q_replicate 1.0.0 (workspace plugin), after a port"},
+      "detect": [{"env": "GLM_DCP_PREFILL_Q_REPLICATE", "equals": "1"}],
+      "superseded_by": "glm53-ckv-gather",
+      "provided_by": {"images": [], "port": "port the workspace plugin glm_dcp_prefill_q_replicate 1.0.0 into an image layer; measure it against a build with glm53-ckv-gather first"},
+      "status": "research-only",
+      "gain": {"percent": 15, "summary": "16K prefill +3.7 % at DCP2 (1,406 tok/s), +15 % at DCP4 (972), +13 % at DCP8, measured without the CKV gather; 0.44 / 1.33 / 3.11 GiB per rank (predicted)"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill +15 % at DCP4 (972 tok/s), +3.7 % at DCP2, +13 % at DCP8; recall 8 / 8", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
+      ],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-dcp-decode-collectives",
+      "title": "DCP decode collectives",
+      "description": "Decode-context-parallel decode collectives for GLM-5.3 on SIRCL DCP sessions: the vLLM general plugin glm_dcp_decode_comm 2.0.0 of the GLM-5.3 plugin layer (integrations/vllm/glm_dcp_decode_comm) builds the DCP query in one kernel, runs the DCP session's collectives on a communication stream, runs the indexer's wk GEMM on a side stream, converts the indexer selection to slots once per indexer layer and packs the all-to-all combine inside the scatter, each behind its own switch and each exact against the image's own path. Profile glm53-nvfp4-tp8 loads it with every switch at 0. A workspace plugin on an RDMA transport outside SparkRing measured a gain; on image 27e9f75c the plugin's five items gave no consistent decode gain in one measured start per setting.",
+      "category": "transport",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [2, 4, 8]}]},
+      "enable": {"environment": {"GLM_DCP_DECODE_QUERY_PACK": "1", "GLM_DCP_DECODE_OVERLAP": "1", "GLM_DCP_DECODE_WK_OVERLAP": "1", "GLM_DCP_DECODE_SELECTION_REUSE": "1", "GLM_DCP_DECODE_A2A_FUSED": "1"}, "note": "the plugin layer's glm_dcp_decode_comm in VLLM_PLUGINS; GLM_DCP_DECODE_AUDIT=1 also runs the image's own path beside each item and counts differing words"},
+      "detect": [{"env": "GLM_DCP_DECODE_QUERY_PACK", "equals": "1"}, {"env": "GLM_DCP_DECODE_OVERLAP", "equals": "1"}, {"env": "GLM_DCP_DECODE_WK_OVERLAP", "equals": "1"}, {"env": "GLM_DCP_DECODE_SELECTION_REUSE", "equals": "1"}, {"env": "GLM_DCP_DECODE_A2A_FUSED", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "the plugin on image 27e9f75c: decode engine steps/s -6.2 % to +3.6 % of the switches off across 12 cells, no consistent gain, one measured start each; a workspace plugin outside SparkRing measured +1.5-4.9 %"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 4, "streams": "1-8", "context": "16K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "+1.5 % at 1 stream, +2.5 % at 2, neutral at 4-8 at 16K; +4.9 % at 64K", "evidence": "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series, test T35"},
+        {"image": "dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp", "tp": 8, "dcp": 4, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "glm_dcp_decode_comm 2.0.0, five switches on against off, arm S+, GPU clocks locked, one measured start each: engine steps/s -6.2 % to +3.6 % (16K: 19.72 / 27.87 / 42.05 / 58.55 against 20.04 / 28.13 / 40.59 / 58.39 at 1 / 2 / 4 / 8 streams); 16K and 32K time to first token higher with them on; an audit start reported 0 differing words in its five checks on all eight ranks", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md"}
+      ],
+      "evidence": ["integrations/vllm/glm_dcp_decode_comm/README.md", "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-decode-ab-20261009.md", "spark_transport/sircl/sparkring_sircl/vllm/shims.json", "private record 2026-10-05..08: GLM-5.3 TP8 overnight test series"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-fp8-ds-mla-kv",
+      "title": "8-bit DSA MLA KV cache",
+      "description": "Stores the KV cache as fp8_ds_mla rather than the 4-bit nvfp4_ds_mla format.",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"arguments": {"--kv-cache-dtype": "fp8_ds_mla"}},
+      "detect": [{"arg": "--kv-cache-dtype", "equals": "fp8_ds_mla"}],
+      "trade_off": "4-bit KV holds about 1.7 times the tokens",
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 2, "summary": "1-3 % faster than 4-bit KV: 1,361 vs 1,317 tok/s prefill, 39 vs 38.1 decode"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": null, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "1,361 / 39 against 1,317 / 38.1 (prefill tok/s / decode)", "evidence": "private record 2026-10-06: GLM-5.3 TP8 session notes"}
+      ],
+      "evidence": ["profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-06: GLM-5.3 TP8 session notes"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-dcp1-layout",
+      "title": "TP8 without decode-context parallelism",
+      "description": "Serves GLM-5.3 at TP8 with decode-context parallelism 1 instead of 4. Each rank then holds the whole KV of its requests, so the KV capacity, not the speed, decides the choice.",
+      "category": "scheduler-compile",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"arguments": {"--decode-context-parallel-size": "1"}, "note": "a 1M-token context then needs 4-bit KV (--kv-cache-dtype nvfp4_ds_mla), which needed an export fix outside SparkRing; with FP8 KV the context is about 512K"},
+      "detect": [{"arg": "--decode-context-parallel-size", "equals": "1", "unset_means": "1"}],
+      "trade_off": "KV capacity 863K tokens (FP8 KV) or 1.48M (4-bit KV) at DCP1 against about 3.4M at DCP4",
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 9.5, "summary": "decode steps +8-11 % at 16K (20.0 / 30.2 / 42.5 / 59.0 against 18.5 / 27.6 / 38.4 / 53.1 steps/s at 1 / 2 / 4 / 8 streams, MTP2, FP8 KV); prefill about +10-14 % over DCP4 with the CKV gather (inferred from separate runs)"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": "1-8", "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "DCP1 FP8 KV 20.0 / 30.2 / 42.5 / 59.0 steps/s, prefill 1,598 tok/s, 863K KV tokens; DCP1 4-bit KV 20.1 / 29.2 / 42.1 / 57.6, 1,545, 1.48M; DCP4 FP8 KV 18.5 / 27.6 / 38.4 / 53.1, 844 before the CKV gather, about 3.4M", "evidence": "private record 2026-10-06: GLM-5.3 TP8 DCP comparison report"}
+      ],
+      "evidence": ["private record 2026-10-06: GLM-5.3 TP8 DCP comparison report"],
+      "profiles": ["glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-l2-prefetch-decode",
+      "title": "L2 weight prefetch in GLM-5.3 decode",
+      "description": "During full-CUDA-graph decode, streams the next projection weights into L2 on a side stream while the all-reduce and the attention kernels run; the consumer does not wait for the prefetch (vLLM's l2_prefetch module, VLLM_L2_PREFETCH, on by default in the Kraken CSF sources).",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_L2_PREFETCH": "1"}, "note": "the default; VLLM_L2_PREFETCH_WINDOWS, _MAX_TOKENS and _CTAS tune it"},
+      "detect": [{"env": "VLLM_L2_PREFETCH", "equals": "1", "unset_means": "1"}],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "on against off not measured on this image; the module's own record: 64 instead of 32 prefetch programs shorten an eight-rank GLM-5.3 decode step by 0.16 ms at 4 padded tokens"},
+      "measurements": [],
+      "evidence": ["source: vllm@bc9ea774 vllm/model_executor/layers/l2_prefetch.py (module docstring)", "runtime/images/compositions/kraken-csf-sources-20261007/sources.json"],
+      "profiles": ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-flash-mhc-prefill-shard",
+      "title": "mHC prefill row ownership",
+      "description": "In an eager 8,192-row prefill forward of GLM-5.3-Flash, each tensor-parallel rank computes the hyper-connection (mHC) mixing of only its share of the rows, and attention and MLP outputs are reduce-scattered and all-gathered instead of all-reduced. On SIRCL, the adapter shim mhc_prefill_shard carries it and needs a pinned vLLM build.",
+      "category": "kernel-backend",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3-Flash", "checkpoints": ["local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"], "gain": {"percent": 13, "summary": "CSF TP4: prefill 3,168 / 3,062 -> 3,603 / 3,441 tok/s (+12-14 %), decode equal"}},
+        {"name": "GLM-5.3-Flash", "gain": {"percent": 3.7, "summary": "NVFP4-Spark TP4: prefill +3.7 %"}}
+      ],
+      "parallelism": {
+        "supported": [{"tp": [2], "dcp": [1]}, {"tp": [4], "dcp": [1, 2, 4]}],
+        "refused": [
+          {"tp": [8], "dcp": "any", "by": "vLLM glm5next mhc_prefill_sharding.py (startup, every rank)", "text": "GLM mHC configuration admission failed: GLM mHC row ownership requires TP2 or TP4, a 4096/8192-token ceiling, and graph capture sizes below that ceiling"},
+          {"tp": [2], "dcp": [2, 4, 8], "by": "vLLM glm5next mhc_prefill_sharding.py (startup, every rank)", "text": "GLM mHC configuration admission failed: GLM mHC row ownership requires BF16 H4096 and TP2/DCP1 or TP4/DCP1,2,4 with PP1/DP1/PCP1 and no expert or sequence parallelism"}
+        ]
+      },
+      "enable": {"environment": {"VLLM_GLM53_MHC_PREFILL_SHARD": "1"}},
+      "detect": [{"env": "VLLM_GLM53_MHC_PREFILL_SHARD", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034", "shared-2026.09.3"]},
+      "status": "implemented",
+      "gain": null,
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": null, "context": "16K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "prefill 12-14 % faster than with it off, decode equal", "evidence": "spark_transport/sircl/sparkring_sircl/vllm/shims.json"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with SIRCL from a staged tree", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a6082410", "result": "prefill 3.7 % faster than with it off", "evidence": "spark_transport/sircl/sparkring_sircl/vllm/shims.json"},
+        {"image": "a research overlay of the CSF sources", "tp": 2, "dcp": 2, "streams": "8", "context": "64K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "+1 % prefill at 64K, +3 % decode at 8 streams; the DCP1 on/off control is not measured", "evidence": "private record 2026-10-08: eight-Spark evening results"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a research guard lift", "tp": 8, "dcp": 1, "streams": null, "context": "8K, 64K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "with KDA coalescing: prefill +27 % at 8K, +16 % at 64K; greedy tokens diverged between arms (correctness verdict FAIL), not adopted", "evidence": "private record 2026-10-05: GLM-5.3-Flash TP8 prefill plugin runs"}
+      ],
+      "evidence": ["spark_transport/sircl/sparkring_sircl/vllm/shims.json", "performance/records/glm53-flash/mhc-token-sharding-20260906/README.md", "source: vllm@bc9ea774 vllm/models/glm5next/nvidia/mhc_prefill_sharding.py (configure)", "private record 2026-10-07..08: SIRCL ring results"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched"]
+    },
+    {
+      "id": "glm53-flash-kda-prefill-coalescing",
+      "title": "KDA prefill checkpoint coalescing",
+      "description": "Lets one exclusive prompt chunk of up to 8,192 tokens store up to four interior recurrent states of GLM-5.3-Flash's KDA layers for prefix caching, instead of splitting the chunk at each state it must keep. Requires static MTP3 or no speculation, an 8,192-token scheduler budget and align-mode prefix caching.",
+      "category": "scheduler-compile",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {
+        "supported": [{"tp": [4], "dcp": [1, 2, 4]}, {"tp": [2], "dcp": [1]}],
+        "refused": [
+          {"tp": [8], "dcp": "any", "by": "vLLM recurrent_prefill_checkpoint.py (startup, every rank)", "text": "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported"},
+          {"tp": [2], "dcp": [2, 4, 8], "by": "vLLM recurrent_prefill_checkpoint.py (startup, every rank)", "text": "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported"}
+        ]
+      },
+      "enable": {"environment": {"VLLM_B12X_KDA_PREFILL_COALESCING": "1"}},
+      "detect": [{"env": "VLLM_B12X_KDA_PREFILL_COALESCING", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "not measured alone; the TP4 profile sets it, and the TP2 profile sets it for its csf checkpoint, measured together with --async-scheduling and the four-Spark draft settings"},
+      "measurements": [
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "with the CSF checkpoint, two-CTA W4A16 experts and SIRCL ring schedules, GPU clocks locked, against the same configuration without --async-scheduling, KDA prefill coalescing and the four-Spark draft settings: TTFT 3.80 / 15.33 s against 4.41 / 15.90 s at 8K / 32K, decode steps within 3 % except one start's 32K / 8-stream cell; the three were not measured apart", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["profiles/glm53-flash-nvfp4-spark-tp4/config.json", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md", "source: vllm@bc9ea774 vllm/v1/core/recurrent_prefill_checkpoint.py (validate_coalescing_config)"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched"]
+    },
+    {
+      "id": "glm53-flash-csf-checkpoint",
+      "title": "GLM-5.3-Flash CSF checkpoint",
+      "description": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at dec48abd33ef stores its routed experts' NVFP4 block scales losslessly compressed (CSF), with MXFP8 attention. vLLM reads it with --quantization nvfp4_csf --load-format nvfp4_csf and W4A16 experts; only images whose vLLM is SIRCL's pinned build sparkring-kraken-beta-20261007-bc9ea774 admit it. On image 1a8c10354eb0 its installations at TP4 and TP2 passed the installer's checks and a 256-request correctness screen with no degenerate, wrong or failed response; it has had no soak.",
+      "category": "checkpoint",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4, 8], "dcp": [1]}]},
+      "enable": {
+        "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be (profile glm53-flash-csf-tp8; checkpoint csf of glm53-flash-nvfp4-spark-tp2 and glm53-flash-nvfp4-spark-tp4, their default on an image that reads it)",
+        "arguments": {"--quantization": "nvfp4_csf", "--load-format": "nvfp4_csf"},
+        "environment": {"VLLM_B12X_MOE_FP4_FORCE_A16": "1"},
+        "speculative": {"moe_backend": "marlin"}
+      },
+      "detect": [{"model": "repository", "equals": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD"}],
+      "requires": ["b12x-w4a16-experts"],
+      "provided_by": {"images": ["dev-20261007-kraken-csf-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 4, "by_tp": {"2": 5.5, "4": 4}, "summary": "TP2: steps/s +5-6 % against NVFP4-Spark (15.5 / 45.0 against 14.8 / 42.3 at 1 / 8 streams); TP4: decode equal at 1-8 users, +4 % at 16; prefill equal with mHC sharding on"},
+      "measurements": [
+        {"image": "dev-20261009-kraken-csf-sircl032-libsircl-plugins", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "sparkring install on a ring of four and on a pair (TP2) of another: 7 of 7 functional checks and 256 of 256 correctness-screen responses each, none degenerate, wrong or failed", "evidence": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 2, "dcp": 1, "streams": "1, 8", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "15.5 / 45.0 against 14.8 / 42.3 steps/s at 1 / 8 streams; 8-stream tok/s 111.8 -> 119.1; prefill within 1-3 %; one run", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"},
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with the CSF source overlay", "tp": 4, "dcp": 1, "streams": "1-16", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "decode steps equal at 1-8 users, +4 % at 16; prefill equal to NVFP4-Spark once mHC sharding is on", "evidence": "private record 2026-10-07..08: SIRCL ring results, section 13"}
+      ],
+      "evidence": ["runtime/images/compositions/kraken-csf-sources-20261007/README.md", "runtime/common/image_lock.py", "profiles/glm53-flash-csf-tp8/README.md", "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md", "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md", "private record 2026-10-07..08: SIRCL ring results"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf"]
+    },
+    {
+      "id": "glm53-flash-mtp-nvfp4-draft-head",
+      "title": "NVFP4 MTP draft vocabulary head",
+      "description": "Gives GLM-5.3-Flash's MTP drafter its own NVFP4 vocabulary head with BF16 activations (VLLM_GLM53_MTP_DRAFT_HEAD=nvfp4); the verifier keeps its BF16 head. The Kraken images accept it on GB10 (compute capability 12.1). It adds about 85 MiB per rank.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_GLM53_MTP_DRAFT_HEAD": "nvfp4"}},
+      "detect": [{"env": "VLLM_GLM53_MTP_DRAFT_HEAD", "equals": "nvfp4"}],
+      "provided_by": {"images": ["dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": 4.9, "summary": "1-stream normalized steps/s +4.9 % (raw tok/s +8.2 %), +1.8 / -0.1 / +2.2 % at 2 / 4 / 8 streams, prefill unchanged: TP4/DCP4 MTP3 on an earlier image whose switch was VLLM_MTP_NVFP4_LM_HEAD=1; not measured on the Kraken images"},
+      "measurements": [
+        {"image": "sha256:04d5a35b03e9 (research mesh image)", "tp": 4, "dcp": 4, "streams": "1-8", "context": "8K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@df116c4f", "result": "normalized steps/s +4.90 / +1.76 / -0.12 / +2.23 % at 1 / 2 / 4 / 8 streams; prefill within 0.36 %", "evidence": "performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md"}
+      ],
+      "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "performance/records/glm53-flash/spark-mtp3-nvfp4-proposal-head-20260905.md"],
+      "profiles": []
+    },
+    {
+      "id": "prefill-schedule-interval-2",
+      "title": "Prefill scheduler interval 2",
+      "description": "Lets the scheduler start a prefill chunk every second step instead of every eighth (--prefill-schedule-interval 2), which shortens the wait of a burst of new requests.",
+      "category": "scheduler-compile",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"arguments": {"--prefill-schedule-interval": "2"}},
+      "detect": [{"arg": "--prefill-schedule-interval", "equals": "2"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 1.6, "summary": "TP4/DCP4, eight simultaneous requests of about 6K tokens: median aggregate output +1.6 %, median maximum TTFT -3.9 % against interval 8; an earlier campaign: C8 output +23 %, maximum TTFT 34 -> 24 s"},
+      "measurements": [
+        {"image": "ghcr.io/fujitsupolycom/sparkring-glm53-sparkcache@sha256:3c377f1e4136", "tp": 4, "dcp": 4, "streams": "8", "context": "about 6K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "median aggregate 57.07 against 56.16 tok/s; median maximum TTFT 20.82 against 21.66 s", "evidence": "performance/records/glm53-flash/scheduler-cadence-20260902.md"}
+      ],
+      "evidence": ["performance/records/glm53-flash/scheduler-cadence-20260902.md"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched"]
+    },
+    {
+      "id": "async-scheduling",
+      "title": "Asynchronous scheduling",
+      "description": "Schedules each step while the step before it executes (--async-scheduling).",
+      "category": "scheduler-compile",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"},
+        {"name": "GLM-5.3"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"arguments": {"--async-scheduling": true}},
+      "detect": [{"arg": "--async-scheduling", "present": true}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "not measured alone; the GLM-5.3-Flash TP2 and TP4 and GLM-5.3 TP8 profiles set it; on two Sparks it was measured together with KDA prefill coalescing and the four-Spark draft settings on the csf checkpoint"},
+      "measurements": [
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "with the CSF checkpoint, two-CTA W4A16 experts and SIRCL ring schedules, GPU clocks locked, against the same configuration without --async-scheduling, KDA prefill coalescing and the four-Spark draft settings: TTFT 3.80 / 15.33 s against 4.41 / 15.90 s at 8K / 32K, decode steps within 3 % except one start's 32K / 8-stream cell; the three were not measured apart", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["profiles/glm53-flash-nvfp4-spark-tp4/config.json", "profiles/glm53-flash-nvfp4-spark-tp2/config.json", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+    },
+    {
+      "id": "glm53-flash-kda-gate-side-stream",
+      "title": "KDA gate on a side stream",
+      "description": "Runs the gate computation of GLM-5.3-Flash's KDA linear-attention layers on a CUDA side stream (VLLM_GLM53_KDA_GATE_SIDE_STREAM=1).",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_GLM53_KDA_GATE_SIDE_STREAM": "1"}},
+      "detect": [{"env": "VLLM_GLM53_KDA_GATE_SIDE_STREAM", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "conflicting: decode +1.2-1.6 % at 1-8 streams and flat at 16-64 in one TP8 run, -2 % in another"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": "1-64", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "decode +1.2-1.6 % at 1-8 streams, flat at 16-64", "evidence": "private record 2026-10-05: eight-Spark session notes"}
+      ],
+      "evidence": ["private record 2026-10-05: eight-Spark session notes"],
+      "profiles": ["glm53-flash-spark-tp4-switched"]
+    },
+    {
+      "id": "glm53-flash-l2-prefetch",
+      "title": "L2 weight prefetch in GLM-5.3-Flash decode",
+      "description": "Prefetches the upcoming dense decode weights into L2 on a side stream during the idle device-memory windows of each layer (vLLM's glm5next l2_prefetch module). It is on by default only on compute capability 12.0; on GB10 (12.1) VLLM_GLM53_L2_PREFETCH=1 turns it on.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_GLM53_L2_PREFETCH": "1"}},
+      "detect": [{"env": "VLLM_GLM53_L2_PREFETCH", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "the image's module is not measured on GB10; a workspace L2-prefetch plugin at TP8 gave decode +0.8-2.6 % at 1-48 streams after a fix (first test: step 25.72 -> 24.53 ms, +4.9 %); upstream's record on RTX PRO 6000: +7 % verifier steps/s at 1 stream"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with a workspace plugin", "tp": 8, "dcp": 1, "streams": "1-48", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "decode +0.8-2.6 % at 1-48 streams, flat at 32 / 64; the first test 25.72 -> 24.53 ms per step", "evidence": "private record 2026-10-05: eight-Spark session notes"}
+      ],
+      "evidence": ["source: vllm@bc9ea774 vllm/models/glm5next/nvidia/l2_prefetch.py (module docstring, _platform_enabled; not among the files the CSF layer changes, so the same in vLLM d51b4181)", "private record 2026-10-05: eight-Spark session notes"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-flash-tp8-speedups",
+      "title": "GLM-5.3-Flash TP8 speedups plugin",
+      "description": "A workspace plugin for GLM-5.3-Flash at TP8 that changes the router kernel on SM121, runs the indexer in BF16 and splits the MTP eh_proj. Its source lies in a directory that SparkRing's clean-room rule keeps implementers out of, so a port starts from a specification.",
+      "category": "vllm-plugin",
+      "sides": ["decode", "memory"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [1]}]},
+      "enable": {"note": "no implementation in SparkRing; the workspace plugin read GLM53_TP8_ROUTER_SM121, GLM53_TP8_INDEXER_BF16 and GLM53_TP8_EH_PROJ_TP"},
+      "detect": null,
+      "provided_by": {"images": [], "port": "a clean-room implementation from a specification of the three changes"},
+      "status": "research-only",
+      "gain": {"percent": 3, "summary": "1-stream steps/s +3 % (profiled, 37.1 -> 38.2); tok/s -1 to +5 % at 1-64 streams, +4.7 % at 64 streams (804 -> 886); the KV pool grew 5.41M -> 8.65M tokens, cause not attributed"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": "1-64", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "steps/s +3 % at 1 stream; tok/s -1 to +5 % at 1-64 streams; KV pool 5.41M -> 8.65M tokens", "evidence": "private record 2026-10-05: GLM-5.3-Flash TP8 plugin runs"}
+      ],
+      "evidence": ["private record 2026-10-05: GLM-5.3-Flash TP8 plugin runs"],
+      "profiles": []
+    },
+    {
+      "id": "glm53-flash-tp8-64-sequences",
+      "title": "64 sequences at TP8",
+      "description": "Admits 64 concurrent sequences (--max-num-seqs 64) with CUDA graphs captured up to 64 tokens, for throughput at high concurrency rather than per-stream speed.",
+      "category": "scheduler-compile",
+      "sides": ["memory"],
+      "models": [
+        {"name": "GLM-5.3-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"arguments": {"--max-num-seqs": "64"}, "note": "capture sizes up to 64, as the profile's"},
+      "detect": [{"arg": "--max-num-seqs", "at_least": 64}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "aggregate 313-333 tok/s at 64 streams against about 182 at 16 streams (NVFP4-Spark, TP8/DCP1)"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins", "tp": 8, "dcp": 1, "streams": "16, 64", "context": null, "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "result": "313-333 tok/s at 64 streams; about 182 at 16", "evidence": "private record 2026-10-05: GLM-5.3-Flash TP8 plugin runs"}
+      ],
+      "evidence": ["private record 2026-10-05: GLM-5.3-Flash TP8 plugin runs"],
+      "profiles": []
+    },
+    {
+      "id": "gdn-spec-decode-metadata-fastpath",
+      "title": "Reused speculative metadata in the GDN/KDA backend",
+      "description": "Reuses uniform speculative-decoding metadata in the shared GDN/KDA attention backend instead of rebuilding it each step (VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH, on by default).",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "GLM-5.3-Flash"},
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH": "1"}, "note": "the default"},
+      "detect": [{"env": "VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH", "equals": "1", "unset_means": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "not measured alone"},
+      "measurements": [],
+      "evidence": ["profiles/glm53-flash-nvfp4-spark-tp4/config.json", "source: vllm@bc9ea774 vllm/envs.py (VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH)"],
+      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-spark-tp4-switched", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "qwen38-flash-next-tp2-sparkcache", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "qwen38-mxfp8-attention-checkpoint",
+      "title": "Qwen3.8-Flash-Next MXFP8-attention checkpoint",
+      "description": "A checkpoint that the installer derives on the Sparks from step 5500 with step 4000's MXFP8 attention projections (sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention at 648b194a96e5). Its log-likelihood is 0.0045-0.0063 nats per token above step 5500's, about 0.5 % in perplexity.",
+      "category": "checkpoint",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4], "dcp": [1]}]},
+      "enable": {"checkpoint": "sudo sparkring install --profile PROFILE --checkpoint qad-step5500-mxfp8-attention"},
+      "detect": [{"model": "repository", "equals": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 8, "by_tp": {"2": 12, "4": 4.5}, "summary": "TP2: steps/s +17 / +8 / +7 % at 1 / 8 / 16 streams, prefill +4-5 %; TP4: steps/s +8 / +4 / +1 %, prefill about +2 % (against stock step 5500)"},
+      "measurements": [
+        {"image": "dev-20261001-kraken-cuda1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1, 8, 16", "context": "8K-128K", "checkpoint": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a", "result": "steps/s 23.3 / 85.5 / 122.1 -> 27.3 / 92.2 / 130.8; prefill 8K / 64K / 128K +5.3 / +4.5 / +4.2 %", "evidence": "performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md"},
+        {"image": "dev-20261001-kraken-cuda1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1, 8, 16", "context": "8K-128K", "checkpoint": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a", "result": "steps/s 34.0 / 119.5 / 176.9 -> 36.8 / 124.5 / 178.9; prefill +1.9 / +2.3 / +2.2 %", "evidence": "performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-qad-step5500-mxfp8-attention-20261002.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a", "result": "with SIRCL ring schedules, GPU clocks locked: 25.6 / 89.8 steps/s at 1 / 8 streams, TTFT 2.12 / 8.37 s at 8K / 32K; checkpoint qad-step-4000 on another pair measured 1-6 % more steps/s at 1-8 streams and the same TTFT", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"},
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a", "result": "with SIRCL ring schedules on a path of four, GPU clocks locked: 36.5 / 125.7 steps/s at 1 / 8 streams, TTFT 1.73 / 6.84 s at 8K / 32K", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md", "performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md", "performance/records/images/dev-20261001-kraken-qwen38-flash-next-qad-tp4-qad-step5500-mxfp8-attention-20261002.md", "profiles/labels.json"],
+      "profiles": ["qwen38-flash-next-qad-tp4:qad-step5500-mxfp8-attention", "qwen38-flash-next-tp2:qad-step5500-mxfp8-attention"]
+    },
+    {
+      "id": "qwen38-hc-prefill-row-ownership",
+      "title": "Qwen hyper-connection prefill row ownership",
+      "description": "In an eager prefill of at least 1,024 rows, each tensor-parallel rank keeps only its share of the four-stream hyper-connection state, gathers block inputs before attention and MLP and reduce-scatters their outputs. It cannot be combined with HC projection sharding (VLLM_QWEN3_8_FLASH_NEXT_HC_TP=0). On SIRCL, the adapter shim qwen_hc_prefill_shard carries it.",
+      "category": "kernel-backend",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {
+        "supported": [{"tp": [2, 4], "dcp": [1]}],
+        "refused": [
+          {"tp": [8], "dcp": "any", "by": "vLLM qwen4_exp hc_prefill.py (startup) and installer admission (runtime/common/installer_image.py: the image receipt's hc_supported_modes names two and four ranks)", "text": "Qwen HC ownership requires BF16 TP2 or TP4/PP1/DP1/DCP1/PCP1"}
+        ]
+      },
+      "enable": {"environment": {"VLLM_QWEN3_8_HC_PREFILL_MODE": "shard", "VLLM_QWEN3_8_FLASH_NEXT_HC_TP": "0"}},
+      "detect": [
+        {"env": "VLLM_QWEN3_8_HC_PREFILL_MODE", "equals": "shard"},
+        {"env": "VLLM_QWEN3_8_FLASH_NEXT_HC_TP", "equals": "0"}
+      ],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 40, "summary": "prefill +40-70 % with MXFP8 HC projections (2026-09-25, an earlier image); not measured alone since"},
+      "measurements": [
+        {"image": null, "tp": 2, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "result": "prefill +40-70 % with MXFP8 HC projections", "evidence": "private record 2026-09: Qwen3.8 session archive"}
+      ],
+      "evidence": ["spark_transport/sircl/sparkring_sircl/vllm/shims.json", "runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md", "source: vllm@bc9ea774 vllm/models/qwen4_exp/nvidia/hc_prefill.py", "private record 2026-09: Qwen3.8 session archive"],
+      "profiles": ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "qwen38-prefill-feature",
+      "title": "Qwen prefill feature hooks",
+      "description": "The image feature qwen4-prefill: a hyper-connection up-projection and gate fusion, and BF16 MTP projection GEMMs for batches of 128 or more rows. Its hooks hold rank-agreement votes that accept two or four ranks in every HC mode.",
+      "category": "vllm-plugin",
+      "sides": ["prefill"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {
+        "supported": [{"tp": [2, 4], "dcp": [1]}],
+        "refused": [
+          {"tp": [8], "dcp": "any", "by": "image feature qwen4-prefill (rank-agreement votes in its HC fusion and MTP GEMM hooks)", "text": "the hooks accept tensor-parallel groups of two or four ranks only"}
+        ]
+      },
+      "enable": {"environment": {"SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill"}},
+      "detect": [{"env": "SPARKRING_FEATURES", "has_item": "qwen4-prefill"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 12, "summary": "TP4 cold prefill 16K 4.812 -> 4.282 s (+12.4 %), 32K +11.7 %; decode unchanged"},
+      "measurements": [
+        {"image": "SparkRing R37 ARM64 runtime", "tp": 4, "dcp": 1, "streams": "1", "context": "16K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "cold prefill 4.812 -> 4.282 s at 16K, 10.000 -> 8.953 s at 32K; warm decode about unchanged", "evidence": "integrations/vllm/qwen38_prefill/README.md"}
+      ],
+      "evidence": ["integrations/vllm/qwen4_prefill/README.md", "integrations/vllm/qwen38_prefill/README.md", "runtime/images/feature_bootstrap.py", "private record 2026-10-08: TP8 guard reading of image 54af97d9"],
+      "profiles": ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "qwen38-collectives-feature",
+      "title": "Qwen collective selection on the prepared transport",
+      "description": "The image feature qwen-collectives chooses per operation, before it is submitted or captured, between RoCEnante (all-reduces up to QWEN_DISPATCH_AR_BYTES) and NCCL (QWEN_DISPATCH_MODE=both, which the feature's activation sets when unset).",
+      "category": "transport",
+      "sides": ["decode"],
+      "transports": ["prepared"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {"supported": [{"tp": [2, 4], "dcp": [1]}]},
+      "enable": {"environment": {"SPARKRING_FEATURES": "qwen-collectives,qwen4-prefill", "QWEN_DISPATCH_MODE": "both"}},
+      "detect": [
+        {"env": "SPARKRING_FEATURES", "has_item": "qwen-collectives"},
+        {"env": "QWEN_DISPATCH_MODE", "equals": "both", "unset_means": "both"}
+      ],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "not recorded in the repository"},
+      "measurements": [],
+      "evidence": ["integrations/vllm/qwen38_collectives/README.md", "runtime/images/feature_bootstrap.py"],
+      "profiles": ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp4-sparkcache", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "qwen38-mxfp8-hc-projections",
+      "title": "MXFP8 hyper-connection projections",
+      "description": "Quantizes Qwen4Exp's hyper-connection down and injection projections to MXFP8 at load (VLLM_QWEN4_EXP_MXFP8_HC=1); they are otherwise BF16 and read in full on every rank.",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"},
+        {"name": "Swift-1.5-Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_QWEN4_EXP_MXFP8_HC": "1"}},
+      "detect": [{"env": "VLLM_QWEN4_EXP_MXFP8_HC", "equals": "1"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "not measured alone"},
+      "measurements": [],
+      "evidence": ["docs/operations/images.md", "source: vllm@bc9ea774 vllm/envs.py (VLLM_QWEN4_EXP_MXFP8_HC)"],
+      "profiles": ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"]
+    },
+    {
+      "id": "ds41-dspark-adaptive-verification",
+      "title": "DSpark adaptive verification",
+      "description": "DeepSeek-V4.1-Flash's DSpark drafter (5 tokens, the checkpoint's block size) with adaptive verification (enable_adaptive_verification in --speculative-config), which raises verification steps per second.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [4, 8], "dcp": [1]}]},
+      "enable": {"speculative": {"method": "dspark", "num_speculative_tokens": 5, "rejection_sample_method": "block", "enable_adaptive_verification": true}},
+      "detect": [{"arg": "--speculative-config", "json": "enable_adaptive_verification", "equals": true}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 24, "summary": "TP4, temperature 1.0: 130.5 / 184.6 / 252.9 against 108.6 / 142.5 / 207.8 tok/s at 4 / 8 / 16 streams with greedy drafting (+20-30 %); with probabilistic drafting +26-37 %"},
+      "measurements": [
+        {"image": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": "4, 8, 16", "context": "0", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "adaptive verification 130.5 / 184.6 / 252.9, with probabilistic drafting 138.9 / 195.2 / 260.9, greedy block rejection 108.6 / 142.5 / 207.8 tok/s", "evidence": "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"],
+      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"]
+    },
+    {
+      "id": "ds41-nvfp4-draft",
+      "title": "NVFP4 DSpark draft layers and head",
+      "description": "Quantizes the DSpark drafter's Markov transition head to NVFP4 so it fits the GB10 L2 (VLLM_DS41_MARKOV_NVFP4=1) and gives the drafter its own NVFP4 vocabulary head (VLLM_DS41_DRAFT_NVFP4_HEAD=1). The target verifies every draft, so outputs do not depend on the draft's precision.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"environment": {"VLLM_DS41_MARKOV_NVFP4": "1", "VLLM_DS41_DRAFT_NVFP4_HEAD": "1"}},
+      "detect": [
+        {"env": "VLLM_DS41_MARKOV_NVFP4", "equals": "1"},
+        {"env": "VLLM_DS41_DRAFT_NVFP4_HEAD", "equals": "1"}
+      ],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": 5.5, "summary": "single-stream decode 3-8 % faster; acceptance unchanged"},
+      "measurements": [
+        {"image": "dev-20260927-h2dstaging-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": "1", "context": null, "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "single-stream decode 3-8 % faster; acceptance unchanged", "evidence": "performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"],
+      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"]
+    },
+    {
+      "id": "ds41-engram-disk-tables",
+      "title": "Engram tables read from disk",
+      "description": "Keeps DeepSeek-V4.1-Flash's two Engram n-gram tables (94.6 GiB each) in the checkpoint's last two shards and reads the rows each step needs with io_uring; their scales stay in host RAM, 1.4 GiB per rank.",
+      "category": "kernel-backend",
+      "sides": ["memory"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"arguments": {"--engram-config": "{\"table_memory\":\"disk\",\"disk_resident_scales\":true}"}},
+      "detect": [{"arg": "--engram-config", "json": "table_memory", "equals": "disk"}],
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "implemented",
+      "gain": {"percent": null, "summary": "keeps 189 GiB of tables out of GPU memory"},
+      "measurements": [],
+      "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"],
+      "profiles": ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"]
+    },
+    {
+      "id": "ds41-engram-projection-tp",
+      "title": "Engram projection tensor parallelism at TP8",
+      "description": "Shards DeepSeek-V4.1-Flash's Engram projections over the eight tensor-parallel ranks. Measured with launch code outside the repository that was not read; no SparkRing image or profile carries it.",
+      "category": "kernel-backend",
+      "sides": ["decode", "memory"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [1]}]},
+      "enable": {"note": "no implementation in SparkRing"},
+      "detect": null,
+      "provided_by": {"images": [], "port": "an implementation in SparkRing's image layers; the measured code is outside the repository"},
+      "status": "research-only",
+      "gain": {"percent": 5.5, "summary": "+4-7 % at 1-4 streams, neutral at 8 and more; a re-test gave +3-10 % at 1-8; saves 0.27 GiB per rank"},
+      "measurements": [
+        {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with launch code outside the repository", "tp": 8, "dcp": 1, "streams": "1-16", "context": "16K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "+4-7 % at 1-4 streams, neutral at 8+; re-test +3-10 % at 1-8", "evidence": "private record 2026-10-05: eight-Spark session notes"}
+      ],
+      "evidence": ["private record 2026-10-05: eight-Spark session notes"],
+      "profiles": []
+    },
+    {
+      "id": "ds41-split-fused-attention",
+      "title": "Split fused attention at TP8",
+      "description": "A change to DeepSeek-V4.1-Flash's fused attention at TP8, measured with launch code outside the repository that was not read; no SparkRing image or profile carries it.",
+      "category": "kernel-backend",
+      "sides": ["decode"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": [1]}]},
+      "enable": {"note": "no implementation in SparkRing"},
+      "detect": null,
+      "provided_by": {"images": [], "port": "an implementation in SparkRing's image layers; the measured code is outside the repository"},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "-0.7 ms per decode step"},
+      "measurements": [],
+      "evidence": ["private record 2026-10-05: eight-Spark session notes"],
+      "profiles": []
+    },
+    {
+      "id": "ds41-no-libuv-store",
+      "title": "TCP store without libuv at TP8",
+      "description": "Sets USE_LIBUV=0, so torch.distributed's TCP store does not use its libuv backend.",
+      "category": "host-setting",
+      "sides": ["startup"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [8], "dcp": "any"}]},
+      "enable": {"environment": {"USE_LIBUV": "0"}},
+      "detect": [{"env": "USE_LIBUV", "equals": "0"}],
+      "provided_by": {"images": ["any"]},
+      "status": "research-only",
+      "gain": {"percent": null, "summary": "fixed a TP8 startup crash; startup 22 -> 5 min"},
+      "measurements": [],
+      "evidence": ["private record 2026-10-05: eight-Spark session notes"],
+      "profiles": []
+    },
+    {
+      "id": "ds41-rollback-image",
+      "title": "DeepSeek-V4.1-Flash on the 2026.10.0 image",
+      "description": "Runs deepseek-v41-flash-tp4 on the rollback installer image 2026.10.0 instead of 2026.10.1, whose later Kraken merges it lacks. The images built on 2026.10.1 inherit its sources.",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "DeepSeek-V4.1-Flash"}
+      ],
+      "parallelism": {"supported": [{"tp": [4], "dcp": [1]}]},
+      "enable": {"launcher": "sudo sparkring install --profile deepseek-v41-flash-tp4 --image 2026.10.0"},
+      "detect": [{"image": ["dev-20261001-kraken-cuda1342-nccl2323-status034"]}],
+      "trade_off": "2026.10.0 carries neither the SIRCL layer nor the Kraken CSF sources; the comparison ran on the prepared transport",
+      "provided_by": {"images": ["any"]},
+      "status": "implemented",
+      "gain": {"percent": 3, "summary": "warm paired comparison: verification steps/s +1-3 %, prefill +2-5 % against 2026.10.1; cause not identified"},
+      "measurements": [
+        {"image": "dev-20261001-kraken-cuda1342-nccl2323-status034", "tp": 4, "dcp": 1, "streams": "1, 8, 16", "context": "8K-128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "25.5 / 84.8 / 115.4 against 25.3 / 82.1 / 112.9 steps/s; prefill 4,620 / 4,436 / 4,180 against 4,394 / 4,260 / 4,101 tok/s at 8K / 64K / 128K", "evidence": "performance/records/images/dev-20261004-kraken-deepseek-v41-flash-tp4-20261004.md"}
+      ],
+      "evidence": ["performance/records/images/dev-20261004-kraken-deepseek-v41-flash-tp4-20261004.md", "runtime/releases/installer-releases.json"],
+      "profiles": []
+    }
+  ],
+  "not_adopted": [
+    {"id": "glm53-mtp-depth-4-5", "title": "MTP with 4 or 5 draft tokens", "models": ["GLM-5.3"], "setting": "num_speculative_tokens 4 or 5", "result": "5-12 % slower than MTP3 at TP8", "evidence": ["private record 2026-10-05: eight-Spark session notes"]},
+    {"id": "glm53-dflash2-drafter", "title": "DFlash2 block-diffusion drafter", "models": ["GLM-5.3"], "setting": "incoai/GLM-5.3-DFlash2 with 7 draft tokens in place of MTP. A field note from another team, not measured on SparkRing images: the drafter needs --kv-cache-dtype-skip-layers sliding_window, with its own KV in fp8 through the speculative config (draft_kv_cache_dtype), so that the target keeps fp8_ds_mla instead of a global --kv-cache-dtype fp8. The DFlash2 drafters are licensed CC-BY-NC-ND-4.0, so a profile that uses one is research-only", "result": "7-11 % slower than MTP at TP8", "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes"]},
+    {"id": "glm53-l2-prefetch-plugin-dcp", "title": "Workspace L2-prefetch plugin with DCP", "models": ["GLM-5.3"], "setting": "workspace plugin glm53full_l2prefetch (GLM53FULL_L2_PREFETCH=1) at TP8/DCP4", "result": "+1-2 % at 1 stream, -3 % at 8 streams", "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes"]},
+    {"id": "glm53-moe-allreduce-pipeline", "title": "Sliced MoE all-reduce overlap in prefill", "models": ["GLM-5.3"], "setting": "workspace plugin glm53full_moe_ar_pipeline (MOE_AR_PIPELINE=1), 2 or 4 slices", "result": "16K prefill -1.8 % with 2 slices, -6.5 % with 4", "evidence": ["private record 2026-10-08: model-side plugin classification"]},
+    {"id": "glm53-router-bf16", "title": "BF16 router kernel", "models": ["GLM-5.3"], "setting": "workspace plugin glm53full_router_bf16 (CTA-local BF16 dot product for 3 rows on SM121)", "result": "rejected for output divergence; its projected +1.2-2.2 % 1-stream decode is unmeasured", "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes", "private record 2026-10-08: model-side plugin classification"]},
+    {"id": "glm53-block-verification-4bit-draft-head", "title": "Block verification, expert scheduling policy and a 4-bit draft head", "models": ["GLM-5.3"], "setting": "speculative block verification, an expert scheduling policy, a 4-bit MTP draft head", "result": "0 to -6 % at TP8", "evidence": ["private record 2026-10-06: GLM-5.3 TP8 session notes"]},
+    {"id": "glm53-sircl-measured-table-cycle8", "title": "Measured SIRCL tuning table on the cycle of eight", "models": ["GLM-5.3"], "setting": "--tuning-table with a table measured on the ring", "result": "prefill +1.2 %, within noise", "evidence": ["private record 2026-10-08: SIRCL qualification logs"]},
+    {"id": "glm53-flash-fused-norm-tp2-tp4", "title": "SIRCL fused norm at TP2 and TP4", "models": ["GLM-5.3-Flash"], "setting": "SIRCL_FUSED_NORM=1", "result": "TP2 within 1-2 %; TP4 63.7 / 97.4 / 139.1 / 207.4 against 65.2-66.0 / 96.2-97.3 / 139.2-143.4 / 201.7-208.5 tok/s: no gain", "evidence": ["private record 2026-10-08: serving A/B runner results"]},
+    {"id": "qwen38-fused-norm-tp2", "title": "SIRCL fused norm at TP2", "models": ["Qwen3.8-Flash-Next"], "setting": "SIRCL_FUSED_NORM=1", "result": "steps/s 0.98-1.01 times the unfused arm's, -3.5 % at 32K and 8 streams; TTFT equal", "evidence": ["private record 2026-10-08: serving A/B runner results"]},
+    {"id": "draft-experts-backend", "title": "B12X or Marlin draft experts instead of humming", "models": ["Qwen3.8-Flash-Next", "GLM-5.3-Flash"], "setting": "moe_backend in --speculative-config", "result": "no measurable difference", "evidence": ["performance/records/qwen38-flash-next/b12x-mxfp8-draft-20260930.md", "private record 2026-10-07..08: SIRCL ring results"]},
+    {"id": "glm53-flash-csf-inline-words", "title": "32 inline CSF words", "models": ["GLM-5.3-Flash"], "setting": "B12X_NVFP4_CSF_INLINE_WORDS=32", "result": "0-3 %, within spread", "evidence": ["private record 2026-10-07..08: SIRCL ring results"]},
+    {"id": "sircl-large-blocks-4", "title": "Two-shot grid cap 4", "models": ["GLM-5.3-Flash"], "setting": "SIRCL --large-blocks 4", "result": "-3.5 to +1 %, within run-to-run spread", "evidence": ["private record 2026-10-07..08: SIRCL ring results"]},
+    {"id": "cpu-pinning", "title": "CPU pinning of the serving processes", "models": ["GLM-5.3-Flash", "GLM-5.3"], "setting": "pinning the vLLM and transport threads to fixed CPUs", "result": "GLM-5.3-Flash +1-2 % at low concurrency and -7.4 % at 64 streams; GLM-5.3 -2 %", "evidence": ["private record 2026-10-05: eight-Spark session notes"]},
+    {"id": "sircl-ring-without-minimums", "title": "SIRCL ring schedules without per-collective minimums", "models": ["Qwen3.8-Flash-Next", "DeepSeek-V4.1-Flash"], "setting": "ring schedules from small messages", "result": "decode -17 to -20 % at 8 streams; the minimums are now SIRCL's defaults", "evidence": ["private record 2026-10-07..08: SIRCL ring results"]},
+    {"id": "glm53-flash-csf-dcp2-tp2", "title": "DCP2 for the CSF checkpoint at TP2", "models": ["GLM-5.3-Flash"], "setting": "--decode-context-parallel-size 2 at TP2", "result": "KV +86 %, prefill -13 to -15 %", "evidence": ["private record 2026-10-08: eight-Spark evening results"]},
+    {"id": "qwen38-shm-reader-window", "title": "2 ms shared-memory reader window", "models": ["Qwen3.8-Flash-Next"], "setting": "sparkring install --save-cpu (SPARKRING_SHM_BUSY_LOOP_S=0.002)", "result": "frees about 1.7 CPU cores; decode -1 % at 1 request and -2 % at 8", "evidence": ["performance/records/qwen38-flash-next/shm-spin-window-20260930.md"]},
+    {"id": "ds41-dspark-ten-tokens", "title": "Ten DSpark draft tokens, 8 NCCL channels, 12,288 scheduler tokens", "models": ["DeepSeek-V4.1-Flash"], "setting": "num_speculative_tokens 10; NCCL_MIN/MAX_NCHANNELS 8; --max-num-batched-tokens 12288", "result": "ten tokens 42.4 / 103.7 / 152.5 against 59.4 / 140.0 / 208.7 tok/s at 1 / 8 / 16 streams and a smaller KV pool; the other two within run-to-run spread", "evidence": ["performance/records/images/dev-20260927-h2dstaging-deepseek-v41-tp4-20260927.md"]}
+  ]
+}

@@ -64,7 +64,95 @@ jobs:
           python runtime/images/composition.py runtime/images/sparkring-r35
           python -m pytest runtime/images -q
       - name: Test maintained Python trees
-        run: python -m pytest spark_transport runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm integrations/b12x runtime/common runtime/host runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py -q -rs
+        run: |
+          # The glm53full_speedups and glm_dsa_indexer_split tests import the GLM-5.3 image's vLLM and B12X
+          # sources while they are collected, from the directory SPARKRING_GLM53_IMAGE_SOURCES names (their
+          # READMEs). The runner has no image, so without that variable they are left out, with a notice;
+          # the glm_dcp_decode_comm tests skip the checks that need the image themselves.
+          image_tests=()
+          if [ -z "${SPARKRING_GLM53_IMAGE_SOURCES:-}" ]; then
+            echo "::notice title=GLM-5.3 plugin tests skipped::integrations/vllm/glm53full_speedups/tests and integrations/vllm/glm_dsa_indexer_split/tests need SPARKRING_GLM53_IMAGE_SOURCES, a directory of the target image's vllm/ and b12x/ Python sources"
+            image_tests=(--ignore=integrations/vllm/glm53full_speedups/tests --ignore=integrations/vllm/glm_dsa_indexer_split/tests)
+          fi
+          python -m pytest spark_transport --ignore=spark_transport/sircl runtime/exl3-r7 runtime/glm53-flash runtime/glm53-flash-jj-r8-gb10 runtime/glm53-spark-mtp3-mesh runtime/deepseek0731-gb10 runtime/qwen38 runtime/sparkring runtime/profiles runtime/transport_profiles runtime/test_public_overlay.py performance/harnesses scripts integrations/lil integrations/vllm integrations/b12x runtime/common runtime/host runtime/deepseek-v41-gb10/tools/test_packed_output_policy.py runtime/deepseek-v41-gb10/tools/test_prewarm5.py "${image_tests[@]}" -q -rs
+
+  sircl:
+    name: SIRCL ring sessions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Cache pip
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-${{ hashFiles('requirements-dev.txt', '.github/workflows/ci.yml') }}
+          restore-keys: |
+            pip-${{ runner.os }}-py${{ env.PYTHON_VERSION }}-
+      - name: Install test dependencies
+        run: |
+          python -m pip install --disable-pip-version-check -r requirements-dev.txt
+          python -m pip install --disable-pip-version-check \
+            --index-url https://download.pytorch.org/whl/cpu \
+            "torch==${TORCH_VERSION}"
+      - name: Require a C compiler for the native simulator and binding tests
+        run: gcc --version
+      # The package's own pytest settings (spark_transport/sircl/pyproject.toml) apply when its
+      # directory is the only test path. The native tests compile the progress-thread source
+      # against an in-memory verbs stand-in; none of these tests needs a GPU or an RDMA device.
+      # A session checks its route map's device names against the host's active RDMA devices
+      # (/sys/class/infiniband) whenever the host lists any, and a hosted runner's own network
+      # adapter can list one, which no route map of these tests names. The tests therefore run
+      # as on a host without RDMA devices: in a private mount namespace whose
+      # /sys/class/infiniband is an empty tmpfs, as the runner's own user (a nested user
+      # namespace maps it back). Ubuntu 24.04 restricts unprivileged user namespaces through
+      # AppArmor unless kernel.apparmor_restrict_unprivileged_userns is 0.
+      - name: Test the SIRCL package from the repository layout
+        run: |
+          sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
+          unshare --user --map-root-user --mount -- sh -euc '
+            if [ -d /sys/class/infiniband ]; then mount -t tmpfs -o ro tmpfs /sys/class/infiniband; fi
+            uid=$1 gid=$2
+            shift 2
+            exec unshare --user --map-user="$uid" --map-group="$gid" -- "$@"
+          ' sh "$(id -u)" "$(id -g)" python -m pytest spark_transport/sircl -q -rs
+
+  libsircl:
+    name: libsircl C library
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install the rdma-core headers the verbs transport compiles against
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libibverbs-dev
+      # nvcc compiles the four kernel packs the library embeds. These CUDA pip packages are the compiler and
+      # headers whose packs the evidence in spark_transport/libsircl/STATUS.md ran. Their CUDA runtime
+      # headers (13.0) are older than the CCCL headers (13.3) expect, so CCCL's toolkit-version check is
+      # turned off; it changes no generated code.
+      - name: Install nvcc 13.3 for the kernel packs
+        run: |
+          python -m pip install nvidia-cuda-nvcc==13.3.73 nvidia-cuda-crt==13.3.73 nvidia-nvvm==13.3.73 \
+            nvidia-cuda-cccl==13.3.3.4.1 nvidia-cuda-runtime==13.0.96
+          echo "LIBSIRCL_NVCC=$(python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')/nvidia/cu13/bin/nvcc" >> "$GITHUB_ENV"
+      # libsircl's CPU suites (spark_transport/libsircl, make check): ABI, API, bootstrap, lifecycle, engine
+      # refusals, the vendored native sources, the native libraries across processes over the shared-memory
+      # verbs stand-in, the route planner against this repository's SIRCL package, the MPI shim, the
+      # nccl-tests evaluator and the kernel packs' entry check. None needs a GPU or an RDMA device.
+      - name: Build libsircl and its kernel packs and run its CPU checks
+        working-directory: spark_transport/libsircl
+        env:
+          SIRCL_PACKAGE: ${{ github.workspace }}/spark_transport/sircl
+        run: |
+          NVCC="$LIBSIRCL_NVCC -DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK"
+          make -j BUILD=build NVCC="$NVCC"
+          make check BUILD=build NVCC="$NVCC"
+          sha256sum build/packs/*.fatbin
 
   lil-bridge:
     name: pinned LIL bridge
@@ -117,7 +205,7 @@ jobs:
           SPARKRING_REQUIRE_COMPOSE: '1'
         run: |
           python scripts/generate_compose_examples.py --check
-          python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_qwen_flash_next.py -q
+          python -m pytest runtime/common/test_compose.py runtime/common/test_compose_envelope.py scripts/test_sparkring_compose.py runtime/common/test_toolchain_profiles.py -q
 
   compose-builder:
     name: Install Builder

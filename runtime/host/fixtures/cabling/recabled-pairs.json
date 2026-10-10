@@ -1,8 +1,8 @@
 {
- "description": "Four DGX Sparks that formed two SparkRing pairs (spark-aa42 with spark-931e, spark-3286 with spark-0a0f), recabled into one loop in which two cables join equal ports. Per Spark: lldpctl -f json and ip -j address show, reduced to the fabric functions and the LAN port's MAC.",
+ "description": "Four DGX Sparks that formed two SparkRing pairs (spark-e with spark-d, spark-b with spark-a), recabled into one loop in which two cables join equal ports. Per Spark: lldpctl -f json and ip -j address show, reduced to the fabric functions and the LAN port's MAC.",
  "sparks": [
   {
-   "hostname": "spark-aa42",
+   "hostname": "spark-e",
    "lldp": {
     "lldp": {
      "interface": [
@@ -10,17 +10,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:47"
+          "value": "02:00:00:f9:bb:58"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -30,17 +30,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:23"
+          "value": "02:00:00:3d:a4:34"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -50,17 +50,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:1f"
+          "value": "02:00:00:3d:a4:30"
          },
          "descr": "enp1s0f0np0"
         }
@@ -70,17 +70,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:48"
+          "value": "02:00:00:f9:bb:59"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -90,17 +90,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:88"
+          "value": "02:00:00:fa:43:99"
          },
          "descr": "enp1s0f1np1"
         }
@@ -110,17 +110,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8c"
+          "value": "02:00:00:fa:43:9d"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -130,17 +130,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:43"
+          "value": "02:00:00:f9:bb:54"
          },
          "descr": "enp1s0f0np0"
         }
@@ -150,17 +150,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:23"
+          "value": "02:00:00:3d:a4:34"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -170,17 +170,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:1f"
+          "value": "02:00:00:3d:a4:30"
          },
          "descr": "enp1s0f0np0"
         }
@@ -190,17 +190,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:44"
+          "value": "02:00:00:f9:bb:55"
          },
          "descr": "enp1s0f1np1"
         }
@@ -210,17 +210,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:88"
+          "value": "02:00:00:fa:43:99"
          },
          "descr": "enp1s0f1np1"
         }
@@ -230,17 +230,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8c"
+          "value": "02:00:00:fa:43:9d"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -252,13 +252,13 @@
    "addresses": [
     {
      "ifname": "enP7s7",
-     "address": "4c:bb:47:e8:aa:42",
+     "address": "02:00:00:f9:bb:53",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enp1s0f0np0",
-     "address": "4c:bb:47:e8:aa:43",
+     "address": "02:00:00:f9:bb:54",
      "operstate": "UP",
      "addr_info": [
       {
@@ -269,7 +269,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee8:aa43",
+       "local": "fe80::ff:fef9:bb54",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -277,7 +277,7 @@
     },
     {
      "ifname": "enp1s0f1np1",
-     "address": "4c:bb:47:e8:aa:44",
+     "address": "02:00:00:f9:bb:55",
      "operstate": "UP",
      "addr_info": [
       {
@@ -296,7 +296,7 @@
     },
     {
      "ifname": "enP2p1s0f0np0",
-     "address": "4c:bb:47:e8:aa:47",
+     "address": "02:00:00:f9:bb:58",
      "operstate": "UP",
      "addr_info": [
       {
@@ -307,7 +307,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee8:aa47",
+       "local": "fe80::ff:fef9:bb58",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -315,7 +315,7 @@
     },
     {
      "ifname": "enP2p1s0f1np1",
-     "address": "4c:bb:47:e8:aa:48",
+     "address": "02:00:00:f9:bb:59",
      "operstate": "UP",
      "addr_info": [
       {
@@ -335,7 +335,7 @@
    ]
   },
   {
-   "hostname": "spark-931e",
+   "hostname": "spark-d",
    "lldp": {
     "lldp": {
      "interface": [
@@ -343,17 +343,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:43"
+          "value": "02:00:00:f9:bb:54"
          },
          "descr": "enp1s0f0np0"
         }
@@ -363,17 +363,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:47"
+          "value": "02:00:00:f9:bb:58"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -383,17 +383,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:23"
+          "value": "02:00:00:3d:a4:34"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -403,17 +403,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:24"
+          "value": "02:00:00:3d:a4:35"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -423,17 +423,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:10"
+          "value": "02:00:00:fa:1b:21"
          },
          "descr": "enp1s0f0np0"
         }
@@ -443,17 +443,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:14"
+          "value": "02:00:00:fa:1b:25"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -463,17 +463,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:43"
+          "value": "02:00:00:f9:bb:54"
          },
          "descr": "enp1s0f0np0"
         }
@@ -483,17 +483,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:47"
+          "value": "02:00:00:f9:bb:58"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -503,17 +503,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:1f"
+          "value": "02:00:00:3d:a4:30"
          },
          "descr": "enp1s0f0np0"
         }
@@ -523,17 +523,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:20"
+          "value": "02:00:00:3d:a4:31"
          },
          "descr": "enp1s0f1np1"
         }
@@ -543,17 +543,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:10"
+          "value": "02:00:00:fa:1b:21"
          },
          "descr": "enp1s0f0np0"
         }
@@ -563,17 +563,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:14"
+          "value": "02:00:00:fa:1b:25"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -585,13 +585,13 @@
    "addresses": [
     {
      "ifname": "enP7s7",
-     "address": "4c:bb:47:2c:93:1e",
+     "address": "02:00:00:3d:a4:2f",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enp1s0f0np0",
-     "address": "4c:bb:47:2c:93:1f",
+     "address": "02:00:00:3d:a4:30",
      "operstate": "UP",
      "addr_info": [
       {
@@ -602,7 +602,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fe2c:931f",
+       "local": "fe80::ff:fe3d:a430",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -610,7 +610,7 @@
     },
     {
      "ifname": "enp1s0f1np1",
-     "address": "4c:bb:47:2c:93:20",
+     "address": "02:00:00:3d:a4:31",
      "operstate": "UP",
      "addr_info": [
       {
@@ -621,7 +621,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::1037:222a:cf8e:5d35",
+       "local": "fe80::a8c1:5eff:4d2b:91f0",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -629,7 +629,7 @@
     },
     {
      "ifname": "enP2p1s0f0np0",
-     "address": "4c:bb:47:2c:93:23",
+     "address": "02:00:00:3d:a4:34",
      "operstate": "UP",
      "addr_info": [
       {
@@ -640,7 +640,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fe2c:9323",
+       "local": "fe80::ff:fe3d:a434",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -648,7 +648,7 @@
     },
     {
      "ifname": "enP2p1s0f1np1",
-     "address": "4c:bb:47:2c:93:24",
+     "address": "02:00:00:3d:a4:35",
      "operstate": "UP",
      "addr_info": [
       {
@@ -668,7 +668,7 @@
    ]
   },
   {
-   "hostname": "spark-3286",
+   "hostname": "spark-b",
    "lldp": {
     "lldp": {
      "interface": [
@@ -676,17 +676,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:11"
+          "value": "02:00:00:fa:1b:22"
          },
          "descr": "enp1s0f1np1"
         }
@@ -696,17 +696,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:15"
+          "value": "02:00:00:fa:1b:26"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -716,17 +716,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8b"
+          "value": "02:00:00:fa:43:9c"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -736,17 +736,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8c"
+          "value": "02:00:00:fa:43:9d"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -756,17 +756,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:44"
+          "value": "02:00:00:f9:bb:55"
          },
          "descr": "enp1s0f1np1"
         }
@@ -776,17 +776,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:48"
+          "value": "02:00:00:f9:bb:59"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -796,17 +796,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:11"
+          "value": "02:00:00:fa:1b:22"
          },
          "descr": "enp1s0f1np1"
         }
@@ -816,17 +816,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:15"
+          "value": "02:00:00:fa:1b:26"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -836,17 +836,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:87"
+          "value": "02:00:00:fa:43:98"
          },
          "descr": "enp1s0f0np0"
         }
@@ -856,17 +856,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:88"
+          "value": "02:00:00:fa:43:99"
          },
          "descr": "enp1s0f1np1"
         }
@@ -876,17 +876,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:44"
+          "value": "02:00:00:f9:bb:55"
          },
          "descr": "enp1s0f1np1"
         }
@@ -896,17 +896,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-aa42": {
+         "spark-e": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e8:aa:42"
+           "value": "02:00:00:f9:bb:53"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e8:aa:48"
+          "value": "02:00:00:f9:bb:59"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -918,13 +918,13 @@
    "addresses": [
     {
      "ifname": "enP7s7",
-     "address": "4c:bb:47:e9:32:86",
+     "address": "02:00:00:fa:43:97",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enp1s0f0np0",
-     "address": "4c:bb:47:e9:32:87",
+     "address": "02:00:00:fa:43:98",
      "operstate": "UP",
      "addr_info": [
       {
@@ -935,7 +935,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee9:3287",
+       "local": "fe80::ff:fefa:4398",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -943,13 +943,13 @@
     },
     {
      "ifname": "enp1s0f1np1",
-     "address": "4c:bb:47:e9:32:88",
+     "address": "02:00:00:fa:43:99",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enP2p1s0f0np0",
-     "address": "4c:bb:47:e9:32:8b",
+     "address": "02:00:00:fa:43:9c",
      "operstate": "UP",
      "addr_info": [
       {
@@ -960,7 +960,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee9:328b",
+       "local": "fe80::ff:fefa:439c",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -968,14 +968,14 @@
     },
     {
      "ifname": "enP2p1s0f1np1",
-     "address": "4c:bb:47:e9:32:8c",
+     "address": "02:00:00:fa:43:9d",
      "operstate": "UP",
      "addr_info": []
     }
    ]
   },
   {
-   "hostname": "spark-0a0f",
+   "hostname": "spark-a",
    "lldp": {
     "lldp": {
      "interface": [
@@ -983,17 +983,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:20"
+          "value": "02:00:00:3d:a4:31"
          },
          "descr": "enp1s0f1np1"
         }
@@ -1003,17 +1003,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:24"
+          "value": "02:00:00:3d:a4:35"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -1023,17 +1023,17 @@
        "enp1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:14"
+          "value": "02:00:00:fa:1b:25"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -1043,17 +1043,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:15"
+          "value": "02:00:00:fa:1b:26"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -1063,17 +1063,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:87"
+          "value": "02:00:00:fa:43:98"
          },
          "descr": "enp1s0f0np0"
         }
@@ -1083,17 +1083,17 @@
        "enp1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8b"
+          "value": "02:00:00:fa:43:9c"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -1103,17 +1103,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:20"
+          "value": "02:00:00:3d:a4:31"
          },
          "descr": "enp1s0f1np1"
         }
@@ -1123,17 +1123,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-931e": {
+         "spark-d": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:2c:93:1e"
+           "value": "02:00:00:3d:a4:2f"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:2c:93:24"
+          "value": "02:00:00:3d:a4:35"
          },
          "descr": "enP2p1s0f1np1"
         }
@@ -1143,17 +1143,17 @@
        "enP2p1s0f0np0": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:10"
+          "value": "02:00:00:fa:1b:21"
          },
          "descr": "enp1s0f0np0"
         }
@@ -1163,17 +1163,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-0a0f": {
+         "spark-a": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:0a:0f"
+           "value": "02:00:00:fa:1b:20"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:0a:11"
+          "value": "02:00:00:fa:1b:22"
          },
          "descr": "enp1s0f1np1"
         }
@@ -1183,17 +1183,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:87"
+          "value": "02:00:00:fa:43:98"
          },
          "descr": "enp1s0f0np0"
         }
@@ -1203,17 +1203,17 @@
        "enP2p1s0f1np1": {
         "via": "LLDP",
         "chassis": {
-         "spark-3286": {
+         "spark-b": {
           "id": {
            "type": "mac",
-           "value": "4c:bb:47:e9:32:86"
+           "value": "02:00:00:fa:43:97"
           }
          }
         },
         "port": {
          "id": {
           "type": "mac",
-          "value": "4c:bb:47:e9:32:8b"
+          "value": "02:00:00:fa:43:9c"
          },
          "descr": "enP2p1s0f0np0"
         }
@@ -1225,13 +1225,13 @@
    "addresses": [
     {
      "ifname": "enP7s7",
-     "address": "4c:bb:47:e9:0a:0f",
+     "address": "02:00:00:fa:1b:20",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enp1s0f0np0",
-     "address": "4c:bb:47:e9:0a:10",
+     "address": "02:00:00:fa:1b:21",
      "operstate": "UP",
      "addr_info": [
       {
@@ -1242,7 +1242,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee9:a10",
+       "local": "fe80::ff:fefa:1b21",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -1250,13 +1250,13 @@
     },
     {
      "ifname": "enp1s0f1np1",
-     "address": "4c:bb:47:e9:0a:11",
+     "address": "02:00:00:fa:1b:22",
      "operstate": "UP",
      "addr_info": []
     },
     {
      "ifname": "enP2p1s0f0np0",
-     "address": "4c:bb:47:e9:0a:14",
+     "address": "02:00:00:fa:1b:25",
      "operstate": "UP",
      "addr_info": [
       {
@@ -1267,7 +1267,7 @@
       },
       {
        "family": "inet6",
-       "local": "fe80::4ebb:47ff:fee9:a14",
+       "local": "fe80::ff:fefa:1b25",
        "prefixlen": 64,
        "scope": "link"
       }
@@ -1275,7 +1275,7 @@
     },
     {
      "ifname": "enP2p1s0f1np1",
-     "address": "4c:bb:47:e9:0a:15",
+     "address": "02:00:00:fa:1b:26",
      "operstate": "UP",
      "addr_info": []
     }

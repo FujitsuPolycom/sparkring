@@ -1,0 +1,386 @@
+{
+  "schema": "sparkring-release-status/v1",
+  "release": "2026.10.2",
+  "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "status": "implemented",
+  "maturity": "candidate",
+  "record": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md",
+  "notes": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/RELEASE_NOTES.md",
+  "image": {
+    "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+    "build_tag": "sparkring-dev/kraken:csf-sircl032-libsircl060cd-plugins-status036-20261010",
+    "build_commit": "d3d3315863a63e3e5848acbc47d788251a32278d",
+    "lock": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010/installer-image-d3d33158.json",
+    "lock_sha256": "ed4332d92f03086f60679f7e4e78e053a5c08c899ecd56a4c809afccbee8598d",
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+    "image_bytes": 31884969464,
+    "delta_bytes_from_rollback": 38871040,
+    "download_bytes": 15280315686
+  },
+  "rollback": {
+    "release": "2026.10.1",
+    "image_release": "dev-20261004-kraken-cuda1342-nccl2323-status034",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad",
+    "transport": "prepared"
+  },
+  "components": [
+    {
+      "id": "sircl-collectives",
+      "version": "0.3.2",
+      "status": "qualified",
+      "scope": "one-shot all-reduce and all-gather on the eight-Spark ring",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "sircl-serving",
+      "version": "0.3.2",
+      "status": "research-only",
+      "scope": "serving through the vLLM adapter",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "libsircl",
+      "version": "0.6.0",
+      "status": "implemented",
+      "scope": "the library and its collectives, built from spark_transport/libsircl tree 030419b8; the libsircl installer transport is research-only",
+      "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-cycle-broadcast",
+      "version": "0.6.0",
+      "status": "unsupported",
+      "scope": "broadcast at bandwidth on a cycle: 1.9 GB/s against NVIDIA NCCL 2.32.3's 24.2 GB/s on eight Sparks",
+      "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-transport",
+      "version": "0.6.0",
+      "status": "research-only",
+      "scope": "sparkring install --transport libsircl; the installer does not judge its receipts, so sparkring check reports ok false for an installed libsircl deployment",
+      "record": "docs/architecture/libsircl.md"
+    },
+    {
+      "id": "glm53-plugins",
+      "version": "glm_dsa_indexer_split 1.1.0, glm53full_speedups 1.1.0, glm_dcp_decode_comm 2.0.1",
+      "status": "research-only",
+      "scope": "loaded by glm53-nvfp4-tp8 and glm53-nvfp4-tp8-dcp1; glm_dcp_decode_comm's items off",
+      "record": "runtime/images/derive_glm53_plugins.py"
+    },
+    {
+      "id": "runtime-status",
+      "version": "0.3.6",
+      "status": "implemented",
+      "scope": "the image's dashboard: it names the collective transport and the SIRCL version of the tensor-parallel group",
+      "record": "integrations/vllm/runtime_status/README.md"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "deepseek-v41-flash-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "deepseek-v41-flash-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (implemented, not soaked: installer checks and a 256-request correctness screen passed)"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (implemented, not soaked: installer checks and a 256-request correctness screen passed)"
+    },
+    {
+      "id": "glm53-nvfp4-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "status": "research-only"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp4",
+      "status": "research-only"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "glm53-tp8-mtp2",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), one ConnectX-7 RoCE ring of eight, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:27e9f75c0d09716764c468ea06fd9cbd2762843d2b0abb344dc6a64de329dffa",
+      "scope": "serving A/B runner, not sparkring install; profile glm53-nvfp4-tp8; one warm-up and two measured starts; temperature 0",
+      "result": "output tok/s at 1/2/4/8 streams: 50.7/73.9/102.4/151.4 (no context), 44.2/64.0/89.8/135.7 (16K), 47.9/65.9/99.8/143.7 (32K); time to first token 10.0 s (8K), 11.9 s (16K), 24.4 s (32K)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md"
+    },
+    {
+      "id": "tp2-tp4-sircl",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a cabled pair and paths of four inside the eight-Spark ring, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:816c6d6a7e96f226475c2873cd180ec0d95d1ecb79e8322451816d2cc63d6747",
+      "scope": "serving A/B runner, not sparkring install; GLM-5.3-Flash CSF at TP2 and TP4, Qwen3.8-Flash-Next QAD step 5500 with MXFP8 attention at TP2 and TP4, DeepSeek-V4.1-Flash at TP4; two measured starts each; temperature 0",
+      "result": "output tok/s at 1/2/4/8 streams, no context: GLM-5.3-Flash TP2 42.0/61.4/88.9/133.5, TP4 68.3/106.5/152.4/224.3; Qwen TP2 63.0/100.5/153.0/217.0, TP4 91.0/143.6/218.5/310.6; DeepSeek TP4 61.9/94.3/138.8/181.9",
+      "record": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"
+    },
+    {
+      "id": "libsircl-ring8-a3477af2",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "the eight-Spark ring as a cycle of eight, one rank per Spark",
+      "image_id": "sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f",
+      "scope": "libsircl snapshot a3477af2 built in the image; nccl-tests v2.21.1; NVIDIA NCCL 2.32.3 from the image as the baseline",
+      "result": "every row #wrong 0; 256 MiB all-reduce under ring schedules 19,305 us (24.33 GB/s bus) against NCCL's 19,940 us (23.56 GB/s); broadcast 1.94 GB/s against NCCL's 24.22 GB/s",
+      "record": "spark_transport/libsircl/STATUS.md"
+    },
+    {
+      "id": "libsircl-ring8-release-image",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "the eight-Spark ring as a cycle of eight, one rank per Spark",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "image 1a8c10354eb0's libsircl.so.0.6.0 (source tree dbf36074) on every rank; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
+      "result": "every verdict passed; the cycle plan in every eight-rank default communicator, within 1.15x of the ring schedules from 8 MiB; 256 MiB all-reduce 19,288 us eager, nccl-tests 19,314 us (24.32 GB/s bus); 4 KiB 18.23 us eager; broadcast 1.94 GB/s",
+      "record": "performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md"
+    },
+    {
+      "id": "libsircl-ring4-release-image",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "two independent rings of four DGX Sparks, one rank per Spark; ring B's positions 0-1 on driver 580.178.04 (kernel 7.0.0-1019), 2-3 on 580.173.02 (kernel 6.17.0-1029)",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "image 1a8c10354eb0's libsircl.so.0.6.0 (source tree dbf36074) on both rings at once; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
+      "result": "every verdict passed on both rings; on-budget passed as the planner expects; cycle plan from 8 MiB on 24 of 24 comparisons per ring; 256 MiB all-reduce 16.55 ms (24.3 GB/s bus) on both rings, within 1 %; broadcast 5.3 GB/s",
+      "record": "performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md"
+    },
+    {
+      "id": "installer-ring8",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), one ConnectX-7 RoCE ring of eight recorded by sparkring setup --adopt; GPU clocks not locked",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "sparkring install of glm53-nvfp4-tp8 (all eight), glm53-flash-nvfp4-spark-tp4 (four, CSF), qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 (pairs, CSF) with package 498a7bc4 and --image-lock; one installation each; sparkring check and three known-answer questions",
+      "result": "every installation passed the functional checks and the known-answer questions; transport SIRCL with NCCL absent (glm53-nvfp4-tp8's built-in cycle-8 plan accepted from 00f95601); glm53-nvfp4-tp8 install 661 s, 47.7 output tok/s at one stream and 16K context, accept 2.47, 19.4 steps/s",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
+    },
+    {
+      "id": "csf-correctness-screens",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "two rings of four DGX Sparks (GB10), ConnectX-7 RoCE",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "the CSF installations of glm53-flash-nvfp4-spark-tp4 (ring A) and glm53-flash-nvfp4-spark-tp2 (a pair of ring B): 7 of 7 functional checks and a 256-request correctness screen each, none degenerate, wrong or failed; no soak",
+      "result": "both installations passed: 7 of 7 checks, 256 of 256 responses correct",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md"
+    },
+    {
+      "id": "tp4-starts-qwen-control",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of four DGX Sparks (GB10), ConnectX-7 RoCE, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "fresh sparkring install TP4 deployments measured through their API: second starts of GLM-5.3-Flash CSF and Qwen3.8-Flash-Next, and Qwen's qad-step5500-mxfp8-attention checkpoint twice",
+      "result": "a fresh installation repeats within -2.2 % and +0.7 % median; Qwen's gap to the path of four is its checkpoint (mxfp8-attention +6.3 % and +7.8 % over the default on the same ring)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-starts-qwen-control-20261010.md"
+    },
+    {
+      "id": "against-2026.10.1-tp4",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of four DGX Sparks (GB10), ConnectX-7 RoCE, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "TP4 installs of GLM-5.3-Flash and Qwen3.8-Flash-Next with --image 2026.10.1 --transport prepared against this lock on SIRCL, one start per row",
+      "result": "on the same checkpoint +3.7 % (GLM-5.3-Flash NVFP4-Spark) and +2.1 % / +3.3 % (Qwen) median output tok/s; csf +7.8 % / +8.8 % against 2026.10.1's NVFP4-Spark",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-vs-2026.10.1-tp4-20261010.md"
+    },
+    {
+      "id": "cycle4-table-against-rules",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of four DGX Sparks (GB10), ConnectX-7 RoCE, GPU SM clocks locked at 2,418 MHz",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "GLM-5.3-Flash CSF TP4 through the serving A/B runner, SIRCL's rules against the measured cycle-4 table, one start per arm",
+      "result": "first token of 8K-32K prompts 7.6-9.3 % sooner; decode engine steps/s -0.5 % median",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-tuning-row-vs-rules-20261010.md"
+    },
+    {
+      "id": "csf-tp4-soak",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "a ring of four DGX Sparks (GB10), ConnectX-7 RoCE",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "one sparkring install of glm53-flash-nvfp4-spark-tp4 on csf under 66 rounds of the acceptance screen's requests, 20 minutes; a short soak, not qualification",
+      "result": "2,112 requests, 0 errors, 0 degenerate, 0 wrong; memory flat; engine steps/s within 3.4 % of the median",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-tp4-soak-20261010.md"
+    },
+    {
+      "id": "release-image-requal",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), ConnectX-7 RoCE, as two rings of four and as one ring of eight",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "libsircl's image gate on each layout; installations of qwen38-flash-next-tp2 --transport libsircl, glm53-flash-nvfp4-spark-tp4 (CSF) and glm53-nvfp4-tp8, one run each, GPU clocks not locked; two CSF TP4 starts against two of image 1a8c10354eb0",
+      "result": "every gate and installation passed; GLM-5.3 TP8 44.8 / 65.8 / 95.5 / 139.4 output tok/s at 1 / 2 / 4 / 8 streams and 32K; CSF TP4 decode -2.2 % median against image 1a8c10354eb0",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md"
+    }
+  ],
+  "gates": [
+    {
+      "id": "image-lock",
+      "result": "passed",
+      "scope": "image d52737a109e0 built from d3d33158, its lock validated for its 13 profiles",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-image-20261010.md"
+    },
+    {
+      "id": "release-image-requal",
+      "result": "passed",
+      "scope": "image d52737a109e0 on two rings of four and a ring of eight: libsircl's image gate passed on each, within 0.1 GB/s of image 1a8c10354eb0's at 256 MiB; libsircl pairs, CSF TP4 and GLM-5.3 TP8 installed, answered the known-answer requests and passed sparkring check's functional checks; CSF TP4 decode 2.2 % below image 1a8c10354eb0's in the median cell, within start-to-start spread",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-requal-20261010.md"
+    },
+    {
+      "id": "clean-room-audit-030419b8",
+      "result": "passed",
+      "scope": "acceptance audit of libsircl at d3d33158 (tree 030419b8, the release image's): PASS on 114 files, 0 lines to rewrite, 515 counted, all idioms; integrations/vllm/libsircl and the NCCL files byte-identical to tree dbf36074's and not measured again",
+      "record": "performance/records/repository/clean-room-acceptance-audit-20261009.md"
+    },
+    {
+      "id": "sircl-collectives",
+      "result": "passed",
+      "scope": "SIRCL one-shot all-reduce and all-gather on the eight-Spark ring",
+      "record": "spark_transport/sircl/STATUS.md"
+    },
+    {
+      "id": "serving-measurements",
+      "result": "passed",
+      "scope": "serving A/B measurements of two, four and eight Sparks recorded (the evidence entries; research-only)",
+      "record": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md"
+    },
+    {
+      "id": "glm53-tp8-release-image",
+      "result": "passed",
+      "scope": "glm53-nvfp4-tp8 installed with sparkring install on image 1a8c10354eb0: install 661 s, functional and known-answer checks passed, 47.7 output tok/s at one stream and 16K context (19.4 steps/s)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
+    },
+    {
+      "id": "libsircl-ring8-release-image",
+      "result": "passed",
+      "scope": "the libsircl 0.6.0 gate of image 1a8c10354eb0 on the eight-Spark ring, its cycle plan included",
+      "record": "performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md"
+    },
+    {
+      "id": "clean-room-audit",
+      "result": "passed",
+      "scope": "acceptance audit of SIRCL 0.3.2 (1273183e, 0 lines to rewrite, 522 counted idioms), the three GLM-5.3 plugins (cf478504) and libsircl 0.6.0 at c7c35fe0 (tree dbf36074, image 1a8c10354eb0's; 0 lines to rewrite) with its vLLM plugin",
+      "record": "performance/records/repository/clean-room-acceptance-audit-20261009.md"
+    },
+    {
+      "id": "ring8-installer",
+      "result": "passed",
+      "scope": "installer runs of four profiles on the eight-Spark ring with image 1a8c10354eb0's lock, one installation each (research-only)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
+    },
+    {
+      "id": "ring4-setup",
+      "result": "passed",
+      "scope": "sudo sparkring setup --re-form on each of two rings of four, with the re-form fixes of e2590e79: exit status 0 and 'Fabric verified: 4 cables on 4 Sparks (cycle-4)' on both; cables 212.7-213.4 Gb/s",
+      "record": "performance/records/transport/ring4-setup-and-sircl-tune-20261010.md"
+    },
+    {
+      "id": "ring4-install",
+      "result": "passed",
+      "scope": "sparkring install on two rings of four with image 1a8c10354eb0's lock, one run each (research-only): seven installations of GLM-5.3-Flash CSF, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash at TP4 and TP2, a model switch and two pairs serving at once, each passing sparkring check and three known-answer questions on SIRCL with NCCL absent; --transport libsircl at TP2 failed vLLM's initialization with that image's libsircl, which the release image's tree 030419b8 changes",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md"
+    },
+    {
+      "id": "ring4-benchmark",
+      "result": "passed",
+      "scope": "sparkring install of glm53-flash-nvfp4-spark-tp4 (CSF), deepseek-v41-flash-tp4 and qwen38-flash-next-qad-tp4 on image 1a8c10354eb0 on a ring of four, each measured once through its API (research-only); against a path of four, median output tok/s -0.8 % (CSF) and +0.9 % (DeepSeek); Qwen's -8.9 % is its checkpoint (qad-step5500-mxfp8-attention decodes +6.3 % and +7.8 % over the default on the same ring)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md"
+    },
+    {
+      "id": "ring4-sircl-tune",
+      "result": "passed",
+      "scope": "SIRCL's ring-harness quick tune of the cycle-4 group shape on both rings: 1,102 and 1,098 cases, every output exact",
+      "record": "performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md"
+    },
+    {
+      "id": "cycle4-row-promotion",
+      "result": "passed",
+      "scope": "the measured cycle-4 row of runtime/common/sircl-tuning-defaults.json, merged from the two rings' tunes (table df333d97acb1a4b2)",
+      "record": "performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md"
+    },
+    {
+      "id": "ring4-libsircl-gate",
+      "result": "passed",
+      "scope": "the libsircl gate of image 1a8c10354eb0 on both rings of four",
+      "record": "performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md"
+    },
+    {
+      "id": "relay-marker",
+      "result": "passed",
+      "scope": "the relay marker binary of source c64c74535c06, SHA-256 014784297b40f32b2d717c51ad8d423243ca045548bd1877a55b18efe4c91e71, compiled on an arm64 Spark by python3 scripts/build_deb.py --relay-marker require and named with the URL of release asset sparkring-relay-marker-c64c74535c06-arm64",
+      "record": "spark_transport/fabric/relay-marker-artifact.json"
+    },
+    {
+      "id": "compose-v3",
+      "result": "passed",
+      "scope": "compose.runtime_lock renders a v3 lock on its v2 fields and the Install Builder's Default card is the install default; with the publication records and a stand-in digest in a scratch checkout, generate_compose_builder.py --verify --cases 20 passed every case of 15 images",
+      "record": "runtime/common/compose.py"
+    },
+    {
+      "id": "publication",
+      "result": "passed",
+      "scope": "registry push of ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911, anonymous manifest and configuration check, and the publication records",
+      "record": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/publication.json"
+    }
+  ],
+  "evidence_image": {
+    "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+    "scope": "most evidence entries ran on this image: the same SIRCL layer, CSF sources and GLM-5.3 plugin sources as the release image; its libsircl is tree dbf36074 (the release image's 030419b8 adds the current-device fix) and its dashboard runtime-status 0.3.4 (the release image's 0.3.6)",
+    "lock": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json"
+  },
+  "github_release": {
+    "tag": "2026.10.2",
+    "prerelease": true
+  }
+}

@@ -281,7 +281,7 @@ def test_source_drift_and_existing_output_are_rejected(site, tmp_path, monkeypat
     with pytest.raises(FileExistsError):
         compose.render(compose.SUPPORTED[0], site, directory)
     inventory = copy.deepcopy(compose.source_inventory(compose.SUPPORTED[0]))
-    inventory["runtime/common/qwen_flash_next.py"] = "0" * 64
+    inventory["runtime/common/toolchain_profiles.py"] = "0" * 64
     monkeypatch.setattr(compose, "source_inventory", lambda _: inventory)
     with pytest.raises(ValueError, match="inputs changed"):
         compose.load_deployment(directory)
@@ -391,6 +391,46 @@ def test_unlisted_checkpoints_and_invalid_settings_are_refused(options, message)
         compose.build(profile, example_site(profile), **options)
 
 
+def test_an_export_of_a_checkpoint_its_image_cannot_read_is_refused(tmp_path):
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    site = example_site(profile)
+    # The CSF checkpoint needs SIRCL's pinned vLLM build, which no Compose image lock records.
+    with pytest.raises(ValueError, match="needs an image whose vLLM is the pinned build "
+                                         "sparkring-kraken-beta-20261007-bc9ea774"):
+        compose.render(profile, site, tmp_path / "csf", checkpoint="csf")
+    assert not (tmp_path / "csf").exists()
+    assert compose.unreadable_checkpoint(profile, None) is None
+    assert compose.unreadable_checkpoint("mimo-v26-flash-mopd-tp2", None) is None
+    # The default export stays the profile's own checkpoint; build serves locks the installer checked.
+    manifest, files = compose.build(profile, site)
+    assert "checkpoint" not in manifest and "GLM-5.3-Flash-NVFP4-Spark-TP2" in files["rank0/compose.yaml"]
+    assert compose.build(profile, site, checkpoint="csf")[0]["checkpoint"] == "csf"
+
+
+def test_a_v3_lock_renders_on_its_v2_fields_and_render_checks_its_pinned_builds(tmp_path):
+    """A Compose export runs the prepared transport: a v3 lock is checked for the profile and recorded as its v2
+    fields, so the export equals one made from that view, while render checks a checkpoint against the whole
+    lock's pinned vLLM builds, which the view does not carry."""
+    from runtime.common import image_lock
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    profile = "glm53-flash-nvfp4-spark-tp2"
+    site = example_site(profile)
+    pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
+                                                             "sparkring-kraken-beta-20261007-bc9ea774"]))
+    view = image_lock.v2_view(pinned)
+    manifest, files = compose.build(profile, site, image_runtime=pinned)
+    assert manifest["image_runtime"] == view and manifest["image"] == pinned["image_reference"]
+    assert (manifest, files) == compose.build(profile, site, image_runtime=view)
+    assert compose.runtime_lock(profile, view) is view and compose.runtime_lock(profile, None) is None
+    rendered = compose.render(profile, site, tmp_path / "csf", image_runtime=pinned, checkpoint="csf")
+    assert rendered["checkpoint"] == "csf" and rendered["image_runtime"] == view
+    with pytest.raises(ValueError, match="needs an image whose vLLM is the pinned build"):
+        compose.render(profile, site, tmp_path / "view", image_runtime=view, checkpoint="csf")
+    # A v3 lock that does not list the profile is refused, as `sparkring install` refuses it.
+    with pytest.raises(ValueError, match="not admitted"):
+        compose.build(profile, site, image_runtime=sircl_lock(profiles=["qwen38-flash-next-tp2"]))
+
+
 def test_save_cpu_is_refused_on_an_image_without_the_reader_window():
     profile = "qwen38-flash-next-tp2"
     older = compose.named_image("plainstatus")
@@ -449,3 +489,46 @@ def test_cli_help_has_compose_command():
         and "check" in result.stdout
         and "start" in result.stdout
     )
+
+
+# Research-only profiles and the deployment label.
+
+def rendered_examples():
+    return {path: text for path, text in generate_compose_examples.examples()}
+
+
+def test_research_profiles_are_outside_every_compose_label():
+    research = {profiles.RESEARCH_CATALOG, "profiles/research-thinking.json"}
+    for profile_id in profiles.research_catalog():
+        research.add(f"profiles/{profile_id}/profile.json")
+    for profile_id in compose.SUPPORTED:
+        assert not research & set(compose.source_inventory(profile_id)), profile_id
+
+
+def test_adding_a_research_profile_changes_no_export(tmp_path, monkeypatch):
+    from runtime.common import thinking
+    before = rendered_examples()
+    assert all(path.read_text(encoding="utf-8") == text for path, text in before.items())
+    # A further research profile: a catalog row and its thinking record, in copies of both research files.
+    research = profiles.read_json(profiles.ROOT / profiles.RESEARCH_CATALOG)
+    research["profiles"].append({"id": "example-research-tp8", "path": "profiles/glm53-nvfp4-tp8/profile.json"})
+    catalog_copy = tmp_path / "research-catalog.json"
+    catalog_copy.write_text(json.dumps(research), encoding="utf-8")
+    records = profiles.read_json(profiles.ROOT / thinking.RESEARCH)
+    records["behaviours"]["example-template"] = dict(records["behaviours"]["glm53-template"])
+    records["checkpoints"]["example-owner/Example-Model@" + "0" * 40] = "example-template"
+    thinking_copy = tmp_path / "research-thinking.json"
+    thinking_copy.write_text(json.dumps(records), encoding="utf-8")
+    monkeypatch.setattr(profiles, "RESEARCH_CATALOG", str(catalog_copy))
+    monkeypatch.setattr(thinking, "RESEARCH", str(thinking_copy))
+    # Discovery and the SIRCL-only rule see it; no export changes.
+    assert "example-research-tp8" in profiles.catalog() and "example-research-tp8" in profiles.relayed_research()
+    assert thinking.catalog()["checkpoints"]["example-owner/Example-Model@" + "0" * 40] == "example-template"
+    assert rendered_examples() == before
+    # A row in the main catalog, which the labels hash, changes every Compose label.
+    original = compose.source_bytes
+    monkeypatch.setattr(compose, "source_bytes", lambda name: original(name) + (
+        b" " if name == profiles.CATALOG else b""))
+    changed = rendered_examples()
+    ranks = [path for path in before if "/compose/compose.rank" in path.as_posix()]
+    assert ranks and all(changed[path] != before[path] for path in ranks)

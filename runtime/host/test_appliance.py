@@ -146,7 +146,9 @@ def test_setup_simulation_checks_every_host_and_completes_receipts(tmp_path, siz
     assert result["id"] == plan["id"]
     assert json.loads((tmp_path / "setup/setup.json").read_text())["complete"]
     operations = [argv[4] for _, argv in remote if argv[0] == "sudo"]
-    assert operations[:size] == ["verify"] * size
+    # Each Spark is first asked, read-only, whether it overrides SparkRing's units; then every Spark verifies.
+    assert operations[:size] == ["unit-overrides"] * size
+    assert operations[size:2 * size] == ["verify"] * size
     assert operations.count("configure") == size
     with pytest.raises(ValueError, match="receipt exists"):
         controller.apply(plan, tmp_path / "setup", run=runner, invoke=invoke)
@@ -164,7 +166,8 @@ def test_setup_unknown_outcome_stops_before_persistence(tmp_path):
 
     with pytest.raises(RuntimeError):
         controller.apply(plan, tmp_path, run=failed, invoke=lambda *a, **k: calls.append(a))
-    assert calls == []
+    # Only the read-only override check reached the Sparks.
+    assert [argv[3:5] for _, argv in calls] == [["node", "unit-overrides"]] * 2
     assert not json.loads((tmp_path / "setup.json").read_text())["complete"]
 
 
@@ -227,7 +230,7 @@ def test_discovery_ignores_this_hosts_own_sibling_functions():
 
         def login(self, route):
             raise AssertionError("logged into its own sibling function")
-    with pytest.raises(ValueError, match="setup needs two or four"):
+    with pytest.raises(ValueError, match="setup needs two to eight"):
         bootstrap.discover(Transport())
 
 
@@ -235,12 +238,12 @@ def stable_privacy(facts, netdev, *, mode="default"):
     """A function whose connection also generates a stable-privacy link-local address, which moves its IPv4 GID."""
     interface = next(i for i in facts["interfaces"] if i["name"] == netdev)
     interface["network_manager"].update(connection_name="Wired connection 5", ipv6_addr_gen_mode=mode)
-    facts["ipv6_link_local"] = {netdev: ["fe80::4ebb:47ff:fe2c:9320", "fe80::1037:222a:cf8e:5d35"]}
+    facts["ipv6_link_local"] = {netdev: ["fe80::ff:fe3d:a431", "fe80::a8c1:5eff:4d2b:91f0"]}
     function = next(r for r in facts["rdma"] if r["netdev"] == netdev)
-    function["gid"] = "fe80::1037:222a:cf8e:5d35"
+    function["gid"] = "fe80::a8c1:5eff:4d2b:91f0"
 
 
-HINT = ("; enp1s0f1np1 has 2 IPv6 link-local addresses (fe80::4ebb:47ff:fe2c:9320, fe80::1037:222a:cf8e:5d35) and "
+HINT = ("; enp1s0f1np1 has 2 IPv6 link-local addresses (fe80::ff:fe3d:a431, fe80::a8c1:5eff:4d2b:91f0) and "
         "its NetworkManager connection 'Wired connection 5' uses ipv6.addr-gen-mode default, which moves the IPv4 "
         "RoCE v2 GID past index 3. Fix: nmcli connection modify 'Wired connection 5' ipv6.addr-gen-mode eui64, then "
         "nmcli connection up 'Wired connection 5'")
@@ -268,7 +271,7 @@ def test_gid_index_hint_is_silent_for_the_hardware_derived_form():
     facts = nodes()[0]["facts"]
     assert gid_index_hint(facts, "enp1s0f1np1") == ""
     next(i for i in facts["interfaces"] if i["name"] == "enp1s0f1np1")["network_manager"]["ipv6_addr_gen_mode"] = "eui64"
-    facts["ipv6_link_local"] = {"enp1s0f1np1": ["fe80::4ebb:47ff:fe2c:9320"]}
+    facts["ipv6_link_local"] = {"enp1s0f1np1": ["fe80::ff:fe3d:a431"]}
     assert gid_index_hint(facts, "enp1s0f1np1") == ""
     stable_privacy(facts, "enp1s0f1np1", mode="eui64")
     assert gid_index_hint(facts, "enp1s0f1np1").startswith("; enp1s0f1np1 has 2 IPv6 link-local addresses")

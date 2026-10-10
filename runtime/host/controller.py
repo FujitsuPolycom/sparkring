@@ -1,7 +1,11 @@
 """Guided Linux setup; existing network and model engines own all execution.
 
-On four-Spark rings setup also applies the ConnectX hairpin setting through
-``runtime/host/hairpin_ring.py`` once fabric addressing has converged.
+On a fabric that relays (a ring of four or more Sparks, a line of three or
+more) setup also applies the ConnectX hairpin setting through
+``runtime/host/hairpin_ring.py`` once fabric addressing has converged, and
+installs the relay table (``runtime/host/relays.py``) with each Spark's
+persistent fabric record. Setup ends by recording the fabric document
+(``runtime/host/fabric.py``).
 """
 import argparse
 import contextlib
@@ -9,13 +13,14 @@ import getpass
 import hashlib
 import ipaddress
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
 import time
 
-from runtime.common import distribution, installer, process_lock, thinking
-from runtime.host import discovery, hairpin_ring, node, topology
+from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
+from runtime.host import discovery, fabric, hairpin_ring, node, relays, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -40,8 +45,9 @@ def confirm(prompt, yes=False, *, default=False):
 
 
 def collect(targets, *, invoke=discovery.inspect_node):
-    if len(targets) not in (2, 4) or len(set(targets)) != len(targets):
-        raise ValueError("Select exactly two or four distinct Spark management addresses")
+    if (not fabric_layout.MIN_SPARKS <= len(targets) <= fabric_layout.MAX_SPARKS
+            or len(set(targets)) != len(targets)):
+        raise ValueError("Select two to eight distinct Spark management addresses")
     import concurrent.futures
     from runtime.host import progress
 
@@ -81,8 +87,18 @@ def detail_lines(details):
     return lines
 
 
-def summarize(plan, *, observe_only=False):
-    print(f"{len(plan['nodes'])} Sparks: " + ("p0 pair" if len(plan["nodes"]) == 2 else "p0-to-p1 ring"))
+def summarize(plan, *, observe_only=False, api_address=None):
+    layout = topology.layout_of(plan)
+    print(f"{len(plan['nodes'])} Sparks: " + {"pair": "p0 pair", "cycle": "p0-to-p1 ring",
+                                               "path": "p0-to-p1 line"}[layout["shape"]])
+    document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
+                                          marker=relays.marker_artifact(installer.ROOT))
+    for line in fabric.plan_lines(document, relay_plan):
+        print(line)
+    if observe_only:
+        print("Adoption changes no link, address, NetworkManager connection or route and restarts no driver; of the "
+              "relay table it adds only the objects that are missing on a Spark (a route, neighbour or filter "
+              "preference that is present stays as it is), then records the fabric document.")
     hairpin = hairpin_ring.requirement(plan)
     for host, proposed in zip(plan["spec"]["hosts"], plan["network"]["hosts"], strict=True):
         line = f"  rank {host['rank']}: {host['host']}  " + ("verify existing" if observe_only else proposed["action"])
@@ -93,9 +109,10 @@ def summarize(plan, *, observe_only=False):
             print(f"    {port['netdev']}  {port['address']}  MTU 9000")
         for problem in proposed["blocked_by"]:
             print("    BLOCKED: " + problem)
-        if hairpin:
+        row = next((row for row in hairpin if row["rank"] == host["rank"]), None)
+        if row is not None:
             # Adoption restarts no function, so its lines never announce a restart.
-            print("    ConnectX hairpin: " + hairpin_ring.summary_line(hairpin[host["rank"]], adopt=observe_only))
+            print("    ConnectX hairpin: " + hairpin_ring.summary_line(row, adopt=observe_only))
     print("Existing networking will be verified and recorded." if observe_only else "Setup saves network state and enables its boot service. Model images/weights are selected by 'sparkring up'.")
 
 
@@ -109,19 +126,24 @@ def _sync_workers(plan, directory):
 
 
 def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.ssh,
-          approved=False, review=lambda p: None, ensure=None, update_workers=None):
+          approved=False, review=lambda p: None, ensure=None, update_workers=None, api_address=None,
+          marker=None):
     """Journal each step and re-observe after each pass; never retry an unknown mutation.
 
     Fabric addressing passes run NetworkManager changes only
-    (``defer_driver=True``) until no host needs one. On a four-Spark ring the
-    ConnectX hairpin step (``hairpin_ring.ensure``, approved by ``approved``)
-    then applies the driver setting, and the network is verified on the plan
-    that step returns.
+    (``defer_driver=True``) until no host needs one. On a fabric that relays
+    the ConnectX hairpin step (``hairpin_ring.ensure``, approved by
+    ``approved``) then applies the driver setting, and the network is
+    verified on the plan that step returns. The fabric document and relay
+    plan of that final plan (``fabric.prepare``; ``marker`` defaults to the
+    installed package's relay marker) are saved in ``directory``, and each
+    Spark's persistent record carries its part of the relay table.
     """
     directory = Path(directory)
     journal = directory / "setup.json"
     if journal.exists():
         raise ValueError("Setup receipt exists; inspect it and host state before recovery: " + str(journal))
+    refuse_unit_overrides(plan, invoke=invoke)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     record = {"schema": "sparkring-setup-receipt/v1", "complete": False, "plan_id": plan["id"], "steps": []}
     deploy_engine.save_receipt(journal, record)
@@ -163,12 +185,16 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     record["steps"][-1]["hairpin"] = outcome.get("state", "complete")
     deploy_engine.save_receipt(journal, record)
     deploy_network.verify_network(plan["spec"], plan["inventory"]["hosts"])
+    document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
+                                          marker=marker or relays.marker_artifact(installer.ROOT))
+    fabric.save_prepared(directory, document, relay_plan)
+    sections = [relays.section(relay_plan, rank) if relay_plan else None for rank in range(len(plan["spec"]["hosts"]))]
     # All nodes verify before any persistent service is installed.
     for rank, host in enumerate(plan["spec"]["hosts"]):
-        config = topology.persistent_config(plan, rank)
+        config = topology.persistent_config(plan, rank, relays=sections[rank])
         invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "verify"], data=json.dumps(config))
     for rank, host in enumerate(plan["spec"]["hosts"]):
-        config = topology.persistent_config(plan, rank)
+        config = topology.persistent_config(plan, rank, relays=sections[rank])
         record["steps"].append({"host": host["host"], "persist": "running"})
         deploy_engine.save_receipt(journal, record)
         invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "configure"], data=json.dumps(config))
@@ -190,11 +216,60 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     return plan
 
 
+def refuse_unit_overrides(plan, *, invoke=None):
+    """Refuse, before any change, a setup whose Sparks replace or change SparkRing's units in /etc/systemd/system.
+
+    Setup enables and starts the package's sparkring-fabric, sparkring-relay-marker, sparkring-hairpin and
+    sparkring-agent units by name; a unit file of the same name in /etc/systemd/system, left by another tool,
+    would run instead, and a drop-in would change what runs (``node.unit_overrides``)."""
+    invoke = invoke or discovery.ssh
+    found = {}
+    for host in plan["spec"]["hosts"]:
+        listed = json.loads(invoke(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "unit-overrides"])
+                            or "{}").get("overrides") or []
+        if listed:
+            found[host["host"]] = listed
+    if found:
+        raise ValueError("These Sparks replace SparkRing's units with files in /etc/systemd/system, which would run "
+                         "instead of the package's: " + "; ".join(f"{host}: {', '.join(paths)}"
+                                                                 for host, paths in found.items())
+                         + ". Remove or rename those files (after checking what installed them), run sudo systemctl "
+                           "daemon-reload, then run setup again. Nothing has been changed.")
+
+
+def retire_cluster_record(plan, *, state=None, now=None):
+    """Move aside Node A's record of another cluster (its ``cluster.json``, fabric document and relay plan) before
+    adoption records this one; return the directory, or None when nothing differs.
+
+    The files move to ``/var/lib/sparkring/retired/<UTC time>-adopt-controller/`` with a ``receipt.json`` that
+    names each and how to put it back. Deployments, caches and checkpoints stay where they are."""
+    state = Path(state or STATE)
+    path = state / "cluster.json"
+    if not path.exists() or installer.read(path)["plan"]["id"] == plan["id"]:
+        return None
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(now if now is not None else time.time()))
+    directory = state.parent / "retired" / f"{stamp}-adopt-controller"
+    directory.mkdir(parents=True, exist_ok=False, mode=0o700)
+    moved = {}
+    for source in (path, state / "fabric.json", relays.plan_path(state)):
+        if Path(source).exists():
+            target = directory / Path(source).name
+            os.replace(source, target)
+            moved[str(source)] = str(target)
+    receipt = {"schema": "sparkring-retired-record/v1", "reason": "adopt", "moved": moved,
+               "restore": [f"sudo mv {target} {source}" for source, target in moved.items()]}
+    (directory / "receipt.json").write_text(json.dumps(receipt, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+    print("Moved Node A's record of another cluster aside: " + str(directory))
+    return directory
+
+
 def setup(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair/ring, review its fabric, then save persistent host setup.")
+    parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair, line or ring of up to eight "
+                                     "Sparks, review its fabric, then save persistent host setup.")
     parser.add_argument("--node", action="append", help="USER@management-IP (include this head); bypass mDNS")
     parser.add_argument("--name", default="sparkring")
-    parser.add_argument("--fabric-cidr", default="198.18.0.0/21")
+    parser.add_argument("--fabric-cidr", default=None,
+                        help="fabric supernet (default: 198.18.0.0/21 for up to four cables, 198.18.0.0/20 above)")
     parser.add_argument("--plan", action="store_true", help="read existing SSH access only; no enrollment or host changes")
     parser.add_argument("--apply", action="store_true", help="apply the reviewed plan")
     parser.add_argument("--adopt", action="store_true", help="verify/save existing networking without changing links, routes or services")
@@ -227,13 +302,14 @@ def setup(argv=None):
                 print(f"  {i}: {candidate['hostname']}  {candidate['address']} (identity unverified)")
             if not sys.stdin.isatty():
                 raise ValueError("Select nodes with --node for noninteractive setup")
-            indices = [int(s) - 1 for s in input("Select two or four numbers, including this Spark: ").split()]
+            indices = [int(s) - 1 for s in input("Select two to eight numbers, including this Spark: ").split()]
             if any(i < 0 or i >= len(candidates) for i in indices):
                 raise ValueError("Selection is outside the candidate list")
             targets = [getpass.getuser() + "@" + candidates[i]["address"] for i in indices]
         targets = [discovery.target(t) for t in targets]
-        if len(targets) not in (2, 4) or len(set(targets)) != len(targets):
-            raise ValueError("Select exactly two or four distinct management targets")
+        if (not fabric_layout.MIN_SPARKS <= len(targets) <= fabric_layout.MAX_SPARKS
+                or len(set(targets)) != len(targets)):
+            raise ValueError("Select two to eight distinct management targets")
         if not args.skip_enroll and not args.plan:
             confirm("Enroll SSH access to " + ", ".join(targets) + "?", args.yes)
             key = sparkring_bootstrap.ensure_local_key()
@@ -253,9 +329,11 @@ def setup(argv=None):
     if args.plan or not args.apply and not sys.stdin.isatty():
         print("Plan saved. Repeat with --apply to configure these hosts.")
         return 0
+    relaying = fabric_layout.relayed(topology.layout_of(plan))
+    mesh_ring = topology.layout_of(plan) == fabric_layout.layout(fabric_layout.CYCLE, 4)
     if args.adopt:
         question = "Record this verified existing fabric without network changes"
-        if len(nodes) == 4:
+        if relaying:
             question += (", and record the ConnectX hairpin setting that is in effect and apply it at every boot"
                          " (no driver restart)")
         confirm(question + "?", args.yes)
@@ -271,11 +349,18 @@ def setup(argv=None):
         return topology.build_spec(found, head, name=args.name, fabric_cidr=args.fabric_cidr)
 
     if args.adopt:
+        refuse_unit_overrides(plan)
+        retire_cluster_record(plan)
+        document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"],
+                                              marker=relays.marker_artifact(installer.ROOT))
+        fabric.save_prepared(directory, document, relay_plan)
+        sections = [relays.section(relay_plan, rank) if relay_plan else None
+                    for rank in range(len(plan["spec"]["hosts"]))]
         observed = []
         for rank, host in enumerate(plan["spec"]["hosts"]):
-            config = topology.persistent_config(plan, rank)
+            config = topology.persistent_config(plan, rank, relays=sections[rank])
             config.update(ownership="observed", routes=[], forwarding=[])
-            if len(nodes) == 4:
+            if mesh_ring:
                 mesh = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "native-mesh", "--rank", str(rank)]))["mesh"]
                 if not mesh or not mesh.get("active", True):
                     raise ValueError("No verified native mesh found; ordinary setup can prepare one")
@@ -284,12 +369,14 @@ def setup(argv=None):
                 order = ("cw_primary", "ccw_primary", "cw_secondary", "ccw_secondary")
                 config["native_mesh"] = {"reference": mesh["reference"], "host_ip": mesh["host_ip"],
                                          "hcas": [next(p["rdma_device"] for p in host["data_interfaces"] if p["role"] == role) for role in order]}
-            discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt"], data=json.dumps(config))
+            adopted = json.loads(discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "adopt",
+                                                              "--retire-existing"], data=json.dumps(config)) or "{}")
             discovery.ssh(host["host"], ["sudo", "-n", "/usr/bin/sparkring", "node", "workspace", "--operator", host["host"].split("@", 1)[0], "--name", args.name])
-            observed.append({"rank": rank, "adopted": True})
+            observed.append({"rank": rank, "adopted": True, **{key: adopted[key] for key in
+                                                                ("retired", "relays", "relay_markers") if key in adopted}})
         receipt = {"complete": True, "network_changed": False, "nodes": observed}
         armed = []
-        if len(nodes) == 4:
+        if relaying:
             # Adoption requires an active mesh, so no function restarts here:
             # Sparks that need one get M19 and adoption still completes.
             outcome = {}
@@ -298,7 +385,7 @@ def setup(argv=None):
                                        update_workers=lambda: _sync_workers(current, directory),
                                        directory=directory, record=outcome)
             receipt["hairpin"] = outcome.get("state", "complete")
-            armed = (list(range(4)) if outcome.get("state") == hairpin_ring.KEPT else
+            armed = (hairpin_ring.ranks(plan) if outcome.get("state") == hairpin_ring.KEPT else
                      [entry["rank"] for entry in outcome.get("ranks") or [] if entry.get("after") == hairpin_ring.KEPT])
         installer.write(directory / "setup.json", receipt)
         if armed:
@@ -317,7 +404,8 @@ def setup(argv=None):
     node.save(STATE, "cluster.json", cluster, mode=0o600)
     from runtime.host import fabric_bandwidth
     # A degraded cable is a warning with its repair steps; setup never fails here.
-    fabric_bandwidth.after_setup(STATE, cluster)
+    bandwidth = fabric_bandwidth.after_setup(STATE, cluster)
+    fabric.finish_setup(STATE, cluster, directory, bandwidth=bandwidth)
     print("Network configured. Choose a model: sparkring models")
     return 0
 
@@ -339,7 +427,7 @@ def active_deployment(*, report=True, placement=None):
     """The deployment that up last started, or that down last stopped when none was active; None if neither.
 
     ``placement`` selects the slot (``runtime.host.placement``): None for the
-    whole cluster, a ring half otherwise. A recorded directory that no longer
+    whole cluster, an arc of its Sparks otherwise. A recorded directory that no longer
     holds a deployment, for example one moved by hand, counts as none and,
     with ``report``, is noted on stderr.
     """
@@ -360,28 +448,38 @@ def active_deployments(*, report=False):
     ``report`` notes each recorded directory that no longer holds a deployment, as ``active_deployment`` does.
     """
     from runtime.host import placement as placements
-    return [(slot, path) for slot in placements.slots(4)
+    return [(slot, path) for slot in placements.slots(STATE)
             if (path := active_deployment(report=report, placement=slot)) is not None]
+
+
+def recorded_layout():
+    """The fabric layout of the recorded cluster; ValueError without a cluster record."""
+    from runtime.host import placement as placements
+    if not (STATE / "cluster.json").exists():
+        raise ValueError("No cluster is recorded on this Spark; run sudo sparkring setup first")
+    return placements.layout_of(installer.read(STATE / "cluster.json"))
 
 
 def lifecycle_slot(on):
     """The slot that ``sparkring up``, ``down`` or ``status`` without a profile acts on.
 
-    ``--on`` names a half. Without it, the one slot that records a deployment;
-    the whole cluster when none does. With several recorded, ValueError lists
-    each and the command that names it.
+    ``--on`` names an arc of the fabric. Without it, the one slot that records
+    a deployment; the whole cluster when none does. With several recorded,
+    ValueError lists each and the command that names it.
     """
     from runtime.host import placement as placements
     if on:
-        return placements.parse(on)
+        return placements.parse(on, recorded_layout())
     found = active_deployments()
     if len(found) <= 1:
         return found[0][0] if found else None
-    lines = [f"{placements.text(slot)}: {placements.profile_of(path)} "
+    size = recorded_layout()["size"]
+    lines = [f"{placements.text(slot, size)}: {placements.profile_of(path)} "
              + ("(stopped)" if placements.stopped(path) else "(started)") + "; name it with "
              + (placements.flag(slot) if slot else _up_arguments(path)) for slot, path in found]
-    error = ValueError("This ring records a model on more than one placement. Name one with --on 0,1, --on 2,3 or "
-                       "the deployment's profile.")
+    flags = [placements.flag(slot) for slot, _ in found if slot]
+    error = ValueError("This fabric records a model on more than one placement. Name one with "
+                       + ", ".join(flags) + " or the deployment's profile.")
     error.details = {"lines": lines}
     raise error
 
@@ -394,30 +492,47 @@ def existing_deployment(profile, instance="main"):
     return directory
 
 
-def model_site(cluster, profile, instance="main", placement=None):
+def model_site(cluster, profile, instance="main", placement=None, *, fabric=None):
     """The raw site of a deployment of ``profile`` on the cluster's Sparks.
 
     Without ``placement`` the site holds every Spark, each at port 0's primary
-    fabric function. With a placement (``runtime.host.placement``) it holds
-    the two Sparks of that ring half, each at the port functions facing its
-    partner, records the placement, and keeps Node A as the controller. The
-    API address is Node A's recorded LAN address, or for half (2, 3) the one
-    ``placement.api_address`` gives.
+    fabric function (the last Spark of a line, which has no port 0 cable, at
+    port 1's). A placement (``runtime.host.placement``) of two Sparks holds
+    them at the port functions facing each other. ``fabric`` is the fabric
+    document reference of a group whose ranks reach each other through relays
+    (``relays.group_reference``): every rank then bootstraps over its
+    management address and interface and carries the reference, which its
+    relay check reads. A site on an arc records the placement and keeps Node
+    A as the controller. The API address is Node A's recorded LAN address, or
+    for an arc that starts elsewhere the one ``placement.api_address`` gives.
     """
     from runtime.host import placement as placements
     plan = cluster["plan"]
     rows = []
     identities = plan.get("nodes", [])
     ranks = list(range(len(plan["spec"]["hosts"]))) if placement is None else list(placement)
-    fabric = placements.fabric_rows(cluster, placement) if placement is not None else None
+    pair = placements.fabric_rows(cluster, placement) if placement is not None and fabric is None else None
+    if placement is not None and fabric is None and len(placement) != 2:
+        raise ValueError("A group of more than two Sparks reaches its ranks through relays and needs the fabric "
+                         "document's relay table; run sudo sparkring setup")
     for index, rank in enumerate(ranks):
         host = plan["spec"]["hosts"][rank]
-        if fabric is None:
-            port = next(p for p in host["data_interfaces"] if p["role"] == "cw_primary")
+        if fabric is not None:
+            rows.append({"host": host["host"], "management_ip": host["management_address"],
+                         "fabric_ip": host["management_address"], "interface": host["management_netdev"],
+                         "fabric": dict(fabric)})
+            cabled = {p["role"]: p["rdma_device"] for p in host["data_interfaces"]}
+            if len(cabled) < 4:
+                # A Spark at the end of a line has one port cabled; its rank checks only those functions.
+                rows[-1]["hcas"] = [cabled[role] for role in ("cw_primary", "ccw_primary", "cw_secondary",
+                                                              "ccw_secondary") if role in cabled]
+        elif pair is None:
+            roles = {p["role"]: p for p in host["data_interfaces"]}
+            port = roles.get("cw_primary") or roles["ccw_primary"]
             rows.append({"host": host["host"], "management_ip": host["management_address"],
                          "fabric_ip": str(ipaddress.ip_interface(port["address"]).ip), "interface": port["netdev"]})
         else:
-            rows.append(dict(fabric[index]))
+            rows.append(dict(pair[index]))
         if len(identities) == len(plan["spec"]["hosts"]) and isinstance(identities[rank], dict) and identities[rank].get("node_id"):
             rows[-1]["node_id"] = identities[rank]["node_id"]
     import re
@@ -438,19 +553,28 @@ def model_site(cluster, profile, instance="main", placement=None):
     return result
 
 
-def _hairpin_problem():
-    """M6 lines when a Spark of the recorded four-Spark ring lacks the ConnectX hairpin setting, else None.
+def _hairpin_problem(placement=None):
+    """M6 lines when a Spark that relays the model's traffic lacks the ConnectX hairpin setting, else None.
 
-    One line per Spark, then the remedy; later lines are indented for the
-    terminal.
+    Without ``placement`` every relaying Spark of the recorded fabric counts;
+    for an arc only the Sparks that relay its lanes
+    (``placement.forwarding_positions``), none for two Sparks. One line per
+    Spark, then the remedy; later lines are indented for the terminal.
     """
     if not (STATE / "cluster.json").exists():
         return None
-    plan = installer.read(STATE / "cluster.json").get("plan") or {}
+    cluster = installer.read(STATE / "cluster.json")
+    plan = cluster.get("plan") or {}
     hosts = (plan.get("spec") or {}).get("hosts") or []
-    if len(hosts) != 4:
+    if not hosts or not hairpin_ring.ranks(plan):
         return None
-    problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh))
+    only = None
+    if placement is not None:
+        from runtime.host import placement as placements
+        only = set(placements.forwarding_positions(placements.layout_of(cluster), placement))
+        if not only:
+            return None
+    problem = hairpin_ring.not_in_effect(plan, hairpin_ring.read_statuses(plan, invoke=discovery.ssh), only=only)
     return problem.replace("\n", "\n  ") if problem else None
 
 
@@ -464,9 +588,9 @@ def lifecycle(argv):
     images.add_argument("--image-lock", type=Path, help="explicit source-recorded toolchain image for a separate rehearsal")
     parser.add_argument("--fresh-mesh", action="store_true", help="review replacement of an existing native mesh")
     parser.add_argument("--instance", default="main", help="separate local deployment name for a rehearsal")
-    parser.add_argument("--on", metavar="RANKS",
-                        help="the half of a four-Spark ring: 0,1 or 2,3; without a profile, its model; with up "
-                             "PROFILE, where a two-Spark profile's deployment runs")
+    parser.add_argument("--on", metavar="ARC",
+                        help="consecutive Sparks of the fabric, such as 0,1, 0-3 or 6-1: without a profile, the model "
+                             "on them; with up PROFILE, where a new deployment of the profile runs")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--refresh", action="store_true")
@@ -474,18 +598,31 @@ def lifecycle(argv):
     parser.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1 for a new deployment: only programs on "
                              "Node A can then use the model")
-    from runtime.common import serving
+    from runtime.common import serving, transport as transports
+    parser.add_argument("--transport", choices=transports.BACKENDS,
+                        help="for a new deployment: sircl (the default where the image and fabric carry it), "
+                             "prepared, nccl (vLLM's PyNccl alone; needs the fabric document and a group NCCL's "
+                             "cabling rule holds for), or libsircl (research-only)")
+    parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
+                        help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
+    if args.profile:
+        # A deployment's directory, records and status name the profile's ID (models.ALIASES).
+        from runtime.host import models
+        args.profile = models.canonical(args.profile)
     settings = serving.from_arguments(args)
     if settings and (args.operation != "up" or not args.profile):
         raise ValueError("Serving settings apply to up with an exact profile")
     image_runtime = None
     if (args.image or args.image_lock) and (args.operation != "up" or not args.profile):
         raise ValueError("--image and --image-lock require up with an exact profile")
+    if (args.transport or args.nccl) and (args.operation != "up" or not args.profile):
+        raise ValueError("--transport and --nccl require up with an exact profile")
+    args.nccl = transports.nccl_mode(args.nccl)
     if args.image:
-        from runtime.common import installer_image
-        args.image_lock = installer_image.lock_path(args.image)
+        from runtime.common import image_lock
+        args.image_lock = image_lock.lock_path(args.image)
     if args.instance != "main" and not args.profile:
         raise ValueError("--instance names one deployment of a profile; give the profile as well")
     from runtime.host import retained_source
@@ -493,12 +630,22 @@ def lifecycle(argv):
     if args.operation == "status":
         from runtime.host import fabric_bandwidth
         result = node.snapshot() if args.refresh else node.status()
-        plan_id = None
+        plan_id = size = layout = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
             plan_id = cluster["plan"].get("id")
+            from runtime.host import placement as placements
+            layout = placements.layout_of(cluster)
+            size = layout["size"]
             # The saved result of the last bandwidth check; status never measures.
             result["fabric_bandwidth"] = fabric_bandwidth.summary(STATE)
+            result["fabric"] = fabric.summary(STATE, cluster)
+            from runtime.host import fabric_tune
+            # The tuning table installations use: the default one, or one measured on this fabric.
+            try:
+                result["sircl_tuning"] = fabric_tune.summary(STATE)
+            except (OSError, ValueError, KeyError, TypeError) as error:
+                result["sircl_tuning"] = {"state": "unreadable", "error": str(error)}
             result["nodes"] = []
             for host in cluster["plan"]["spec"]["hosts"]:
                 try:
@@ -515,11 +662,11 @@ def lifecycle(argv):
             path = existing_deployment(args.profile, args.instance)
             paths = [(placements.of_directory(path), path)]
         elif args.on:
-            slot = placements.parse(args.on)
+            slot = placements.parse(args.on, recorded_layout())
             paths = [(slot, path) for path in [active_deployment(placement=slot)] if path is not None]
         else:
             paths = active_deployments(report=True)
-        views = [_status_view(slot, path, args, result, cache) for slot, path in paths]
+        views = [_status_view(slot, path, args, result, cache, layout=layout) for slot, path in paths]
         if views:
             # The first slot's model keeps the document's single-deployment fields.
             result.update({key: views[0][key] for key in ("deployment", "recovery", "model") if key in views[0]})
@@ -533,7 +680,7 @@ def lifecycle(argv):
                 model = view.get("model")
                 if model and model["state"] != "serving":
                     # What stops a model comes first, with the step that restarts it.
-                    where = f"{placements.text(tuple(view['placement']))}: " if view["placement"] else ""
+                    where = f"{placements.text(tuple(view['placement']), size)}: " if view["placement"] else ""
                     print(where + model["summary"] + " | next: " + model["next_action"])
                     for line in model["details"]:
                         print("  " + line)
@@ -569,11 +716,19 @@ def lifecycle(argv):
             if "fabric_bandwidth" in result:
                 for line in fabric_bandwidth.status_lines(result["fabric_bandwidth"], plan_id):
                     print(line)
+            if "fabric" in result:
+                print(fabric.status_line(result["fabric"]))
+            if "sircl_tuning" in result:
+                print(fabric_tune.status_line(result["sircl_tuning"]))
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:
-                    where = placements.text(tuple(view["placement"]) if view["placement"] else None)
+                    where = placements.text(tuple(view["placement"]) if view["placement"] else None, size)
                     print(where[0].upper() + where[1:] + ":")
+                    if view.get("group"):
+                        group = view["group"]
+                        print(f"Group: {group['shape']} at positions {', '.join(map(str, group['positions']))}; "
+                              f"API on Spark {group['api_position']}")
                 print("Saved model operation: " + saved["profile"] + " | " + saved["state"]["operation"] + (" complete" if saved["state"].get("complete") else " incomplete"))
                 # A profile with one checkpoint has no checkpoint name; a derived checkpoint names its base too.
                 source = f"{saved['model_repository']} @ {saved['model_revision'][:12]}"
@@ -587,6 +742,8 @@ def lifecycle(argv):
                                                            for name, value in sorted(saved["serving"].items())))
                 if "thinking" in saved:
                     print("Thinking: " + thinking.deployment_text(saved["thinking"]))
+                if saved.get("transport"):
+                    print(transport_status_line(saved["transport"]))
                 print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
                                           if saved.get("check_url") else ""))
                 if saved.get("observations"):
@@ -608,7 +765,7 @@ def lifecycle(argv):
     if args.plan and args.execute:
         raise ValueError("Choose --plan or --execute")
     from runtime.host import placement as placements
-    requested = placements.parse(args.on) if args.on else None
+    requested = placements.parse(args.on, recorded_layout()) if args.on else None
     if args.profile and requested is not None and args.operation != "up":
         raise ValueError("--on with a profile names where up places a new deployment; down takes the profile alone")
     slot = None if args.profile else lifecycle_slot(args.on)
@@ -616,31 +773,44 @@ def lifecycle(argv):
     if args.operation == "up" and args.profile:
         instance = args.instance
         if requested is not None and instance == "main":
-            # Each half's deployment of a profile needs its own directory.
+            # Each arc's deployment of a profile needs its own directory.
             instance = placements.instance_label(requested)
         directory = deployment_directory(args.profile, instance)
         # Refused before a new deployment is created; checked again under the installation lock.
         _refuse_conflicts(requested if not directory.exists() else placements.of_directory(directory))
         if not directory.exists():
-            from runtime.common import installer_image
-            from runtime.host import models
+            from runtime.common import image_lock
+            from runtime.host import install_workflow, models
             cluster = installer.read(STATE / "cluster.json")
-            size = len(cluster["plan"]["nodes"])
-            nodes = 2 if requested is not None else size
+            layout = placements.layout_of(cluster)
+            nodes = len(requested) if requested is not None else layout["size"]
             profile = models.select(args.profile, nodes)
-            placements.check(requested, cluster_size=size, profile_nodes=nodes, profile=profile)
-            image_runtime = installer_image.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
-            site = model_site(cluster, profile, instance, requested)
+            placements.check(requested, layout=layout, profile_nodes=nodes, profile=profile)
+            chosen = image_lock.for_profile(profile, installer.read(args.image_lock) if args.image_lock else None)
+            # The same transport sparkring install would choose: SIRCL where the image and the fabric carry it.
+            choice = install_workflow.transport_choice(args, cluster, STATE, chosen, requested, profile)
+            image_runtime = image_lock.v2_view(chosen)
+            for line in install_workflow.transport_lines(None, choice):
+                print(line)
+            reference = None
+            if choice["section"] is not None and placements.relayed(layout, requested):
+                from runtime.host import relays
+                reference = relays.group_reference(STATE, cluster)
+            site = model_site(cluster, profile, instance, requested, fabric=reference)
+            # The checkpoint sparkring install installs without --checkpoint on this
+            # image: the profile's preferred one where the image's vLLM reads it.
+            variant = image_lock.preferred_checkpoint(chosen, profile)
+            card = installer.setup.selection(profile, variant)
             # Every rank uses the cluster's SparkRing checkpoint directory for the
-            # profile's revision, whose model operation adopts what that
+            # checkpoint's revision, whose model operation adopts what that
             # directory holds and downloads the rest on that rank. A copy
             # SparkRing did not create is used only when named, and is then
             # served in place: verified, never written. Copies found elsewhere
             # on the Sparks are adopted by sparkring install.
-            model = args.model_path or installer.checkpoint_directory(cluster, installer.setup.selection(profile))
+            model = args.model_path or installer.checkpoint_directory(cluster, card)
             for row in site["hosts"]:
                 row.update(model=model, reuse_verified_model=bool(args.model_path))
-            if profile in installer.compose.TP4_PROFILES:
+            if reference is None and profile in installer.compose.TP4_PROFILES:
                 from runtime.host import native_mesh
                 site = native_mesh.select(site, cluster, profile, fresh=args.fresh_mesh)
             if {"api_port", "api_bind"} & set(settings):
@@ -648,20 +818,25 @@ def lifecycle(argv):
                 # port before the deployment is created, as sparkring install
                 # checks it.
                 from runtime.host import install_workflow
-                arguments = install_workflow.profile_arguments(installer.setup.selection(profile))
+                arguments = install_workflow.profile_arguments(card)
                 serving.apply(arguments, settings)
                 install_workflow.check_endpoint(args, cluster, requested, STATE, directory, settings,
                                                 settings.get("api_port") or serving.profile_value(arguments, "api_port"))
-            installer.init(directory, profile, site, image_runtime=image_runtime, settings=settings)
+            installer.init(directory, profile, site, variant=variant, image_runtime=image_runtime, settings=settings,
+                           transport=choice["section"])
         else:
             # The deployment's own source validates its lock (retained_source);
             # the installed package may carry other profile inputs or images.
             existing = installer.read(directory / "deployment.lock.json")
             if args.image_lock:
-                from runtime.common import installer_image
-                image_runtime = installer_image.for_profile(args.profile, installer.read(args.image_lock))
+                from runtime.common import image_lock
+                image_runtime = image_lock.v2_view(image_lock.for_profile(args.profile, installer.read(args.image_lock)))
                 if existing.get("image_runtime") != image_runtime:
                     raise ValueError("Deployment uses another image lock; choose a distinct --instance")
+            recorded = existing.get("transport") or {}
+            if args.transport and args.transport != recorded.get("backend", "prepared") or (
+                    args.nccl and args.nccl != recorded.get("nccl")):
+                raise ValueError("Deployment uses another transport; choose a distinct --instance")
             if args.model_path and any(row["model"] != args.model_path or not row["reuse_verified_model"] for row in existing["site"]["ranks"]):
                 raise ValueError("Deployment uses another model path; choose a distinct --instance")
             if args.fresh_mesh and "native_mesh" not in existing["site_input"]:
@@ -669,7 +844,8 @@ def lifecycle(argv):
             if settings and (existing.get("serving") or {}) != settings:
                 raise ValueError("Deployment uses other serving settings; choose a distinct --instance")
             if requested is not None and placements.from_lock(existing) != requested:
-                raise ValueError(f"{directory.name} runs on {placements.text(placements.from_lock(existing))}; "
+                raise ValueError(f"{directory.name} runs on "
+                                 f"{placements.text(placements.from_lock(existing), recorded_layout()['size'])}; "
                                  "choose a distinct --instance")
     elif args.profile:
         directory = existing_deployment(args.profile, args.instance)
@@ -695,6 +871,14 @@ def lifecycle(argv):
         print(json.dumps({"operation": "down", "complete": True, "released": True, "message": message}, indent=2)
               if args.json else message)
         return 0
+    recorded_transport = installer.read(directory / "deployment.lock.json").get("transport")
+    if args.operation == "up" and recorded_transport:
+        # A SIRCL deployment's routes come from the fabric it was made on; a re-formed fabric needs a new one.
+        current = recorded_fabric_id()
+        if current != recorded_transport["fabric"]["id"]:
+            raise ValueError(f"This deployment was made on fabric {recorded_transport['fabric']['id'][7:19]}; the "
+                             f"recorded fabric is {current[7:19] if current else 'none'}. Run sudo sparkring install "
+                             "again")
     result = retained_source.review(directory, args.operation, cache=cache)
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     if image_runtime is not None:
@@ -713,8 +897,8 @@ def lifecycle(argv):
         for old in result["native_mesh"]["replaces"]:
             print(f"  Stop/disable rank {old['rank']} service: {old['unit']}")
     if args.plan or not args.execute and not sys.stdin.isatty():
-        if args.operation == "up":
-            problem = _hairpin_problem()
+        if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
+            problem = _hairpin_problem(slot)
             if problem:
                 print("Warning: " + problem)
         print("Review, then repeat with --execute.")
@@ -736,10 +920,11 @@ def lifecycle(argv):
                 raise ValueError("Run sparkring down before selecting another model")
         if args.operation == "up":
             _refuse_conflicts(slot)
-        if args.operation == "up" and slot is None:
-            # A mesh refused by its hairpin start check would otherwise surface
-            # only as a failed systemd job, so nothing starts without the setting.
-            problem = _hairpin_problem()
+        if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
+            # A mesh refused by its hairpin start check, or a relay that drops a
+            # group's lanes, would otherwise surface only as a failed systemd job
+            # or a session timeout, so nothing starts without the setting.
+            problem = _hairpin_problem(slot)
             if problem:
                 raise ValueError(problem)
         confirm("Apply these model/image actions?", args.execute)
@@ -770,25 +955,33 @@ def lifecycle(argv):
 
 
 def _refuse_conflicts(slot):
-    """Refuse to start a model in ``slot`` while the conflicting slots' model runs: the whole ring and its halves never serve at once."""
+    """Refuse to start a model in ``slot`` while a model of a slot that shares a Spark with it runs."""
     from runtime.host import placement as placements
-    for other in placements.conflicting(slot):
+    for other in placements.conflicting(STATE, slot):
         running = active_deployment(report=False, placement=other)
         if running is not None and not placements.stopped(running):
-            raise ValueError(f"{placements.profile_of(running)} runs on {placements.text(other)}. Stop it first: "
+            size = recorded_layout()["size"] if (STATE / "cluster.json").exists() else None
+            raise ValueError(f"{placements.profile_of(running)} runs on {placements.text(other, size)}. Stop it first: "
                              "sudo sparkring down " + (placements.flag(other) if other else _up_arguments(running))
                              + " --execute")
 
 
-def _status_view(slot, path, args, result, cache):
+def _status_view(slot, path, args, result, cache, *, layout=None):
     """One deployment's part of ``sparkring status``: its saved state, recovery record and, with --refresh, model check.
 
-    Returns ``placement``, ``deployment``, ``recovery`` (only for a slot's
-    active deployment, which automatic recovery acts on), ``model`` and the
-    ``lock`` and ``record`` the terminal text reads.
+    Returns ``placement``, ``group`` (the group's shape, its positions in
+    rank order and the position that serves its API, on the recorded
+    ``layout``), ``deployment``, ``recovery`` (only for a slot's active
+    deployment, which automatic recovery acts on), ``model`` and the ``lock``
+    and ``record`` the terminal text reads.
     """
     from runtime.host import recovery, retained_source
+    from runtime.host import placement as placements
     view = {"placement": list(slot) if slot else None, "record": None}
+    if layout is not None and (slot is None or all(position < layout["size"] for position in slot)):
+        group = placements.group(layout, slot)
+        view["group"] = {"shape": group["name"], "positions": group["positions"],
+                         "api_position": group["positions"][0]}
     view["deployment"] = retained_source.apply(path, "status" if args.refresh else "saved-status", cache=cache)
     # Read here rather than by the retained source, whose revision may
     # predate these fields.
@@ -803,6 +996,7 @@ def _status_view(slot, path, args, result, cache):
     except (OSError, ValueError):
         model = None
     view["deployment"]["thinking"] = thinking.deployment_default(model, lock.get("serving"))
+    view["deployment"]["transport"] = transport_view(path, lock)
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)
         # Automatic recovery acts on each slot's active deployment only.
@@ -824,6 +1018,53 @@ def _status_view(slot, path, args, result, cache):
     from runtime.host import api_endpoint
     view["deployment"] = api_endpoint.present(view["deployment"], api_endpoint.recorded(path))
     return view
+
+
+def transport_view(directory, lock):
+    """A deployment's transport for ``sparkring status``: the backend and, on SIRCL, its last receipt verdict."""
+    value = lock.get("transport")
+    if not value:
+        return {"backend": "prepared"}
+    if value.get("backend") == "libsircl":
+        from runtime.common import libsircl
+        return libsircl.status_view(value)
+    if value.get("backend") == "nccl":
+        return {"backend": "nccl", "group": value["group"]["name"], "positions": value["group"]["positions"],
+                "fabric": value["fabric"]["id"]}
+    from runtime.host import transport_receipts
+    verdict = transport_receipts.latest(directory)
+    result = {"backend": "sircl", "nccl": value["nccl"], "group": value["group"]["name"],
+              "positions": value["group"]["positions"], "fabric": value["fabric"]["id"]}
+    if verdict is not None:
+        result.update({key: verdict.get(key) for key in ("verdict", "nccl_observed", "checked_at", "receipts")},
+                      problems=verdict.get("problems", [])[:5])
+    return result
+
+
+def transport_status_line(value):
+    """The ``Transport:`` line of ``sparkring status``."""
+    if value.get("backend") == "libsircl":
+        from runtime.common import libsircl
+        return libsircl.status_line(value)
+    if value.get("backend") == "nccl":
+        return f"Transport: nccl on {value['group']} (SIRCL and the RoCEnante slot are off)"
+    if value.get("backend") != "sircl":
+        return "Transport: prepared"
+    from runtime.host import transport_receipts
+    if "verdict" not in value:
+        return (f"Transport: sircl on {value['group']} (NCCL {value['nccl']}); no receipt check recorded yet: "
+                "sudo sparkring check")
+    line = transport_receipts.text({"problems": ["no detail"], **value})
+    return line + f" (checked {value.get('checked_at')}); sudo sparkring check repeats it"
+
+
+def recorded_fabric_id():
+    """The identity of the fabric document setup recorded on Node A, or None."""
+    from runtime.host import fabric
+    try:
+        return fabric.read_document(STATE)["id"]
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def _up_arguments(directory):

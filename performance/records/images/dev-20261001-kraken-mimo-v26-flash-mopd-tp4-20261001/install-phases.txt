@@ -12,15 +12,15 @@ Looking for existing copies of XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e o
 Install mimo-v26-flash-mopd-tp4 on 4 Sparks.
 Update workers and prepare assets; then replace the current model.
 Checkpoint XiaomiMiMo/MiMo-V2.6-Flash-MOPD at 2479e2d0029e: 150 files, 165.6 GiB
-Searched spark-edfd in 15.5 s, spark-ebb8 in 9.2 s, spark-ebee in 11.6 s and spark-4a87 in 11.3 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
+Searched spark-h in 15.5 s, spark-f in 9.2 s, spark-g in 11.6 s and spark-c in 11.3 s. Not searched: /mnt/synologytwo, /srv/spark-share (network storage; name a copy there with --model-path N=PATH).
 
-Node 0 spark-edfd -> /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
+Node 0 spark-h -> /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e
     150 of 150 files already in place
     needs 4.0 GiB free on /: 4 GiB for the compile cache; 74 GiB free
     not used: /srv/sparkring/tp4-installer/checkpoints/XiaomiMiMo--MiMo-V2.6-Flash-MOPD/2479e2d0029eca9a34cc7e7f55a121925f81908e/dflash (another checkpoint: its index differs)
-Node 1 spark-ebb8: as Node 0 (328 GiB free)
-Node 2 spark-ebee: as Node 0 (540 GiB free)
-Node 3 spark-4a87: as Node 0 (113 GiB free)
+Node 1 spark-f: as Node 0 (328 GiB free)
+Node 2 spark-g: as Node 0 (540 GiB free)
+Node 3 spark-c: as Node 0 (113 GiB free)
 
 Nothing is downloaded.
 Node 0: Check host before preparing assets

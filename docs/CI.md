@@ -8,6 +8,14 @@ run this workflow. Jobs use read-only repository permissions.
 - `tests` runs GPU-free contracts, including serving configuration and
   measurement-receipt checks. README tests check navigation rather than
   requiring a particular prose or table layout.
+- `SIRCL ring sessions` runs the CPU tests of the
+  [SIRCL ring-session package](../spark_transport/sircl/README.md) from the
+  repository layout, with its own pytest settings. Its native tests compile
+  the progress-thread source with GCC against an in-memory verbs stand-in;
+  none needs a GPU or an RDMA device. The job runs them in a private mount
+  namespace whose `/sys/class/infiniband` is empty, because a session checks
+  its route map against the host's active RDMA devices whenever the host
+  lists any, and a hosted runner's network adapter can list one.
 - `pinned LIL bridge` builds the source-pinned
   [LIL deployment companion](../integrations/lil/README.md) and exercises
   its SparkRing integration.
@@ -22,7 +30,12 @@ run this workflow. Jobs use read-only repository permissions.
 - `release safety` scans tracked nonbinary files for configured site-address
   and credential shapes. It prints only path, line number, and rule identifier.
   Findings exit with status 1; scan failures exit with status 2. The rule file
-  itself is excluded. This bounded pattern scan is not a security certification.
+  itself is excluded. Shapes include local Windows user paths. On an
+  operator's machine the scan also reports the site's own host names and MAC
+  addresses (with their IPv6 link-local forms), read from the untracked file
+  `scripts/config/site-values.txt` (one value per line) or `--site-values
+  FILE`; CI has no such file. This bounded pattern scan is not a security
+  certification.
 
 Run the documentation and release checks locally from the repository root:
 

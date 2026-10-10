@@ -47,6 +47,11 @@
       "purpose": "Local Inference Lab's NVFP4-Spark, 1M context",
       "checkpoints": {
         "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
+        "csf": {
+          "status": "research-only",
+          "purpose": "Local Inference Lab's CSF QAD weights; the default on an image that reads them",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+        },
         "nvfp4-qad": {
           "status": "implemented",
           "purpose": "Local Inference Lab's QAD weights, 512K context",
@@ -58,6 +63,11 @@
       "purpose": "Local Inference Lab's NVFP4-Spark, 1M context",
       "checkpoints": {
         "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
+        "csf": {
+          "status": "research-only",
+          "purpose": "Local Inference Lab's CSF QAD weights; the default on an image that reads them",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+        },
         "nvfp4-qad": {
           "status": "implemented",
           "purpose": "Local Inference Lab's QAD weights",

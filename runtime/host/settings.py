@@ -50,6 +50,18 @@ def download_limit(text):
     return int(bits // 8)
 
 
+def explicit(path=None):
+    """The keys the literal preferences file ``path`` sets; empty without a file."""
+    if not path:
+        return set()
+    keys = set()
+    for line in Path(path).read_text(encoding="utf-8-sig").splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            keys.add(line.partition("=")[0])
+    return keys & set(DEFAULTS)
+
+
 def load(path=None):
     values = dict(DEFAULTS)
     seen = set()
@@ -71,8 +83,8 @@ def load(path=None):
         raise ValueError("Use port 22/2222, Internet yes/no, and link policy keep/reset")
     control = ipaddress.IPv4Network(values["SPARKRING_CONTROL_CIDR"])
     fabric = ipaddress.IPv4Network(values["SPARKRING_FABRIC_CIDR"])
-    if control.prefixlen != 29 or fabric.prefixlen not in range(16, 22) or control.overlaps(fabric):
-        raise ValueError("Control requires /29; fabric requires a separate /16 through /21")
+    if control.prefixlen not in (28, 29) or fabric.prefixlen not in range(16, 22) or control.overlaps(fabric):
+        raise ValueError("Control requires a /29 or /28; fabric requires a separate /16 through /21")
     download_limit(values["SPARKRING_DOWNLOAD_LIMIT"])
     # SPARKRING_RETAIN_DEPLOYMENTS is checked where it is used
     # (install_workflow.retain_preference), so that a refusal names that key.

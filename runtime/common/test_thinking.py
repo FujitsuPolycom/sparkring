@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from runtime.common import installer, profiles, qwen_flash_next, thinking
+from runtime.common import installer, profiles, toolchain_profiles, thinking
 
 
 def served_checkpoints():
@@ -14,7 +14,7 @@ def served_checkpoints():
         configuration = profiles.read_json(installer.ROOT / installer.setup.selection(profile)["configuration"])
         names = sorted(configuration.get("checkpoints") or {}) or [None]
         for name in names:
-            model = qwen_flash_next.checkpoint_settings(configuration, name)["model"]
+            model = toolchain_profiles.checkpoint_settings(configuration, name)["model"]
             result[profile, name] = f"{model['repository']}@{model['revision']}"
     return result
 
@@ -171,4 +171,26 @@ def test_an_invalid_catalog_is_refused(tmp_path, change, message):
     change(data)
     write(tmp_path, data)
     with pytest.raises(ValueError, match=message):
+        thinking.catalog(tmp_path)
+
+
+def test_research_records_join_the_catalog_and_a_name_in_both_files_is_refused(tmp_path):
+    main = profiles.read_json(profiles.ROOT / thinking.CATALOG)
+    research = profiles.read_json(profiles.ROOT / thinking.RESEARCH)
+    merged = thinking.catalog()
+    assert set(merged["checkpoints"]) == set(main["checkpoints"]) | set(research["checkpoints"])
+    assert not set(research["checkpoints"]) & set(main["checkpoints"])
+    # The CSF checkpoint is in the main file: the GLM-5.3-Flash profiles of two and four Sparks list it.
+    csf = "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be"
+    assert main["checkpoints"][csf] == merged["checkpoints"][csf] == "glm53-flash-template"
+    # A research checkpoint may name a behaviour of the main file.
+    other = "example-owner/Example-Research-Model@" + "1" * 40
+    write(tmp_path, main)
+    (tmp_path / thinking.RESEARCH).write_text(json.dumps(dict(research, checkpoints={
+        **research["checkpoints"], other: "glm53-flash-template"})), encoding="utf-8")
+    assert thinking.catalog(tmp_path)["checkpoints"][other] == "glm53-flash-template"
+    (tmp_path / thinking.RESEARCH).write_text(json.dumps(dict(research, behaviours={
+        **research["behaviours"], "glm53-flash-template": main["behaviours"]["glm53-flash-template"]})),
+        encoding="utf-8")
+    with pytest.raises(ValueError, match="glm53-flash-template appear in both"):
         thinking.catalog(tmp_path)

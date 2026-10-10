@@ -7,7 +7,8 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The nine `sparkring install` profiles | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
+| Installer image | The `sparkring install` profiles, the 13 its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| 2026.10.1 installer image | `sparkring install --image 2026.10.1`, and [Compose](compose.md) exports | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Each profile's `profile.json` names its image release; other profiles use
@@ -15,7 +16,38 @@ other releases.
 
 ## Installer image
 
-Development image, tag `dev-20261004-kraken-cuda1342-nccl2323-status034`.
+Development image of release 2026.10.2, tag
+`dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, built in five layers on
+the [2026.10.1 installer image](#2026101-installer-image). The download is
+14.2 GiB and the unpacked image 29.7 GiB; a Spark that holds
+2026.10.1's image downloads the 6 layers it adds, 8.3 MiB.
+
+| Layer | Adds |
+|---|---|
+| Kraken CSF sources | The vLLM and B12X sources that read GLM-5.3-Flash's CSF checkpoint ([derive_kraken_csf_sources.py](../../runtime/images/derive_kraken_csf_sources.py)) |
+| SIRCL 0.3.2 | SIRCL ring sessions and their two prebuilt native libraries ([SIRCL layer](../../runtime/images/installer-images.md#sircl-layer)) |
+| libsircl 0.6.0 | SIRCL's NCCL-API library, built from `spark_transport/libsircl` with its kernel packs and fail-stop mode; it creates a communicator on the current device when no context is current ([libsircl layer](../../runtime/images/installer-images.md#libsircl-layer)) |
+| GLM-5.3 plugins | The vLLM general plugins `glm_dsa_indexer_split` 1.1.0, `glm53full_speedups` 1.1.0 and `glm_dcp_decode_comm` 2.0.1 ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py)) |
+| runtime-status 0.3.6 | The status dashboard, which names the collective transport and the SIRCL version of the tensor-parallel group ([derived_layer.py](../../runtime/images/derived_layer.py)) |
+
+- The [installer image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
+  (`sparkring-installer-image/v3`) lists its 13 profiles and pins the
+  image's identity.
+- The [release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
+  states its layers, evidence and limitations.
+
+On a fabric that `sudo sparkring setup` recorded, `sparkring install` runs
+profiles on this image with SIRCL ring sessions and NCCL off
+([transport and receipts](install-reference.md#transport-and-receipts)), and
+on the prepared transport elsewhere. Its GLM-5.3-Flash profiles install the
+CSF checkpoint by default
+([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+
+## 2026.10.1 installer image
+
+Development image of release 2026.10.1, tag
+`dev-20261004-kraken-cuda1342-nccl2323-status034`: the parent and rollback
+image of 2026.10.2 (`--image 2026.10.1`) and the image of Compose exports.
 The download is 14.2 GiB and the unpacked image 29.7 GiB. It shares 32 of its
 45 registry layers with `dev-20261001-kraken-cuda1342-nccl2323-status034`, so
 a Spark that holds that image downloads the other 13, about 3.8 GiB.
@@ -38,7 +70,7 @@ installs a profile on it ([Another image](install-reference.md#another-image)).
 | `eugr/spark-vllm-b12x` nightly-20261001 base | Torch 2.13.0 for CUDA 13.0, FlashInfer 0.7.1 and vLLM's compiled extensions, built for GB10 (SM121a) |
 | vLLM and [B12X](https://github.com/local-inference-lab/b12x) sources | Local Inference Lab's Karmic Kraken beta branches (`integration/karmic-kraken-beta`) merged with SparkRing's changes: branches `sparkring/kraken-beta-20261004` of [FujitsuPolycom/vllm](https://github.com/FujitsuPolycom/vllm/tree/sparkring/kraken-beta-20261004) and [FujitsuPolycom/b12x](https://github.com/FujitsuPolycom/b12x/tree/sparkring/kraken-beta-20261004) |
 | CUDA 13.4.2 and NCCL 2.32.3 | CUDA runtime and the NCCL library the installer selects |
-| Paced RoCEnante transport (`tp2-rocenante-adaptive-prepared`) | Collectives; a send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
+| Prepared B12X RoCE transport bundle (`tp2-rocenante-adaptive-prepared`) | Collectives over RoCE through B12X's RoCE communication package (`b12x.comm.roce`, called RoCEnante), on profiles of two and four Sparks alike: the `tp2-` name is kept for compatibility, and when SIRCL is loaded it replaces this bundle's all-reduce slot. A send window bounds the traffic a ring node relays. A rank waits up to `B12X_ROCE_PEER_TIMEOUT_S` seconds (300 by default) for a late peer and logs waits over 5 s ([peer wait](../../integrations/vllm/rocenante_prepared/README.md#peer-wait), [#278](https://github.com/FujitsuPolycom/sparkring/issues/278)) |
 | RoCE GID index per port | Each HCA uses the RoCE GID index of its fabric address, read at startup. NCCL still uses index 3, which the installer restores before a model starts ([RoCE GID index 3](install-reference.md#roce-gid-index-3)). Ranks of images with proxy ABI 5 and 6 refuse to connect, so all Sparks must run the same image ([GID index per port](../../integrations/vllm/rocenante_prepared/README.md#gid-index-per-port)) |
 | Runtime-status dashboard 0.3.4 | [Status dashboard](dashboard.md) at `/v1/sparkring/status/view` on the model API port: settings, memory, transport and versions, with only the rows to check colored. The settings include the reasoning and tool-call parsers, the default chat template arguments and the shared-memory reader window |
 | Qwen decode layer | Skinny-GEMM plans for BF16 projections on GB10; the `VLLM_QWEN4_EXP_MXFP8_HC` setting, off unless a profile sets it |
@@ -48,11 +80,25 @@ installs a profile on it ([Another image](install-reference.md#another-image)).
 | Tool-result contract | A Chat Completions request whose `tool_choice` is `required` or names a function, and whose output lacks a complete call, gets HTTP 400 if the token limit ended generation and HTTP 500 otherwise, not HTTP 200 without a tool call ([tool-result contract](../../integrations/vllm/tool_choice_contract/README.md), [#217](https://github.com/FujitsuPolycom/sparkring/issues/217)). `SPARKRING_TOOL_CHOICE_CONTRACT=0` in a profile's environment turns it off |
 | Shared-memory reader window | vLLM's shared-memory readers poll for `SPARKRING_SHM_BUSY_LOOP_S` seconds after a read when that variable is set, and for one second otherwise ([derive_spin_wait.py](../../runtime/images/derive_spin_wait.py)). `sparkring install --save-cpu` sets it to 2 ms, and is refused on an image without it ([serving settings](install-reference.md#serving-settings), [#189](https://github.com/FujitsuPolycom/sparkring/issues/189)) |
 
+This image carries no SIRCL layer, so its deployments run on the prepared
+transport. A kraken-line image with the SIRCL layer
+([SIRCL layer](../../runtime/images/installer-images.md#sircl-layer)) adds the
+SIRCL package and its two prebuilt native libraries; `sparkring images` lists
+`sircl` among its transports, and `sparkring install` runs profiles on it with
+SIRCL ring sessions and NCCL off
+([transport and receipts](install-reference.md#transport-and-receipts)).
+The image that the
+[`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md)
+builds also has the vLLM and B12X sources that read GLM-5.3-Flash's CSF
+checkpoint; on it, the GLM profiles of two and four Sparks install that
+checkpoint by default
+([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+
 `sparkring install` starts the image with its entrypoint, a per-rank
 runtime-binding file, the NCCL 2.32.3 library paths and a seccomp policy that
 allows `io_uring` (`runtime/common/loader-seccomp.json`). Run it with
-`sparkring install` or [Compose](compose.md); the manual Qwen launcher,
-`runtime/common/qwen_flash_next.py`, refuses it.
+`sparkring install` or [Compose](compose.md); the manual profile launcher,
+`runtime/common/toolchain_profiles.py`, refuses it.
 
 ## Shared 2026.09.3 image
 

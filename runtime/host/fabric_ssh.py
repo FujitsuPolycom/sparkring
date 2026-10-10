@@ -6,25 +6,32 @@ from pathlib import Path
 import shlex
 import subprocess
 
-from runtime.host import control as control_network, control_node, node
+from runtime.common import fabric_layout
+from runtime.host import control as control_network, control_node, node, topology
 
 
 def routes(cluster):
+    """The bulk-transfer tree from Node A: each Spark's parent and its primary fabric address on their cable.
+
+    Breadth first along the cables, port 0's neighbor first, so a ring
+    splits into two directions and a line has one.
+    """
     hosts = cluster["plan"]["spec"]["hosts"]
     size = len(hosts)
-    if size not in (2, 4) or [h["rank"] for h in hosts] != list(range(size)):
-        raise ValueError("Bulk transfer requires the discovered pair or four-node ring")
+    layout = topology.layout_of(cluster["plan"])
+    if [h["rank"] for h in hosts] != list(range(size)):
+        raise ValueError("Bulk transfer requires the discovered Sparks in position order")
     result = {0: {"rank": 0, "parent": None, "address": None}}
     queue = deque([0])
     while queue:
         parent = queue.popleft()
-        neighbors = [1 - parent] if size == 2 else [(parent + 1) % size, (parent - 1) % size]
-        for rank in neighbors:
-            if rank in result:
+        for port in (0, 1):
+            far = fabric_layout.peer(layout, parent, port)
+            if far is None or far[0] in result:
                 continue
-            clockwise = size == 2 or rank == (parent + 1) % size
-            source_role = "cw_primary" if clockwise else "ccw_primary"
-            target_role = "cw_primary" if size == 2 else "ccw_primary" if clockwise else "cw_primary"
+            rank = far[0]
+            source_role = fabric_layout.port_role(port, "primary")
+            target_role = fabric_layout.port_role(far[1], "primary")
             source = next(p for p in hosts[parent]["data_interfaces"] if p["role"] == source_role)
             target = next(p for p in hosts[rank]["data_interfaces"] if p["role"] == target_role)
             a, b = (ipaddress.IPv4Interface(p["address"]) for p in (source, target))
@@ -36,10 +43,18 @@ def routes(cluster):
 
 
 class Transport:
-    """Keep control credentials on the head; bulk bytes never traverse the caller's PC."""
-    def __init__(self, cluster, directory, *, root="/", run=subprocess.run):
+    """Keep control credentials on the head; bulk bytes never traverse the caller's PC.
+
+    ``document`` is the cluster's fabric document (``sparkring-fabric/v1``)
+    when one is recorded for these Sparks; transfers then spread along its
+    cables (``runtime/host/spread.py``). ``positions`` gives each rank's
+    fabric position, which equals the rank for the whole cluster.
+    """
+    def __init__(self, cluster, directory, *, root="/", run=subprocess.run, document=None):
         self.cluster, self.run = cluster, run
         self.hosts = cluster["plan"]["spec"]["hosts"]
+        self.document = document
+        self.positions = list(range(len(self.hosts)))
         self.routes = routes(cluster)
         self.directory = Path(directory)
         self.directory.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -162,6 +177,9 @@ class View:
         self.transport, self.ranks = transport, list(ranks)
         self.hosts = [transport.hosts[rank] for rank in self.ranks]
         self.mode = transport.mode
+        self.document = getattr(transport, "document", None)
+        positions = getattr(transport, "positions", range(len(transport.hosts)))
+        self.positions = [positions[rank] for rank in self.ranks]
 
     def local(self, rank):
         return self.transport.local(self.ranks[rank])
