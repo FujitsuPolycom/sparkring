@@ -70,9 +70,12 @@ written. The routing settings the installer passed (`LIBSIRCL_POSITION`, `SIRCL_
 `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_RING_WINDOW`) equal the ones `spark_transport/libsircl/tools/site_routes.py
 --layout path:0-1 --lanes 2` gives. In the same image on the same pair, with the deployment's LIBSIRCL_*,
 SIRCL_* and NCCL_* environment, one process per Spark that set CUDA device 0, created a unique ID on rank 0
-and called `ncclCommInitRank` inside `torch.cuda.device(0)` created the communicator on both ranks. The cause
-is therefore in vLLM's process setup, not in the routing settings; vLLM reports only the error's name, and
-libsircl keeps its message for `ncclGetLastError`, which vLLM does not call.
+and called `ncclCommInitRank` inside `torch.cuda.device(0)` created the communicator on both ranks, with and
+without the container's `LD_PRELOAD` of NVIDIA NCCL and the CUDA libraries. vLLM's workers already started
+with `VLLM_WORKER_MULTIPROC_METHOD=spawn` (the profile sets it), so a library state inherited through `fork`
+does not explain the refusal. The cause is therefore in vLLM's setup of the communicator, not in the routing
+settings; vLLM reports only the error's name, and libsircl keeps its message for `ncclGetLastError`, which
+vLLM does not call.
 
 ### Measurements
 
