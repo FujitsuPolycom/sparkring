@@ -381,7 +381,107 @@ def test_worker_script_is_self_contained():
     assert tail[1:] == ["retire(dict(order, link_local=False))",
                         "subprocess.run(['python3', '-I', '/var/tmp/sparkring-enroll-1/install.py', '--apply', "
                         "'--prepare', '--yes'], check=True)",
-                        "signal.signal(signal.SIGHUP, signal.SIG_IGN)", "retire(order)"]
+                        "signal.signal(signal.SIGHUP, signal.SIG_IGN)", "retire(dict(order, keep_preparation=True))"]
+
+
+# A relay table as a fabric record of a ring stores it (relays.section): two functions, one ingress rule each, one
+# relay route and permanent neighbor on each, one marker.
+RELAYS = {"routes": [{"dst": "198.18.2.2/32", "dev": "enp1s0f0np0", "src": "198.18.0.1", "scope": "link"},
+                     {"dst": "198.18.8.1/32", "dev": "enp1s0f1np1", "src": "198.18.14.2", "scope": "link"}],
+          "neighbours": [{"addr": "198.18.2.2", "lladdr": "4c:bb:47:00:00:01", "dev": "enp1s0f0np0"},
+                         {"addr": "198.18.8.1", "lladdr": "4c:bb:47:00:00:02", "dev": "enp1s0f1np1"}],
+          "filters": [{"dev": "enp1s0f0np0", "pref": 11, "handle": 1, "protocol": "0x88b5"},
+                      {"dev": "enp1s0f1np1", "pref": 11, "handle": 1, "protocol": "0x88b5"}],
+          "markers": [{"rdma": "rocep1s0f0", "rules": [{"dst": "198.18.2.2", "ethertype": "0x88b5"}]}]}
+MARKERS = {"sparkring-relay-marker.service": ("enabled", "active"), "sparkring-fabric.service": ("enabled", "active")}
+
+
+def relayed_worker(root):
+    """The files of a worker of a ring whose fabric record holds a relay table, prepared once before."""
+    write(root, "/etc/sparkring/node.json")
+    write(root, "/etc/sparkring/fabric.json", json.dumps({"cluster_id": "c" * 64, "routes": [], "relays": RELAYS}))
+    write(root, "/etc/sparkring/seed_keys", "ssh-ed25519 OLD old-node-a\n")
+    write(root, "/etc/sparkring/seed_sshd_config", "Port 2222\n")
+
+
+def test_retire_removes_the_records_relay_table_after_its_markers_and_boot_service_stop(tmp_path):
+    relayed_worker(tmp_path)
+    host = Host(tmp_path, units=dict(MARKERS))
+    receipt = reform.retire({"stamp": STAMP, "node_a": False}, call=host, root=tmp_path)
+    removals = [argv for argv in host.calls if argv[:3] in (["tc", "filter", "del"], ["ip", "route", "del"],
+                                                             ["ip", "neigh", "del"])]
+    assert removals == [
+        ["tc", "filter", "del", "dev", "enp1s0f0np0", "ingress", "pref", "11"],
+        ["tc", "filter", "del", "dev", "enp1s0f1np1", "ingress", "pref", "11"],
+        ["ip", "route", "del", "198.18.2.2/32", "dev", "enp1s0f0np0"],
+        ["ip", "route", "del", "198.18.8.1/32", "dev", "enp1s0f1np1"],
+        ["ip", "neigh", "del", "198.18.2.2", "dev", "enp1s0f0np0"],
+        ["ip", "neigh", "del", "198.18.8.1", "dev", "enp1s0f1np1"]]
+    # The markers and the boot service that restores the table stop first, so nothing adds it back.
+    first = host.calls.index(removals[0])
+    for unit in MARKERS:
+        assert host.calls.index(["systemctl", "disable", "--now", unit]) < first
+    assert receipt["disabled"] == ["sparkring-relay-marker.service", "sparkring-fabric.service"]
+    assert receipt["removed"][:6] == ["relay ingress rule pref 11 on enp1s0f0np0", "relay ingress rule pref 11 on enp1s0f1np1",
+                                  "relay route 198.18.2.2/32 dev enp1s0f0np0", "relay route 198.18.8.1/32 dev enp1s0f1np1",
+                                  "relay neighbor 198.18.2.2 dev enp1s0f0np0", "relay neighbor 198.18.8.1 dev enp1s0f1np1"]
+    assert "sudo systemctl enable sparkring-relay-marker.service" in receipt["restore"]
+    # A repeated run finds the record moved and removes nothing again.
+    host.calls.clear()
+    reform.retire({"stamp": STAMP, "node_a": False}, call=host, root=tmp_path)
+    assert not [argv for argv in host.calls if argv[1:3] == ["filter", "del"] or argv[2:3] == ["del"]]
+
+
+def test_the_plan_names_the_relay_table_that_retire_removes():
+    spark = {"data": {"inventory": {"hostname": "spark-b"}, "state": {"fabric": {
+        "rank": 1, "size": 8, "routes": 0, "relays": {"routes": 12, "neighbours": 12, "filters": 12, "markers": 4}}}}}
+    assert reform.items(spark) == [
+        "fabric record (rank 1 of 8 Sparks): moved aside; its boot service is turned off and its relay table removed "
+        "(12 routes, 12 permanent neighbor entries, 12 ConnectX ingress rules) and its relay markers stopped"]
+    spark["data"]["state"]["fabric"]["routes"] = 2
+    assert reform.items(spark)[0].endswith("turned off, its routes removed and its relay table removed (12 routes, "
+                                           "12 permanent neighbor entries, 12 ConnectX ingress rules) and its relay "
+                                           "markers stopped")
+
+
+def test_a_worker_script_retires_prepares_retires_and_leaves_setup_its_sign_in(tmp_path):
+    """The worker's root program, run statement by statement on a fake Spark: the second retire keeps the
+    preparation's SSH service and files that the first one moved aside from the former cluster."""
+    relayed_worker(tmp_path)
+    host = Host(tmp_path, units={**MARKERS, "sparkring-seed.service": ("enabled", "active")})
+    install = "/var/tmp/sparkring-enroll-1/install.py"
+    code = reform.worker_script({"stamp": STAMP, "node_a": False, "keep": []}, install)
+    prepared = []
+
+    def prepare(argv, check):
+        # The worker bundle's installer and preparation (seed.prepare): Node A's key and the SSH service on port 2222.
+        assert argv == ["python3", "-I", install, "--apply", "--prepare", "--yes"] and check
+        write(tmp_path, "/etc/sparkring/seed_keys", "ssh-ed25519 NEW node-a\n")
+        write(tmp_path, "/etc/sparkring/seed_sshd_config", "Port 2222\nAllowUsers root\n")
+        host.units["sparkring-seed.service"] = ("enabled", "active")
+        prepared.append(argv)
+
+    signal_line = "signal.signal(signal.SIGHUP, signal.SIG_IGN)\n"
+    assert code.count("retire(dict(order") == 2 and code.count(signal_line) == 1
+    # The program's own retire, bound to the fake Spark; the subprocess call of the installer runs prepare.
+    program = (code.replace("retire(dict(order", "retire_here(dict(order")
+               .replace(f"subprocess.run(['python3', '-I', {install!r}", f"prepare(['python3', '-I', {install!r}")
+               .replace(signal_line, ""))
+    namespace = {"prepare": prepare}
+    namespace["retire_here"] = lambda order: namespace["retire"](order, call=host, root=tmp_path)
+    exec(compile(program, "worker", "exec"), namespace)
+    assert prepared
+    retired = tmp_path / "var/lib/sparkring/retired" / STAMP
+    # The former cluster's preparation access and fabric record moved aside, its relay table is gone ...
+    assert (retired / "etc/sparkring/seed_keys").read_text(encoding="utf-8") == "ssh-ed25519 OLD old-node-a\n"
+    assert (retired / "etc/sparkring/fabric.json").is_file() and not (tmp_path / "etc/sparkring/fabric.json").exists()
+    assert ["tc", "filter", "del", "dev", "enp1s0f0np0", "ingress", "pref", "11"] in host.calls
+    # ... and setup signs in through the new one: the service runs with Node A's new key.
+    assert host.units["sparkring-seed.service"] == ("enabled", "active")
+    assert (tmp_path / "etc/sparkring/seed_keys").read_text(encoding="utf-8") == "ssh-ed25519 NEW node-a\n"
+    assert (tmp_path / "etc/sparkring/seed_sshd_config").read_text(encoding="utf-8").startswith("Port 2222")
+    receipt = json.loads((retired / "receipt.json").read_text(encoding="utf-8"))
+    assert receipt["stopped"].count("sparkring-seed.service") == 1
 
 
 def arguments(**values):
