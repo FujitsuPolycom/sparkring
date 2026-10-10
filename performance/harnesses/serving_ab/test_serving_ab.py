@@ -325,3 +325,44 @@ def test_extra_mounts_bind_read_only_before_the_image_and_refuse_runner_targets(
     for bad in ("/srv/x=/models/target", "/srv/x=/cache/y", "relative=/models/draft", "/srv/x", "/srv/a,b=/m"):
         with pytest.raises(SystemExit):
             cli.extra_mounts([base(0)], [bad])
+
+
+def test_the_bench_wrapper_starts_every_cell_and_its_streams_from_an_idle_server():
+    import asyncio
+    from types import SimpleNamespace
+
+    from performance.harnesses.serving_ab import bench_run
+
+    events = []
+
+    async def run_one_cell(client, base_url, concurrency, context_tokens, **kwargs):
+        events.append(("cell", concurrency, context_tokens, kwargs.get("engine")))
+        # The cell's scout runs inside the cell, before its streams.
+        await module.wait_prefill_task_with_live("scout-task", client, base_url, kwargs.get("engine"), "state",
+                                                 "live", "scout")
+        events.append(("streams", concurrency))
+        return "result"
+
+    async def wait_prefill_task_with_live(request_task, client, base_url, engine, state, live, status):
+        events.append(("scout", request_task))
+        return "scout-result"
+
+    async def wait_server_idle(client, base_url, engine, stable_seconds=1.0, timeout_seconds=120.0, state=None,
+                               live=None, status=""):
+        events.append(("idle", engine, timeout_seconds, status))
+        return {}
+
+    module = SimpleNamespace(check_for_update=lambda console: True, run_one_cell=run_one_cell,
+                             wait_prefill_task_with_live=wait_prefill_task_with_live,
+                             wait_server_idle=wait_server_idle, ENGINE_SGLANG="sglang")
+    bench_run.patch(module)
+    assert module.check_for_update(None) is False
+    # The pre-decode warm-up and a measured cell, called as the benchmark calls them (keywords).
+    for concurrency, context in ((1, 32768), (8, 32768)):
+        assert asyncio.run(module.run_one_cell(client="c", base_url="http://api", concurrency=concurrency,
+                                               context_tokens=context, engine="vllm")) == "result"
+    cell = [("idle", "vllm", bench_run.IDLE_TIMEOUT_SECONDS, "waiting for server idle before the cell"),
+            ("scout", "scout-task"),
+            ("idle", "vllm", bench_run.IDLE_TIMEOUT_SECONDS, "waiting for the scout to leave the server")]
+    assert events == [cell[0], ("cell", 1, 32768, "vllm"), *cell[1:], ("streams", 1),
+                      cell[0], ("cell", 8, 32768, "vllm"), *cell[1:], ("streams", 8)]
