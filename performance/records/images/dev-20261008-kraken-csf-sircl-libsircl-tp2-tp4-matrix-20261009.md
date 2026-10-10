@@ -47,7 +47,7 @@ Conclusion.
 | `mx-qwen-tp2` | `qwen38-flash-next-tp2` | S | pair | checkpoint `qad-step5500-mxfp8-attention` (the installer-derived `sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a96e5`) |
 | `mx-qwen-tp2-s4000` | `qwen38-flash-next-tp2` | S | another pair | checkpoint `qad-step-4000` |
 | `mx-qwen-tp4` | `qwen38-flash-next-qad-tp4` | S | path of four | checkpoint `qad-step5500-mxfp8-attention` |
-| `mx-dsv41-tp4` | `deepseek-v41-flash-tp4` | S+ | path of four | `SIRCL_FUSED_NORM=1` (the arm) |
+| `mx-dsv41-tp4` | `deepseek-v41-flash-tp4` | S+ | path of four | `SIRCL_FUSED_NORM=1` (the arm), which made no fused call: this model's decoder has no call site for it |
 
 ## Measurement
 
@@ -110,7 +110,10 @@ other settings as follows:
   on two different pairs. Both profiles keep their default checkpoint, `qad-step5500-ple1000`, which no
   campaign ran; both measured checkpoints stay selectable with `--checkpoint`, and the installer-derived
   `qad-step5500-mxfp8-attention` cannot be a checkpoint table's default.
-- `deepseek-v41-flash-tp4`: `SIRCL_FUSED_NORM=1`, as the `S+` arm ran; a profile may pin that switch.
+- `deepseek-v41-flash-tp4`: nothing besides the ring-schedule settings. The `S+` arm's `SIRCL_FUSED_NORM=1`
+  made no fused call: DeepSeek-V4.1-Flash's decoder never calls the vLLM helper the switch replaces
+  ([performance/enhancements.json](../../enhancements.json), entry `sircl-fused-allreduce-rmsnorm`), and the
+  profile does not pin the switch.
 
 ## Limitations
 
