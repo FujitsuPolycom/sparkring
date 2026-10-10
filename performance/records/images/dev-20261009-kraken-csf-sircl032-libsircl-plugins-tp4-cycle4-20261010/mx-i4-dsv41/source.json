@@ -1,0 +1,11 @@
+{
+ "profile": "deepseek-v41-flash-tp4",
+ "checkpoint": null,
+ "served_model_name": "DeepSeek-V4.1-Flash-TP4",
+ "port": 8015,
+ "context_limit": 1048576,
+ "metrics": "phase1-16k",
+ "deviations": [],
+ "measured_at": "2026-10-10T01:38:41Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}

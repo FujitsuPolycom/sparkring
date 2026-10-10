@@ -1,0 +1,59 @@
+{
+ "profile": "glm53-flash-nvfp4-spark-tp4",
+ "deployment": "d1df8421036ab9276bd24e79d9c97ded45176f24be2e107e73c293f8e2da5246",
+ "directory": "glm53-flash-nvfp4-spark-tp4-i9982a7a6035a",
+ "written": 1791594932.3864198,
+ "source_revision": "6555b89b50424ed01372e0d0b9be8f447518f716",
+ "backend": "compose",
+ "image_runtime": {
+  "name": "dev-20261009-kraken-csf-sircl032-libsircl-plugins",
+  "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952"
+ },
+ "transport": {
+  "backend": "sircl",
+  "image": "dev-20261009-kraken-csf-sircl032-libsircl-plugins",
+  "fabric": {
+   "id": "sha256:097062777e177b4d7ce8e643c4d42a52851dd82d07eb7f0010cc5daf6b958762",
+   "shape": "cycle",
+   "size": 4
+  },
+  "group": {
+   "cabling": "ring",
+   "dcp": 1,
+   "lanes": 2,
+   "layout": "ring:4",
+   "max_relays": 1,
+   "name": "cycle-4",
+   "positions": [
+    0,
+    1,
+    2,
+    3
+   ],
+   "shape": "cycle",
+   "size": 4
+  },
+  "tuning": {
+   "applies": true,
+   "row": "cycle-4",
+   "row_source": "measured",
+   "settings": {},
+   "sha256": "92bd95e66a4093deb1a58a9af5930fa7c46fc4caeac1e16e03ab3c9c8c304f52",
+   "source": "defaults",
+   "tables": [
+    {
+     "hash": "df333d97acb1a4b2",
+     "path": "runtime/common/sircl-tuning/cycle-4.json",
+     "sessions": [
+      "tp"
+     ],
+     "settings": {
+      "SIRCL_LINK_SLOTS": 8,
+      "SIRCL_LINK_SLOT_BYTES": 1048576
+     },
+     "sha256": "3b8f02ba71e406d8ae2e8ae21428afafc3949c6287439f5cfbe04042a508a580"
+    }
+   ]
+  }
+ }
+}

@@ -1,0 +1,11 @@
+{
+ "profile": "qwen38-flash-next-qad-tp4",
+ "checkpoint": null,
+ "served_model_name": "Qwen3.8-Flash-Next-NVFP4-QAD-TP4",
+ "port": 8015,
+ "context_limit": 262144,
+ "metrics": "phase1-16k",
+ "deviations": [],
+ "measured_at": "2026-10-10T02:02:35Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}
