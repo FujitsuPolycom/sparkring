@@ -234,11 +234,11 @@ deployment, and none is serving qualification.
   | Qwen3.8-Flash-Next | -8.9 % (-16.1 % to -1.4 %) | 0.10 |
 
   CSF and DeepSeek-V4.1-Flash decode on the ring of four within the spread
-  of the path of four. Qwen3.8-Flash-Next's install ran its default
-  checkpoint and the path of four ran `qad-step5500-mxfp8-attention`, so the
-  8.9 % gap does not separate checkpoint from topology; a run of the
-  MXFP8-attention checkpoint on the ring of four is pending. Each comparison
-  also changes the image, the SIRCL build and the transport settings.
+  of the path of four. Qwen3.8-Flash-Next's 8.9 % gap is under investigation;
+  its cause is not separated, because the path-of-four run used checkpoint
+  `qad-step5500-mxfp8-attention` and the install the default
+  `qad-step5500-ple1000`. Each comparison also changes the image, the SIRCL
+  build and the transport settings.
 - Records: [setup and SIRCL tune](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md),
   [TP4 on a ring of four](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md).
@@ -264,8 +264,7 @@ deployment, and none is serving qualification.
 | `ring8-installer`: installer runs on the eight-Spark ring with the release lock | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `ring4-install`: the installer scenarios on the rings of four | **pending** | — |
-| `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next; CSF and DeepSeek within the spread of a path of four | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md) |
-| `ring4-qwen-control`: Qwen3.8-Flash-Next's `qad-step5500-mxfp8-attention` checkpoint on a ring of four, which separates the checkpoint from the topology in its 8.9 % gap to the path of four | **pending** | — |
+| `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next; CSF and DeepSeek within the spread of a path of four, Qwen's 8.9 % gap under investigation | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md) |
 | `ring4-sircl-tune`: SIRCL's ring-harness tune of the `cycle-4` group shape on both rings | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
 | `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table | passed | [record](../../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md) |
 | `ring4-libsircl-gate`: the libsircl gate on a cycle of four | passed | [record](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md) |
@@ -298,6 +297,11 @@ row ([release procedure](../../../docs/development/releases.md)).
   SIRCL serving record in the repository.
 - The `cycle-4` row comes from one quick tune per ring with GPU clocks not
   locked; no serving run has compared it with SIRCL's own rules.
+- Qwen3.8-Flash-Next at TP4 decodes 8.9 % slower on a ring of four than on a
+  path of four; the gap is under investigation, and its cause is not
+  separated, because the path-of-four run used checkpoint
+  `qad-step5500-mxfp8-attention` and the install the default
+  `qad-step5500-ple1000`.
 - The serving A/B measurements locked the GPU clocks, which the installer
   does not do; the installer runs and the `cycle-4` tunes did not lock them.
 - The image's dashboard (runtime-status 0.3.4) shows neither SIRCL's session

@@ -108,10 +108,10 @@ functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
 - On a four-Spark ring, `sparkring install` deployments of the four-Spark
   GLM-5.3-Flash CSF and DeepSeek profiles decoded within a few percent of the
   table's four-Spark rows (median -0.8 % and +0.9 %; GPU clocks locked, one
-  start each). The Qwen profile on its default checkpoint decoded 8.9 % below
-  the table's MXFP8-attention row
-  ([record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
-- **Pending:** the Qwen MXFP8-attention checkpoint on a four-Spark ring.
+  start each). The Qwen profile's 8.9 % gap to the table's row is under
+  investigation; its cause is not separated, because that row used checkpoint
+  `qad-step5500-mxfp8-attention` and the install the default
+  `qad-step5500-ple1000` ([record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
 
 ## Documentation
 

@@ -158,11 +158,11 @@ context. The items below it state their own conditions.
   locked, one measured start each, research-only): GLM-5.3-Flash CSF and
   DeepSeek-V4.1-Flash decoded within a few percent of the same profiles on
   four Sparks of the ring of eight (median -0.8 % and +0.9 %).
-  Qwen3.8-Flash-Next decoded 8.9 % slower on its default checkpoint than the
-  MXFP8-attention checkpoint had on the path of four
+  Qwen3.8-Flash-Next decoded 8.9 % slower, a gap under investigation whose
+  cause is not separated, because the path-of-four run used checkpoint
+  `qad-step5500-mxfp8-attention` and the install the default
+  `qad-step5500-ple1000`
   ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
-- **Pending:** the MXFP8-attention checkpoint of Qwen3.8-Flash-Next on a ring
-  of four, which separates checkpoint from topology in that gap.
 
 ## Known limitations
 
