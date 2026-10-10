@@ -250,7 +250,7 @@
     {
       "id": "relay-marker",
       "result": "pending",
-      "scope": "the relay marker binary of source c64c74535c06 published as a release asset and named in spark_transport/fabric/relay-marker-artifact.json, which names none; package builds without a compiler, install.sh among them, stop until it does",
+      "scope": "the relay marker binary of source c64c74535c06, compiled on an arm64 Spark with gcc and libibverbs-dev by python3 scripts/build_deb.py --relay-marker require, published as release asset sparkring-relay-marker-c64c74535c06-arm64 and named with its SHA-256 and URL in spark_transport/fabric/relay-marker-artifact.json, which names none; package builds without a compiler, install.sh among them, stop until it does",
       "record": null
     },
     {
