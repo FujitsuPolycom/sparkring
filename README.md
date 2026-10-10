@@ -1,10 +1,11 @@
 # SparkRing
 
-This project is based on GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD by Local
-Inference Lab, Inc., a non-profit organization, available at
+SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
 https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
-Lab License, Version 1.0.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
 
 SparkRing serves large language models on two to eight NVIDIA DGX Sparks
 cabled directly to each other over ConnectX-7, with no switch. vLLM serves the
