@@ -67,6 +67,12 @@
       ]
     },
     {
+      "id": "installer-sparkcache-gab86b70",
+      "path": "runtime/images/derived_layer.py",
+      "kind": "python",
+      "reason": "Derive the SparkCache connector-job lease layer over the release image sha256:d52737a109e0 with the descriptor runtime/images/compositions/installer-sparkcache-gab86b70/descriptor.json: it adds the reviewed lease contract vllm-connector-jobs-gab86b70.json and restates the three SparkCache verifier files that load it, in site-packages, so asynchronous page capture verifies the image's actual vLLM bytes; prepare does not invoke Docker, and record admits the built image and writes its v3 lock with the parent's SIRCL block and the two SparkCache research-only profiles listed. Research-only; no release lists it."
+    },
+    {
       "id": "installer-kraken-csf-sources",
       "path": "runtime/images/derive_kraken_csf_sources.py",
       "kind": "python",

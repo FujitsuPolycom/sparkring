@@ -1,0 +1,128 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "vllm_commit": "gab86b7073",
+  "vllm_version": "0.1.dev21553+gab86b7073.d20261001",
+  "image_id": "sha256:d52737a109e0",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save",
+    "hybrid-load-failure-discards-unproven-prefixes",
+    "failed-load-blocks-retire-after-receive-or-write-fences"
+  ],
+  "qualification": "Source review and CPU conformance only; CUDA/model qualification remains required.",
+  "notes": [
+    "Kraken-line composition of installer image sha256:d52737a109e0 (release 2026.10.2), reviewed against the connector-job API surface directly. It shares no reviewed commit with the jj (abb715f) or R27 (5dede5b) compositions, so every fingerprint below is independent.",
+    "Deferred block freeing: the scheduler returns freed blocks to the pool only after the in-flight step's writes complete (Scheduler._free_request_blocks, _free_cow_retained_blocks, _drain_deferred_frees; drained in update_from_output). This strengthens full-attention prefix immutability; SparkCache holds its own block-pool reference per source page, so delayed frees extend page lifetimes and never shorten them.",
+    "Extra scheduler bindings: bind_kv_cache_manager, boundary capture releaser, boundary checkpoint cache and the recurrent publication boundary provider are optional hooks the generic adapter never calls.",
+    "Async load deferral: pre_forward keeps start_load_kv for post_forward when has_sync_kv_loads is false. Load-path only; post_forward still calls wait_for_save after target and MTP state writes, and no_forward passes wait_for_save=False.",
+    "AsyncScheduler subclasses Scheduler and inherits every reviewed hook, so --async-scheduling compositions keep these semantics unchanged.",
+    "The encoder-cache connector (ec_connector) carries its own metadata channel and never touches KV block ownership.",
+    "The CSF layer of the image replaced vllm/envs.py. envs.py is not fingerprinted here and none of the lease semantics read it; SparkCache reads its capture settings from kv-transfer extra config and its own environment variables. The in-image parent-cache contract binds the pre-CSF envs.py bytes and therefore refuses this image; this contract rebinds to the image's actual bytes without weakening any check.",
+    "use_v2_model_runner defaults to false and the pinned model_runner.py is the runner that drives the connector callbacks."
+  ],
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "aa61b9b7d29688420e360b0e78bfe220f6d8348876a0f85a4a2f7a4a80ea7c1b",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "sha256": "317ed40dc837671ca6e666165222e641a0f9b3992aea63bbf54de7e13d40b3a4",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "0af0d8bb8dd591802eccb8b89857076090db4afce9331e07e78d9c1f6ce1cbbb",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "cfeb67c3a143571995f6375dba752afe24bfbc12348b1d3d656f19db2353febb",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks",
+        "Scheduler._handle_invalid_blocks",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._preempt_request"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/async_scheduler.py",
+      "sha256": "047c7dee3ad838825a219efa735ffa7e239bbc43604ce89464dd4411be6b1f23",
+      "required_symbols": []
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "sha256": "5c233b00ce33e278205886ce8b279da0a79f87e3608f71368907192e8660acab",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "sha256": "ea30cf772e32d92502bc98f58d5283e354b4473cc66010fdc80e0410ec5ff444",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "sha256": "720215b0508dbab462063b2a21d9f7ae1fdbf0bc3041f66ec9e19c6e2dd018d3",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "sha256": "b1ead5f202cb9311fa550848d5583c0eab9cfb828aea14c160c6e62bc0eac168",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "sha256": "94f8d67ab34363bfeb8323869ad4620ca61e12548e26f6e883fb68c6d928538b",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "sha256": "43d24b1f1604e9f9a4442ea2dc21ee34928ac99e54f6d381145f64e28dac0c33",
+      "required_symbols": []
+    }
+  ]
+}
