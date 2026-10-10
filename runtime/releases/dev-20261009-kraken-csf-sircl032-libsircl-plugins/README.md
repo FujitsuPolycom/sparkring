@@ -77,8 +77,8 @@ SIRCL 0.3.2, the image's build. Its measured rows are `pair`, `path-4`,
 
 Every result below is in lane **public-functional**: it was measured with
 images built from this repository and with its harnesses. Each states its
-status, its maturity and its scope. None comes from a `sparkring install`
-deployment, and none is serving qualification.
+status, its maturity and its scope, including whether `sparkring install` or
+the serving A/B runner started the model. None is serving qualification.
 
 ### GLM-5.3 on eight Sparks, two-token MTP
 
@@ -157,6 +157,12 @@ deployment, and none is serving qualification.
   | `qwen38-flash-next-qad-tp4` | Qwen3.8-Flash-Next QAD step 5500 with MXFP8 attention | path of four | 91.0 / 143.6 / 218.5 / 310.6 | 6.8 s |
   | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash `dba1be0a40aa`, `SIRCL_FUSED_NORM=1` | path of four | 61.9 / 94.3 / 138.8 / 181.9 | 7.6 s |
 
+- At 32K context, the release notes' speed table takes the two-Spark rows
+  from these runs: GLM-5.3-Flash CSF 39.5 / 87.1 / 130.4 and
+  Qwen3.8-Flash-Next 51.1 / 117.1 / 179.0 output tokens/s at 1 / 4 / 8
+  streams, medians of the two starts except CSF's 8-stream value, which is
+  start S1's. Start S2 measured 66.2 tok/s (26.63 steps/s) in that cell,
+  which the campaign record attributes to an underfilled measurement.
 - The Qwen profiles' default checkpoint, QAD step 5500 (`qad-step5500-ple1000`),
   was not run; step 4000 measured within 1-6 % of the MXFP8-attention
   checkpoint on another pair.
@@ -238,7 +244,11 @@ deployment, and none is serving qualification.
   its cause is not separated, because the path-of-four run used checkpoint
   `qad-step5500-mxfp8-attention` and the install the default
   `qad-step5500-ple1000`. Each comparison also changes the image, the SIRCL
-  build and the transport settings.
+  build and the transport settings. The release notes' speed table takes its
+  four-Spark rows from these installs at 32K context, its eight-Spark row from
+  [GLM-5.3 on eight Sparks](#glm-53-on-eight-sparks-two-token-mtp) and its
+  two-Spark rows from
+  [two and four Sparks](#two-and-four-sparks-on-sircl-ring-sessions).
 - Installer scenarios, research-only, GPU clocks not locked, one run each:
   with the release lock, `sparkring install` installed GLM-5.3-Flash CSF at
   TP4, switched it to Qwen3.8-Flash-Next and back, ran GLM-5.3-Flash CSF and

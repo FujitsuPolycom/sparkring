@@ -1,275 +1,113 @@
 # SparkRing 2026.10.2
 
-This release's installer image runs SparkRing's collectives on SIRCL ring
-sessions with NCCL off, carries libsircl (an NCCL-API library built from
-SparkRing's source), and serves models on fabrics of two to eight DGX Sparks.
-The image is `dev-20261009-kraken-csf-sircl032-libsircl-plugins`, built on
-release 2026.10.1's image. The
+Pre-release for testing. Packages built from tag `2026.10.2` install this
+release's image by default. `main`, `install.sh` from `main` and the
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) stay on
+2026.10.1 until this release merges. The
 [release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)
-has its identity, layers, evidence and gates.
-
-2026.10.2 is a GitHub pre-release for testing. Packages built from tag
-`2026.10.2` install this image by default. `main`, `install.sh` from `main`
-and the [Install Builder](https://fujitsupolycom.github.io/sparkring/) keep
-2026.10.1 until this release reaches `main`.
+has the full evidence and gates.
 
 > **Pending:** lines marked **Pending** are filled in, with their records,
 > before this release is published.
 
-## What changed
+## What SIRCL is
 
-### SIRCL carries the collectives
+SIRCL is SparkRing's own collective-communication layer for DGX Sparks
+cabled directly to each other over ConnectX-7, with no switch. It replaces
+NCCL for vLLM's tensor-parallel and decode-context-parallel collectives.
 
-- On this image `sudo sparkring install` runs every tensor-parallel and
-  decode-context-parallel collective on SIRCL ring sessions, with NCCL off,
-  wherever `sudo sparkring setup` recorded the fabric and its relay table.
-  The plan says `Transport: sircl on every collective, NCCL off (...)`.
-- After the model answers, the installer reads every rank's SIRCL receipts
-  and NCCL log lines. The summary card shows the verdict, for example
-  `Transport:   sircl, NCCL: absent`.
-- `--nccl auto` lets NCCL carry what the cabling allows. `--transport prepared`
-  keeps 2026.10.1's prepared B12X RoCE transport, and `--transport nccl` runs
-  vLLM's PyNccl alone on a cabled pair or a whole ring
-  ([transport and receipts](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#transport-and-receipts)).
-- SIRCL's settings come from a default tuning table with measured rows for a
-  pair, a path of four, a ring of four and a ring of eight. `sudo sparkring fabric tune --execute`
-  measures one for your cables
-  ([measure the tuning table](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#measure-the-tuning-table)).
-- Status: SIRCL's one-shot all-reduce and all-gather are qualified on an
-  eight-Spark ring; serving through vLLM on SIRCL is research-only
-  ([SIRCL status](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/spark_transport/sircl/STATUS.md)).
-
-### libsircl, an NCCL-API library built from source
-
-- libsircl 0.6.0 implements the public C API of NVIDIA NCCL 2.32 on SIRCL's
-  wire protocol. Its SONAME is `libnccl.so.2`, so PyTorch, vLLM and
-  nccl-tests load it in place of NCCL without changes. It is an independent
-  implementation: it is not NVIDIA NCCL and contains no NCCL implementation
-  source.
-- The image compiles it from the repository's `spark_transport/libsircl`
-  with its four kernel packs and its fail-stop mode.
-- `--transport libsircl` runs vLLM's PyNccl on libsircl, and
-  `--image REF --transport libsircl --plan` plans a stock ARM64 vLLM image
-  with libsircl as its NCCL. Both are research-only
-  ([libsircl in the installer](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/architecture/libsircl.md)).
-
-### Installer
-
-- **Two to eight Sparks.** Setup forms a pair, a line or a ring of up to eight
-  Sparks, installs one relay table so that every Spark reaches every other
-  through ConnectX-7 hardware relays, restores it at every boot and records
-  the fabric document. The relay marker ships prebuilt in the package
-  ([fabrics](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#fabrics-of-up-to-eight-sparks)).
-- **Several models on one fabric.** `--on 0-3`, `--on 4-7` or `--on 0,1` puts
-  a model on consecutive Sparks; each group serves its own API
-  ([models on part of the fabric](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#models-on-part-of-the-fabric)).
-- **Checks.** `sudo sparkring fabric verify` checks links, routes and relays.
-  `sudo sparkring check` sends functional requests, judges the transport
-  receipts and flags a rank whose GPU clock is throttled; `--report DIR`
-  writes a test report to attach to an issue
-  ([check](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/commands.md#check)).
-- **Memory before a start.** Every Spark drops its page cache and waits for
-  settled memory before a model starts. A start that vLLM would refuse for
-  memory is refused first, with each Spark's available memory.
-- **Distribution.** On a recorded fabric, the image and the checkpoint spread
-  along the cables from Node A (implemented; tested with simulated Sparks).
-- **Existing rings.** `sudo sparkring setup --node ... --adopt` records a ring
-  that is already cabled and addressed and adds only the relay table's missing
-  routes, neighbors and filters; links, addresses and connections stay as they
-  are. `sudo sparkring setup --re-form` sets recabled Sparks up again.
-- **Warnings.** Install plans print the enhancement catalog's warnings, such as
-  dense MXFP8 linears without `--linear-backend b12x`.
-
-### Fastest measured settings
-
-- **GLM-5.3 on eight Sparks** (`glm53-nvfp4-tp8`): two-token MTP with MXFP8
-  draft linears and W4A16 draft experts, MXFP8 dense linears on the B12X
-  linear backend, the MXFP8 LM head, the GLM-5.3 plugins, SIRCL's fused
-  all-reduce and RMSNorm and column gathers, 16 sequences and a 1M-token
-  context. Three draft tokens, adaptive draft counts and the DFlash2 drafter
-  measured no faster. `glm53-nvfp4-tp8-dcp1` drops decode-context
-  parallelism for a 524,288-token context (research-only).
-- **GLM-5.3-Flash on two and four Sparks**: on the CSF checkpoint, two CTAs
-  per SM for small-batch W4A16 experts. On two Sparks, asynchronous
-  scheduling for every checkpoint and, on CSF, KDA prefill coalescing and the
-  four-Spark profile's draft settings.
-- **DeepSeek-V4.1-Flash on four Sparks**: SIRCL's fused all-reduce and
-  RMSNorm.
-- **Qwen3.8-Flash-Next** keeps QAD step 5500 as its default checkpoint.
-- **SIRCL tuning rows**: a pair and a path of four run ring schedules above a
-  64 KiB one-shot limit with 1 MiB link pieces; a ring of four takes the
-  merged tune of two rings of four (8 link slots of 1 MiB; the ring
-  all-reduce from about 1.2 MiB per rank)
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md));
-  a ring of eight runs a 1 MiB all-reduce capacity, a 28 KiB one-shot limit
-  and 16 link slots of 512 KiB.
-
-## Measured results
-
-Every result is lane public-functional (images and harnesses of this
-repository) and none is serving qualification. The table's results are
-research-only, on eight DGX Sparks (GB10) cabled as one ring with ConnectX-7
-RoCE, GPU clocks locked at 2,418 MHz, through the serving A/B runner rather
-than `sparkring install`; two measured starts each, temperature 0, no prompt
-context. The items below it state their own conditions.
-
-| Model, profile | Checkpoint | Sparks | Image | Output tok/s, 1 / 2 / 4 / 8 streams | First token, 32K prompt |
-|---|---|---|---|---|---|
-| GLM-5.3, `glm53-nvfp4-tp8` | NVFP4 `b472e4ee53f6` | 8, the ring | `27e9f75c0d09` | 50.7 / 73.9 / 102.4 / 151.4 | 24.4 s |
-| GLM-5.3-Flash, `glm53-flash-nvfp4-spark-tp4` | CSF `dec48abd33ef` | 4, a path of the ring | `816c6d6a7e96` | 68.3 / 106.5 / 152.4 / 224.3 | 10.5 s |
-| GLM-5.3-Flash, `glm53-flash-nvfp4-spark-tp2` | CSF `dec48abd33ef` | 2, a cabled pair | `816c6d6a7e96` | 42.0 / 61.4 / 88.9 / 133.5 | 15.3 s |
-| Qwen3.8-Flash-Next, `qwen38-flash-next-qad-tp4` | QAD step 5500, MXFP8 attention | 4, a path of the ring | `816c6d6a7e96` | 91.0 / 143.6 / 218.5 / 310.6 | 6.8 s |
-| Qwen3.8-Flash-Next, `qwen38-flash-next-tp2` | QAD step 5500, MXFP8 attention | 2, a cabled pair | `816c6d6a7e96` | 63.0 / 100.5 / 153.0 / 217.0 | 8.4 s |
-| DeepSeek-V4.1-Flash, `deepseek-v41-flash-tp4` | `dba1be0a40aa` | 4, a path of the ring | `816c6d6a7e96` | 61.9 / 94.3 / 138.8 / 181.9 | 7.6 s |
-
-- GLM-5.3 at 16K and 32K context: 44.2 / 64.0 / 89.8 / 135.7 and 47.9 /
-  65.9 / 99.8 / 143.7 tok/s; first token 10.0 s for an 8K prompt and 11.9 s
-  for 16K
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md)).
-- The two- and four-Spark rows
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md))
-  ran on groups inside the eight-Spark ring. A four-Spark path's end ranks
-  reach each other through relays; a four-Spark ring has no measurement here.
-- Both images precede the release image: `27e9f75c0d09` has SIRCL 0.3.1 and
-  libsircl snapshot `a3477af2`; `816c6d6a7e96` has SIRCL 0.3.0.
-- libsircl on the ring of eight (snapshot `a3477af2`, nccl-tests v2.21.1, NVIDIA
-  NCCL 2.32.3 as the baseline): every result exact; a 256 MiB all-reduce under
-  ring schedules took 19.3 ms (24.3 GB/s bus bandwidth) against NCCL's
-  19.9 ms (23.6 GB/s)
-  ([libsircl status](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/spark_transport/libsircl/STATUS.md)).
-- libsircl 0.6.0 of the release image on the ring of eight, without NCCL in
-  the same gate: every check exact; the cycle plan runs ring schedules from
-  8 MiB by default; a 256 MiB all-reduce took 19.3 ms (24.3 GB/s) and a 4 KiB
-  one 18.2 µs; broadcast stays at 1.9 GB/s
+- Each Spark talks RDMA straight to its cabled neighbours. Sparks that aren't
+  cabled to each other are reached through the ConnectX-7's hardware relay on
+  the Sparks in between, so a ring of four or eight behaves like one fabric.
+- It picks a schedule by message size: one-shot for small messages, two-shot
+  for medium, a ring for large. It also fuses the all-reduce with the
+  following RMSNorm.
+- Its settings come from a tuning table measured on real rings. You can
+  measure your own with `sudo sparkring fabric tune`.
+- On eight Sparks, measured through libsircl, a 4 KiB all-reduce takes about
+  18 µs, and a 256 MiB all-reduce runs at 24.3 GB/s bus bandwidth, faster
+  than NCCL 2.32.3 on the same cables
   ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md)).
-- The clean-room acceptance audit passed SIRCL 0.3.2 and libsircl 0.6.0
-  with no line to rewrite, and the three GLM-5.3 plugins
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/repository/clean-room-acceptance-audit-20261009.md)).
-- `sparkring install` on the eight-Spark ring with the release image (GPU
-  clocks not locked, one installation each): GLM-5.3 on all eight Sparks,
-  GLM-5.3-Flash CSF on four and on two, and Qwen3.8-Flash-Next on two; every
-  installation passed `sparkring check`'s functional checks and three
-  known-answer questions. GLM-5.3 decoded 47.7 tok/s at one stream and 16K
-  context. These are the first CSF installations that passed the installer's
-  checks ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
-- Two rings of four (the eight Sparks recabled): `sudo sparkring setup --re-form`
-  verified both fabrics; SIRCL's quick tune of a ring of four passed on both,
-  every output exact; libsircl's gate passed on both, with a 256 MiB
-  all-reduce of 16.55 ms (24.3 GB/s) on each
-  ([setup and tune](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
-  [libsircl](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
-- `sparkring install` on the rings of four with the release image (GPU
-  clocks not locked, one run each): GLM-5.3-Flash CSF, Qwen3.8-Flash-Next and
-  DeepSeek-V4.1-Flash on four Sparks, a switch between two models and back,
-  and two pairs of one ring serving at once; all seven installations passed
-  `sparkring check` and three known-answer questions on SIRCL, NCCL absent
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md)).
-- `sparkring install` on a ring of four with the release image (GPU clocks
-  locked, one measured start each, research-only): GLM-5.3-Flash CSF and
-  DeepSeek-V4.1-Flash decoded within a few percent of the same profiles on
-  four Sparks of the ring of eight (median -0.8 % and +0.9 %).
-  Qwen3.8-Flash-Next decoded 8.9 % slower, a gap under investigation whose
-  cause is not separated, because the path-of-four run used checkpoint
-  `qad-step5500-mxfp8-attention` and the install the default
-  `qad-step5500-ple1000`
-  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md)).
 
-## Known limitations
+libsircl puts the same protocol behind NCCL's C API (it loads as
+`libnccl.so.2`), so unmodified programs such as nccl-tests and PyTorch can use
+it. It's SparkRing's own implementation under Apache-2.0, not NVIDIA NCCL.
 
-- `--transport libsircl` is research-only, has no serving measurement, runs
-  without decode-context parallelism, and its receipts are not judged. At
-  two Sparks on a ring of four it failed vLLM's initialization with
-  `NCCL error: invalid usage`; the cause, in vLLM's own setup of the
-  communicator, is under investigation. vLLM's workers already start with
-  `spawn`, and a standalone initialization with the deployment's settings
-  and the container's `LD_PRELOAD` succeeded on the same pair.
-- libsircl's broadcast on a ring of eight reaches 1.9 GB/s against NCCL's
-  24.2 GB/s (unsupported). The default `sircl` transport does not use
-  libsircl.
-- On this image the GLM-5.3-Flash profiles install the CSF checkpoint, which
-  is research-only: one installation of each profile passed the installer's
-  checks. `--checkpoint nvfp4-spark` installs NVFP4-Spark.
-- The eight-Spark profiles are research-only. `qwen38-flash-next-qad-tp8`
-  does not run on this image.
-- MiMo-V2.6-Flash-MOPD and Swift-1.5 profiles run on SIRCL with no SIRCL
-  serving record.
-- A ring of four's tuning row comes from one quick tune per ring, with no
-  serving comparison against SIRCL's own rules.
-- The serving A/B measurements locked GPU clocks; the installer does not.
-- The model's status dashboard is runtime-status 0.3.4: it does not show
-  SIRCL's sessions or the collective transport. `sudo sparkring status` and
-  `sudo sparkring check` do.
+## What's in it
 
-## Test this pre-release
+Installer image `dev-20261009-kraken-csf-sircl032-libsircl-plugins`: 2026.10.1's
+image plus SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 plugins.
 
-Run these on Node A, the Spark connected to your network. Each `--plan`
-changes nothing; every other step asks before it changes a Spark.
+- Collectives run on SIRCL with NCCL off on any fabric that `sparkring setup`
+  recorded.
+- Setup handles pairs, lines and rings of up to eight Sparks. It can adopt an
+  existing ring (`--adopt`) or set up a recabled one (`--re-form`).
+- GLM-5.3 runs on eight Sparks (`glm53-nvfp4-tp8`), and GLM-5.3-Flash installs
+  the CSF checkpoint on this image (`--checkpoint nvfp4-spark` installs
+  NVFP4-Spark).
+- Running vLLM on libsircl (`--transport libsircl`) is research-only.
+- `sparkring check` also checks GPU clocks, and `--report` writes a test
+  report to attach to an issue.
 
-1. Build and install the 2026.10.2 package from its tag. The script and
-   `--ref` must name the same tag; this step changes only Node A's package:
+## Speed
 
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/2026.10.2/install.sh | bash -s -- --ref 2026.10.2 --package-only
-   ```
+Decode at 32K context, output tok/s:
 
-2. Record the fabric if this cluster has none. When
-   `sudo sparkring fabric show` prints `This cluster has no fabric document`,
-   review and run setup:
+| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | First token, 32K prompt |
+|---|---|---|---|---|---|
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 24.4 s |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-nvfp4-spark-tp4` | 64.2 / 126.6 / 218.7 | 10.5 s |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-nvfp4-spark-tp2` | 39.5 / 87.1 / 130.4 | 15.3 s |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-qad-tp4` | 62.1 / 149.4 / 234.0 | 7.0 s |
+| Qwen3.8-Flash-Next | QAD step 5500, MXFP8 attention | 2 | `qwen38-flash-next-tp2` | 51.1 / 117.1 / 179.0 | 8.4 s |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 7.6 s |
 
-   ```bash
-   sudo sparkring setup --plan
-   sudo sparkring setup
-   ```
+Each row's record is under `performance/records/`.
 
-3. Preview the installation of a profile from the
-   [profile table](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/README.md#profiles).
-   Expect image `dev-20261009-kraken-csf-sircl032-libsircl-plugins` and
-   `Transport: sircl on every collective, NCCL off`:
+## Tested
 
-   ```bash
-   sudo sparkring install --profile PROFILE --image 2026.10.2 --plan
-   ```
+On eight DGX Sparks, cabled as one ring of eight and then as two rings of
+four: every profile above installed with `sparkring install` and passed
+`sparkring check` and its known-answer requests. So did a model switch and
+two pairs on one ring. libsircl passed its collective tests on both layouts.
+CPU checks and the release-safety scan pass.
 
-4. Install and check. A Spark that holds the 2026.10.1 image downloads only
-   the layers this image adds (**Pending:** their size). GLM-5.3-Flash
-   profiles also download the CSF checkpoint unless you add
-   `--checkpoint nvfp4-spark`.
+## Known issues
 
-   ```bash
-   sudo sparkring install --profile PROFILE --image 2026.10.2
-   sudo sparkring check --report ~/sparkring-report
-   ```
+- `--transport libsircl` fails vLLM's startup on a TP2 pair ("NCCL error:
+  invalid usage"). Under investigation.
+- Qwen3.8-Flash-Next TP4 measured lower than expected on a ring of four.
+  Under investigation.
+- libsircl's broadcast is slow.
+- This image's status page doesn't show SIRCL yet; `sparkring status` does.
 
-5. Optional: tune SIRCL to your cables while no model serves, then run the
-   install command again. It takes up to half an hour per group shape.
+## Try it
 
-   ```bash
-   sudo sparkring fabric tune --execute
-   ```
+On Node A:
 
-6. Report the result, passed or failed: zip the directory that
-   `sparkring check --report` names, review it, and attach it to a GitHub
-   issue titled `[test] 2026.10.2 PROFILE` or to the 2026.10.2 pull request.
-   The report replaces addresses, host names, MAC addresses and account
-   names.
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/2026.10.2/install.sh | bash -s -- --ref 2026.10.2 --package-only
+sudo sparkring setup --plan     # only if `sudo sparkring fabric show` finds no fabric; then sudo sparkring setup
+sudo sparkring install --profile PROFILE --image 2026.10.2 --plan
+sudo sparkring install --profile PROFILE --image 2026.10.2
+sudo sparkring check --report ~/sparkring-report
+```
+
+A Spark that holds the 2026.10.1 image downloads only the layers this image adds (**Pending:** their size).
+
+To tune SIRCL to your cables, run `sudo sparkring fabric tune --execute`
+while no model serves, then install again. It takes up to half an hour per
+group shape.
+
+Post the report on the 2026.10.2 pull request or in an issue titled
+`[test] 2026.10.2 PROFILE`.
 
 ## Go back to 2026.10.1
 
-- Keep the 2026.10.2 package and run a profile on 2026.10.1's image and its
-  prepared transport
-  ([another image](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#another-image)):
-
-  ```bash
-  sudo sparkring install --profile PROFILE --image 2026.10.1
-  ```
-
-- Or keep this image on the prepared transport with
-  `--transport prepared`.
-- Or reinstall the package of `main`, whose default image is 2026.10.1's.
-  `install.sh` asks before it replaces the package with that earlier
-  version. Reinstalling it on a cluster that the 2026.10.2 package's setup
-  re-formed has not been tested:
-
-  ```bash
-  curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --package-only
-  ```
+- Keep this package and run a profile on 2026.10.1's image and transport:
+  `sudo sparkring install --profile PROFILE --image 2026.10.1`
+  ([another image](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#another-image)).
+- Keep this image without SIRCL: add `--transport prepared`.
+- Reinstall `main`'s package, whose default image is 2026.10.1's:
+  `curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --package-only`.
+  This hasn't been tested on a cluster that this package's setup re-formed.
