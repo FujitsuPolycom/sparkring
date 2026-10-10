@@ -54,7 +54,7 @@ The lock admits 13 profiles. The status column is the profile catalog's
 
 | Profiles | Status | Notes |
 |---|---|---|
-| `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2` | implemented | The 2026.10.1 profiles. The GLM-5.3-Flash profiles install the CSF checkpoint (research-only) by default on this image, because the lock's `sircl.vllm_pins` names the build that reads it; `--checkpoint nvfp4-spark` installs NVFP4-Spark ([default checkpoint by profile](../../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)) |
+| `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2` | implemented | The 2026.10.1 profiles. The GLM-5.3-Flash profiles install the CSF checkpoint (implemented; not soaked) by default on this image, because the lock's `sircl.vllm_pins` names the build that reads it; `--checkpoint nvfp4-spark` installs NVFP4-Spark ([default checkpoint by profile](../../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)) |
 | `swift15-qwen38-flash-next-tp4` | research-only | A 2026.10.1 profile |
 | `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1` | research-only | Eight-Spark profiles; they run only on SIRCL ring sessions. `glm53-nvfp4-tp8` and `glm53-nvfp4-tp8-dcp1` load the GLM-5.3 plugins |
 
@@ -122,8 +122,8 @@ the serving A/B runner started the model. None is serving qualification.
 - Result: `glm53-nvfp4-tp8` on all eight Sparks (install 661 s, API ready
   after 392.5 s, 6 functional checks passed; the image check does not
   apply); `glm53-flash-nvfp4-spark-tp4` on four (919 s) and
-  `glm53-flash-nvfp4-spark-tp2` on two (1,040 s), both on the CSF checkpoint,
-  the first CSF installations that passed the installer's checks; and
+  `glm53-flash-nvfp4-spark-tp2` on two (1,040 s), both on the CSF checkpoint;
+  and
   `qwen38-flash-next-tp2` on two (775 s); the three smaller deployments
   served at once. Each passed `sparkring check`'s functional checks and
   answered three known-answer questions. The transport check passed for the
@@ -260,9 +260,15 @@ the serving A/B runner started the model. None is serving qualification.
   `pair` row. `--transport libsircl` on a pair of ring B failed vLLM's
   initialization (below). Six plan-only refusals and plans behaved as
   expected.
+- CSF correctness screens, status implemented: the CSF installations of
+  `glm53-flash-nvfp4-spark-tp4` on ring A and `glm53-flash-nvfp4-spark-tp2`
+  on a pair of ring B, serving at the same time, each passed the acceptance
+  harness's 7 functional checks and returned 256 responses of its
+  correctness screen with none degenerate, wrong or failed. No soak ran.
 - Records: [setup and SIRCL tune](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl on two rings of four](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md),
   [installer scenarios](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md),
+  [CSF correctness screens](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md),
   [TP4 on a ring of four](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-tp4-cycle4-20261010.md).
 
 ### Clean-room acceptance audit
@@ -320,9 +326,10 @@ row ([release procedure](../../../docs/development/releases.md)).
 - libsircl's broadcast on a cycle of eight reaches 1.9 GB/s against NVIDIA
   NCCL's 24.2 GB/s: it has no ring broadcast (unsupported). The default
   `sircl` transport does not use libsircl.
-- The GLM-5.3-Flash CSF checkpoint is research-only and the default of the
-  GLM-5.3-Flash profiles on this image; one installation of each passed the
-  installer's checks, with no correctness screen, decode measurement or soak.
+- The GLM-5.3-Flash CSF checkpoint, the GLM-5.3-Flash profiles' default on
+  this image, is implemented, not qualified: its installations passed the
+  installer's checks and a 256-request correctness screen at TP4 and TP2,
+  and qualification still needs a soak.
 - The eight-Spark profiles are research-only; `glm53-nvfp4-tp8` has one
   installation that passed the installer's checks.
 - MiMo-V2.6-Flash-MOPD and Swift-1.5 profiles run on SIRCL sessions with no

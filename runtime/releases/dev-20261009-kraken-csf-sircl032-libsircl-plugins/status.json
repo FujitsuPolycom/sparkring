@@ -88,12 +88,12 @@
     {
       "id": "glm53-flash-nvfp4-spark-tp2",
       "status": "implemented",
-      "default_checkpoint_on_this_image": "csf (research-only; one installation passed the installer's checks)"
+      "default_checkpoint_on_this_image": "csf (implemented, not soaked: installer checks and a 256-request correctness screen passed)"
     },
     {
       "id": "glm53-flash-nvfp4-spark-tp4",
       "status": "implemented",
-      "default_checkpoint_on_this_image": "csf (research-only; one installation passed the installer's checks)"
+      "default_checkpoint_on_this_image": "csf (implemented, not soaked: installer checks and a 256-request correctness screen passed)"
     },
     {
       "id": "glm53-nvfp4-tp8",
@@ -194,6 +194,17 @@
       "scope": "sparkring install of glm53-nvfp4-tp8 (all eight), glm53-flash-nvfp4-spark-tp4 (four, CSF), qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 (pairs, CSF) with package 498a7bc4 and --image-lock; one installation each; sparkring check and three known-answer questions",
       "result": "every installation passed the functional checks and the known-answer questions; transport SIRCL with NCCL absent (glm53-nvfp4-tp8's built-in cycle-8 plan accepted from 00f95601); glm53-nvfp4-tp8 install 661 s, 47.7 output tok/s at one stream and 16K context, accept 2.47, 19.4 steps/s",
       "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
+    },
+    {
+      "id": "csf-correctness-screens",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "two rings of four DGX Sparks (GB10), ConnectX-7 RoCE",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "the CSF installations of glm53-flash-nvfp4-spark-tp4 (ring A) and glm53-flash-nvfp4-spark-tp2 (a pair of ring B): 7 of 7 functional checks and a 256-request correctness screen each, none degenerate, wrong or failed; no soak",
+      "result": "both installations passed: 7 of 7 checks, 256 of 256 responses correct",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md"
     }
   ],
   "gates": [
