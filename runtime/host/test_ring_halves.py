@@ -2,9 +2,9 @@
 
 The public ``sparkring install`` command runs against a simulated four-Spark
 ring (``test_install_workflow``'s ``machine`` and ``sparks`` fixtures). Each
-deployment's start and stop is recorded by profile and placement and leaves
-the state a completed operation leaves, so the switching rules see which
-models run.
+deployment's memory settle, start and stop is recorded by profile and
+placement; a start or stop leaves the state a completed operation leaves, so
+the switching rules see which models run.
 """
 import json
 from pathlib import Path
@@ -62,6 +62,9 @@ def ring(machine, sparks, monkeypatch):  # noqa: F811 (fixture argument)
                                            "complete": True})
         return {"verified": True}
     monkeypatch.setattr(flow.retained_source, "apply", operation)
+    # The page-cache drop and memory settle before each start (runtime.host.memory_settle), by deployment.
+    monkeypatch.setattr(flow, "settle_memory", lambda path, **kwargs: events.append(f"{label(path)}:settle-memory")
+                        or [])
     monkeypatch.setattr(flow, "park_ring", lambda cluster, **kwargs: events.append("park-ring"))
     monkeypatch.setattr(flow, "check_workloads", lambda *a, **k: simulated.workloads.append(k.get("others")))
 
@@ -107,12 +110,13 @@ def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
     assert tp4["nodes"] == 4 and tp4["stops"] == [] and "placement" not in tp4
     ops(ring)
 
-    # Half (0, 1): the running four-Spark model stops, the ring's mesh parks, the half starts.
+    # Half (0, 1): the running four-Spark model stops, the ring's mesh parks, the half's memory settles and the
+    # half starts.
     assert install("--profile", QWEN, "--on", "0,1") == 0
     first = result(capsys)
     assert first["placement"] == [0, 1] and first["nodes"] == 2 and first["replaces"] is None
     assert [(row["profile"], row["placement"]) for row in first["stops"]] == [(TP4, None)]
-    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@01:up", f"{QWEN}@01:verify"]
+    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@01:settle-memory", f"{QWEN}@01:up", f"{QWEN}@01:verify"]
     assert ring.workloads[-1] == [Path(tp4["deployment"]).resolve()]
     assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): None}
     switch = placement.journal(controller.STATE, (0, 1))
@@ -125,7 +129,7 @@ def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
     assert install("--profile", GLM, "--on", "2,3", "--checkpoint", "nvfp4-qad") == 0
     second = result(capsys)
     assert second["stops"] == [] and second["replaces"] is None
-    assert ops(ring) == ["park-ring", f"{GLM}@23:up", f"{GLM}@23:verify"]
+    assert ops(ring) == ["park-ring", f"{GLM}@23:settle-memory", f"{GLM}@23:up", f"{GLM}@23:verify"]
     assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): GLM + "@23"}
     assert second["commands"]["switch_back"] is None
     lock = installer.read(Path(second["deployment"]) / "deployment.lock.json")
@@ -137,7 +141,7 @@ def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
     back = result(capsys)
     assert back["deployment"] == tp4["deployment"]
     assert sorted((row["profile"], tuple(row["placement"])) for row in back["stops"]) == [(GLM, (2, 3)), (QWEN, (0, 1))]
-    assert ops(ring) == [f"{QWEN}@01:down", f"{GLM}@23:down", f"{TP4}:up", f"{TP4}:verify"]
+    assert ops(ring) == [f"{QWEN}@01:down", f"{GLM}@23:down", f"{TP4}:settle-memory", f"{TP4}:up", f"{TP4}:verify"]
     assert recorded() == {None: TP4, (0, 1): None, (2, 3): None}
     assert rollout.active(controller.STATE) == Path(tp4["deployment"]).resolve()
     assert " ; " in back["commands"]["switch_back"] and "--on 0,1" in back["commands"]["switch_back"]
@@ -158,7 +162,8 @@ def test_installing_on_a_serving_half_replaces_only_that_half(ring, capsys):
     replaced = result(capsys)
     assert Path(replaced["replaces"]).resolve() == Path(first["deployment"]).resolve()
     assert [row["profile"] for row in replaced["stops"]] == [QWEN]
-    assert ops(ring) == [f"{QWEN}@01:down", "park-ring", f"{GLM}@01:up", f"{GLM}@01:verify"]
+    assert ops(ring) == [f"{QWEN}@01:down", "park-ring", f"{GLM}@01:settle-memory", f"{GLM}@01:up",
+                         f"{GLM}@01:verify"]
     assert recorded() == {None: None, (0, 1): GLM + "@01", (2, 3): GLM + "@23"}
     assert replaced["commands"]["switch_back"] == f"sudo sparkring install --profile {QWEN} --on 0,1"
 
@@ -171,8 +176,9 @@ def test_a_failed_half_restarts_the_four_spark_model_it_stopped(ring, capsys):
     assert install("--profile", QWEN, "--on", "2,3") == 2
     failed = result(capsys)
     assert failed["transaction"]["state"] == "failed-recovered"
-    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@23:up", f"{QWEN}@23:verify", f"{QWEN}@23:down",
-                         f"{TP4}:down", f"{TP4}:up", f"{TP4}:verify"]
+    # The recovery start of the four-Spark model settles memory on every Spark first, like any start.
+    assert ops(ring) == [f"{TP4}:down", "park-ring", f"{QWEN}@23:settle-memory", f"{QWEN}@23:up", f"{QWEN}@23:verify",
+                         f"{QWEN}@23:down", f"{TP4}:down", f"{TP4}:settle-memory", f"{TP4}:up", f"{TP4}:verify"]
     assert recorded() == {None: TP4, (0, 1): None, (2, 3): None}
     assert rollout.active(controller.STATE) == Path(tp4["deployment"]).resolve()
 

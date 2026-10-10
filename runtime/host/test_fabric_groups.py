@@ -4,8 +4,9 @@
 its fabric document and relay table (``test_install_workflow``'s ``machine``
 and ``sparks`` fixtures) and an image lock v3 whose image carries the SIRCL
 layer and lists the installer profiles of eight Sparks. Each deployment's
-start and stop is recorded by profile and placement and leaves the state a
-completed operation leaves, so the switching rules see which models run.
+memory settle, start and stop is recorded by profile and placement; a start or
+stop leaves the state a completed operation leaves, so the switching rules see
+which models run.
 """
 import json
 from pathlib import Path
@@ -97,6 +98,9 @@ def ring8(machine, sparks, monkeypatch, tmp_path):  # noqa: F811 (fixture argume
             return {"verdict": "as-expected", "nccl_observed": "absent", "problems": []}
         return {"verified": True}
     monkeypatch.setattr(flow.retained_source, "apply", operation)
+    # The page-cache drop and memory settle before each start (runtime.host.memory_settle), by deployment.
+    monkeypatch.setattr(flow, "settle_memory", lambda path, **kwargs: events.append(f"{label(path)}:settle-memory")
+                        or [])
     monkeypatch.setattr(flow, "park_ring", lambda cluster, **kwargs: events.append("park-ring"))
     monkeypatch.setattr(flow, "check_workloads", lambda *a, **k: None)
 
@@ -153,8 +157,10 @@ def test_two_four_spark_groups_serve_side_by_side_on_their_own_arcs(ring8, capsy
     assert recorded() == {(0, 1, 2, 3): QWEN_TP4 + "@0-1-2-3", (4, 5, 6, 7): DEEPSEEK_TP4 + "@4-5-6-7"}
     # Each group's checkpoint moves between its own Sparks.
     assert ("view", (0, 1, 2, 3)) in ring8.events and ("view", (4, 5, 6, 7)) in ring8.events
-    assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:up", f"{QWEN_TP4}@0-1-2-3:verify",
-                          f"{DEEPSEEK_TP4}@4-5-6-7:up", f"{DEEPSEEK_TP4}@4-5-6-7:verify"]
+    # Each group's memory settles on its own Sparks right before it starts.
+    assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:settle-memory", f"{QWEN_TP4}@0-1-2-3:up", f"{QWEN_TP4}@0-1-2-3:verify",
+                          f"{DEEPSEEK_TP4}@4-5-6-7:settle-memory", f"{DEEPSEEK_TP4}@4-5-6-7:up",
+                          f"{DEEPSEEK_TP4}@4-5-6-7:verify"]
     lock = lock_of(second)
     hosts = installer.read(controller.STATE / "cluster.json")["plan"]["spec"]["hosts"]
     # The group's ranks bootstrap over their management addresses and check the fabric's relay table.
@@ -188,8 +194,8 @@ def test_four_pairs_and_a_group_of_four_beside_two_pairs(ring8, capsys):
     assert install(ring8, "--profile", QWEN_TP4, "--on", "0-3") == 0
     replaced = result(capsys)
     assert sorted(tuple(row["placement"]) for row in replaced["stops"]) == [(0, 1), (2, 3)]
-    assert ops(ring8) == [f"{QWEN_TP2}@0-1:down", f"{GLM_TP2}@2-3:down", f"{QWEN_TP4}@0-1-2-3:up",
-                          f"{QWEN_TP4}@0-1-2-3:verify"]
+    assert ops(ring8) == [f"{QWEN_TP2}@0-1:down", f"{GLM_TP2}@2-3:down", f"{QWEN_TP4}@0-1-2-3:settle-memory",
+                          f"{QWEN_TP4}@0-1-2-3:up", f"{QWEN_TP4}@0-1-2-3:verify"]
     assert recorded() == {(0, 1, 2, 3): QWEN_TP4 + "@0-1-2-3", (4, 5): QWEN_TP2 + "@4-5", (6, 7): GLM_TP2 + "@6-7"}
 
 
@@ -237,8 +243,8 @@ def test_a_model_on_every_spark_stops_every_group_and_runs_tensor_parallel_eight
     assert "placement" not in whole and whole["group"] == {"shape": "cycle-8", "positions": list(range(8)),
                                                           "api_position": 0}
     assert sorted(row["profile"] for row in whole["stops"]) == [DEEPSEEK_TP4, QWEN_TP4]
-    assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:down", f"{DEEPSEEK_TP4}@4-5-6-7:down", f"{GLM_TP8}:up",
-                          f"{GLM_TP8}:verify"]
+    assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:down", f"{DEEPSEEK_TP4}@4-5-6-7:down", f"{GLM_TP8}:settle-memory",
+                          f"{GLM_TP8}:up", f"{GLM_TP8}:verify"]
     assert recorded() == {None: GLM_TP8}
     lock = lock_of(whole)
     assert lock["transport"]["group"]["name"] == "cycle-8" and lock["transport"]["nccl"] == "never"
