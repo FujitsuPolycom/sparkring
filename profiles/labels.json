@@ -19,6 +19,11 @@
           "status": "research-only",
           "purpose": "Third-party hybrid by JMNI Labs, research-only",
           "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+        },
+        "csf": {
+          "status": "research-only",
+          "purpose": "Local Inference Lab's CSF QAD weights, two Sparks only",
+          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
         }
       }
     },

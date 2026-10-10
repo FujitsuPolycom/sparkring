@@ -23,6 +23,12 @@ steps per second than step 5500 on one pair,
 and `--checkpoint jmni-qad5500-hybrid`, a third-party build of the same idea
 (research-only)
 ([checkpoints](../../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
+`--checkpoint csf` installs Local Inference Lab's
+[Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD/tree/dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2),
+licensed under the Local Inference Lab License, Version 1.0. It carries the
+hybrid's layer recipes with compressed expert block scales and a quantized
+vision tower, and installs only on two Sparks, with an image whose vLLM reads
+it, such as release 2026.10.2's (research-only).
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
 logs and recovery. To run the same containers with Docker Compose, see
