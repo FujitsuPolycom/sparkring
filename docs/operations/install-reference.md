@@ -569,13 +569,20 @@ SIRCL's settings come from a tuning table that chooses only among SIRCL's own
 algorithms, schedules, pieces and launch grids. The package carries a default
 table, [sircl-tuning-defaults.json](../../runtime/common/sircl-tuning-defaults.json)
 (`sparkring-sircl-tuning/v1`), with one row per group shape: `pair`,
-`path-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
+`path-4`, `cycle-4`, `cycle-8`, and `path` and `cycle` for other sizes. A row is
 `measured`; `design`, settings from the SIRCL install design that no
 measurement has confirmed; or `rules`, where SIRCL's sessions derive their own
 settings. A row may also state its evidence. The shipped rows are the accepted
-defaults until `sudo sparkring fabric tune` measures a fabric: a `cycle-4`
-group, which has no row of its own, runs on SIRCL's own rules through the
-`cycle` row. The `pair` and `path-4` rows hold the ring schedules with which
+defaults until `sudo sparkring fabric tune` measures a fabric; a group size
+without a row of its own, such as a cycle of six, runs on SIRCL's own rules
+through the `path` or `cycle` row. The `cycle-4` row names a measured SIRCL
+table (`runtime/common/sircl-tuning/cycle-4.json`): per collective, per-rank
+size and mode, the algorithm, schedule, piece and launch grid that SIRCL's ring
+harness measured fastest on two separate cycles of four Sparks, each candidate
+judged by the slower cycle, with 8 link slots of 1 MiB; the row adds no setting
+of its own ([record](../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md)).
+Sessions of SIRCL 0.3.2 take the table; sessions of the compatible 0.3.1 take
+the row, whose rules then choose. The `pair` and `path-4` rows hold the ring schedules with which
 the two- and four-Spark profiles were measured on pairs and paths of four Sparks
 of a ring of eight: ring all-reduces, all-gathers and reduce-scatters above a
 64 KiB one-shot limit, with 1 MiB link pieces and slot

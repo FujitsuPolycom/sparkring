@@ -72,9 +72,20 @@ def test_the_default_tuning_table_is_canonical_and_chooses_among_sircl_settings_
     raw = transport.TUNING_DEFAULTS.read_bytes().replace(b"\r\n", b"\n")
     assert raw.decode() == transport.encoded(table)
     assert transport.tuning_digest(table) == hashlib.sha256(raw).hexdigest()
-    assert table["source"] == "defaults" and table["fabric"] is None and table["tables"] == []
+    assert table["source"] == "defaults" and table["fabric"] is None
     for row in table["layouts"].values():
         assert set(row["settings"]) <= set(transport.SETTINGS)
+    # Every SIRCL table the default table ships is a repository file of the build the table names, serving the
+    # groups of a measured row.
+    from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
+    version, abi = transport.tuning_builds(table)[0]
+    for entry in table["tables"]:
+        shipped = json.loads((transport.ROOT / entry["path"]).read_text(encoding="utf-8"))
+        sircl_tuning.Table(shipped)
+        assert shipped["key"]["sircl"] == f"{version}/abi{abi}", entry["path"]
+        served = [name for name, row in table["layouts"].items() if row["source"] == "measured"
+                  and transport.row_identity(name) == transport.table_identity(shipped)[:2]]
+        assert served, entry["path"]
 
 
 def shipped_sircl_locks():
@@ -116,7 +127,7 @@ def test_the_default_tuning_table_is_keyed_to_the_shipped_sircl_build_and_covers
 
 
 @pytest.mark.parametrize("shape, size, expected", [("pair", 2, "pair"), ("path", 4, "path-4"), ("path", 3, "path"),
-                                                   ("cycle", 8, "cycle-8"), ("cycle", 4, "cycle"), ("cycle", 6, "cycle")])
+                                                   ("cycle", 8, "cycle-8"), ("cycle", 4, "cycle-4"), ("cycle", 6, "cycle")])
 def test_a_group_takes_its_own_row_else_the_row_of_its_shape(shape, size, expected):
     assert transport.tuning_row(transport.load_tuning(), shape, size)[0] == expected
 
@@ -295,7 +306,7 @@ def test_the_section_places_the_group_on_the_recorded_fabric(shape, size, positi
         assert section["devices"] == devices
     else:
         assert all(sorted(row) == sorted(fabric_layout.DEVICES.values()) for row in section["devices"])
-    expected_row = "pair" if name == "pair" else "cycle"
+    expected_row = name if name in transport.load_tuning()["layouts"] else "cycle"
     assert section["tuning"]["row"] == expected_row and section["tuning"]["applies"]
 
 
@@ -581,12 +592,13 @@ def test_a_measured_table_that_matches_the_group_is_mounted_named_and_its_settin
             "SIRCL_LINK_SLOT_BYTES=1048576 where the row leaves them unset") in transport.plan_lines(section)
     # A row that gives the session fewer link slots than the table's choices need is refused.
     fewer = copy.deepcopy(table)
-    fewer["layouts"]["cycle"]["settings"] = {"link_slots": 8}
+    row_name = transport.tuning_row(table, "cycle", 4)[0]
+    fewer["layouts"][row_name]["settings"] = {"link_slots": 8}
     section = transport.section(image, document("cycle", 4), [0, 1, 2, 3], nccl="never", tuning=fewer, root=tmp_path)
     assert transport.expected_session_settings(section) == {"link_slot_bytes": 1 << 20, "link_slots": 8}
     lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64, image_runtime=image_lock.v2_view(image),
                                transport=section)
-    with pytest.raises(transport.TransportError, match="more than the tuning row cycle sets: SIRCL_LINK_SLOTS=8"):
+    with pytest.raises(transport.TransportError, match=f"more than the tuning row {row_name} sets: SIRCL_LINK_SLOTS=8"):
         installer.specifications(lock)
 
 
@@ -750,8 +762,7 @@ def test_the_compose_exports_of_a_lock_without_a_section_are_unchanged():
 
 def test_the_plan_says_what_carries_the_collectives_and_where_the_settings_come_from():
     _, cycle = sircl_deployment(TP4, "cycle", 4, [0, 1, 2, 3])
-    assert transport.plan_lines(cycle)[0] == ("Transport: sircl on every collective, NCCL off (default table, "
-                                              "cycle-4: not measured, SIRCL's own rules apply)")
+    assert transport.plan_lines(cycle)[0] == "Transport: sircl on every collective, NCCL off (default table, cycle-4)"
     assert "at most 1 relay on a lane" in transport.plan_lines(cycle)[1]
     assert transport.plan_lines(cycle)[2] == "  NCCL: opt-in only (auto); tables choose among SIRCL options"
     _, pair = sircl_deployment(TP2, "pair", 2, [0, 1], nccl="auto")

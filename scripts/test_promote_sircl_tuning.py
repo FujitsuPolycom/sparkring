@@ -25,9 +25,17 @@ def measured(tmp_path):
     return value, host / transport.HOST_TABLES.lstrip("/"), digest, data, image, cycle
 
 
+def without_cycle4(table):
+    """The default table without its cycle-4 row and the SIRCL table of that row."""
+    value = json.loads(json.dumps(table))
+    value["layouts"].pop("cycle-4", None)
+    value["tables"] = [entry for entry in value["tables"] if entry["path"] != "runtime/common/sircl-tuning/cycle-4.json"]
+    return value
+
+
 def test_a_measured_cycle4_row_replaces_the_rule_its_groups_took(tmp_path, measured):
     value, tables, digest, data, image, cycle = measured
-    defaults = transport.load_tuning()
+    defaults = without_cycle4(transport.load_tuning())
     assert transport.tuning_row(defaults, "cycle", 4)[0] == "cycle"
     promoted, written, relative = promote.promote(defaults, value, "cycle-4", tables)
     assert written == data and relative == "runtime/common/sircl-tuning/cycle-4.json"
@@ -72,7 +80,9 @@ def test_without_write_the_command_prints_the_change_and_writes_nothing(measured
     before = transport.TUNING_DEFAULTS.read_bytes()
     assert promote.main(["--measured", str(path), "--tables", str(tables), "--row", "cycle-4"]) == 0
     out = capsys.readouterr().out
-    assert out.startswith("cycle-4: no row (the shape row applies) -> ") and "Review, then repeat with --write." in out
+    before_row = transport.load_tuning()["layouts"].get("cycle-4")
+    assert out.startswith(f"cycle-4: {json.dumps(before_row, sort_keys=True) if before_row else 'no row (the shape row applies)'}"
+                          " -> ") and "Review, then repeat with --write." in out
     assert transport.TUNING_DEFAULTS.read_bytes() == before
 
 
