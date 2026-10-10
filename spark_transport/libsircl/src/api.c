@@ -70,9 +70,25 @@ static void read_error(struct ncclComm *comm, char *out, size_t len) {
   snprintf(out, len, "%s", comm->error_message);
   pthread_mutex_unlock(&comm->error_lock);
 }
+/* NCCL_DEBUG=WARN, INFO or TRACE: every failed call also writes its result and reason to stderr. */
+static int debug_errors(void) {
+  const char *debug = sccl_env("NCCL_DEBUG");
+  return debug && (!strcasecmp(debug, "WARN") || !strcasecmp(debug, "INFO") || !strcasecmp(debug, "TRACE"));
+}
 static ncclResult_t fail(ncclResult_t result, const char *message) {
   snprintf(last_error, sizeof(last_error), "%s", message);
   if (group_depth && group_error == ncclSuccess) group_error = result;
+  if (debug_errors()) fprintf(stderr, "libsircl: %s: %s\n", ncclGetErrorString(result), message);
+  return result;
+}
+/* A communicator that cannot be created (ncclCommInitRank*, ncclCommSplit): its reason goes to stderr
+ * whatever NCCL_DEBUG says, once, because the frameworks that create communicators commonly report only
+ * ncclGetErrorString, and the text ncclGetLastError keeps is otherwise lost with the process. */
+static ncclResult_t creation_failed(ncclResult_t result, const char *message) {
+  int printed = debug_errors();
+  fail(result, message);
+  if (!printed) fprintf(stderr, "libsircl: communicator creation failed (%s): %s\n", ncclGetErrorString(result),
+                        message);
   return result;
 }
 /* A refused collective or point-to-point call: the error and its text for this thread. An invalid argument
@@ -233,7 +249,7 @@ static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
 ncclResult_t ncclCommInitRankConfig(ncclComm_t *out, int nranks, ncclUniqueId id, int rank, ncclConfig_t *config) {
   CHECK_PROCESS();
   int position;
-  if (env_position(&position)) return fail(ncclInvalidArgument, "LIBSIRCL_POSITION must be an integer 0-63");
+  if (env_position(&position)) return creation_failed(ncclInvalidArgument, "LIBSIRCL_POSITION must be an integer 0-63");
   return init_rank(out, nranks, id, rank, config, position < 0 ? rank : position, 1);
 }
 /* Under NCCL_DEBUG (VERSION, WARN, INFO or TRACE), the first communicator creation of a process writes one
@@ -255,27 +271,31 @@ static void identify_once(void) {
 static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int rank, ncclConfig_t *config,
                               int position, int inherited_blocking) {
   identify_once();
-  if (!out) return fail(ncclInvalidArgument, "communicator output is NULL");
+  if (!out) return creation_failed(ncclInvalidArgument, "communicator output is NULL");
   *out = NULL;
   if (nranks < 1 || nranks > 8 || rank < 0 || rank >= nranks)
-    return fail(ncclInvalidArgument, "bootstrap supports 1 to 8 ranks with valid rank numbers");
+    return creation_failed(ncclInvalidArgument, "bootstrap supports 1 to 8 ranks with valid rank numbers");
   int blocking;
   ncclResult_t result = config_blocking(config, inherited_blocking, &blocking);
-  if (result != ncclSuccess) return result;
+  if (result != ncclSuccess) {
+    char reason[sizeof last_error];
+    snprintf(reason, sizeof reason, "%s", last_error);
+    return creation_failed(result, reason);
+  }
   const char *optin = sccl_env("LIBSIRCL_BOOTSTRAP_ONLY");
   int bootstrap_only = optin && !strcmp(optin, "1");
   sccl_CUcontext ctx = NULL;
   if (!bootstrap_only) {
+    /* The creating thread's context, else the current device's primary context (sccl_engine_device_context). */
     ctx = sccl_engine_current_context();
-    if (!ctx)
-      return fail(ncclInvalidUsage, "no current CUDA context: select the device (cudaSetDevice) before "
-                                    "creating the communicator; LIBSIRCL_BOOTSTRAP_ONLY=1 creates CPU-only "
-                                    "test communicators");
+    char why[512];
+    if (!ctx && !(ctx = sccl_engine_device_context(why, sizeof why)))
+      return creation_failed(ncclInvalidUsage, why);
   }
   if (group_depth && pending_count == 64)
-    return fail(ncclInvalidUsage, "group exceeds 64 pending initializations");
+    return creation_failed(ncclInvalidUsage, "group exceeds 64 pending initializations");
   struct ncclComm *comm = calloc(1, sizeof(*comm));
-  if (!comm) return fail(ncclSystemError, "communicator allocation failed");
+  if (!comm) return creation_failed(ncclSystemError, "communicator allocation failed");
   pthread_mutex_init(&comm->error_lock, NULL);
   comm->nranks = nranks; comm->rank = rank; comm->blocking = blocking;
   comm->bootstrap_only = bootstrap_only; comm->ctx = ctx; comm->position = position;
@@ -295,7 +315,7 @@ static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
     return ncclSuccess;
   }
   result = start(comm);
-  if (result != ncclSuccess) { *out = comm; return result; }
+  if (result != ncclSuccess) { *out = comm; return creation_failed(result, "cannot start bootstrap worker"); }
   if (!blocking) { *out = comm; return ncclInProgress; }
   pthread_join(comm->worker, NULL);
   comm->worker_started = 0;
@@ -304,7 +324,7 @@ static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   if (result != ncclSuccess) {
     char message[1200];
     snprintf(message, sizeof message, "communicator initialization failed: %s", comm->error_message);
-    return fail(result, message);
+    return creation_failed(result, message);
   }
   return result;
 }
@@ -318,14 +338,15 @@ ncclResult_t ncclCommInitRank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
  * route-map position. A rank passing NCCL_SPLIT_NOCOLOR takes part in both rounds and gets NULL. */
 ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *newcomm, ncclConfig_t *config) {
   CHECK_PROCESS();
-  if (!newcomm) return fail(ncclInvalidArgument, "ncclCommSplit: newcomm is NULL");
+  if (!newcomm) return creation_failed(ncclInvalidArgument, "ncclCommSplit: newcomm is NULL");
   *newcomm = NULL;
-  if (color < NCCL_SPLIT_NOCOLOR) return fail(ncclInvalidArgument, "ncclCommSplit: color must be >= 0 or NOCOLOR");
+  if (color < NCCL_SPLIT_NOCOLOR)
+    return creation_failed(ncclInvalidArgument, "ncclCommSplit: color must be >= 0 or NOCOLOR");
   struct ncclComm *parent = acquire(handle);
-  if (!parent) return fail(ncclInvalidArgument, "ncclCommSplit: unknown communicator handle");
+  if (!parent) return creation_failed(ncclInvalidArgument, "ncclCommSplit: unknown communicator handle");
   if (atomic_load(&parent->state) != READY || !parent->bootstrap) {
     release(parent);
-    return fail(ncclInvalidUsage, "ncclCommSplit: the parent communicator is not ready");
+    return creation_failed(ncclInvalidUsage, "ncclCommSplit: the parent communicator is not ready");
   }
   int32_t mine[2] = {color, key};
   void *all = NULL;
@@ -334,7 +355,7 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging colors: %s", sccl_bootstrap_error());
     release(parent);
-    return fail(ncclSystemError, message);
+    return creation_failed(ncclSystemError, message);
   }
   const int32_t *records = all;
   int members[64], count = 0, rank = -1;
@@ -363,7 +384,7 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging unique ids: %s", sccl_bootstrap_error());
     release(parent);
-    return fail(ncclSystemError, message);
+    return creation_failed(ncclSystemError, message);
   }
   if (rank >= 0) memcpy(id.internal, (const unsigned char *)all + 128 * (size_t)members[0], 128);
   free(all);

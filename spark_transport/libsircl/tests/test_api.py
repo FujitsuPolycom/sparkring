@@ -134,6 +134,10 @@ assert c.value is None
 '''
         env = os.environ.copy()
         env.pop("LIBSIRCL_BOOTSTRAP_ONLY", None)
+        # On the stand-in CUDA driver with two devices, no current context and no CUDA runtime, the current
+        # device is unknown, so a communicator without the opt-in is refused rather than made CPU-only.
+        env.update({"LD_LIBRARY_PATH": f"{ROOT / 'build/fake-cuda'}:{env.get('LD_LIBRARY_PATH', '')}",
+                    "FAKE_CUDA_NO_CONTEXT": "1", "FAKE_CUDA_DEVICES": "2"})
         subprocess.run([sys.executable, "-c", script, str(LIBRARY)], env=env, check=True, capture_output=True, text=True)
 
     @unittest.skipUnless(hasattr(os, "fork"), "Linux fork containment regression")

@@ -45,6 +45,7 @@ typedef struct sccl_cuda {
   sccl_CUresult (*CtxGetDevice)(sccl_CUdevice *);
   sccl_CUresult (*CtxSynchronize)(void);
   sccl_CUresult (*DeviceGet)(sccl_CUdevice *, int);
+  sccl_CUresult (*DeviceGetCount)(int *);
   sccl_CUresult (*DeviceGetAttribute)(int *, int, sccl_CUdevice);
   sccl_CUresult (*DevicePrimaryCtxRetain)(sccl_CUcontext *, sccl_CUdevice);
   sccl_CUresult (*ModuleLoadData)(sccl_CUmodule *, const void *);
@@ -86,5 +87,9 @@ const sccl_cuda *sccl_cuda_get(void);
 const char *sccl_cuda_error(void);
 /* "name: message" of a driver result. */
 const char *sccl_cuda_result_text(sccl_CUresult result);
+/* The device the application's CUDA runtime has selected for the calling thread (cudaGetDevice of a runtime
+ * the process has already loaded in its global scope; the library loads no runtime of its own), or -1 when
+ * the process has none or it fails. */
+int sccl_cuda_runtime_device(void);
 
 #endif
