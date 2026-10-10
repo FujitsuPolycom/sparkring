@@ -27,7 +27,7 @@ has its identity, layers, evidence and gates.
   vLLM's PyNccl alone on a cabled pair or a whole ring
   ([transport and receipts](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#transport-and-receipts)).
 - SIRCL's settings come from a default tuning table with measured rows for a
-  pair, a path of four and a ring of eight. `sudo sparkring fabric tune --execute`
+  pair, a path of four, a ring of four and a ring of eight. `sudo sparkring fabric tune --execute`
   measures one for your cables
   ([measure the tuning table](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/docs/operations/install-reference.md#measure-the-tuning-table)).
 - Status: SIRCL's one-shot all-reduce and all-gather are qualified on an
@@ -92,16 +92,21 @@ has its identity, layers, evidence and gates.
   RMSNorm.
 - **Qwen3.8-Flash-Next** keeps QAD step 5500 as its default checkpoint.
 - **SIRCL tuning rows**: a pair and a path of four run ring schedules above a
-  64 KiB one-shot limit with 1 MiB link pieces; a ring of eight runs a 1 MiB
-  all-reduce capacity, a 28 KiB one-shot limit and 16 link slots of 512 KiB.
+  64 KiB one-shot limit with 1 MiB link pieces; a ring of four takes the
+  merged tune of two rings of four (8 link slots of 1 MiB; the ring
+  all-reduce from about 1.2 MiB per rank)
+  ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md));
+  a ring of eight runs a 1 MiB all-reduce capacity, a 28 KiB one-shot limit
+  and 16 link slots of 512 KiB.
 
 ## Measured results
 
-All results are lane public-functional (images and harnesses of this
-repository), research-only, on eight DGX Sparks (GB10) cabled as one ring
-with ConnectX-7 RoCE, GPU clocks locked at 2,418 MHz, through the serving A/B
-runner rather than `sparkring install`; two measured starts each, temperature
-0, no prompt context. None is serving qualification.
+Every result is lane public-functional (images and harnesses of this
+repository) and none is serving qualification. The table's results are
+research-only, on eight DGX Sparks (GB10) cabled as one ring with ConnectX-7
+RoCE, GPU clocks locked at 2,418 MHz, through the serving A/B runner rather
+than `sparkring install`; two measured starts each, temperature 0, no prompt
+context. The items below it state their own conditions.
 
 | Model, profile | Checkpoint | Sparks | Image | Output tok/s, 1 / 2 / 4 / 8 streams | First token, 32K prompt |
 |---|---|---|---|---|---|
@@ -135,17 +140,22 @@ runner rather than `sparkring install`; two measured starts each, temperature
 - The clean-room acceptance audit passed SIRCL 0.3.2 and libsircl 0.6.0
   with no line to rewrite, and the three GLM-5.3 plugins
   ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/repository/clean-room-acceptance-audit-20261009.md)).
-- **Pending (installer round 1 on 1a8c1035):** GLM-5.3 on eight Sparks
-  installed with `sparkring install` on the release image.
-- **Pending:** installer qualification on the eight-Spark ring.
+- `sparkring install` on the eight-Spark ring with the release image (GPU
+  clocks not locked, one installation each): GLM-5.3 on all eight Sparks,
+  GLM-5.3-Flash CSF on four and on two, and Qwen3.8-Flash-Next on two; every
+  installation passed `sparkring check`'s functional checks and three
+  known-answer questions. GLM-5.3 decoded 47.7 tok/s at one stream and 16K
+  context. These are the first CSF installations that passed the installer's
+  checks ([record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
 - Two rings of four (the eight Sparks recabled): `sudo sparkring setup --re-form`
   verified both fabrics; SIRCL's quick tune of a ring of four passed on both,
   every output exact; libsircl's gate passed on both, with a 256 MiB
   all-reduce of 16.55 ms (24.3 GB/s) on each
   ([setup and tune](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/ring4-setup-and-sircl-tune-20261010.md),
   [libsircl](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.2/performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
-- **Pending:** TP4 installations and the TP4 benchmark on a ring of four,
-  and the measured `cycle-4` tuning row in the default table.
+- **Pending:** the installer scenarios on the rings of four.
+- **Pending:** in-place TP4 measurements on a ring of four of GLM-5.3-Flash
+  CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next.
 
 ## Known limitations
 
@@ -155,14 +165,15 @@ runner rather than `sparkring install`; two measured starts each, temperature
   24.2 GB/s (unsupported). The default `sircl` transport does not use
   libsircl.
 - On this image the GLM-5.3-Flash profiles install the CSF checkpoint, which
-  is research-only. `--checkpoint nvfp4-spark` installs NVFP4-Spark.
+  is research-only: one installation of each profile passed the installer's
+  checks. `--checkpoint nvfp4-spark` installs NVFP4-Spark.
 - The eight-Spark profiles are research-only. `qwen38-flash-next-qad-tp8`
   does not run on this image.
 - MiMo-V2.6-Flash-MOPD and Swift-1.5 profiles run on SIRCL with no SIRCL
   serving record.
-- Without a measured `cycle-4` row, a four-Spark ring's SIRCL sessions use
-  SIRCL's own rules.
-- The measurements locked GPU clocks; the installer does not.
+- A ring of four's tuning row comes from one quick tune per ring, with no
+  serving comparison against SIRCL's own rules.
+- The serving A/B measurements locked GPU clocks; the installer does not.
 - The model's status dashboard is runtime-status 0.3.4: it does not show
   SIRCL's sessions or the collective transport. `sudo sparkring status` and
   `sudo sparkring check` do.

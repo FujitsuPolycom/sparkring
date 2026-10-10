@@ -65,8 +65,8 @@ Five Experimental profiles serve on all eight Sparks of an eight-Spark ring
 `deepseek-v41-flash-tp8`, `qwen38-flash-next-qad-tp8`). They run only on
 SIRCL ring sessions, with an image lock that lists them: the 2026.10.2
 image's lists all but `qwen38-flash-next-qad-tp8`. Only `glm53-nvfp4-tp8` and
-`glm53-nvfp4-tp8-dcp1` have measurements, none from an installation
-([profile catalog](profiles/README.md)).
+`glm53-nvfp4-tp8-dcp1` have measurements, and only `glm53-nvfp4-tp8` an
+installation ([profile catalog](profiles/README.md)).
 
 Thinking is the default for requests that don't set it: *on* (a request can
 turn it off) or *always*, and its effort. `--reasoning-effort LEVEL` and
@@ -98,10 +98,15 @@ Two Sparks were a cabled pair and four Sparks four consecutive Sparks of the
 ring of eight, whose ends reach each other through relays. Both images
 precede the 2026.10.2 image, whose SIRCL is 0.3.2.
 
-- **Pending:** installer qualification of the 2026.10.2 image on the
-  eight-Spark ring.
-- **Pending:** the four-Spark profiles installed and benchmarked on a ring of
-  four, and the ring of four's measured SIRCL tuning row.
+`sparkring install` with the 2026.10.2 image installed `glm53-nvfp4-tp8` on
+the whole ring, both GLM-5.3-Flash profiles on CSF and `qwen38-flash-next-tp2`,
+once each with GPU clocks not locked; each passed `sparkring check`'s
+functional checks, and `glm53-nvfp4-tp8` decoded 47.7 tok/s at one stream and
+16K context ([installer record](performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
+
+- **Pending:** the installer scenarios on four-Spark rings.
+- **Pending:** in-place measurements of the four-Spark GLM-5.3-Flash CSF,
+  DeepSeek and Qwen profiles on a four-Spark ring.
 
 ## Documentation
 

@@ -7,8 +7,9 @@ NVIDIA DGX Sparks (GB10) of the eight-Spark ring, recabled as two independent
 rings of four (ring A and ring B) with ConnectX-7 RoCE. Positions are 0 to 3
 within each ring.
 
-This record holds the verdicts of the setup and tuning runs only; their
-outputs are not in the repository. It belongs to release 2026.10.2
+This record holds the verdicts of the setup runs, whose outputs are not in
+the repository, and of the tunes, whose tables and merge the
+[SIRCL tune record](sircl-cycle4-tune-two-rings-20261009.md) holds. It belongs to release 2026.10.2
 ([release record](../../../runtime/releases/dev-20261009-kraken-csf-sircl032-libsircl-plugins/README.md)).
 
 ## Setup
@@ -35,12 +36,11 @@ outputs are not in the repository. It belongs to release 2026.10.2
   every output exact.
 - **Use:** the measured `cycle-4` row of the default tuning table
   ([sircl-tuning-defaults.json](../../../runtime/common/sircl-tuning-defaults.json))
-  is promoted from these tunes on branch `claude/cycle4-tuning-promotion`;
-  until that commit merges, a ring of four runs on SIRCL's own rules.
+  merges these tunes; the [SIRCL tune record](sircl-cycle4-tune-two-rings-20261009.md)
+  holds the runs, both rings' tables and the merge.
 
 ## Limitations
 
-- Verdicts only: the setup and tune outputs are not committed here.
-- One run per ring. Ring B mixed two driver and kernel versions; the
-  promotion branch records each Spark's driver and kernel in the row's
-  evidence (commit `e7e23adb`).
+- Verdicts only for the setups: their outputs are not committed.
+- One run per ring. Ring B mixed two driver and kernel versions; the row's
+  evidence records each Spark's driver and kernel.

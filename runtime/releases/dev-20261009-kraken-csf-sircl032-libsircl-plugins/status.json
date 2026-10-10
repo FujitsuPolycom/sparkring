@@ -88,12 +88,12 @@
     {
       "id": "glm53-flash-nvfp4-spark-tp2",
       "status": "implemented",
-      "default_checkpoint_on_this_image": "csf (research-only)"
+      "default_checkpoint_on_this_image": "csf (research-only; one installation passed the installer's checks)"
     },
     {
       "id": "glm53-flash-nvfp4-spark-tp4",
       "status": "implemented",
-      "default_checkpoint_on_this_image": "csf (research-only)"
+      "default_checkpoint_on_this_image": "csf (research-only; one installation passed the installer's checks)"
     },
     {
       "id": "glm53-nvfp4-tp8",
@@ -183,6 +183,17 @@
       "scope": "the image's libsircl.so.0.6.0 (source tree dbf36074) on both rings at once; nccl-tests v2.21.1, the bit-exact check and the timing sweep; no NCCL arm",
       "result": "every verdict passed on both rings; on-budget passed as the planner expects; cycle plan from 8 MiB on 24 of 24 comparisons per ring; 256 MiB all-reduce 16.55 ms (24.3 GB/s bus) on both rings, within 1 %; broadcast 5.3 GB/s",
       "record": "performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md"
+    },
+    {
+      "id": "installer-ring8",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10), one ConnectX-7 RoCE ring of eight recorded by sparkring setup --adopt; GPU clocks not locked",
+      "image_id": "sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952",
+      "scope": "sparkring install of glm53-nvfp4-tp8 (all eight), glm53-flash-nvfp4-spark-tp4 (four, CSF), qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 (pairs, CSF) with package 498a7bc4 and --image-lock; one installation each; sparkring check and three known-answer questions",
+      "result": "every installation passed the functional checks and the known-answer questions; transport SIRCL with NCCL absent (glm53-nvfp4-tp8's built-in cycle-8 plan accepted from 00f95601); glm53-nvfp4-tp8 install 661 s, 47.7 output tok/s at one stream and 16K context, accept 2.47, 19.4 steps/s",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
     }
   ],
   "gates": [
@@ -206,9 +217,9 @@
     },
     {
       "id": "glm53-tp8-release-image",
-      "result": "pending",
-      "scope": "installer round 1 on 1a8c1035: glm53-nvfp4-tp8 installed with sparkring install on the release image; its record is to be merged from the integration branch",
-      "record": null
+      "result": "passed",
+      "scope": "glm53-nvfp4-tp8 installed with sparkring install on the release image: install 661 s, functional and known-answer checks passed, 47.7 output tok/s at one stream and 16K context (19.4 steps/s)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
     },
     {
       "id": "libsircl-ring8-release-image",
@@ -224,9 +235,9 @@
     },
     {
       "id": "ring8-installer",
-      "result": "pending",
-      "scope": "installer qualification rounds on the eight-Spark ring with the release lock",
-      "record": null
+      "result": "passed",
+      "scope": "installer runs of four profiles on the eight-Spark ring with the release lock, one installation each (research-only)",
+      "record": "performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md"
     },
     {
       "id": "ring4-setup",
@@ -237,26 +248,26 @@
     {
       "id": "ring4-install",
       "result": "pending",
-      "scope": "TP4 installations on the rings of four",
+      "scope": "the installer scenarios on the rings of four",
       "record": null
     },
     {
       "id": "ring4-benchmark",
       "result": "pending",
-      "scope": "the TP4 benchmark on a ring of four",
+      "scope": "in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next",
       "record": null
     },
     {
       "id": "ring4-sircl-tune",
       "result": "passed",
       "scope": "SIRCL's ring-harness quick tune of the cycle-4 group shape on both rings: 1,102 and 1,098 cases, every output exact",
-      "record": "performance/records/transport/ring4-setup-and-sircl-tune-20261010.md"
+      "record": "performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md"
     },
     {
       "id": "cycle4-row-promotion",
-      "result": "pending",
-      "scope": "the measured cycle-4 row in runtime/common/sircl-tuning-defaults.json, from branch claude/cycle4-tuning-promotion",
-      "record": null
+      "result": "passed",
+      "scope": "the measured cycle-4 row of runtime/common/sircl-tuning-defaults.json, merged from the two rings' tunes (table df333d97acb1a4b2)",
+      "record": "performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md"
     },
     {
       "id": "ring4-libsircl-gate",

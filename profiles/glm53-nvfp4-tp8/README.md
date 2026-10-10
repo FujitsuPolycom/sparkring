@@ -129,8 +129,11 @@ Decode in output tokens/s. Time to first token: 11.77 s for a 16K prompt,
 Conclusion: the profile holds the fastest GLM-5.3 TP8 configuration with a
 1M-token context measured on that ring as of 2026-10-09;
 [glm53-nvfp4-tp8-dcp1](../glm53-nvfp4-tp8-dcp1/README.md) decodes faster with
-a 524,288-token context. No installation of this profile has run; it is
-not serving-qualified.
+a 524,288-token context. On the release image of 2026.10.2, `1a8c10354eb0`,
+one installation passed the installer's functional checks and decoded
+47.7 tokens/s at one stream and 16K context with GPU clocks not locked
+([installer record](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md));
+the profile is not serving-qualified.
 
 Open items:
 

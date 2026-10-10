@@ -25,7 +25,7 @@ is not in a registry. Every pending gate under
 | Image release name | `dev-20261009-kraken-csf-sircl032-libsircl-plugins`, the lock's `name` |
 | Image configuration ID | `sha256:1a8c10354eb0bbaad898ebcfc1b31d5c5cfc40daab2f9b8eaaeb074524aea952` |
 | Tag on the Sparks that hold it | `sparkring-dev/kraken:csf-sircl032-libsircl-plugins-20261009` |
-| Source commit of the build | `c7c35fe0b24cb37d13a7a85c23d3281648ecf847`. The SIRCL, libsircl, plugin and tuning-table sources the image carries are byte-identical in the commit that adds this record |
+| Source commit of the build | `c7c35fe0b24cb37d13a7a85c23d3281648ecf847`. The SIRCL and plugin sources the image carries are unchanged in this branch; libsircl's differs only in its `STATUS.md`. The default tuning table adds the measured `cycle-4` row, which installations take from the installing package |
 | Lock | [installer-image-c7c35fe0.json](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009/installer-image-c7c35fe0.json), SHA-256 `3bbcdfe378d7b0ad1577bb1e4e83517a428310a00fe5f388a35b79a4f2c95958`, 13 profiles ([image record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009.md)) |
 | Registry reference | **Pending (`publication`).** `ghcr.io/fujitsupolycom/sparkring:dev-20261009-kraken-csf-sircl032-libsircl-plugins` and the manifest digest that publication records |
 | Size | 31,883,141,118 bytes (29.7 GiB) unpacked. The lock's 15,308,236,724 download bytes are an upper bound; publication replaces them with the registry's compressed size |
@@ -70,9 +70,8 @@ its relay table, and on the prepared transport elsewhere.
 ([transport and receipts](../../../docs/operations/install-reference.md#transport-and-receipts)).
 SIRCL sessions take the default tuning table
 [sircl-tuning-defaults.json](../../common/sircl-tuning-defaults.json), keyed to
-SIRCL 0.3.2, the image's build. Its measured rows are `pair`, `path-4` and
-`cycle-8`; groups of other shapes, a cycle of four among them, run on
-SIRCL's own rules.
+SIRCL 0.3.2, the image's build. Its measured rows are `pair`, `path-4`,
+`cycle-4` and `cycle-8`; groups of other shapes run on SIRCL's own rules.
 
 ## Evidence
 
@@ -105,14 +104,34 @@ deployment, and none is serving qualification.
 - Record: [GLM-5.3 TP8 speculation arms](../../../performance/records/images/dev-20261009-kraken-csf-sircl-libsircl-plugins-dcp-glm53-tp8-speculation-20261009.md).
   The profile guide records a second run on the same image
   ([glm53-nvfp4-tp8](../../../profiles/glm53-nvfp4-tp8/README.md#evidence-and-open-items)).
-- **Pending record (`glm53-tp8-release-image`, installer round 1 on
-  1a8c1035):** installer round 1 on the eight-Spark ring installed
-  `glm53-nvfp4-tp8` with `sudo sparkring install` on the release image. The
-  values to confirm against its record when it merges: ready after 661 s;
-  47.7 output tok/s at one stream and 16K context, 2.47 accepted tokens per
-  step, 19.4 steps/s, against 44.2 tok/s and 19.5 steps/s on `27e9f75c0d09`
-  above; 3 of 3 known-answer checks; `sparkring check` passed. Replace this
-  item with the record's link and scope.
+- On the release image, installed with `sparkring install` (GPU clocks not
+  locked): 47.7 output tok/s at one stream and 16K context, 2.47 accepted
+  tokens per step, 19.4 steps/s, against 44.2 tok/s at 2.27 and 19.5 steps/s
+  in the same cell on `27e9f75c0d09`; the step rates agree and the output
+  rates differ with the acceptance
+  ([installer runs on the ring of eight](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
+
+### Installer runs on the ring of eight
+
+- Lane **public-functional**. Status **research-only**. Maturity
+  **live-validated**: each profile installed once and passed the installer's
+  checks; single-run timing; not serving-qualified.
+- Hardware: the eight-Spark ring, recorded by `sparkring setup --adopt`;
+  package `498a7bc4` on every Spark; the release image by its configuration
+  ID with `--image-lock` and the recorded lock. GPU clocks not locked.
+- Result: `glm53-nvfp4-tp8` on all eight Sparks (install 661 s, API ready
+  after 392.5 s, 6 functional checks passed; the image check does not
+  apply); `glm53-flash-nvfp4-spark-tp4` on four (919 s) and
+  `glm53-flash-nvfp4-spark-tp2` on two (1,040 s), both on the CSF checkpoint,
+  the first CSF installations that passed the installer's checks; and
+  `qwen38-flash-next-tp2` on two (775 s); the three smaller deployments
+  served at once. Each passed `sparkring check`'s functional checks and
+  answered three known-answer questions. The transport check passed for the
+  three smaller deployments; for `glm53-nvfp4-tp8`, package `498a7bc4`
+  reported "differs" because its sessions took SIRCL's built-in cycle-8 plan,
+  and revision `00f95601` accepts that plan and judges the receipts as
+  expected.
+- Record: [installer runs on the ring of eight](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md).
 
 ### Two and four Sparks on SIRCL ring sessions
 
@@ -192,7 +211,8 @@ deployment, and none is serving qualification.
   `e2590e79`.
 - SIRCL tune: the ring harness's quick tune of the `cycle-4` group shape
   passed on both rings, 1,102 and 1,098 cases, every output exact. The
-  promoted `cycle-4` row comes from branch `claude/cycle4-tuning-promotion`.
+  default table's measured `cycle-4` row merges the two rings' tunes
+  ([SIRCL tune record](../../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md)).
 - libsircl of the release image on both rings at once: byte checks, the
   bit-exact check and nccl-tests passed; `on-budget` passed, as the planner
   expects on a ring of four; the cycle plan held from 8 MiB on 24 of 24
@@ -220,24 +240,24 @@ deployment, and none is serving qualification.
 | Image built, loaded on eight Sparks, lock validated for its 13 profiles | passed | [image record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-image-20261009.md) |
 | SIRCL one-shot all-reduce and all-gather on the eight-Spark ring | passed (status qualified) | [SIRCL status](../../../spark_transport/sircl/STATUS.md#component-status) |
 | Serving A/B measurements of two, four and eight Sparks recorded | passed (status research-only) | [Evidence](#evidence) |
-| `ring8-installer`: installer qualification rounds on the eight-Spark ring with the release lock | **pending** | — |
+| `ring8-installer`: installer runs on the eight-Spark ring with the release lock | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `ring4-setup`: `sudo sparkring setup --re-form` on each of two rings of four | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
-| `ring4-install`: TP4 installations on the rings of four | **pending** | — |
-| `ring4-benchmark`: the TP4 benchmark on a ring of four | **pending** | — |
+| `ring4-install`: the installer scenarios on the rings of four | **pending** | — |
+| `ring4-benchmark`: in-place TP4 measurements on a ring of four of GLM-5.3-Flash CSF, DeepSeek-V4.1-Flash and Qwen3.8-Flash-Next | **pending** | — |
 | `ring4-sircl-tune`: SIRCL's ring-harness tune of the `cycle-4` group shape on both rings | passed | [record](../../../performance/records/transport/ring4-setup-and-sircl-tune-20261010.md) |
-| `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table, from branch `claude/cycle4-tuning-promotion` | **pending** | — |
+| `cycle4-row-promotion`: the measured `cycle-4` row in the default tuning table | passed | [record](../../../performance/records/transport/sircl-cycle4-tune-two-rings-20261009.md) |
 | `ring4-libsircl-gate`: the libsircl gate on a cycle of four | passed | [record](../../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md) |
-| `glm53-tp8-release-image`: GLM-5.3 TP8 installed on the release image (installer round 1 on 1a8c1035) | **pending record** | — |
+| `glm53-tp8-release-image`: GLM-5.3 TP8 installed on the release image | passed (status research-only) | [record](../../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md) |
 | `libsircl-ring8-release-image`: the libsircl gate on the release image | passed | [record](../../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md) |
 | `clean-room-audit`: the clean-room acceptance audit | passed | [record](../../../performance/records/repository/clean-room-acceptance-audit-20261009.md) |
 | `relay-marker`: the relay marker binary of source `c64c74535c06`, compiled on an arm64 Spark with `gcc` and `libibverbs-dev` by `python3 scripts/build_deb.py --relay-marker require` ([release procedure](../../../docs/development/releases.md)), published as the release asset `sparkring-relay-marker-c64c74535c06-arm64` and named with its SHA-256 and URL in [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json), which names none; package builds without a compiler, `install.sh` among them, stop until it does. No arm64 compiler is available offline, and the release build compiles again and refuses a binary that differs from the recorded one | **pending** | — |
 | `compose-v3`: Compose rendering and the Install Builder on this release's lock: `compose.runtime_lock` renders a v3 lock on its v2 fields, and the page's Default card is the checkpoint `sparkring install` installs on the image (`install_default`). With this release's publication records and a stand-in digest in a scratch checkout, `python scripts/generate_compose_builder.py --verify --cases 20` passed every case of 15 images | passed | [compose.py](../../common/compose.py), [compose-builder.md](../../../docs/operations/compose-builder.md#model-and-checkpoint) |
 | `publication`: registry push, anonymous manifest and configuration check, and the publication records | **pending** | — |
 
-A measured `cycle-4` row changes `sircl-tuning-defaults.json`, and therefore
-the `tuning_defaults_sha256` that an image built afterwards records. This
-image keeps its recorded value; installations apply the table of the
-installing package ([release procedure](../../../docs/development/releases.md)).
+The image's lock records the default tuning table of its build
+(`tuning_defaults_sha256` `c6f82805…`), which has no `cycle-4` row.
+Installations apply the table of the installing package, which carries the
+row ([release procedure](../../../docs/development/releases.md)).
 
 ## Known limitations
 
@@ -248,15 +268,16 @@ installing package ([release procedure](../../../docs/development/releases.md)).
   NCCL's 24.2 GB/s: it has no ring broadcast (unsupported). The default
   `sircl` transport does not use libsircl.
 - The GLM-5.3-Flash CSF checkpoint is research-only and the default of the
-  GLM-5.3-Flash profiles on this image.
-- The eight-Spark profiles are research-only; no installation of them has a
-  record.
+  GLM-5.3-Flash profiles on this image; one installation of each passed the
+  installer's checks, with no correctness screen, decode measurement or soak.
+- The eight-Spark profiles are research-only; `glm53-nvfp4-tp8` has one
+  installation that passed the installer's checks.
 - MiMo-V2.6-Flash-MOPD and Swift-1.5 profiles run on SIRCL sessions with no
   SIRCL serving record in the repository.
-- A cycle of four, the four-Spark ring, has no measured tuning row until the
-  `cycle4-row-promotion` gate passes; its sessions take SIRCL's own rules.
-- Every measurement above locked the GPU clocks, which the installer does
-  not do.
+- The `cycle-4` row comes from one quick tune per ring with GPU clocks not
+  locked; no serving run has compared it with SIRCL's own rules.
+- The serving A/B measurements locked the GPU clocks, which the installer
+  does not do; the installer runs and the `cycle-4` tunes did not lock them.
 - The image's dashboard (runtime-status 0.3.4) shows neither SIRCL's session
   facts nor the collective transport; `sudo sparkring status` and
   `sudo sparkring check` report the transport and the receipt verdict.
