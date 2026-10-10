@@ -49,8 +49,14 @@ logs (`verification/`) and its change requests to SIRCL's package
 names the snapshot each recorded run used by the first eight digits of its
 tree digest; the run logs it cites stay with the workstation that made them.
 Evidence: GPU emulation on one RTX 5090 workstation and runs of earlier
-snapshots on Sparks (cabled pairs, a path of four and the cycle of eight);
-the cycle plan has not run on Sparks. The installer's libsircl transport
+snapshots on Sparks (cabled pairs, a path of four and the cycle of eight).
+The cycle plan ran on Sparks in the library of image `1a8c10354eb0` (source
+tree `dbf36074`): on the cycle of eight
+([gate](../../performance/records/transport/libsircl-ring8-image-1a8c10354eb0-20261009.md))
+and on two rings of four
+([gate](../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
+STATUS.md is part of that source tree, so it keeps the tree's bytes and
+does not list these runs. The installer's libsircl transport
 (`runtime/common/libsircl.py`) carries six routing variables per rank and
 refuses a planner row with others. For a group of four consecutive Sparks (a
 path of four, or four positions of the ring of eight) this snapshot's planner
