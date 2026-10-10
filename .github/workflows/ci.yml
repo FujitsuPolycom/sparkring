@@ -103,8 +103,22 @@ jobs:
       # The package's own pytest settings (spark_transport/sircl/pyproject.toml) apply when its
       # directory is the only test path. The native tests compile the progress-thread source
       # against an in-memory verbs stand-in; none of these tests needs a GPU or an RDMA device.
+      # A session checks its route map's device names against the host's active RDMA devices
+      # (/sys/class/infiniband) whenever the host lists any, and a hosted runner's own network
+      # adapter can list one, which no route map of these tests names. The tests therefore run
+      # as on a host without RDMA devices: in a private mount namespace whose
+      # /sys/class/infiniband is an empty tmpfs, as the runner's own user (a nested user
+      # namespace maps it back). Ubuntu 24.04 restricts unprivileged user namespaces through
+      # AppArmor unless kernel.apparmor_restrict_unprivileged_userns is 0.
       - name: Test the SIRCL package from the repository layout
-        run: python -m pytest spark_transport/sircl -q -rs
+        run: |
+          sudo sysctl -q -w kernel.apparmor_restrict_unprivileged_userns=0 2>/dev/null || true
+          unshare --user --map-root-user --mount -- sh -euc '
+            if [ -d /sys/class/infiniband ]; then mount -t tmpfs -o ro tmpfs /sys/class/infiniband; fi
+            uid=$1 gid=$2
+            shift 2
+            exec unshare --user --map-user="$uid" --map-group="$gid" -- "$@"
+          ' sh "$(id -u)" "$(id -g)" python -m pytest spark_transport/sircl -q -rs
 
   libsircl:
     name: libsircl C library

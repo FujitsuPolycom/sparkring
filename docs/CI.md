@@ -12,7 +12,10 @@ run this workflow. Jobs use read-only repository permissions.
   [SIRCL ring-session package](../spark_transport/sircl/README.md) from the
   repository layout, with its own pytest settings. Its native tests compile
   the progress-thread source with GCC against an in-memory verbs stand-in;
-  none needs a GPU or an RDMA device.
+  none needs a GPU or an RDMA device. The job runs them in a private mount
+  namespace whose `/sys/class/infiniband` is empty, because a session checks
+  its route map against the host's active RDMA devices whenever the host
+  lists any, and a hosted runner's network adapter can list one.
 - `pinned LIL bridge` builds the source-pinned
   [LIL deployment companion](../integrations/lil/README.md) and exercises
   its SparkRing integration.
