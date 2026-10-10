@@ -65,8 +65,9 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
   third-party hybrid (research-only). GLM profiles install the CSF
-  checkpoint on an image whose vLLM reads it (research-only; one
-  installation of each passed the installer's checks) and NVFP4-Spark
+  checkpoint on an image whose vLLM reads it (implemented; installations
+  passed the installer's checks and a 256-request correctness screen) and
+  NVFP4-Spark
   on every other image, the default image among them; add
   `--checkpoint nvfp4-spark` for NVFP4-Spark on any image,
   `--checkpoint nvfp4-qad` for Local Inference Lab's QAD checkpoint, or on
