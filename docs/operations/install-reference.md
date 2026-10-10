@@ -2617,12 +2617,18 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   request with 8 images left Node A 2.19 GiB of memory, as NVFP4-Spark's pair
   profile does
   ([record](../../performance/records/images/dev-20260930-spinwait-glm53-flash-nvfp4-spark-tp2-nvfp4-qad-20261001.md)).
-- The `csf` entries of both GLM profiles are **research-only**: one
-  installation of each, on four and on two Sparks of a ring of eight,
-  passed the installer's 7 functional checks and its transport check on
-  the SIRCL 0.3.2 image `1a8c10354eb0`, with no correctness screen, decode
-  measurement or soak
-  ([record](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md)).
+- The `csf` entries of both GLM profiles are **implemented** on the SIRCL
+  0.3.2 image `1a8c10354eb0`: installations on four and on two Sparks, of a
+  ring of eight and of rings of four, passed the installer's 7 functional
+  checks and its transport check
+  ([ring of eight](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring8-20261009.md),
+  [rings of four](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-installer-ring4-20261010.md)); on four
+  Sparks the installation decoded 67.5 / 225.9 tok/s at 1 / 8 streams
+  without context and 65.6 / 214.5 at 16K tokens in one measured series
+  (rings-of-four record); and on four and on two Sparks a 256-request
+  correctness screen returned no degenerate, wrong or failed response
+  ([screens](../../performance/records/images/dev-20261009-kraken-csf-sircl032-libsircl-plugins-csf-screens-20261010.md)).
+  Qualification still needs a soak.
   Their quantization, loader, W4A16
   decode and draft MoE backend are those of `glm53-flash-csf-tp8`
   ([guide](../../profiles/glm53-flash-csf-tp8/README.md)). On one pair,
