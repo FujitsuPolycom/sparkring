@@ -161,11 +161,19 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
     from scripts.generate_profiles import thinking_column
     text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
     assert thinking_column(text) == text
-    rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip()
-            for line in text.splitlines() if line.startswith('| ') and line.split('|')[4].strip().startswith('`')
-            and line.split('|')[6].strip() != 'Thinking'}
+    from scripts.generate_profiles import INSTALLER_TABLE
+    # The installer profile table only: it starts at its header and ends at the first line outside it.
+    lines = text.splitlines()
+    header = next(number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE))
+    table = []
+    for line in lines[header + 2:]:
+        if not line.startswith('| '):
+            break
+        table.append(line)
+    rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip() for line in table}
     assert rows == {'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-qad-tp4': 'on · xhigh',
                     'glm53-flash-nvfp4-spark-tp2': 'always · max', 'glm53-flash-nvfp4-spark-tp4': 'always · max',
+                    'glm53-nvfp4-tp8': 'always · max',
                     'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
                     'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
     # A stale cell is rewritten; the hand-maintained cells stay as written.

@@ -82,7 +82,7 @@ Hand-maintained pages, which no check compares with the code:
 
 - `docs/operations/install-reference.md`: the profile table in [Serving image and profiles](../operations/install-reference.md#serving-image-and-profiles), the ring list in Four-Spark rings, API ports in Security and host exposure, and checkpoint sizes, files and headroom, and blank-Spark totals in Downloads, storage and outbound hosts.
 - In `docs/operations/`: `install.md` (free disk), `images.md` (profile count), `compose.md` (profile list), `compose-files.md` (rank files).
-- [`README.md` Profiles](../../README.md#profiles): `--profile` value, API port, checkpoint link and publisher, measured rates or `—`. `generate_profiles.py` fills the Thinking column from `profiles/thinking.json`.
+- [`README.md` Profiles](../../README.md#profiles): model, checkpoint link and publisher, Sparks, `--profile` value and API port. `generate_profiles.py` fills the Thinking column from `profiles/thinking.json`.
 - `docs/operations/install-reference.md`: the table in [Thinking](../operations/install-reference.md#thinking).
 
 ## Steps
