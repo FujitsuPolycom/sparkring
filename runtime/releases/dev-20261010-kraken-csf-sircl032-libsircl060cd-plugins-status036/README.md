@@ -233,6 +233,12 @@ the serving A/B runner started the model. None is serving qualification.
   rings, with `Fabric verified: 4 cables on 4 Sparks (cycle-4)`; cables
   measured 212.7 to 213.4 Gb/s. The package held the re-form fixes of commit
   `e2590e79`.
+- Re-form into a cluster name the Sparks used before: a re-form runs as
+  root, and the setup's workspace step accepts the existing workspace and
+  controller state directory that another account owns when the operator is
+  root (commit `c5c68570`); a non-root operator is still refused. Status
+  implemented, covered by CPU tests (`runtime/host/test_persistence.py`), not
+  run on hardware.
 - SIRCL tune: the ring harness's quick tune of the `cycle-4` group shape
   passed on both rings, 1,102 and 1,098 cases, every output exact. The
   default table's measured `cycle-4` row merges the two rings' tunes
