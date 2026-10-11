@@ -74,17 +74,21 @@ profiles are Experimental ([profile catalog](profiles/README.md)).
 
 Decode at 32K context, output tok/s:
 
-| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | Prefill, 32K prompt (tok/s) |
-|---|---|---|---|---|---|
-| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 1,343 |
-| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 64.2 / 126.6 / 218.7 | 3,127 |
-| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 39.5 / 87.1 / 123.2 | 2,138 |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 62.1 / 149.4 / 234.0 | 4,666 |
-| Qwen3.8-Flash-Next | QAD step 5500 | 2 | `qwen38-flash-next-tp2` | 42.9 / 109.9 / 162.9 | 3,649 |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 |
+| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | Prefill, 32K prompt (tok/s) | Image |
+|---|---|---|---|---|---|---|
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 1,343 | `27e9f75c` |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 64.2 / 126.6 / 218.7 | 3,127 | `1a8c1035` |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 39.5 / 87.1 / 123.2 | 2,138 | `816c6d6a`; 8 streams `1a8c1035` |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 62.1 / 149.4 / 234.0 | 4,666 | `1a8c1035` |
+| Qwen3.8-Flash-Next | QAD step 5500 | 2 | `qwen38-flash-next-tp2` | 42.9 / 109.9 / 162.9 | 3,649 | `1a8c1035` |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 | `1a8c1035` |
 
 On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes 6–8 % faster than the default checkpoint in the median of two starts on the same ring; it was not compared on two Sparks.
-Each row's record is under `performance/records/`.
+
+The rows ran on development images built before 2026.10.2's `d52737a1`:
+`1a8c1035` has its SIRCL layer and differs only in libsircl and the status
+dashboard; `27e9f75c` and `816c6d6a` carry SIRCL 0.3.1 and 0.3.0. Each row's
+record is under `performance/records/`.
 
 ## Documentation
 
