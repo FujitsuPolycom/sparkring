@@ -187,7 +187,14 @@ starts:
   cleared memory and reads its weights from disk. Every installer profile
   sets `--gpu-memory-utilization`; all but the DeepSeek-V4.1-Flash profiles
   also fix the KV cache size with `--kv-cache-memory-bytes`, so the page
-  cache cannot shrink their KV pool, only stop their start.
+  cache cannot shrink their KV pool, only stop their start. Before it waits,
+  the start is also refused when vLLM's share plus the pinned host memory of
+  a SparkCache connector (its capture slots and CUDA restore arenas, from the
+  connector settings) exceeds a Spark's total less 6 GiB for the system, as
+  `Not starting: the model's memory does not fit on HOST (vLLM's share 0.87 of
+  121.69 GiB is 105.87 GiB, SparkCache pins 16.25 GiB, together 122.12 GiB,
+  above 115.69 GiB: ...)`. With caches dropped and no model running, a GB10
+  Spark holds 5.0-5.3 GiB of its 121.69 GiB for the system.
 
 Once the model serves, the run releases what older deployments hold on the
 Sparks ([automatic release](#automatic-release)).

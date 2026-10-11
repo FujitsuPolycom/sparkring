@@ -73,6 +73,62 @@ def test_a_spark_below_vllms_share_refuses_the_start_with_its_numbers():
     assert rows[0]["asks_gib"] is None
 
 
+def connector_command(slot_bytes, *, slots=2, capture=True, restore=True, budget=268435456):
+    import json
+    extra = {"spark_cache_async_page_capture": capture, "spark_cache_async_page_capture_slot_bytes": slot_bytes,
+             "spark_cache_async_page_capture_slot_count": slots, "spark_cache_cuda_restore": restore,
+             "spark_cache_cuda_placement_arena_bytes": 67108864,
+             "spark_cache_cuda_restore_arena_budget_bytes": budget}
+    return ["serve", "/m", "--gpu-memory-utilization", "0.87", "--kv-transfer-config",
+            json.dumps({"kv_connector": "SparkContextCacheConnector", "kv_connector_extra_config": extra})]
+
+
+def test_sparkcache_pinned_memory_is_its_capture_slots_and_restore_arenas():
+    assert memory_settle.pinned_bytes(connector_command(8 << 30)) == 16 * 2 ** 30 + 268435456
+    assert memory_settle.pinned_bytes(connector_command(512 << 20, slots=3)) == 1536 * 2 ** 20 + 268435456
+    assert memory_settle.pinned_bytes(connector_command(8 << 30, capture=False, restore=False)) == 0
+    # Without a restore budget, one lane's two placement arenas.
+    assert memory_settle.pinned_bytes(connector_command(512 << 20, budget=None)) == (1024 + 128) * 2 ** 20
+    assert memory_settle.pinned_bytes(["serve", "/m", "--gpu-memory-utilization", "0.87"]) == 0
+    flag, value = connector_command(512 << 20)[-2:]
+    assert memory_settle.pinned_bytes(["serve", f"{flag}={value}"]) == 1024 * 2 ** 20 + 268435456
+
+
+def test_a_share_and_pinned_memory_above_the_total_less_the_headroom_refuse_the_start_before_waiting():
+    total = 121.69
+    sparks = Sparks({"operator@192.0.2.10": [116 * GIB], "operator@192.0.2.11": [116 * GIB]},
+                    total=round(total * GIB))
+    sleep, now = clock()
+    eight = memory_settle.pinned_bytes(connector_command(8 << 30))
+    with pytest.raises(memory_settle.MemoryShort) as refused:
+        memory_settle.settle(["operator@192.0.2.10", "operator@192.0.2.11"], 0.87, run=sparks.run,
+                             pinned_bytes=eight, sleep=sleep, now=now, say=lambda line: None)
+    text = str(refused.value)
+    assert text.startswith("Not starting: the model's memory does not fit on operator@192.0.2.10 (vLLM's share "
+                           "0.87 of 121.69 GiB is 105.87 GiB, SparkCache pins 16.25 GiB, together 122.12 GiB, "
+                           "above 115.69 GiB: the total less 6 GiB for the system), operator@192.0.2.11 (")
+    assert "spark_cache_async_page_capture_slot_bytes" in text and now() == 0
+    # The same share with two 512 MiB slots fits and settles as before.
+    rows = memory_settle.settle(["operator@192.0.2.10"], 0.87, run=sparks.run,
+                                pinned_bytes=memory_settle.pinned_bytes(connector_command(512 << 20)),
+                                sleep=sleep, now=now, say=lambda line: None)
+    assert rows[0]["settled"]
+    # Without a utilization there is no share to add to.
+    assert memory_settle.budget_problem([("operator@192.0.2.10", round(total * GIB))], None, eight) is None
+
+
+def test_every_installer_profile_fits_a_gb10_with_its_sparkcache_pinned_memory():
+    # GB10 Sparks report 121.69 GiB MemTotal (0.87 of it is the 105.87 GiB the memory settle prints).
+    from runtime.common import installer, profiles, toolchain_profiles
+    total = round(121.69 * GIB)
+    for profile in sorted(installer.INSTALLABLE):
+        metadata, _ = profiles.load(profile)
+        command = toolchain_profiles.read(profiles.ROOT / metadata["configuration"]["path"])["vllm_args"]
+        utilization, _ = memory_settle.requested(command)
+        problem = memory_settle.budget_problem([("gb10", total)], utilization, memory_settle.pinned_bytes(command))
+        assert problem is None, (profile, problem)
+
+
 def test_memory_that_does_not_settle_is_read_until_the_deadline():
     sparks = Sparks({"operator@192.0.2.10": [100 * GIB + step * 512 * 1024 for step in range(100)]})
     sleep, now = clock()
@@ -92,11 +148,16 @@ def test_the_installation_reads_vllms_share_from_rank_0s_container(monkeypatch, 
     seen = {}
 
     def settle(hosts, utilization, **kwargs):
-        seen.update(hosts=hosts, utilization=utilization)
+        seen.update(hosts=hosts, utilization=utilization, pinned=kwargs.get("pinned_bytes"))
         return []
     monkeypatch.setattr(memory_settle, "settle", settle)
     REAL_SETTLE_MEMORY(tmp_path, run=lambda host, argv: "")
-    assert seen == {"hosts": ["operator@192.0.2.10", "operator@192.0.2.11"], "utilization": 0.85}
+    assert seen == {"hosts": ["operator@192.0.2.10", "operator@192.0.2.11"], "utilization": 0.85, "pinned": 0}
+    # A SparkCache connector's slots and arenas count beside the share.
+    monkeypatch.setattr(installer, "specifications", lambda value, only_rank=None: [
+        SimpleNamespace(command=tuple(connector_command(512 << 20)))])
+    REAL_SETTLE_MEMORY(tmp_path, run=lambda host, argv: "")
+    assert (seen["utilization"], seen["pinned"]) == (0.87, 1024 * 2 ** 20 + 268435456)
     lock["backend"] = "glm-managed"
     REAL_SETTLE_MEMORY(tmp_path, run=lambda host, argv: "")
     assert seen["utilization"] is None

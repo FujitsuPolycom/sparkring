@@ -6,10 +6,11 @@ Lane: **public-functional**. Status: **research-only**; maturity
 positions 0 to 3 of an eight-Spark ring, on the SparkCache lease layer's
 derived image `e1607979b7f0`, 2026-10-10 and 2026-10-11: Stage 1 of the
 [hardware test plan](../../sparkcache-flash-csf-hardware-test-plan.md), steps
-1-7 and 9 and a single-start speed check; step 8, the two-start A/B and
-Stage 2 (`glm53-flash-nvfp4-sparkcache-tp2`) did not run; not
-serving-qualified.** This record takes the test operator's notes as they stood
-at 2026-10-11 06:32 UTC; Stage 2 was pending then.
+1-7 and 9 and a single-start speed check; step 8 and the two-start A/B did
+not run; Stage 2, `glm53-flash-nvfp4-sparkcache-tp2` on positions 0 and 1,
+stopped both Sparks during its first start; not serving-qualified.** This
+record takes the test operator's notes as they stood at 2026-10-11 06:32 UTC
+and the coordinator's report of Stage 2's start.
 
 ## Conditions
 
@@ -153,6 +154,36 @@ Time to first token at 32K: cold, 10.39 / 19.19 / 18.32 s and 10.27 /
 200 through the 2026-10-11 run, and the install log has no image-transfer
 step.
 
+### Two Sparks with 8 GiB capture slots
+
+- **Conditions.** `glm53-flash-nvfp4-sparkcache-tp2` installed on positions 0
+  and 1 of the same ring, on the same derived image, 2026-10-11, with the
+  profile's settings at the time: `--gpu-memory-utilization` 0.87 (105.87 of
+  121.69 GiB), 10 GiB of KV cache, two 8 GiB capture slots and a 256 MiB
+  restore budget.
+- **Observed.** During kernel compilation, at about 01:32 CDT as reported, both Sparks
+  stopped answering: position 0 answered ping, but its SSH banner timed out;
+  position 1 accepted no TCP connection on port 22. When this record was
+  written the Sparks were still unreachable, and their recovery is not
+  confirmed.
+- **Likely cause (inference, not measured on this start).** Memory
+  exhaustion. The cache-off profile's CSF starts at TP2 (image
+  `816c6d6a7e96`, serving A/B runner logs, not a repository record) show, per
+  Spark: 116.4-116.7 GiB `MemAvailable` with caches dropped before the start;
+  111.8-113.6 GiB free in vLLM's worker before it loads 84.53 GiB of weights;
+  10.0 GiB of KV cache and 0.16-0.36 GiB of CUDA graphs. With 16 GiB of
+  pinned capture slots and 0.25 GiB of restore arenas beside them, about
+  0.7 GiB is left for compilation, activations and the API server. The TP4
+  variant, which ran, holds 42.56 GiB of weights and 37 GiB of KV per Spark,
+  leaving about 15.6 GiB with the same slots.
+- **Fix.** The TP2 variant takes two 512 MiB capture slots, the value of the
+  qualified shared-2026.09.3 profile `glm53-flash-spark-tp2-dcp1-sparkcache`:
+  1.25 GiB of pinned memory, which leaves about 15.7 GiB. Its KV cache and
+  speed settings are unchanged. The installer's memory settle now refuses a
+  start whose vLLM share plus SparkCache's pinned memory exceeds a Spark's
+  total less 6 GiB, naming the numbers; the 8 GiB slots at 0.87 needed
+  122.12 GiB against 115.69 GiB. No start with the 512 MiB slots has run.
+
 ## Conclusion
 
 With 64 MiB placement arenas the variant starts on four Sparks of the ring of
@@ -167,7 +198,9 @@ measured under different conditions.
 ## Limitations
 
 - Step 8 and the two-start A/B did not run, so by the test plan the variant
-  stays research-only; Stage 2, the TP2 variant, had not run.
+  stays research-only. Stage 2, the TP2 variant, stopped both Sparks with 8 GiB
+  capture slots; its cause is inferred, and no start with 512 MiB slots has
+  run.
 - The speed comparison crosses image, topology, tuning table, prefix sharing
   and benchmark revision; the cold-TTFT spread (10.3-20.7 s) is unexplained.
 - The 2 effective restore load threads are below the configured 8; a larger

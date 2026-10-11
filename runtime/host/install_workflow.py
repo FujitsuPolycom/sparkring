@@ -938,15 +938,18 @@ def settle_memory(directory, *, run=None, say=print):
     """Drop the page cache on every Spark of the deployment in ``directory`` and wait for settled memory before
     its vLLM starts (runtime.host.memory_settle); a Spark with less available memory than vLLM asks for
     refuses the start. vLLM's ask is rank 0's --gpu-memory-utilization of the total, read from the rendered
-    container of a Compose-rendered deployment; another backend's start drops caches without that check.
+    container of a Compose-rendered deployment, and its SparkCache connector's pinned host memory counts
+    beside it (memory_settle.pinned_bytes); another backend's start drops caches without those checks.
 
     A Spark where this deployment's own rank container already runs is left out: its model holds that memory,
     and the start keeps the running container (an installation repeated while it serves). When the model runs
     on every Spark of the deployment, nothing is settled and nothing is refused."""
     lock = installer.load(directory)
-    utilization = None
+    utilization, pinned = None, 0
     if lock.get("backend") == "compose":
-        utilization, _ = memory_settle.requested(installer.specifications(lock, only_rank=0)[0].command)
+        command = installer.specifications(lock, only_rank=0)[0].command
+        utilization, _ = memory_settle.requested(command)
+        pinned = memory_settle.pinned_bytes(command)
     if run is None:
         from scripts.installer_runner import ssh
 
@@ -958,7 +961,7 @@ def settle_memory(directory, *, run=None, say=print):
     if not hosts:
         say("Memory settle skipped: this deployment's model already runs on every Spark.")
         return []
-    return memory_settle.settle(hosts, utilization, run=run, say=say)
+    return memory_settle.settle(hosts, utilization, run=run, pinned_bytes=pinned, say=say)
 
 
 def check_managed_namespace(lock):

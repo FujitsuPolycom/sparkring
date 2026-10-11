@@ -5,11 +5,12 @@ Status: **research-only**. This variant of the installer profile
 SparkRing's persistent context cache, SparkCache, to the CSF checkpoint of
 GLM-5.3-Flash on a pair. The checkpoint publisher is Local Inference Lab
 ([`local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
-at `dec48abd33ef`). No installation of it has run on hardware; the
-four-Spark variant's stage of the [hardware test plan](../../performance/sparkcache-flash-csf-hardware-test-plan.md) ran
-([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)). The SparkCache model profile `glm53-flash-hybrid` was
-qualified on shared release 2026.09.3 on other checkpoints and another vLLM
-line.
+at `dec48abd33ef`). Its first start, with two 8 GiB capture slots, stopped
+both Sparks of a pair during kernel compilation
+([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots));
+nothing has run with its 512 MiB slots. The SparkCache model profile
+`glm53-flash-hybrid` was qualified on shared release 2026.09.3 on other
+checkpoints and another vLLM line.
 
 ## What the variant changes
 
@@ -35,7 +36,11 @@ On top it enables the SparkCache KV connector:
   their pinned SHA-256;
 - 64K-token spans (`spark_cache_min_span_tokens` 4096,
   `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
-  low watermark, and two capture slots of 8 GiB;
+  low watermark, and two capture slots of 512 MiB, the value of the qualified
+  shared-2026.09.3 profile `glm53-flash-spark-tp2-dcp1-sparkcache`. Beside the
+  base profile's 84.5 GiB of weights and 10 GiB of KV cache per Spark, two
+  8 GiB slots would leave about 0.7 GiB for compilation and the API server
+  ([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots));
 - the checkpoint identity
   `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`, which
   `deploy/glm53_flash/profile.py` in the external SparkCache repository derives
