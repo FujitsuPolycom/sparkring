@@ -135,8 +135,10 @@ def plan_line(api_address, management_address) -> str:
     """The line setup's plan prints about the dashboard."""
     if DISABLED_PATH.exists():
         return "Dashboard: off (sudo sparkring dashboard enable turns it on)"
-    return (f"Dashboard: http://{listen_address(api_address, management_address)}:{DEFAULT_PORT}/ on Node A, "
-            f"read-only, LAN only ({UNIT}; sudo sparkring dashboard disable turns it off)")
+    address = listen_address(api_address, management_address)
+    loopback = "" if address == "127.0.0.1" else f" and http://127.0.0.1:{DEFAULT_PORT}/ on Node A itself"
+    return (f"Dashboard: http://{address}:{DEFAULT_PORT}/ on Node A{loopback}, read-only, LAN and loopback only "
+            f"({UNIT}; sudo sparkring dashboard disable turns it off)")
 
 
 def after_setup(*, log=None, run=None) -> bool:

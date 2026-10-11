@@ -272,8 +272,8 @@ def test_disable_keeps_the_dashboard_off_until_enable(tmp_path, monkeypatch, cap
 def test_the_plan_names_the_listen_address_and_port(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
     assert dashboard_admin.plan_line(NODE_A_LAN, "192.0.2.10") == (
-        f"Dashboard: http://{NODE_A_LAN}:8090/ on Node A, read-only, LAN only (sparkring-dashboard.service; "
-        "sudo sparkring dashboard disable turns it off)")
+        f"Dashboard: http://{NODE_A_LAN}:8090/ on Node A and http://127.0.0.1:8090/ on Node A itself, read-only, "
+        "LAN and loopback only (sparkring-dashboard.service; sudo sparkring dashboard disable turns it off)")
     assert dashboard_admin.plan_line(None, "192.0.2.10").startswith("Dashboard: http://192.0.2.10:8090/")
     summarize = (ROOT / "runtime" / "host" / "controller.py").read_text(encoding="utf-8")
     assert 'print(dashboard_admin.plan_line(api_address, plan["spec"]["hosts"][0].get("management_address")))' in summarize

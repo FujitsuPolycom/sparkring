@@ -229,6 +229,59 @@ def test_the_default_address_is_the_services_own_bind(tmp_path, monkeypatch):
     assert tui.local_url(path) == f"http://127.0.0.1:{dashboard.DEFAULT_PORT}"
 
 
+
+def test_without_an_address_the_view_reads_loopback_then_the_services_own_address(tmp_path, monkeypatch):
+    from runtime.host.test_dashboard import fabric_file
+    path = fabric_file(tmp_path)
+    monkeypatch.setattr(socket, "gethostname", lambda: "spark0")
+    assert tui.default_urls(path) == ["http://127.0.0.1:8090", f"http://{NODE_A_LAN}:8090"]
+    monkeypatch.setattr(socket, "gethostname", lambda: "spark3")         # another host: loopback only
+    assert tui.default_urls(path) == ["http://127.0.0.1:8090"]
+
+
+class RefusingLoopback:
+    """Refuses connections to 127.0.0.1 and answers the snapshot elsewhere; records every URL."""
+
+    def __init__(self, snapshot, status=None):
+        self.answer, self.status, self.urls = StaticOpener(snapshot), status, []
+
+    def open(self, request, timeout=None):
+        import urllib.error
+        self.urls.append(request.full_url)
+        if "127.0.0.1" in request.full_url:
+            if self.status:
+                raise urllib.error.HTTPError(request.full_url, self.status, "Unauthorized", {}, None)
+            raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+        return self.answer.open(request, timeout)
+
+
+def test_a_refused_loopback_read_passes_to_the_lan_address(tmp_path):
+    snapshot, _ = snapshot_of(tmp_path)
+    opener = RefusingLoopback(snapshot)
+    reader = tui.Reader(["http://127.0.0.1:8090", f"http://{NODE_A_LAN}:8090"], opener=opener)
+    reader.once()
+    assert reader.state()[0]["schema"] == dashboard.SCHEMA and reader.base == f"http://{NODE_A_LAN}:8090"
+    reader.once()                                   # the address that answered is read first from then on
+    assert opener.urls == ["http://127.0.0.1:8090/api/status", f"http://{NODE_A_LAN}:8090/api/status",
+                           f"http://{NODE_A_LAN}:8090/api/status"]
+    refusing = tui.Reader(["http://127.0.0.1:8090", f"http://{NODE_A_LAN}:8090"],
+                          opener=RefusingLoopback(snapshot, status=401))
+    refusing.once()                                 # an HTTP error is an answer: no other address is tried
+    snapshot_read, error, _ = refusing.state()
+    assert snapshot_read is None and "401" in error and refusing.opener.urls == ["http://127.0.0.1:8090/api/status"]
+
+
+def test_the_default_view_reads_the_service_on_loopback(service, monkeypatch, capsys):
+    port, _ = service
+    monkeypatch.setattr(tui, "LOOPBACK_URL", f"http://127.0.0.1:{port}")
+    monkeypatch.setattr(tui, "local_url", lambda fabric_path=None: f"http://127.0.0.1:{port}")
+    connected = []
+    real_connect = socket.socket.connect
+    monkeypatch.setattr(socket.socket, "connect", lambda sock, address: connected.append(address[:2]) or
+                        real_connect(sock, address))
+    assert tui.main(arguments(url=None)) == 0
+    assert "4 serving" in capsys.readouterr().out and set(connected) == {("127.0.0.1", port)}
+
 def test_the_module_reads_one_path_and_can_start_no_process():
     tree = ast.parse(Path(tui.__file__).read_text(encoding="utf-8"))
     imported = {alias.name.split(".")[0] for node in ast.walk(tree) if isinstance(node, ast.Import)

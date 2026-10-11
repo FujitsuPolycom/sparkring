@@ -627,6 +627,79 @@ def test_the_server_answers_reads_only_and_only_to_its_own_address(server):
     assert call(port, "GET", "/api/logs")[0].status == 404
 
 
+
+@pytest.mark.parametrize(("bind", "expected"), [
+    (NODE_A_LAN, [NODE_A_LAN, "127.0.0.1"]),
+    ("fd00::50", ["fd00::50", "127.0.0.1"]),
+    ("dashboard.example", ["dashboard.example", "127.0.0.1"]),
+    ("127.0.0.1", ["127.0.0.1"]),
+    ("::1", ["::1"]),
+    ("0.0.0.0", ["0.0.0.0"]),
+    ("::", ["::"]),
+])
+def test_the_service_listens_on_its_address_and_on_loopback(bind, expected):
+    assert dashboard.listen_addresses(bind) == expected
+
+
+def test_a_loopback_listener_that_cannot_bind_leaves_the_configured_one(tmp_path):
+    found, _, _ = collector(tmp_path)
+    handler = dashboard.make_handler(found, *dashboard.page_bytes())
+    lines = []
+    servers = dashboard.open_servers(["127.0.0.1", "192.0.2.1"], 0, handler, log=lines.append)
+    try:
+        assert len(servers) == 1 and servers[0].server_address[0] == "127.0.0.1"
+        assert len(lines) == 1 and lines[0].startswith("sparkring dashboard: not listening on 192.0.2.1:0")
+    finally:
+        servers[0].server_close()
+    with pytest.raises(OSError):
+        dashboard.open_servers(["192.0.2.1", "127.0.0.1"], 0, handler, log=lines.append)
+
+
+def test_serve_answers_on_each_listen_address(tmp_path, monkeypatch, capsys):
+    """Two loopback addresses stand in for Node A's LAN address and 127.0.0.1."""
+    quiet = tmp_path / "dashboard.quiet"
+    quiet.write_text("no request from this test\n")
+    opened = []
+    real_open_servers = dashboard.open_servers
+
+    def recording(addresses, port, handler, log=None):
+        servers = real_open_servers(addresses, port, handler, log=log)
+        opened.extend(servers)
+        return servers
+    monkeypatch.setattr(dashboard, "listen_addresses", lambda bind: [bind, "127.0.0.1"])
+    monkeypatch.setattr(dashboard, "open_servers", recording)
+    monkeypatch.setattr(dashboard, "lower_priority", lambda cpus: [])
+    monkeypatch.setattr(dashboard, "reload_on_hangup", lambda found: False)
+    args = dashboard.argparse.Namespace(
+        fabric=[fabric_file(tmp_path)], site=[site_file(tmp_path)], quiet_file=str(quiet), no_node_status=True,
+        password_file=None, bind="127.0.0.2", port=0, name=None, cpus=None)
+    thread = threading.Thread(target=dashboard.serve, args=(args,), daemon=True)
+    thread.start()
+    for _ in range(500):
+        if len(opened) == 2:
+            break
+        threading.Event().wait(0.02)
+    try:
+        assert [server.server_address[0] for server in opened] == ["127.0.0.2", "127.0.0.1"]
+        for server in opened:
+            address, port = server.server_address[:2]
+            connection = http.client.HTTPConnection(address, port, timeout=5)
+            connection.request("GET", "/api/status", headers={"Host": f"{address}:{port}"})
+            response = connection.getresponse()
+            assert response.status == 200 and json.loads(response.read())["schema"] == dashboard.SCHEMA
+            connection.close()
+        printed = capsys.readouterr().out
+        assert all(f"http://{s.server_address[0]}:{s.server_address[1]}/" in printed for s in opened)
+    finally:
+        for server in opened:
+            server.shutdown()
+            server.server_close()
+
+
+def test_localhost_is_an_accepted_host_name():
+    assert dashboard.host_allowed("localhost:8090", frozenset())
+    assert not dashboard.host_allowed("localhost.attacker.example:8090", frozenset())
+
 def test_a_password_file_requires_basic_authentication(server):
     port, _ = server(password="correct horse")
     response, _ = call(port, "GET", "/api/status")

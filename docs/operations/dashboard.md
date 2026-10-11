@@ -95,8 +95,9 @@ http://NODE_A_LAN_ADDRESS:8090/
 - `NODE_A_LAN_ADDRESS` is the address setup recorded for Node A's own LAN
   connection, where the model API of a model on Node A serves; without one,
   Node A's management address. Setup's plan prints the exact address.
-- It listens on that address only, never on the fabric or the administration
-  network, and on port 8090.
+- It listens on port 8090 on that address and on `127.0.0.1`, never on the
+  fabric or the administration network. On Node A itself,
+  `curl http://127.0.0.1:8090/api/status` reads it.
 - It shows the ring and every model of the fabric, and links each model to the
   page above.
 - Installing the SparkRing package or running `sudo sparkring setup` turns it
@@ -117,11 +118,27 @@ sparkring dashboard tui            # q quits; d expands the selected model's car
 sparkring dashboard tui --once     # one frame as plain text
 ```
 
-It reads the page's service on Node A and sends nothing to any other Spark
-itself. Like an open page, it makes the service read each model's metrics
+It reads the page's service on Node A at `http://127.0.0.1:8090`, or at
+`NODE_A_LAN_ADDRESS` when nothing answers on loopback, and refuses any other
+host. It sends nothing to any other Spark itself. Like an open page, it makes the service read each model's metrics
 every 5 s instead of every minute; `--passive` leaves the service's reads
 unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
+
+### Why loopback as well
+
+Programs on Node A, such as the terminal view, `curl` or a monitoring agent,
+reach the service at `127.0.0.1` without knowing which LAN address setup
+recorded, and that address keeps working when the LAN address changes. It
+widens nothing: every program on Node A can already reach the LAN address, and
+no other host can reach Node A's loopback. Limiting the terminal view to the
+listen address instead would have kept `curl http://127.0.0.1:8090/` failing
+and tied every local program to the fabric document.
+
+`serve --bind ADDRESS` replaces the LAN address and keeps loopback beside it;
+a loopback or wildcard address (`0.0.0.0`, `::`) is used alone. When another
+program holds port 8090 on loopback, the service logs one line and serves on
+the LAN address only.
 
 ## Source
 

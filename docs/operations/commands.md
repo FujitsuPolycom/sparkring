@@ -528,8 +528,9 @@ command, and per Spark its rank, LAN address, memory and free disk. Free disk
 below 2 % of the root filesystem is red, below 5 % yellow.
 
 The terminal view reads the service's `/api/status` on this Spark and nothing
-else: it sends no request to any model and opens no SSH session, and an
-address of another host is refused before a connection opens. While it is
+else, at `http://127.0.0.1:8090` or, when nothing answers there, at the
+service's LAN address: it sends no request to any model and opens no SSH
+session, and an address of another host is refused before a connection opens. While it is
 open it counts as a viewer, as the page does, so the service reads `/metrics`
 every 5 s; `--passive` leaves the service at its 60 s reads. The view needs
 Python's `curses` module, which Linux has; `--once` prints one frame as text
@@ -539,7 +540,7 @@ anywhere.
 |---|---|
 | `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves. Written to its default path, it then asks the service to re-read it |
 | `enable`, `disable` | Turn the service on, or off for good (`/etc/sparkring/dashboard.disabled` records the choice) |
-| `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host |
+| `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host. The service also listens on `127.0.0.1` unless ADDRESS is a loopback or wildcard address ([why](dashboard.md#why-loopback-as-well)) |
 | `serve --port N` | Port (default 8090) |
 | `serve --fabric FILE --site FILE` | Another fabric's document and site file, once per fabric, for one page of several rings on another host |
 | `serve --name NAME` | A host name browsers may use for the page; requests naming another host are refused |
@@ -550,7 +551,7 @@ anywhere.
 | `tui` | The status in this terminal. Keys: up and down (or `j`, `k`) select a model, `d` or space expands its card, `e` shows events, `r` reads at once, `-` and `=` lengthen or shorten the read period, `q` quits |
 | `tui --once`, `--details`, `--events`, `--width N` | Print one frame as text and exit; `--details` expands every card, `--events` adds recent events |
 | `tui --passive` | Do not count as a viewer: the service keeps reading each model's `/metrics` once a minute |
-| `tui --url URL`, `tui --password-file FILE` | The service's address on this Spark when `serve --bind` moved it, and its password when it has one |
+| `tui --url URL`, `tui --password-file FILE` | The service's address on this Spark (default `http://127.0.0.1:8090`, then the service's LAN address), and its password when it has one |
 
 Like the model API, the page has no key unless `--password-file` gives one. It
 shows host names, addresses and model settings, so keep Node A on a trusted

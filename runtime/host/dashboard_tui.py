@@ -3,8 +3,10 @@
 Status: Experimental. Covered by offline tests only.
 
 It shows what the web page shows, from the same collected state: it reads the dashboard service's
-``/api/status`` on this Spark (``local_url``) and nothing else, so it sends nothing to any Spark's
-model API and opens no SSH session. A URL whose host is not this Spark is refused before any
+``/api/status`` on this Spark and nothing else, so it sends nothing to any Spark's model API and
+opens no SSH session. Without ``--url`` it reads ``http://127.0.0.1:8090`` (the service listens on
+loopback beside Node A's LAN address) and, when nothing answers there, the service's own LAN
+address from the fabric document (``default_urls``). A URL whose host is not this Spark is refused before any
 socket opens (``require_local``), so the view cannot become a second collector. Like the web page,
 an open view counts as a viewer and the service reads each model's ``/metrics`` every 5 s instead
 of every 60 s; ``--passive`` leaves the service's reads as they are.
@@ -39,6 +41,7 @@ import socket
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
@@ -56,6 +59,7 @@ SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 DISK_RED_FRACTION = 0.02          # disk free below this share of the root filesystem renders red
 DISK_WARN_FRACTION = 0.05         # ... and below this share yellow
 READ_TIMEOUT = 8.0
+LOOPBACK_URL = f"http://127.0.0.1:{dashboard.DEFAULT_PORT}"
 
 
 def style(pair: int = 0, bold: bool = False, dim: bool = False) -> int:
@@ -575,15 +579,26 @@ def local_url(fabric_path: Path = dashboard.FABRIC_PATH) -> str:
     return f"http://{literal}:{dashboard.DEFAULT_PORT}"
 
 
+def default_urls(fabric_path: Path = dashboard.FABRIC_PATH) -> list:
+    """Loopback first, then the service's own listen address on this Spark when it differs."""
+    urls = [LOOPBACK_URL]
+    own = local_url(fabric_path)
+    return urls + ([own] if own not in urls else [])
+
+
 class Reader:
     """Reads the local dashboard's /api/status every `interval` seconds in a background thread.
+
+    `base` is one URL or a list of them, tried in order: a refused or unreachable address passes to
+    the next, and the one that answered is read from then on. An HTTP error is an answer.
 
     A read counts as a viewer, as the web page's does: the service then reads each model's
     /metrics every 5 s instead of every 60 s. A `passive` reader asks the service not to count it,
     so the view changes nothing the service sends."""
 
-    def __init__(self, base: str, *, password=None, opener=None, passive=False):
-        self.base = base
+    def __init__(self, base, *, password=None, opener=None, passive=False):
+        self.bases = [base] if isinstance(base, str) else list(base)
+        self.base = self.bases[0]
         self.path = "/api/status?viewer=passive" if passive else "/api/status"
         self.opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
         self.headers = {"User-Agent": "sparkring-dashboard-tui"}
@@ -595,9 +610,21 @@ class Reader:
         self.stop, self.nudge = threading.Event(), threading.Event()
 
     def read(self) -> dict:
-        request = urllib.request.Request(self.base + self.path, headers=self.headers, method="GET")
-        with self.opener.open(request, timeout=READ_TIMEOUT) as response:
-            return json.loads(response.read().decode("utf-8"))
+        ordered = [self.base] + [b for b in self.bases if b != self.base]
+        for index, base in enumerate(ordered):
+            request = urllib.request.Request(base + self.path, headers=self.headers, method="GET")
+            try:
+                with self.opener.open(request, timeout=READ_TIMEOUT) as response:
+                    found = json.loads(response.read().decode("utf-8"))
+            except urllib.error.HTTPError:
+                raise
+            except OSError:
+                if index == len(ordered) - 1:
+                    raise
+                continue
+            self.base = base
+            return found
+        raise OSError("no dashboard address to read")
 
     def once(self) -> None:
         try:
@@ -708,16 +735,17 @@ def interactive(reader: Reader) -> int:
 def main(args) -> int:
     """`sparkring dashboard tui [--once [--details] [--events] [--width N]] [--passive] [--url URL]
     [--password-file FILE]`."""
-    url = require_local(args.url or local_url(), local_addresses())
+    addresses = local_addresses()
+    urls = [require_local(url, addresses) for url in ([args.url] if args.url else default_urls())]
     password = Path(args.password_file).read_text(encoding="utf-8").strip() if args.password_file else None
-    reader = Reader(url, password=password, passive=args.passive)
+    reader = Reader(urls, password=password, passive=args.passive)
     if not args.once:
         return interactive(reader)
     reader.once()
     snapshot, error, age = reader.state()
     if snapshot is None:
-        print(f"SparkRing: the dashboard at {url} did not answer: {error} (the service runs on Node A; "
-              "run the terminal view there)", file=sys.stderr)
+        print(f"SparkRing: the dashboard at {' or '.join(urls)} did not answer: {error} (the service runs on "
+              "Node A; run the terminal view there)", file=sys.stderr)
         return 1
     width = args.width or shutil.get_terminal_size((120, 40)).columns
     view = {"selected": 0, "details": "all" if args.details else False, "events": args.events}
@@ -740,7 +768,8 @@ def add_parser(commands) -> None:
     tui.add_argument("--width", type=int, help="with --once: columns (default: the terminal's)")
     tui.add_argument("--passive", action="store_true",
                      help="do not count as a viewer: the service keeps reading /metrics once a minute")
-    tui.add_argument("--url", help="the dashboard service on this Spark (default: its own listen address)")
+    tui.add_argument("--url", help="the dashboard service on this Spark (default: http://127.0.0.1:8090, then the "
+                                   "service's LAN address)")
     tui.add_argument("--password-file", help="the dashboard's Basic-authentication password, if it has one")
 
 

@@ -72,6 +72,11 @@ Invariants
   SIRCL's classifier finds them (the Cortex-A725 cores of a GB10), so serving
   processes and SIRCL's threads on the performance cores are never displaced.
   It writes no file; ``export`` and ``quiet``, run by an operator, each write one.
+- It listens on Node A's LAN address and on 127.0.0.1 (``listen_addresses``),
+  never on a fabric or administration address. Loopback serves programs on
+  Node A itself, such as ``curl http://127.0.0.1:8090/api/status`` and the
+  terminal view, without the LAN address that setup recorded; every program
+  there can reach the LAN address too, so it widens nothing.
 """
 from __future__ import annotations
 
@@ -1067,10 +1072,11 @@ def page_bytes(path: Path = PAGE) -> tuple[bytes, str]:
 
 
 def host_allowed(header: str | None, names) -> bool:
-    """Whether a request's Host header names this server: an IP literal or one of `names`.
+    """Whether a request's Host header names this server: an IP literal, `localhost` or one of `names`.
 
     A browser on the LAN that a hostile web page points at the dashboard through DNS
-    rebinding sends that page's host name, which is refused."""
+    rebinding sends that page's host name, which is refused. `localhost` is no page's name:
+    browsers resolve it to loopback themselves."""
     if not header:
         return False
     host = header.strip()
@@ -1078,7 +1084,7 @@ def host_allowed(header: str | None, names) -> bool:
         host = host[1:host.find("]")] if "]" in host else host
     else:
         host = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
-    return _ip(host) or host.lower() in names
+    return _ip(host) or host.lower() == "localhost" or host.lower() in names
 
 
 def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(), password: str | None = None):
@@ -1138,11 +1144,48 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
 
 def default_bind(source: Source) -> str:
     """On Node A, its LAN address from the fabric document (where its model API serves; else its
-    management address); on any other host, loopback."""
+    management address); on any other host, loopback. ``listen_addresses`` adds loopback to it."""
     rows = (source.fabric or {}).get("positions") or []
     if rows and socket.gethostname() == rows[0]["hostname"]:
         return rows[0].get("lan_address") or rows[0].get("address") or "127.0.0.1"
     return "127.0.0.1"
+
+
+def listen_addresses(bind: str) -> list:
+    """The addresses to listen on: `bind`, then 127.0.0.1 unless `bind` is a loopback address or a
+    wildcard (0.0.0.0, ::), which already admits loopback connections."""
+    try:
+        literal = ipaddress.ip_address(bind)
+    except ValueError:
+        return [bind, "127.0.0.1"]           # a host name: its address is not known here
+    if literal.is_loopback or literal.is_unspecified:
+        return [bind]
+    return [bind, "127.0.0.1"]
+
+
+def open_servers(addresses, port: int, handler, *, log=None) -> list:
+    """One HTTP server per address. The first address is the configured one and its failure raises;
+    a later one that cannot be bound (port taken, no such address) costs one line on stderr."""
+    servers = []
+    for index, address in enumerate(addresses):
+        family = socket.AF_INET6 if ":" in address else socket.AF_INET
+        server_class = type("DashboardServer", (ThreadingHTTPServer,), {"address_family": family})
+        try:
+            server = server_class((address, port), handler)
+        except OSError as error:
+            if index == 0:
+                raise
+            (log or (lambda line: print(line, file=sys.stderr, flush=True)))(
+                f"sparkring dashboard: not listening on {address}:{port} ({error}); "
+                f"{addresses[0]}:{port} serves the page")
+            continue
+        server.daemon_threads = True
+        servers.append(server)
+    return servers
+
+
+def url_of(address: str, port: int) -> str:
+    return f"http://[{address}]:{port}/" if ":" in address else f"http://{address}:{port}/"
 
 
 def reload_on_hangup(collector: Collector, signals=signal) -> bool:
@@ -1174,14 +1217,16 @@ def serve(args) -> int:
     bind = args.bind or default_bind(sources[0])
     page, csp = page_bytes()
     names = frozenset(name.lower() for name in args.name or ())
-    server = ThreadingHTTPServer((bind, args.port), make_handler(collector, page, csp, names, password))
-    server.daemon_threads = True
+    servers = open_servers(listen_addresses(bind), args.port, make_handler(collector, page, csp, names, password))
     stop = threading.Event()
     threading.Thread(target=collector.run, args=(stop,), daemon=True, name="collector").start()
-    print(f"SparkRing dashboard on http://{bind}:{args.port}/ ({', '.join(placement) or 'default priority'}); "
+    for server in servers[1:]:
+        threading.Thread(target=server.serve_forever, daemon=True, name="listener").start()
+    where = " and ".join(url_of(server.server_address[0], server.server_address[1]) for server in servers)
+    print(f"SparkRing dashboard on {where} ({', '.join(placement) or 'default priority'}); "
           f"{len(collector.models)} model API(s) from {len(sources)} fabric(s)", flush=True)
     try:
-        server.serve_forever()
+        servers[0].serve_forever()
     finally:
         stop.set()
     return 0
@@ -1286,7 +1331,8 @@ def main(argv=None) -> int:
         "no SSH."))
     commands = parser.add_subparsers(dest="command", required=True)
     run = commands.add_parser("serve", help="collect and serve the page")
-    run.add_argument("--bind", help="listen address (default: Node A's LAN address, else 127.0.0.1)")
+    run.add_argument("--bind", help="listen address (default: Node A's LAN address, else 127.0.0.1); 127.0.0.1 "
+                                    "is added unless the address is loopback or a wildcard")
     run.add_argument("--port", type=int, default=DEFAULT_PORT)
     run.add_argument("--fabric", action="append", type=Path, help="fabric document (repeat with --site per fabric)")
     run.add_argument("--site", action="append", type=Path, help="site file written by export")
