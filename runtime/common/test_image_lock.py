@@ -37,7 +37,13 @@ def sircl_lock(name="dev-20261009-kraken-sircl-cuda1342-nccl2323-status034", **c
     return value
 
 
-@pytest.mark.parametrize("profile", installer_image.SUPPORTED)
+# The installer profiles every image lock of the kraken line may admit. The SparkCache variants are not among
+# them: only the lock that their derived layer's record step writes lists them
+# (test_the_sparkcache_variants_are_admitted_only_on_the_lock_of_their_derived_layer).
+SHARED = tuple(profile for profile in installer_image.SUPPORTED if profile not in installer_image.SPARKCACHE_VARIANTS)
+
+
+@pytest.mark.parametrize("profile", SHARED)
 def test_a_v3_lock_validates_for_every_profile_and_keeps_the_v2_contract(profile):
     value = sircl_lock()
     assert image_lock.validate(value, profile) is value
@@ -233,7 +239,7 @@ def libsircl_lock(name="dev-20261010-kraken-sircl-libsircl-cuda1342-nccl2323-sta
                                **changes})
 
 
-@pytest.mark.parametrize("profile", installer_image.SUPPORTED)
+@pytest.mark.parametrize("profile", SHARED)
 def test_a_v3_lock_with_the_libsircl_layer_validates_and_keeps_the_v2_contract(profile):
     value = libsircl_lock()
     assert image_lock.validate(value, profile) is value
@@ -243,6 +249,42 @@ def test_a_v3_lock_with_the_libsircl_layer_validates_and_keeps_the_v2_contract(p
     # A lock without the layer has no libsircl field, as every lock made before the layer existed.
     assert image_lock.libsircl(sircl_lock()) is None and "libsircl" not in sircl_lock()
     assert image_lock.libsircl(installer_image.default_lock()) is None
+
+
+SPARKCACHE_LAYER = (Path(__file__).resolve().parents[2] / "runtime" / "images" / "compositions"
+                    / "installer-sparkcache-gab86b70" / "descriptor.json")
+
+
+def sparkcache_locks():
+    """``(parent, derived)``: the image lock that the SparkCache lease layer derives from (release 2026.10.2's)
+    and the lock ``runtime/images/derived_layer.py record`` writes for the layer's image, which lists the
+    SparkCache variants beside the parent's profiles; the image ID and receipts stand in for a build's."""
+    from runtime.images import derived_layer
+    descriptor = derived_layer.descriptor(SPARKCACHE_LAYER)
+    parent = json.loads((installer_image.ROOT / descriptor["parent_lock"]).read_text(encoding="utf-8"))
+    plan = {"parent_lock": parent, "payload_bytes": 4096,
+            "receipts": {derived_layer.BASE_RECEIPT: "7" * 64, derived_layer.TOOLCHAIN_RECEIPT: "8" * 64}}
+    derived = derived_layer.derived_lock(plan, {"Id": "sha256:" + "9" * 64, "Size": 1},
+                                         "dev-20261010-sparkcache-gab86b70-plugins-status036",
+                                         [*parent["profiles"], *installer_image.SPARKCACHE_VARIANTS])
+    return parent, derived
+
+
+@pytest.mark.parametrize("profile", installer_image.SPARKCACHE_VARIANTS)
+def test_the_sparkcache_variants_are_admitted_only_on_the_lock_of_their_derived_layer(profile):
+    parent, derived = sparkcache_locks()
+    # Locks without the layer: the v3 locks of these tests, with and without libsircl, and the layer's parent.
+    for value in (sircl_lock(), libsircl_lock(), parent):
+        with pytest.raises(ValueError, match=f"{profile} is not admitted on image lock {value['name']}"):
+            image_lock.validate(value, profile)
+    # The layer's lock admits them and keeps the parent's v3 contract: transports, SIRCL and libsircl blocks.
+    assert image_lock.validate(derived, profile) is derived
+    assert set(image_lock.profiles_of(derived)) == {*image_lock.profiles_of(parent), *installer_image.SPARKCACHE_VARIANTS}
+    assert image_lock.transports(derived) == image_lock.transports(parent) == ("libsircl", "prepared", "sircl")
+    assert image_lock.sircl(derived) == image_lock.sircl(parent)
+    assert image_lock.libsircl(derived) == image_lock.libsircl(parent)
+    view = image_lock.v2_view(derived)
+    assert installer_image.validate(view, profile) is view
 
 
 @pytest.mark.parametrize("change, message", [
