@@ -8,10 +8,10 @@ installation first acquires the base with the ordinary checkpoint plan
 - every Spark hard-links the files the derived checkpoint keeps from its base
   (``derive-link``), so they take no space;
 - the files the recipe writes come from a Spark that holds them, or, when no
-  Spark does, Node A writes them: it downloads the donor files it lacks from
-  huggingface.co into the donor's own checkpoint directory (``derive-donor``)
-  and runs the recipe in the installer image, CPU only and without network
-  (``derive-run``);
+  Spark does, Node A writes them: for a checkpoint with a donor it downloads
+  the donor files it lacks from huggingface.co into the donor's own
+  checkpoint directory (``derive-donor``), and it runs the recipe in the
+  installer image, CPU only and without network (``derive-run``);
 - the other Sparks receive the recipe's files along the fabric ring, as they
   receive checkpoint files from a donor Spark, with rsync through Node A as the
   fallback (``install_assets.Assets.derive``).
@@ -136,9 +136,12 @@ def probe_source(paths):
 
 
 def paths(manifest, rows):
-    """``(derived directories per rank, donor directory)`` beside each rank's base directory; Node A holds the donor."""
+    """``(derived directories per rank, donor directory)`` beside each rank's base directory; Node A holds the donor.
+
+    The donor directory is None for a checkpoint derived from its base alone.
+    """
     return ([derived_checkpoint.directory(row["model"], manifest) for row in rows],
-            derived_checkpoint.directory(rows[0]["model"], manifest["donor"]))
+            None if manifest["donor"] is None else derived_checkpoint.directory(rows[0]["model"], manifest["donor"]))
 
 
 def survey(manifest, rows, *, invoke):
@@ -151,7 +154,7 @@ def survey(manifest, rows, *, invoke):
     derived, donor = paths(manifest, rows)
 
     def one(rank):
-        wanted = [derived[rank]] + ([donor] if rank == 0 else [])
+        wanted = [derived[rank]] + ([donor] if rank == 0 and donor is not None else [])
         try:
             found = json.loads(invoke(rows[rank]["host"], list(PROBE_COMMAND), data=probe_source(wanted),
                                       timeout=PROBE_TIMEOUT))
@@ -187,7 +190,9 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
     when together they hold every file, and otherwise derives them, downloading
     the donor files its donor directory lacks; the recipe writes every file
     into staging, so all count. Each node's ``written`` lists the sizes of the
-    files it writes.
+    files it writes. ``donor_pins`` is None for a checkpoint derived from its
+    base alone; its ``donor`` section then names no repository and lists no
+    files or downloads.
     """
     required = derived_checkpoint.required(manifest)
     recipe = derived_checkpoint.files_of(manifest, "recipe")
@@ -199,11 +204,12 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
             for rank in range(count)]
     distribution = checkpoint_plan._distribute(count, [names & set(recipe) for names in held], recipe)
     derive = bool(distribution["hub"])
-    donor_files = {key: donor_pins["files"][key]["size"] for key in manifest["donor"]["files"]}
+    donor = manifest["donor"] or {"repository": None, "revision": None, "files": []}
+    donor_files = {key: donor_pins["files"][key]["size"] for key in donor["files"]}
     donor_required = {key: {"size": donor_pins["files"][key]["size"], "sha256": donor_pins["files"][key]["sha256"]}
                       for key in donor_files}
-    donor_reading = readings[0].get(donor_path) or {}
-    present = _placed(donor_reading, donor_required, manifest["donor"]["repository"], manifest["donor"]["revision"])
+    donor_reading = (readings[0].get(donor_path) or {}) if donor_path is not None else {"state": "none"}
+    present = _placed(donor_reading, donor_required, donor["repository"], donor["revision"])
     download = sorted(set(donor_files) - present) if derive else []
     nodes = []
     for rank, row in enumerate(rows):
@@ -234,7 +240,7 @@ def section(name, manifest, donor_pins, rows, probes, hostnames=None):
             "base": dict(manifest["base"]), "recipe": dict(manifest["recipe"]),
             "files": {"total": len(required), "bytes": sum(item["size"] for item in required.values()),
                       "kept": len(kept), "recipe": len(recipe), "recipe_bytes": sum(recipe.values())},
-            "donor": {"repository": manifest["donor"]["repository"], "revision": manifest["donor"]["revision"],
+            "donor": {"repository": donor["repository"], "revision": donor["revision"],
                       "path": donor_path, "state": donor_reading.get("state", "unknown"), "files": donor_files,
                       "present": sorted(present), "download": download,
                       "download_bytes": sum(donor_files[key] for key in download)},
@@ -350,7 +356,9 @@ def describe(section_value):
                              f"{donor['path']}")
             parts.append("derives " + checkpoint_plan._plural(len(node["derive"]), "file") + " ("
                          + human(sum(node["written"]) - donor["download_bytes"]) + ") in the installer image, CPU only "
-                         "and without network, after checking that the donor's MXFP8 tensors are the base's weights")
+                         "and without network, "
+                         + ("after checking that the donor's MXFP8 tensors are the base's weights"
+                            if donor["repository"] is not None else "from the base's verified files"))
         for item in node["pool"]:
             parts.append(f"receives {checkpoint_plan._plural(item['files'], 'file')} from Node {item['from']}")
         for item in node["receive"]:

@@ -84,7 +84,9 @@ def mutate(manifest, path, value):
     (("files", "vocab.json"), KeyError, "lacks base files: vocab.json"),
     (("files", "config.json", "sha256"), "0" * 64, "config.json or the index differs"),
     (("files", "README.md"), {"origin": "recipe", "size": 1, "sha256": "0" * 64}, "README.md is neither"),
-    (("index",), "vocab.json", "index must name a recipe file"),
+    (("index",), "vocab.json", "index must name model.safetensors.index.json"),
+    (("donor",), None, "donor must be null|donor differs"),
+    (("files", "tokenizer.json", "source"), "vocab.json", "a source names the base file of a name"),
 ])
 def test_manifest_refusals_name_the_field_or_file(path, value, message):
     card, configuration, manifest, base, donor = inputs()
@@ -195,8 +197,9 @@ def test_the_checkpoint_table_refuses_malformed_derived_entries():
     # The derived checkpoint keeps the profile's settings; only the served name differs.
     assert settings["environment"] == profile["environment"]
     assert settings["vllm_args"] == profile["vllm_args"]
-    for change in ({"base": "qad-step5500-ple1000"}, {"base": "qad-step5500-ple1000", "donor": "qad-step5500-ple1000"},
-                   {"base": "missing", "donor": "qad-step-4000"}, {"base": NAME, "donor": "qad-step-4000"}):
+    for change in ({"base": "qad-step5500-ple1000", "donor": "qad-step5500-ple1000"},
+                   {"base": "missing", "donor": "qad-step-4000"}, {"base": NAME, "donor": "qad-step-4000"},
+                   {"base": "qad-step5500-ple1000", "recipe": "x"}, {"donor": "missing"}, []):
         changed = copy.deepcopy(profile)
         changed["checkpoints"][NAME]["derived"] = change
         with pytest.raises(ValueError, match="Derived checkpoint"):

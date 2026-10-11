@@ -467,6 +467,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-csf-tp8` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef` | MTP, three tokens (MTP3) |
 | `glm53-nvfp4-tp8` | GLM-5.3 NVFP4, revision `b472e4ee53f6` | MTP, two tokens, probabilistic drafting |
+| `glm53-nvfp4-csf-tp8` | GLM-5.3 NVFP4-CSF, revision `a4d406932f2d`, served from its serving directory ([derived checkpoints](#derived-checkpoints)) | MTP, two tokens, probabilistic drafting |
 | `deepseek-v41-flash-tp8` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `qwen38-flash-next-qad-tp8` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` | MTP, three tokens, probabilistic drafting |
 
@@ -503,14 +504,20 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   ([derive_glm53_plugins.py](../../runtime/images/derive_glm53_plugins.py))
   adds; it needs an image whose lock lists all three in `vllm_plugins`, and
   the installer refuses it on any other image.
+- `glm53-nvfp4-csf-tp8` keeps every setting of `glm53-nvfp4-tp8` and serves
+  the same weights from Local Inference Lab's NVFP4-CSF container
+  (`--quantization nvfp4_csf --load-format nvfp4_csf`, no `--hf-overrides`).
+  It needs both that image's plugins and the vLLM build that reads CSF, and
+  the plan states that its checkpoint is research-only.
 - All installer profiles run with vLLM's native prefix cache on and
   SparkCache off. SparkCache is the external connector that keeps the prefix
   KV cache on disk across restarts.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
-  eight-Spark ring and only on SIRCL ring sessions. No image lock this
-  package carries lists them: they install with `--image-lock FILE`, a
-  development lock (`sparkring-installer-image/v3`) whose image carries the
-  SIRCL layer and lists them. They are listed in the research catalog,
+  eight-Spark ring and only on SIRCL ring sessions. They install on an image
+  lock (`sparkring-installer-image/v3`) whose image carries the SIRCL layer
+  and lists them: the default image's, release 2026.10.2's, lists every one
+  except `qwen38-flash-next-qad-tp8`; a development lock is selected with
+  `--image-lock FILE`. They are listed in the research catalog,
   [research-catalog.json](../../profiles/research-catalog.json), outside every
   Compose deployment's identity. They have no Compose files
   ([Models on part of the fabric](#models-on-part-of-the-fabric)).
@@ -2251,9 +2258,12 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | Qwen `--checkpoint csf` (two Sparks), `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` @ `dc5b8ab2fa14` | 95.2 GiB | 99.9 GiB | 155.8 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
+| GLM-5.3 NVFP4-CSF, `local-inference-lab/GLM-5.3-NVFP4-CSF` @ `a4d406932f2d` (eight Sparks) | 412.5 GiB | 428.5 GiB | 484.4 GiB |
 | GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
 | Swift, `ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4` @ `3ff0520224f2` | 173.7 GiB | 181.7 GiB | 237.6 GiB |
 
+The serving directory of `glm53-nvfp4-csf-tp8` adds about 12 KB per Spark
+to the GLM-5.3 NVFP4-CSF row; its other files are hard links.
 The derived Qwen checkpoint, `--checkpoint qad-step5500-mxfp8-attention`,
 adds to the Qwen row the 5.6 GiB of files its recipe writes on every Spark
 and, on Node A, the 2.6 GiB of step-4000 files the recipe reads
@@ -2790,19 +2800,56 @@ size fixes the two rewritten shards' sizes; the shards' SHA-256 come from the
 [research record](../../performance/records/qwen38-flash-next/mxfp8-attention-20261001.md), and an installation on one pair wrote all
 6 files with the manifest's SHA-256 ([record](../../performance/records/images/dev-20261001-kraken-qwen38-flash-next-tp2-qad-step5500-mxfp8-attention-20261002.md)).
 
+#### A serving directory
+
+The default checkpoint of `glm53-nvfp4-csf-tp8`, `csf-serving`, is derived
+from the profile's own checkpoint, GLM-5.3-NVFP4-CSF, without a donor. vLLM
+reads that NVFP4-CSF container only from a directory whose `config.json`
+names `nvfp4_csf` and the container's root, and the container's own root
+holds neither that file nor a weight index. Its
+[manifest](../../profiles/checkpoints/sparkring-derived--GLM-5.3-NVFP4-CSF-Serving/bbd8f71def6bde14a201887796692cb1cc4828a8.json)
+pins 189 files: 187 hard links to the container's required files, its 7
+`metadata/` files among them linked at the root instead of in `metadata/`,
+and `config.json` and `derivation.json`, which the recipe
+[`csf_serving.py`](../../runtime/common/csf_serving.py) writes. An
+installation:
+
+1. acquires the container into its own checkpoint directory on every Spark,
+   like any checkpoint;
+2. hard-links the 187 kept files into the serving directory on every Spark;
+3. runs the recipe on Node A in the installer image, CPU only and without
+   network: it checks the container's `metadata/config.json` against the
+   manifest and the container's `manifest.json`, and writes `config.json`
+   with the `nvfp4_csf` configuration and `checkpoint_root` `/models/target`;
+4. copies the 2 written files to the other Sparks over the fabric.
+
+The rank container mounts the serving directory at `/models/target`, so it is
+also the container root that `checkpoint_root` names: `manifest.json`,
+`build-contract.json` and `tensors/` are its own hard links. That path is the
+same on every Spark, so `config.json` has one SHA-256, which the profile pins.
+A source configuration that differs from the manifest stops the recipe
+before it writes anything.
+
 ### Where the installer looks
 
 Before printing the plan, `sudo sparkring install` searches every Spark at
 once:
 
-- SparkRing's own checkpoint directories and records;
+- SparkRing's own checkpoint directories and records, and the staging folder
+  `/srv/sparkring/downloads/<owner>--<name>/<revision>`, such as
+  `/srv/sparkring/downloads/local-inference-lab--GLM-5.3-NVFP4-CSF/a4d406932f2db96db8e852867c7939f448e0cd6f`
+  for a copy downloaded with `hf download --local-dir` before the install;
 - Hugging Face caches in every account's home, and those that `HF_HOME`,
   `HF_HUB_CACHE` and similar variables name in system files, systemd units and
   root's and your own shell files;
 - Docker containers' model mounts, volumes and Hugging Face caches;
 - folders with any name, such as `hf download --local-dir` folders and git-lfs
   clones, under `/var/tmp/models`, `/models`, home directories, `/data`,
-  `/srv`, `/mnt`, `/opt` and other local disks.
+  `/srv`, `/mnt`, `/opt` and other local disks. A folder is found by its
+  weight index or a weight file at its root, or one directory down for a
+  checkpoint that keeps them there, as the NVFP4-CSF container keeps
+  `metadata/model.safetensors.index.json` and `tensors/`. The search does not
+  enter `/srv/sparkring` beyond the paths above.
 
 Each Spark searches for up to 20 s, and once more for up to 40 s if that runs
 out; Docker queries take up to 15 s, so a Spark's search ends within 75 s. It

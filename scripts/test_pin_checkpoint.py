@@ -25,6 +25,8 @@ COMMITTED = {
         ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4"],
     ("local-inference-lab/GLM-5.3-NVFP4", "b472e4ee53f6a9862da5486c56c6ca21be3dab70"):
         ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"],
+    ("local-inference-lab/GLM-5.3-NVFP4-CSF", "a4d406932f2db96db8e852867c7939f448e0cd6f"):
+        ["glm53-nvfp4-csf-tp8"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
@@ -53,12 +55,15 @@ LISTED = {
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"):
         [("qwen38-flash-next-tp2", "csf")],
 }
-# Derived checkpoints: their manifests (runtime/common/derived_checkpoint.py, checked by
-# runtime/common/test_derived_checkpoint.py) follow the same path rule but are not Hub pin manifests.
+# Derived checkpoints, a profile's default among them: their manifests (runtime/common/derived_checkpoint.py,
+# checked by runtime/common/test_derived_checkpoint.py and runtime/common/test_csf_serving.py) follow the same
+# path rule but are not Hub pin manifests.
 DERIVED = {
     ("sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention", "648b194a96e5f130ab62702113242d8e1ddd6e76"):
         [("qwen38-flash-next-qad-tp4", "qad-step5500-mxfp8-attention"),
          ("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")],
+    ("sparkring-derived/GLM-5.3-NVFP4-CSF-Serving", "bbd8f71def6bde14a201887796692cb1cc4828a8"):
+        [("glm53-nvfp4-csf-tp8", "csf-serving")],
 }
 
 
@@ -157,6 +162,39 @@ def test_generator_checks_git_blob_ids_of_downloaded_small_files():
                                  ("owner--x/model", REVISION), ("no-owner", REVISION)):
         with pytest.raises(ValueError):
             pin_checkpoint.manifest(FakeHub(small, lfs), repository, revision)
+
+
+def container_files(shards=("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"), schema=None):
+    """An NVFP4-CSF container: metadata/ with the index, tensors/ with the shards, manifest.json at the root."""
+    index = json.dumps({"weight_map": {"a.weight": WEIGHTS[0], "b.weight": WEIGHTS[1]}}).encode()
+    layout = json.dumps({"schema": schema or pin_checkpoint.CONTAINER_SCHEMA,
+                         "shards": [{"file": name} for name in shards]}).encode()
+    small = {"config.json": b'{"model_type": "example"}\n', "metadata/config.json": b'{"model_type": "example"}\n',
+             "manifest.json": layout, "README.md": b"# Example\n"}
+    lfs = {"metadata/model.safetensors.index.json": index, "tensors/" + WEIGHTS[0]: b"weights-one",
+           "tensors/" + WEIGHTS[1]: b"weights-two"}
+    return small, lfs
+
+
+def test_a_container_layout_is_pinned_with_its_nested_index_and_shards():
+    small, lfs = container_files()
+    hub = FakeHub(small, lfs)
+    pins = pin_checkpoint.manifest(hub, REPOSITORY, REVISION)
+    assert pins["index"] == "metadata/model.safetensors.index.json"
+    assert pins["weights"] == ["tensors/" + name for name in WEIGHTS]
+    assert {pins["index"], "config.json", *pins["weights"]} <= set(pins["files"]) - set(pins["optional"])
+    # The index and manifest.json are read; the shards never are.
+    assert sorted(hub.downloads) == sorted([*small, "metadata/model.safetensors.index.json"])
+    # The manifest's shards must be exactly the index's weight files, and its schema the container's.
+    for change in ({"shards": (WEIGHTS[0],)}, {"schema": "another-layout/1"}):
+        small, lfs = container_files(**change)
+        with pytest.raises(ValueError, match="manifest.json"):
+            pin_checkpoint.manifest(FakeHub(small, lfs), REPOSITORY, REVISION)
+    # Without manifest.json the nested index is not a weight index the generator knows.
+    small, lfs = container_files()
+    del small["manifest.json"]
+    with pytest.raises(ValueError, match="has no model.safetensors.index.json"):
+        pin_checkpoint.manifest(FakeHub(small, lfs), REPOSITORY, REVISION)
 
 
 def test_generator_downloads_are_bounded(monkeypatch):
@@ -272,7 +310,7 @@ def test_every_installer_profile_revision_has_a_committed_manifest():
     for profile in installer.INSTALLABLE:
         configuration = profiles.read_json(profiles.local_path(installer.setup.selection(profile)["configuration"]))
         for name, entry in configuration.get("checkpoints", {}).items():
-            if name != configuration["checkpoint"]:
+            if name != configuration["checkpoint"] or "derived" in entry:
                 table = derived if "derived" in entry else listed
                 table.setdefault((entry["model"]["repository"], entry["model"]["revision"]), []).append((profile, name))
     assert {key: sorted(value) for key, value in listed.items()} == LISTED

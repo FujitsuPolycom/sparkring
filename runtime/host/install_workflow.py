@@ -492,13 +492,15 @@ def check_endpoint(args, cluster, placement, state_root, directory, requested, p
 def derivation_section(card, rows, surveys, *, invoke=None):
     """The plan's derivation section when the card's checkpoint is derived, else None.
 
-    Reads every Spark's derived directory and Node A's donor directory
-    (``derivation.survey``); ``surveys`` give the Sparks' host names.
+    Reads every Spark's derived directory and Node A's donor directory, for a
+    checkpoint with a donor (``derivation.survey``); ``surveys`` give the
+    Sparks' host names.
     """
     manifest = installer.derived_checkpoint.load(card)
     if manifest is None:
         return None
-    donor = installer.checkpoint_pins(installer.derived_checkpoint.donor_card(card, manifest))
+    donor_card = installer.derived_checkpoint.donor_card(card, manifest)
+    donor = installer.checkpoint_pins(donor_card) if donor_card is not None else None
     probes = derivation.survey(manifest, rows, invoke=invoke or discovery.ssh)
     hostnames = {rank: survey["host"] for rank, survey in enumerate(surveys)
                  if isinstance(survey, dict) and survey.get("host")}
@@ -1156,6 +1158,24 @@ def check_transport(directory, *, cache):
                                           "checked_at") if key in verdict}
 
 
+def start_check_result(directory):
+    """The start checks (``runtime.host.start_checks``) that rank 0's smoke action recorded, or None.
+
+    Only a profile that lists ``start_checks`` records them; the receipt of
+    the deployment's last operation holds the smoke action's output.
+    """
+    try:
+        state = installer.read(Path(directory) / "state.json")
+        receipt = installer.read(Path(directory) / state["receipt"])
+        for key, action in receipt["actions"].items():
+            if key.startswith("smoke:"):
+                value = json.loads(action["result"]["stdout"]).get("start_checks")
+                return value if isinstance(value, dict) else None
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return None
+    return None
+
+
 def save_result(directory, result):
     """Keep the installation's result in its deployment directory, for ``sparkring check --report``."""
     try:
@@ -1194,7 +1214,11 @@ def summary_lines(result):
             ("Stop", commands.get("stop")),
             ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
             ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
-    return [f"  {name + ':':<13}{value}" for name, value in rows if value]
+    lines = [f"  {name + ':':<13}{value}" for name, value in rows if value]
+    if isinstance(result.get("start_checks"), dict):
+        from runtime.host import start_checks
+        lines += ["  Start checks:"] + ["    " + line for line in start_checks.text(result["start_checks"])]
+    return lines
 
 
 def execute(args):
@@ -1518,6 +1542,9 @@ def execute(args):
             # Judged after the smoke request; a differing verdict is reported and never stops the model.
             with progress.step("Check which transport carried each collective"):
                 plan["transport"].update(check_transport(directory, cache=cache))
+        checks = start_check_result(directory)
+        if checks is not None:
+            plan["start_checks"] = checks
         completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
                      **summary(lock, plan, replaces, displaced=displaced)}
         save_result(directory, completed)

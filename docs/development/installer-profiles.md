@@ -129,7 +129,7 @@ KV cache and context window).
 | `arguments` | Optional: new values for vLLM options that `vllm_args` already sets, such as `--quantization`, `--load-format`, `--kv-cache-memory-bytes` and `--max-model-len`; no option is added |
 | `environment` | Optional: new values for variables that `environment` already sets |
 | `speculative` | Optional: keys to change or add in `--speculative-config` |
-| `derived` | Optional: `{"base": NAME, "donor": NAME}` naming two other entries, for a checkpoint that the installer derives on the Sparks (below); its `model` then names the derived checkpoint |
+| `derived` | Optional: `{"base": NAME, "donor": NAME}` naming other entries, the donor optional, for a checkpoint that the installer derives on the Sparks (below); `{}` derives it from the profile's own `model` without a donor; its `model` then names the derived checkpoint |
 
 `checkpoint_aliases` optionally maps more names to listed ones. A checkpoint
 entry needs its pin manifest (steps 1–2 below), from which storage planning
@@ -158,6 +158,16 @@ A derived entry describes a checkpoint that no repository publishes: the
 installer acquires its base like any checkpoint, then writes the derived
 files on the Sparks with a recipe module below `runtime/` and serves them from
 their own checkpoint directory ([derived checkpoints](../operations/install-reference.md#derived-checkpoints)).
+A derived entry without `base` may be the profile's default when it holds
+only `model` and `derived`: the profile's `model` then names the published
+checkpoint the installer acquires, its pin manifest and `SHA256SUMS`, and the
+default entry the directory the profile's command serves. A checkpoint in
+Local Inference Lab's NVFP4-CSF container layout is served so
+([glm53-nvfp4-csf-tp8](../../profiles/glm53-nvfp4-csf-tp8/README.md)):
+`scripts/pin_checkpoint.py` pins the container with its index
+`metadata/model.safetensors.index.json`, and `scripts/pin_csf_serving.py`
+writes the serving directory's manifest from that pin manifest and the
+container's `metadata/config.json`.
 Its `model` names a `sparkring-derived/<name>` repository, a revision that is
 `runtime.common.derived_checkpoint.identity` of the base, the donor's files
 and the recipe's SHA-256, and the derived `config.json` and index. Its

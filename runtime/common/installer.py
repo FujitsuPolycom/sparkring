@@ -80,7 +80,7 @@ def checkpoint_contract(card):
         model = entry["model"]
         if "derived" in entry and (card["model_repository"], card["model_revision"]) != (
                 model["repository"], model["revision"]):
-            model = configuration["checkpoints"][entry["derived"]["base"]]["model"]
+            model = derived_checkpoint.base_model(configuration, card["target_variant"])
     return model
 
 

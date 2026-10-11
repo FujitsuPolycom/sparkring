@@ -1,17 +1,30 @@
 """Derived checkpoints: checkpoints that the installer builds on the Sparks from published ones.
 
 A profile's checkpoints table (``runtime.common.toolchain_profiles.checkpoint_names``)
-may list an entry with a ``derived`` object, ``{"base": NAME, "donor": NAME}``,
-naming two other entries of the same table. Such an entry describes a checkpoint
+may list an entry with a ``derived`` object. Such an entry describes a checkpoint
 that no repository publishes: the installer writes it on every Spark from the
-pinned files of its *base* and some files of its *donor*, with a recipe module of
-this repository, and serves it. Its ``model`` names the derived checkpoint, not a
-Hugging Face repository:
+pinned files of its *base* and, optionally, some files of its *donor*, with a
+recipe module of this repository, and serves it. The object names the two:
+
+- ``base``: another, published entry of the table; without ``base`` the base is
+  the profile's own ``model``;
+- ``donor``: another, published entry whose files the recipe reads; without
+  ``donor`` the recipe reads the base alone, and the manifest's ``donor`` is null.
+
+``{"base": NAME, "donor": NAME}`` derives a checkpoint from two published
+checkpoints, as the Qwen profiles' MXFP8-attention entry does. ``{}`` derives one
+from the profile's own checkpoint: a profile whose published checkpoint vLLM
+cannot serve from its own directory, such as a checkpoint in Local Inference
+Lab's NVFP4-CSF container layout (``runtime/common/csf_serving.py``), makes that
+entry its default and serves its derived serving directory.
+
+The entry's ``model`` names the derived checkpoint, not a Hugging Face
+repository:
 
 - ``repository`` is ``sparkring-derived/<name>``, a name SparkRing gives it;
 - ``revision`` is its identity (``identity``): the first 40 hexadecimal digits of
   the SHA-256 of the base's repository and revision, the donor's repository,
-  revision and files, and the recipe's path and SHA-256;
+  revision and files (null without a donor), and the recipe's path and SHA-256;
 - ``config_sha256`` and ``index_sha256`` are the derived ``config.json`` and weight
   index, which serving checks before the model starts.
 
@@ -21,9 +34,10 @@ Manifest
 ``model`` (schema ``sparkring-derived-checkpoint/v1``) pins the derived checkpoint:
 
 - ``repository``, ``revision``: as in the entry's ``model``;
-- ``base``, ``donor``: ``{"repository", "revision"}`` of the two entries' models;
-  the donor's ``files`` are the donor files the recipe reads, each a required file
-  of the donor's pin manifest;
+- ``base``: ``{"repository", "revision"}`` of the base's model;
+- ``donor``: ``{"repository", "revision", "files"}`` of the donor's model, whose
+  ``files`` are the donor files the recipe reads, each a required file of the
+  donor's pin manifest; null for an entry without a donor;
 - ``recipe``: ``{"path", "sha256"}`` of the recipe module, a file below
   ``runtime/`` (checked out with LF line endings) whose bytes must hash to
   ``sha256``;
@@ -32,7 +46,12 @@ Manifest
 - ``files``: every file of the derived checkpoint with its ``size``, ``sha256``
   and ``origin``: ``base`` for a file of the base that the derived checkpoint
   keeps unchanged (hard-linked from the base's checkpoint directory; its pins
-  equal the base's), ``recipe`` for a file the recipe writes.
+  equal the base's), ``recipe`` for a file the recipe writes. A ``base`` file
+  may name the base file it links in ``source`` when its own name is not a
+  file of the base, as a serving directory links the base's
+  ``metadata/tokenizer.json`` as ``tokenizer.json``. Every required file of the
+  base is kept once: under its own name, under another name that names it as
+  ``source``, or replaced by a recipe file of its name.
 
 The recipe writes ``derivation.json``, the *record*: the derived identity, base,
 donor, recipe and transform (``record``), as canonical JSON (``record_bytes``).
@@ -70,11 +89,27 @@ def entry(configuration, name):
     return value if isinstance(value, dict) else None
 
 
+def base_model(configuration, name):
+    """The ``model`` of the base of derived checkpoint ``name``: its ``base`` entry's, else the profile's own.
+
+    None when ``name`` is not a derived entry of ``configuration``.
+    """
+    derived = entry(configuration, name)
+    if derived is None:
+        return None
+    return configuration["checkpoints"][derived["base"]]["model"] if "base" in derived else configuration["model"]
+
+
 def identity(base, donor, recipe):
-    """The derived revision: 40 hexadecimal digits of the SHA-256 of the derivation's inputs."""
+    """The derived revision: 40 hexadecimal digits of the SHA-256 of the derivation's inputs.
+
+    ``donor`` is None for a checkpoint derived from its base alone; the
+    document then holds a null donor, so a checkpoint with a donor keeps the
+    revision it always had.
+    """
     document = {"base": {"repository": base["repository"], "revision": base["revision"]},
-                "donor": {"repository": donor["repository"], "revision": donor["revision"],
-                          "files": list(donor["files"])},
+                "donor": None if donor is None else {"repository": donor["repository"], "revision": donor["revision"],
+                                                     "files": list(donor["files"])},
                 "recipe": {"path": recipe["path"], "sha256": recipe["sha256"]}}
     return hashlib.sha256(json.dumps(document, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:40]
 
@@ -95,10 +130,11 @@ def manifest_path(model, root=None):
 
 def record(manifest):
     """The ``derivation.json`` document of a manifest."""
+    donor = manifest["donor"]
     return {"schema": RECORD_SCHEMA,
             "checkpoint": {"repository": manifest["repository"], "revision": manifest["revision"]},
             "base": dict(manifest["base"]),
-            "donor": {"repository": manifest["donor"]["repository"], "revision": manifest["donor"]["revision"]},
+            "donor": None if donor is None else {"repository": donor["repository"], "revision": donor["revision"]},
             "recipe": dict(manifest["recipe"]), **manifest["transform"]}
 
 
@@ -115,6 +151,11 @@ def required(manifest):
 def files_of(manifest, origin):
     """``{name: size}`` of the files with ``origin`` (``base`` or ``recipe``)."""
     return {name: item["size"] for name, item in sorted(manifest["files"].items()) if item["origin"] == origin}
+
+
+def source_of(manifest, name):
+    """The base file that ``base`` file ``name`` of the derived checkpoint links: its ``source``, else ``name``."""
+    return manifest["files"][name].get("source", name)
 
 
 def directory(base, model):
@@ -138,13 +179,14 @@ def listed(profiles_ids=None, *, root=None):
     """The derived checkpoints that installer profiles list, by ``(repository, revision)``.
 
     Each value holds the checkpoint ``name``, the ``profiles`` that list it and
-    the ``base`` and ``donor`` models' ``repository`` and ``revision``, read
-    from the profiles' checkpoint tables. ``profiles_ids`` defaults to the
-    profiles ``sparkring install`` offers.
+    the ``base`` and ``donor`` models' ``repository`` and ``revision`` (``donor``
+    None without one), read from the profiles' checkpoint tables.
+    ``profiles_ids`` defaults to the profiles ``sparkring install`` offers, those
+    that only SIRCL ring sessions run included.
     """
     if profiles_ids is None:
         from runtime.common import installer_image
-        profiles_ids = installer_image.SUPPORTED
+        profiles_ids = (*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY)
     found = {}
     for profile_id in sorted(profiles_ids):
         try:
@@ -156,13 +198,16 @@ def listed(profiles_ids=None, *, root=None):
         table = configuration.get("checkpoints") or {}
         for name, value in table.items():
             derived = value.get("derived") if isinstance(value, dict) else None
-            if not isinstance(derived, dict) or derived.get("base") not in table or derived.get("donor") not in table:
+            if (not isinstance(derived, dict) or derived.get("base", name) not in table
+                    or derived.get("donor", name) not in table):
                 continue
             model = value["model"]
+            base = base_model(configuration, name)
             item = found.setdefault((model["repository"], model["revision"]), {
                 "name": name, "profiles": [],
-                "base": {key: table[derived["base"]]["model"][key] for key in ("repository", "revision")},
-                "donor": {key: table[derived["donor"]]["model"][key] for key in ("repository", "revision")}})
+                "base": {key: base[key] for key in ("repository", "revision")},
+                "donor": ({key: table[derived["donor"]]["model"][key] for key in ("repository", "revision")}
+                          if "donor" in derived else None)})
             item["profiles"].append(profile_id)
     return found
 
@@ -173,10 +218,26 @@ def view(card, manifest):
 
 
 def donor_card(card, manifest, *, root=None):
-    """The selection card of the donor checkpoint, whose pin manifest and settings its entry names."""
+    """The selection card of the donor checkpoint, whose pin manifest and settings its entry names; None without one."""
+    if manifest["donor"] is None:
+        return None
     name = entry(_configuration(card, root), card["target_variant"])["donor"]
     return {**card, "model_repository": manifest["donor"]["repository"],
             "model_revision": manifest["donor"]["revision"], "target_variant": name}
+
+
+def base_card(card, *, root=None):
+    """The selection card of the base checkpoint, whose pin manifest the installer acquires.
+
+    A base that is an entry of the table is selected by that entry's name; the
+    profile's own ``model`` by no name, as the profile's top-level command
+    selects it (``runtime.common.installer.checkpoint_contract``).
+    """
+    configuration = _configuration(card, root)
+    derived = entry(configuration, card["target_variant"])
+    model = base_model(configuration, card["target_variant"])
+    return {**card, "model_repository": model["repository"], "model_revision": model["revision"],
+            "target_variant": derived.get("base")}
 
 
 def _configuration(card, root):
@@ -217,12 +278,12 @@ def load(card, *, root=None):
                          f"{card['target_variant']}")
     manifest = profiles.read_json(path)
     from runtime.common import installer
-    base_card = {**card, "model_repository": table[derived["base"]]["model"]["repository"],
-                 "model_revision": table[derived["base"]]["model"]["revision"], "target_variant": derived["base"]}
-    donor = {**card, "model_repository": table[derived["donor"]]["model"]["repository"],
-             "model_revision": table[derived["donor"]]["model"]["revision"], "target_variant": derived["donor"]}
-    check(manifest, model, installer.checkpoint_pins(base_card, root=root),
-          installer.checkpoint_pins(donor, root=root), root=root,
+    donor = None
+    if "donor" in derived:
+        donor = installer.checkpoint_pins({**card, "model_repository": table[derived["donor"]]["model"]["repository"],
+                                           "model_revision": table[derived["donor"]]["model"]["revision"],
+                                           "target_variant": derived["donor"]}, root=root)
+    check(manifest, model, installer.checkpoint_pins(base_card(card, root=root), root=root), donor, root=root,
           name=path.relative_to(root).as_posix())
     return manifest
 
@@ -232,7 +293,8 @@ def check(manifest, model, base_pins, donor_pins, *, root=None, name="the derive
 
     ``model`` is the profile entry's derived ``model``; ``base_pins`` and
     ``donor_pins`` are the validated pin manifests of the base and donor
-    entries. Each refusal names the manifest and the field or file.
+    entries, ``donor_pins`` None for an entry without a donor. Each refusal
+    names the manifest and the field or file.
     """
     root = Path(root if root is not None else profiles.ROOT)
 
@@ -245,16 +307,21 @@ def check(manifest, model, base_pins, donor_pins, *, root=None, name="the derive
     require((manifest["repository"], manifest["revision"]) == (model["repository"], model["revision"]),
             "names another checkpoint than the profile's entry")
     require(manifest["repository"].split("/")[0] == OWNER, f"a derived checkpoint's repository is {OWNER}/<name>")
+    donor = manifest["donor"]
+    if donor_pins is None:
+        require(donor is None, "donor must be null: the profile's entry names no donor")
     for key, pins in (("base", base_pins), ("donor", donor_pins)):
+        if pins is None:
+            continue
         value = manifest[key]
         require(isinstance(value, dict) and value.get("repository") == pins["repository"]
                 and value.get("revision") == pins["revision"], f"{key} differs from the profile's {key} entry")
     require(set(manifest["base"]) == {"repository", "revision"}, "base holds repository and revision only")
-    donor = manifest["donor"]
-    require(set(donor) == {"repository", "revision", "files"}, "donor holds repository, revision and files")
-    donor_required = set(donor_pins["files"]) - set(donor_pins["optional"])
-    require(isinstance(donor["files"], list) and donor["files"] and donor["files"] == sorted(set(donor["files"]))
-            and set(donor["files"]) <= donor_required, "donor files must be sorted, distinct required donor files")
+    if donor_pins is not None:
+        require(set(donor) == {"repository", "revision", "files"}, "donor holds repository, revision and files")
+        donor_required = set(donor_pins["files"]) - set(donor_pins["optional"])
+        require(isinstance(donor["files"], list) and donor["files"] and donor["files"] == sorted(set(donor["files"]))
+                and set(donor["files"]) <= donor_required, "donor files must be sorted, distinct required donor files")
     recipe = manifest["recipe"]
     require(isinstance(recipe, dict) and set(recipe) == {"path", "sha256"} and isinstance(recipe["path"], str)
             and recipe["path"].startswith("runtime/"), "recipe holds the path of a module below runtime/ and its sha256")
@@ -269,25 +336,39 @@ def check(manifest, model, base_pins, donor_pins, *, root=None, name="the derive
     require(isinstance(files, dict) and files, "files must map each file name to its pins")
     base_required = {key: entry for key, entry in base_pins["files"].items() if key not in base_pins["optional"]}
     for key, item in files.items():
-        require(isinstance(item, dict) and set(item) == {"origin", "size", "sha256"} and item["origin"] in ORIGINS
+        linked = isinstance(item, dict) and item.get("origin") == "base" and "source" in item
+        require(isinstance(item, dict) and set(item) == {"origin", "size", "sha256", *(("source",) if linked else ())}
+                and item["origin"] in ORIGINS
                 and type(item["size"]) is int and item["size"] > 0 and isinstance(item["sha256"], str)
                 and re.fullmatch(r"[0-9a-f]{64}", item["sha256"]) is not None
-                and PurePosixPath(key).as_posix() == key and ".." not in key.split("/"),
-                f"{key}: expected origin, a positive size and a sha256")
+                and PurePosixPath(key).as_posix() == key and ".." not in key.split("/") and not key.startswith("/"),
+                f"{key}: expected origin, a positive size, a sha256 and, for a base file, an optional source")
         if item["origin"] == "base":
-            require(key in base_required and (item["size"], item["sha256"]) == (
-                base_required[key]["size"], base_required[key]["sha256"]), f"{key} differs from the base's pins")
+            source = item.get("source", key)
+            require(not linked or (key not in base_required and source != key),
+                    f"{key}: a source names the base file of a name the base does not hold")
+            require(source in base_required and (item["size"], item["sha256"]) == (
+                base_required[source]["size"], base_required[source]["sha256"]),
+                f"{key} differs from the base's pins of {source}")
         else:
             require(key in base_required or key == RECORD, f"{key} is neither a base file nor {RECORD}")
-    require(set(base_required) <= set(files), "the derived checkpoint lacks base files: "
-            + ", ".join(sorted(set(base_required) - set(files))[:5]))
+    # A base file is kept once: under its own name, under another name that names it as its source, or
+    # replaced by a recipe file of its name. A second link of one base inode would change the change time
+    # that the derived directory's journal recorded for the first.
+    sources = [item["source"] for item in files.values() if isinstance(item, dict) and "source" in item]
+    twice = sorted({source for source in sources if sources.count(source) > 1 or source in files})
+    require(not twice, "a base file is kept once, but these are kept twice: " + ", ".join(twice[:5]))
+    require(set(base_required) <= set(files) | set(sources), "the derived checkpoint lacks base files: "
+            + ", ".join(sorted(set(base_required) - set(files) - set(sources))[:5]))
     require(files.get(RECORD, {}).get("origin") == "recipe", f"{RECORD} must be a recipe file")
     written = record_bytes(record(manifest))
     require((files[RECORD]["size"], files[RECORD]["sha256"]) == (len(written), hashlib.sha256(written).hexdigest()),
             f"{RECORD} differs from the record of this manifest, {len(written)} bytes with SHA-256 "
             f"{hashlib.sha256(written).hexdigest()}")
-    require(manifest["index"] in files and files[manifest["index"]]["origin"] == "recipe",
-            "index must name a recipe file")
+    # The index is served at the derived directory's root, where serving checks it; a recipe
+    # that rewrites shards writes it, and a serving directory links the base's.
+    require(manifest["index"] == "model.safetensors.index.json" and manifest["index"] in files,
+            "index must name model.safetensors.index.json, a file of the derived checkpoint")
     require(files.get("config.json", {}).get("sha256") == model["config_sha256"]
             and files[manifest["index"]]["sha256"] == model["index_sha256"],
             "config.json or the index differs from the profile entry's model")

@@ -72,9 +72,10 @@ def test_dcp4_profiles_are_listed_only_as_retired_configurations():
     active, retired = variants.split('### Retired profiles', 1)
     assert '[GLM-5.2](' not in summary
     # Decode-context parallelism 4 on four Sparks is listed only as retired; GLM-5.3's eight-Spark
-    # profile runs four decode-context-parallel groups of four inside tensor parallelism 8.
+    # profiles, one per checkpoint, run four decode-context-parallel groups of four inside tensor parallelism 8.
     assert [line for line in active.splitlines() if line.startswith('| DCP4 |')] == [
-        '| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |']
+        '| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |',
+        '| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-csf-tp8](../profiles/glm53-nvfp4-csf-tp8/README.md) |']
     for profile_id in dcp4_profiles:
         assert load(profile_id)[0]['recommendation'] == 'retired'
         assert resolve(profile_id)['serving']['decode_context_parallel_size'] == 4

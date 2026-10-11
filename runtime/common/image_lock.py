@@ -227,14 +227,18 @@ def validate_v3(value, profile):
 # Checkpoints whose files only some vLLM builds read, by ``repository@revision``, with the pinned
 # vLLM builds (``sparkring_sircl.vllm.pins``) one of which the image's vLLM must match; the lock's
 # ``sircl.vllm_pins`` lists the builds an image matches. The CSF checkpoints of GLM-5.3-Flash and
-# Qwen3.8-Flash-Next store their routed experts' block scales compressed, which the nvfp4_csf
-# quantization and loader of the kraken-beta build of 2026-10-07 read. That loader splits Qwen's
-# 640-channel expert width only into steps of 64 channels per rank, so it reads the Qwen checkpoint
-# on two Sparks and refuses it on four.
+# Qwen3.8-Flash-Next and GLM-5.3 store their routed experts' block scales compressed, which the
+# nvfp4_csf quantization and loader of the kraken-beta build of 2026-10-07 read. That loader splits
+# Qwen's 640-channel expert width only into steps of 64 channels per rank, so it reads the Qwen
+# checkpoint on two Sparks and refuses it on four; it names GLM-5.3's family, glm53_744b_nvfp4, and
+# reads its NVFP4-CSF container layout. A derived checkpoint's selection names its base, so the
+# GLM-5.3 container's entry also gates its serving directory.
 CHECKPOINT_BUILDS = {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
         ("sparkring-kraken-beta-20261007-bc9ea774",),
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2":
+        ("sparkring-kraken-beta-20261007-bc9ea774",),
+    "local-inference-lab/GLM-5.3-NVFP4-CSF@a4d406932f2db96db8e852867c7939f448e0cd6f":
         ("sparkring-kraken-beta-20261007-bc9ea774",),
 }
 
@@ -242,9 +246,13 @@ CHECKPOINT_BUILDS = {
 # The status of a checkpoint in CHECKPOINT_BUILDS until an installation of it passes the installer's checks;
 # the plan states it (checkpoint_notice), because a profile installs such a checkpoint without --checkpoint on
 # an image that reads it. Remove an entry when a record shows an installation of that checkpoint that passed.
-CHECKPOINT_STATUS = {
+CHECKPOINT_STATUS: dict[str, str] = {
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2":
         "research-only: no installation of it has passed the installer's checks",
+    "local-inference-lab/GLM-5.3-NVFP4-CSF@a4d406932f2db96db8e852867c7939f448e0cd6f":
+        "research-only: no installation of it has passed the installer's checks, and its first start settles "
+        "whether the online MXFP8 linears, the MTP draft's load-time quantization and glm53full_speedups' "
+        "column-split loading work through the nvfp4_csf loader (profiles/glm53-nvfp4-csf-tp8/README.md)",
 }
 
 

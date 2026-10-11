@@ -114,12 +114,22 @@ def checkpoint_names(profile):
     entry stays the profile's checkpoint, so its settings remain those of
     the profile's own command.
 
-    An entry with `derived`, `{"base": NAME, "donor": NAME}`, is a checkpoint
-    that the installer writes on the Sparks from two other entries of the
-    table, neither of them derived (runtime/common/derived_checkpoint.py). Its
-    `model` names that derived checkpoint: a `sparkring-derived/<name>`
-    repository and the derivation's identity as revision. It is never the
-    default.
+    An entry with `derived` is a checkpoint that the installer writes on the
+    Sparks (runtime/common/derived_checkpoint.py). `derived` names its `base`,
+    another entry of the table that is not derived, and optionally a `donor`,
+    a third such entry whose files the recipe reads: `{"base": NAME, "donor":
+    NAME}`. Its `model` names that derived checkpoint: a
+    `sparkring-derived/<name>` repository and the derivation's identity as
+    revision. Such an entry is never the default.
+
+    An entry with `derived` that names no `base` is derived from the
+    profile's own `model`, optionally with a donor. It may be the default: the
+    profile's `model` then names the published checkpoint that the installer
+    acquires, and the default entry, which holds only `model` and `derived`,
+    the derived checkpoint that the profile's command serves
+    (checkpoint_settings). A checkpoint that vLLM serves only through a
+    directory the installer builds beside it, such as one in the NVFP4-CSF
+    container layout (runtime/common/csf_serving.py), is listed so.
     """
     table = profile.get("checkpoints")
     if table is None:
@@ -141,19 +151,27 @@ def checkpoint_names(profile):
     models = [(entry["model"]["repository"], entry["model"]["revision"]) for entry in table.values()]
     if len(set(models)) != len(models):
         raise ValueError("Each checkpoint pins another revision; give one revision another name with checkpoint_aliases")
-    if table[default] != {"model": profile["model"]}:
-        raise ValueError("The default checkpoint must be the profile's model without other settings")
+    own = table[default].get("derived")
+    if table[default] != {"model": profile["model"]} and not (
+            isinstance(own, dict) and "base" not in own and set(table[default]) == {"model", "derived"}):
+        raise ValueError("The default checkpoint must be the profile's model without other settings, or a checkpoint "
+                         "derived from the profile's model that holds only model and derived")
     for name, entry in table.items():
         if "derived" not in entry:
             if entry["model"]["repository"].startswith(derived_checkpoint.OWNER + "/"):
                 raise ValueError(f"Checkpoint {name} names a derived repository without a derived object")
             continue
         derived = entry["derived"]
-        if (not isinstance(derived, dict) or set(derived) != {"base", "donor"} or derived["base"] == derived["donor"]
-                or any(derived[key] not in table or "derived" in table[derived[key]] for key in ("base", "donor"))
-                or name == default or not entry["model"]["repository"].startswith(derived_checkpoint.OWNER + "/")):
-            raise ValueError(f"Derived checkpoint {name} must name two other, published checkpoints of the table "
-                             f"as base and donor, serve a {derived_checkpoint.OWNER}/<name> repository and not be the default")
+        named = [derived[key] for key in ("base", "donor") if isinstance(derived, dict) and key in derived]
+        if (not isinstance(derived, dict) or not set(derived) <= {"base", "donor"} or len(set(named)) != len(named)
+                or any(value not in table or value == name or "derived" in table[value] for value in named)
+                or (name == default and "base" in derived)
+                or not entry["model"]["repository"].startswith(derived_checkpoint.OWNER + "/")):
+            raise ValueError(f"Derived checkpoint {name} must name other, published checkpoints of the table as its "
+                             f"base and optional donor, or no base to derive from the profile's model, serve a "
+                             f"{derived_checkpoint.OWNER}/<name> repository and be the default only without a base")
+        if profile["model"]["repository"].startswith(derived_checkpoint.OWNER + "/"):
+            raise ValueError("A profile's model is a published checkpoint, not a derived one")
     aliases = profile.get("checkpoint_aliases", {})
     if not isinstance(aliases, dict) or any(not re.fullmatch(r"[a-z0-9][a-z0-9.-]{0,62}", alias) or alias in table
                                             or target not in table for alias, target in aliases.items()):
@@ -195,11 +213,17 @@ def checkpoint_settings(profile, name):
       nothing and raises no error, so a misspelled name would go unnoticed;
     - ``speculative``: change or add keys of ``--speculative-config``. vLLM
       refuses an unknown key when the engine starts.
+
+    A derived default (checkpoint_names) changes only the model: the
+    profile's command serves the derived checkpoint, whose base is the
+    profile's ``model``.
     """
     default, names = checkpoint_names(profile)
     name = checkpoint_name(profile, name)
     if name is None or name == default:
-        return profile
+        if default is None or "derived" not in profile["checkpoints"][default]:
+            return profile
+        return {**copy.deepcopy(profile), "model": dict(profile["checkpoints"][default]["model"])}
     if not names:
         raise ValueError("This profile offers no checkpoint choice")
     if name not in names:

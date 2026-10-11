@@ -186,11 +186,16 @@ def choose_model(profile: dict, checkpoint: str | None, model_of: str | None) ->
     ``PROFILE:CHECKPOINT``) takes only the pinned model (repository, revision, config and index digests) of
     another profile or of an entry of its checkpoint table: the containers mount that checkpoint copy, and
     the arguments it needs are given with --set-arg and --set-env.
+
+    Without ``checkpoint`` the profile's default applies: a default derived
+    from the profile's model, such as glm53-nvfp4-csf-tp8's serving directory,
+    serves that derived checkpoint, so the search looks for the directory the
+    installer built.
     """
     deviations = []
+    default = profile.get("checkpoint")
+    profile = toolchain_profiles.checkpoint_settings(profile, checkpoint)
     if checkpoint:
-        default = profile.get("checkpoint")
-        profile = toolchain_profiles.checkpoint_settings(profile, checkpoint)
         deviations.append(f"checkpoint {checkpoint} (the profile's default: {default})")
     if model_of:
         name, _, entry = model_of.partition(":")

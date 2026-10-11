@@ -1121,7 +1121,9 @@ def profile_references():
     "base", "donor"}}}``. A profile references the checkpoints it lists, derived
     ones included, the images of the locks ``installer_image.for_profile``
     (Compose exports) and ``image_lock.for_profile`` (``sparkring install``)
-    select and the caches those produce. ``locks`` names every installer
+    select and the caches those produce. A profile that only SIRCL ring
+    sessions run (``installer_image.SIRCL_ONLY``) has no Compose export, so
+    only ``image_lock.for_profile`` selects its image. ``locks`` names every installer
     image lock in ``runtime/releases``, including development locks that only
     ``--image-lock`` selects; ``derived`` describes each derived checkpoint.
     """
@@ -1137,9 +1139,11 @@ def profile_references():
             note("locks", lock["image_id"], lock["name"])
         except (OSError, ValueError, KeyError, TypeError):
             continue
-    for profile in installer_image.SUPPORTED:
+    for profile in (*installer_image.SUPPORTED, *installer_image.SIRCL_ONLY):
         try:
-            images = {installer_image.for_profile(profile)["image_id"], image_lock.for_profile(profile)["image_id"]}
+            images = {image_lock.for_profile(profile)["image_id"]}
+            if profile not in installer_image.SIRCL_ONLY:
+                images.add(installer_image.for_profile(profile)["image_id"])
             metadata, _ = profiles.load(profile)
             configuration = toolchain_profiles.read(profiles.ROOT / metadata["configuration"]["path"])
             _, names = toolchain_profiles.checkpoint_names(configuration)
@@ -1149,6 +1153,8 @@ def profile_references():
             continue
         for selection in selections:
             note("checkpoints", selection["model"]["repository"] + "@" + selection["model"]["revision"], profile)
+        # The profile's own model, which a default derived from it serves through its derived directory.
+        note("checkpoints", configuration["model"]["repository"] + "@" + configuration["model"]["revision"], profile)
         for image in sorted(images):
             note("images", image, profile)
             for selection in selections:
@@ -1429,8 +1435,9 @@ def _details(item):
                      + ("" if item["state"] == "ok" else f" ({item['state']})"))
         derived = item.get("derived")
         if derived:
+            donor = f" with files of {derived['donor']['revision'][:12]}" if derived.get("donor") else ""
             lines.append(f"derived checkpoint {derived['name']} of {derived['base']['repository']} at "
-                         f"{derived['base']['revision'][:12]} with files of {derived['donor']['revision'][:12]}; "
+                         f"{derived['base']['revision'][:12]}{donor}; "
                          "its unchanged files are hard links to the base's, so releasing it frees only the files "
                          "its recipe wrote")
     if item["kind"] == "releasing":

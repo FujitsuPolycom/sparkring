@@ -245,6 +245,11 @@ def test_choose_model_takes_a_listed_checkpoint_or_another_profiles_model():
     csf, deviations = cli.choose_model(glm, None, "glm53-flash-csf-tp8")
     assert csf["model"]["revision"].startswith("dec48abd") and csf["vllm_args"] == glm["vllm_args"]
     assert "of glm53-flash-csf-tp8" in deviations[0]
+    # A default derived from the profile's model serves the derived directory, which the installer builds.
+    csf, _ = cli.profile_config("glm53-nvfp4-csf-tp8")
+    served, deviations = cli.choose_model(csf, None, None)
+    assert served["model"] == csf["checkpoints"]["csf-serving"]["model"] and deviations == []
+    assert served["vllm_args"] == csf["vllm_args"]
 
 
 def test_sircl_arm_bundles_take_the_profiles_sircl_settings_from_the_repository(monkeypatch):

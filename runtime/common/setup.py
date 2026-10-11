@@ -38,12 +38,12 @@ def selection(profile_id, variant=None, root=profiles.ROOT):
         # repository and revision; runtime/common/toolchain_profiles.py applies
         # the checkpoint's settings. A derived checkpoint's selection names its
         # base, whose files the installer acquires before it derives the rest
-        # (runtime/common/derived_checkpoint.py).
+        # (runtime/common/derived_checkpoint.py): another entry, or the
+        # profile's own model for an entry that names no base.
         variant = (source.get("checkpoint_aliases") or {}).get(variant, variant) or source["checkpoint"]
         if variant not in checkpoints:
             raise ValueError("Select a checkpoint the profile lists: " + ", ".join(sorted(checkpoints)))
-        derived = checkpoints[variant].get("derived")
-        model = checkpoints[derived["base"] if derived else variant]["model"]
+        model = derived_checkpoint.base_model(source, variant) or checkpoints[variant]["model"]
     elif variants:
         variant = variant or "nvfp4-spark"
         if variant not in variants:
@@ -107,7 +107,8 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
     every required file once, and the largest once more as headroom, at most
     ``checkpoint_plan.HEADROOM_CAP_BYTES``. A derived checkpoint
     (``runtime/common/derived_checkpoint.py``) adds the files its recipe writes
-    and the donor files the recipe reads, as Node A holds them. None when
+    and the donor files the recipe reads, if it has a donor, as Node A holds
+    them. None when
     ``profiles/checkpoints/<owner>--<name>/<revision>.json`` is absent or does
     not pin the card's repository and revision with positive sizes.
     """
@@ -118,9 +119,11 @@ def pinned_checkpoint_bytes(card, root=profiles.ROOT):
         derived = derived_checkpoint.model_of(card, root=root)
         if derived is not None:
             manifest = profiles.read_json(derived_checkpoint.manifest_path(derived, root))
-            donor = _pinned_sizes(manifest["donor"]["repository"], manifest["donor"]["revision"], root, by_name=True)
             sizes += list(derived_checkpoint.files_of(manifest, "recipe").values())
-            sizes += [donor[name] for name in manifest["donor"]["files"]]
+            if manifest["donor"] is not None:
+                donor = _pinned_sizes(manifest["donor"]["repository"], manifest["donor"]["revision"], root,
+                                      by_name=True)
+                sizes += [donor[name] for name in manifest["donor"]["files"]]
     except (OSError, ValueError, KeyError, TypeError):
         return None
     from runtime.host import checkpoint_plan

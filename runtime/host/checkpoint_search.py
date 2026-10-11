@@ -917,9 +917,15 @@ def sparkring_evidence(ctx):
     holds ``.installer-owner.json`` and its receipt names that path with origin
     ``pinned-hub-download`` or ``verified-fabric-copy``. When ``/srv/sparkring``
     is reached through a symlink, a record may name either the written path or
-    the resolved one. Returns ``sparkring`` (those directories, resolved) and
-    ``folders`` (``(path, tag)``: other directories at those paths, tagged
-    ``folder``, and folders that records name, tagged ``record``).
+    the resolved one.
+
+    ``/srv/sparkring/downloads/<owner>--<name>/<revision>`` is the staging
+    path for a revision downloaded outside the installer, such as with
+    ``hf download --local-dir``; the walk does not enter ``/srv/sparkring``, so
+    a directory there is examined here. Returns ``sparkring`` (those
+    directories, resolved) and ``folders`` (``(path, tag)``: other directories
+    at those paths, tagged ``folder``, folders that records name, tagged
+    ``record``, and the staging path, tagged ``staged``).
     """
     revision = ctx["pins"]["revision"]
     records = ctx.setdefault("records", {})
@@ -1006,6 +1012,9 @@ def sparkring_evidence(ctx):
                         remember(value.get("stats"), value.get("sha256"))
             else:
                 folders.append((path, "folder"))
+    staged = "/srv/sparkring/downloads/" + ctx["pins"]["repository"].replace("/", "--") + "/" + revision
+    if directory(staged)[0]:
+        folders.append((staged, "staged"))
     base, _ = directory("/var/lib/sparkring/checkpoints")
     if base:
         listing = guard(ctx, base, "scandir", 10000)
@@ -1187,7 +1196,11 @@ def walk(ctx, tiers, found, seconds, entries):
     pinned ``config.json`` or the repository name in its path, and ``merge``
     when a directory already reported is reached from another root. It returns
     True when the directory must not be descended. A directory holding
-    ``.sparkring-ignore`` is neither reported nor descended.
+    ``.sparkring-ignore`` is neither reported nor descended. A checkpoint whose
+    index and weights lie one directory down, as in the NVFP4-CSF container
+    layout (``metadata/model.safetensors.index.json``,
+    ``tensors/<shard>``), is found by the index and the first such weight name,
+    probed through that child when it is a plain directory.
 
     The budget is ``seconds`` of wall clock, cut to the survey's overall
     deadline ``ctx["deadline"]``, and ``entries`` directory entries, checked
@@ -1201,6 +1214,9 @@ def walk(ctx, tiers, found, seconds, entries):
     files = pins["files"]
     index = pins["index"]
     weights = [name for name in pins["weights"] if "/" not in name]
+    # Nested names one level down are probed through their plain child directory: the index and one weight.
+    nested = [name for name in [index, *sorted(name for name in pins["weights"] if "/" in name)[:1]]
+              if name.count("/") == 1]
     config = files.get("config.json")
     limit = options["directory_entries"]
     owner, _, repository = pins["repository"].partition("/")
@@ -1293,8 +1309,16 @@ def walk(ctx, tiers, found, seconds, entries):
                     visited[identity] = path
                 continue
             sizes = {name: size(base + "/" + name) for name in [index, *weights] if name in names}
+            for name in nested:
+                child = names.get(name.split("/", 1)[0])
+                try:
+                    plain = child is not None and not child.is_symlink() and child.is_dir(follow_symlinks=False)
+                except OSError:
+                    plain = False
+                if plain:
+                    sizes[name] = size(base + "/" + name)
             hit = (sizes.get(index) == files[index]["size"]
-                   or any(sizes.get(name) == files[name]["size"] for name in weights))
+                   or any(sizes.get(name) == files[name]["size"] for name in [*weights, *nested[1:]]))
             if hit or (".git" in names and sizes):
                 if found("folder", path, here):
                     visited[identity] = path
