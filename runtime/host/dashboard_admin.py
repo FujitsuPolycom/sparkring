@@ -6,7 +6,8 @@ The actions here run as root, in the operator's commands:
 - ``write_site`` turns the controller's deployment records (root only) into the site file
   (``sparkring-dashboard-site/v1``, 0644) that the collector reads.
 - ``refresh_site`` is called by ``sparkring install``, ``up``, ``down``, setup and automatic
-  recovery when they finish, so the page follows every change of deployment records. It never
+  recovery when they finish, so the page follows every change of deployment records. It writes
+  the site file, then asks the running service to re-read it (``reload_service``). It never
   raises: a failure costs one line on stderr and the command carries on.
 - ``after_setup`` enables and restarts ``sparkring-dashboard.service`` at the end of setup.
 - ``switch`` is ``sudo sparkring dashboard enable|disable``. ``disable`` records DISABLED_PATH,
@@ -81,17 +82,36 @@ def _stderr(line):
     print(line, file=sys.stderr, flush=True)
 
 
-def refresh_site(*, log=None) -> bool:
-    """Write the site file again after a command changed deployment records; never raises.
+def refresh_site(*, log=None, run=None) -> bool:
+    """Write the site file again after a command changed deployment records and ask the service to
+    re-read it; never raises. True when the file was written.
 
     The dashboard shows the previous records until the next refresh or
-    `sudo sparkring dashboard export` when this fails."""
+    `sudo sparkring dashboard export` when the write fails."""
     try:
         write_site()
-        return True
     except Exception as error:  # noqa: BLE001 - the dashboard must never fail an installation
         (log or _stderr)(f"Dashboard: its site file was not refreshed ({type(error).__name__}: {error}); "
                          "sudo sparkring dashboard export writes it")
+        return False
+    reload_service(log=log, run=run)
+    return True
+
+
+def reload_service(*, log=None, run=None) -> bool:
+    """Ask a running dashboard to re-read its host files at once (systemctl reload sends SIGHUP); a
+    stopped service is left stopped. Never raises; True when systemctl accepted the request.
+
+    The service also compares the site file's inode and time every second, so a failed request
+    delays the page by at most that second."""
+    if DISABLED_PATH.exists():
+        return False
+    try:
+        _systemctl("--no-block", "try-reload-or-restart", UNIT, run=run)
+        return True
+    except Exception as error:  # noqa: BLE001 - the dashboard must never fail the command that wrote the file
+        (log or _stderr)(f"Dashboard: {UNIT} was not asked to re-read its site file ({type(error).__name__}: "
+                         f"{error}); it notices the new file within a second")
         return False
 
 
@@ -100,6 +120,8 @@ def _systemctl(*args, run=None):
         return (run or subprocess.run)(["systemctl", *args], check=True, capture_output=True, text=True, timeout=60)
     except subprocess.CalledProcessError as error:
         raise RuntimeError(f"systemctl {' '.join(args)}: {(error.stderr or '').strip() or error}") from error
+    except OSError as error:                 # no systemctl on this host
+        raise RuntimeError(f"systemctl {' '.join(args)}: {error}") from error
 
 
 def listen_address(api_address, management_address) -> str:
@@ -134,11 +156,13 @@ def after_setup(*, log=None, run=None) -> bool:
     return started
 
 
-def export(output) -> int:
+def export(output, *, run=None) -> int:
     if not hasattr(os, "geteuid") or os.geteuid() != 0:
         raise ValueError("Run sudo sparkring dashboard export on Node A: the deployment records are root's")
     site = write_site(Path(output))
     print(f"Wrote {output}: {len(site['deployments'])} deployment(s).")
+    if Path(output) == Path(SITE_PATH):     # the service's own file, not a copy for another host
+        reload_service(run=run)
     return 0
 
 

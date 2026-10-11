@@ -11,6 +11,9 @@ ConditionPathExists=!/etc/sparkring/dashboard.disabled
 [Service]
 Type=simple
 ExecStart=/usr/bin/sparkring dashboard serve
+# systemctl reload: re-read the fabric document and the site file at once. sparkring dashboard
+# export, install, up, down and automatic recovery reload it after they write the site file.
+ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=30
 # Unprivileged: the fabric document, the site file, the host-agent status and the recovery

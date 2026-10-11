@@ -1,7 +1,8 @@
 """The dashboard's root actions and the commands that call them: the site file written from the
 deployment records, its refresh after install, up, down and automatic recovery (a failed refresh
-never fails them), the service's start at the end of setup, its persistent off switch and setup's
-plan line. No host is contacted and no systemctl runs."""
+never fails them) and the reload that makes the running service re-read it, the service's start at
+the end of setup, its persistent off switch and setup's plan line. No host is contacted and no
+systemctl runs."""
 import json
 from pathlib import Path
 import subprocess
@@ -18,6 +19,8 @@ from runtime.host.test_setup_prompts import four_sparks  # noqa: F401 (fixture)
 # The real functions; the autouse fixture no_dashboard_service (conftest.py) replaces them.
 REAL_REFRESH_SITE = dashboard_admin.refresh_site
 REAL_AFTER_SETUP = dashboard_admin.after_setup
+REAL_RELOAD_SERVICE = dashboard_admin.reload_service
+RELOAD = ["--no-block", "try-reload-or-restart", dashboard_admin.UNIT]
 NODE_A_LAN = "192.0.2.50"
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -83,6 +86,69 @@ def test_a_failed_refresh_logs_one_line_and_never_raises(records, monkeypatch):
     assert lines[0].endswith("sudo sparkring dashboard export writes it")
     monkeypatch.setattr(dashboard_admin, "write_site", lambda output=None: {"deployments": []})
     assert REAL_REFRESH_SITE(log=lines.append) is True and len(lines) == 1
+
+
+@pytest.fixture
+def reloads(tmp_path, monkeypatch):
+    """The real refresh and reload request, with the site write stubbed and systemctl recorded."""
+    monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
+    monkeypatch.setattr(dashboard_admin, "refresh_site", REAL_REFRESH_SITE)
+    monkeypatch.setattr(dashboard_admin, "reload_service", REAL_RELOAD_SERVICE)
+    monkeypatch.setattr(dashboard_admin, "write_site", lambda output=None: {"deployments": []})
+    systemctl = Systemctl()
+    monkeypatch.setattr(dashboard_admin, "_systemctl", lambda *args, run=None: systemctl([None, *args]))
+    return systemctl
+
+
+def test_a_refresh_asks_the_running_service_to_reread_the_site_file(reloads, tmp_path):
+    lines = []
+    assert dashboard_admin.refresh_site(log=lines.append) is True
+    assert reloads.calls == [RELOAD] and lines == []
+    (tmp_path / "dashboard.disabled").write_text("off\n")
+    assert dashboard_admin.refresh_site(log=lines.append) is True and reloads.calls == [RELOAD]
+
+
+def test_a_refused_reload_logs_one_line_and_keeps_the_refresh(records, tmp_path, monkeypatch):
+    monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
+    monkeypatch.setattr(dashboard_admin, "reload_service", REAL_RELOAD_SERVICE)
+    lines = []
+    assert REAL_REFRESH_SITE(log=lines.append, run=Systemctl(fail={"--no-block"})) is True
+    assert len(lines) == 1 and "was not asked to re-read its site file" in lines[0] and "Unit failed" in lines[0]
+    assert (tmp_path / "dashboard" / "site.json").exists()
+    missing = REAL_RELOAD_SERVICE(log=lines.append, run=lambda argv, **kwargs: (_ for _ in ()).throw(
+        FileNotFoundError(2, "No such file or directory", "systemctl")))
+    assert missing is False and len(lines) == 2 and "systemctl" in lines[1]
+
+
+def test_export_reloads_the_service_only_for_its_own_site_file(records, tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(dashboard_admin.os, "geteuid", lambda: 0, raising=False)
+    monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
+    monkeypatch.setattr(dashboard_admin, "reload_service", REAL_RELOAD_SERVICE)
+    systemctl = Systemctl()
+    assert dashboard_admin.export(str(dashboard_admin.SITE_PATH), run=systemctl) == 0
+    assert systemctl.calls == [RELOAD] and "Wrote" in capsys.readouterr().out
+    assert dashboard_admin.export(str(tmp_path / "copy-for-another-host.json"), run=systemctl) == 0
+    assert systemctl.calls == [RELOAD]
+
+
+@pytest.mark.parametrize("command", ["up", "down"])
+def test_up_and_down_reload_the_service(command, reloads, monkeypatch):
+    monkeypatch.setattr(controller, "lifecycle", lambda argv: 0)
+    assert controller.main([command, "profile"]) == 0 and reloads.calls == [RELOAD]
+
+
+def test_install_reloads_the_service(reloads, tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(install_workflow, "execute", lambda args: {"state": "installed"})
+    install_workflow.main(["--profile", "qwen38-flash-next-tp2", "--yes", "--json"])
+    assert reloads.calls == [RELOAD]
+
+
+def test_automatic_recovery_reloads_the_service_after_its_restart(pair, reloads):  # noqa: F811
+    clock = Clock()
+    run(clock, api=DEAD)
+    clock.advance(60)
+    assert run(clock, api=DEAD)["state"] == "recovered" and reloads.calls == [RELOAD]
 
 
 @pytest.mark.parametrize("command", ["up", "down"])

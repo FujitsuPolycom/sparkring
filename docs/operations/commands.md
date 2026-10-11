@@ -484,7 +484,10 @@ It runs on Node A as `sparkring-dashboard.service` at
 `http://NODE_A_LAN_ADDRESS:8090/` ([where it listens](dashboard.md#every-model-on-one-page)).
 Installing the package or running `sudo sparkring setup` turns it on.
 `install`, `up`, `down` and automatic recovery refresh its site file when they
-finish; a failed refresh prints one line and never stops them.
+finish and ask the service to re-read it (`systemctl reload
+sparkring-dashboard`); a failed refresh prints one line and never stops them.
+The service also compares the site file's inode and modification time every
+second, so a site file written any other way shows within a second as well.
 
 It reads files on Node A and sends only GET requests: `/metrics` every 5 s
 while a browser shows the page and every 60 s otherwise, `/v1/models` every
@@ -534,7 +537,7 @@ anywhere.
 
 | Command or flag | Meaning |
 |---|---|
-| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves |
+| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves. Written to its default path, it then asks the service to re-read it |
 | `enable`, `disable` | Turn the service on, or off for good (`/etc/sparkring/dashboard.disabled` records the choice) |
 | `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host |
 | `serve --port N` | Port (default 8090) |

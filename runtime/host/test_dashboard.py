@@ -12,9 +12,11 @@ import io
 import json
 import os
 from pathlib import Path
+import signal
 import subprocess
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -367,6 +369,120 @@ def test_unusable_records_are_reported_and_poll_nothing(tmp_path):
     snapshot = found.snapshot()
     assert snapshot["topology"]["detail"] == source.problem and snapshot["rings"][0]["size"] == 8
 
+
+
+def started_without_a_site_file(tmp_path, *, quiet=None):
+    """A collector started, as the service is after setup, before any site file exists."""
+    clock = Clock()
+    api = FakeAPI(clock)
+    for _, host, port, model in PAIRS:
+        api.models[(host, port)] = model
+    site = tmp_path / "dashboard" / "site.json"
+    found = dashboard.Collector([dashboard.Source(fabric_file(tmp_path), site)], dashboard.ReadOnlyClient(opener=api),
+                                quiet_path=quiet or tmp_path / "quiet", node_status_path=None, recovery_path=None,
+                                clock=clock)
+    found.cycle()
+    assert found.models == {} and "no site file" in found.snapshot()["topology"]["detail"]
+    return found, api, clock, site
+
+
+def export_to(site, rows=PAIRS):
+    """Write the site file as `sparkring dashboard export` does: a new file renamed over the old one."""
+    staging = site.parent / "export"
+    staging.mkdir(parents=True, exist_ok=True)
+    site_file(staging, rows).replace(site)
+
+
+def test_a_site_file_written_after_the_start_is_read_at_the_next_cycle(tmp_path):
+    found, api, clock, site = started_without_a_site_file(tmp_path)
+    export_to(site)
+    clock.now += 1
+    found.cycle()
+    assert len(found.models) == 4 and found.snapshot()["topology"]["detail"] is None
+    assert paths_of(api).count("/metrics") == 4                # read in the same cycle
+
+
+def test_a_site_file_written_in_quiet_mode_is_read_and_polled_once_quiet_ends(tmp_path):
+    quiet = tmp_path / "dashboard.quiet"
+    quiet.write_text("measuring\n")
+    found, api, clock, site = started_without_a_site_file(tmp_path, quiet=quiet)
+    export_to(site)
+    run_for(found, clock, 5)
+    assert len(found.models) == 4 and api.requests == []       # files are local; no request in quiet mode
+    quiet.unlink()
+    run_for(found, clock, 1)
+    assert paths_of(api).count("/metrics") == 4
+
+
+def test_a_replaced_site_file_is_read_again_even_with_the_same_time_and_size(tmp_path):
+    found, api, clock, site = started_without_a_site_file(tmp_path)
+    export_to(site)
+    run_for(found, clock, 2)
+    before = site.stat()
+    changed = [(positions, host, port + 1 if port == 8000 else port, model) for positions, host, port, model in PAIRS]
+    export_to(site, changed)
+    os.utime(site, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert site.stat().st_size == before.st_size and site.stat().st_mtime_ns == before.st_mtime_ns
+    run_for(found, clock, 1)
+    ports = sorted(model.row["api_port"] for model in found.models.values())
+    assert ports == [8001, 8001, 8015, 8020]
+
+
+def test_a_reload_request_rereads_files_whose_stamps_did_not_change(tmp_path, monkeypatch):
+    found, api, clock, site = started_without_a_site_file(tmp_path)
+    monkeypatch.setattr(dashboard.Source, "_stamp", lambda self, path: ("unchanged",))
+    found.sources[0].stamps = None
+    run_for(found, clock, 1)                                    # records the constant stamps
+    export_to(site)
+    run_for(found, clock, 3)
+    assert found.models == {}                                   # nothing told it the file changed
+    found.request_reload()
+    run_for(found, clock, 1)
+    assert len(found.models) == 4 and not found.reload_requested.is_set()
+
+
+def test_sighup_requests_a_reload(tmp_path):
+    found, _, _, _ = started_without_a_site_file(tmp_path)
+
+    class Signals:
+        SIGHUP = 1
+
+        def __init__(self):
+            self.handlers = {}
+
+        def signal(self, number, handler):
+            self.handlers[number] = handler
+
+    signals = Signals()
+    assert dashboard.reload_on_hangup(found, signals=signals) is True
+    signals.handlers[1](1, None)
+    assert found.reload_requested.is_set()
+    assert dashboard.reload_on_hangup(found, signals=object()) is False     # a platform without SIGHUP
+
+
+@pytest.mark.skipif(not hasattr(signal, "SIGHUP"), reason="the platform has no SIGHUP")
+def test_a_real_sighup_reaches_the_collector(tmp_path):
+    found, _, _, _ = started_without_a_site_file(tmp_path)
+    previous = signal.getsignal(signal.SIGHUP)
+    try:
+        dashboard.reload_on_hangup(found)
+        os.kill(os.getpid(), signal.SIGHUP)
+        for _ in range(100):
+            if found.reload_requested.is_set():
+                break
+            time.sleep(0.01)
+        assert found.reload_requested.is_set()
+    finally:
+        signal.signal(signal.SIGHUP, previous)
+
+
+def test_the_service_handles_sighup_from_its_start_and_systemctl_reload_sends_it():
+    serve = ast.get_source_segment(Path(dashboard.__file__).read_text(encoding="utf-8"), next(
+        node for node in ast.parse(Path(dashboard.__file__).read_text(encoding="utf-8")).body
+        if isinstance(node, ast.FunctionDef) and node.name == "serve"))
+    assert serve.index("reload_on_hangup(collector)") < serve.index("collector.cycle()")
+    unit = (ROOT / "packaging" / "debian" / "sparkring-dashboard.service").read_text(encoding="utf-8")
+    assert "ExecReload=/bin/kill -HUP $MAINPID" in unit
 
 def test_site_rows_that_do_not_fit_the_fabric_are_left_out():
     good = {"id": "a", "positions": [0, 1], "api_host": "192.0.2.10", "api_port": 8000,

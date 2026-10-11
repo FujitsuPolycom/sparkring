@@ -102,6 +102,10 @@ http://NODE_A_LAN_ADDRESS:8090/
 - Installing the SparkRing package or running `sudo sparkring setup` turns it
   on. `sudo sparkring dashboard disable` turns it off for good, across reboots,
   setups and upgrades; `sudo sparkring dashboard enable` turns it back on.
+- It shows a model that `sparkring install`, `up` or `down` or automatic
+  recovery added, changed or stopped within a second, without a restart: those
+  commands rewrite its site file and run `systemctl reload sparkring-dashboard`,
+  and the service also notices a changed site file by itself.
 
 It sends no inference request and opens no SSH session. The
 [command reference](commands.md#dashboard) lists what it reads and how often.

@@ -12,7 +12,12 @@ status document in a terminal, read from this service.
 Where its data comes from
 -------------------------
 
-- Host files, read when they change (``stat`` every FILES_SECONDS):
+- Host files. The fabric document and the site file are compared every
+  one-second cycle by device, inode, modification time and size, and re-read
+  when any of them changed, so a site file that ``export`` replaces is shown
+  within a second. SIGHUP (``systemctl reload sparkring-dashboard``) re-reads
+  them at the next cycle whatever their stamps say. The host-agent status and
+  the recovery record are re-read every FILES_SECONDS:
 
   - the fabric document (``sparkring-fabric/v1``, ``runtime.common.fabric_document``)
     for the Sparks, their positions, hostnames and management addresses;
@@ -80,6 +85,7 @@ import json
 import os
 from pathlib import Path
 import re
+import signal
 import socket
 import sys
 import threading
@@ -504,16 +510,19 @@ class Source:
         self.problem = None
 
     def _stamp(self, path):
+        """(device, inode, modification time, size): a file replaced by rename gets another inode
+        even when its time and size repeat."""
         try:
             stat = path.stat()
-            return (stat.st_mtime_ns, stat.st_size)
+            return (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
         except OSError:
             return None
 
-    def refresh(self) -> bool:
-        """Re-read the files when their size or time changed; True when anything was re-read."""
+    def refresh(self, force: bool = False) -> bool:
+        """Re-read both files when either one's stamp changed, or when `force`; True when they were
+        re-read."""
         stamps = (self._stamp(self.fabric_path), self._stamp(self.site_path))
-        if stamps == self.stamps:
+        if stamps == self.stamps and not force:
             return False
         self.stamps = stamps
         try:
@@ -623,6 +632,7 @@ class Collector:
         self.started = clock()
         self.last_view = None
         self.next_files = 0.0
+        self.reload_requested = threading.Event()   # SIGHUP: re-read the host files at the next cycle
         self.quiet = False
         self.node_status = None
         self.cycles = 0
@@ -653,10 +663,11 @@ class Collector:
             model.runtime_requested_at, model.runtime_due = now, True
             return True
 
-    def reload_files(self, now) -> None:
-        changed = False
-        for source in self.sources:
-            changed = source.refresh() or changed
+    def request_reload(self) -> None:
+        """Re-read every host file at the next cycle (the SIGHUP handler; systemctl reload)."""
+        self.reload_requested.set()
+
+    def read_status_files(self) -> None:
         if self.node_status_path is not None:
             try:
                 self.node_status = read_json(self.node_status_path)
@@ -664,6 +675,13 @@ class Collector:
                 self.node_status = None
         if self.recovery_path is not None:
             self.recovery = recovery_findings(self.recovery_path)
+
+    def reload_sources(self, force: bool = False) -> None:
+        """Re-read each fabric's document and site file whose stamp changed (all of them when
+        `force`), and follow the deployments they list: a model per row, kept across re-reads."""
+        changed = False
+        for source in self.sources:
+            changed = source.refresh(force) or changed
         if not changed:
             return
         hosts, wanted = set(), {}
@@ -686,14 +704,19 @@ class Collector:
     # -- one cycle -------------------------------------------------------------------------
     def cycle(self, now=None) -> None:
         now = self.clock() if now is None else now
+        # Host files first, in quiet mode too: two stats a second, and no request to any Spark.
+        forced = self.reload_requested.is_set()
+        if forced:
+            self.reload_requested.clear()
+        self.reload_sources(forced)
+        if forced or now >= self.next_files:
+            self.read_status_files()
+            self.next_files = now + FILES_SECONDS
         # Quiet mode is checked on every cycle (a stat and a small directory listing a second), so a
         # hold takes effect before a measurement that starts right after it.
         self.quiet = bool(self.quiet_path and quiet_state(self.quiet_path, now)["quiet"])
         if self.quiet:
             return
-        if now >= self.next_files:
-            self.reload_files(now)
-            self.next_files = now + FILES_SECONDS
         before = self.cpu_clock()
         sent = False
         with self.lock:
@@ -1094,6 +1117,17 @@ def default_bind(source: Source) -> str:
     return "127.0.0.1"
 
 
+def reload_on_hangup(collector: Collector, signals=signal) -> bool:
+    """Make SIGHUP (systemctl reload) re-read the host files at the collector's next cycle; False on
+    a platform without SIGHUP. Python's default for SIGHUP ends the process, and systemd counts an
+    end by SIGHUP as clean, so a reload before this ran would leave the service stopped: serve
+    installs it before anything else."""
+    if not hasattr(signals, "SIGHUP"):
+        return False
+    signals.signal(signals.SIGHUP, lambda number, frame: collector.request_reload())
+    return True
+
+
 def serve(args) -> int:
     pairs = list(zip(args.fabric, args.site)) if args.fabric else [(FABRIC_PATH, SITE_PATH)]
     sources = [Source(Path(f), Path(s)) for f, s in pairs]
@@ -1101,6 +1135,7 @@ def serve(args) -> int:
     collector = Collector(sources, client, quiet_path=Path(args.quiet_file),
                           node_status_path=None if args.no_node_status else NODE_STATUS_PATH,
                           recovery_path=RECOVERY_PATH)
+    reload_on_hangup(collector)
     placement = lower_priority(args.cpus)
     collector.cycle()
     password = None
