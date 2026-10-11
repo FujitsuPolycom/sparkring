@@ -349,8 +349,10 @@ def test_release_lock_lists_every_installer_profile_on_one_image():
             | frozenset(installer_image.SPARKCACHE_VARIANTS))
     assert installer_image.SIRCL_ONLY == SIRCL_ONLY == compose.FABRIC_PROFILES
     assert tuple(path.parent.name for path in toolchain_profiles.fabric_configs()) == SIRCL_ONLY
-    # Read from the research catalog, as research-only profiles.
-    assert set(profiles.research_catalog()) == set(SIRCL_ONLY)
+    # Read from the research catalog, as research-only profiles: the SIRCL-only profiles and the SparkCache
+    # variants, which no lock of this package admits.
+    assert set(profiles.research_catalog()) == set(SIRCL_ONLY) | set(installer_image.SPARKCACHE_VARIANTS)
+    assert not set(installer_image.SPARKCACHE_VARIANTS) & set(profiles._catalog_file(profiles.ROOT, profiles.CATALOG))
     assert "qwen38-flash-next-qad-tp8" in installer_image.QWEN4_EXP and not (
         set(SIRCL_ONLY) - {"qwen38-flash-next-qad-tp8"}) & set(installer_image.QWEN4_EXP)
     assert lock["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
