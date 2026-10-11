@@ -186,6 +186,11 @@ def _parser() -> argparse.ArgumentParser:
                                           "table, boot units and SIRCL's measured tuning table (Node A)")
     subcommands.add_parser("check", help="check the running models: functional requests and, on SIRCL, which transport "
                                          "carried each collective; --report writes the tester bundle (Node A)")
+    subcommands.add_parser("host-load", help="show or change where and how often the host agent and recovery timer "
+                                             "run, on this Spark or with --all on every Spark (Node A)")
+    subcommands.add_parser("dashboard", help="serve a read-only web page of the fabric's Sparks and models (GET requests "
+                                             "for metrics and status only, no inference request, no SSH); tui shows "
+                                             "it in this terminal")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
     for operation in ("init", "up", "status", "down", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
@@ -237,6 +242,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "check":
         from runtime.host.check import main as check_main
         return check_main(raw[1:])
+    if raw and raw[0] == "host-load":
+        from runtime.host.host_load import main as host_load_main
+        return host_load_main(raw[1:])
+    if raw and raw[0] == "dashboard":
+        from runtime.host.dashboard import main as dashboard_main
+        return dashboard_main(raw[1:])
     if raw and (raw[0] == "setup" and (len(raw) == 1 or raw[1] not in ("show", "storage"))
                 or raw[0] in ("up", "down", "status") and "--deployment" not in raw
                 and (Path(root, "distribution.json").exists() or len(raw) > 1 and not raw[1].startswith("-"))):

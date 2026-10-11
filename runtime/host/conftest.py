@@ -1,6 +1,8 @@
 """Shared fixtures of the host tests: no test enables or queries a systemd unit of the machine running it,
 no setup simulation runs the fabric bandwidth test on the machine running it or over SSH, and no
 installation drops page caches or reads memory on a Spark before its start."""
+import json
+
 import pytest
 
 
@@ -28,3 +30,26 @@ def no_memory_settle(monkeypatch):
     the deployment over SSH. ``runtime.host.test_memory_settle`` tests it through ``REAL_SETTLE_MEMORY``."""
     from runtime.host import install_workflow
     monkeypatch.setattr(install_workflow, "settle_memory", lambda directory, **kwargs: [])
+
+
+@pytest.fixture(autouse=True)
+def no_dashboard_service(monkeypatch):
+    """Replace the dashboard's site-file refresh, its reload request and its start at the end of setup,
+    which would write /var/lib/sparkring/dashboard/site.json and call systemctl on the machine running
+    the tests. ``runtime.host.test_dashboard_admin`` tests them through ``REAL_REFRESH_SITE``,
+    ``REAL_RELOAD_SERVICE`` and ``REAL_AFTER_SETUP``."""
+    from runtime.host import dashboard_admin
+    monkeypatch.setattr(dashboard_admin, "refresh_site", lambda **kwargs: True)
+    monkeypatch.setattr(dashboard_admin, "reload_service", lambda **kwargs: True)
+    monkeypatch.setattr(dashboard_admin, "after_setup", lambda **kwargs: True)
+
+
+@pytest.fixture(autouse=True)
+def recovery_reads_node_a_like_the_others(monkeypatch):
+    """Route the recovery timer's reads of Node A's own rank through ``discovery.ssh`` as for every other
+    Spark, so the tests' fake SSH answers them instead of this machine's status file and Docker.
+    ``runtime.host.test_host_load`` tests the local reads through ``REAL_LOCAL_STATUS`` and ``REAL_LOCAL_COMMAND``."""
+    from runtime.host import discovery, recovery
+    monkeypatch.setattr(recovery, "local_status",
+                        lambda host: json.loads(discovery.ssh(host, ["/usr/bin/sparkring", "node", "status"])))
+    monkeypatch.setattr(recovery, "local_command", lambda host, args, **kwargs: discovery.ssh(host, args))

@@ -1,0 +1,5 @@
+# A ConnectX function that its driver re-creates, as in a driver restart, gets a new interface
+# index. The administration tunnel's endpoints name the old one until `sparkring node control-up`
+# sets them again, so each new ConnectX network interface starts that check at once.
+# sparkring-control-refresh.service skips Sparks without an administration network.
+ACTION=="add", SUBSYSTEM=="net", DRIVERS=="mlx5_core", TAG+="systemd", ENV{SYSTEMD_WANTS}+="sparkring-control-refresh.service"

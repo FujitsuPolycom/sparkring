@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import shlex
@@ -15,6 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from performance.harnesses import dashboard_quiet  # noqa: E402
 from performance.harnesses.serving_ab import measure, remote, report, setlock, spec, verify  # noqa: E402
 from runtime.common import compose, image_lock, toolchain_profiles  # noqa: E402
 from runtime.common.container_spec import docker_create  # noqa: E402
@@ -558,7 +560,25 @@ def stop(plan: dict, site: remote.Site, arm: str) -> int:
                               check=False).strip() or 0) for p in plan["positions"])
 
 
+def quiet_target(args, site):
+    """(ssh argument, where) of the dashboard whose quiet mode the campaign holds: --dashboard-ssh,
+    else the site's Spark at --dashboard-spark (position 0, Node A), through the runner's SSH client."""
+    if args.dashboard_ssh:
+        return dashboard_quiet.ssh_for(args.dashboard_ssh, remote.SSH), args.dashboard_ssh
+    spark = site.sparks[args.dashboard_spark]
+    return dashboard_quiet.ssh_for(spark.ssh, remote.SSH), spark.name
+
+
+def write_quiet(out: Path, field) -> None:
+    (out / "dashboard-quiet.json").write_text(json.dumps(field, indent=1), encoding="utf-8")
+
+
 def run_campaign(args) -> int:
+    with contextlib.ExitStack() as stack:
+        return _campaign(args, stack)
+
+
+def _campaign(args, stack) -> int:
     plan = build_plan(args)
     plan["run_id"] = args.run_id
     out = Path(args.output)
@@ -570,6 +590,17 @@ def run_campaign(args) -> int:
     holder = (setlock.SetLock(lock_host, args.lock_name, plan["positions"], log=lambda m: log(m, out))
               if args.lock == "set" else setlock.Held(log=lambda m: log(m, out)))
     with holder:
+        # The dashboard on Node A sends no request from here until the campaign ends, also when it
+        # stops on an error or Ctrl-C; every measure.json and the summary record the hold, and the
+        # measurement programs started below inherit it (performance/harnesses/dashboard_quiet.py).
+        ssh, where = quiet_target(args, site)
+        held = {}
+        # Registered first, so it runs last: the file then records the release too.
+        stack.callback(lambda: held and write_quiet(out, held["field"]))
+        quiet = held["field"] = stack.enter_context(dashboard_quiet.held("serving_ab", ssh=ssh, where=where))
+        write_quiet(out, quiet)
+        log(f"dashboard: quiet mode {quiet['state']} on {where}" + (f" ({quiet['detail']})" if quiet.get("detail") else ""),
+            out)
         policy = SECCOMP.read_bytes()
         for p in plan["positions"]:
             path = plan["seccomp"]["path"]
@@ -612,7 +643,8 @@ def run_campaign(args) -> int:
             codes = measure.measure(d, host=site.sparks[plan["positions"][0]].lan_address, port=plan["port"],
                                     model=plan["served_model_name"], context_limit=plan["context_limit"],
                                     bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics)
-            (d / "measure.json").write_text(json.dumps(codes, indent=1), encoding="utf-8")
+            (d / "measure.json").write_text(json.dumps({**codes, dashboard_quiet.DASHBOARD_FIELD: dict(quiet)}, indent=1),
+                                            encoding="utf-8")
             if args.profile_label == label:
                 try:
                     record = profile_capture(plan, site, arm, d, args.profile_tokens)
@@ -636,7 +668,7 @@ def run_campaign(args) -> int:
                 measured.append(label)
             if left:
                 return 1
-        doc = report.summary(out, measured)
+        doc = {**report.summary(out, measured), dashboard_quiet.DASHBOARD_FIELD: dict(quiet)}
         (out / "summary.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
         (out / "tables.txt").write_text(report.tables(doc) + "\n", encoding="utf-8")
         print(report.tables(doc))
@@ -665,6 +697,10 @@ def main(argv: list[str] | None = None) -> int:
                              "the ring's global lock (bash hwlock.sh OWNER python -m ...), so take none")
     parser.add_argument("--lock-name", default=None, help="set-lock owner name (default serve-<positions>)")
     parser.add_argument("--lock-host", type=int, default=0, help="site position of the lock host (default 0)")
+    dashboard_quiet.add_argument(parser)
+    parser.add_argument("--dashboard-spark", type=int, default=0,
+                        help="site position of Node A, whose dashboard's quiet mode the campaign holds over SSH "
+                             "(default 0; --dashboard-ssh names another target)")
     parser.add_argument("--dcp-size", type=int, help="decode-context parallelism N, as serve --dcp-size applies it "
                         "(default: the profile's own); every arm runs it")
     parser.add_argument("--profile-label", help="after measuring this start, capture vLLM's torch profiler over one "

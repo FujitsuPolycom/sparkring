@@ -9,13 +9,32 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import contextlib
 import json
+import os
+import sys
 import math
 import re
 import time
 import urllib.request
 import uuid
 from pathlib import Path
+
+# The SparkRing dashboard's quiet mode while this loads the model (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
 
 
 def _metric_sum(text: str, name: str, *, required: bool = True) -> float:
@@ -242,11 +261,16 @@ def main() -> int:
     parser.add_argument("--require-capture-metrics", action="store_true",
                         help="require SparkCache ownership metrics; use for cache-enabled profiles")
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this loads the model "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
     args = parser.parse_args()
     for name in ("concurrency", "prompt_words", "max_tokens", "cycles"):
         if getattr(args, name) <= 0:
             parser.error(f"--{name.replace('_', '-')} must be positive")
-    result = run(args)
+    with quiet_mode("glm53_liveness_gate", args.dashboard_ssh) as quiet:
+        result = run(args)
+    result["dashboard_quiet"] = quiet
     rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.write_text(rendered, encoding="utf-8", newline="\n")

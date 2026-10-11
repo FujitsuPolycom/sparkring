@@ -577,6 +577,8 @@ def run(
                 model=site["model"],
                 output=output / "performance",
                 policy_root=Path(site_path).resolve().parent,
+                # Rank 0 is the pair's Node A, where its dashboard runs.
+                quiet_target=site.get("dashboard_ssh") or site["hosts"][0],
             )
             evidence["performance"] = comparison
             assertions += len(comparison["comparisons"])

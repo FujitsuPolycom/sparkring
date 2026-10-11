@@ -1,0 +1,16 @@
+#!/bin/sh
+# NetworkManager dispatcher script (/usr/lib/NetworkManager/dispatcher.d/90-sparkring-control-link).
+# NetworkManager runs it with an interface and an event. When one of this Spark's recorded
+# administration links goes up or down (a cable pulled or returned, a link-local address
+# restored), it starts the administration tunnel's check at once, so that check does not
+# have to wait for its periodic timer.
+interface="$1"
+event="$2"
+case "$event" in
+    up|down|pre-down) ;;
+    *) exit 0 ;;
+esac
+[ -n "$interface" ] || exit 0
+[ -r /etc/sparkring/control.json ] || exit 0
+grep -qF "\"netdev\": \"$interface\"" /etc/sparkring/control.json || exit 0
+exec systemctl start --no-block sparkring-control-refresh.service

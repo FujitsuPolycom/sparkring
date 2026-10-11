@@ -69,6 +69,22 @@ Start measuring only after the profile's all-rank readiness check and warmup
 pass and unrelated traffic has stopped. Run native collective checks only in
 their documented stopped-model window, never beside the model.
 
+Hold the SparkRing dashboard's quiet mode for the campaign, so it reads no
+metrics while you measure ([dashboard](commands.md#dashboard)). SparkRing's
+probes below take their own hold through `SPARKRING_DASHBOARD_SSH`; the
+benchmark commands need this one:
+
+```bash
+export SPARKRING_DASHBOARD_SSH='REPLACE_WITH_NODE_A_SSH_TARGET'
+ssh "$SPARKRING_DASHBOARD_SSH" sudo -n /usr/bin/sparkring dashboard quiet hold \
+  --label profile-validation > "$RUN/dashboard-quiet.json"
+HOLDER=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["holder"])' "$RUN/dashboard-quiet.json")
+trap 'ssh "$SPARKRING_DASHBOARD_SSH" sudo -n /usr/bin/sparkring dashboard quiet release "$HOLDER"' EXIT
+```
+
+On a Spark without the dashboard, the hold command fails; record that in the
+report instead of the hold.
+
 ### Obtain the throughput/accuracy benchmark
 
 Use [Local Inference Lab's llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)

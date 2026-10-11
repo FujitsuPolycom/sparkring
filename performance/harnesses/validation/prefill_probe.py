@@ -1,14 +1,38 @@
 """Measure temperature-controlled client TTFT with unique-prefix prompts and receipts."""
 import argparse
+import contextlib
 import hashlib
 import json
 import math
 from pathlib import Path
 import os
+import sys
 import time
 import urllib.request
 from urllib.parse import urlsplit
 import uuid
+
+# The SparkRing dashboard's quiet mode while this measures (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[3]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
+
+
+def add_quiet_argument(parser):
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this measures "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
 
 
 def tokens(value):
@@ -132,6 +156,7 @@ def main():
     parser.add_argument('--timeout', type=float, default=900)
     parser.add_argument('--api-key-env', default='OPENAI_API_KEY')
     parser.add_argument('--output', type=Path, required=True)
+    add_quiet_argument(parser)
     args = parser.parse_args()
     if not 1 <= args.repeats <= 100 or not 0 <= args.temperature <= 2 or not math.isfinite(args.timeout) or not 0 < args.timeout <= 3600:
         parser.error('Require positive repeats/timeout and temperature in [0,2]')
@@ -144,8 +169,8 @@ def main():
         parser.error('Endpoint must be HTTP(S), without credentials, query, fragment or extra path')
     args.output.parent.mkdir(parents=True, exist_ok=True)
     failed = False
-    with args.output.open('x', encoding='utf-8') as stream:
-        header = {'schema': 'sparkring-prefill-probe/v1', 'model': args.model,
+    with args.output.open('x', encoding='utf-8') as stream, quiet_mode('prefill_probe', args.dashboard_ssh) as quiet:
+        header = {'schema': 'sparkring-prefill-probe/v1', 'model': args.model, 'dashboard_quiet': quiet,
                   'temperature': args.temperature, 'repeats': args.repeats, 'contexts': contexts,
                   'source_sha256': hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                   'measurement': 'client request submission to first content or reasoning delta; max_tokens=1',

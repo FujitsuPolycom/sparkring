@@ -394,8 +394,10 @@ def up(*, root="/", run=subprocess.run, now=time.time, contact=probe, say=None):
 
     DNS settings follow. The call then raises naming each failed link whose
     peer no usable fallback path carries; a failed link that a fallback
-    carries is only logged. The refresh timer runs this every 20 seconds, so
-    each missing endpoint is set once its link passes.
+    carries is only logged. The refresh timer runs this every 20 seconds (the
+    host-load setting control_refresh_interval can lengthen that), and a link
+    change or a ConnectX driver restart starts it at once, so each missing
+    endpoint is set once its link passes.
     """
     config = node.read(root, "/etc/sparkring/control.json")
     problems = underlay(root=root, run=run)
@@ -430,6 +432,12 @@ def up(*, root="/", run=subprocess.run, now=time.time, contact=probe, say=None):
             node.call(["resolvectl", "dns", control.INTERFACE, config["head_address"]], run=run)
             node.call(["resolvectl", "domain", control.INTERFACE, "~."], run=run)
             node.call(["resolvectl", "default-route", control.INTERFACE, "yes"], run=run)
+    # With a slow control_refresh_interval (runtime.host.host_load), a check that leaves a peer
+    # moving, on a fallback path or behind a failed link starts the next check in 20 s, the steps
+    # VERIFY_AFTER and PRIMARY_SETTLE assume.
+    from runtime.host import host_load
+    if problems or any(state.get("verify") or state.get("path") != 0 for state in _read_states(root).values()):
+        host_load.schedule_follow_up(root=root, run=run)
     unreached = [problem for problem in problems if problem["netdev"] not in carried]
     for problem in problems:
         if problem["netdev"] in carried:

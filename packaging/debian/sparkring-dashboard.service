@@ -1,0 +1,54 @@
+[Unit]
+Description=SparkRing dashboard: a read-only web page of the fabric's Sparks and models
+Documentation=file:///usr/lib/sparkring/docs/operations/dashboard.md
+After=network-online.target
+Wants=network-online.target
+# Node A holds the controller's copy of the fabric document; other Sparks run no dashboard.
+ConditionPathExists=/var/lib/sparkring/controller/fabric.json
+# sudo sparkring dashboard disable writes this file; the dashboard then stays off.
+ConditionPathExists=!/etc/sparkring/dashboard.disabled
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/sparkring dashboard serve
+# systemctl reload: re-read the fabric document and the site file at once. sparkring dashboard
+# export, install, up, down and automatic recovery reload it after they write the site file.
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=30
+# Unprivileged: the fabric document, the site file, the host-agent status and the recovery
+# record it reads are mode 0644. It holds no SSH key and starts no process.
+DynamicUser=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+NoNewPrivileges=yes
+# It never displaces serving work: idle CPU and I/O class, nice 19; the program also moves
+# itself to the efficiency cores (runtime/host/dashboard.py, lower_priority).
+Nice=19
+CPUSchedulingPolicy=idle
+IOSchedulingClass=idle
+# Memory that the CPU and GPU share on a Spark: a small cap, no swap.
+MemoryHigh=96M
+MemoryMax=128M
+MemorySwapMax=0
+TasksMax=32
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

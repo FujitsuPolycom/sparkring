@@ -1,0 +1,22 @@
+[Unit]
+Description=SparkRing recovery timer's SSH master connections, one per Spark (host-load setting recovery_ssh_reuse)
+After=network-online.target sparkring-control.service
+Wants=network-online.target
+# Node A only: it holds the controller's cluster record and runs the recovery timer.
+ConditionPathExists=/var/lib/sparkring/controller/cluster.json
+
+[Service]
+Type=simple
+# `sudo sparkring host-load set recovery_ssh_reuse=on` enables and starts this unit; `=off`
+# disables and stops it. While running it keeps a master connection to every recorded Spark,
+# which sparkring-recover.service's SSH commands share instead of signing in each time.
+ExecStart=/usr/bin/sparkring node ssh-mux
+# The masters use root's administration keys and host keys, as the recovery timer does.
+Environment=HOME=/root
+Restart=on-failure
+RestartSec=10
+KillMode=control-group
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=multi-user.target

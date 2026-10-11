@@ -24,6 +24,31 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import contextlib
+import os
+import sys
+
+# The SparkRing dashboard's quiet mode while this measures (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
+
+
+def add_quiet_argument(parser):
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this measures "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
 
 
 SCHEMA = "sparkring-r7-fixed-mtp3-qualification/v1"
@@ -731,6 +756,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         command.add_argument("--model")
         command.add_argument("--timeout", type=float, default=1800.0)
         command.add_argument("--output", required=True)
+        add_quiet_argument(command)
         if mode == "qualify-mtp3":
             command.add_argument("--baseline", required=True)
     transport = subparsers.add_parser("audit-transport")
@@ -742,22 +768,27 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    try:
-        report = run_transport(args) if args.mode == "audit-transport" else run_http(args)
-    except Exception as exc:
-        report = {
-            "schema": TRANSPORT_SCHEMA if args.mode == "audit-transport" else SCHEMA,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "status": "fail",
-            "mode": args.mode,
-            "failures": [f"{type(exc).__name__}: {exc}"],
-        }
-        _write_report(args.output, report)
-        print(json.dumps(report, indent=2, sort_keys=True))
-        return 1
+    # The HTTP modes measure the model; the transport audit only reads status files.
+    measuring = args.mode != "audit-transport"
+    failed = False
+    with (quiet_mode(Path(__file__).stem, args.dashboard_ssh) if measuring
+          else contextlib.nullcontext(None)) as quiet:
+        try:
+            report = run_transport(args) if args.mode == "audit-transport" else run_http(args)
+        except Exception as exc:
+            report = {
+                "schema": TRANSPORT_SCHEMA if args.mode == "audit-transport" else SCHEMA,
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "status": "fail",
+                "mode": args.mode,
+                "failures": [f"{type(exc).__name__}: {exc}"],
+            }
+            failed = True
+    if quiet is not None:
+        report["dashboard_quiet"] = quiet
     _write_report(args.output, report)
     print(json.dumps(report, indent=2, sort_keys=True))
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

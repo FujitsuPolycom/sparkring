@@ -32,6 +32,8 @@ sudo sparkring logs --follow                                 # follow progress
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable`, `tui` | Serve a read-only web page of the ring and its models, and show it in a terminal (Experimental) |
+| [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Show or change where and how often the host agent and the recovery timer run |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
@@ -470,6 +472,117 @@ and account names with placeholders and keeps fabric addresses. A file that
 still names a private item is left out and listed in its `report.json`.
 Review the files, then attach the directory to a
 [Test report](https://github.com/FujitsuPolycom/sparkring/issues/new?template=test_report.yml) issue.
+
+## dashboard
+
+`sparkring dashboard serve` serves a web page of the fabric's ring and every
+recorded model: state, output rate, requests, KV cache use and budget, draft
+acceptance, settings and the last automatic-recovery check. Status:
+**Experimental**; it has offline tests only.
+
+It runs on Node A as `sparkring-dashboard.service` at
+`http://NODE_A_LAN_ADDRESS:8090/` ([where it listens](dashboard.md#every-model-on-one-page)).
+Installing the package or running `sudo sparkring setup` turns it on.
+`install`, `up`, `down` and automatic recovery refresh its site file when they
+finish and ask the service to re-read it (`systemctl reload
+sparkring-dashboard`); a failed refresh prints one line and never stops them.
+The service also compares the site file's inode and modification time every
+second, so a site file written any other way shows within a second as well.
+
+It reads files on Node A and sends only GET requests: `/metrics` every 5 s
+while a browser shows the page and every 60 s otherwise, `/v1/models` every
+60 s, and the model's [status report](dashboard.md) once per model start. It
+sends no inference request, opens no SSH session, starts no process and runs
+at idle priority on the efficiency cores. Each card shows the command that
+prints the model's log; the page itself reads no log.
+
+```bash
+sudo sparkring dashboard quiet on      # no request at all, for a benchmark
+sudo sparkring dashboard quiet off
+sudo sparkring dashboard disable       # off for good, across reboots, setups and upgrades
+sudo sparkring dashboard enable
+```
+
+A measurement holds quiet mode with a holder of its own, so overlapping
+measurements and an operator's `quiet on` never end each other's pause:
+`quiet hold --label NAME` prints the holder id, and `quiet release ID` ends
+that hold. A hold lapses when its process exits or after 12 hours.
+`quiet status` lists every hold. The repository's benchmark harnesses take
+the hold themselves while they send load, on Node A over SSH with
+`--dashboard-ssh TARGET` or `SPARKRING_DASHBOARD_SSH`, and record in each
+result whether quiet mode was on. `performance/harnesses/qwen_prefill.py`
+does not, because a published record pins its bytes; wrap it as
+[profile validation](profile-validation.md) wraps the benchmark.
+
+`sparkring dashboard tui` shows the same status in a terminal on Node A, over
+SSH if need be. Its header gives the models serving, Sparks busy, requests
+running, total output rate, the data's age and the read period; below it the
+ring shows each model's arc in its colour, and each model has a card with its
+state, TP size and arc, transport, uptime, output rate, running requests, KV
+use and budget, draft acceptance length and first-token time. `d` expands the
+selected card: model, endpoint, layout, arc, transport, head container,
+output and prompt rates, graphs of the last hour's output rate and KV use,
+requests, KV budget with the concurrency it allows at the maximum context,
+latency with prefix-cache hits, totals, settings, parsers, image, the log
+command, and per Spark its rank, LAN address, memory and free disk. Free disk
+below 2 % of the root filesystem is red, below 5 % yellow.
+
+The terminal view reads the service's `/api/status` on this Spark and nothing
+else, at `http://127.0.0.1:8090` or, when nothing answers there, at the
+service's LAN address: it sends no request to any model and opens no SSH
+session, and an address of another host is refused before a connection opens. While it is
+open it counts as a viewer, as the page does, so the service reads `/metrics`
+every 5 s; `--passive` leaves the service at its 60 s reads. The view needs
+Python's `curses` module, which Linux has; `--once` prints one frame as text
+anywhere.
+
+| Command or flag | Meaning |
+|---|---|
+| `export` | Write `/var/lib/sparkring/dashboard/site.json` (`sparkring-dashboard-site/v1`) from the deployment records: each model's Sparks, API address and port and container names. `install`, `up`, `down` and automatic recovery run it themselves. Written to its default path, it then asks the service to re-read it |
+| `enable`, `disable` | Turn the service on, or off for good (`/etc/sparkring/dashboard.disabled` records the choice) |
+| `serve --bind ADDRESS` | Listen address; default Node A's LAN address from the fabric document, `127.0.0.1` on another host. The service also listens on `127.0.0.1` unless ADDRESS is a loopback or wildcard address ([why](dashboard.md#why-loopback-as-well)) |
+| `serve --port N` | Port (default 8090) |
+| `serve --fabric FILE --site FILE` | Another fabric's document and site file, once per fabric, for one page of several rings on another host |
+| `serve --name NAME` | A host name browsers may use for the page; requests naming another host are refused |
+| `serve --password-file FILE` | Require HTTP Basic authentication, user `sparkring`, with the password in FILE |
+| `serve --cpus LIST` | CPUs to run on instead of the efficiency cores |
+| `quiet on`, `quiet off` | Pause or resume every request |
+| `quiet hold --label NAME`, `quiet release ID`, `quiet status` | A measurement's own pause, its end, and every pause held |
+| `tui` | The status in this terminal. Keys: up and down (or `j`, `k`) select a model, `d` or space expands its card, `e` shows events, `r` reads at once, `-` and `=` lengthen or shorten the read period, `q` quits |
+| `tui --once`, `--details`, `--events`, `--width N` | Print one frame as text and exit; `--details` expands every card, `--events` adds recent events |
+| `tui --passive` | Do not count as a viewer: the service keeps reading each model's `/metrics` once a minute |
+| `tui --url URL`, `tui --password-file FILE` | The service's address on this Spark (default `http://127.0.0.1:8090`, then the service's LAN address), and its password when it has one |
+
+Like the model API, the page has no key unless `--password-file` gives one. It
+shows host names, addresses and model settings, so keep Node A on a trusted
+network. The site file and the fabric document hold the site's addresses; keep
+copies of them out of Git.
+
+## host-load
+
+`sparkring host-load` shows or changes where and how often SparkRing's own
+periodic work runs on a Spark that serves a model. Status: **Experimental**;
+without settings every job runs as it always has.
+
+```bash
+sudo sparkring host-load show --all
+sudo sparkring host-load set placement=efficiency agent_serving_interval=120 --all
+sudo sparkring host-load set recovery_ssh_reuse=on        # on Node A
+```
+
+| Setting | Values | Meaning |
+|---|---|---|
+| `placement` | `default`, `efficiency` | `efficiency` runs the host agent, the recovery timer and its SSH master connections on the efficiency cores at idle priority, through systemd drop-ins |
+| `agent_serving_interval` | 30 to 600 seconds (default 30) | Seconds between the host agent's observations while a model container runs on the Spark |
+| `recovery_ssh_reuse` | `on`, `off` (default `off`) | The recovery timer's SSH commands share one connection per Spark, kept by `sparkring-ssh-mux.service`, instead of signing in each time |
+| `control_refresh_interval` | 20 to 900 seconds (default 20) | Seconds between the administration tunnel's periodic checks. Link changes and ConnectX driver restarts start a check at once, and a check that leaves the tunnel moving between paths starts the next one 20 s later |
+
+`--all` applies the change to every Spark of the recorded fabric from Node A;
+without it, to this Spark only (`sparkring node host-load` is the per-Spark
+form). Settings live in `/etc/sparkring/host-load.json`. A change takes effect
+without a reinstall or a model restart: placement restarts the host agent,
+which serves no model, and an interval change restarts only its timer. The
+recovery timer reads Node A's own status and container without SSH.
 
 ## logs
 

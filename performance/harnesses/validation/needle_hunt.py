@@ -15,6 +15,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from needle_fixtures import FIXTURE_VERSION, REFERENCE_SOURCE_SHA256, build_case_document  # noqa: E402
+from prefill_probe import add_quiet_argument, quiet_mode  # noqa: E402
 
 SCHEMA = "sparkring-retrieval-validation/v1"
 
@@ -127,11 +128,11 @@ def emit(stream, record):
     print(line, flush=True)
 
 
-def execute(config, output, *, post=post_json):
+def execute(config, output, *, post=post_json, dashboard_ssh=None):
     total = len(config["contexts"]) * len(config["positions"]) * len(config["modes"]) * config["repetitions"]
     safe_config = {key: value for key, value in config.items() if key != "api_key"}
-    with Path(output).open("x", encoding="utf-8") as stream:
-        emit(stream, {"type": "start", "schema": SCHEMA, "fixture_version": FIXTURE_VERSION,
+    with Path(output).open("x", encoding="utf-8") as stream, quiet_mode("needle_hunt", dashboard_ssh) as quiet:
+        emit(stream, {"type": "start", "schema": SCHEMA, "fixture_version": FIXTURE_VERSION, "dashboard_quiet": dict(quiet),
                       "reference_source_sha256": REFERENCE_SOURCE_SHA256,
                       "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
                       "fixtures_sha256": hashlib.sha256(Path(__file__).with_name("needle_fixtures.py").read_bytes()).hexdigest(),
@@ -155,7 +156,7 @@ def execute(config, output, *, post=post_json):
         success = completed == total and passed == total and not interrupted
         emit(stream, {"type": "summary", "passed": passed, "completed": completed, "planned": total,
                       "errors": errors, "failed_answers": completed - passed - errors,
-                      "interrupted": interrupted, "success": success})
+                      "interrupted": interrupted, "success": success, "dashboard_quiet": dict(quiet)})
     return 130 if interrupted else 0 if success else 2
 
 
@@ -175,6 +176,7 @@ def main():
     parser.add_argument("--chat-template-kwargs", default="{}", help="JSON object passed identically to tokenization and chat")
     parser.add_argument("--repetitions", type=int, default=1, help="Repeat each identical prompt; does not reset or assert cache state")
     parser.add_argument("--output", type=Path, required=True, help="Absent JSONL receipt path; parent directory must exist")
+    add_quiet_argument(parser)
     args = parser.parse_args()
     try:
         contexts = [token_count(item) for item in args.contexts.split(",")]
@@ -206,7 +208,7 @@ def main():
             raise ValueError("Receipt path must be absent beneath an existing directory")
     except (ValueError, TypeError) as error:
         parser.error(str(error))
-    return execute(config, args.output)
+    return execute(config, args.output, dashboard_ssh=args.dashboard_ssh)
 
 
 if __name__ == "__main__":

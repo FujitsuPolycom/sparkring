@@ -1,0 +1,811 @@
+# HELP python_gc_objects_collected_total Objects collected during gc
+# TYPE python_gc_objects_collected_total counter
+python_gc_objects_collected_total{generation="0"} 24747.0
+python_gc_objects_collected_total{generation="1"} 5180.0
+python_gc_objects_collected_total{generation="2"} 396.0
+# HELP python_gc_objects_uncollectable_total Uncollectable objects found during GC
+# TYPE python_gc_objects_uncollectable_total counter
+python_gc_objects_uncollectable_total{generation="0"} 0.0
+python_gc_objects_uncollectable_total{generation="1"} 0.0
+python_gc_objects_uncollectable_total{generation="2"} 0.0
+# HELP python_gc_collections_total Number of times this generation was collected
+# TYPE python_gc_collections_total counter
+python_gc_collections_total{generation="0"} 3436.0
+python_gc_collections_total{generation="1"} 312.0
+python_gc_collections_total{generation="2"} 10.0
+# HELP python_info Python platform information
+# TYPE python_info gauge
+python_info{implementation="CPython",major="3",minor="12",patchlevel="3",version="3.12.3"} 1.0
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 2.507198464e+10
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 3.126571008e+09
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.79026695199e+09
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 60.449999999999996
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+process_open_fds 77.0
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+process_max_fds 65535.0
+# HELP vllm:spec_decode_num_drafts_total Number of spec decoding drafts.
+# TYPE vllm:spec_decode_num_drafts_total counter
+vllm:spec_decode_num_drafts_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+# HELP vllm:spec_decode_num_drafts_created Number of spec decoding drafts.
+# TYPE vllm:spec_decode_num_drafts_created gauge
+vllm:spec_decode_num_drafts_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523492e+09
+# HELP vllm:spec_decode_num_draft_tokens_total Number of verified draft tokens.
+# TYPE vllm:spec_decode_num_draft_tokens_total counter
+vllm:spec_decode_num_draft_tokens_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22158.0
+# HELP vllm:spec_decode_num_draft_tokens_created Number of verified draft tokens.
+# TYPE vllm:spec_decode_num_draft_tokens_created gauge
+vllm:spec_decode_num_draft_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523513e+09
+# HELP vllm:spec_decode_num_accepted_tokens_total Number of accepted tokens.
+# TYPE vllm:spec_decode_num_accepted_tokens_total counter
+vllm:spec_decode_num_accepted_tokens_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 11484.0
+# HELP vllm:spec_decode_num_accepted_tokens_created Number of accepted tokens.
+# TYPE vllm:spec_decode_num_accepted_tokens_created gauge
+vllm:spec_decode_num_accepted_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523528e+09
+# HELP vllm:spec_decode_num_accepted_tokens_per_pos_total Accepted tokens per draft position.
+# TYPE vllm:spec_decode_num_accepted_tokens_per_pos_total counter
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="0"} 5231.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="1"} 3632.0
+vllm:spec_decode_num_accepted_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="2"} 2621.0
+# HELP vllm:spec_decode_num_accepted_tokens_per_pos_created Accepted tokens per draft position.
+# TYPE vllm:spec_decode_num_accepted_tokens_per_pos_created gauge
+vllm:spec_decode_num_accepted_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="0"} 1.7902675695235472e+09
+vllm:spec_decode_num_accepted_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="1"} 1.7902675695235531e+09
+vllm:spec_decode_num_accepted_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="2"} 1.7902675695235584e+09
+# HELP vllm:spec_decode_num_draft_tokens_per_pos_total Verified draft tokens per draft position.
+# TYPE vllm:spec_decode_num_draft_tokens_per_pos_total counter
+vllm:spec_decode_num_draft_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="0"} 7386.0
+vllm:spec_decode_num_draft_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="1"} 7386.0
+vllm:spec_decode_num_draft_tokens_per_pos_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="2"} 7386.0
+# HELP vllm:spec_decode_num_draft_tokens_per_pos_created Verified draft tokens per draft position.
+# TYPE vllm:spec_decode_num_draft_tokens_per_pos_created gauge
+vllm:spec_decode_num_draft_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="0"} 1.7902675695235717e+09
+vllm:spec_decode_num_draft_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="1"} 1.7902675695235767e+09
+vllm:spec_decode_num_draft_tokens_per_pos_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",position="2"} 1.7902675695235822e+09
+# HELP vllm:estimated_flops_per_gpu_total Estimated number of floating point operations per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_flops_per_gpu_total counter
+vllm:estimated_flops_per_gpu_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:estimated_flops_per_gpu_created Estimated number of floating point operations per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_flops_per_gpu_created gauge
+vllm:estimated_flops_per_gpu_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523603e+09
+# HELP vllm:estimated_read_bytes_per_gpu_total Estimated number of bytes read from memory per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_read_bytes_per_gpu_total counter
+vllm:estimated_read_bytes_per_gpu_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:estimated_read_bytes_per_gpu_created Estimated number of bytes read from memory per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_read_bytes_per_gpu_created gauge
+vllm:estimated_read_bytes_per_gpu_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695236156e+09
+# HELP vllm:estimated_write_bytes_per_gpu_total Estimated number of bytes written to memory per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_write_bytes_per_gpu_total counter
+vllm:estimated_write_bytes_per_gpu_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:estimated_write_bytes_per_gpu_created Estimated number of bytes written to memory per GPU (for Model Flops Utilization calculations).
+# TYPE vllm:estimated_write_bytes_per_gpu_created gauge
+vllm:estimated_write_bytes_per_gpu_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523628e+09
+# HELP vllm:num_requests_running Number of requests in model execution batches.
+# TYPE vllm:num_requests_running gauge
+vllm:num_requests_running{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:num_requests_waiting Number of requests waiting to be processed.
+# TYPE vllm:num_requests_waiting gauge
+vllm:num_requests_waiting{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:scheduler_prefill_compute_share Effective fraction of contended model execution assigned to prefill; zero means disabled.
+# TYPE vllm:scheduler_prefill_compute_share gauge
+vllm:scheduler_prefill_compute_share{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:scheduler_compute_pressure Normalized service pressure observed by adaptive fairness.
+# TYPE vllm:scheduler_compute_pressure gauge
+vllm:scheduler_compute_pressure{class="decode",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:scheduler_compute_pressure{class="prefill",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+# HELP vllm:scheduler_local_prefill_backlog_tokens Local model-compute prefill tokens visible to adaptive fairness.
+# TYPE vllm:scheduler_local_prefill_backlog_tokens gauge
+vllm:scheduler_local_prefill_backlog_tokens{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:scheduler_compute_seconds_total Model-execution time charged to each service class.
+# TYPE vllm:scheduler_compute_seconds_total counter
+vllm:scheduler_compute_seconds_total{class="decode",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:scheduler_compute_seconds_total{class="prefill",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:scheduler_compute_seconds_created Model-execution time charged to each service class.
+# TYPE vllm:scheduler_compute_seconds_created gauge
+vllm:scheduler_compute_seconds_created{class="decode",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695237412e+09
+vllm:scheduler_compute_seconds_created{class="prefill",engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695237467e+09
+# HELP vllm:num_requests_waiting_by_reason Number of waiting requests by reason. Reason labels: 'capacity' = waiting for scheduling capacity; 'deferred' = deferred by transient constraints (LoRA budget, KV transfer, blocked status). Sum of all reasons equals vllm:num_requests_waiting.
+# TYPE vllm:num_requests_waiting_by_reason gauge
+vllm:num_requests_waiting_by_reason{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",reason="capacity"} 0.0
+vllm:num_requests_waiting_by_reason{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",reason="deferred"} 0.0
+# HELP vllm:engine_sleep_state Engine sleep state; awake = 0 means engine is sleeping; awake = 1 means engine is awake; weights_offloaded = 1 means sleep level 1; discard_all = 1 means sleep level 2.
+# TYPE vllm:engine_sleep_state gauge
+vllm:engine_sleep_state{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",sleep_state="awake"} 1.0
+vllm:engine_sleep_state{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",sleep_state="weights_offloaded"} 0.0
+vllm:engine_sleep_state{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",sleep_state="discard_all"} 0.0
+# HELP vllm:kv_cache_usage_perc KV-cache usage. 1 means 100 percent usage.
+# TYPE vllm:kv_cache_usage_perc gauge
+vllm:kv_cache_usage_perc{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:prefix_cache_queries_total Prefix cache queries, in terms of number of queried tokens.
+# TYPE vllm:prefix_cache_queries_total counter
+vllm:prefix_cache_queries_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 735908.0
+# HELP vllm:prefix_cache_queries_created Prefix cache queries, in terms of number of queried tokens.
+# TYPE vllm:prefix_cache_queries_created gauge
+vllm:prefix_cache_queries_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695238533e+09
+# HELP vllm:prefix_cache_hits_total Prefix cache hits, in terms of number of cached tokens.
+# TYPE vllm:prefix_cache_hits_total counter
+vllm:prefix_cache_hits_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 242080.0
+# HELP vllm:prefix_cache_hits_created Prefix cache hits, in terms of number of cached tokens.
+# TYPE vllm:prefix_cache_hits_created gauge
+vllm:prefix_cache_hits_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695238674e+09
+# HELP vllm:external_prefix_cache_queries_total External prefix cache queries from KV connector cross-instance cache sharing, in terms of number of queried tokens.
+# TYPE vllm:external_prefix_cache_queries_total counter
+vllm:external_prefix_cache_queries_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:external_prefix_cache_queries_created External prefix cache queries from KV connector cross-instance cache sharing, in terms of number of queried tokens.
+# TYPE vllm:external_prefix_cache_queries_created gauge
+vllm:external_prefix_cache_queries_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.79026756952388e+09
+# HELP vllm:external_prefix_cache_hits_total External prefix cache hits from KV connector cross-instance cache sharing, in terms of number of cached tokens.
+# TYPE vllm:external_prefix_cache_hits_total counter
+vllm:external_prefix_cache_hits_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:external_prefix_cache_hits_created External prefix cache hits from KV connector cross-instance cache sharing, in terms of number of cached tokens.
+# TYPE vllm:external_prefix_cache_hits_created gauge
+vllm:external_prefix_cache_hits_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695238926e+09
+# HELP vllm:mm_cache_queries_total Multi-modal cache queries, in terms of number of queried items.
+# TYPE vllm:mm_cache_queries_total counter
+vllm:mm_cache_queries_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:mm_cache_queries_created Multi-modal cache queries, in terms of number of queried items.
+# TYPE vllm:mm_cache_queries_created gauge
+vllm:mm_cache_queries_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695239055e+09
+# HELP vllm:mm_cache_hits_total Multi-modal cache hits, in terms of number of cached items.
+# TYPE vllm:mm_cache_hits_total counter
+vllm:mm_cache_hits_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:mm_cache_hits_created Multi-modal cache hits, in terms of number of cached items.
+# TYPE vllm:mm_cache_hits_created gauge
+vllm:mm_cache_hits_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569523918e+09
+# HELP vllm:num_preemptions_total Cumulative number of preemption from the engine.
+# TYPE vllm:num_preemptions_total counter
+vllm:num_preemptions_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:num_preemptions_created Cumulative number of preemption from the engine.
+# TYPE vllm:num_preemptions_created gauge
+vllm:num_preemptions_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695239296e+09
+# HELP vllm:prompt_tokens_total Number of prefill tokens processed.
+# TYPE vllm:prompt_tokens_total counter
+vllm:prompt_tokens_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 604836.0
+# HELP vllm:prompt_tokens_created Number of prefill tokens processed.
+# TYPE vllm:prompt_tokens_created gauge
+vllm:prompt_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695239422e+09
+# HELP vllm:prompt_tokens_by_source_total Number of prompt tokens by source.
+# TYPE vllm:prompt_tokens_by_source_total counter
+vllm:prompt_tokens_by_source_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="local_compute"} 362756.0
+vllm:prompt_tokens_by_source_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="local_cache_hit"} 242080.0
+vllm:prompt_tokens_by_source_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="external_kv_transfer"} 0.0
+# HELP vllm:prompt_tokens_by_source_created Number of prompt tokens by source.
+# TYPE vllm:prompt_tokens_by_source_created gauge
+vllm:prompt_tokens_by_source_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="local_compute"} 1.790267569523957e+09
+vllm:prompt_tokens_by_source_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="local_cache_hit"} 1.7902675695239627e+09
+vllm:prompt_tokens_by_source_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",source="external_kv_transfer"} 1.7902675695239675e+09
+# HELP vllm:prompt_tokens_cached_total Number of cached prompt tokens (local + external).
+# TYPE vllm:prompt_tokens_cached_total counter
+vllm:prompt_tokens_cached_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 242080.0
+# HELP vllm:prompt_tokens_cached_created Number of cached prompt tokens (local + external).
+# TYPE vllm:prompt_tokens_cached_created gauge
+vllm:prompt_tokens_cached_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695239787e+09
+# HELP vllm:generation_tokens_total Number of generation tokens processed.
+# TYPE vllm:generation_tokens_total counter
+vllm:generation_tokens_total{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 18884.0
+# HELP vllm:generation_tokens_created Number of generation tokens processed.
+# TYPE vllm:generation_tokens_created gauge
+vllm:generation_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695239918e+09
+# HELP vllm:request_success_total Count of successfully processed requests.
+# TYPE vllm:request_success_total counter
+vllm:request_success_total{engine="0",finished_reason="stop",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7.0
+vllm:request_success_total{engine="0",finished_reason="length",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 18.0
+vllm:request_success_total{engine="0",finished_reason="abort",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_success_total{engine="0",finished_reason="error",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_success_total{engine="0",finished_reason="repetition",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:request_success_created Count of successfully processed requests.
+# TYPE vllm:request_success_created gauge
+vllm:request_success_created{engine="0",finished_reason="stop",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695240116e+09
+vllm:request_success_created{engine="0",finished_reason="length",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695240185e+09
+vllm:request_success_created{engine="0",finished_reason="abort",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569524024e+09
+vllm:request_success_created{engine="0",finished_reason="error",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695240293e+09
+vllm:request_success_created{engine="0",finished_reason="repetition",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695240347e+09
+# HELP vllm:request_prompt_tokens Number of prefill tokens processed.
+# TYPE vllm:request_prompt_tokens histogram
+vllm:request_prompt_tokens_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prompt_tokens_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prompt_tokens_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prompt_tokens_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prompt_tokens_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prompt_tokens_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:request_prompt_tokens_bucket{engine="0",le="100.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 8.0
+vllm:request_prompt_tokens_bucket{engine="0",le="200.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 8.0
+vllm:request_prompt_tokens_bucket{engine="0",le="500.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prompt_tokens_bucket{engine="0",le="1000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prompt_tokens_bucket{engine="0",le="2000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prompt_tokens_bucket{engine="0",le="5000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prompt_tokens_bucket{engine="0",le="10000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 21.0
+vllm:request_prompt_tokens_bucket{engine="0",le="20000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:request_prompt_tokens_bucket{engine="0",le="50000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 23.0
+vllm:request_prompt_tokens_bucket{engine="0",le="100000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_prompt_tokens_bucket{engine="0",le="200000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prompt_tokens_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prompt_tokens_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prompt_tokens_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 344888.0
+# HELP vllm:request_prompt_tokens_created Number of prefill tokens processed.
+# TYPE vllm:request_prompt_tokens_created gauge
+vllm:request_prompt_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569524106e+09
+# HELP vllm:request_generation_tokens Number of generation tokens processed.
+# TYPE vllm:request_generation_tokens histogram
+vllm:request_generation_tokens_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_generation_tokens_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_generation_tokens_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_generation_tokens_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_generation_tokens_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_generation_tokens_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_generation_tokens_bucket{engine="0",le="100.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 17.0
+vllm:request_generation_tokens_bucket{engine="0",le="200.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 17.0
+vllm:request_generation_tokens_bucket{engine="0",le="500.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:request_generation_tokens_bucket{engine="0",le="1000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_generation_tokens_bucket{engine="0",le="2000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="5000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="10000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="20000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="50000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="100000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="200000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_generation_tokens_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 5127.0
+# HELP vllm:request_generation_tokens_created Number of generation tokens processed.
+# TYPE vllm:request_generation_tokens_created gauge
+vllm:request_generation_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569524163e+09
+# HELP vllm:iteration_tokens_total Histogram of number of tokens per engine_step.
+# TYPE vllm:iteration_tokens_total histogram
+vllm:iteration_tokens_total_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 2146.0
+vllm:iteration_tokens_total_bucket{engine="0",le="8.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7363.0
+vllm:iteration_tokens_total_bucket{engine="0",le="16.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7363.0
+vllm:iteration_tokens_total_bucket{engine="0",le="32.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7364.0
+vllm:iteration_tokens_total_bucket{engine="0",le="64.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7366.0
+vllm:iteration_tokens_total_bucket{engine="0",le="128.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7371.0
+vllm:iteration_tokens_total_bucket{engine="0",le="256.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7371.0
+vllm:iteration_tokens_total_bucket{engine="0",le="512.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7372.0
+vllm:iteration_tokens_total_bucket{engine="0",le="1024.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7372.0
+vllm:iteration_tokens_total_bucket{engine="0",le="2048.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7372.0
+vllm:iteration_tokens_total_bucket{engine="0",le="4096.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7374.0
+vllm:iteration_tokens_total_bucket{engine="0",le="8192.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7383.0
+vllm:iteration_tokens_total_bucket{engine="0",le="16384.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7390.0
+vllm:iteration_tokens_total_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7394.0
+vllm:iteration_tokens_total_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7394.0
+vllm:iteration_tokens_total_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 381640.0
+# HELP vllm:iteration_tokens_total_created Histogram of number of tokens per engine_step.
+# TYPE vllm:iteration_tokens_total_created gauge
+vllm:iteration_tokens_total_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695242026e+09
+# HELP vllm:request_max_num_generation_tokens Histogram of maximum number of requested generation tokens.
+# TYPE vllm:request_max_num_generation_tokens histogram
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="100.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 17.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="200.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 17.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="500.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="1000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="2000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="5000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="10000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="20000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="50000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="100000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="200000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_max_num_generation_tokens_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 5127.0
+# HELP vllm:request_max_num_generation_tokens_created Histogram of maximum number of requested generation tokens.
+# TYPE vllm:request_max_num_generation_tokens_created gauge
+vllm:request_max_num_generation_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695242355e+09
+# HELP vllm:request_params_n Histogram of the n request parameter.
+# TYPE vllm:request_params_n histogram
+vllm:request_params_n_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_n_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+# HELP vllm:request_params_n_created Histogram of the n request parameter.
+# TYPE vllm:request_params_n_created gauge
+vllm:request_params_n_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695242705e+09
+# HELP vllm:request_params_max_tokens Histogram of the max_tokens request parameter.
+# TYPE vllm:request_params_max_tokens histogram
+vllm:request_params_max_tokens_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_params_max_tokens_bucket{engine="0",le="100.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 15.0
+vllm:request_params_max_tokens_bucket{engine="0",le="200.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_params_max_tokens_bucket{engine="0",le="500.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_params_max_tokens_bucket{engine="0",le="1000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:request_params_max_tokens_bucket{engine="0",le="2000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="5000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="10000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="20000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="50000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="100000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="200000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_params_max_tokens_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 12805.0
+# HELP vllm:request_params_max_tokens_created Histogram of the max_tokens request parameter.
+# TYPE vllm:request_params_max_tokens_created gauge
+vllm:request_params_max_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695242946e+09
+# HELP vllm:time_to_first_token_seconds Histogram of time to first token in seconds.
+# TYPE vllm:time_to_first_token_seconds histogram
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.001",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.005",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.01",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.02",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.04",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.06",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.08",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.1",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.25",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 6.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="0.75",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 17.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 26.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="7.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 28.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 28.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 29.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 30.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="80.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="160.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="640.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="2560.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 31.0
+vllm:time_to_first_token_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 154.77848482131958
+# HELP vllm:time_to_first_token_seconds_created Histogram of time to first token in seconds.
+# TYPE vllm:time_to_first_token_seconds_created gauge
+vllm:time_to_first_token_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695243304e+09
+# HELP vllm:inter_token_latency_seconds Histogram of inter-token latency in seconds.
+# TYPE vllm:inter_token_latency_seconds histogram
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.01",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.025",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.05",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 6788.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.075",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7380.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.1",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7381.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.15",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7381.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.2",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7381.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7382.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.4",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7383.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7384.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="0.75",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="7.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="80.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 7386.0
+vllm:inter_token_latency_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 304.3214892540418
+# HELP vllm:inter_token_latency_seconds_created Histogram of inter-token latency in seconds.
+# TYPE vllm:inter_token_latency_seconds_created gauge
+vllm:inter_token_latency_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675695243747e+09
+# HELP vllm:request_time_per_output_token_seconds Histogram of time_per_output_token_seconds per request.
+# TYPE vllm:request_time_per_output_token_seconds histogram
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.01",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 13.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.025",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.05",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.075",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.1",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.15",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.2",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.4",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="0.75",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="7.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="80.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_time_per_output_token_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.20935385678082932
+# HELP vllm:request_time_per_output_token_seconds_created Histogram of time_per_output_token_seconds per request.
+# TYPE vllm:request_time_per_output_token_seconds_created gauge
+vllm:request_time_per_output_token_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697058413e+09
+# HELP vllm:e2e_request_latency_seconds Histogram of e2e request latency in seconds.
+# TYPE vllm:e2e_request_latency_seconds histogram
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="0.8",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="1.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 12.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="15.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="30.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="60.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="120.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="240.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="480.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="960.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="1920.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="7680.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:e2e_request_latency_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 218.59037137031555
+# HELP vllm:e2e_request_latency_seconds_created Histogram of e2e request latency in seconds.
+# TYPE vllm:e2e_request_latency_seconds_created gauge
+vllm:e2e_request_latency_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569705874e+09
+# HELP vllm:request_queue_time_seconds Histogram of time spent in WAITING phase for request.
+# TYPE vllm:request_queue_time_seconds histogram
+vllm:request_queue_time_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="0.8",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="1.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="15.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="30.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="60.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="120.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="240.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="480.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="960.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="1920.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="7680.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_queue_time_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.000564431946258992
+# HELP vllm:request_queue_time_seconds_created Histogram of time spent in WAITING phase for request.
+# TYPE vllm:request_queue_time_seconds_created gauge
+vllm:request_queue_time_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697059016e+09
+# HELP vllm:request_inference_time_seconds Histogram of time spent in RUNNING phase for request.
+# TYPE vllm:request_inference_time_seconds histogram
+vllm:request_inference_time_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="0.8",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="1.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 3.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 12.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="15.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="30.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="60.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="120.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="240.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="480.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="960.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="1920.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="7680.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_inference_time_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 217.91894993308233
+# HELP vllm:request_inference_time_seconds_created Histogram of time spent in RUNNING phase for request.
+# TYPE vllm:request_inference_time_seconds_created gauge
+vllm:request_inference_time_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697059252e+09
+# HELP vllm:request_prefill_time_seconds Histogram of time spent in PREFILL phase for request.
+# TYPE vllm:request_prefill_time_seconds histogram
+vllm:request_prefill_time_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="0.8",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="1.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 12.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 20.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="15.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 23.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 23.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="30.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="60.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="120.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="240.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="480.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="960.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="1920.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="7680.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_time_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 142.2033451910247
+# HELP vllm:request_prefill_time_seconds_created Histogram of time spent in PREFILL phase for request.
+# TYPE vllm:request_prefill_time_seconds_created gauge
+vllm:request_prefill_time_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697059474e+09
+# HELP vllm:request_decode_time_seconds Histogram of time spent in DECODE phase for request.
+# TYPE vllm:request_decode_time_seconds histogram
+vllm:request_decode_time_seconds_bucket{engine="0",le="0.3",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="0.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 14.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="0.8",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 15.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="1.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="2.5",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 16.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 18.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="15.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="30.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="40.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="60.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="120.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="240.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="480.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="960.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="1920.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="7680.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_decode_time_seconds_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 75.71560474205762
+# HELP vllm:request_decode_time_seconds_created Histogram of time spent in DECODE phase for request.
+# TYPE vllm:request_decode_time_seconds_created gauge
+vllm:request_decode_time_seconds_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697059696e+09
+# HELP vllm:request_num_preemptions Histogram of the number of times a request was preempted.
+# TYPE vllm:request_num_preemptions histogram
+vllm:request_num_preemptions_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="3.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="4.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_num_preemptions_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+# HELP vllm:request_num_preemptions_created Histogram of the number of times a request was preempted.
+# TYPE vllm:request_num_preemptions_created gauge
+vllm:request_num_preemptions_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.790267569705992e+09
+# HELP vllm:request_prefill_kv_computed_tokens Histogram of new KV tokens computed during prefill (excluding cached tokens).
+# TYPE vllm:request_prefill_kv_computed_tokens histogram
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="1.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="2.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="5.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="10.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="20.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 0.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="50.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="100.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 8.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="200.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 8.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="500.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="1000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="2000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="5000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 9.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="10000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 21.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="20000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 22.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="50000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 23.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="100000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 24.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="200000.0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_kv_computed_tokens_bucket{engine="0",le="+Inf",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_kv_computed_tokens_count{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 25.0
+vllm:request_prefill_kv_computed_tokens_sum{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 336344.0
+# HELP vllm:request_prefill_kv_computed_tokens_created Histogram of new KV tokens computed during prefill (excluding cached tokens).
+# TYPE vllm:request_prefill_kv_computed_tokens_created gauge
+vllm:request_prefill_kv_computed_tokens_created{engine="0",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2"} 1.7902675697060077e+09
+# HELP vllm:cache_config_info Information of the LLMEngine CacheConfig
+# TYPE vllm:cache_config_info gauge
+vllm:cache_config_info{_block_size_resolved="True",block_size="2848",cache_dtype="fp8",enable_mamba_fine_grained_prefix_cache="False",enable_prefix_caching="True",engine="0",gpu_memory_utilization="0.85",is_attention_free="False",kv_cache_dtype_skip_layers="[]",kv_cache_layout="None",kv_cache_max_concurrency="10.977638015373865",kv_cache_memory_bytes="25769803776",kv_cache_size_tokens="2877721",kv_offloading_backend="native",kv_offloading_size="None",kv_sharing_fast_prefill="False",mamba_block_size="32",mamba_cache_dtype="auto",mamba_cache_mode="align",mamba_page_size_padded="None",mamba_ssm_cache_dtype="float32",num_cpu_blocks="None",num_gpu_blocks="15709",num_gpu_blocks_override="None",prefix_cache_retention_interval="0",prefix_caching_hash_algo="sha256",prefix_match_unit="None",recurrent_checkpoint_policy="aligned",replayssm_buffer_len="16",skip_page_size_padded="None",sliding_window="None",swa_block_size="None",use_kda_recoverssm="False",use_replayssm="False",user_specified_block_size="True",user_specified_mamba_block_size="False"} 1.0
+# HELP http_requests_total Total number of requests by method, status and handler.
+# TYPE http_requests_total counter
+http_requests_total{handler="/v1/models",method="GET",status="2xx"} 5.0
+http_requests_total{handler="/v1/chat/completions",method="POST",status="2xx"} 26.0
+http_requests_total{handler="/v1/sparkring/status",method="GET",status="2xx"} 3.0
+http_requests_total{handler="/v1/sparkring/status.txt",method="GET",status="2xx"} 1.0
+http_requests_total{handler="/v1/sparkring/status/view",method="GET",status="2xx"} 108.0
+http_requests_total{handler="none",method="GET",status="4xx"} 2.0
+http_requests_total{handler="/tokenize",method="POST",status="2xx"} 113.0
+http_requests_total{handler="/v1/completions",method="POST",status="2xx"} 6.0
+# HELP http_requests_created Total number of requests by method, status and handler.
+# TYPE http_requests_created gauge
+http_requests_created{handler="/v1/models",method="GET",status="2xx"} 1.7902676705213614e+09
+http_requests_created{handler="/v1/chat/completions",method="POST",status="2xx"} 1.7902676706633437e+09
+http_requests_created{handler="/v1/sparkring/status",method="GET",status="2xx"} 1.7902676707162716e+09
+http_requests_created{handler="/v1/sparkring/status.txt",method="GET",status="2xx"} 1.790267670721301e+09
+http_requests_created{handler="/v1/sparkring/status/view",method="GET",status="2xx"} 1.7902676707505722e+09
+http_requests_created{handler="none",method="GET",status="4xx"} 1.7902680145134208e+09
+http_requests_created{handler="/tokenize",method="POST",status="2xx"} 1.7902680147061377e+09
+http_requests_created{handler="/v1/completions",method="POST",status="2xx"} 1.7902689143130841e+09
+# HELP http_request_size_bytes Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_request_size_bytes summary
+http_request_size_bytes_count{handler="/v1/models"} 5.0
+http_request_size_bytes_sum{handler="/v1/models"} 0.0
+http_request_size_bytes_count{handler="/v1/chat/completions"} 26.0
+http_request_size_bytes_sum{handler="/v1/chat/completions"} 4.316993e+06
+http_request_size_bytes_count{handler="/v1/sparkring/status"} 3.0
+http_request_size_bytes_sum{handler="/v1/sparkring/status"} 0.0
+http_request_size_bytes_count{handler="/v1/sparkring/status.txt"} 1.0
+http_request_size_bytes_sum{handler="/v1/sparkring/status.txt"} 0.0
+http_request_size_bytes_count{handler="/v1/sparkring/status/view"} 108.0
+http_request_size_bytes_sum{handler="/v1/sparkring/status/view"} 0.0
+http_request_size_bytes_count{handler="none"} 2.0
+http_request_size_bytes_sum{handler="none"} 0.0
+http_request_size_bytes_count{handler="/tokenize"} 113.0
+http_request_size_bytes_sum{handler="/tokenize"} 3.5875816e+07
+http_request_size_bytes_count{handler="/v1/completions"} 6.0
+http_request_size_bytes_sum{handler="/v1/completions"} 242646.0
+# HELP http_request_size_bytes_created Content length of incoming requests by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_request_size_bytes_created gauge
+http_request_size_bytes_created{handler="/v1/models"} 1.7902676705213783e+09
+http_request_size_bytes_created{handler="/v1/chat/completions"} 1.7902676706633594e+09
+http_request_size_bytes_created{handler="/v1/sparkring/status"} 1.7902676707162814e+09
+http_request_size_bytes_created{handler="/v1/sparkring/status.txt"} 1.7902676707213082e+09
+http_request_size_bytes_created{handler="/v1/sparkring/status/view"} 1.7902676707505803e+09
+http_request_size_bytes_created{handler="none"} 1.7902680145134392e+09
+http_request_size_bytes_created{handler="/tokenize"} 1.7902680147061553e+09
+http_request_size_bytes_created{handler="/v1/completions"} 1.7902689143131151e+09
+# HELP http_response_size_bytes Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_response_size_bytes summary
+http_response_size_bytes_count{handler="/v1/models"} 5.0
+http_response_size_bytes_sum{handler="/v1/models"} 2410.0
+http_response_size_bytes_count{handler="/v1/chat/completions"} 26.0
+http_response_size_bytes_sum{handler="/v1/chat/completions"} 1937.0
+http_response_size_bytes_count{handler="/v1/sparkring/status"} 3.0
+http_response_size_bytes_sum{handler="/v1/sparkring/status"} 137455.0
+http_response_size_bytes_count{handler="/v1/sparkring/status.txt"} 1.0
+http_response_size_bytes_sum{handler="/v1/sparkring/status.txt"} 6399.0
+http_response_size_bytes_count{handler="/v1/sparkring/status/view"} 108.0
+http_response_size_bytes_sum{handler="/v1/sparkring/status/view"} 3.0321e+06
+http_response_size_bytes_count{handler="none"} 2.0
+http_response_size_bytes_sum{handler="none"} 44.0
+http_response_size_bytes_count{handler="/tokenize"} 113.0
+http_response_size_bytes_sum{handler="/tokenize"} 2.7783861e+07
+http_response_size_bytes_count{handler="/v1/completions"} 6.0
+http_response_size_bytes_sum{handler="/v1/completions"} 0.0
+# HELP http_response_size_bytes_created Content length of outgoing responses by handler. Only value of header is respected. Otherwise ignored. No percentile calculated. 
+# TYPE http_response_size_bytes_created gauge
+http_response_size_bytes_created{handler="/v1/models"} 1.790267670521391e+09
+http_response_size_bytes_created{handler="/v1/chat/completions"} 1.7902676706633708e+09
+http_response_size_bytes_created{handler="/v1/sparkring/status"} 1.7902676707162912e+09
+http_response_size_bytes_created{handler="/v1/sparkring/status.txt"} 1.7902676707213159e+09
+http_response_size_bytes_created{handler="/v1/sparkring/status/view"} 1.7902676707505894e+09
+http_response_size_bytes_created{handler="none"} 1.790268014513457e+09
+http_response_size_bytes_created{handler="/tokenize"} 1.7902680147061732e+09
+http_response_size_bytes_created{handler="/v1/completions"} 1.7902689143131435e+09
+# HELP http_request_duration_highr_seconds Latency with many buckets but no API specific labels. Made for more accurate percentile calculations. 
+# TYPE http_request_duration_highr_seconds histogram
+http_request_duration_highr_seconds_bucket{le="0.01"} 23.0
+http_request_duration_highr_seconds_bucket{le="0.025"} 160.0
+http_request_duration_highr_seconds_bucket{le="0.05"} 185.0
+http_request_duration_highr_seconds_bucket{le="0.075"} 188.0
+http_request_duration_highr_seconds_bucket{le="0.1"} 207.0
+http_request_duration_highr_seconds_bucket{le="0.25"} 231.0
+http_request_duration_highr_seconds_bucket{le="0.5"} 233.0
+http_request_duration_highr_seconds_bucket{le="0.75"} 233.0
+http_request_duration_highr_seconds_bucket{le="1.0"} 235.0
+http_request_duration_highr_seconds_bucket{le="1.5"} 235.0
+http_request_duration_highr_seconds_bucket{le="2.0"} 235.0
+http_request_duration_highr_seconds_bucket{le="2.5"} 235.0
+http_request_duration_highr_seconds_bucket{le="3.0"} 238.0
+http_request_duration_highr_seconds_bucket{le="3.5"} 243.0
+http_request_duration_highr_seconds_bucket{le="4.0"} 244.0
+http_request_duration_highr_seconds_bucket{le="4.5"} 244.0
+http_request_duration_highr_seconds_bucket{le="5.0"} 244.0
+http_request_duration_highr_seconds_bucket{le="7.5"} 249.0
+http_request_duration_highr_seconds_bucket{le="10.0"} 252.0
+http_request_duration_highr_seconds_bucket{le="30.0"} 261.0
+http_request_duration_highr_seconds_bucket{le="60.0"} 263.0
+http_request_duration_highr_seconds_bucket{le="+Inf"} 264.0
+http_request_duration_highr_seconds_count 264.0
+http_request_duration_highr_seconds_sum 522.2340718591004
+# HELP http_request_duration_highr_seconds_created Latency with many buckets but no API specific labels. Made for more accurate percentile calculations. 
+# TYPE http_request_duration_highr_seconds_created gauge
+http_request_duration_highr_seconds_created 1.7902675698565636e+09
+# HELP http_request_duration_seconds Latency with only few buckets by handler. Made to be only used if aggregation by handler is important. 
+# TYPE http_request_duration_seconds histogram
+http_request_duration_seconds_bucket{handler="/v1/models",le="0.1",method="GET"} 5.0
+http_request_duration_seconds_bucket{handler="/v1/models",le="0.5",method="GET"} 5.0
+http_request_duration_seconds_bucket{handler="/v1/models",le="1.0",method="GET"} 5.0
+http_request_duration_seconds_bucket{handler="/v1/models",le="+Inf",method="GET"} 5.0
+http_request_duration_seconds_count{handler="/v1/models",method="GET"} 5.0
+http_request_duration_seconds_sum{handler="/v1/models",method="GET"} 0.0021195750450715423
+http_request_duration_seconds_bucket{handler="/v1/chat/completions",le="0.1",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/v1/chat/completions",le="0.5",method="POST"} 1.0
+http_request_duration_seconds_bucket{handler="/v1/chat/completions",le="1.0",method="POST"} 3.0
+http_request_duration_seconds_bucket{handler="/v1/chat/completions",le="+Inf",method="POST"} 26.0
+http_request_duration_seconds_count{handler="/v1/chat/completions",method="POST"} 26.0
+http_request_duration_seconds_sum{handler="/v1/chat/completions",method="POST"} 472.75595714210067
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status",le="0.1",method="GET"} 3.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status",le="0.5",method="GET"} 3.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status",le="1.0",method="GET"} 3.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status",le="+Inf",method="GET"} 3.0
+http_request_duration_seconds_count{handler="/v1/sparkring/status",method="GET"} 3.0
+http_request_duration_seconds_sum{handler="/v1/sparkring/status",method="GET"} 0.06004630899406038
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status.txt",le="0.1",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status.txt",le="0.5",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status.txt",le="1.0",method="GET"} 1.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status.txt",le="+Inf",method="GET"} 1.0
+http_request_duration_seconds_count{handler="/v1/sparkring/status.txt",method="GET"} 1.0
+http_request_duration_seconds_sum{handler="/v1/sparkring/status.txt",method="GET"} 0.0019308080081827939
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status/view",le="0.1",method="GET"} 108.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status/view",le="0.5",method="GET"} 108.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status/view",le="1.0",method="GET"} 108.0
+http_request_duration_seconds_bucket{handler="/v1/sparkring/status/view",le="+Inf",method="GET"} 108.0
+http_request_duration_seconds_count{handler="/v1/sparkring/status/view",method="GET"} 108.0
+http_request_duration_seconds_sum{handler="/v1/sparkring/status/view",method="GET"} 1.908136921847472
+http_request_duration_seconds_bucket{handler="none",le="0.1",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="0.5",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="1.0",method="GET"} 2.0
+http_request_duration_seconds_bucket{handler="none",le="+Inf",method="GET"} 2.0
+http_request_duration_seconds_count{handler="none",method="GET"} 2.0
+http_request_duration_seconds_sum{handler="none",method="GET"} 0.0008564290183130652
+http_request_duration_seconds_bucket{handler="/tokenize",le="0.1",method="POST"} 88.0
+http_request_duration_seconds_bucket{handler="/tokenize",le="0.5",method="POST"} 113.0
+http_request_duration_seconds_bucket{handler="/tokenize",le="1.0",method="POST"} 113.0
+http_request_duration_seconds_bucket{handler="/tokenize",le="+Inf",method="POST"} 113.0
+http_request_duration_seconds_count{handler="/tokenize",method="POST"} 113.0
+http_request_duration_seconds_sum{handler="/tokenize",method="POST"} 8.543580686062342
+http_request_duration_seconds_bucket{handler="/v1/completions",le="0.1",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/v1/completions",le="0.5",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/v1/completions",le="1.0",method="POST"} 0.0
+http_request_duration_seconds_bucket{handler="/v1/completions",le="+Inf",method="POST"} 6.0
+http_request_duration_seconds_count{handler="/v1/completions",method="POST"} 6.0
+http_request_duration_seconds_sum{handler="/v1/completions",method="POST"} 38.96144398802426
+# HELP http_request_duration_seconds_created Latency with only few buckets by handler. Made to be only used if aggregation by handler is important. 
+# TYPE http_request_duration_seconds_created gauge
+http_request_duration_seconds_created{handler="/v1/models",method="GET"} 1.7902676705214114e+09
+http_request_duration_seconds_created{handler="/v1/chat/completions",method="POST"} 1.7902676706633887e+09
+http_request_duration_seconds_created{handler="/v1/sparkring/status",method="GET"} 1.7902676707163038e+09
+http_request_duration_seconds_created{handler="/v1/sparkring/status.txt",method="GET"} 1.7902676707213256e+09
+http_request_duration_seconds_created{handler="/v1/sparkring/status/view",method="GET"} 1.7902676707506003e+09
+http_request_duration_seconds_created{handler="none",method="GET"} 1.7902680145134795e+09
+http_request_duration_seconds_created{handler="/tokenize",method="POST"} 1.7902680147061946e+09
+http_request_duration_seconds_created{handler="/v1/completions",method="POST"} 1.7902689143131824e+09
+# HELP vllm:tool_call_parser_invocations_total Total number of ToolParser invocations. Non-streaming increments once per choice; streaming increments once per delta.
+# TYPE vllm:tool_call_parser_invocations_total counter
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="chat_completions"} 0.0
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="responses"} 0.0
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="other"} 0.0
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="chat_completions"} 707.0
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="responses"} 0.0
+vllm:tool_call_parser_invocations_total{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="other"} 0.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="chat_completions"} 0.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="responses"} 0.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="other"} 0.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="chat_completions"} 2.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="responses"} 0.0
+vllm:tool_call_parser_invocations_total{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="other"} 0.0
+# HELP vllm:tool_call_parser_invocations_created Total number of ToolParser invocations. Non-streaming increments once per choice; streaming increments once per delta.
+# TYPE vllm:tool_call_parser_invocations_created gauge
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="chat_completions"} 1.7902675698568575e+09
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="responses"} 1.7902675698568633e+09
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="other"} 1.7902675698568678e+09
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="chat_completions"} 1.7902675698568718e+09
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="responses"} 1.7902675698568757e+09
+vllm:tool_call_parser_invocations_created{mode="streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="other"} 1.7902675698568795e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="chat_completions"} 1.7902675698568835e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="responses"} 1.790267569856887e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="tool_call",request_type="other"} 1.7902675698568907e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="chat_completions"} 1.7902675698568945e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="responses"} 1.790267569856898e+09
+vllm:tool_call_parser_invocations_created{mode="non_streaming",model_name="Qwen3.8-Flash-Next-NVFP4-QAD-TP2",outcome="no_tool_call",request_type="other"} 1.790267569856902e+09

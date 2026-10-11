@@ -7,6 +7,8 @@ from pathlib import Path
 import statistics
 import sys
 
+from performance.harnesses import dashboard_quiet
+
 from .contracts import require, sha
 from .io import command, write_json
 from .serving_checks import benchmark_measurements
@@ -108,7 +110,12 @@ def matched_metadata(path, config, model):
     )
 
 
-def run(config, *, host, port, model, output, policy_root, timeout=1800):
+def run(config, *, host, port, model, output, policy_root, timeout=1800, quiet_target=None):
+    """Run the benchmark three times against the candidate and compare it with the baseline.
+
+    The SparkRing dashboard on ``quiet_target`` (Node A's SSH target), or on this host, holds
+    its quiet mode during the three runs (performance/harnesses/dashboard_quiet.py), and the
+    report records the hold."""
     validate_config(config)
     output = Path(output)
     output.mkdir(parents=True, exist_ok=False)
@@ -133,6 +140,26 @@ def run(config, *, host, port, model, output, policy_root, timeout=1800):
         matched_metadata(path, config, model)
     baseline = benchmark_measurements(references)
     paths = []
+    with dashboard_quiet.held("performance_gate", ssh=dashboard_quiet.ssh_for(quiet_target)) as quiet:
+        _candidates(config, script, host, port, model, output, timeout, paths)
+    candidate = benchmark_measurements(paths)
+    comparison = compare(
+        candidate["measurements"], baseline["measurements"], config["limits"]
+    )
+    report = {
+        "schema": "sparkring-throughput-comparison/v1",
+        "candidate": candidate,
+        "baseline": baseline,
+        "benchmark_sha256": config["script_sha256"],
+        "config": config,
+        "dashboard_quiet": dict(quiet),
+        **comparison,
+    }
+    write_json(output / "comparison.json", report)
+    return report
+
+
+def _candidates(config, script, host, port, model, output, timeout, paths):
     for index in range(3):
         destination = (output / f"candidate-{index + 1}.json").resolve()
         argv = [
@@ -179,17 +206,3 @@ def run(config, *, host, port, model, output, policy_root, timeout=1800):
         )
         paths.append(destination)
         matched_metadata(destination, config, model)
-    candidate = benchmark_measurements(paths)
-    comparison = compare(
-        candidate["measurements"], baseline["measurements"], config["limits"]
-    )
-    report = {
-        "schema": "sparkring-throughput-comparison/v1",
-        "candidate": candidate,
-        "baseline": baseline,
-        "benchmark_sha256": config["script_sha256"],
-        "config": config,
-        **comparison,
-    }
-    write_json(output / "comparison.json", report)
-    return report

@@ -21,6 +21,31 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+import contextlib
+import os
+import sys
+
+# The SparkRing dashboard's quiet mode while this measures (performance/harnesses/dashboard_quiet.py);
+# a copy of this program outside a SparkRing checkout records that it could not hold it.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.append(str(_ROOT))
+try:
+    from performance.harnesses import dashboard_quiet  # noqa: E402
+except ImportError:
+    dashboard_quiet = None
+
+
+def quiet_mode(label, target=None):
+    if dashboard_quiet is None:
+        return contextlib.nullcontext({"state": "not held", "detail": "dashboard_quiet.py is not importable"})
+    return dashboard_quiet.held(label, ssh=dashboard_quiet.ssh_for(target))
+
+
+def add_quiet_argument(parser):
+    parser.add_argument("--dashboard-ssh", metavar="TARGET", default=os.environ.get("SPARKRING_DASHBOARD_SSH"),
+                        help="Node A's SSH target, to hold its dashboard's quiet mode while this measures "
+                             "(default $SPARKRING_DASHBOARD_SSH; without one, the hold is asked of this host)")
 
 
 SCHEMA = "sparkring-r7-endpoint-benchmark/v1"
@@ -540,6 +565,7 @@ def parse_args() -> argparse.Namespace:
                         help="socket-operation timeout in seconds, not a whole-run deadline")
     parser.add_argument("--readiness-timeout", type=float, default=10.0)
     parser.add_argument("--output", type=Path)
+    add_quiet_argument(parser)
     args = parser.parse_args()
     for name in (
         "prompt_tokens",
@@ -559,11 +585,13 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    try:
-        result = run(args)
-    except BenchmarkError as exc:
-        print(f"endpoint-benchmark: FAIL: {exc}")
-        return 2
+    with quiet_mode("endpoint_benchmark", args.dashboard_ssh) as quiet:
+        try:
+            result = run(args)
+        except BenchmarkError as exc:
+            print(f"endpoint-benchmark: FAIL: {exc}")
+            return 2
+    result["dashboard_quiet"] = quiet
     encoded = json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n"
     if args.output is not None:
         args.output.parent.mkdir(parents=True, exist_ok=True)

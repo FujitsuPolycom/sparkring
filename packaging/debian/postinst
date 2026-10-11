@@ -8,8 +8,19 @@ if [ "$1" = configure ]; then
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
         systemctl enable --now avahi-daemon.service lldpd.service
+        # Placement drop-ins of the host-load settings, rewritten for this package's core
+        # classifier; only where an operator saved settings (sparkring host-load set).
+        if [ -f /etc/sparkring/host-load.json ]; then
+            /usr/bin/sparkring node host-load apply >/dev/null || echo "SparkRing: host-load placement not applied; sudo sparkring node host-load apply" >&2
+        fi
         systemctl enable sparkring-agent.service
         systemctl restart sparkring-agent.service
+        # The dashboard is on by default and starts only on Node A (its unit's conditions);
+        # sudo sparkring dashboard disable records /etc/sparkring/dashboard.disabled and keeps it off.
+        if [ ! -e /etc/sparkring/dashboard.disabled ]; then
+            systemctl enable sparkring-dashboard.service
+            systemctl restart sparkring-dashboard.service || echo "SparkRing: the dashboard did not start; systemctl status sparkring-dashboard" >&2
+        fi
         # Restore the units that were enabled when the package was last
         # removed (recorded by prerm). Administration units start at once so
         # the installer can reach this node. The fabric, relay marker and

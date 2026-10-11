@@ -10,6 +10,7 @@ outputs aside (renamed, never deleted) and runs it again. See README.md.
 from __future__ import annotations
 
 import argparse
+import contextlib
 from dataclasses import asdict, dataclass, field, replace
 import datetime
 import json
@@ -24,9 +25,12 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+from performance.harnesses import dashboard_quiet  # noqa: E402
 from performance.harnesses.acceptance import checks, install, profile_info, record, runners, throughput  # noqa: E402
 
 STEPS = ("readiness", "functional", "stress", "throughput", "record")
+# The steps that send requests to the model: the dashboard's quiet mode is held while they run.
+LOAD_STEPS = ("readiness", "functional", "stress", "throughput")
 RESULTS = {"install": "install.json", "readiness": "readiness.json", "functional": "functional.json",
            "stress": "stress.json", "throughput": "throughput.json", "record": "record.json"}
 OUTPUTS = {"install": ("install-launch.json", "install", "install.json"), "readiness": ("readiness.json",),
@@ -67,6 +71,7 @@ class Environment:
     log: Callable = _log
     hostname: Callable = socket.gethostname
     revision: Callable = harness_revision
+    quiet: Callable = dashboard_quiet.held
 
 
 def read_json(path):
@@ -124,25 +129,37 @@ class Acceptance:
             self.set_aside(step)
         steps = (["install"] if self.source else []) + list(self.args.steps)
         ok = True
-        for step in steps:
-            result = self.saved(step)
-            if result is not None:
-                self.env.log(f"{step}: using the saved result in {self.out / RESULTS[step]}")
-            else:
-                try:
-                    result = getattr(self, "step_" + step)()
-                except install.InstallError as error:
-                    self.env.log(f"{step}: {error}")
-                    return 1
-                if result.get("complete"):
-                    write_json(self.out / RESULTS[step], result)
-            if not result.get("ok"):
-                ok = False
-                reason = "; ".join(result.get("problems") or [result.get("error") or "check failed"])
-                self.env.log(f"{step}: not passed: {reason}")
-                if step in ("install", "readiness") or not result.get("complete"):
-                    self.env.log("Stopping before the remaining steps.")
-                    return 1
+        # The dashboard on Node A sends no request from the first load step until this run ends,
+        # also when it stops on an error or Ctrl-C (performance/harnesses/dashboard_quiet.py).
+        with contextlib.ExitStack() as stack:
+            quiet = None
+            for step in steps:
+                result = self.saved(step)
+                if result is not None:
+                    self.env.log(f"{step}: using the saved result in {self.out / RESULTS[step]}")
+                else:
+                    if step in LOAD_STEPS and quiet is None:
+                        target = self.args.dashboard_ssh or self.args.node_a
+                        quiet = stack.enter_context(self.env.quiet(
+                            "accept_profile", ssh=dashboard_quiet.ssh_for(target), where="Node A" if target else None))
+                        self.env.log(f"dashboard: quiet mode {quiet['state']}"
+                                     + (f" ({quiet['detail']})" if quiet.get("detail") else ""))
+                    try:
+                        result = getattr(self, "step_" + step)()
+                    except install.InstallError as error:
+                        self.env.log(f"{step}: {error}")
+                        return 1
+                    if result.get("complete"):
+                        if step in LOAD_STEPS:
+                            result = {**result, dashboard_quiet.DASHBOARD_FIELD: dict(quiet)}
+                        write_json(self.out / RESULTS[step], result)
+                if not result.get("ok"):
+                    ok = False
+                    reason = "; ".join(result.get("problems") or [result.get("error") or "check failed"])
+                    self.env.log(f"{step}: not passed: {reason}")
+                    if step in ("install", "readiness") or not result.get("complete"):
+                        self.env.log("Stopping before the remaining steps.")
+                        return 1
         return 0 if ok else 1
 
     def install_arguments(self):
@@ -303,10 +320,12 @@ class Acceptance:
                                                     names=names, accounts=users)
                 contents[file_name] = json.dumps(matrix, indent=2, ensure_ascii=False) + "\n"
         source = install.Source(**launch["source"]) if launch else None
+        quiet = next((saved.get(dashboard_quiet.DASHBOARD_FIELD) for saved in (summary, stress, functional)
+                      if saved and saved.get(dashboard_quiet.DASHBOARD_FIELD)), None)
         markdown = record.render(profile=profile, name=name, record_dir=record_root, repo_root=ROOT, files=files,
                                  install=installed, source=source, install_arguments=self.install_arguments(),
                                  functional=functional, stress=stress, summary=summary, status=args.status,
-                                 client=args.client, harness_revision=self.env.revision())
+                                 client=args.client, harness_revision=self.env.revision(), dashboard_quiet=quiet)
         markdown = text(markdown)
         # Every file passed its private-data check before anything is written.
         directory.mkdir(parents=True)
@@ -351,7 +370,9 @@ def parser():
     p.add_argument("--profile", required=True, help="installer profile ID from profiles/catalog.json")
     p.add_argument("--api-host", required=True, help="Node A's address as the client reaches it; the port comes "
                                                      "from the profile")
-    p.add_argument("--node-a", help="SSH target of Node A (user@host or an ssh alias); required with --install")
+    p.add_argument("--node-a", help="SSH target of Node A (user@host or an ssh alias); required with --install, "
+                                    "and where the dashboard's quiet mode is held unless --dashboard-ssh names one")
+    dashboard_quiet.add_argument(p)
     mode = p.add_mutually_exclusive_group(required=True)
     mode.add_argument("--install", metavar="SOURCE",
                       help="install first: published, published:REF, or bundle:PATH_ON_NODE_A:REF")

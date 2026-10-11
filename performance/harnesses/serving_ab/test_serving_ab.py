@@ -366,3 +366,61 @@ def test_the_bench_wrapper_starts_every_cell_and_its_streams_from_an_idle_server
             ("idle", "vllm", bench_run.IDLE_TIMEOUT_SECONDS, "waiting for the scout to leave the server")]
     assert events == [cell[0], ("cell", 1, 32768, "vllm"), *cell[1:], ("streams", 1),
                       cell[0], ("cell", 8, 32768, "vllm"), *cell[1:], ("streams", 8)]
+
+
+def test_a_campaign_holds_the_dashboards_quiet_mode_on_node_a_and_releases_it_when_it_stops(tmp_path, monkeypatch):
+    """The hold comes before the first command to a Spark and is released when a step fails."""
+    import contextlib
+    from types import SimpleNamespace
+    from performance.harnesses import dashboard_quiet
+    from performance.harnesses.serving_ab import remote
+    events = []
+    sparks = tuple(remote.Spark(i, f"spark{i}", f"root@192.0.2.{10 + i}", f"192.0.2.{10 + i}", ("docker",))
+                   for i in range(2))
+    monkeypatch.setattr(cli, "build_plan", lambda args: {"positions": [0, 1], "seccomp": {"path": "/x", "sha256": "0"},
+                                                         "arms": [], "order": []})
+    monkeypatch.setattr(remote, "load_site", lambda path: remote.Site(path, "lan", "/tmp", sparks))
+    monkeypatch.setattr(cli.setlock, "Held", lambda log: contextlib.nullcontext())
+
+    def run(spark, command, **kwargs):
+        events.append(("ssh", spark.name))
+        raise RuntimeError("the Spark refused the copy")
+    monkeypatch.setattr(remote, "run", run)
+
+    @contextlib.contextmanager
+    def held(label, *, ssh, where):
+        events.append(("hold", label, ssh[-1], where))
+        field = {"state": "on", "holder": "serving_ab-0-ab12cd34"}
+        try:
+            yield field
+        finally:
+            field["released"] = True
+            events.append(("release",))
+    monkeypatch.setattr(dashboard_quiet, "held", held)
+    args = SimpleNamespace(run_id="r", output=str(tmp_path), skip_labels="", site="site.json", lock="global-held",
+                           lock_host=0, lock_name="x", dashboard_ssh=None, dashboard_spark=0)
+    with pytest.raises(RuntimeError):
+        cli.run_campaign(args)
+    assert events == [("hold", "serving_ab", "root@192.0.2.10", "spark0"), ("ssh", "spark0"), ("release",)]
+    assert json.loads((tmp_path / "dashboard-quiet.json").read_text()) == {"state": "on", "holder": "serving_ab-0-ab12cd34",
+                                                                         "released": True}
+    assert cli.quiet_target(SimpleNamespace(dashboard_ssh="admin@192.0.2.99", dashboard_spark=0),
+                            remote.Site("s", "lan", "/tmp", sparks))[0][-1] == "admin@192.0.2.99"
+
+
+def test_the_decode_program_records_the_hold_beside_its_output(tmp_path, monkeypatch):
+    from performance.harnesses.serving_ab import bench_run
+    bench = tmp_path / "bench"
+    bench.mkdir()
+    (bench / "llm_decode_bench.py").write_text(
+        "import sys\nENGINE_SGLANG = 'sglang'\n"
+        "def run_one_cell(*a, **k): pass\n"
+        "def wait_prefill_task_with_live(*a, **k): pass\n"
+        "def wait_server_idle(*a, **k): pass\n"
+        "def main():\n    open(sys.argv[sys.argv.index('--output') + 1], 'w').write('{}')\n", encoding="utf-8")
+    output = tmp_path / "decode.json"
+    monkeypatch.setattr(sys, "argv", ["bench_run", str(bench), "--contexts", "32k", "--output", str(output)])
+    bench_run.main()
+    record = json.loads((tmp_path / "decode.json.dashboard-quiet.json").read_text())
+    assert output.read_text() == "{}" and record["state"] == "not held"      # the tests hold nothing
+    assert bench_run.output_of(["--output=x.json"]) == Path("x.json") and bench_run.output_of([]) is None
