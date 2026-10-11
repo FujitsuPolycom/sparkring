@@ -57,11 +57,13 @@ and on two rings of four
 ([gate](../../performance/records/transport/libsircl-ring4-image-1a8c10354eb0-20261010.md)).
 STATUS.md is part of the source tree that an image records, so it changes
 only with the library's source and does not list these runs. The installer's libsircl transport
-(`runtime/common/libsircl.py`) carries six routing variables per rank and
-refuses a planner row with others. For a group of four consecutive Sparks (a
-path of four, or four positions of the ring of eight) this snapshot's planner
-adds the two point-to-point variables, so the transport refuses that group;
-a pair and the whole ring of eight plan as before.
+(`runtime/common/libsircl.py`, `ROUTE_VARIABLES`) carries the eight routing
+variables the route planner prints and refuses a planner row with any other.
+A rank's row holds the ones its group needs: a pair's rows hold four (no
+forward or point-to-point windows); a group of four consecutive Sparks (a
+path of four, or four positions of the ring of eight) holds all eight, with
+point-to-point windows toward the peers two or three positions away; the
+whole ring of eight holds six, without point-to-point windows.
 
 `.gitattributes` keeps the directory's bytes unconverted on every platform.
 The library carries two native sources of SIRCL byte for byte
@@ -295,7 +297,7 @@ Each rank's container gets the profile's settings with these changes
 | `LIBSIRCL_FAIL_STOP` | `1` |
 | `LIBSIRCL_NCCL_API_VERSION` | `22705`, libsircl's default: it passes vLLM's and torch's feature gates without opening newer ones |
 | `LIBSIRCL_TRANSPORT` | `verbs` |
-| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW` | the rank's routing settings, recorded per rank in the deployment lock |
+| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW`, `LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES` | the rank's routing settings, those the route planner prints for its group, recorded per rank in the deployment lock |
 | `SIRCL_BOOTSTRAP_ADDR` | the rank's `VLLM_HOST_IP`, the address it publishes in the unique id of a communicator it roots |
 | `SIRCL_GID_INDEX` | the profile's `NCCL_IB_GID_INDEX`, else 3, as for SIRCL deployments |
 | `LIBSIRCL_RECEIPT` | `/run/sparkring/sircl/receipts/libsircl`: one receipt file per communicator in the deployment's receipt directory on each Spark |
