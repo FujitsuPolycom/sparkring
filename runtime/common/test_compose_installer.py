@@ -23,7 +23,11 @@ import yaml
 from runtime.common import compose, installer, installer_image, loader_policy
 from runtime.common.test_compose import compose_cli  # noqa: F401  (pytest fixture)
 
-PROFILES = installer_image.SUPPORTED
+# The opt-in SparkCache variants render only on the derived image's lock and keep
+# no Compose export; every other installer profile is a Compose profile on the
+# default lock.
+PROFILES = tuple(profile for profile in installer_image.SUPPORTED
+                 if profile not in installer_image.SPARKCACHE_VARIANTS)
 BINDING_ENVIRONMENT = "SPARKRING_RUNTIME_BINDING"
 
 
@@ -52,8 +56,10 @@ def example_site(profile):
 
 def test_installer_profiles_are_compose_profiles_on_the_default_lock():
     # Profiles that only SIRCL ring sessions run are installer profiles without Compose exports.
-    assert set(PROFILES) | set(installer_image.SIRCL_ONLY) == set(installer.INSTALLABLE)
+    assert (set(PROFILES) | set(installer_image.SIRCL_ONLY)
+            | set(installer_image.SPARKCACHE_VARIANTS)) == set(installer.INSTALLABLE)
     assert set(PROFILES) <= set(compose.SUPPORTED) and not set(installer_image.SIRCL_ONLY) & set(compose.SUPPORTED)
+    assert not set(installer_image.SPARKCACHE_VARIANTS) & set(compose.SUPPORTED)
     for profile in compose.SUPPORTED:
         expected = installer_image.default_lock() if profile in PROFILES else None
         assert compose.installer_image_runtime(profile) == expected

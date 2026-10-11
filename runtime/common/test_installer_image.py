@@ -345,7 +345,8 @@ def test_admission_takes_the_node_count_from_the_profiles_tensor_parallelism(pro
 def test_release_lock_lists_every_installer_profile_on_one_image():
     lock = installer_image.default_lock()
     assert lock["schema"] == installer_image.SCHEMA and tuple(lock["profiles"]) == SHARED
-    assert installer.INSTALLABLE == frozenset(SHARED) | frozenset(SIRCL_ONLY)
+    assert (installer.INSTALLABLE == frozenset(SHARED) | frozenset(SIRCL_ONLY)
+            | frozenset(installer_image.SPARKCACHE_VARIANTS))
     assert installer_image.SIRCL_ONLY == SIRCL_ONLY == compose.FABRIC_PROFILES
     assert tuple(path.parent.name for path in toolchain_profiles.fabric_configs()) == SIRCL_ONLY
     # Read from the research catalog, as research-only profiles.
@@ -396,7 +397,8 @@ def test_shared_lock_profile_list_is_exact(change):
 
 
 @pytest.mark.parametrize("profile", [profile for profile in installer_image.SUPPORTED
-                                     if profile not in installer_image.QWEN4_EXP])
+                                     if profile not in installer_image.QWEN4_EXP
+                                     and profile not in installer_image.SPARKCACHE_VARIANTS])
 def test_other_models_render_on_the_shared_image(monkeypatch, profile):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("Offline render contacted a host"))
     lock_value = installer_image.default_lock()

@@ -22,7 +22,7 @@ COMMITTED = {
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "a608241037e4c2565356bff7ca293f2133888f88"):
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be"):
-        ["glm53-flash-csf-tp8"],
+        ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4"],
     ("local-inference-lab/GLM-5.3-NVFP4", "b472e4ee53f6a9862da5486c56c6ca21be3dab70"):
         ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):

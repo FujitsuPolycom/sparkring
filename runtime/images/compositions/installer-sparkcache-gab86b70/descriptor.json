@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "sparkcache-gab86b70",
+  "parent_lock": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-sparkcache-gab86b70.json",
+  "purpose": "SparkCache asynchronous page capture on the kraken-line vLLM of image sha256:d52737a109e0: the connector-job lease contract vllm-connector-jobs-gab86b70.json, whose eleven file fingerprints bind the jj-block-state-read-leases/v1 ownership semantics to that vLLM's actual bytes, beside the SparkCache verifier files that load and check it. The image's own lease contract fingerprints a vllm/envs.py that the image's CSF layer replaced, so connector-jobs capture refuses to start on the parent; this layer rebinds the contract to the image's shipped sources without weakening a check. The three SparkCache files carry the parent's installed bytes unchanged, so the layer changes only which contract SparkCache verifies against.",
+  "files": {
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-gab86b70.json": {
+      "source": "integrations/sparkcache/gab86b70/runtime_patches/vllm-connector-jobs-gab86b70.json",
+      "sha256": "ab53c097d7ca408e995bac7c2bc915b64119881ed64b9cec0b3cc3b30ed2f990",
+      "inherited_sha256": null
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/verify_lease_contract.py": {
+      "source": "integrations/sparkcache/gab86b70/runtime_patches/verify_lease_contract.py",
+      "sha256": "acfd9a24482887efab21b9b952413406c933d683c478766285c74aa4d6cbfc3e",
+      "inherited_sha256": "acfd9a24482887efab21b9b952413406c933d683c478766285c74aa4d6cbfc3e"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/generic_connector_contract.py": {
+      "source": "integrations/sparkcache/gab86b70/runtime_patches/generic_connector_contract.py",
+      "sha256": "543a448294e1b0b118fdd8fa16acb03496d14e0db122f44aea13c5f438405a67",
+      "inherited_sha256": "543a448294e1b0b118fdd8fa16acb03496d14e0db122f44aea13c5f438405a67"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_factory.py": {
+      "source": "integrations/sparkcache/gab86b70/streaming/manager_page_factory.py",
+      "sha256": "a3a0c24f01339baaeabff29fe3dc4f951301496ede2fd855748ca1b7b63eeef1",
+      "inherited_sha256": "a3a0c24f01339baaeabff29fe3dc4f951301496ede2fd855748ca1b7b63eeef1"
+    }
+  }
+}
