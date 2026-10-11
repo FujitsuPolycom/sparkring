@@ -1,5 +1,11 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
+This profile, with `--checkpoint csf`, runs Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD,
+created by Local Inference Lab, Inc., a non-profit organization, available at
+https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
+Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
+Lab License, Version 1.0.
+
 [Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
 ([Local Inference Lab](https://huggingface.co/local-inference-lab)'s QAD
 checkpoint step 5500, revision `60215d26cf5e`) on two DGX Sparks, with MTP
