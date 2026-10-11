@@ -1,0 +1,192 @@
+{
+  "schema": "sparkring-release-status/v1",
+  "release": "2026.10.3",
+  "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "status": "implemented",
+  "maturity": "candidate",
+  "record": "runtime/releases/2026.10.3/README.md",
+  "notes": "runtime/releases/2026.10.3/RELEASE_NOTES.md",
+  "image": {
+    "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+    "lock": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json",
+    "lock_sha256": "3458beca108dccfe9df301adf3f62c347bac10114a835ded06d5e633c064c541",
+    "image_record": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md",
+    "changed_from": "release 2026.10.2's lock with glm53-nvfp4-csf-tp8 admitted; the image is unchanged"
+  },
+  "rollback": {
+    "release": "2026.10.2",
+    "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+    "transport": "sircl"
+  },
+  "components": [
+    {
+      "id": "dashboard",
+      "status": "implemented",
+      "scope": "sparkring dashboard and sparkring dashboard tui on Node A; page, terminal view, loopback listener and reload reported working on the ring of eight on 2026-10-10, no record",
+      "record": "docs/operations/dashboard.md"
+    },
+    {
+      "id": "arc-image-placement",
+      "status": "implemented",
+      "scope": "an install with --on places the serving image only on the arc's Sparks; tested offline only",
+      "record": "docs/operations/install-reference.md"
+    },
+    {
+      "id": "arc-recovery",
+      "status": "implemented",
+      "scope": "automatic recovery judges a four-rank group on a fabric other than a four-Spark ring without mesh reports; tested offline only",
+      "record": "runtime/host/recovery.py"
+    },
+    {
+      "id": "qwen-csf-checkpoint",
+      "status": "research-only",
+      "scope": "qwen38-flash-next-tp2 --checkpoint csf: local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD at dc5b8ab2fa14; loaded and answered correctly on two Sparks on 2026-10-10 (reported, no record)",
+      "record": "docs/operations/install-reference.md"
+    },
+    {
+      "id": "sparkcache-variants",
+      "status": "research-only",
+      "scope": "glm53-flash-nvfp4-sparkcache-tp2 and -tp4, admitted only by the lock of the derived layer installer-sparkcache-gab86b70, which no Spark has built",
+      "record": "runtime/images/compositions/installer-sparkcache-gab86b70/README.md"
+    }
+  ],
+  "profiles": [
+    {
+      "id": "deepseek-v41-flash-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "deepseek-v41-flash-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "status": "research-only"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp4",
+      "status": "research-only"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ring8-report-20261010",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10) cabled as one ConnectX-7 RoCE ring of eight",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "operator report of the ring test of 2026-10-10; no record under performance/records",
+      "result": "qwen38-flash-next-tp2 --checkpoint csf loaded and answered correctly; the dashboard worked; the SparkCache TP4 variant's workers refused to start with 256 MiB placement arenas; recovery reported a serving TP4 group on Sparks 0-3 as unknown; an install on Sparks 0-3 wrote 14.2 GiB of image to each of Sparks 4-7",
+      "record": "runtime/releases/2026.10.3/README.md"
+    }
+  ],
+  "gates": [
+    {
+      "id": "image-lock",
+      "result": "passed",
+      "scope": "the lock validates for its 14 profiles (CPU)",
+      "record": "runtime/common/test_installer_image.py"
+    },
+    {
+      "id": "image-sources",
+      "result": "passed",
+      "scope": "spark_transport/libsircl tree 030419b8, spark_transport/sircl tree 8a54c1ab, runtime-status and GLM-5.3 plugin sources byte-identical to release 2026.10.2's",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "cpu-checks",
+      "result": "passed",
+      "scope": "the CPU jobs of .github/workflows/ci.yml that run on Windows 11 with Python 3.12.10; pytest 11,161 passed, 77 failed, 37 errors, 682 skipped; 111 of the 114 failing tests also fail on release 2026.10.2's head dc0300ac on the same host, and the other 3 pass and fail from run to run on both",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "qwen-csf-tp2",
+      "result": "reported",
+      "scope": "an installation of qwen38-flash-next-tp2 --checkpoint csf that passes the installer's checks; reported, not recorded",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "dashboard-hardware",
+      "result": "reported",
+      "scope": "the dashboard on the ring; reported, not recorded",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "arc-image",
+      "result": "pending",
+      "scope": "an install with --on on a ring of eight leaves the Sparks outside the arc without image writes",
+      "record": null
+    },
+    {
+      "id": "arc-recovery",
+      "result": "pending",
+      "scope": "automatic recovery restarts a stopped four-rank group on part of a ring of eight",
+      "record": null
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp8-install",
+      "result": "pending",
+      "scope": "an installation of glm53-nvfp4-csf-tp8 that passes the installer's checks",
+      "record": null
+    },
+    {
+      "id": "sparkcache-variants",
+      "result": "pending",
+      "scope": "the derived layer built and recorded, and an installation of a variant",
+      "record": null
+    },
+    {
+      "id": "publication",
+      "result": "pending",
+      "scope": "tag 2026.10.3, the package built with the relay marker, GitHub pre-release",
+      "record": null
+    }
+  ],
+  "github_release": {
+    "tag": "2026.10.3",
+    "prerelease": true
+  }
+}
