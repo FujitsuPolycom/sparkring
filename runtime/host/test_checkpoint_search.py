@@ -1008,3 +1008,66 @@ def test_symlinked_fixed_locations_are_resolved_with_the_guard(tmp_path, monkeyp
     touched = [path for path in host_paths(host, seen) if path.startswith(("/mnt/synologytwo", "/var/lib/elsewhere"))]
     assert touched == []
     assert [item["path"] for item in result["search"]["skipped_mounts"]] == ["/mnt/synologytwo"]
+
+
+# A checkpoint in the NVFP4-CSF container layout keeps its index in metadata/ and its shards in tensors/.
+CONTAINER_REPOSITORY = "local-inference-lab/GLM-5.3-NVFP4-CSF"
+CONTAINER_REVISION = "a4d406932f2db96db8e852867c7939f448e0cd6f"
+CONTAINER_SHARDS = ["model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"]
+CONTAINER = {
+    "config.json": b'{"model_type": "glm_moe_dsa"}\n',
+    "metadata/config.json": b'{"model_type": "glm_moe_dsa"}\n',
+    "metadata/model.safetensors.index.json": json.dumps(
+        {"weight_map": {"a": CONTAINER_SHARDS[0], "b": CONTAINER_SHARDS[1]}}).encode(),
+    "manifest.json": b'{"schema": "lil-nvfp4-csf-checkpoint/1"}\n',
+    "tensors/" + CONTAINER_SHARDS[0]: pattern(11, 3000),
+    "tensors/" + CONTAINER_SHARDS[1]: pattern(12, 3000),
+}
+CONTAINER_LFS = {"metadata/model.safetensors.index.json", *("tensors/" + name for name in CONTAINER_SHARDS)}
+CONTAINER_PINS = {
+    "schema": "sparkring-checkpoint-pins/v1", "repository": CONTAINER_REPOSITORY, "revision": CONTAINER_REVISION,
+    "index": "metadata/model.safetensors.index.json", "weights": sorted("tensors/" + name for name in CONTAINER_SHARDS),
+    "optional": [], "files": {name: {"size": len(data), "sha256": sha256(data), "git_blob": git_blob(data),
+                                     **({"lfs": True} if name in CONTAINER_LFS else {})}
+                              for name, data in CONTAINER.items()}}
+STAGED = f"/srv/sparkring/downloads/local-inference-lab--GLM-5.3-NVFP4-CSF/{CONTAINER_REVISION}"
+
+
+def container_copy(host, folder):
+    """An ``hf download --local-dir`` copy of the container, with its download records and partial chunks."""
+    for name, data in CONTAINER.items():
+        target = host.write(folder + "/" + name, data)
+        etag = sha256(data) if name in CONTAINER_LFS else git_blob(data)
+        host.write(f"{folder}/.cache/huggingface/download/{name}.metadata",
+                   f"{CONTAINER_REVISION}\n{etag}\n{target.stat().st_mtime + 1}\n")
+    host.write(f"{folder}/.cache/huggingface/download/tensors/{CONTAINER_SHARDS[0]}.incomplete", b"partial")
+    return folder
+
+
+def container_survey(host):
+    owned = f"/srv/sparkring/ring8/checkpoints/local-inference-lab--GLM-5.3-NVFP4-CSF/{CONTAINER_REVISION}"
+    return search.survey(json.loads(search.compact(CONTAINER_PINS)),
+                         settings(host, owned=owned))
+
+
+@pytest.mark.parametrize("folder, tag", [(STAGED, "staged"),
+                                         ("/srv/models/local-inference-lab--GLM-5.3-NVFP4-CSF/" + CONTAINER_REVISION,
+                                          "folder")])
+def test_a_container_layout_copy_is_found_in_the_staging_path_and_by_the_walk(tmp_path, folder, tag):
+    host = Host(tmp_path)
+    container_copy(host, folder)
+    result = container_survey(host)
+    found = candidate(result, folder)
+    assert found["found_by"] == [tag] and found["layout"] == "local-dir" and found["commit"] == CONTAINER_REVISION
+    # Every required file is identified by its download record; none of the partial chunks is a candidate file.
+    assert states(found) == dict.fromkeys(CONTAINER, ("match", "hub-metadata"))
+    assert found["counts"]["match"] == len(CONTAINER)
+    # The copy lies on the mount of SparkRing's checkpoint directory, so the plan hard-links its weights.
+    assert (found["mount_id"], found["device"]) == (result["owned"]["mount_id"], result["owned"]["device"])
+
+
+def test_a_container_layout_copy_elsewhere_in_srv_sparkring_is_not_used(tmp_path):
+    host = Host(tmp_path)
+    container_copy(host, f"/srv/sparkring/downloads/other/{CONTAINER_REVISION}")
+    container_copy(host, f"/srv/sparkring/downloads/local-inference-lab--GLM-5.3-NVFP4-CSF/{'0' * 40}")
+    assert container_survey(host)["candidates"] == []

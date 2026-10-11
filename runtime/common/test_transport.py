@@ -60,7 +60,13 @@ def sircl_deployment(profile, shape, size, positions, *, nccl="never", tuning=No
                                 tuning=tuning or transport.load_tuning(), dcp=transport.profile_dcp(profile))
     # A deployment on some of the fabric's Sparks records them as its placement.
     placement = None if list(positions) == list(range(size)) else positions
-    lock = installer.make_lock(profile, install_site(len(positions), placement=placement), "1" * 40, "2" * 64,
+    raw = install_site(len(positions), placement=placement)
+    card = installer.setup.selection(profile)
+    if installer.derived_checkpoint.model_of(card) is not None:
+        # A derived checkpoint lies beside its base's SparkRing checkpoint directory.
+        for row in raw["hosts"]:
+            row["model"] = installer.checkpoint_directory(raw["name"], card)
+    lock = installer.make_lock(profile, raw, "1" * 40, "2" * 64,
                                image_runtime=image_lock.v2_view(image), transport=section)
     return lock, section
 
@@ -921,7 +927,7 @@ def test_every_eight_spark_profile_renders_on_sircl_on_every_spark_of_an_eight_s
     assert section["group"]["name"] == "cycle-8" and section["tuning"]["row"] == "cycle-8"
     specs = installer.specifications(lock)
     assert len(specs) == 8
-    groups = "tp,dcp" if profile == "glm53-nvfp4-tp8" else "tp"
+    groups = "tp,dcp" if transport.profile_dcp(profile) > 1 else "tp"
     for rank, spec in enumerate(specs):
         environment = spec.environment
         assert environment["SIRCL_GROUPS"] == groups and environment["SIRCL_NCCL"] == "never"

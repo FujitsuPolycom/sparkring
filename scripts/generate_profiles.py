@@ -197,7 +197,7 @@ def profile_table(root=ROOT, *, compact=False):
             raise ValueError(f'Model repository needs a credited publisher: {repository}')
     capacity = read_json(root/'performance/profile-capacity.json')['profiles']
     if not compact:
-        return profile_catalog_table(rows, names, root)
+        return profile_catalog_table(rows, names, root, quant_labels)
     if not set(capacity) <= {p['id'] for p, _ in rows}:
         raise ValueError('Capacity records must name catalog profiles')
     check_capacity_records(capacity, root)
@@ -287,8 +287,12 @@ def profile_table(root=ROOT, *, compact=False):
     return text.replace('](profiles/', '](').replace('](docs/', '](../docs/')
 
 
-def profile_catalog_table(rows, names, root):
-    """Present deployment choices first and retain exact variant discovery below."""
+def profile_catalog_table(rows, names, root, quant_labels=None):
+    """Present deployment choices first and retain exact variant discovery below.
+
+    Each repository, Spark count and engine is one group. Groups whose model name, Spark count and engine
+    agree, such as two checkpoints of one model, add the checkpoint's quantization label to the heading.
+    """
     summary = profile_table(root, compact=True).removesuffix(END)
     lines = [summary, 'Status and context describe the linked default. DCP and KV figures follow the same order;',
              'capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.',
@@ -306,9 +310,13 @@ def profile_catalog_table(rows, names, root):
             continue
         key = (r['model']['repository'], r['serving']['node_count'], r['runtime'].get('engine', 'vllm'))
         groups.setdefault(key, []).append((p, r))
+    headings = [(names[model], nodes, engine) for model, nodes, engine in groups]
     for (model, nodes, engine), variants in sorted(groups.items()):
         engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
-        lines += ['<details>', f'<summary>{names[model]} · {nodes} Sparks · {engine_title}</summary>', '',
+        title = names[model]
+        if headings.count((title, nodes, engine)) > 1 and quant_labels and model in quant_labels:
+            title += f' ({quant_labels[model]})'
+        lines += ['<details>', f'<summary>{title} · {nodes} Sparks · {engine_title}</summary>', '',
                   '| Parallelism | Network | SparkCache | Guide status | Configuration and guide |',
                   '|---|---|---|---|---|']
         for p, r in sorted(variants, key=lambda item: (item[0]['recommendation'] != 'recommended', item[0]['id'])):

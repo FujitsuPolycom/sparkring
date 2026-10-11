@@ -12,13 +12,14 @@ Checkpoint rows have two modes:
   SparkRing reads it and never creates, links, downloads or writes anything
   under it.
 
-A derived checkpoint (``runtime/common/derived_checkpoint.py``) adds two
-SparkRing checkpoint directories beside the row's owned base directory: the
-derived checkpoint's, which the container mounts, and the donor's, which holds
-the donor files its recipe reads. Each has its own view of the lock, row and
-receipt directory (``_derived``), so the placement, verification and transfer
-operations above apply to them unchanged; ``derive-link``, ``derive-donor``,
-``derive-run`` and ``derive`` complete and verify them.
+A derived checkpoint (``runtime/common/derived_checkpoint.py``) adds SparkRing
+checkpoint directories beside the row's owned base directory: the derived
+checkpoint's, which the container mounts, and, for a checkpoint with a donor,
+the donor's, which holds the donor files its recipe reads. Each has its own
+view of the lock, row and receipt directory (``_derived``), so the placement,
+verification and transfer operations above apply to them unchanged;
+``derive-link``, ``derive-donor``, ``derive-run`` and ``derive`` complete and
+verify them.
 """
 from __future__ import annotations
 
@@ -427,10 +428,27 @@ def pinned_differences(profile, files, revision=None):
     return differences
 
 
+def _index_name(card):
+    """The weight index's name in the card's checkpoint directory.
+
+    It is the pin manifest's ``index``: ``model.safetensors.index.json`` at the
+    root, or ``metadata/model.safetensors.index.json`` for a checkpoint in the
+    NVFP4-CSF container layout, which vLLM serves through a derived directory
+    that holds it at the root. Without a pin manifest it is the root index.
+    """
+    manifest = _derived_manifest(card)
+    if manifest is not None:
+        return manifest["index"]
+    try:
+        return installer.checkpoint_pins(card)["index"]
+    except ValueError:
+        return "model.safetensors.index.json"
+
+
 def _check_pins(card, files, required=None):
     """Refuse hashes that differ from the profile's checkpoint contract, its SHA256SUMS or the pins."""
     model = installer.checkpoint_contract(card)
-    for filename, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
+    for filename, key in (("config.json", "config_sha256"), (_index_name(card), "index_sha256")):
         if files.get(filename) != model[key]:
             raise ValueError("Checkpoint metadata differs from the selected profile: " + filename)
     sums = checksum_manifest(card["profile"], card["model_revision"])
@@ -1410,9 +1428,9 @@ def _derived(lock, row, state):
     SparkRing checkpoint directory and a receipt directory below the
     deployment's ``installer`` directory: ``lock``, ``row`` and ``state`` of
     the derived checkpoint (``installer/derived``) and ``donor_lock``,
-    ``donor_row`` and ``donor_state`` of the donor (``installer/donor``). Both
-    directories lie beside the row's base directory; a base served in place is
-    refused.
+    ``donor_row`` and ``donor_state`` of the donor (``installer/donor``), each
+    None for a checkpoint without a donor. Both directories lie beside the
+    row's base directory; a base served in place is refused.
     """
     card = lock["selection"]
     if derived_checkpoint.model_of(card) is None:
@@ -1422,13 +1440,15 @@ def _derived(lock, row, state):
         raise ValueError(f"{row['model']} is served in place; a derived checkpoint is written beside the base's "
                          "SparkRing checkpoint directory, so install it without naming a copy of the base")
     view = {**row, "model": derived_checkpoint.directory(row["model"], manifest), "reuse_verified_model": False}
-    donor = {**row, "model": derived_checkpoint.directory(row["model"], manifest["donor"]),
-             "reuse_verified_model": False}
-    return SimpleNamespace(
+    views = SimpleNamespace(
         manifest=manifest, lock={**lock, "selection": derived_checkpoint.view(card, manifest)}, row=view,
-        state=state / "derived",
-        donor_lock={**lock, "selection": derived_checkpoint.donor_card(card, manifest)},
-        donor_row=donor, donor_state=state / "donor")
+        state=state / "derived", donor_lock=None, donor_row=None, donor_state=None)
+    if manifest["donor"] is not None:
+        views.donor_lock = {**lock, "selection": derived_checkpoint.donor_card(card, manifest)}
+        views.donor_row = {**row, "model": derived_checkpoint.directory(row["model"], manifest["donor"]),
+                           "reuse_verified_model": False}
+        views.donor_state = state / "donor"
+    return views
 
 
 def _base_receipt(lock, row, state):
@@ -1444,7 +1464,9 @@ def derive_link(lock, row, state, document, *, number):
     descriptor it was opened with, after its SHA-256 is known to equal the
     manifest's: from the base receipt, which the ``model`` phase verified,
     when the opened file still has the five stats the receipt records, and
-    otherwise by hashing it through that descriptor. A link that fails because
+    otherwise by hashing it through that descriptor. A kept file with a
+    ``source`` links that base file under its own name
+    (``derived_checkpoint.source_of``). A link that fails because
     the directories lie on different filesystems (EXDEV) or the file is
     immutable (EPERM) stops the operation; nothing is copied. Linking changes
     the base inodes' change time, so the base receipt, the other deployments'
@@ -1471,11 +1493,12 @@ def derive_link(lock, row, state, document, *, number):
         present = set(_placed(claimed, journal, required))
         linked = []
         for name in sorted(set(derived_checkpoint.files_of(manifest, "base")) - present):
-            pin, path = required[name], str(source / name)
+            origin = derived_checkpoint.source_of(manifest, name)
+            pin, path = required[name], str(source / origin)
             fd, before = place.open_source(path, None, pin["size"])
             try:
-                known = (POSIX_STATS and base.get("file_stats", {}).get(name) == place.stats(before)
-                         and base.get("files", {}).get(name) == pin["sha256"])
+                known = (POSIX_STATS and base.get("file_stats", {}).get(origin) == place.stats(before)
+                         and base.get("files", {}).get(origin) == pin["sha256"])
                 digest = pin["sha256"] if known else place.hash_descriptor(fd, pin["size"])
                 if digest != pin["sha256"]:
                     raise ValueError(f"{path} differs from the base's pinned file; repeat sudo sparkring install, "
@@ -1514,12 +1537,18 @@ def derive_donor(lock, row, state, document, *, number):
     The donor directory is the donor checkpoint's own SparkRing checkpoint
     directory, so a complete copy of the donor checkpoint there supplies every
     file, and ``model-fetch`` places each download only after its SHA-256
-    equals the donor's pin manifest.
+    equals the donor's pin manifest. A checkpoint without a donor downloads
+    nothing.
     """
     views = _derived(lock, row, state)
     if (not isinstance(document, dict) or set(document) - {"names", "limit"} or not isinstance(document.get("names"), list)
             or (document.get("limit") is not None and (type(document["limit"]) is not int or document["limit"] <= 0))):
         raise ValueError("derive-donor expects {names} and an optional limit")
+    if views.manifest["donor"] is None:
+        if document["names"]:
+            raise ValueError(f"Node {number}: the derived checkpoint has no donor, so the approved plan downloads "
+                             "no donor files; review the plan again with sudo sparkring install --plan")
+        return {"ok": True, "fetched": [], "present": []}
     needed = views.manifest["donor"]["files"]
     card = views.donor_lock["selection"]
     required, _ = _pinned(card)
@@ -1541,7 +1570,12 @@ def derive_donor(lock, row, state, document, *, number):
 
 
 def _donor_files(views):
-    """``{name: stats}`` of the recipe's donor files, each placed in the donor directory with its pinned SHA-256."""
+    """``{name: stats}`` of the recipe's donor files, each placed in the donor directory with its pinned SHA-256.
+
+    Empty for a checkpoint without a donor.
+    """
+    if views.manifest["donor"] is None:
+        return {}
     card = views.donor_lock["selection"]
     required, _ = _pinned(card)
     needed = views.manifest["donor"]["files"]
@@ -1570,11 +1604,12 @@ def derive_run(lock, row, state, *, number):
     source) the manifest's SHA-256; the module is then run as program text
     with ``python3 -c`` in the deployment's installer image, CPU only
     (``--runtime runc``, no GPU request, an empty ``CUDA_VISIBLE_DEVICES``),
-    without network (``--network none``) and as root, with the base and donor
-    directories mounted read-only and an empty ``out`` directory inside the
-    marked ``derive`` staging directory as its only writable mount. The recipe
-    refuses inputs whose donor tensors
-    are not the base's weights in MXFP8. Each file it wrote is placed only when
+    without network (``--network none``) and as root, with the base and, for a
+    checkpoint with a donor, the donor directories mounted read-only (the
+    recipe receives ``--donor`` only then) and an empty ``out`` directory
+    inside the marked ``derive`` staging directory as its only writable mount.
+    The recipe refuses inputs it was not written for, such as donor tensors
+    that are not the base's weights in MXFP8. Each file it wrote is placed only when
     its SHA-256 equals the manifest's; a file that differs refuses the
     operation, naming the file and the recipe, and nothing is placed for it.
     The base and donor files must keep their stats while the recipe runs.
@@ -1618,15 +1653,17 @@ def derive_run(lock, row, state, *, number):
                     raise ValueError(f"{where} is no longer SparkRing's staging directory; nothing was derived. "
                                      f"Check who can change the directories above {model}")
                 record = json.dumps(derived_checkpoint.record(manifest), sort_keys=True)
+                donor_mount = (["--mount", f"type=bind,src={views.donor_row['model']},dst=/donor,readonly"]
+                               if views.donor_row is not None else [])
+                donor_argument = ["--donor", "/donor"] if views.donor_row is not None else []
                 try:
                     run(["docker", "run", "--rm", "--name", container, "--pull", "never", "--runtime", "runc",
                          "--network", "none", "--user", "0:0", "--env", "CUDA_VISIBLE_DEVICES=",
                          "--env", "HF_HUB_OFFLINE=1",
-                         "--mount", f"type=bind,src={row['model']},dst=/base,readonly",
-                         "--mount", f"type=bind,src={views.donor_row['model']},dst=/donor,readonly",
+                         "--mount", f"type=bind,src={row['model']},dst=/base,readonly", *donor_mount,
                          "--mount", f"type=bind,src={where},dst=/out",
                          "--entrypoint", "python3" if "image_runtime" in lock else "/opt/venv/bin/python",
-                         card["image_id"], "-c", source.decode("utf-8"), "--base", "/base", "--donor", "/donor",
+                         card["image_id"], "-c", source.decode("utf-8"), "--base", "/base", *donor_argument,
                          "--out", "/out", "--record", record], timeout=DERIVE_SECONDS)
                 except CommandError as error:
                     cause = (error.lines(1) or [f"docker run exited with status {error.returncode}"])[0]
@@ -1801,6 +1838,50 @@ def smoke_request(card):
         if "smoke" in config:
             return config["smoke"]
     return {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def start_check_names(card):
+    """The checks (``runtime.host.start_checks``) that the card's serving profile lists in ``start_checks``."""
+    source = profiles.load(card["profile"])[0]["configuration"]
+    if source["format"] != "serving-profile":
+        return ()
+    names = profiles.read_json(profiles.local_path(source["path"])).get("start_checks") or ()
+    from runtime.host import start_checks
+    unknown = sorted(set(names) - set(start_checks.CHECKS))
+    if unknown:
+        raise ValueError("Unknown start checks: " + ", ".join(unknown))
+    return tuple(names)
+
+
+def start_checks_of(spec, host, port, names):
+    """Gather the rank-0 container's log, status, metrics and probe, and judge ``names``; never raises.
+
+    A source that cannot be read is None, which leaves the checks it decides
+    ``unknown``.
+    """
+    from runtime.host import start_checks
+
+    def attempt(function):
+        try:
+            return function()
+        except (OSError, ValueError, CommandError, subprocess.SubprocessError, urllib.error.URLError):
+            return None
+
+    def metrics():
+        with urllib.request.urlopen(f"http://{host}:{port}/metrics", timeout=60) as response:
+            return response.read(16 << 20).decode("utf-8", "replace")
+
+    def log():
+        output = run(["docker", "logs", spec.name], timeout=120, text=False)
+        return (output.stdout + output.stderr)[-(64 << 20):].decode("utf-8", "replace")
+
+    def probe():
+        output = run(["docker", "exec", "-i", spec.name, "python3", "-I", "-B", "-"],
+                     input=start_checks.probe_source(), timeout=120)
+        return start_checks.parse_probe(output.stdout.strip().splitlines()[-1])
+
+    return start_checks.judge(attempt(log), attempt(lambda: http_json(port, "/v1/sparkring/status", host=host)),
+                              attempt(metrics), attempt(probe), dict(spec.environment), checks=names)
 
 
 def local_api_host(command):
@@ -2223,5 +2304,10 @@ def perform(operation, lock, number):
                 if page.status != 200 or page.headers.get_content_type() != "text/html":
                     raise ValueError("Runtime-status dashboard is unavailable")
             result["dashboard"] = "/v1/sparkring/status/view"
+        names = start_check_names(card)
+        if names and lock["backend"] == "compose":
+            from runtime.host import node
+            result["start_checks"] = start_checks_of(spec, host, port, names)
+            node.save(state, "start-checks.json", result["start_checks"], mode=0o644)
         return result
     raise ValueError("Unknown rank operation: " + operation)

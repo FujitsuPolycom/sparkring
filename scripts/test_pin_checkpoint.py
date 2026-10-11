@@ -157,6 +157,39 @@ def test_generator_checks_git_blob_ids_of_downloaded_small_files():
             pin_checkpoint.manifest(FakeHub(small, lfs), repository, revision)
 
 
+def container_files(shards=("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors"), schema=None):
+    """An NVFP4-CSF container: metadata/ with the index, tensors/ with the shards, manifest.json at the root."""
+    index = json.dumps({"weight_map": {"a.weight": WEIGHTS[0], "b.weight": WEIGHTS[1]}}).encode()
+    layout = json.dumps({"schema": schema or pin_checkpoint.CONTAINER_SCHEMA,
+                         "shards": [{"file": name} for name in shards]}).encode()
+    small = {"config.json": b'{"model_type": "example"}\n', "metadata/config.json": b'{"model_type": "example"}\n',
+             "manifest.json": layout, "README.md": b"# Example\n"}
+    lfs = {"metadata/model.safetensors.index.json": index, "tensors/" + WEIGHTS[0]: b"weights-one",
+           "tensors/" + WEIGHTS[1]: b"weights-two"}
+    return small, lfs
+
+
+def test_a_container_layout_is_pinned_with_its_nested_index_and_shards():
+    small, lfs = container_files()
+    hub = FakeHub(small, lfs)
+    pins = pin_checkpoint.manifest(hub, REPOSITORY, REVISION)
+    assert pins["index"] == "metadata/model.safetensors.index.json"
+    assert pins["weights"] == ["tensors/" + name for name in WEIGHTS]
+    assert {pins["index"], "config.json", *pins["weights"]} <= set(pins["files"]) - set(pins["optional"])
+    # The index and manifest.json are read; the shards never are.
+    assert sorted(hub.downloads) == sorted([*small, "metadata/model.safetensors.index.json"])
+    # The manifest's shards must be exactly the index's weight files, and its schema the container's.
+    for change in ({"shards": (WEIGHTS[0],)}, {"schema": "another-layout/1"}):
+        small, lfs = container_files(**change)
+        with pytest.raises(ValueError, match="manifest.json"):
+            pin_checkpoint.manifest(FakeHub(small, lfs), REPOSITORY, REVISION)
+    # Without manifest.json the nested index is not a weight index the generator knows.
+    small, lfs = container_files()
+    del small["manifest.json"]
+    with pytest.raises(ValueError, match="has no model.safetensors.index.json"):
+        pin_checkpoint.manifest(FakeHub(small, lfs), REPOSITORY, REVISION)
+
+
 def test_generator_downloads_are_bounded(monkeypatch):
     small, lfs = revision_files()
     # Every small file fits the limit; the index does not and is never requested.
