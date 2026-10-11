@@ -22,7 +22,10 @@ installed where the fabric has relays) and names the Sparks' devices alike; a
 group that SIRCL's group placement accepts (two to eight consecutive Sparks
 or the whole cycle, no lane through more than three relays); and a profile
 without decode-context parallelism. libsircl supports pairs, paths and cycles
-of up to eight ranks; on Sparks only a cabled pair has run.
+of up to eight ranks. On Sparks its collectives have run on cabled pairs,
+paths of four, rings of four and the cycle of eight (``spark_transport/libsircl/STATUS.md``,
+``performance/records/transport/``); this installer transport has run only on
+a cabled pair.
 
 Each rank's routing settings come from libsircl's own tool,
 ``spark_transport/libsircl/tools/site_routes.py``, which runs SIRCL's route
