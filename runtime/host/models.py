@@ -3,20 +3,9 @@ import argparse
 import json
 
 from runtime.common import installer, profiles, toolchain_profiles, thinking
+from runtime.common.profile_aliases import ALIASES, canonical  # noqa: F401 (ALIASES is part of this module's interface)
 
 THINKING_FIELDS = ("default", "level", "levels", "range", "effort", "off")
-# Other names that select an installer profile. A deployment, its records and its status keep the
-# profile's ID, so every command replaces an alias with that ID before it reads anything else. The IDs
-# of the GLM-5.3-Flash profiles of two and four Sparks name their NVFP4-Spark checkpoint, which they
-# install only on an image whose vLLM cannot read their CSF checkpoint
-# (profiles/glm53-checkpoints.md#default-checkpoint-by-profile); an alias names the model and the
-# number of Sparks alone.
-ALIASES = {"glm53-flash-tp2": "glm53-flash-nvfp4-spark-tp2", "glm53-flash-tp4": "glm53-flash-nvfp4-spark-tp4"}
-
-
-def canonical(value):
-    """The profile ID that ``value`` selects: the ID that an alias of ALIASES stands for, else ``value``."""
-    return ALIASES.get(value, value)
 
 
 def checkpoints(definition):
