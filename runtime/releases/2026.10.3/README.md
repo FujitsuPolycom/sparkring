@@ -19,15 +19,11 @@ already published.
 |---|---|
 | GitHub release tag | `2026.10.3`, not yet created; `2026.10.2` is the release before it |
 | Image | Release 2026.10.2's, unchanged: image configuration ID `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b`, registry reference `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`. A Spark that holds it downloads nothing |
-| Lock | [installer-image.json](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json), SHA-256 `3458beca108dccfe9df301adf3f62c347bac10114a835ded06d5e633c064c541`, which that directory's `release.json` pins. It is release 2026.10.2's lock with `glm53-nvfp4-csf-tp8` added to its `profiles`, 14 in all; an admission changes only that list ([release procedure](../../../docs/development/releases.md)) |
+| Lock | Release 2026.10.2's, unchanged: [installer-image.json](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json), SHA-256 `d58cbfefedd47bd861d634c9337aa388b284c8759664d5e10580015a28ac8f79`, 13 profiles, which that directory's `release.json` pins. Its directory is byte-identical to release 2026.10.2's |
 | Image sources | The sources the image carries are byte-identical to release 2026.10.2's: `spark_transport/libsircl` is git tree `030419b8a2b61acc1a74010308a1c3e758863e2f`, the lock's `libsircl.source_tree`; `spark_transport/sircl` is tree `8a54c1abf591`, `integrations/vllm/runtime_status` `de6358a86f8c`, and the GLM-5.3 plugin directories are unchanged |
 | Relay marker | Source `c64c74535c06` is unchanged, so package builds take the binary that [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json) records |
 | Release-tag index | [installer-releases.json](../installer-releases.json) names no `2026.10.3`: this release publishes no image. Without `--image`, or with `--image 2026.10.2`, the package installs this image |
 | Rollback | Release 2026.10.2's package on the same image; release 2026.10.1's image on the prepared transport with `--image 2026.10.1` |
-
-Every installer deployment's identity includes its lock, so the first
-`sparkring install` of any profile with this package plans a separate
-deployment from the one 2026.10.2's package installed.
 
 ## Changes
 
@@ -36,11 +32,12 @@ deployment from the one 2026.10.2's package installed.
 | `sparkring dashboard`, a read-only ring status page on Node A (port 8090, its LAN address and 127.0.0.1) that sends no inference request and opens no SSH session; `sparkring dashboard tui`; the dashboard's quiet mode during benchmark load; placement and pacing settings of the host agent, the recovery timer and the tunnel check | implemented | [dashboard](../../../docs/operations/dashboard.md), `runtime/host/dashboard.py` |
 | An install with `--on` places the serving image only on the arc's Sparks; a Spark outside the arc writes nothing and forwards only when no way to an arc Spark avoids it | implemented | [image distribution](../../../docs/operations/install-reference.md#spreading-along-the-cables), `runtime/host/spread.py`, `runtime/host/install_assets.py` |
 | Automatic recovery judges a four-rank group on a fabric other than a four-Spark ring by its containers and API, without the mesh reports that only a four-Spark ring's Sparks give | implemented | [automatic recovery](../../../docs/operations/install-reference.md#automatic-recovery), `runtime/host/recovery.py` |
+| The installer's memory settle refuses a start whose vLLM share plus a SparkCache connector's pinned host memory (capture slots and restore arenas) exceeds a Spark's total less 6 GiB, naming the numbers | implemented | [Memory](../../../docs/operations/install-reference.md#what-a-run-does), `runtime/host/memory_settle.py` |
 | `qwen38-flash-next-tp4` and `qwen38-flash-next-tp8` select `qwen38-flash-next-qad-tp4` and `qwen38-flash-next-qad-tp8` | implemented | `runtime/host/models.py` |
 | `qwen38-flash-next-tp2 --checkpoint csf` installs local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD at `dc5b8ab2fa14`, on an image whose vLLM reads the nvfp4_csf format (this one) | research-only | [install reference](../../../docs/operations/install-reference.md), `runtime/common/image_lock.py` |
-| `glm53-nvfp4-csf-tp8`: GLM-5.3-NVFP4-CSF at `a4d406932f2d` on eight Sparks with every setting of `glm53-nvfp4-tp8`, served from a serving directory derived without a donor; the lock admits it | research-only | [profile guide](../../../profiles/glm53-nvfp4-csf-tp8/README.md) |
+| `glm53-nvfp4-csf-tp8`: GLM-5.3-NVFP4-CSF at `a4d406932f2d` on eight Sparks with every setting of `glm53-nvfp4-tp8`, served from a serving directory derived without a donor. No lock of this package admits it: it installs with `--image-lock FILE`, and the owner has parked it | research-only | [profile guide](../../../profiles/glm53-nvfp4-csf-tp8/README.md) |
 | The column-split start check reads only `glm53full_speedups`' own log lines | implemented | `runtime/host/start_checks.py` |
-| SparkCache variants `glm53-flash-nvfp4-sparkcache-tp2` and `-tp4` of the GLM-5.3-Flash profiles, with 64 MiB CUDA placement arenas inside a 256 MiB restore budget, and the recipe of their derived image layer, `installer-sparkcache-gab86b70`. They are listed in the research catalog. Only the lock that layer's record step writes admits them, and no Spark has built it | research-only | [layer recipe](../../images/compositions/installer-sparkcache-gab86b70/README.md), [recipe record](../dev-20261010-sparkcache-gab86b70-plugins-status036/README.md) |
+| SparkCache variants `glm53-flash-nvfp4-sparkcache-tp2` and `-tp4` of the GLM-5.3-Flash profiles, with 64 MiB CUDA placement arenas inside a 256 MiB restore budget and capture slots of 512 MiB (TP2) and 8 GiB (TP4), and the recipe of their derived image layer, `installer-sparkcache-gab86b70`. They are listed in the research catalog. Only the lock that layer's record step writes admits them; a Spark has built the layer's image, `e1607979b7f0`, whose lock is not in this repository | research-only | [layer recipe](../../images/compositions/installer-sparkcache-gab86b70/README.md), [recipe record](../dev-20261010-sparkcache-gab86b70-plugins-status036/README.md) |
 | The README's attribution notice names Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD beside the GLM-5.3 CSF checkpoints; the libsircl architecture page states the eight routing variables the installer transport carries | implemented | [README](../../../README.md), [libsircl](../../../docs/architecture/libsircl.md) |
 
 The changes came from these commits, merged or applied on release
@@ -52,48 +49,56 @@ The changes came from these commits, merged or applied on release
 
 ## Evidence
 
-The ring test of 2026-10-10 on the eight-Spark ring, with this image,
-reported the following; no record of it is under `performance/records/`:
+Eight DGX Sparks cabled as one ring of eight, with this image and SparkRing
+package `46eeb18b`, 2026-10-10 and 2026-10-11 (research-only, one start each):
 
-- `qwen38-flash-next-tp2 --checkpoint csf` loaded on two Sparks and answered
-  correctly.
-- The dashboard's page, terminal view, loopback listener and reload worked.
-- Every worker of `glm53-flash-nvfp4-sparkcache-tp4` refused to start on
-  Sparks 0-3 with 256 MiB placement arenas (SparkCache needs the restore
-  budget to hold one lane's two arenas); the arenas are 64 MiB in this
-  release. No start with them is recorded.
-- A start of `glm53-nvfp4-csf-tp8` logged both `glm53full_speedups` patches
-  and both split layers (rank 0's excerpt is the test fixture
-  `runtime/host/fixtures/start_checks/glm53-nvfp4-csf-tp8-rank0.log`). The
-  start check without commit `3e991b93` judged that column-split loading did
-  not take effect; this release's check judges that it did. Its serving is not
-  recorded.
-- Automatic recovery reported a serving TP4 group on Sparks 0-3 as `unknown`
-  ("its mesh units are not reported"), so it would not have restarted it.
-- An install on Sparks 0-3 wrote the image, 14.2 GiB, to each of Sparks 4-7
-  while they served.
+- `qwen38-flash-next-tp2 --checkpoint csf` on positions 6 and 7 loaded,
+  served and answered the fingerprint prompts correctly; 32K decode 48.3 /
+  119.6 / 171.5 tok/s at 1 / 4 / 8 streams
+  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md)).
+- `glm53-nvfp4-csf-tp8` on all eight Sparks: column-split loading took effect
+  through the nvfp4_csf loader, which package `46eeb18b`'s start check
+  misjudged and commit `3e991b93`'s rule judges correctly; one measured start
+  at `--reasoning-effort high`, so its comparison with `glm53-nvfp4-tp8` at
+  the default `max` is confounded ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md)).
+- `glm53-flash-nvfp4-sparkcache-tp4` on positions 0 to 3, on the derived
+  image: Stage 1 of the test plan passed steps 1-7 and 9 on every rank; step 8
+  and the two-start A/B did not run; with 256 MiB placement arenas every rank
+  refused its connector configuration ([record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
+- `glm53-flash-nvfp4-sparkcache-tp2` on positions 0 and 1, with two 8 GiB
+  capture slots: both Sparks stopped answering during kernel compilation,
+  most likely through memory exhaustion; this release gives it two 512 MiB
+  slots, which have not run, and their recovery is not confirmed
+  ([record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots)).
+- The dashboard's page, terminal view, loopback listener and reload worked
+  (reported by the ring test; no record).
 
-The last two conditions are corrected in this release and tested offline
-only.
+The same runs showed two conditions this release corrects, tested offline
+only: an install on positions 0 to 3 copied the image, 14.2 GiB, to each of
+positions 4 to 7 while they served, and automatic recovery reported a TP4
+group on positions 0 to 3 as `unknown` ("its mesh units are not reported"),
+so it would not have restarted it ([SparkCache record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
 
 ## Qualification
 
 | Gate | Result | Record |
 |---|---|---|
-| `image-lock`: the lock validates for its 14 profiles | passed (CPU) | `runtime/common/test_installer_image.py`, `runtime/common/test_image_lock.py` |
+| `image-lock`: release 2026.10.2's lock, unchanged, validates for its 13 profiles | passed (CPU) | `runtime/common/test_installer_image.py`, `runtime/common/test_image_lock.py` |
 | `image-sources`: the image's sources are byte-identical to release 2026.10.2's | passed | [Identity](#identity) |
-| `cpu-checks`: the CPU jobs of `.github/workflows/ci.yml` that run on Windows 11 with Python 3.12.10: ruff 0.15.17, the generators' `--check`, the layout, link and release-safety checks, the image composition check, the Compose and Install Builder jobs, and pytest over the tests job's paths, `runtime/images` and `spark_transport/sircl` | passed apart from tests that also fail on release 2026.10.2's head `dc0300ac` on the same host. Pytest: 11,161 passed, 77 failed, 37 errors, 682 skipped; 111 of the 114 failing tests also fail on `dc0300ac`, and the other 3 (a timing-bound spread test, a container-cleanup test and a sweep-harness timeout) pass and fail from run to run on both | [Validation](#validation) |
-| `qwen-csf-tp2`: an installation of `qwen38-flash-next-tp2 --checkpoint csf` that passes the installer's checks | reported, not recorded | [Evidence](#evidence) |
+| `cpu-checks`: the CPU jobs of `.github/workflows/ci.yml` that run on Windows 11 with Python 3.12.10: ruff 0.15.17, the generators' `--check`, the layout, link and release-safety checks, the image composition check, the Compose and Install Builder jobs, and pytest over the tests job's paths, `runtime/images` and `spark_transport/sircl` | passed apart from tests that also fail on release 2026.10.2's head `dc0300ac` on the same host. Pytest at commit `187bf795`: 11,161 passed, 77 failed, 37 errors, 682 skipped; 111 of the 114 failing tests also fail on `dc0300ac`, and the other 3 (a timing-bound spread test, a container-cleanup test and a sweep-harness timeout) pass and fail from run to run on both | [Validation](#validation) |
+| `qwen-csf-tp2`: an installation of `qwen38-flash-next-tp2 --checkpoint csf` that loads, serves and answers correctly | passed, one start (research-only) | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md) |
 | `dashboard-hardware`: the dashboard on the ring | reported, not recorded | [Evidence](#evidence) |
 | `arc-image`: an install with `--on` on a ring of eight leaves the Sparks outside the arc without image writes | pending | |
 | `arc-recovery`: automatic recovery restarts a stopped four-rank group on part of a ring of eight | pending | |
-| `glm53-nvfp4-csf-tp8-install`: an installation that passes the installer's checks | pending | |
-| `sparkcache-variants`: the derived layer built and recorded, and an installation of a variant | pending | |
+| `glm53-nvfp4-csf-tp8-install`: an installation that starts and serves, with column-split loading in effect | passed, one start (research-only); the profile is parked | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md) |
+| `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots, not run with 512 MiB slots | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
 | `publication`: tag, package built with the relay marker, GitHub pre-release | pending | |
 
 ## Validation
 
-The CPU checks ran on Windows 11 with Python 3.12.10. The libsircl job
+The CPU checks ran on Windows 11 with Python 3.12.10, in full at commit
+`187bf795`; the commits after it ran the generators' `--check`, the layout,
+link and release-safety checks and the test files they affect. The libsircl job
 (`make check`, which needs `gcc` and `nvcc`) and the pinned LIL bridge's Go
 build did not run, and the SIRCL tests ran without that job's private mount
 namespace. Most pytest failures on this
@@ -106,8 +111,10 @@ serving or performance.
 - Release 2026.10.2's limitations hold
   ([known limitations](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md#known-limitations)).
 - No image this package carries runs the SparkCache variants: only the lock
-  their derived layer records admits them, and no Spark has built that layer.
-  They are listed in the research catalog.
+  their derived layer records admits them, and that lock is not in this
+  repository. They are listed in the research catalog.
+- No image lock this package carries admits `glm53-nvfp4-csf-tp8`; it
+  installs with `--image-lock FILE`, and the owner has parked it.
 - libsircl's README and NOTICE do not state the attribution rule for a file
   that adapts NCCL source. That change (`claude/libsircl-provenance-policy`,
   commit `014dd1f6`) alters `spark_transport/libsircl`'s git tree, which this

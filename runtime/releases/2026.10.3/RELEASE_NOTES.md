@@ -28,11 +28,15 @@ has the evidence and the open gates.
 - `--on` places the serving image only on the Sparks it names. Models serving
   on the other Sparks get no image write.
 - Automatic recovery restarts a four-Spark model on part of a ring of eight.
+- The installer refuses to start a model whose GPU memory share plus
+  SparkCache's pinned host memory leaves a Spark less than 6 GiB for the
+  system, and says by how much.
 - `qwen38-flash-next-tp2 --checkpoint csf` installs Local Inference Lab's
   Qwen3.8-Flash-Next CSF checkpoint (research-only).
 - Research-only profiles: `glm53-nvfp4-csf-tp8`, GLM-5.3-NVFP4-CSF on eight
-  Sparks, and SparkCache variants of the GLM-5.3-Flash profiles, which need an
-  image this release does not publish.
+  Sparks, which installs only with `--image-lock FILE` and is parked, and
+  SparkCache variants of the GLM-5.3-Flash profiles, which need an image this
+  release does not publish.
 
 ## Profiles
 
@@ -44,14 +48,14 @@ has the evidence and the open gates.
 `glm53-flash-tp2` and `glm53-flash-tp4` of `glm53-flash-nvfp4-spark-tp2` and
 `glm53-flash-nvfp4-spark-tp4`.
 
-The image's lock admits one more profile than 2026.10.2's, so the first
-install of any profile with this package creates a new deployment.
-
 ## Tested
 
-- On the ring of eight with this image: `qwen38-flash-next-tp2 --checkpoint
-  csf` loaded and answered correctly, and the dashboard's page, terminal view,
-  loopback address and reload worked.
+- On the ring of eight with this image, one start each:
+  `qwen38-flash-next-tp2 --checkpoint csf` loaded, served and answered
+  correctly; `glm53-nvfp4-csf-tp8` started and served; the SparkCache variant
+  on four Sparks passed every step it ran of its test plan's first stage (one
+  step and the two-start comparison did not run). The
+  dashboard's page, terminal view, loopback address and reload worked.
 - The `--on` image placement and the recovery change are tested offline only.
 - CPU checks pass, apart from tests that also fail on 2026.10.2 on Windows.
 
@@ -59,8 +63,9 @@ install of any profile with this package creates a new deployment.
 
 - 2026.10.2's: installed libsircl deployments report `ok: false` in
   `sparkring check`, and libsircl's broadcast is slow.
-- The SparkCache variants and `glm53-nvfp4-csf-tp8` have no passing
-  installation yet.
+- The SparkCache variant on two Sparks made both Sparks unreachable in its
+  first start, with larger capture slots than this release gives it. Its
+  smaller slots have not run yet.
 
 ## Try it
 
