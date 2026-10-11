@@ -25,6 +25,8 @@ COMMITTED = {
         ["glm53-flash-csf-tp8"],
     ("local-inference-lab/GLM-5.3-NVFP4", "b472e4ee53f6a9862da5486c56c6ca21be3dab70"):
         ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"],
+    ("local-inference-lab/GLM-5.3-NVFP4-CSF", "a4d406932f2db96db8e852867c7939f448e0cd6f"):
+        ["glm53-nvfp4-csf-tp8"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
@@ -51,12 +53,15 @@ LISTED = {
     ("JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid", "87c8f2fb738b597de99bf9a885130f4a18a94f3d"):
         [("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid"), ("qwen38-flash-next-tp2", "jmni-qad5500-hybrid")],
 }
-# Derived checkpoints: their manifests (runtime/common/derived_checkpoint.py, checked by
-# runtime/common/test_derived_checkpoint.py) follow the same path rule but are not Hub pin manifests.
+# Derived checkpoints, a profile's default among them: their manifests (runtime/common/derived_checkpoint.py,
+# checked by runtime/common/test_derived_checkpoint.py and runtime/common/test_csf_serving.py) follow the same
+# path rule but are not Hub pin manifests.
 DERIVED = {
     ("sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention", "648b194a96e5f130ab62702113242d8e1ddd6e76"):
         [("qwen38-flash-next-qad-tp4", "qad-step5500-mxfp8-attention"),
          ("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")],
+    ("sparkring-derived/GLM-5.3-NVFP4-CSF-Serving", "bbd8f71def6bde14a201887796692cb1cc4828a8"):
+        [("glm53-nvfp4-csf-tp8", "csf-serving")],
 }
 
 
@@ -303,7 +308,7 @@ def test_every_installer_profile_revision_has_a_committed_manifest():
     for profile in installer.INSTALLABLE:
         configuration = profiles.read_json(profiles.local_path(installer.setup.selection(profile)["configuration"]))
         for name, entry in configuration.get("checkpoints", {}).items():
-            if name != configuration["checkpoint"]:
+            if name != configuration["checkpoint"] or "derived" in entry:
                 table = derived if "derived" in entry else listed
                 table.setdefault((entry["model"]["repository"], entry["model"]["revision"]), []).append((profile, name))
     assert {key: sorted(value) for key, value in listed.items()} == LISTED

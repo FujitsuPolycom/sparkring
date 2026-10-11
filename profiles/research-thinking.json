@@ -14,6 +14,7 @@
     }
   },
   "checkpoints": {
-    "local-inference-lab/GLM-5.3-NVFP4@b472e4ee53f6a9862da5486c56c6ca21be3dab70": "glm53-template"
+    "local-inference-lab/GLM-5.3-NVFP4@b472e4ee53f6a9862da5486c56c6ca21be3dab70": "glm53-template",
+    "sparkring-derived/GLM-5.3-NVFP4-CSF-Serving@bbd8f71def6bde14a201887796692cb1cc4828a8": "glm53-template"
   }
 }

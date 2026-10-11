@@ -52,14 +52,14 @@ layer's descriptor.
 
 ## Profiles and transports
 
-The lock admits 13 profiles. The status column is the profile catalog's
+The lock admits 14 profiles. The status column is the profile catalog's
 ([profiles](../../../profiles/README.md)).
 
 | Profiles | Status | Notes |
 |---|---|---|
 | `deepseek-v41-flash-tp4`, `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`, `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4`, `qwen38-flash-next-qad-tp4`, `qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp2` | implemented | The 2026.10.1 profiles. The GLM-5.3-Flash profiles install the CSF checkpoint (implemented; not soaked) by default on this image, because the lock's `sircl.vllm_pins` names the build that reads it; `--checkpoint nvfp4-spark` installs NVFP4-Spark ([default checkpoint by profile](../../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)) |
 | `swift15-qwen38-flash-next-tp4` | research-only | A 2026.10.1 profile |
-| `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1` | research-only | Eight-Spark profiles; they run only on SIRCL ring sessions. `glm53-nvfp4-tp8` and `glm53-nvfp4-tp8-dcp1` load the GLM-5.3 plugins |
+| `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-nvfp4-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1` | research-only | Eight-Spark profiles; they run only on SIRCL ring sessions. `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1` and `glm53-nvfp4-csf-tp8` load the GLM-5.3 plugins; `glm53-nvfp4-csf-tp8` serves GLM-5.3-NVFP4-CSF, which this image's vLLM reads, and no installation of it has run |
 
 `qwen38-flash-next-qad-tp8` is not admitted: its token-row ownership at eight
 ranks is refused by installer admission and by the image's Qwen prefill

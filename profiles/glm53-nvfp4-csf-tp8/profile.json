@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-nvfp4-csf-tp8",
+  "title": "GLM-5.3 NVFP4-CSF on eight Sparks",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-nvfp4-csf-tp8/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-nvfp4-csf-tp8/README.md",
+  "evidence_scope": "The settings of glm53-nvfp4-tp8 (GLM-5.3, 744B GlmMoeDsaForCausalLM, at tensor-parallel size 8 with decode-context parallelism 4, a 1,048,576-token context, 16 sequences, 43 GiB of fp8_ds_mla KV cache per Spark, two-token MTP speculative decoding, MXFP8 dense linears on the B12X linear backend, W4A16 experts, the vLLM plugins glm_dsa_indexer_split, glm53full_speedups and glm_dcp_decode_comm, on SIRCL ring sessions with NCCL off, on all eight Sparks of an eight-Spark ring), serving local-inference-lab/GLM-5.3-NVFP4-CSF, the same weights with the routed experts' block scales losslessly compressed, with --quantization nvfp4_csf --load-format nvfp4_csf, without --hf-overrides, from a serving directory the installer builds beside the checkpoint on every Spark. It installs only on an image lock (v3) whose image carries the SIRCL layer, lists the three plugins in vllm_plugins, lists this profile and lists SIRCL's pinned vLLM build sparkring-kraken-beta-20261007-bc9ea774, such as the default image's, release 2026.10.2's. No installation of this profile has run on hardware. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-nvfp4-csf-tp8/config.json"
+    ]
+  }
+}

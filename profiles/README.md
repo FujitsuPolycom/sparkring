@@ -182,12 +182,21 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
-<summary>GLM-5.3 · 8 Sparks · vLLM</summary>
+<summary>GLM-5.3 (NVFP4 experts/BF16) · 8 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8 (default)](../profiles/glm53-nvfp4-tp8/README.md) |
 | DCP1 | ring of 8 | Off | Experimental | [glm53-nvfp4-tp8-dcp1](../profiles/glm53-nvfp4-tp8-dcp1/README.md) |
+
+</details>
+
+<details>
+<summary>GLM-5.3 (NVFP4 CSF experts/BF16) · 8 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP4 | ring of 8 | Off | Experimental | [glm53-nvfp4-csf-tp8](../profiles/glm53-nvfp4-csf-tp8/README.md) |
 
 </details>
 
