@@ -52,8 +52,18 @@ Bases
   loaded modules.
 - The draft runs: ``vllm:spec_decode_num_accepted_tokens_total`` above 0 after
   the smoke request.
-- The plugin: its ``patched for <flag>`` log lines for both flags, and no
-  ``PatchRefused``; a load that failed would have stopped the start.
+- The plugin: its own log lines only. Each flag set to 1 needs a ``patched
+  for <flag>`` line (the image constructor was replaced) and the line that
+  rank 0's helper logs when it builds the split layer (``fused_qkv_a_proj is
+  column-parallel over TP8``, ``eh_proj is RowParallelLinear(12288 -> 6144)
+  over TP8``). A ``PatchRefused: glm53full_speedups:`` line, the plugin's own
+  ``are 0; nothing patched`` line or a ``keeps the ... replicated`` line (the
+  helper's fallback at another tensor-parallel size) means the split did not
+  take effect. Lines of other plugins do not count: ``glm_dcp_decode_comm``
+  logs ``nothing patched`` whenever its items are off, as both GLM-5.3 TP8
+  profiles keep them. A split layer that loaded a wrong-sized slice would
+  have stopped the start: its loaders narrow each checkpoint tensor to the
+  rank's block and check the shapes.
 - The CSF experts: the ``NVFP4-CSF layer`` log lines of vLLM's
   ``nvfp4_csf`` method, which name ``W4A16 decode, A4 prefill`` per layer
   (75 layers per rank for GLM-5.3).
@@ -82,6 +92,12 @@ W4A16_PATHS = ("b12x/moe/_shared/kernels/w4a16/", "b12x/moe/fused_moe/")
 WEIGHTS = re.compile(r"Model loading took ([0-9]+(?:\.[0-9]+)?) GiB")
 CSF_LAYER = re.compile(r"NVFP4-CSF layer (\d+) rank (\d+)/(\d+): native NVFP4 (.+?), shared scale scratch")
 PATCHED = re.compile(r"glm53full_speedups: (\S+) patched for (\S+)")
+# The layer each flag's helper builds on rank 0, logged once per process.
+SPLIT_BUILT = {"GLM53FULL_LATENT_SHARD": re.compile(r"glm53full_speedups: \S+\.fused_qkv_a_proj is column-parallel over "
+                                                    r"TP8"),
+               "GLM53FULL_EH_PROJ_TP": re.compile(r"glm53full_speedups: \S+\.eh_proj is RowParallelLinear\(.*\) over TP8")}
+SPLIT_KEPT = re.compile(r"glm53full_speedups: .* keeps the (?:image's )?replicated (fused_qkv_a_proj|eh_proj)")
+SPLIT_REFUSED = re.compile(r"PatchRefused: glm53full_speedups:|glm53full_speedups: .* are 0; nothing patched")
 ACCEPTED = re.compile(r"^vllm:spec_decode_num_accepted_tokens_total(?:\{[^}]*\})? ([0-9.e+]+)$", re.M)
 DRAFTED = re.compile(r"^vllm:spec_decode_num_draft_tokens_total(?:\{[^}]*\})? ([0-9.e+]+)$", re.M)
 
@@ -186,13 +202,24 @@ def judge(log, status, metrics, facts, environment, checks=CHECKS):
         weights_text], f"draft experts quantized when weights per rank are under {DRAFT_BOUND_GIB} GiB and the draft's "
                        f"tokens are accepted; BF16 draft experts between {DRAFT_BOUND_GIB} and {REFERENCE_GIB} GiB")
     patched = {flag for _, flag in PATCHED.findall(log)}
-    refused = "PatchRefused" in log or "nothing patched" in log
+    built = {flag for flag, pattern in SPLIT_BUILT.items() if pattern.search(log)}
+    kept = sorted(set(SPLIT_KEPT.findall(log)))
+    refused = SPLIT_REFUSED.search(log) is not None
     wanted = {flag for flag in PLUGIN_FLAGS if (environment or {}).get(flag) == "1"}
-    verdict = NOT if refused or (wanted and not patched) else TOOK if wanted and wanted <= patched else UNKNOWN
-    result["column-split-loading"] = _check(verdict, [f"patched for: {', '.join(sorted(patched)) or 'none'}"]
-                                            + (["the log names PatchRefused or nothing patched"] if refused else []),
-                                            "glm53full_speedups patched the functions of every flag set to 1 and the "
-                                            "weights loaded, since the API answered the smoke request")
+    if refused or kept or (wanted and not patched):
+        verdict = NOT
+    elif wanted and wanted <= patched and wanted <= built:
+        verdict = TOOK
+    else:
+        verdict = UNKNOWN
+    result["column-split-loading"] = _check(
+        verdict, [f"patched for: {', '.join(sorted(patched)) or 'none'}",
+                  f"split layers built for: {', '.join(sorted(built)) or 'none'}"]
+        + (["glm53full_speedups refused to patch or patched nothing"] if refused else [])
+        + ([f"glm53full_speedups kept the replicated {', '.join(kept)}"] if kept else []),
+        "glm53full_speedups' own log lines: every flag set to 1 patched its constructor and rank 0 built the split "
+        "layer, with no refusal and no replicated fallback; the weights loaded, since the API answered the smoke "
+        "request")
     layers = CSF_LAYER.findall(log)
     modes = sorted({mode.strip() for _, _, _, mode in layers})
     a4 = sum(1 for _, _, _, mode in layers if mode.strip() == "W4A16 decode, A4 prefill")

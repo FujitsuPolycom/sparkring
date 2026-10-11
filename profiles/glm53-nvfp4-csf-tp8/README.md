@@ -105,7 +105,7 @@ start record whether each took effect
 |---|---|---|
 | `mxfp8-linears` | Online MXFP8 dense linears and the MXFP8 LM head | the status endpoint's `target_head_mxfp8`; weights per rank under 53.07 GiB |
 | `draft-quantization` | The MTP draft's load-time MXFP8 and `nvfp4_a16` quantization | weights per rank under 51.9 GiB and accepted draft tokens |
-| `column-split-loading` | `glm53full_speedups`' column-split latent projection and `eh_proj` | the plugin's `patched for` log lines for both flags |
+| `column-split-loading` | `glm53full_speedups`' column-split latent projection and `eh_proj` | the plugin's own log lines: `patched for` both flags and rank 0's split `fused_qkv_a_proj` and `eh_proj`, without a refusal or a replicated fallback |
 | `csf-w4a16-a4-prefill` | W4A16 decode with A4 prefill on the CSF experts | 75 `NVFP4-CSF layer … W4A16 decode, A4 prefill` log lines on rank 0 |
 | `csf-scale-prefetch` | `VLLM_B12X_CSF_SCALE_PREFETCH`, not set, so the image's default | the variable evaluated in the container |
 | `w4a16-host-barrier-reset` | `B12X_W4A16_SMALL_M_HOST_BARRIER_RESET=0` | the image's B12X W4A16 code reads the variable |
