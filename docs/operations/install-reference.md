@@ -486,8 +486,11 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   the CSF checkpoint, and the installer refuses it on any other image.
 - `glm53-flash-tp2` and `glm53-flash-tp4` are other names of
   `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`, whose IDs
-  name the checkpoint they install where CSF cannot be read. `install
-  --profile`, `up`, `status`, `down` and `images --profile` accept them; the
+  name the checkpoint they install where CSF cannot be read.
+  `qwen38-flash-next-tp4` and `qwen38-flash-next-tp8` are other names of
+  `qwen38-flash-next-qad-tp4` and `qwen38-flash-next-qad-tp8`, following the
+  two-Spark profile's ID `qwen38-flash-next-tp2`. `install --profile`, `up`,
+  `status`, `down` and `images --profile` accept these names; the
   deployment, its records and its status keep the profile ID.
 - `glm53-flash-nvfp4-sparkcache-tp2` and `glm53-flash-nvfp4-sparkcache-tp4`
   are research-only SparkCache variants of the GLM-5.3-Flash profiles of two

@@ -40,13 +40,30 @@ def test_each_alias_names_an_installer_profile_and_no_catalog_id():
         assert alias not in catalog and alias not in profiles.REPLACED
 
 
+def test_no_alias_is_a_profile_id_of_any_profile_directory_or_release_lock():
+    # A deployment directory, record or lock that names an alias would name another profile than the alias
+    # selects, so no alias may be a profile directory's name or a profile a recorded release lock lists.
+    from runtime.common import image_lock, profiles
+    directories = {path.name for path in (profiles.ROOT / "profiles").iterdir() if path.is_dir()}
+    listed = set()
+    for path in sorted((profiles.ROOT / "runtime" / "releases").glob("*/installer-image.json")):
+        listed |= set(image_lock.profiles_of(json.loads(path.read_text(encoding="utf-8"))))
+    assert listed and directories
+    assert not set(models.ALIASES) & (directories | listed)
+    assert len(set(models.ALIASES.values())) == len(models.ALIASES)
+
+
 def test_an_alias_selects_its_profile_id():
     assert models.select("glm53-flash-tp4", 4) == "glm53-flash-nvfp4-spark-tp4"
     assert models.select("glm53-flash-tp2", 2) == "glm53-flash-nvfp4-spark-tp2"
+    assert models.select("qwen38-flash-next-tp4", 4) == "qwen38-flash-next-qad-tp4"
+    assert models.select("qwen38-flash-next-tp8", 8) == "qwen38-flash-next-qad-tp8"
     assert models.canonical("qwen38-flash-next-tp2") == "qwen38-flash-next-tp2"
     import pytest
     with pytest.raises(ValueError, match="requires 2 Sparks"):
         models.select("glm53-flash-tp2", 4)
+    with pytest.raises(ValueError, match="qwen38-flash-next-qad-tp4 requires 4 Sparks"):
+        models.select("qwen38-flash-next-tp4", 2)
 
 
 def test_models_shows_the_checkpoint_each_installation_selects_and_the_aliases(capsys):
@@ -71,5 +88,8 @@ def test_models_json_names_the_checkpoints_and_aliases(capsys):
     assert rows["glm53-flash-nvfp4-spark-tp4"]["checkpoints"] == {
         "default": "nvfp4-spark", "preferred": "csf", "others": ["nvfp4-qad", "nvidia-nvfp4"]}
     assert rows["glm53-flash-nvfp4-spark-tp4"]["aliases"] == ["glm53-flash-tp4"]
+    assert rows["qwen38-flash-next-qad-tp4"]["aliases"] == ["qwen38-flash-next-tp4"]
+    assert rows["qwen38-flash-next-qad-tp8"]["aliases"] == ["qwen38-flash-next-tp8"]
+    assert rows["qwen38-flash-next-tp2"]["aliases"] == []
     assert rows["mimo-v26-flash-mopd-tp2"]["checkpoints"] is None and rows["mimo-v26-flash-mopd-tp2"]["aliases"] == []
     assert rows["glm53-flash-spark-tp4-dcp1"]["checkpoints"] is None
