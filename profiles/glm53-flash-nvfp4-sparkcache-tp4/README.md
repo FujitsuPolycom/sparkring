@@ -5,9 +5,11 @@ Status: **research-only**. This variant of the installer profile
 SparkRing's persistent context cache, SparkCache, to the CSF checkpoint of
 GLM-5.3-Flash on a four-Spark ring. The checkpoint publisher is Local Inference Lab
 ([`local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
-at `dec48abd33ef`). Nothing has run on hardware; the SparkCache model profile
-`glm53-flash-hybrid` was qualified on shared release 2026.09.3 on other
-checkpoints and another vLLM line.
+at `dec48abd33ef`). Stage 1 of its [hardware test plan](../../performance/sparkcache-flash-csf-hardware-test-plan.md) ran on four
+Sparks of a ring of eight ([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)): steps 1-7 and 9 passed on every
+rank, and step 8 and the two-start A/B did not run. The SparkCache model
+profile `glm53-flash-hybrid` was qualified on shared release 2026.09.3 on
+other checkpoints and another vLLM line.
 
 ## What the variant changes
 

@@ -2644,7 +2644,9 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   Humming. Draft experts change how fast drafting runs, not the output
   distribution, so the card's MMLU-Pro result also describes the derived
   checkpoint's target weights. No installation has run on Sparks.
-- The Qwen `csf` entry is **research-only**: no installation of it has run,
+- The Qwen `csf` entry is **research-only**: one installation has run, on a
+  pair of the ring of eight
+  ([record](../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md)),
   and the plan of every installation of it says so
   (`image_lock.CHECKPOINT_STATUS`). Its `config.json` gives the 435 text
   and MTP layers the recipes of `jmni-qad5500-hybrid`: step 5500's QAD

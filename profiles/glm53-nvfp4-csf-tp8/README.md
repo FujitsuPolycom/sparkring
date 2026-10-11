@@ -16,8 +16,9 @@ a 744B mixture-of-experts model. The weights are the same; only the routed
 experts' block scales are stored compressed (CSF). This profile runs it on all
 eight Sparks of an eight-Spark ring with every setting of glm53-nvfp4-tp8
 except those the format needs. Node A serves the API on port 8015 as
-`GLM-5.3-NVFP4-CSF-TP8`, with no API key. Status: Experimental; no
-installation of it has run on hardware.
+`GLM-5.3-NVFP4-CSF-TP8`, with no API key. Status: Experimental; one
+installation has run ([record](../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md)), and the owner has parked the
+profile.
 
 ## Install
 
@@ -120,11 +121,17 @@ start of both profiles on one image settles a value near a bound.
 
 ## Evidence and open items
 
-No installation of this profile has run on hardware; it is not
-serving-qualified. The checkpoint's pins, the serving directory's manifest,
-the rendered rank commands and the installer's operations are checked by CPU
-tests only. Expected effects, from the checkpoint's file sizes and the
-expert kernels' storage format (research arithmetic, no measurement): about
-1.9-2.1 GiB less GPU memory per rank for the experts' scales, which reaches
-the KV cache only if `--kv-cache-memory-bytes` is raised, and decode within
-about -0.5 % to +3 % of glm53-nvfp4-tp8.
+One installation ran on an eight-Spark ring with image `d52737a109e0`
+([record](../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md)); the profile is not serving-qualified, and the owner has
+parked it.
+
+- Column-split loading took effect through the nvfp4_csf loader: rank 0
+  logged both split layers and held 49.63 GiB of weights, 2.06 GiB less than
+  glm53-nvfp4-tp8 with the same splits.
+- One measured start decoded at a median 3.8 % fewer engine steps per second
+  and 0.17 shorter accept length than glm53-nvfp4-tp8's start on the same
+  image. That start ran with `--reasoning-effort high` and the reference with
+  the default `max`, so the comparison is confounded; a comparison needs both
+  profiles at the same effort and two starts each.
+- The checkpoint's pins, the serving directory's manifest, the rendered rank
+  commands and the installer's operations are checked by CPU tests.

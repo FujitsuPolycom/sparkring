@@ -1,9 +1,13 @@
 # dev-20261010-sparkcache-gab86b70-plugins-status036
 
 Status: **research-only**. This release directory holds the build recipe of a
-derived installer image that no Spark has built yet; `installer-image.json`
-appears here when `runtime/images/derived_layer.py record` or `build` writes it
-(see [the layer's README](../../images/compositions/installer-sparkcache-gab86b70/README.md)).
+derived installer image. A Spark built it as image
+`sha256:e1607979b7f0f00217c8deae170185a57f693721f1bc88368dcc536181a495f7`, and
+`glm53-flash-nvfp4-sparkcache-tp4` ran on it
+([record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
+The lock that `runtime/images/derived_layer.py record` wrote there is not in
+this repository; `installer-image.json` appears here when a recorded lock is
+committed (see [the layer's README](../../images/compositions/installer-sparkcache-gab86b70/README.md)).
 
 The image is installer image `sha256:d52737a109e0…` (release
 `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`) plus one

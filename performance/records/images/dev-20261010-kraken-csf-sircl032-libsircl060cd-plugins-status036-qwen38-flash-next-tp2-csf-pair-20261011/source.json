@@ -1,0 +1,13 @@
+{
+ "profile": "qwen38-flash-next-tp2",
+ "checkpoint": "csf",
+ "served_model_name": "Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2",
+ "port": 8000,
+ "context_limit": 262144,
+ "metrics": "phase1-16k",
+ "deviations": [
+  "checkpoint csf (the profile's default: qad-step5500-ple1000)"
+ ],
+ "measured_at": "2026-10-11T05:04:43Z",
+ "source": "an installed deployment's API; the runner started nothing"
+}
