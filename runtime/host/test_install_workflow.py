@@ -216,11 +216,14 @@ def machine(tmp_path, monkeypatch, sparks):
         # approved plan, it returns that action's result.
         on_model = None
         prepared = {}
+        # The ranks each image step was asked to place the image on (None: every Spark).
+        image_ranks = []
         def __init__(self, *a, **kw):
             pass
         def sync_packages(self):
             events.append("update-workers")
-        def images(self, card):
+        def images(self, card, ranks=None):
+            Assets.image_ranks.append(ranks)
             events.append("fill-missing-image")
         def runner(self, directory, previous=None, images=None, plan=None, receipts=None):
             Assets.prepared.update(plan=plan, receipts=receipts)
@@ -453,7 +456,7 @@ def test_checkpoint_phase_waits_for_pending_image_distribution(machine, monkeypa
             checkpoint_phase.set()
         return call(self, target, argv, timeout)
     monkeypatch.setattr(installer_runner.Runner, "__call__", observed)
-    def images(self, card):
+    def images(self, card, ranks=None):
         assert checkpoint_phase.wait(10), "the checkpoint phase did not start while image distribution was pending"
         # The distribution is still pending here, so checkpoint work must not start.
         assert not checkpoint_work.wait(1), "checkpoint work started before image distribution finished"
@@ -473,7 +476,7 @@ def test_checkpoint_phase_waits_for_pending_image_distribution(machine, monkeypa
 def test_failed_or_interrupted_preparation_is_repeated_by_the_same_command(machine, monkeypatch, capsys, failure):
     events, previous, _, _ = machine
     calls = {"images": 0, "models": 0}
-    def images(self, card):
+    def images(self, card, ranks=None):
         calls["images"] += 1
         if failure == "storage" and calls["images"] == 1:
             raise NeedsInput("Node 1: insufficient image-import space.", field="storage", details={"rank": 1})
@@ -1386,7 +1389,7 @@ def test_unplanned_download_returns_needs_input_and_keeps_the_model_running(mach
         # The asset runner the installer uses keeps the request with its type.
         def models(self, lock, runner, previous=None, plan=None, receipts=None):
             raise guard(plan)
-        prepared_runner(monkeypatch, images=lambda self, card: None, models=models)
+        prepared_runner(monkeypatch, images=lambda self, card, ranks=None: None, models=models)
     assert command() == 3
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "checkpoint" and result["details"]["items"][0]["names"] == [SHARD]
@@ -1416,7 +1419,7 @@ def test_needs_input_is_not_masked_by_an_image_failure(machine, monkeypatch, cap
     events, previous, assets, _ = machine
     released = threading.Event()
 
-    def images(self, card):
+    def images(self, card, ranks=None):
         released.wait(10)
         raise RuntimeError("Node 1: relay pull failed: registry unavailable")
     monkeypatch.setattr(assets, "images", images)
@@ -2119,7 +2122,7 @@ def simulated(machine, monkeypatch, tmp_path):
         def sync_packages(self):
             return {"updated": []}
 
-        def images(self, card):
+        def images(self, card, ranks=None):
             for rank in range(2):
                 simulation.load_image(rank, card["image_id"])
             return {"image_id": card["image_id"]}

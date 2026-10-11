@@ -958,8 +958,11 @@ an attestation; boot identity and observation times are observed separately.
 
 ## Image distribution and caches
 
-Node A downloads the serving image once and passes it to every Spark lacking
-it. Docker's containerd image store is not supported.
+Node A downloads the serving image once and passes it to every Spark of the
+deployment lacking it: every Spark for a model on the whole fabric, only the
+group's Sparks for a model on part of it
+([Models on part of the fabric](#models-on-part-of-the-fabric)). Docker's
+containerd image store is not supported.
 
 ### Check for the containerd image store
 
@@ -1041,7 +1044,11 @@ others as pipelines along the cables (`runtime/host/spread.py`):
   `/var/lib/sparkring/spread/images/<image digest>/`, hashes every one again
   once all are present and only then imports them with `docker load`. The
   directory is removed after the import. A worker that holds leading layers
-  loads the rest through the registry relay.
+  loads the rest through the registry relay. For a model on part of the
+  fabric only the group's Sparks receive the image. A Spark outside the group
+  writes nothing, and it forwards the image only when no way to a group Spark
+  avoids it: `--on 4-7` on a ring of eight runs `0 → 7 → 6 → 5 → 4`, and
+  Sparks 1-3 take no part.
 - **Checkpoint.** The checkpoint plan's donor is the source; every file is
   placed in SparkRing's checkpoint directory only after its SHA-256 matches the
   pin.
@@ -1054,7 +1061,9 @@ others as pipelines along the cables (`runtime/host/spread.py`):
   not sent again, so repeating the command sends only what is missing.
 
 The install plan prints the spread before the checkpoint plan: the order, each
-pipeline and the bytes each Spark writes. It is saved in
+pipeline and the bytes each Spark writes. For a model on part of the fabric it
+ends with the Sparks outside the group, which write nothing (`Positions 4-7
+are outside this deployment and write nothing.`). It is saved in
 `checkpoint-plan.json` as `spread` (`sparkring-spread-plan/v1`) and is bounded
 with it by a reviewed plan ([Plan approval](#plan-approval)).
 
@@ -1984,7 +1993,9 @@ sudo sparkring install --profile EIGHT_SPARK_PROFILE           # every Spark, wh
   fabric is refused with the installer profiles that fit.
 - **Its own Sparks.** A group's checkpoint plan and model steps call its
   Sparks Node 0 onwards and name their host names; its checkpoint moves
-  between its own Sparks over their shared cables. A group of more than two
+  between its own Sparks over their shared cables, and the serving image goes
+  only to its own Sparks, so a model serving beside the group gets no image
+  write ([Image](#spreading-along-the-cables)). A group of more than two
   Sparks bootstraps over their management addresses, because the relays carry
   only tagged RDMA traffic, and checks the fabric's [relay
   table](#the-relay-table) on every Spark before it starts.
@@ -2031,8 +2042,9 @@ sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
   the [API options](#api-endpoint) and the question name Spark 2's
   addresses.
 - **Its own steps.** A half's checkpoint plan and model steps call its two
-  Sparks Node 0 and Node 1 and name their host names. Package updates and the
-  serving image go to every Spark; they restart no model.
+  Sparks Node 0 and Node 1 and name their host names. Package updates go to
+  every Spark and the serving image only to the half's two Sparks; neither
+  restarts a model.
 
 ### The ring's mesh while halves serve
 

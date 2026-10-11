@@ -407,12 +407,95 @@ def test_install_assets_place_a_half_of_a_ring_by_its_positions():
                        "storage": {"image": {"basis": "whole"}}}],
             "distribution": {"donor": 0}}
     image, checkpoints = spread.assets(document, plan, positions=[2, 3], card={"download_bytes": 9})
-    # Sparks 1 and 3 were not surveyed by this deployment and are planned as lacking the image.
-    assert image == {"asset": "image", "source": 0, "writes": {1: 9, 3: 9}, "admin": []}
+    # The image goes to the half's Sparks only: Spark 3 lacks it, and Spark 1, outside the half, gets nothing.
+    assert image == {"asset": "image", "source": 0, "writes": {3: 9}, "admin": [], "outside": [1]}
     assert checkpoints == {"asset": "checkpoint", "source": 2, "writes": {3: 7}, "members": [2, 3], "holders": [2],
                            "relays": [2, 3]}
     assert spread.deployment_layout(fabric_layout.layout("cycle", 4), [2, 3]) == fabric_layout.layout("pair", 2)
     assert spread.deployment_layout(fabric_layout.layout("cycle", 8), range(4)) == fabric_layout.layout("path", 4)
+
+
+def arc_plan(nodes, present=()):
+    """A checkpoint plan of a deployment of ``nodes`` Sparks whose first Spark downloads and whose ranks in
+    ``present`` hold the image, as ``checkpoint_plan.plan`` writes its nodes."""
+    rows = []
+    for rank in range(nodes):
+        action = "hub" if rank == 0 else "receive"
+        rows.append({"rank": rank, "mode": "owned", "files": {"a": {"action": action, "size": 3 * spread.GIB}},
+                     "storage": {"image": {"basis": "present" if rank in present else "whole"}}})
+    return {"nodes": rows, "distribution": {"donor": 0}}
+
+
+def image_pipelines(value):
+    """``[(source, [hops], [forwarded only])]`` of the image's pipelines."""
+    return [(p["source_position"], [h["to"] for h in p["hops"]], p["forwarded_only_positions"])
+            for p in value["pipelines"] if p["asset"] == "image"]
+
+
+@pytest.mark.parametrize("arc, pipelines, outside", [
+    # Sparks 0-3 of a ring of eight: Node A sends 0 → 1 → 2 → 3; Sparks 4-7 serve on and write nothing.
+    ([0, 1, 2, 3], [(0, [1, 2, 3], [])], [4, 5, 6, 7]),
+    # An arc across the cable to Node A: 6, 7, 0, 1.
+    ([6, 7, 0, 1], [(0, [1], []), (0, [7, 6], [])], [2, 3, 4, 5]),
+    # An arc without Node A is reached the way round that passes no Spark outside it, 0 → 7 → 6 → 5 → 4,
+    # although position 4 is as near through 1, 2 and 3.
+    ([4, 5, 6, 7], [(0, [7, 6, 5, 4], [])], [1, 2, 3]),
+    # When both ways pass Sparks outside the arc, they forward without writing.
+    ([3, 4, 5], [(0, [1, 2, 3, 4], [1, 2]), (0, [7, 6, 5], [7, 6])], [1, 2, 6, 7]),
+])
+def test_an_install_on_an_arc_places_the_image_on_the_arcs_sparks_only(arc, pipelines, outside):
+    document = loopback("cycle", 8)
+    card = {"download_bytes": 14 * spread.GIB}
+    present = {rank for rank, position in enumerate(arc) if position == 0}
+    value = spread.plan(document, spread.assets(document, arc_plan(len(arc), present), positions=arc, card=card))
+    assert image_pipelines(value) == pipelines
+    image = {int(position) for pipeline in value["pipelines"] if pipeline["asset"] == "image"
+             for position in pipeline["bytes_written_per_position"]}
+    assert image == set(arc) - {0}
+    assert not {position for position, size in spread.writes(value).items() if size} & set(outside)
+    assert value["outside_positions"] == outside and value["sha256"] == spread._digest(value)
+    # The checkpoint stays on the arc's own cables.
+    for pipeline in value["pipelines"]:
+        if pipeline["asset"] == "checkpoint":
+            assert {pipeline["source_position"], *(hop["to"] for hop in pipeline["hops"])} <= set(arc)
+    lines = spread.describe(value, document)
+    assert lines[-1] == f"  {spread.positions_text(outside).capitalize()} are outside this deployment and write nothing."
+
+
+def test_an_arc_plan_text_names_what_the_arcs_sparks_write():
+    document = loopback("cycle", 8)
+    arc = [0, 1, 2, 3]
+    value = spread.plan(document, spread.assets(document, arc_plan(4, {0}), positions=arc,
+                                                card={"download_bytes": 14 * spread.GIB}))
+    lines = spread.describe(value, document)
+    assert "  The image from position 0, each Spark forwarding while it writes: 0 → 1 → 2 → 3; positions 1-3 each "            "write 14.0 GiB." in lines
+    assert lines[-1] == "  Positions 4-7 are outside this deployment and write nothing."
+
+
+def test_a_whole_fabric_install_keeps_its_image_plan_and_records_no_outside_positions():
+    document = loopback("cycle", 8)
+    card = {"download_bytes": 14 * spread.GIB}
+    image, _ = spread.assets(document, install_plan(), positions=list(range(8)), card=card)
+    assert image["outside"] == [] and set(image["writes"]) == {3, 4, 5, 6, 7}
+    value = spread.plan(document, [image])
+    assert "outside_positions" not in value
+    assert image_pipelines(value) == [(0, [1, 2, 3, 4], [1, 2]), (0, [7, 6, 5], [])]
+    assert not any("outside this deployment" in line for line in spread.describe(value, document))
+
+
+def test_chains_prefer_the_way_round_that_passes_no_spark_outside_the_deployment():
+    cycle = fabric_layout.layout("cycle", 8)
+    arc = {4: True, 5: True, 6: True, 7: True}
+    # Without Sparks outside, a tie goes next.
+    found, _ = spread.chains(cycle, 0, {4: True})
+    assert [(c["direction"], c["hops"]) for c in found] == [("next", [1, 2, 3, 4])]
+    found, unreached = spread.chains(cycle, 0, arc, outside={1, 2, 3})
+    assert [(c["direction"], c["hops"]) for c in found] == [("previous", [7, 6, 5, 4])] and unreached == []
+    # A down cable inside the arc leaves only the way through the Sparks outside it.
+    down = {fabric_layout.cable_of(cycle, 5, 1)}
+    found, unreached = spread.chains(cycle, 0, arc, outside={1, 2, 3}, down=down)
+    assert [(c["direction"], c["hops"]) for c in found] == [("next", [1, 2, 3, 4]), ("previous", [7, 6, 5])]
+    assert unreached == []
 
 
 def test_messages_name_the_spark_the_positions_and_what_they_hold():
@@ -958,6 +1041,77 @@ def test_the_layer_archive_rides_the_pipeline_to_a_spark_without_layers_and_skip
         assert [member.name for member in archive.getmembers()][2:] == [
             layers[2][0].removeprefix("sha256:") + "/layer.tar"]
     assert present == {0, 1, 2, 3}
+
+
+@pytest.mark.parametrize("arc, sources", [([4, 5, 6, 7], {0, 7, 6, 5}), ([6, 7, 0, 1], {0, 7})])
+def test_an_install_on_an_arc_spreads_the_image_blobs_to_the_arcs_sparks_only(tmp_path, monkeypatch, arc, sources):
+    """Cycle-8: the arc's workers import the image; the Sparks outside the arc receive nothing.
+
+    Only Node A holds the image when it is part of the arc; otherwise no Spark does, and Node A, outside the
+    arc, runs the relay without importing it."""
+    relay_root = tmp_path / "relay-source"
+    image_id, config, layers = image_fixture(relay_root)
+    sparks = {rank: tmp_path / f"spark{rank}" for rank in range(8)}
+    for directory in sparks.values():
+        directory.mkdir()
+
+    class Relay:
+        port, repository = 5255, "owner/image"
+
+        def __init__(self, reference, directory):
+            self.directory = Path(directory)
+            self.directory.mkdir(parents=True, exist_ok=True)
+
+        def reference(self, port=None):
+            return f"127.0.0.1:{port or self.port}/owner/image@sha256:" + "b" * 64
+
+        def image(self, image_id):
+            self.blob(image_id)
+            return config, layers
+
+        def blob(self, digest):
+            target = self.directory / digest.removeprefix("sha256:")
+            target.write_bytes((relay_root / digest.removeprefix("sha256:")).read_bytes())
+            return target
+
+        def close(self):
+            pass
+    monkeypatch.setattr(install_assets.registry_relay, "Relay", Relay)
+    card = {"image_id": image_id, "image_reference": "ghcr.io/owner/image@sha256:" + "b" * 64,
+            "image_bytes": 1 << 30, "download_bytes": 1 << 20, "release": "dev-test"}
+    images = spread.IMAGE_ROOT
+    transport = Hosts(tmp_path, loopback("cycle", 8), lambda rank: [(images, sparks[rank].as_posix())])
+    present, probed = ({0} if 0 in arc else set()), set()
+    docker = {rank: fake_docker(tmp_path, str(rank)) for rank in range(8)}
+    current = install_assets.Assets(transport, tmp_path / "assets", popen=subprocess.Popen, pipeline=FAST)
+
+    def remote(rank, function, *args, **kwargs):
+        probed.add(rank)
+        if function is install_assets.image_probe:
+            return {"present": rank in present, "image_id": image_id, "size_bytes": 1 << 30, "free_bytes": 1 << 40}
+        if function is install_assets.layer_prefix:
+            return 0
+        mine = args[0].replace(images, sparks[rank].as_posix())
+        if function is spread.load_staged_image:
+            result = spread.load_staged_image(mine, *args[1:], docker=docker[rank][0])
+            present.update({rank} if result["loaded"] else set())
+            return result
+        if function is spread.discard_staged:
+            return spread.discard_staged(mine, base=sparks[rank].as_posix())
+        raise AssertionError(function)
+    current.remote = remote
+    result = current.images(card, ranks=arc)
+    workers = sorted(set(arc) - {0})
+    assert result["spread_ranks"] == workers and result["relayed_ranks"] == []
+    assert present == set(arc)
+    # Every hop starts at Node A or an arc Spark and ends at an arc Spark; nothing went through the others.
+    received = result["spread"]["received"]
+    assert {row["target"] for row in received} == set(workers)
+    assert {row["source"] for row in received} == sources
+    outside = set(range(8)) - set(arc)
+    assert not probed & (outside - {0})
+    for rank in outside:
+        assert not (docker[rank][1] / "loaded.tar").exists() and not any(sparks[rank].iterdir())
 
 
 # The checkpoint through the asset path -------------------------------------------------------

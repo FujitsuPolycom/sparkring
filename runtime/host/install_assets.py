@@ -274,8 +274,8 @@ class Assets:
             packages.discard(archive)
         return {"updated": outdated, "revision": current}
 
-    def relay(self, card, missing, observations):
-        """Pull on every node that lacks the image, through one upstream download on Node A.
+    def relay(self, card, missing, observations, wanted=None):
+        """Pull on every node of ``missing`` (they lack the image), through one upstream download on Node A.
 
         The relay first reads the pinned layer list, and each node that lacks
         the image counts the leading layers it holds (``layer_prefix``). Before
@@ -289,7 +289,8 @@ class Assets:
         receives them over the fabric instead (``spread_image``): it needs room
         for the blobs and for loading them, and Node A's relay holds every
         layer. A worker that a down cable keeps from the fabric pulls through
-        the relay.
+        the relay. ``wanted`` lists the ranks that must hold the image (default
+        every rank); the fabric spread passes the others by where it can.
         """
         relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
         try:
@@ -364,7 +365,8 @@ class Assets:
         try:
             with concurrent.futures.ThreadPoolExecutor(max_workers=len(missing)) as pool:
                 pulled = [pool.submit(pull_on, rank) for rank in pulls]
-                spread_out = pool.submit(self.spread_image, card, relay, layout, spreading) if spreading else None
+                spread_out = (pool.submit(self.spread_image, card, relay, layout, spreading, wanted)
+                              if spreading else None)
                 done = [future.result() for future in pulled]
                 if spread_out is not None:
                     _, cut_off = spread_out.result()
@@ -380,7 +382,7 @@ class Assets:
         return (f"127.0.0.1:{registry_relay.PORT}/{relay.repository}:{release}"
                 if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}", release) else None)
 
-    def spread_image(self, card, relay, layout, ranks):
+    def spread_image(self, card, relay, layout, ranks, wanted=None):
         """Bring the image's registry blobs to ``ranks`` along the cables, then import them on each.
 
         Node A downloads every blob once into the relay, which is the source;
@@ -392,7 +394,9 @@ class Assets:
         again. The blob directories are removed once every Spark holds the
         image. Returns ``(ranks that loaded the image, ranks a down cable keeps
         from the fabric)``; a Spark that stopped answering ends the install
-        with ``needs_input``.
+        with ``needs_input``. ``wanted`` lists the deployment's ranks (default
+        every rank): a Spark outside them writes nothing and forwards only
+        where no way round avoids it (``spread.chains``, ``outside``).
         """
         document, positions = self.fabric()
         rank_of = {position: rank for rank, position in enumerate(positions)}
@@ -413,6 +417,8 @@ class Assets:
             return self.finish_program(rank, program, token)
 
         executor = self.spreader(rank_of, start=start, send=send)
+        deployment = set(range(len(positions))) if wanted is None else set(wanted)
+        outside = [positions[rank] for rank in range(1, len(positions)) if rank not in deployment]
         targets = {positions[rank] for rank in ranks}
         needs = {position: set(files) for position in targets}
         reserve = install_space.load_bytes(sum(size for _, _, size in layers))
@@ -420,7 +426,7 @@ class Assets:
         loaded, outcomes, cut = [], [], set()
         for _ in range(2):
             with progress.step(f"Spread the image to {spread.positions_text(needs)} along the cables"):
-                outcome = executor.run("image", files, positions[0], needs, members=positions)
+                outcome = executor.run("image", files, positions[0], needs, members=positions, outside=outside)
             outcomes.append(outcome)
             spread.raise_stopped(document, "image", outcome, positions, len(files))
             cut |= {position for group in outcome["fallbacks"].values() for position in group}
@@ -488,15 +494,27 @@ class Assets:
                 errors.seek(0)
                 raise ValueError(f"Node {rank}: layer load failed: " + errors.read()[-4000:].decode(errors="replace"))
 
-    def images(self, card):
+    def images(self, card, ranks=None):
+        """Place the pinned image on each rank of ``ranks`` (default every rank) that lacks it.
+
+        An installation on part of the fabric names its deployment's ranks, so
+        a Spark outside them receives and writes no image. Node A (rank 0) is
+        always probed: the registry relay runs there, and it is the donor of
+        last resort. Returns the record saved as ``images.json``.
+        """
         count = len(self.transport.hosts)
-        observations = [self.remote(rank, image_probe, card["image_id"]) for rank in range(count)]
-        missing = [rank for rank, value in enumerate(observations) if not value["present"]]
+        wanted = list(range(count)) if ranks is None else sorted(set(ranks))
+        probed = sorted({0, *wanted})
+
+        def observe():
+            return {rank: self.remote(rank, image_probe, card["image_id"]) for rank in probed}
+        observations = observe()
+        missing = [rank for rank in wanted if not observations[rank]["present"]]
         if missing and card["image_reference"] != card["image_id"]:
             try:
-                pulled = self.relay(card, missing, observations)
+                pulled = self.relay(card, missing, observations, wanted)
                 result = {"image_id": card["image_id"], "relayed_ranks": pulled,
-                          "reused_ranks": [r for r in range(count) if r not in missing]}
+                          "reused_ranks": [r for r in wanted if r not in missing]}
                 if self.spread_result is not None:
                     result.update(spread_ranks=self.spread_result["image_ranks"], spread=self.spread_result)
                 node.save(self.directory, "images.json", result, mode=0o600)
@@ -507,8 +525,8 @@ class Assets:
                 # Pulls fail when the registry needs credentials or is
                 # unreachable; nodes holding the image then serve the others.
                 progress.say(f"Registry relay unavailable ({error}); copying the image between nodes.")
-                observations = [self.remote(rank, image_probe, card["image_id"]) for rank in range(count)]
-        present = [rank for rank, value in enumerate(observations) if value["present"]]
+                observations = observe()
+        present = [rank for rank in probed if observations[rank]["present"]]
         if not present:
             if card["image_reference"] == card["image_id"]:
                 raise NeedsInput("The selected private image is not cached on any enrolled node. Supply a registry-backed image lock or load its archive on Node A.",
@@ -528,7 +546,7 @@ class Assets:
         donor = present[0]
         size = observations[donor]["size_bytes"]
         required = max(2 * size + 4 * 1024**3, size + 32 * 1024**3)
-        missing = [rank for rank, value in enumerate(observations) if not value["present"]]
+        missing = [rank for rank in wanted if not observations[rank]["present"]]
         for rank in missing:
             if observations[rank]["free_bytes"] < required:
                 free = self.remote(rank, storage_probe)
@@ -561,7 +579,8 @@ class Assets:
                                 source.wait()
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, len(missing))) as pool:
             imported = list(pool.map(transfer, missing))
-        result = {"image_id": card["image_id"], "donor_rank": donor, "reused_ranks": present, "imported": imported}
+        result = {"image_id": card["image_id"], "donor_rank": donor,
+                  "reused_ranks": [rank for rank in present if rank in wanted], "imported": imported}
         node.save(self.directory, "images.json", result, mode=0o600)
         return result
 

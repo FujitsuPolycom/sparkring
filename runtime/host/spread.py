@@ -1,4 +1,4 @@
-"""The self-spreading install: Node A places the serving image and the checkpoint on every Spark along the cables.
+"""The self-spreading install: Node A places the serving image and the checkpoint on the deployment's Sparks along the cables.
 
 Status: implemented and tested offline (``runtime/host/test_spread.py``);
 not yet qualified on Spark hardware.
@@ -21,7 +21,9 @@ Three parts, all derived from the fabric document (``sparkring-fabric/v1``,
   next while it writes (``runtime/host/fabric_stream.py``, ``hop``), so the
   farthest Spark finishes about one chunk time per extra cable after the
   first. A Spark that needs nothing but holds no source copy (an image already
-  in Docker) forwards without writing.
+  in Docker) forwards without writing. An install on part of the fabric (an
+  arc, ``--on``) places the image only on the arc's Sparks; a Spark outside
+  the arc writes nothing and forwards only when no way round avoids it.
 - **Execution** (``Spread``). Node A starts one hop program per Spark of a
   chain and the source program on its first Spark, collects every placed file
   and repeats the planning with what each Spark now holds: a file that
@@ -41,7 +43,8 @@ plan and saved with the checkpoint plan, whose ``envelope`` bounds a later
 ``cable`` and ``functions``, ``bytes_written_per_position``,
 ``forwarded_only_positions``), ``fallbacks`` (``asset``, ``position``,
 ``path``: ``admin``, ``reason``: ``cable`` or ``layers``, ``cable``,
-``bytes``) and ``sha256`` of the rest.
+``bytes``), for an install on an arc ``outside_positions`` (the Sparks outside
+it, which write nothing), and ``sha256`` of the rest.
 """
 import concurrent.futures
 import hashlib
@@ -131,29 +134,38 @@ def walk(layout, source, direction, *, members=None, down=(), dead=()):
     return found
 
 
-def chains(layout, source, needs, *, members=None, holders=(), relays=None, down=(), dead=()):
+def chains(layout, source, needs, *, members=None, holders=(), relays=None, down=(), dead=(), outside=()):
     """``(pipelines, unreached)``: the chains that bring each position of ``needs`` what it lacks from ``source``.
 
     ``needs`` maps a position to what it lacks (anything true: names or
     bytes). ``holders`` hold the whole asset and may start a chain; ``source``
     is one. ``relays`` may forward without writing (default: every member).
-    Each pipeline is ``{"direction", "start", "hops", "cables"}``: the
-    positions after ``start`` in order and the cable into each. ``unreached``
-    lists the positions with needs that no chain reaches.
+    ``outside`` lists the Sparks outside the deployment being installed: they
+    may forward, but a position is reached through one of them only when the
+    other direction cannot reach it without one; otherwise each position is
+    reached the shorter way, ties going ``next``. Each pipeline is
+    ``{"direction", "start", "hops", "cables"}``: the positions after
+    ``start`` in order and the cable into each. ``unreached`` lists the
+    positions with needs that no chain reaches.
     """
     members = set(range(layout["size"])) if members is None else set(members)
     if source not in members or source in dead:
         raise ValueError(f"The spread's source, position {source}, is not an answering member of the fabric")
     relays = members if relays is None else set(relays)
     holders = (set(holders) | {source}) - set(dead)
+    outside = set(outside)
     wanting = {position for position, value in needs.items() if value and position != source}
     walks = {direction: walk(layout, source, direction, members=members, down=down, dead=dead)
              for direction in DIRECTIONS}
     nearest = {}
     for direction in DIRECTIONS:
+        crossed = False
         for index, (position, _) in enumerate(walks[direction]):
-            if position not in nearest or index < nearest[position][0]:
-                nearest[position] = (index, direction)
+            # (passes a Spark outside the deployment, cables): the smaller way wins.
+            rank = (crossed, index)
+            if position not in nearest or rank < nearest[position][0]:
+                nearest[position] = (rank, direction)
+            crossed |= position in outside
     found = []
     for direction in DIRECTIONS:
         start, pending, current = source, [], None
@@ -215,8 +227,10 @@ def plan(document, assets):
     """``sparkring-spread-plan/v1`` of ``assets`` on the fabric of ``document``.
 
     Each asset is ``{"asset", "source", "writes", "members", "holders",
-    "relays", "admin"}``: ``writes`` maps each position that lacks the asset to
-    the bytes it writes, ``admin`` lists ``{"position", "reason", "bytes"}``
+    "relays", "outside", "admin"}``: ``writes`` maps each position that lacks
+    the asset to the bytes it writes, ``outside`` lists the Sparks outside the
+    deployment, which forward only where no way round avoids them (``chains``),
+    ``admin`` lists ``{"position", "reason", "bytes"}``
     that receive over the administration network by choice (``layers``: a
     Spark whose Docker holds leading layers of the image loads only the rest
     through Node A's registry relay). Cables recorded as ``failed`` carry
@@ -228,7 +242,8 @@ def plan(document, assets):
     for asset in assets:
         writes = {int(position): int(size or 0) for position, size in asset["writes"].items()}
         found, unreached = chains(layout, asset["source"], {p: True for p in writes}, members=asset.get("members"),
-                                  holders=asset.get("holders") or (), relays=asset.get("relays"), down=down)
+                                  holders=asset.get("holders") or (), relays=asset.get("relays"), down=down,
+                                  outside=asset.get("outside") or ())
         for chain in found:
             path = [chain["start"], *chain["hops"]]
             pipelines.append({
@@ -248,6 +263,10 @@ def plan(document, assets):
     value = {"schema": SCHEMA, "fabric_id": document["id"], "layout": fabric_layout.name(layout),
              "hop_limit": hop_limit(layout), "bootstrap_order": bootstrap_order(document),
              "pipelines": pipelines, "fallbacks": fallbacks}
+    outside = sorted({int(position) for asset in assets for position in asset.get("outside") or ()})
+    if outside:
+        # Only an install on an arc records it, so a whole-fabric plan keeps its fields and digest.
+        value["outside_positions"] = outside
     value["sha256"] = _digest(value)
     return value
 
@@ -264,22 +283,28 @@ def writes(value):
 
 
 def assets(document, checkpoint, *, positions, card):
-    """The spread assets of ``sparkring install``: the image to every Spark, the checkpoint to the deployment's.
+    """The spread assets of ``sparkring install``: the image and the checkpoint to the deployment's Sparks.
 
     ``checkpoint`` is the checkpoint plan (``sparkring-checkpoint-plan/v1``)
     and ``positions`` the fabric position of each of its ranks; ``card`` is
     the selection, whose ``download_bytes`` sizes the image's registry blobs.
-    A Spark the plan did not survey is planned as lacking the image, the most
-    it can write. The checkpoint's source is the plan's donor; Sparks whose
-    plan holds every file locally may start a chain, and Sparks that serve a
-    named copy in place hold it but cannot forward.
+    The image comes from Node A (position 0) and goes to every deployment
+    Spark that lacks it: on the whole fabric every Spark, on an arc only the
+    arc's Sparks. A Spark outside the arc writes nothing; it forwards only
+    when the image cannot reach an arc Spark the other way round without it
+    (``chains``, ``outside``). A deployment Spark the plan did not survey is
+    planned as lacking the image, the most it can write. The checkpoint's
+    source is the plan's donor; Sparks whose plan holds every file locally may
+    start a chain, and Sparks that serve a named copy in place hold it but
+    cannot forward.
     """
     size = document["size"]
     nodes = checkpoint["nodes"]
     by_position = {positions[rank]: node for rank, node in enumerate(nodes)}
     blob_bytes = card.get("download_bytes") if isinstance(card.get("download_bytes"), int) else 0
+    deployment = set(positions)
     image_writes, admin = {}, []
-    for position in range(1, size):
+    for position in sorted(deployment - {0}):
         node = by_position.get(position)
         basis = (((node or {}).get("storage") or {}).get("image") or {}).get("basis")
         if basis == "present":
@@ -296,7 +321,8 @@ def assets(document, checkpoint, *, positions, card):
             received[positions[rank]] = total
     holders = [positions[rank] for rank, node in enumerate(nodes)
                if not any(entry["action"] in ("receive", "pool", "hub") for entry in node["files"].values())]
-    return [{"asset": "image", "source": 0, "writes": image_writes, "admin": admin},
+    return [{"asset": "image", "source": 0, "writes": image_writes, "admin": admin,
+             "outside": [position for position in range(1, size) if position not in deployment]},
             {"asset": "checkpoint", "source": positions[checkpoint["distribution"]["donor"]], "writes": received,
              "members": list(positions), "holders": holders,
              "relays": [positions[rank] for rank, node in enumerate(nodes) if node["mode"] != "in-place"]}]
@@ -412,6 +438,11 @@ def describe(value, document):
             where = cable_text(document, cable) + " is down" if cable is not None else "No fabric path"
             lines.append(f"  {where}: {positions_text(positions)} receive{'s' if len(positions) == 1 else ''} "
                          f"{NOUNS[asset][0]} over the administration network instead of the fabric (slower).")
+    outside = value.get("outside_positions") or []
+    if outside:
+        one = len(outside) == 1
+        lines.append(f"  {positions_text(outside).capitalize()} {'is' if one else 'are'} outside this deployment and "
+                     f"write{'s' if one else ''} nothing.")
     return lines
 
 
@@ -570,12 +601,14 @@ class Spread:
         self.say = say or (lambda text: None)
         self.rounds, self.announce_seconds, self.finish_seconds = rounds, announce_seconds, finish_seconds
 
-    def run(self, asset, files, source, needs, *, members=None, holders=(), relays=None):
+    def run(self, asset, files, source, needs, *, members=None, holders=(), relays=None, outside=()):
         """Spread ``files`` (``{name: [size, sha256]}``) from ``source`` to each position of ``needs``.
 
         ``needs`` maps a position to the names it lacks and ``holders`` lists
         positions that hold every file and may start a chain (``source`` is
-        one); a position that receives everything becomes one. Returns ``{"remaining",
+        one); a position that receives everything becomes one. ``outside``
+        lists the Sparks outside the deployment, which forward only where no
+        way round avoids them (``chains``). Returns ``{"remaining",
         "dead", "down", "failures", "received", "rounds", "fallbacks"}``:
         ``remaining`` maps each position that still lacks names to them,
         ``dead`` the Sparks that stopped answering, ``down`` the cables found
@@ -592,7 +625,7 @@ class Spread:
         rounds = 0
         for number in range(1, self.rounds + 1):
             pipelines, _ = chains(self.layout, source, needs, members=members, holders=holders, relays=relays,
-                                  down=down, dead=dead)
+                                  down=down, dead=dead, outside=outside)
             if not pipelines:
                 break
             rounds = number

@@ -15,7 +15,8 @@ has problems is not recorded, so repeating the command plans it again.
 On a cluster with a recorded fabric document the plan also holds the spread
 plan (``runtime/host/spread.py``, ``sparkring-spread-plan/v1``): the order in
 which Node A reaches the Sparks, and the pipelines that carry the serving image
-and the checkpoint along the cables, each Spark forwarding while it writes. It
+and the checkpoint along the cables to the deployment's Sparks, each Spark
+forwarding while it writes; on an arc the Sparks outside it write nothing. It
 is printed above the checkpoint plan, saved with it as ``spread`` and bounded
 with it by a reviewed plan.
 
@@ -1451,8 +1452,10 @@ def execute(args):
             if problem is None:
                 raise
             raise problem from error
-        # Packages and the serving image go to every Spark of the cluster; the
-        # checkpoint moves between the deployment's own Sparks.
+        # Packages go to every Spark of the cluster. The serving image goes to
+        # the deployment's Sparks: every Spark, or on an arc only the arc's, so
+        # a model serving beside the arc gets no image write. The checkpoint
+        # moves between the deployment's own Sparks.
         assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
         checkpoints = (assets if placement is None else
                        install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
@@ -1481,7 +1484,8 @@ def execute(args):
             # runs inside the serving image, and every checkpoint write is
             # checked against free space once the image is in place.
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                images = pool.submit(assets.images, lock["selection"])
+                images = pool.submit(assets.images, lock["selection"],
+                                     ranks=None if placement is None else list(placement))
                 runner = checkpoints.runner(path, previous, images, plan=approved, receipts=receipts)
                 request = failure = None
                 try:

@@ -275,6 +275,19 @@ def test_a_half_moves_its_checkpoint_between_its_own_sparks(ring, capsys):
     assert ("view", (2, 3)) in ring.events
 
 
+def test_a_half_places_the_serving_image_on_its_own_sparks_and_the_ring_on_every_spark(ring, capsys):
+    image_ranks = flow.install_assets.Assets.image_ranks
+    assert install("--profile", QWEN, "--on", "2,3") == 0
+    capsys.readouterr()
+    assert image_ranks[-1] == [2, 3]
+    assert install("--profile", GLM, "--on", "0,1") == 0
+    capsys.readouterr()
+    assert image_ranks[-1] == [0, 1]
+    assert install("--profile", TP4) == 0
+    capsys.readouterr()
+    assert image_ranks[-1] is None
+
+
 def test_parking_the_ring_runs_on_every_spark():
     value = cluster(4)
     calls = []

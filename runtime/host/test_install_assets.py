@@ -226,6 +226,55 @@ def test_unreachable_registry_falls_back_to_copying_between_nodes(tmp_path, rela
     assert relay.instances[0].closed
 
 
+def test_an_install_on_part_of_the_cluster_pulls_the_image_on_its_own_ranks_only(tmp_path, relay):
+    # The deployment is ranks 2 and 3; rank 3 lacks the image. Ranks 0 and 1 lack it too and stay without it:
+    # rank 1 is not even probed, and Node A only runs the relay.
+    present, calls, probed = {2}, [], []
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        present.add(0 if argv[0] == "docker" else int(argv[0][-1]))
+        return SimpleNamespace(returncode=0, stderr="")
+
+    def remote(rank, fn, *args, **kwargs):
+        probed.append(rank)
+        return probe(present)(rank, fn, *args, **kwargs)
+    current = assets.Assets(Transport(), tmp_path, run=run, popen=lambda *a, **k: pytest.fail("archive copy"))
+    current.remote = remote
+    result = current.images(REGISTRY_CARD, ranks=[3, 2])
+    assert result["relayed_ranks"] == [3] and result["reused_ranks"] == [2]
+    assert {argv[0] for argv in calls} == {"node3"} and present == {2, 3}
+    assert 1 not in probed and set(probed) == {0, 2, 3}
+    # The whole cluster, the default, reaches every rank that lacks it.
+    calls.clear()
+    result = current.images(REGISTRY_CARD)
+    assert sorted(result["relayed_ranks"]) == [0, 1] and present == {0, 1, 2, 3}
+
+
+def test_a_copy_between_nodes_for_part_of_the_cluster_reaches_only_its_ranks(tmp_path, relay):
+    # The registry refuses pulls; Node A, outside the deployment, holds the image and gives it to ranks 2 and 3.
+    present, calls = {0}, []
+
+    class Child:
+        stdout = io.BytesIO(b"docker image bytes")
+        returncode = 0
+        def wait(self, **kw): return 0
+        def poll(self): return 0
+
+    def run(argv, **kwargs):
+        calls.append(argv)
+        if "pull" in argv:
+            return SimpleNamespace(returncode=1, stderr="unauthorized: authentication required")
+        present.add(int(argv[0][-1]))
+        return SimpleNamespace(returncode=0, stdout=b'{"image_id":"sha256:a"}', stderr=b"")
+    current = assets.Assets(Transport(), tmp_path, run=run, popen=lambda argv, **kwargs: calls.append(argv) or Child())
+    current.remote = probe(present)
+    result = current.images(REGISTRY_CARD, ranks=[2, 3])
+    assert result["donor_rank"] == 0 and sorted(i["rank"] for i in result["imported"]) == [2, 3]
+    assert result["reused_ranks"] == [] and present == {0, 2, 3}
+    assert not any(argv[0] == "node1" for argv in calls)
+
+
 def test_missing_private_image_asks_for_input_without_contacting_registry(tmp_path):
     current = assets.Assets(Transport(), tmp_path, run=lambda *a, **k: pytest.fail("Unexpected download"))
     current.remote = lambda *a, **k: {"present": False}
