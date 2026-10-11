@@ -21,7 +21,8 @@ installation of it has run on hardware.
 
 ## Install
 
-1. Use the default image, release 2026.10.2's, whose lock lists this profile.
+1. No image lock this package carries lists this profile. Give a lock of
+   release 2026.10.2's image that lists it with `--image-lock FILE`.
    The checkpoint needs an image whose vLLM is SIRCL's pinned build
    `sparkring-kraken-beta-20261007-bc9ea774` (the lock's `sircl.vllm_pins`),
    and the profile the three GLM-5.3 plugins of
@@ -32,7 +33,7 @@ installation of it has run on hardware.
 3. Install:
 
    ```bash
-   sudo sparkring install --profile glm53-nvfp4-csf-tp8
+   sudo sparkring install --profile glm53-nvfp4-csf-tp8 --image-lock FILE
    ```
 
 Each Spark holds the whole checkpoint, 412.5 GiB in 188 files. A blank Spark

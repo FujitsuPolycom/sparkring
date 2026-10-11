@@ -4,11 +4,8 @@ SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
 GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
 non-profit organization, available at
 https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
-Local Inference Lab, Inc., a non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD and GLM-5.3-NVFP4-CSF are licensed under the
-Local Inference Lab License, Version 1.0.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
 
 Pre-release for testing. Packages built from tag `2026.10.2` install this
 release's image by default. `main`, `install.sh` from `main` and the

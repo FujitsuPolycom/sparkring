@@ -148,8 +148,10 @@ def test_storage_planning_counts_the_container_and_the_recipe_files():
     assert round(sum(sizes) / 2 ** 30, 1) == 412.5 and sum(recipe) < 16 << 10
     from runtime.host import storage
     references = storage.profile_references()
-    assert PROFILE in references["checkpoints"][f"{REPOSITORY}@{REVISION}"]
-    assert PROFILE in references["checkpoints"][f"{SERVING}@{manifest['revision']}"]
+    # No lock this package carries admits the profile, which installs only with --image-lock FILE, so
+    # `sparkring storage` attributes its checkpoints to no installer profile, as for every profile no lock admits.
+    assert PROFILE not in references["checkpoints"].get(f"{REPOSITORY}@{REVISION}", [])
+    assert PROFILE not in references["checkpoints"].get(f"{SERVING}@{manifest['revision']}", [])
     assert references["derived"][f"{SERVING}@{manifest['revision']}"]["donor"] is None
     # Profiles that only SIRCL ring sessions run reference their checkpoints too.
     assert NATIVE in references["checkpoints"]["local-inference-lab/GLM-5.3-NVFP4@b472e4ee53f6a9862da5486c56c6ca21be3dab70"]
@@ -184,10 +186,13 @@ def test_the_checkpoint_needs_the_vllm_build_that_reads_csf():
     notice = image_lock.checkpoint_notice(reads, PROFILE, card, preferred=False)
     assert notice.startswith(f"Checkpoint {NAME} ({REPOSITORY} at {REVISION[:12]}) is research-only")
     assert toolchain_profiles.preferred_checkpoint(configuration()) is None
-    # Release 2026.10.2's lock admits the profile, and its image reads the checkpoint.
+    # Release 2026.10.2's image reads the checkpoint, but its lock does not admit the profile: a lock that lists it,
+    # given with --image-lock FILE, installs it.
     release = installer.read(installer.ROOT / "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-"
                                               "plugins-status036/installer-image.json")
-    assert PROFILE in release["profiles"] and image_lock.checkpoint_problem(release, card) is None
+    assert PROFILE not in release["profiles"] and image_lock.checkpoint_problem(release, card) is None
+    with pytest.raises(ValueError, match="not admitted"):
+        image_lock.validate(release, PROFILE)
 
 
 def test_a_default_derived_entry_must_hold_only_its_model_and_derive_from_the_profiles_model():

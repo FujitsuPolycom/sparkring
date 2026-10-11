@@ -511,7 +511,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   the same weights from Local Inference Lab's NVFP4-CSF container
   (`--quantization nvfp4_csf --load-format nvfp4_csf`, no `--hf-overrides`).
   It needs both that image's plugins and the vLLM build that reads CSF, and
-  the plan states that its checkpoint is research-only.
+  the plan states that its checkpoint is research-only. No image lock this
+  package carries lists it: it installs with `--image-lock FILE`, a lock
+  that lists it.
 - All installer profiles run with vLLM's native prefix cache on and
   SparkCache off. SparkCache is the external connector that keeps the prefix
   KV cache on disk across restarts.
@@ -519,8 +521,8 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   eight-Spark ring and only on SIRCL ring sessions. They install on an image
   lock (`sparkring-installer-image/v3`) whose image carries the SIRCL layer
   and lists them: the default image's, release 2026.10.2's, lists every one
-  except `qwen38-flash-next-qad-tp8`; a development lock is selected with
-  `--image-lock FILE`. They are listed in the research catalog,
+  except `qwen38-flash-next-qad-tp8` and `glm53-nvfp4-csf-tp8`; a
+  development lock is selected with `--image-lock FILE`. They are listed in the research catalog,
   [research-catalog.json](../../profiles/research-catalog.json), outside every
   Compose deployment's identity. They have no Compose files
   ([Models on part of the fabric](#models-on-part-of-the-fabric)).

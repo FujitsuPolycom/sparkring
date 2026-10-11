@@ -31,7 +31,7 @@ the [2026.10.1 installer image](#2026101-installer-image). The download is
 | runtime-status 0.3.6 | The status dashboard, which names the collective transport and the SIRCL version of the tensor-parallel group ([derived_layer.py](../../runtime/images/derived_layer.py)) |
 
 - The [installer image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
-  (`sparkring-installer-image/v3`) lists its 14 profiles and pins the
+  (`sparkring-installer-image/v3`) lists its 13 profiles and pins the
   image's identity.
 - The [release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
   states its layers, evidence and limitations.
