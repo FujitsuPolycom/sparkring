@@ -352,10 +352,10 @@ def thinking_column(text, root=ROOT):
     INSTALLER_TABLE, is maintained by hand except this column: each row's
     cell is thinking.summary of the profile in its `--profile` value column,
     such as ``on · xhigh``. That column may name a profile by an alias of
-    runtime.host.models.ALIASES, which selects the profile it stands for. A
+    runtime.common.profile_aliases.ALIASES, which selects the profile it stands for. A
     table without the column, or a row whose profile has no record, is refused.
     """
-    from runtime.host.models import canonical
+    from runtime.common.profile_aliases import canonical
     lines = text.split('\n')
     header = next((number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE)), None)
     if header is None:
