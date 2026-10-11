@@ -62,6 +62,7 @@
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc3218833a38b475b719f34aa571666f4a03e": "qwen38-flash-next-template",
     "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention@648b194a96e5f130ab62702113242d8e1ddd6e76": "qwen38-flash-next-template",
     "JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid@87c8f2fb738b597de99bf9a885130f4a18a94f3d": "qwen38-flash-next-template",
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2": "qwen38-flash-next-template",
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4@3ff0520224f264a2d0ac4ab56ece8f2f13aadb38": "qwen38-flash-next-template",
     "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a608241037e4c2565356bff7ca293f2133888f88": "glm53-flash-template",
     "local-inference-lab/GLM-5.3-Flash-NVFP4@175ae8ce3b5af842b0d0140dbeb43e9cfc557c49": "glm53-flash-template",

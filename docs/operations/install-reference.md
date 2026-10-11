@@ -2238,6 +2238,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | GLM `--checkpoint nvfp4-qad`, `local-inference-lab/GLM-5.3-Flash-NVFP4` @ `175ae8ce3b5a` | 185.7 GiB | 190.7 GiB | 246.6 GiB |
 | GLM `--checkpoint nvidia-nvfp4`, `nvidia/GLM-5.3-Flash-NVFP4` @ `da920bb0b9f4` | 190.4 GiB | 198.8 GiB | 254.7 GiB |
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
+| Qwen `--checkpoint csf` (two Sparks), `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` @ `dc5b8ab2fa14` | 95.2 GiB | 99.9 GiB | 155.8 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
 | GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
@@ -2530,7 +2531,8 @@ and every other image, 2026.10.1's among them, installs `nvfp4-spark`.
 Spark changes. A checkpoint that `image_lock.CHECKPOINT_STATUS` lists, one
 with no installation that passed the installer's checks, gets a `Note:` in
 every plan that installs it with that status and, when the image chose it,
-the profile's default checkpoint; `csf` is not listed.
+the profile's default checkpoint. The GLM `csf` entries are not listed; the
+Qwen `csf` entry is.
 `sparkring images` does not list the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md),
 which reads it; its lock is selected with `--image-lock`:
@@ -2544,6 +2546,7 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image-lock LOCK -
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step-4000
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-mxfp8-attention
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint jmni-qad5500-hybrid
+sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock LOCK --checkpoint csf
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
 ```
@@ -2554,6 +2557,7 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step-4000` | Branch `qad-step-4000` of the same repository, revision `629bc3218833` | MXFP8 target LM head; the draft's NVFP4 experts on B12X |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `qad-step5500-mxfp8-attention` | Step 5500 with its 240 text attention projections in MXFP8, which the installer derives on the Sparks from step 5500 and step 4000's MXFP8 tensors ([derived checkpoints](#derived-checkpoints)) | Served as `Qwen3.8-Flash-Next-NVFP4-QAD-MXFP8-Attention-TP2` or `-TP4`; other settings as step 5500 |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` | `jmni-qad5500-hybrid` | [Qwen3.8-Flash-Next NVFP4 QAD-5500 Hybrid](https://huggingface.co/JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid/tree/87c8f2fb738b597de99bf9a885130f4a18a94f3d) by JMNI Labs, revision `87c8f2fb738b` | The draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2` or `-TP4` |
+| `qwen38-flash-next-tp2` | `csf` | [Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD/tree/dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2) by Local Inference Lab, revision `dc5b8ab2fa14`, licensed under the Local Inference Lab License, Version 1.0 | `--quantization nvfp4_csf --load-format nvfp4_csf`; the draft's NVFP4 experts on B12X; served as `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-spark` (default on an image that cannot read `csf`) | [GLM-5.3-Flash NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark) by Local Inference Lab, revision `a608241037e4` | — |
 | `glm53-flash-nvfp4-spark-tp4` | `csf` (default on an image that reads it) | [GLM-5.3-Flash NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD/tree/dec48abd33efa73c3bb7c95b74eee10cad34f9be) by Local Inference Lab, revision `dec48abd33ef` | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) with two CTAs per SM for small-M experts (`B12X_W4A16_SMALL_M_OCCUPANCY=2`); the draft's experts on the Marlin MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-CSF-TP4` |
 | `glm53-flash-nvfp4-spark-tp4` | `nvfp4-qad` | [GLM-5.3-Flash NVFP4 QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4/tree/175ae8ce3b5af842b0d0140dbeb43e9cfc557c49) by Local Inference Lab, revision `175ae8ce3b5a` | The draft's MXFP8 experts on the Humming MoE backend; 37 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-QAD-TP4` |
@@ -2600,6 +2604,27 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   Humming. Draft experts change how fast drafting runs, not the output
   distribution, so the card's MMLU-Pro result also describes the derived
   checkpoint's target weights. No installation has run on Sparks.
+- The Qwen `csf` entry is **research-only**: no installation of it has run,
+  and the plan of every installation of it says so
+  (`image_lock.CHECKPOINT_STATUS`). Its `config.json` gives the 435 text
+  and MTP layers the recipes of `jmni-qad5500-hybrid`: step 5500's QAD
+  experts, MXFP8 attention and W4A16 NVFP4 MTP experts. It adds CSF encoding
+  of the routed experts' block scales and recipes for 110 vision linears
+  (MXFP8 attention, W4A16 NVFP4 MLP). Its model card states that CSF
+  reconstructs the original scale bytes exactly and that GPU inference and
+  multimodal quality were not evaluated. By its pin manifest it takes
+  95.2 GiB against 102.6 GiB for step 5500. Only the `nvfp4_csf` quantization and
+  loader of the vLLM build `sparkring-kraken-beta-20261007-bc9ea774` read it
+  (`image_lock.CHECKPOINT_BUILDS`), so it installs only with an image lock
+  that lists that build in `sircl.vllm_pins`, such as release 2026.10.2's.
+  That loader splits the 640-channel expert width only into steps of 64
+  channels per rank: it accepts 320 channels on each of two Sparks and
+  refuses 160 on each of four, so `qwen38-flash-next-qad-tp4` does not list
+  it. The profile does not set `VLLM_B12X_MOE_FP4_FORCE_A16`, which a
+  checkpoint entry cannot add, so the entry does not force W4A16 decode, unlike
+  GLM's `csf` entries. Every other setting is step 5500's, including the
+  24 GiB KV cache per Spark. Its load, its vision tower, its quality and its
+  speed are unmeasured.
 - The four-Spark `nvfp4-qad` entry is **implemented** on the installer
   image: on one four-Spark ring it passed all 7 functional checks and a
   256-request correctness screen with no degenerate or wrong response, and

@@ -926,7 +926,8 @@ def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
     assert command("--checkpoint", "main") == 3
     result = json.loads(capsys.readouterr().out)
     assert result["field"] == "checkpoint_name"
-    assert ("jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, qad-step5500-ple1000" in result["message"]
+    assert ("csf, jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, qad-step5500-ple1000"
+            in result["message"]
             and not sparks.surveys)
 
 

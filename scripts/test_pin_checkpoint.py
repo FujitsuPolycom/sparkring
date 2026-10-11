@@ -50,6 +50,8 @@ LISTED = {
         [("glm53-flash-nvfp4-spark-tp2", "csf"), ("glm53-flash-nvfp4-spark-tp4", "csf")],
     ("JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid", "87c8f2fb738b597de99bf9a885130f4a18a94f3d"):
         [("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid"), ("qwen38-flash-next-tp2", "jmni-qad5500-hybrid")],
+    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"):
+        [("qwen38-flash-next-tp2", "csf")],
 }
 # Derived checkpoints: their manifests (runtime/common/derived_checkpoint.py, checked by
 # runtime/common/test_derived_checkpoint.py) follow the same path rule but are not Hub pin manifests.

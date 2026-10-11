@@ -44,22 +44,24 @@ def plan(rank=0, **extra):
 def test_checkpoint_table_names_the_default_and_its_alternatives():
     profile = adapter.read(PROFILE)
     assert adapter.checkpoint_names(profile) == ("qad-step5500-ple1000", (
-        "jmni-qad5500-hybrid", "qad-step-4000", "qad-step5500-mxfp8-attention", "qad-step5500-ple1000"))
+        "csf", "jmni-qad5500-hybrid", "qad-step-4000", "qad-step5500-mxfp8-attention", "qad-step5500-ple1000"))
     assert adapter.checkpoint_settings(profile, None) is profile
     assert adapter.checkpoint_settings(profile, "qad-step5500-ple1000") is profile
     # qad-step-5500 spells step 5500 like the step-4000 branch.
     assert adapter.checkpoint_name(profile, "qad-step-5500") == "qad-step5500-ple1000"
     assert adapter.checkpoint_settings(profile, "qad-step-5500") is profile
     tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
-    # Both profiles list the same checkpoints; served names end with each profile's -TP<nodes>.
+    # Both profiles list the same checkpoints, except csf, which the CSF loader refuses on four Sparks;
+    # served names end with each profile's -TP<nodes>.
+    pair = {name: entry for name, entry in profile["checkpoints"].items() if name != "csf"}
     assert tp4["checkpoint"] == profile["checkpoint"] and json.loads(json.dumps(tp4["checkpoints"]).replace(
-        "-TP4", "-TP2")) == profile["checkpoints"]
+        "-TP4", "-TP2")) == pair
     assert tp4["checkpoint_aliases"] == profile["checkpoint_aliases"]
     for aliases in ({"qad-step-5500": "main"}, {"qad-step-4000": "qad-step5500-ple1000"}, {"Step 5500": "qad-step-4000"}):
         with pytest.raises(ValueError, match="new name for a listed checkpoint"):
             adapter.checkpoint_names({**profile, "checkpoint_aliases": aliases})
-    with pytest.raises(ValueError, match="lists: jmni-qad5500-hybrid, qad-step-4000, qad-step5500-mxfp8-attention, "
-                                         "qad-step5500-ple1000"):
+    with pytest.raises(ValueError, match="lists: csf, jmni-qad5500-hybrid, qad-step-4000, "
+                                         "qad-step5500-mxfp8-attention, qad-step5500-ple1000"):
         adapter.checkpoint_settings(profile, "main")
     added = copy.deepcopy(profile)
     added["checkpoints"]["qad-step-4000"]["environment"]["VLLM_NEW_SETTING"] = "1"
@@ -143,6 +145,51 @@ def test_the_jmni_hybrid_runs_its_nvfp4_draft_experts_on_b12x():
     step4000 = installer.checkpoint_pins(installer.setup.selection("qwen38-flash-next-tp2", "qad-step-4000"))
     assert (pins["files"]["hybrid-main-00002.safetensors"]["sha256"]
             == step4000["files"]["model-00035-of-00036.safetensors"]["sha256"])
+
+
+QWEN_CSF = "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"
+
+
+def test_the_qwen_csf_checkpoint_runs_the_csf_quantization_and_loader_with_its_draft_experts_on_b12x():
+    """Local Inference Lab's CSF build of the hybrid's weights compresses the routed experts' block scales.
+
+    Only the nvfp4_csf quantization and loader read it (runtime/common/image_lock.py CHECKPOINT_BUILDS), and its
+    MTP experts are W4A16 NVFP4, as in jmni-qad5500-hybrid. Every other setting is the default checkpoint's.
+    """
+    from runtime.common import image_lock
+    command, default = plan(checkpoint="csf"), plan()
+    tail = installer_image_id()[7:19]
+    renamed = [value.replace("60215d26cf5e", "dc5b8ab2fa14") for value in default]
+    changed = {position: (renamed[position], value) for position, value in enumerate(command)
+               if value != renamed[position]}
+    at = {option: default.index(option) + 1 for option in (
+        "--served-model-name", "--quantization", "--load-format", "--speculative-config")}
+    draft = json.loads(default[at["--speculative-config"]])
+    assert changed == {
+        at["--served-model-name"]: ("Qwen3.8-Flash-Next-NVFP4-QAD-TP2", "Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2"),
+        at["--quantization"]: ("modelopt_mixed", "nvfp4_csf"),
+        at["--load-format"]: ("b12x", "nvfp4_csf"),
+        at["--speculative-config"]: (default[at["--speculative-config"]],
+                                     json.dumps({**draft, "moe_backend": "b12x"}, separators=(",", ":")))}
+    assert f"VLLM_CACHE_ROOT=/cache/qwen-flash-next-{tail}-dc5b8ab2fa14/vllm" in command
+    # The profile sets no VLLM_B12X_MOE_FP4_FORCE_A16, so the routed experts decode with NVFP4 activations.
+    assert not any(value.startswith("VLLM_B12X_MOE_FP4_FORCE_A16=") for value in command)
+    card = installer.setup.selection("qwen38-flash-next-tp2", "csf")
+    pins = installer.checkpoint_pins(card)
+    assert (pins["repository"], len(pins["weights"]), len(set(pins["files"]) - set(pins["optional"]))) == (
+        "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", 21, 33)
+    assert all(name.startswith("tensors/") for name in pins["weights"])
+    assert f"{card['model_repository']}@{card['model_revision']}" == QWEN_CSF
+    assert image_lock.CHECKPOINT_BUILDS[QWEN_CSF] == ("sparkring-kraken-beta-20261007-bc9ea774",)
+    assert image_lock.CHECKPOINT_STATUS[QWEN_CSF].startswith("research-only")
+    # It is neither the default nor the preferred checkpoint, and the four-Spark profile does not list it:
+    # 640 expert channels split four ways give 160 per rank, which the loader's 64-channel steps refuse.
+    profile = adapter.read(PROFILE)
+    assert (profile["checkpoint"], adapter.preferred_checkpoint(profile)) == ("qad-step5500-ple1000", None)
+    tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
+    assert "csf" not in adapter.checkpoint_names(tp4)[1]
+    assert QWEN_CSF not in {f"{entry['model']['repository']}@{entry['model']['revision']}"
+                            for entry in tp4["checkpoints"].values()}
 
 
 GLM_TP4 = ROOT / "profiles/glm53-flash-nvfp4-spark-tp4/config.json"

@@ -65,7 +65,9 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step 5500
   with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
   implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
-  third-party hybrid (research-only). GLM profiles install the CSF
+  third-party hybrid (research-only). On two Sparks, `--checkpoint csf`
+  installs Local Inference Lab's CSF build of the hybrid's recipes on an
+  image whose vLLM reads it (research-only). GLM profiles install the CSF
   checkpoint on an image whose vLLM reads it, the default image among
   them (implemented; installations passed the installer's checks and a
   256-request correctness screen), and NVFP4-Spark on every other image,
