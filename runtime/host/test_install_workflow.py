@@ -523,7 +523,7 @@ def test_failed_or_interrupted_preparation_is_repeated_by_the_same_command(machi
 
 def test_storage_failure_keeps_current_model_and_returns_actionable_json(machine, monkeypatch, capsys):
     events, previous, assets, _ = machine
-    def full(*args):
+    def full(*args, **kwargs):
         raise NeedsInput("Node 1 needs storage", field="storage", details={"rank": 1})
     monkeypatch.setattr(assets, "images", full)
     assert command() == 3
