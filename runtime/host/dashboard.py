@@ -124,6 +124,7 @@ MAX_FILE_BYTES = 1024 * 1024
 HISTORY_SECONDS = 3600.0
 SAMPLE_SECONDS = 330.0          # counter samples kept for the 5-minute rate windows
 MAX_EVENTS = 200
+CLOCK_STEP_SECONDS = 2.0      # a cycle whose clock reads this much earlier than the last one's saw a step back
 DEFAULT_PORT = 8090
 LOG_LINES = 200
 
@@ -633,6 +634,7 @@ class Collector:
         self.last_view = None
         self.next_files = 0.0
         self.reload_requested = threading.Event()   # SIGHUP: re-read the host files at the next cycle
+        self.last_cycle = None
         self.quiet = False
         self.node_status = None
         self.cycles = 0
@@ -702,8 +704,34 @@ class Collector:
                     self.models[model.id] = model
 
     # -- one cycle -------------------------------------------------------------------------
+    def clock_went_back(self, now: float) -> None:
+        """The wall clock stepped back, as an NTP correction after boot or a manual date does.
+
+        Every schedule here is kept in that clock, so each read would otherwise wait out the whole
+        step: the reads fall due now. Rate samples and history from the clock's future are dropped,
+        and a viewer or a state that the old clock dated later than now is dated now."""
+        print(f"sparkring dashboard: the clock went back by {self.last_cycle - now:.0f} s; reads rescheduled",
+              file=sys.stderr, flush=True)
+        self.next_files = now
+        with self.lock:
+            if self.last_view is not None and self.last_view > now:
+                self.last_view = now
+            for model in self.models.values():
+                model.next_metrics = min(model.next_metrics, now)
+                model.next_models = min(model.next_models, now)
+                if model.runtime_requested_at is not None and model.runtime_requested_at > now:
+                    model.runtime_requested_at = None
+                if model.state_since is not None and model.state_since > now:
+                    model.state_since = now
+                model.samples.clear()
+                while model.history and model.history[-1][0] > now:
+                    model.history.pop()
+
     def cycle(self, now=None) -> None:
         now = self.clock() if now is None else now
+        if self.last_cycle is not None and now < self.last_cycle - CLOCK_STEP_SECONDS:
+            self.clock_went_back(now)
+        self.last_cycle = now
         # Host files first, in quiet mode too: two stats a second, and no request to any Spark.
         forced = self.reload_requested.is_set()
         if forced:

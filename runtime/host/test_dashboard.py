@@ -276,6 +276,26 @@ def test_the_quiet_file_stops_every_request(tmp_path):
     assert api.requests == []
 
 
+
+def test_reads_continue_after_the_clock_steps_back(tmp_path, capsys):
+    """An NTP correction after boot can move the wall clock back by hours; the schedules kept in it
+    must not wait the step out."""
+    found, api, clock = collector(tmp_path)
+    for _, host, port, _ in PAIRS:
+        api.started[(host, port)] = clock.now - 86400        # model runs that started before the step
+    run_for(found, clock, 60, viewer=True)
+    clock.now -= 3600
+    api.requests.clear()
+    run_for(found, clock, 30, viewer=True)
+    assert paths_of(api).count("/metrics") == 4 * 6                  # every 5 s, as before the step
+    assert "the clock went back by 3599 s" in capsys.readouterr().err   # from the last cycle, 1 s before the step
+    member = found.snapshot()["groups"][0]["members"][0]
+    assert all(row[0] <= clock.now for row in member["history"])
+    assert member["live"]["output_tps"] == pytest.approx(30.0, rel=0.05)
+    clock.now -= 1.0                                                  # a jitter below the bound is no step
+    found.cycle()
+    assert "clock went back" not in capsys.readouterr().err
+
 def test_states_follow_the_api_and_a_silent_api_is_asked_less_often(tmp_path):
     found, api, clock = collector(tmp_path, rows=PAIRS[:1])
     key = (NODE_A_LAN, 8000)
