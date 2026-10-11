@@ -1,0 +1,9 @@
+{
+ "node_a": "operator@192.0.2.193",
+ "positions": [
+  6,
+  7
+ ],
+ "api": "http://192.0.2.232:8000/v1",
+ "method": "read-only: sparkring status --json, docker inspect/exec env/logs, receipt files, nvidia-smi, GET /metrics and /v1/models"
+}

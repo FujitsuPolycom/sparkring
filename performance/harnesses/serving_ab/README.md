@@ -5,10 +5,13 @@ cabled ring under several collective transports, on the same image, model and
 vLLM settings, and compares them. It starts every arm fresh in a chosen order,
 checks before measuring what carried the collectives, measures decode, time to
 first token and output agreement from the operator's machine, and writes JSON
-results and tables. Status: **implemented** (CPU tests in
-[`test_serving_ab.py`](test_serving_ab.py)); the containers it renders follow the
-installer's own container for each profile, but runs through it are research
-measurements, not serving qualification.
+results and tables. Its [run receipts](#run-receipts) record what every arm
+resolved and how it was measured, and refuse comparisons that differ in more
+than the declared change. Status: **implemented** (CPU tests in
+[`test_serving_ab.py`](test_serving_ab.py) and [`test_receipt.py`](test_receipt.py));
+the containers it renders follow the installer's own container for each
+profile, but runs through it are research measurements, not serving
+qualification.
 
 ```bash
 python -m performance.harnesses.serving_ab plan --site SITE --profile PROFILE --positions 2-3 \
@@ -32,6 +35,8 @@ WSL when the keys live on the Windows side).
 | `plan` | READ-ONLY REMOTE: `sudo -n` reads on the Sparks to find the checkpoint (none with `--model-path` for every position) |
 | `run` | MUTATES HOST: the loader seccomp policy under `<remote_dir>/serving-ab/source`, the SIRCL arms' staged tree, native library, tuning tables and run directories under the site's `remote_dir`; one cache directory per arm; containers labelled `serving-ab=<run>`; before every start, `sync` and `drop_caches` on every chosen Spark (frees the page, dentry and inode caches; changes no setting). Loads the GPUs and the fabric of the chosen Sparks |
 | `report` | OFFLINE |
+| `receipt collect`, `receipt preflight`, `receipt window` | READ-ONLY REMOTE: through Node A, `sudo -n sparkring status --json`, the lock owner files, and on the deployment's Sparks `docker inspect`, `docker exec ... env` (serving variables only), `docker logs`, the SIRCL receipt files and `nvidia-smi`; `GET /metrics` and `GET /v1/models` on the API. No generation request, install, restart or lock |
+| `receipt diff`, `receipt check`, `receipt method` | OFFLINE |
 
 ## Arms
 
@@ -135,11 +140,23 @@ all-reduce backends and receipt lines.
 | Set | Decode | TTFT | Outputs |
 |---|---|---|---|
 | `warmup` | contexts 0 and 32k, 1 and 8 streams, 10 s | 8k and 32k, once | fingerprints, prompt logprobs |
-| `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s, temperature 0, at most 1,024 tokens | 8k and 32k, three samples | as above |
+| `phase1` | contexts 0 and 32k, 1, 2, 4 and 8 streams, 30 s cells after 10 s | 8k and 32k, three samples | as above |
 | `phase2` | as `phase1` | 2k, 8k, 32k and 128k, three samples | as above |
 | `phase1-16k` | as `phase1`, at contexts 0, 16k and 32k | 8k, 16k and 32k, three samples | as above |
 | `c16` | contexts 0 and 16k, 1, 2, 4, 8 and 16 streams, 30 s cells | 8k, 16k and 32k, three samples | as above |
 | `none` | none: the start becomes ready, passes its checks and is profiled or stopped | none | none |
+
+The decode step follows a named measurement method (`--method`,
+[`receipt/method.py`](receipt/method.py)):
+
+| Method | Decode |
+|---|---|
+| `serving-ab-temp0` (default) | the set's contexts and streams, temperature 0, at most 1,024 output tokens, prefill skipped |
+| `owner-temp1-matrix` | contexts 8k, 16k, 32k, 64k and 128k, 1, 2, 4 and 8 streams, 20 s cells, temperature 1, at most 2,048 output tokens, the integrated prefill scout and the coding-peak probe, whatever the set; needs llm-inference-bench 0.7.6 in `--bench-dir` |
+
+`--temperature` and `--max-tokens` replace the method's values. Each start's
+`method.json` and `measure.json` name the method, or `custom` when an override
+leaves no named method. Warm-up starts keep the default method.
 
 Decode runs llm-inference-bench's `llm_decode_bench.py` (`--bench-dir`) through
 [`bench_run.py`](bench_run.py), which turns off its self-update check. TTFT runs
@@ -165,13 +182,146 @@ time and the trace folder's listing).
 ## Outputs
 
 `DIR/plan.json`; per start `DIR/<label>/` with the containers' logs and
-`docker inspect`, `memory-before.json`, `ready.json`, `evidence.json`, `measure.json`, `decode.json`,
+`docker inspect`, `resolved.json` (the start's run receipt, built from those
+logs and the containers' environment; see [Run receipts](#run-receipts)),
+`memory-before.json`, `ready.json`, `evidence.json`, `method.json`, `measure.json`, `decode.json`,
 `prefill.jsonl`, `fingerprint.json`, `logprobs.json` (and `fused-after.json` for
 `S+`); after the run `DIR/summary.json` and `DIR/tables.txt`
-([`report.py`](report.py)): decode engine steps/s per cell and arm with ranges
+([`report.py`](report.py)): each start's method, receipt digest, key resolved
+settings, declared change and check verdict; decode engine steps/s per cell and arm with ranges
 and ratios to `N`, per-start tok/s, steps/s and acceptance, TTFT per prompt
 length, and pairwise fingerprint and logprob agreement. Labels are `W-<arm>`
 for warm-ups and `<arm><n>` for measured starts.
+
+The report refuses a ratio, prints `REFUSED` in its cell and states the reason
+above the tables, when the two arms' decode results record different
+measurement settings (tool version, temperature, token limit, contexts,
+streams, cell duration, prefill mode, coding peak) or when a start of either
+arm holds a `check.json` whose check failed.
+
+## Run receipts
+
+A run receipt proves what a measured arm served and how it was measured. An
+arm counts against its control only when the two differ in the declared change
+and nothing else, and when both were measured by the same method.
+`python -m performance.harnesses.serving_ab.receipt` ([`receipt/`](receipt/__init__.py))
+runs from the repository root; `NODE_A` is Node A's SSH target, from which
+every Spark is reached as root.
+
+To measure an arm against its control:
+
+1. **Pre-flight**, before installing or measuring:
+
+   ```bash
+   python -m performance.harnesses.serving_ab.receipt preflight --node-a NODE_A --positions 6,7 --owner CAMPAIGN
+   ```
+
+   It refuses while `/metrics` shows a running or waiting request in any of
+   five readings 2 s apart, or while another owner reserves a requested Spark:
+   `/tmp/ring8-hw.lock` (every Spark), `/tmp/ring8-hw-<first>-<last>.lock` and
+   `/tmp/ring8-sets/<position>` on Node A. An owner file `NAME EPOCH` older than
+   2,700 s is abandoned. `--reservations hwlock,setlock,command:CMD` adds a
+   reservation tool that prints `[{"positions": [...], "owner": "..."}]`.
+2. **Collect** the arm once it is ready, and the control the same way:
+
+   ```bash
+   python -m performance.harnesses.serving_ab.receipt collect --node-a NODE_A --positions 6,7 --output ARM_DIR
+   ```
+
+   It writes `ARM_DIR/resolved.json` and the raw reads under `ARM_DIR/raw/`.
+3. **Declare** the arm's change as setting keys of `resolved.json` and the
+   values the arm must hold, in `ARM_DIR/arm.json`:
+
+   ```json
+   {"schema": "serving-ab-arm/v1", "arm": "WD", "control": "W",
+    "changes": {"speculative.kv_cache_dtype": "auto"}}
+   ```
+
+   A value may be `{"from": CONTROL_VALUE, "to": ARM_VALUE}`. A key ending in
+   `.*` with the value `null` declares every difference under that prefix.
+4. **Check** the arm against its control:
+
+   ```bash
+   python -m performance.harnesses.serving_ab.receipt check ARM_DIR CONTROL_DIR --declare ARM_DIR/arm.json --output ARM_DIR/check.json
+   ```
+
+   It exits 1 and lists every setting that differs without a declaration and
+   every declared change that did not take effect: the arm lacks the value, or
+   the control already holds it. Warnings name a declared change that leaves
+   the effective value unchanged, such as a draft KV dtype of `auto` against a
+   control whose draft already inherits a BF16 target KV.
+5. **Measure** with a named method, and record the window afterwards:
+
+   ```bash
+   python -m performance.harnesses.serving_ab.receipt window --node-a NODE_A --positions 6,7 \
+     --since T0 --client CLIENT_ADDRESS --max-concurrency 8 --output ARM_DIR/window.json
+   python -m performance.harnesses.serving_ab.receipt method RESULT.json --expect owner-temp1-matrix
+   ```
+
+   `window` counts rank 0's access-log requests from `T0` by source address,
+   method and path. It fails when another address sent anything but monitoring
+   reads (`GET /metrics`, `/health`, `/v1/models` and similar; `--strict` fails
+   those too), or, with `--max-concurrency`, when vLLM's engine line reports
+   more running plus waiting requests than the benchmark sends. `method` fails
+   unless the result's recorded settings are the method's.
+
+`diff A B` lists every difference of two receipts. Every command exits 0 when
+its verdict holds, 1 when it does not and 2 on a read or usage error, so a
+campaign script stops on the first refusal:
+
+```bash
+set -e
+R="python -m performance.harnesses.serving_ab.receipt"
+$R preflight --node-a NODE_A --positions 6,7 --owner CAMPAIGN
+# ... install the arm, wait until it is ready ...
+$R collect --node-a NODE_A --positions 6,7 --output runs/WD1
+$R check runs/WD1 runs/W1 --declare arms/WD.json --output runs/WD1/check.json
+T0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+# ... run the benchmark with the declared method into runs/WD1/result.json ...
+$R window --node-a NODE_A --positions 6,7 --since "$T0" --client CLIENT_ADDRESS --max-concurrency 8 --output runs/WD1/window.json
+$R method runs/WD1/result.json --expect owner-temp1-matrix
+```
+
+What `resolved.json` holds, per rank and for the deployment (rank 0):
+
+- `settings`, which `check` compares: the target KV dtype and block size, the
+  speculative configuration including the draft's `kv_cache_dtype`, the
+  engine's resolved `compilation_config` (mode, CUDA graph mode and sizes,
+  custom ops, pass configuration), async scheduling, `max_num_seqs`,
+  `max_num_batched_tokens`, the prefill schedule interval, the Engram
+  configuration, quantization, load format, MoE, linear and attention
+  backends, every other explicit vLLM argument, the vLLM process's `VLLM_*`,
+  `B12X_*`, `SIRCL_*`, `OMP_*`, `NCCL_*` and related variables, the SIRCL
+  session settings, the image ID and the deployment's profile, checkpoint and
+  transport. Addresses, ports, rank numbers, device and interface names and
+  cache paths are left out, so receipts of different Sparks compare.
+- `derived`: the effective target and draft KV dtypes (`auto` is the model
+  dtype; a draft without `kv_cache_dtype` inherits the target's).
+- `observed`: KV capacity, the resolved attention block size, the kernels
+  chosen, custom fusions, variables vLLM set itself, the SparkRing startup audit
+  lines and GPU clocks. `diff` and `check` report them; they never fail a check.
+- `sources`: where each value comes from, and `digest`, the SHA-256 of
+  `settings`; `rank_mismatches` lists settings that worker ranks read the same
+  way and resolve differently.
+
+Limitations:
+
+- vLLM logs no resolved async-scheduling value. Unset, it is inferred from
+  vLLM's rule: on for EAGLE, MTP, DFlash, DSpark and draft-model speculation
+  and without speculation, with the `mp` or `uni` executor; `sources` says
+  `inferred`.
+- A captured line cut short is parsed as far as it goes; a setting after the
+  cut is `not recorded`, not vLLM's default.
+- vLLM turns on breakable CUDA graphs for some architectures
+  (`VLLM_USE_BREAKABLE_CUDAGRAPH`, an `observed` value), which sets the
+  compilation mode to `NONE` whatever `--compilation-config` asks;
+  `compilation.mode` shows the resolved mode.
+- An access log names a client by address, so two clients on one machine look
+  like one. The pre-flight keeps a second client out; `--max-concurrency`
+  catches one only while the sum of both exceeds the benchmark's streams, at
+  vLLM's 10 s logging interval.
+- The serving A/B runner's own `resolved.json` reads the containers'
+  environment from `docker inspect`, not the vLLM process's.
 
 ## Locking
 

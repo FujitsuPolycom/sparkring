@@ -18,6 +18,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 from performance.harnesses import dashboard_quiet  # noqa: E402
 from performance.harnesses.serving_ab import measure, remote, report, setlock, spec, verify  # noqa: E402
+from performance.harnesses.serving_ab.receipt import method as methods  # noqa: E402
+from performance.harnesses.serving_ab.receipt import resolved  # noqa: E402
 from runtime.common import compose, image_lock, toolchain_profiles  # noqa: E402
 from runtime.common.container_spec import docker_create  # noqa: E402
 from scripts import check_enhancements  # noqa: E402
@@ -558,6 +560,16 @@ def collect(plan: dict, site: remote.Site, arm: str, out: Path) -> list[str]:
     return logs
 
 
+def write_receipt(out: Path) -> None:
+    """``resolved.json``: the start's resolved settings from the logs and inspections it saved
+    (receipt/resolved.py); the report shows its key settings beside each start."""
+    try:
+        document = resolved.from_runner_start(out)
+    except Exception as error:  # noqa: BLE001 - a receipt failure never stops a campaign; it is recorded
+        document = {"schema": resolved.SCHEMA, "error": f"{type(error).__name__}: {error}"}
+    (out / "resolved.json").write_text(json.dumps(document, indent=1, default=str), encoding="utf-8")
+
+
 def stop(plan: dict, site: remote.Site, arm: str) -> int:
     for p, tokens in zip(plan["positions"], plan["commands"][arm]):
         remote.run(site.sparks[p], remote.sudo(f"docker rm -f {name_of(tokens)}"), check=False)
@@ -638,6 +650,7 @@ def _campaign(args, stack) -> int:
                 return 1
             (d / "ready.json").write_text(json.dumps({"ready_seconds": round(time.monotonic() - t0)}), encoding="utf-8")
             logs = collect(plan, site, arm, d)
+            write_receipt(d)
             evidence = verify.check(arm, logs, receipts(plan, site, arm), dcp=plan["dcp"])
             (d / "evidence.json").write_text(json.dumps(evidence, indent=1), encoding="utf-8")
             log(f"{label}: ready after {round(time.monotonic() - t0)} s; arm checks "
@@ -647,7 +660,9 @@ def _campaign(args, stack) -> int:
                 return 1
             codes = measure.measure(d, host=site.sparks[plan["positions"][0]].lan_address, port=plan["port"],
                                     model=plan["served_model_name"], context_limit=plan["context_limit"],
-                                    bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics)
+                                    bench_dir=args.bench_dir, metrics="warmup" if warm else args.metrics,
+                                    **({} if warm else {"method": args.method, "temperature": args.temperature,
+                                                        "max_tokens": args.max_tokens}))
             (d / "measure.json").write_text(json.dumps({**codes, dashboard_quiet.DASHBOARD_FIELD: dict(quiet)}, indent=1),
                                             encoding="utf-8")
             if args.profile_label == label:
@@ -692,6 +707,11 @@ def main(argv: list[str] | None = None) -> int:
                              "present on every Spark and list the profile")
     parser.add_argument("--order", required=True, help="starts in order: W:<arm> is a warm-up, e.g. W:S+,W:N,S+,N,N,S+")
     parser.add_argument("--metrics", choices=tuple(measure.METRICS), default="phase1")
+    parser.add_argument("--method", choices=tuple(methods.METHODS), default=measure.DEFAULT_METHOD,
+                        help="decode measurement method of the measured starts (receipt/method.py; default "
+                             f"{measure.DEFAULT_METHOD}); recorded in each start's measure.json and method.json")
+    parser.add_argument("--temperature", type=float, help="decode temperature instead of the method's")
+    parser.add_argument("--max-tokens", type=int, help="decode output-token limit instead of the method's")
     parser.add_argument("--run-id", required=True, help="names containers, caches and SIRCL run directories")
     parser.add_argument("--output", required=True, help="result directory on this machine")
     parser.add_argument("--skip-labels", default="",

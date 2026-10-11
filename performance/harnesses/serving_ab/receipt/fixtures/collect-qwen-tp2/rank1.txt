@@ -1,0 +1,843 @@
+
+@@SERVING-AB-RECEIPT@@ inspect
+{"Name":"/sr-ring8b-qwen38-flash-next--857683-r1","Image":"sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b","Created":"2026-10-11T20:47:07.417657552Z","Path":"python3","Args":["/opt/sparkring/toolchain/toolchain.py","serve","/models/target","--served-model-name","Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2","--node-rank","1","--master-addr","198.18.12.1","--tensor-parallel-size","2","--pipeline-parallel-size","1","--decode-context-parallel-size","1","--nnodes","2","--distributed-executor-backend","mp","--host","0.0.0.0","--port","8000","--master-port","29638","--max-model-len","262144","--max-num-seqs","16","--max-num-batched-tokens","8192","--dtype","bfloat16","--quantization","nvfp4_csf","--kv-cache-dtype","fp8","--block-size","32","--load-format","nvfp4_csf","--gpu-memory-utilization","0.85","--kv-cache-memory-bytes","25769803776","--mamba-cache-mode","align","--enable-prefix-caching","--enable-chunked-prefill","--gdn-decode-kernel","b12x","--linear-backend","b12x","--moe-backend","b12x","--no-enable-flashinfer-autotune","--mm-encoder-tp-mode","data","--mm-processor-cache-gb","0","--limit-mm-per-prompt","{\"image\":3,\"video\":1}","--reasoning-parser","qwen3","--tool-call-parser","qwen3_xml","--enable-auto-tool-choice","--speculative-config","{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\",\"draft_sample_method\":\"probabilistic\",\"kv_cache_dtype\":\"auto\"}","--compilation-config","{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"+rotary_embedding\"]}","--media-io-kwargs","{\"video\":{\"num_frames\":16}}","--recurrent-checkpoint-policy","aligned","--enable-prompt-tokens-details","--headless","--async-scheduling"],"State":{"Status":"running","Running":true,"Paused":false,"Restarting":false,"OOMKilled":false,"Dead":false,"Pid":3352609,"ExitCode":0,"Error":"","StartedAt":"2026-10-11T23:32:28.085210623Z","FinishedAt":"2026-10-11T23:02:44.443543306Z"},"RestartCount":0,"Config":{"Image":"sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b","Entrypoint":["python3","/opt/sparkring/toolchain/toolchain.py"],"Cmd":["serve","/models/target","--served-model-name","Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2","--node-rank","1","--master-addr","198.18.12.1","--tensor-parallel-size","2","--pipeline-parallel-size","1","--decode-context-parallel-size","1","--nnodes","2","--distributed-executor-backend","mp","--host","0.0.0.0","--port","8000","--master-port","29638","--max-model-len","262144","--max-num-seqs","16","--max-num-batched-tokens","8192","--dtype","bfloat16","--quantization","nvfp4_csf","--kv-cache-dtype","fp8","--block-size","32","--load-format","nvfp4_csf","--gpu-memory-utilization","0.85","--kv-cache-memory-bytes","25769803776","--mamba-cache-mode","align","--enable-prefix-caching","--enable-chunked-prefill","--gdn-decode-kernel","b12x","--linear-backend","b12x","--moe-backend","b12x","--no-enable-flashinfer-autotune","--mm-encoder-tp-mode","data","--mm-processor-cache-gb","0","--limit-mm-per-prompt","{\"image\":3,\"video\":1}","--reasoning-parser","qwen3","--tool-call-parser","qwen3_xml","--enable-auto-tool-choice","--speculative-config","{\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\",\"draft_sample_method\":\"probabilistic\",\"kv_cache_dtype\":\"auto\"}","--compilation-config","{\"pass_config\":{\"fuse_act_quant\":true},\"cudagraph_mode\":\"FULL_AND_PIECEWISE\",\"max_cudagraph_capture_size\":64,\"cudagraph_capture_sizes\":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],\"custom_ops\":[\"+rotary_embedding\"]}","--media-io-kwargs","{\"video\":{\"num_frames\":16}}","--recurrent-checkpoint-policy","aligned","--enable-prompt-tokens-details","--headless","--async-scheduling"],"Labels":{"com.docker.compose.config-hash":"6ba7c8731fd0f8502425368267a010b47677e4bf94aefc11b0f03c588dc7d82a","com.docker.compose.container-number":"1","com.docker.compose.depends_on":"","com.docker.compose.image":"sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b","com.docker.compose.oneoff":"False","com.docker.compose.project":"sr-ring8b-qwen38-flash-next--857683-r1","com.docker.compose.project.config_files":"/srv/sparkring/ring8b/qwen38-flash-next-tp2-ie5356b016ed6/containers/6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729/compose.yaml","com.docker.compose.project.environment_file":"/dev/null","com.docker.compose.project.working_dir":"/srv/sparkring/ring8b/qwen38-flash-next-tp2-ie5356b016ed6/containers/6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729","com.docker.compose.service":"model","com.docker.compose.version":"5.0.2","io.sparkring.deployment":"6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729","io.sparkring.image-lock":"dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036","io.sparkring.rank":"1","maintainer":"NVIDIA CORPORATION <cudatools@nvidia.com>","org.opencontainers.image.ref.name":"ubuntu","org.opencontainers.image.version":"24.04","org.sparkring.toolchain.status":"research-only","org.sparkring.version":"kraken-beta-20261004-candidate"}}}
+
+@@SERVING-AB-RECEIPT@@ container_env
+SIRCL_P2P_NATIVE_LIBRARY=/opt/sparkring/sircl/lib/p2p_proxy-c8ccfcb93ffa2d6a.so
+NCCL_NET_PLUGIN=none
+CUDA_PATH=/usr/local/cuda-13.4
+VLLM_GLM53_KDA_GATE_SIDE_STREAM=0
+B12X_ROCE_PEER_HCA_MAP=0=0/1
+VLLM_B12X_KDA_PREFILL_COALESCING=0
+VLLM_QWEN4_EXP_MXFP8_HC=1
+VLLM_PLUGINS=b12x_loader,sparkring_status,sircl
+VLLM_QWEN3_8_FLASH_NEXT_OVERLAP=1
+SPARKRING_TRANSPORT_PROFILE=
+FLASHINFER_WORKSPACE_BASE=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/flashinfer
+SIRCL_GROUPS=tp
+SIRCL_BUILD_CACHE_DIR=/opt/sparkring/sircl/lib
+SIRCL_ALLGATHER_MAX_BYTES=155648
+VLLM_SPARK_TP4_VOCAB_MODE=
+SIRCL_LINK_SLOT_BYTES=1048576
+SPARKRING_FEATURES=qwen-collectives,qwen4-prefill
+NCCL_VERSION=2.32.3
+VLLM_MXFP8_LM_HEAD=1
+VLLM_NCCL_INCLUDE_PATH=/opt/sparkring/toolchain/nccl/include
+B12X_POLICY_MODE=auto
+VLLM_ENABLE_ROCE_ALLREDUCE=0
+SIRCL_SCATTER_SCHEDULE=ring
+NCCL_DEBUG_SUBSYS=INIT
+SPARKRING_TRANSPORT_MANIFEST_SHA256=
+SIRCL_RECEIPT_DIR=/run/sparkring/sircl/receipts
+B12X_ROCE_HCA=rocep1s0f1,roceP2p1s0f1
+VLLM_QWEN3_8_PREFILL_COALESCE=1
+NCCL_ROOT=/opt/sparkring/toolchain/nccl
+VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT=1
+SIRCL_ONESHOT_MAX_BYTES=65536
+SIRCL_NATIVE_LIBRARY=/opt/sparkring/sircl/lib/roce_proxy-09db871538819191.so
+SIRCL_NCCL=never
+CUTE_DSL_CACHE_DIR=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/cute
+B12X_COMPILE_CACHE_DIR=/cache/qwen-flash-next-cuda13.4.2-dc5b8ab2fa14/b12x
+SIRCL_RANK_POSITIONS=6,7
+SIRCL_STARTUP_WAIT_S=600
+NCCL_IB_MERGE_NICS=0
+SIRCL_GATHER_LINK_CHUNK_BYTES=1048576
+SIRCL_LARGE_SCHEDULE=ring
+VLLM_PLE_CPU_OFFLOAD=0
+SPARKRING_TOOL_CHOICE_CONTRACT=1
+VLLM_SPARK_TP4_MODE=
+OMP_NUM_THREADS=16
+VLLM_ROCE_ALLREDUCE_MAX_SIZE=2097152
+SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES=131072
+VLLM_CACHE_ROOT=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/vllm
+VLLM_SSM_CONV_STATE_LAYOUT=DS
+SPARKRING_RUNTIME_BINDING=/run/sparkring/runtime-binding.json
+NCCL_IB_HCA==rocep1s0f1,roceP2p1s0f1
+NCCL_LIB_DIR=/opt/sparkring/toolchain/nccl/lib
+SIRCL_LARGE_ALLREDUCE=auto
+SIRCL_FABRIC=ring:8
+VLLM_GLM53_MHC_PREFILL_SHARD=0
+SIRCL_SCATTER_LINK_CHUNK_BYTES=1048576
+SIRCL_GID_INDEX=3
+VLLM_QWEN3_8_FLASH_NEXT_HC_TP=0
+NCCL_LOCAL_INFERENCE_PATH=/opt/sparkring/toolchain/nccl/lib/libnccl.so.2
+NCCL_DEBUG=INFO
+NCCL_IB_DISABLE=0
+SPARK_TP4_ENABLED=0
+NCCL_SOCKET_IFNAME=enp1s0f1np1
+SIRCL_FABRIC_DOCUMENT=/etc/sparkring/fabric/topology.json
+CUDA_HOME=/usr/local/cuda-13.4
+NCCL_INCLUDE_DIR=/opt/sparkring/toolchain/nccl/include
+NCCL_NET=IB
+SIRCL_GATHER_SCHEDULE=ring
+VLLM_HOST_IP=198.18.12.2
+SIRCL_ALLREDUCE_CAPACITY_BYTES=131072
+VLLM_ROCE_ALLGATHER_MAX_SIZE=16777216
+SIRCL_SESSION_MODULE=sparkring_sircl.oneshot
+VLLM_MTP_NVFP4_LM_HEAD=1
+B12X_NVFP4_DYNAMIC_MATERIALIZED=0
+SIRCL_REDUCE_LINK_CHUNK_BYTES=1048576
+NCCL_IB_GID_INDEX=3
+VLLM_USE_V2_MODEL_RUNNER=1
+VLLM_QWEN3_8_HC_PREFILL_MODE=shard
+SIRCL_MODE=custom
+B12X_ROCE_PAIR_PATHS=2
+NCCL_CROSS_NIC=1
+SIRCL_ENABLED=0
+SIRCL_SERVING_WAIT_S=20
+VLLM_NCCL_SO_PATH=/opt/sparkring/toolchain/nccl/lib/libnccl.so.2
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+VLLM_ENABLE_PCIE_ALLREDUCE=0
+TRITON_CACHE_DIR=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/triton
+CUDA_VERSION=13.4.2
+VLLM_LM_HEAD_A16=1
+QWEN_DISPATCH_AR_BYTES=327680
+VLLM_WORKER_MULTIPROC_METHOD=spawn
+VLLM_BASE_DIR=/workspace/vllm
+TORCH_CUDA_ARCH_LIST=12.1a
+FLASHINFER_CUDA_ARCH_LIST=12.1a
+TRITON_PTXAS_PATH=/usr/local/cuda-13.4/bin/ptxas
+VLLM_WSL2_ENABLE_PIN_MEMORY=1
+
+@@SERVING-AB-RECEIPT@@ process_pid
+51
+
+@@SERVING-AB-RECEIPT@@ process_cmdline
+/usr/bin/python3
+-m
+vllm.entrypoints.cli.main
+serve
+/models/target
+--served-model-name
+Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2
+--node-rank
+1
+--master-addr
+198.18.12.1
+--tensor-parallel-size
+2
+--pipeline-parallel-size
+1
+--decode-context-parallel-size
+1
+--nnodes
+2
+--distributed-executor-backend
+mp
+--host
+0.0.0.0
+--port
+8000
+--master-port
+29638
+--max-model-len
+262144
+--max-num-seqs
+16
+--max-num-batched-tokens
+8192
+--dtype
+bfloat16
+--quantization
+nvfp4_csf
+--kv-cache-dtype
+fp8
+--block-size
+32
+--load-format
+nvfp4_csf
+--gpu-memory-utilization
+0.85
+--kv-cache-memory-bytes
+25769803776
+--mamba-cache-mode
+align
+--enable-prefix-caching
+--enable-chunked-prefill
+--gdn-decode-kernel
+b12x
+--linear-backend
+b12x
+--moe-backend
+b12x
+--no-enable-flashinfer-autotune
+--mm-encoder-tp-mode
+data
+--mm-processor-cache-gb
+0
+--limit-mm-per-prompt
+{"image":3,"video":1}
+--reasoning-parser
+qwen3
+--tool-call-parser
+qwen3_xml
+--enable-auto-tool-choice
+--speculative-config
+{"method":"mtp","num_speculative_tokens":3,"moe_backend":"b12x","attention_backend":"B12X","draft_sample_method":"probabilistic","kv_cache_dtype":"auto"}
+--compilation-config
+{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}
+--media-io-kwargs
+{"video":{"num_frames":16}}
+--recurrent-checkpoint-policy
+aligned
+--enable-prompt-tokens-details
+--headless
+--async-scheduling
+
+@@SERVING-AB-RECEIPT@@ process_env
+SIRCL_P2P_NATIVE_LIBRARY=/opt/sparkring/sircl/lib/p2p_proxy-c8ccfcb93ffa2d6a.so
+NCCL_NET_PLUGIN=none
+CUDA_PATH=/usr/local/cuda-13.4
+VLLM_GLM53_KDA_GATE_SIDE_STREAM=0
+B12X_ROCE_PEER_HCA_MAP=0=0/1
+VLLM_B12X_KDA_PREFILL_COALESCING=0
+VLLM_QWEN4_EXP_MXFP8_HC=1
+VLLM_PLUGINS=b12x_loader,sparkring_status,sircl
+VLLM_QWEN3_8_FLASH_NEXT_OVERLAP=1
+SPARKRING_TRANSPORT_PROFILE=
+FLASHINFER_WORKSPACE_BASE=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/flashinfer
+SIRCL_GROUPS=tp
+SIRCL_BUILD_CACHE_DIR=/opt/sparkring/sircl/lib
+SIRCL_ALLGATHER_MAX_BYTES=155648
+VLLM_SPARK_TP4_VOCAB_MODE=
+SIRCL_LINK_SLOT_BYTES=1048576
+SPARKRING_FEATURES=qwen-collectives,qwen4-prefill
+NCCL_VERSION=2.32.3
+VLLM_MXFP8_LM_HEAD=1
+VLLM_NCCL_INCLUDE_PATH=/opt/sparkring/toolchain/nccl/include
+B12X_POLICY_MODE=auto
+VLLM_ENABLE_ROCE_ALLREDUCE=0
+SIRCL_SCATTER_SCHEDULE=ring
+NCCL_DEBUG_SUBSYS=INIT
+SPARKRING_TRANSPORT_MANIFEST_SHA256=
+SIRCL_RECEIPT_DIR=/run/sparkring/sircl/receipts
+B12X_ROCE_HCA=rocep1s0f1,roceP2p1s0f1
+VLLM_QWEN3_8_PREFILL_COALESCE=1
+NCCL_ROOT=/opt/sparkring/toolchain/nccl
+VLLM_QWEN3_8_FLASH_NEXT_MTP_COMPACT=1
+SIRCL_ONESHOT_MAX_BYTES=65536
+SIRCL_NATIVE_LIBRARY=/opt/sparkring/sircl/lib/roce_proxy-09db871538819191.so
+SIRCL_NCCL=never
+CUTE_DSL_CACHE_DIR=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/cute
+B12X_COMPILE_CACHE_DIR=/cache/qwen-flash-next-cuda13.4.2-dc5b8ab2fa14/b12x
+SIRCL_RANK_POSITIONS=6,7
+SIRCL_STARTUP_WAIT_S=600
+NCCL_IB_MERGE_NICS=0
+SIRCL_GATHER_LINK_CHUNK_BYTES=1048576
+SIRCL_LARGE_SCHEDULE=ring
+VLLM_PLE_CPU_OFFLOAD=0
+SPARKRING_TOOL_CHOICE_CONTRACT=1
+VLLM_SPARK_TP4_MODE=
+OMP_NUM_THREADS=16
+VLLM_ROCE_ALLREDUCE_MAX_SIZE=2097152
+SIRCL_ALLREDUCE_DISPATCH_LIMIT_BYTES=131072
+VLLM_CACHE_ROOT=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/vllm/qwen4-prefill-eb57c82c3717/vllm
+VLLM_SSM_CONV_STATE_LAYOUT=DS
+SPARKRING_RUNTIME_BINDING=/run/sparkring/runtime-binding.json
+NCCL_IB_HCA==rocep1s0f1,roceP2p1s0f1
+NCCL_LIB_DIR=/opt/sparkring/toolchain/nccl/lib
+SIRCL_LARGE_ALLREDUCE=auto
+SIRCL_FABRIC=ring:8
+VLLM_GLM53_MHC_PREFILL_SHARD=0
+SIRCL_SCATTER_LINK_CHUNK_BYTES=1048576
+SIRCL_GID_INDEX=3
+VLLM_QWEN3_8_FLASH_NEXT_HC_TP=0
+NCCL_LOCAL_INFERENCE_PATH=/opt/sparkring/toolchain/nccl/lib/libnccl.so.2
+NCCL_DEBUG=INFO
+NCCL_IB_DISABLE=0
+SPARK_TP4_ENABLED=0
+NCCL_SOCKET_IFNAME=enp1s0f1np1
+SIRCL_FABRIC_DOCUMENT=/etc/sparkring/fabric/topology.json
+CUDA_HOME=/usr/local/cuda-13.4
+NCCL_INCLUDE_DIR=/opt/sparkring/toolchain/nccl/include
+NCCL_NET=IB
+SIRCL_GATHER_SCHEDULE=ring
+VLLM_HOST_IP=198.18.12.2
+SIRCL_ALLREDUCE_CAPACITY_BYTES=131072
+VLLM_ROCE_ALLGATHER_MAX_SIZE=16777216
+SIRCL_SESSION_MODULE=sparkring_sircl.oneshot
+VLLM_MTP_NVFP4_LM_HEAD=1
+B12X_NVFP4_DYNAMIC_MATERIALIZED=0
+SIRCL_REDUCE_LINK_CHUNK_BYTES=1048576
+NCCL_IB_GID_INDEX=3
+VLLM_USE_V2_MODEL_RUNNER=1
+VLLM_QWEN3_8_HC_PREFILL_MODE=shard
+SIRCL_MODE=custom
+B12X_ROCE_PAIR_PATHS=2
+NCCL_CROSS_NIC=1
+SIRCL_ENABLED=0
+SIRCL_SERVING_WAIT_S=20
+VLLM_NCCL_SO_PATH=/opt/sparkring/toolchain/nccl/lib/libnccl.so.2
+PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+VLLM_ENABLE_PCIE_ALLREDUCE=0
+TRITON_CACHE_DIR=/cache/qwen-flash-next-d52737a109e0-dc5b8ab2fa14/triton
+CUDA_VERSION=13.4.2
+VLLM_LM_HEAD_A16=1
+QWEN_DISPATCH_AR_BYTES=327680
+VLLM_WORKER_MULTIPROC_METHOD=spawn
+VLLM_BASE_DIR=/workspace/vllm
+TORCH_CUDA_ARCH_LIST=12.1a
+FLASHINFER_CUDA_ARCH_LIST=12.1a
+TRITON_PTXAS_PATH=/usr/local/cuda-13.4/bin/ptxas
+VLLM_WSL2_ENABLE_PIN_MEMORY=1
+QWEN_DISPATCH_MODE=both
+QWEN_DISPATCH_TRACE=0
+SPARKRING_QWEN4_PREFILL_MANIFEST_SHA256=eb57c82c3717133eb600995cccd2b44daf7aab1c9e196878a85ec9ec71399c7a
+QWEN_HC_FUSION=1
+QWEN_HC_SOURCE_SHA256=386bcc4ff5957b5b86aa62e338347f5ba57667bb0653dbc4c88c15d879daebff
+QWEN_MTP_TORCH_PREFILL=1
+QWEN_MTP_SOURCE_SHA256=460dd75b633dc935e642f94ea06420c2f5a394eb5842a6cc1ea43887cec94e8c
+
+@@SERVING-AB-RECEIPT@@ log
+INFO 10-11 20:47:44 [model.py:693] Resolved architecture: Qwen4ExpForConditionalGeneration
+INFO 10-11 20:47:44 [model.py:2062] Using max model len 262144
+INFO 10-11 20:47:45 [model.py:693] Resolved architecture: Qwen4ExpMTP
+INFO 10-11 20:47:45 [model.py:2062] Using max model len 262144
+INFO 10-11 20:47:45 [scheduler.py:404] Chunked prefill is enabled with max_num_batched_tokens=8192.
+INFO 10-11 20:47:45 [vllm.py:1530] Resolved Engram configuration: EngramConfig(cpu_offload=False, embedding_across_dp=False, dp_shared_memory=False, table_memory='device', disk_resident_scales=False, projection_tp=False)
+INFO 10-11 20:47:45 [vllm.py:928] Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out.
+INFO 10-11 20:47:45 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+(Worker pid=148) INFO 10-11 20:48:19 [adapter.py:487] SIRCL receipt group=tp:0 global_rank=1 rank=1 world=2 layout=ring:8 fabric=pair:6-7 positions=6,7 nccl=none pynccl=skipped session=ring lanes=2 hcas=rocep1s0f1,roceP2p1s0f1 capacity=131072 dispatch=131072 oneshot_max=65536 gather=155648 op_per_peer=- large_piece=4194304 gather_piece=155648 schedules=large:ring,gather:ring,scatter:ring chain_min=reduce:8388608,gather:8388608,scatter:4194304 ring_min=reduce:4194304,gather:8388608,scatter:4194304 links=slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576 tuning=- mhc=sircl fused_norm=off column_gather=on p2p=peers=1,slots=8x524288,direct wait=startup:600s vllm=/usr/local/lib/python3.12/dist-packages/vllm state=ready
+(Worker pid=148) INFO 10-11 20:48:19 [adapter.py:487] SIRCL receipt group=ep:0 global_rank=1 rank=1 world=2 layout=ring:8 fabric=- positions=6,7 nccl=none pynccl=skipped session=shared:tp:0 lanes=2 hcas=rocep1s0f1,roceP2p1s0f1 capacity=131072 dispatch=131072 oneshot_max=65536 gather=155648 op_per_peer=- large_piece=4194304 gather_piece=155648 schedules=large:ring,gather:ring,scatter:ring chain_min=reduce:8388608,gather:8388608,scatter:4194304 ring_min=reduce:4194304,gather:8388608,scatter:4194304 links=slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576 tuning=- mhc=- fused_norm=- column_gather=on p2p=shared:tp:0 wait=startup:600s vllm=/usr/local/lib/python3.12/dist-packages/vllm state=ready
+(Worker pid=148) INFO 10-11 20:48:19 [gpu_worker.py:483] Using V2 Model Runner
+(Worker_TP1 pid=148) INFO 10-11 20:48:23 [__init__.py:1181] Using B12xNvFp4LinearKernel for NVFP4 GEMM
+(Worker_TP1 pid=148) INFO 10-11 20:48:23 [__init__.py:923] Using B12xMxfp8LinearKernel for MXFP8 GEMM
+(Worker_TP1 pid=148) INFO 10-11 20:48:24 [vocab_parallel_embedding.py:437] Quantizing LM head shards to MXFP8 with BF16 activations.
+(Worker_TP1 pid=148) INFO 10-11 20:51:53 [vllm.py:1530] Resolved Engram configuration: EngramConfig(cpu_offload=False, embedding_across_dp=False, dp_shared_memory=False, table_memory='device', disk_resident_scales=False, projection_tp=False)
+(Worker_TP1 pid=148) INFO 10-11 20:51:53 [nvfp4.py:271] Using 'B12X' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(Worker_TP1 pid=148) INFO 10-11 20:51:53 [vocab_parallel_embedding.py:437] Quantizing LM head shards to NVFP4 with BF16 activations.
+(Worker_TP1 pid=148) INFO 10-11 20:52:15 [interface.py:1051] Setting attention block size to 2848 tokens to ensure that attention page size is >= mamba page size.
+(Worker_TP1 pid=148) QWEN_MTP_GEMM {"rank": 1, "tokens": 8192, "source": "2137986a80d591907d745b48bc74b54228082c9acc60d83e7691d228e437c096"}
+(Worker_TP1 pid=148) INFO 10-11 20:53:52 [cutedsl_warmup.py:107] Warming up CuTeDSL compile_units=27 names=('shape-dynamic skinny GEMM',).
+(Worker_TP1 pid=148) INFO 10-11 20:54:00 [breakable_cudagraph.py:327] Breakable CUDA graph enabled
+INFO 10-11 23:33:01 [model.py:693] Resolved architecture: Qwen4ExpForConditionalGeneration
+INFO 10-11 23:33:01 [model.py:2062] Using max model len 262144
+INFO 10-11 23:33:02 [model.py:693] Resolved architecture: Qwen4ExpMTP
+INFO 10-11 23:33:02 [model.py:2062] Using max model len 262144
+INFO 10-11 23:33:02 [scheduler.py:404] Chunked prefill is enabled with max_num_batched_tokens=8192.
+INFO 10-11 23:33:02 [vllm.py:1530] Resolved Engram configuration: EngramConfig(cpu_offload=False, embedding_across_dp=False, dp_shared_memory=False, table_memory='device', disk_resident_scales=False, projection_tp=False)
+INFO 10-11 23:33:02 [vllm.py:928] Auto-enabling VLLM_USE_BREAKABLE_CUDAGRAPH=1. Set VLLM_USE_BREAKABLE_CUDAGRAPH=0 to opt out.
+INFO 10-11 23:33:03 [compilation.py:336] Enabled custom fusions: norm_quant, act_quant
+(Worker pid=151) INFO 10-11 23:33:36 [adapter.py:487] SIRCL receipt group=tp:0 global_rank=1 rank=1 world=2 layout=ring:8 fabric=pair:6-7 positions=6,7 nccl=none pynccl=skipped session=ring lanes=2 hcas=rocep1s0f1,roceP2p1s0f1 capacity=131072 dispatch=131072 oneshot_max=65536 gather=155648 op_per_peer=- large_piece=4194304 gather_piece=155648 schedules=large:ring,gather:ring,scatter:ring chain_min=reduce:8388608,gather:8388608,scatter:4194304 ring_min=reduce:4194304,gather:8388608,scatter:4194304 links=slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576 tuning=- mhc=sircl fused_norm=off column_gather=on p2p=peers=1,slots=8x524288,direct wait=startup:600s vllm=/usr/local/lib/python3.12/dist-packages/vllm state=ready
+(Worker pid=151) INFO 10-11 23:33:36 [adapter.py:487] SIRCL receipt group=ep:0 global_rank=1 rank=1 world=2 layout=ring:8 fabric=- positions=6,7 nccl=none pynccl=skipped session=shared:tp:0 lanes=2 hcas=rocep1s0f1,roceP2p1s0f1 capacity=131072 dispatch=131072 oneshot_max=65536 gather=155648 op_per_peer=- large_piece=4194304 gather_piece=155648 schedules=large:ring,gather:ring,scatter:ring chain_min=reduce:8388608,gather:8388608,scatter:4194304 ring_min=reduce:4194304,gather:8388608,scatter:4194304 links=slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576 tuning=- mhc=- fused_norm=- column_gather=on p2p=shared:tp:0 wait=startup:600s vllm=/usr/local/lib/python3.12/dist-packages/vllm state=ready
+(Worker pid=151) INFO 10-11 23:33:36 [gpu_worker.py:483] Using V2 Model Runner
+(Worker_TP1 pid=151) INFO 10-11 23:33:37 [__init__.py:1181] Using B12xNvFp4LinearKernel for NVFP4 GEMM
+(Worker_TP1 pid=151) INFO 10-11 23:33:37 [__init__.py:923] Using B12xMxfp8LinearKernel for MXFP8 GEMM
+(Worker_TP1 pid=151) INFO 10-11 23:33:38 [vocab_parallel_embedding.py:437] Quantizing LM head shards to MXFP8 with BF16 activations.
+(Worker_TP1 pid=151) INFO 10-11 23:37:00 [vllm.py:1530] Resolved Engram configuration: EngramConfig(cpu_offload=False, embedding_across_dp=False, dp_shared_memory=False, table_memory='device', disk_resident_scales=False, projection_tp=False)
+(Worker_TP1 pid=151) INFO 10-11 23:37:00 [nvfp4.py:271] Using 'B12X' NvFp4 MoE backend out of potential backends: ['FLASHINFER_TRTLLM', 'FLASHINFER_CUTEDSL', 'FLASHINFER_CUTEDSL_BATCHED', 'FLASHINFER_CUTLASS', 'VLLM_CUTLASS', 'MARLIN', 'HUMMING', 'EMULATION'].
+(Worker_TP1 pid=151) INFO 10-11 23:37:00 [vocab_parallel_embedding.py:437] Quantizing LM head shards to NVFP4 with BF16 activations.
+(Worker_TP1 pid=151) INFO 10-11 23:37:17 [interface.py:1051] Setting attention block size to 2848 tokens to ensure that attention page size is >= mamba page size.
+(Worker_TP1 pid=151) QWEN_MTP_GEMM {"rank": 1, "tokens": 8192, "source": "2137986a80d591907d745b48bc74b54228082c9acc60d83e7691d228e437c096"}
+(Worker_TP1 pid=151) INFO 10-11 23:38:13 [cutedsl_warmup.py:107] Warming up CuTeDSL compile_units=27 names=('shape-dynamic skinny GEMM',).
+(Worker_TP1 pid=151) INFO 10-11 23:38:23 [breakable_cudagraph.py:327] Breakable CUDA graph enabled
+
+@@SERVING-AB-RECEIPT@@ receipt rank1-ep-0.json
+{
+  "b12x": "/usr/local/lib/python3.12/dist-packages/b12x",
+  "capacity": 131072,
+  "chain_min": "reduce:8388608,gather:8388608,scatter:4194304",
+  "column_gather": "on",
+  "column_gather_detail": {
+    "calls": {
+      "ring": 4
+    },
+    "enabled": true,
+    "staging_bytes": 39731200
+  },
+  "decisions": [],
+  "dispatch": 131072,
+  "fabric": "-",
+  "four_rank_sessions": false,
+  "fused_norm": null,
+  "fused_norm_detail": null,
+  "gather": 155648,
+  "gather_piece": 155648,
+  "global_rank": 1,
+  "global_ranks": [
+    0,
+    1
+  ],
+  "group": "ep:0",
+  "hcas": [
+    "rocep1s0f1",
+    "roceP2p1s0f1"
+  ],
+  "lanes": 2,
+  "large_piece": 4194304,
+  "layout": "ring:8",
+  "links": "slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576",
+  "mhc": null,
+  "nccl": "none",
+  "nccl_mode": "never",
+  "nccl_reason": "SIRCL_NCCL=never",
+  "nccl_rule": "NCCL: opt-in only (auto); tables choose among SIRCL options",
+  "oneshot_max": 65536,
+  "op_per_peer": null,
+  "op_per_peer_basis": "no relayed lane",
+  "p2p": "shared:tp:0",
+  "p2p_detail": {
+    "channels": [
+      0
+    ],
+    "plan_basis": "instance",
+    "relayed": [],
+    "shared_from": "tp:0",
+    "unavailable": {}
+  },
+  "positions": [
+    6,
+    7
+  ],
+  "pynccl": "skipped",
+  "rank": 1,
+  "reduce_dtypes": [
+    "bfloat16",
+    "float16",
+    "float32"
+  ],
+  "relay_factor": null,
+  "relays": null,
+  "ring_min": "reduce:4194304,gather:8388608,scatter:4194304",
+  "schedules": "large:ring,gather:ring,scatter:ring",
+  "schema": "sircl-vllm-receipt/v1",
+  "session": "shared:tp:0",
+  "session_shared_with": "tp:0",
+  "session_stats": {
+    "algorithm": "auto",
+    "algorithms_available": [
+      "oneshot",
+      "twoshot"
+    ],
+    "blocks": 8,
+    "bytes_posted_per_hca": [
+      2656078080,
+      2656078080
+    ],
+    "chain_available": true,
+    "chain_blocks": 4,
+    "chain_bytes_posted": 0,
+    "chain_chunk_bytes": 524288,
+    "chain_chunks_posted": 0,
+    "chain_credits_sent": 0,
+    "chain_min_bytes": null,
+    "chain_mins": {
+      "gather": 8388608,
+      "reduce": 8388608,
+      "scatter": 4194304
+    },
+    "chain_ops": 0,
+    "chain_order": [
+      0,
+      1
+    ],
+    "chain_slot_bytes": 1048576,
+    "chain_slots": 4,
+    "chain_unroll": 4,
+    "ctrl_seq": 6891,
+    "devices": [
+      "rocep1s0f1",
+      "roceP2p1s0f1"
+    ],
+    "dispatch_limit_bytes": 131072,
+    "epoch": 6891,
+    "error_lane": 0,
+    "error_peer": 0,
+    "error_seq": 0,
+    "event_trace": 0,
+    "flag_pollers": "one-block",
+    "forward_chunk_bytes": 32768,
+    "forward_chunks_posted": 0,
+    "forward_max_unacked_bytes": 0,
+    "forward_proof": true,
+    "forward_proven_bytes": 0,
+    "forward_wait_max_ns": 0,
+    "forward_wait_ns": 0,
+    "forward_waits": 0,
+    "forward_windows": {},
+    "gather_piece_bytes": 155648,
+    "gather_schedule": "ring",
+    "gid_indices": [
+      3,
+      3
+    ],
+    "lane_check": {
+      "lanes": 2,
+      "result": "passed",
+      "seconds": 0.0008
+    },
+    "lane_count": 2,
+    "large_algorithm": "twoshot",
+    "large_blocks": 32,
+    "large_piece_bytes": 4194304,
+    "large_schedule": "ring",
+    "last_seq": 6891,
+    "later_phases_posted": 3108,
+    "layout": {
+      "cables": [
+        "6.port0-7.port1"
+      ],
+      "kind": "path",
+      "positions": [
+        6,
+        7
+      ],
+      "size": 2
+    },
+    "link_available": true,
+    "link_blocks": {
+      "chain_gather": 4,
+      "chain_scatter": 4,
+      "ring_gather": 1,
+      "ring_reduce": 1,
+      "ring_scatter": 1
+    },
+    "link_bytes_posted": 4349706240,
+    "link_chunk_bytes": 524288,
+    "link_chunks": {
+      "gather": 1048576,
+      "reduce": 1048576,
+      "scatter": 1048576
+    },
+    "link_credits_sent": 4140,
+    "link_items_posted": 4150,
+    "link_ops": 105,
+    "link_slot_bytes": 1048576,
+    "link_slots": 8,
+    "link_unroll": 4,
+    "link_window_chunks_posted": 0,
+    "max_gather_bytes": 155648,
+    "max_size": 131072,
+    "multi_phase": true,
+    "oneshot_max_bytes": 65536,
+    "oneshot_max_source": "SIRCL_ONESHOT_MAX_BYTES",
+    "operations": {
+      "all_gather": true,
+      "all_reduce": [
+        "oneshot",
+        "twoshot"
+      ],
+      "all_to_all": true,
+      "reduce_scatter": true
+    },
+    "ops_posted": 6891,
+    "packs_per_thread": 2,
+    "peer_routes": "0=rocep1s0f1/roceP2p1s0f1",
+    "poll_rate_per_s": 228996446,
+    "post_mode": "verbs",
+    "post_order": "farthest",
+    "post_order_peers": [
+      0
+    ],
+    "proxy_cpu": 3,
+    "proxy_cpu_migrations": 4,
+    "rank": 1,
+    "relay_safe_bytes": null,
+    "ring_available": true,
+    "ring_gather_stagger": 1,
+    "ring_min_bytes": null,
+    "ring_mins": {
+      "gather": 8388608,
+      "reduce": 4194304,
+      "scatter": 4194304
+    },
+    "ring_problem": null,
+    "ring_stagger": 1,
+    "ring_window_bytes": 0,
+    "scatter": true,
+    "scatter_op_bytes": 4194304,
+    "scatter_schedule": "ring",
+    "serving_wait_s": 20.0,
+    "slot_bytes": 4194304,
+    "spin_limit": 20000000,
+    "spin_limit_s": 0.087338,
+    "startup_wait_s": 600.0,
+    "swing_above_bytes": 0,
+    "threads": 512,
+    "tuning": null,
+    "wait_limit_s": 20.0,
+    "wait_regime": "serving",
+    "world_size": 2,
+    "writes_completed": 32438,
+    "writes_completed_per_hca": [
+      18289,
+      14149
+    ]
+  },
+  "state": "ready",
+  "tuning": null,
+  "vllm": "/usr/local/lib/python3.12/dist-packages/vllm",
+  "wait": "serving:20s",
+  "world": 2
+}
+@@SERVING-AB-RECEIPT@@ receipt rank1-tp-0.json
+{
+  "b12x": "/usr/local/lib/python3.12/dist-packages/b12x",
+  "capacity": 131072,
+  "chain_min": "reduce:8388608,gather:8388608,scatter:4194304",
+  "column_gather": "on",
+  "column_gather_detail": {
+    "calls": {
+      "ring": 4
+    },
+    "enabled": true,
+    "staging_bytes": 39731200
+  },
+  "decisions": [
+    {
+      "backend": "sircl",
+      "calls": 120,
+      "collective": "all_gather",
+      "method": "large",
+      "reason": "16 rows of 248320 bytes in 32 session op(s) of at most 155648 bytes (all_gather_large)"
+    },
+    {
+      "backend": "sircl",
+      "calls": 1,
+      "collective": "all_gatherv",
+      "method": "padded_large",
+      "reason": "uneven sizes [16384, 0] padded to 16384"
+    },
+    {
+      "backend": "sircl",
+      "calls": 3416,
+      "collective": "all_reduce",
+      "method": "direct",
+      "reason": "within the dispatch ceiling"
+    },
+    {
+      "backend": "sircl",
+      "calls": 4356,
+      "collective": "all_reduce",
+      "method": "large",
+      "reason": "41943040 bytes through the session's all_reduce_large (at most 10 op(s) of at most 4194304 bytes, or one chain op)"
+    }
+  ],
+  "dispatch": 131072,
+  "fabric": "pair:6-7",
+  "four_rank_sessions": false,
+  "fused_norm": "off",
+  "fused_norm_detail": null,
+  "gather": 155648,
+  "gather_piece": 155648,
+  "global_rank": 1,
+  "global_ranks": [
+    0,
+    1
+  ],
+  "group": "tp:0",
+  "hcas": [
+    "rocep1s0f1",
+    "roceP2p1s0f1"
+  ],
+  "lanes": 2,
+  "large_piece": 4194304,
+  "layout": "ring:8",
+  "links": "slot:1048576,chunk:524288,gather:1048576,scatter:1048576,reduce:1048576",
+  "mhc": "sircl",
+  "nccl": "none",
+  "nccl_mode": "never",
+  "nccl_reason": "SIRCL_NCCL=never",
+  "nccl_rule": "NCCL: opt-in only (auto); tables choose among SIRCL options",
+  "oneshot_max": 65536,
+  "op_per_peer": null,
+  "op_per_peer_basis": "no relayed lane",
+  "p2p": "peers=1,slots=8x524288,direct",
+  "p2p_detail": {
+    "channels": [
+      0
+    ],
+    "plan_basis": "instance",
+    "relayed": [],
+    "shared_from": null,
+    "unavailable": {}
+  },
+  "positions": [
+    6,
+    7
+  ],
+  "pynccl": "skipped",
+  "rank": 1,
+  "reduce_dtypes": [
+    "bfloat16",
+    "float16",
+    "float32"
+  ],
+  "relay_factor": 0.0,
+  "relays": 0,
+  "ring_min": "reduce:4194304,gather:8388608,scatter:4194304",
+  "schedules": "large:ring,gather:ring,scatter:ring",
+  "schema": "sircl-vllm-receipt/v1",
+  "session": "ring",
+  "session_shared_with": null,
+  "session_stats": {
+    "algorithm": "auto",
+    "algorithms_available": [
+      "oneshot",
+      "twoshot"
+    ],
+    "blocks": 8,
+    "bytes_posted_per_hca": [
+      2656078080,
+      2656078080
+    ],
+    "chain_available": true,
+    "chain_blocks": 4,
+    "chain_bytes_posted": 0,
+    "chain_chunk_bytes": 524288,
+    "chain_chunks_posted": 0,
+    "chain_credits_sent": 0,
+    "chain_min_bytes": null,
+    "chain_mins": {
+      "gather": 8388608,
+      "reduce": 8388608,
+      "scatter": 4194304
+    },
+    "chain_ops": 0,
+    "chain_order": [
+      0,
+      1
+    ],
+    "chain_slot_bytes": 1048576,
+    "chain_slots": 4,
+    "chain_unroll": 4,
+    "ctrl_seq": 6891,
+    "devices": [
+      "rocep1s0f1",
+      "roceP2p1s0f1"
+    ],
+    "dispatch_limit_bytes": 131072,
+    "epoch": 6891,
+    "error_lane": 0,
+    "error_peer": 0,
+    "error_seq": 0,
+    "event_trace": 0,
+    "flag_pollers": "one-block",
+    "forward_chunk_bytes": 32768,
+    "forward_chunks_posted": 0,
+    "forward_max_unacked_bytes": 0,
+    "forward_proof": true,
+    "forward_proven_bytes": 0,
+    "forward_wait_max_ns": 0,
+    "forward_wait_ns": 0,
+    "forward_waits": 0,
+    "forward_windows": {},
+    "gather_piece_bytes": 155648,
+    "gather_schedule": "ring",
+    "gid_indices": [
+      3,
+      3
+    ],
+    "lane_check": {
+      "lanes": 2,
+      "result": "passed",
+      "seconds": 0.0008
+    },
+    "lane_count": 2,
+    "large_algorithm": "twoshot",
+    "large_blocks": 32,
+    "large_piece_bytes": 4194304,
+    "large_schedule": "ring",
+    "last_seq": 6891,
+    "later_phases_posted": 3108,
+    "layout": {
+      "cables": [
+        "6.port0-7.port1"
+      ],
+      "kind": "path",
+      "positions": [
+        6,
+        7
+      ],
+      "size": 2
+    },
+    "link_available": true,
+    "link_blocks": {
+      "chain_gather": 4,
+      "chain_scatter": 4,
+      "ring_gather": 1,
+      "ring_reduce": 1,
+      "ring_scatter": 1
+    },
+    "link_bytes_posted": 4349706240,
+    "link_chunk_bytes": 524288,
+    "link_chunks": {
+      "gather": 1048576,
+      "reduce": 1048576,
+      "scatter": 1048576
+    },
+    "link_credits_sent": 4140,
+    "link_items_posted": 4150,
+    "link_ops": 105,
+    "link_slot_bytes": 1048576,
+    "link_slots": 8,
+    "link_unroll": 4,
+    "link_window_chunks_posted": 0,
+    "max_gather_bytes": 155648,
+    "max_size": 131072,
+    "multi_phase": true,
+    "oneshot_max_bytes": 65536,
+    "oneshot_max_source": "SIRCL_ONESHOT_MAX_BYTES",
+    "operations": {
+      "all_gather": true,
+      "all_reduce": [
+        "oneshot",
+        "twoshot"
+      ],
+      "all_to_all": true,
+      "reduce_scatter": true
+    },
+    "ops_posted": 6891,
+    "packs_per_thread": 2,
+    "peer_routes": "0=rocep1s0f1/roceP2p1s0f1",
+    "poll_rate_per_s": 228996446,
+    "post_mode": "verbs",
+    "post_order": "farthest",
+    "post_order_peers": [
+      0
+    ],
+    "proxy_cpu": 3,
+    "proxy_cpu_migrations": 4,
+    "rank": 1,
+    "relay_safe_bytes": null,
+    "ring_available": true,
+    "ring_gather_stagger": 1,
+    "ring_min_bytes": null,
+    "ring_mins": {
+      "gather": 8388608,
+      "reduce": 4194304,
+      "scatter": 4194304
+    },
+    "ring_problem": null,
+    "ring_stagger": 1,
+    "ring_window_bytes": 0,
+    "scatter": true,
+    "scatter_op_bytes": 4194304,
+    "scatter_schedule": "ring",
+    "serving_wait_s": 20.0,
+    "slot_bytes": 4194304,
+    "spin_limit": 20000000,
+    "spin_limit_s": 0.087338,
+    "startup_wait_s": 600.0,
+    "swing_above_bytes": 0,
+    "threads": 512,
+    "tuning": null,
+    "wait_limit_s": 20.0,
+    "wait_regime": "serving",
+    "world_size": 2,
+    "writes_completed": 32438,
+    "writes_completed_per_hca": [
+      18289,
+      14149
+    ]
+  },
+  "state": "ready",
+  "tuning": null,
+  "vllm": "/usr/local/lib/python3.12/dist-packages/vllm",
+  "wait": "serving:20s",
+  "world": 2
+}
+@@SERVING-AB-RECEIPT@@ clocks
+2398 MHz, 3003 MHz, 0x0000000000000000, 2418 MHz, 46, 12.99 W
+
+@@SERVING-AB-RECEIPT@@ end

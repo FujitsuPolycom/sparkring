@@ -1,0 +1,77 @@
+{
+ "metadata": {
+  "version": "0.7.6",
+  "engine": "vllm",
+  "model": "DeepSeek-V4.1-Flash-TP4",
+  "server": "192.0.2.193:8015",
+  "timestamp": "2026-10-11T14:12:24.139001",
+  "decode_mode": "duration",
+  "primary_decode_layer": "sustained_decode",
+  "duration_per_test": 30.0,
+  "request_count": 0,
+  "warmup_request_count": 0,
+  "run_burst": false,
+  "prefill_mode": "integrated_decode_scout",
+  "standalone_prefill": false,
+  "prefill_only": false,
+  "skip_prefill": false,
+  "burst_e2e_status": "not_run_use_--run-burst",
+  "burst_request_count": 0,
+  "burst_warmup_request_count": 0,
+  "burst_requests_per_concurrency": 5,
+  "decode_warmup_seconds": 3.0,
+  "decode_warmup_context": 131072,
+  "decode_warmup_loop_diagnostics": [],
+  "loop_detection": {
+   "enabled": true,
+   "scope": "decode_cells_and_their_warmups",
+   "confirmed_min_chars": 4096,
+   "confirmed_min_cycles": 4,
+   "max_period_chars": 32768,
+   "history_chars_per_request_channel": 131072,
+   "check_interval_chars": 256,
+   "invalid_cell_aggregate_tps_sentinel": -3.0,
+   "limitation": "exact repeated text heuristic; not a semantic correctness test"
+  },
+  "decode_warmup_concurrency": 1,
+  "cell_warmup_timeout_seconds": 0.0,
+  "cell_warmup_timeout_policy": "<=32k:60s,64k:120s,>=128k:180s when override is 0",
+  "show_capacity_limited_values": false,
+  "max_tokens": 8192,
+  "temperature": null,
+  "ignore_eos": true,
+  "max_total_tokens": 12806776,
+  "dcp_size": 0,
+  "metrics_available": true,
+  "metrics_warning": "",
+  "concurrency_levels": [
+   1,
+   8,
+   16
+  ],
+  "context_lengths": [
+   8192,
+   131072
+  ],
+  "startup_diagnostics_available": true,
+  "nvidia_p2p_override_effective": false,
+  "p2pmark_status": "not_run",
+  "amd_fabric_status": "not_run"
+ },
+ "results": [
+  {
+   "context_tokens": 8192,
+   "concurrency": 1,
+   "aggregate_tps": 62.859159073317585,
+   "server_steps_per_s": 26.67762719291993,
+   "server_spec_accept_length": 2.35625
+  },
+  {
+   "context_tokens": 131072,
+   "concurrency": 1,
+   "aggregate_tps": 59.324446959930675,
+   "server_steps_per_s": 26.27749533694512,
+   "server_spec_accept_length": 2.2576142131979697
+  }
+ ]
+}

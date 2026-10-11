@@ -1,0 +1,104 @@
+{
+ "profile": "qwen38-flash-next-tp2",
+ "state": {
+  "generation": 5,
+  "operation": "up",
+  "complete": true,
+  "receipt": "operations/0005-up.json"
+ },
+ "deployment_id": "6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729",
+ "source_revision": "afe1561f163073bb5bf54b032dec6e73e42cc417",
+ "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+ "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+ "live_observed": false,
+ "hosts": [
+  "root@198.51.100.5",
+  "root@198.51.100.3"
+ ],
+ "checkpoint": "csf",
+ "model_repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD",
+ "model_revision": "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2",
+ "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+ "api_url": "http://192.0.2.232:8000/v1",
+ "model": "Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2",
+ "port": 8000,
+ "actions": {
+  "prerequisites:root@198.51.100.5": "succeeded",
+  "prerequisites:root@198.51.100.3": "succeeded",
+  "source:root@198.51.100.5": "succeeded",
+  "source:root@198.51.100.3": "succeeded",
+  "model:root@198.51.100.5": "succeeded",
+  "model:root@198.51.100.3": "succeeded",
+  "image:root@198.51.100.5": "succeeded",
+  "image:root@198.51.100.3": "succeeded",
+  "ring-park:root@198.51.100.5": "succeeded",
+  "ring-park:root@198.51.100.3": "succeeded",
+  "gid-serve:root@198.51.100.5": "succeeded",
+  "gid-serve:root@198.51.100.3": "succeeded",
+  "preflight:root@198.51.100.5": "succeeded",
+  "preflight:root@198.51.100.3": "succeeded",
+  "create:root@198.51.100.5": "succeeded",
+  "create:root@198.51.100.3": "succeeded",
+  "start-workers:root@198.51.100.3": "succeeded",
+  "start-api:root@198.51.100.5": "succeeded",
+  "ready:root@198.51.100.5": "succeeded",
+  "ready:root@198.51.100.3": "succeeded",
+  "smoke:root@198.51.100.5": "succeeded",
+  "model-settled:root@198.51.100.5": "succeeded",
+  "model-settled:root@198.51.100.3": "succeeded"
+ },
+ "problems": {},
+ "containers": [
+  {
+   "rank": 0,
+   "host": "root@198.51.100.5",
+   "name": "sr-ring8b-qwen38-flash-next--857683-r0",
+   "labels": {
+    "io.sparkring.deployment": "6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729",
+    "io.sparkring.rank": "0"
+   }
+  },
+  {
+   "rank": 1,
+   "host": "root@198.51.100.3",
+   "name": "sr-ring8b-qwen38-flash-next--857683-r1",
+   "labels": {
+    "io.sparkring.deployment": "6d45a1b20cebfd5f241b80c391ed9525514c08acb1483b8fb3d8095ae5390729",
+    "io.sparkring.rank": "1"
+   }
+  }
+ ],
+ "serving": {
+  "research_env": [
+   "VLLM_MXFP8_LM_HEAD=1"
+  ],
+  "research_vllm_arg": [
+   "--async-scheduling",
+   "--speculative-config={\"method\":\"mtp\",\"num_speculative_tokens\":3,\"moe_backend\":\"b12x\",\"attention_backend\":\"B12X\",\"draft_sample_method\":\"probabilistic\",\"kv_cache_dtype\":\"auto\"}"
+  ]
+ },
+ "thinking": {
+  "thinking": "on",
+  "level": "xhigh",
+  "chosen": false,
+  "model": {
+   "thinking": "on",
+   "level": "xhigh"
+  }
+ },
+ "transport": {
+  "backend": "sircl",
+  "nccl": "never",
+  "group": "pair",
+  "positions": [
+   6,
+   7
+  ],
+  "fabric": "sha256:2bf46dcd8537b54bf025b705cb2a7a5d3d54ff0ecf87b17192fb7cca499bad46",
+  "verdict": "as-expected",
+  "nccl_observed": "absent",
+  "checked_at": "2026-10-11T23:38:54Z",
+  "receipts": "/var/lib/sparkring/controller/deployments/qwen38-flash-next-tp2-ie5356b016ed6/receipts/20261011T233854Z",
+  "problems": []
+ }
+}
