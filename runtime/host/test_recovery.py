@@ -376,7 +376,7 @@ def test_ring_with_a_failed_mesh_unit_starts_through_up(tmp_path, monkeypatch):
         sparks.mesh[host] = {"active": [], "markers": [], "failed": [
             {"unit": "sparkring-test-mesh.service", "result": "exit-code",
              "error": "ValueError: Management address does not identify this rank"}]}
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
     clock = Clock()
     applied = []
@@ -391,7 +391,7 @@ def test_ring_with_a_failed_mesh_unit_starts_through_up(tmp_path, monkeypatch):
 
 def test_ring_waits_for_the_hairpin_setting(tmp_path, monkeypatch):
     sparks = four_spark_ring(tmp_path, monkeypatch)
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: "rank 2 (spark2): the ConnectX hairpin setting is not in effect")
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: "rank 2 (spark2): the ConnectX hairpin setting is not in effect")
     clock = Clock()
     applied = []
     run(clock, apply=applied.append)
@@ -411,6 +411,63 @@ def test_ring_member_without_a_mesh_report_is_unknown(tmp_path, monkeypatch):
         result = run(clock, apply=applied.append)
         clock.advance(60)
     assert result["finding"]["state"] == "unknown" and applied == []
+
+
+def four_spark_group_of_a_ring_of_eight(tmp_path, monkeypatch):
+    """A four-rank deployment on Sparks 0-3 of an eight-Spark ring: no Spark reports mesh units, as on hardware,
+    because only a four-Spark ring runs them (``node.mesh_ring``)."""
+    from runtime.host import discovery, placement
+    from runtime.host.test_fabric_groups import ring_cluster
+    monkeypatch.setattr(controller, "STATE", tmp_path / "state")
+    value = ring_cluster(8)
+    node.save(controller.STATE, "cluster.json", value)
+    hosts = [host["host"] for host in value["plan"]["spec"]["hosts"][:4]]
+    directory = tmp_path / "state" / "deployments" / "arc"
+    lock = {"id": "d" * 64, "backend": "compose", "selection": {"profile": "qwen38-flash-next-qad-tp4"},
+            "site": {"name": "arc", "placement": [0, 1, 2, 3],
+                     "ranks": [{"rank": rank, "host": host} for rank, host in enumerate(hosts)]}}
+    lock["selection"].update(target_variant=None, model_repository="local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+                             model_revision="0" * 40, release="dev-image")
+    installer.write(directory / "deployment.lock.json", lock)
+    installer.write(directory / "state.json", {"generation": 1, "operation": "up", "complete": True})
+    placement.record(controller.STATE, (0, 1, 2, 3), directory)
+    sparks = Sparks(hosts)
+    sparks.directory = directory.resolve()
+    for rank, host in enumerate(hosts):
+        sparks.documents[host] = {"state": "network-configured", "hostname": f"spark{rank}", "boot_id": BOOT}
+    sparks.running.update({rank: True for rank in range(4)})
+    monkeypatch.setattr(discovery, "ssh", sparks.ssh)
+    recovery.update(directory, api_url="http://192.0.2.10:8000/v1")
+    return sparks, lock
+
+
+def test_a_four_rank_group_on_a_ring_of_eight_is_judged_without_mesh_reports(tmp_path, monkeypatch):
+    sparks, lock = four_spark_group_of_a_ring_of_eight(tmp_path, monkeypatch)
+    assert recovery.ring_of_four() is False
+    clock = Clock()
+    # Serving: the group is serving, not unknown, although no Spark reports mesh units.
+    finding = run(clock, apply=lambda _: pytest.fail("a serving model is not restarted"))["finding"]
+    assert finding["state"] == "serving"
+    # A stopped rank is a partial model that recovery restarts once confirmed; the hairpin guard reads only the
+    # Sparks that relay the group's lanes.
+    sparks.running.update({1: False})
+    checked = []
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: checked.append(placement))
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    applied = []
+    for _ in range(recovery.CONFIRMATIONS + 1):
+        clock.advance(60)
+        result = run(clock, apply=applied.append)
+    assert applied[:2] == ["down", "up"], result
+    assert checked and set(checked) == {(0, 1, 2, 3)}
+
+
+def test_a_ring_of_four_still_requires_every_mesh_report(tmp_path, monkeypatch):
+    four_spark_ring(tmp_path, monkeypatch)
+    assert recovery.ring_of_four() is True
+    (controller.STATE / "cluster.json").unlink()
+    # Without a readable cluster record the mesh guard holds.
+    assert recovery.ring_of_four() is True
 
 
 def test_api_health_reads_vllm_health_without_a_proxy():
@@ -698,7 +755,7 @@ def test_ring_guard_is_checked_again_under_the_lock(tmp_path, monkeypatch):
     """Marker processes left without a mesh unit between the check and the attempt stop the attempt."""
     sparks = four_spark_ring(tmp_path, monkeypatch)
     sparks.running.update({0: False, 1: False, 2: False, 3: False})
-    monkeypatch.setattr(controller, "_hairpin_problem", lambda: None)
+    monkeypatch.setattr(controller, "_hairpin_problem", lambda placement=None: None)
     clock = Clock()
     applied = []
     run(clock, apply=applied.append)

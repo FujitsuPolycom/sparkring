@@ -31,9 +31,11 @@ A run acts only when every guard holds:
 - the deployment is a Compose deployment;
 - every Spark answers over SSH; otherwise the run only records which Sparks
   it waits for;
-- for a four-rank model, every Spark's status report is current and reports
-  its mesh units, no mesh marker process runs without an active mesh unit,
-  and the ConnectX hairpin setting is in effect;
+- for a four-rank model on a four-Spark ring, every Spark's status report is
+  current and reports its mesh units, and no mesh marker process runs
+  without an active mesh unit (only a four-Spark ring runs per-deployment
+  mesh units, ``ring_of_four``); for every four-rank model, the ConnectX
+  hairpin setting is in effect on the Sparks that relay its traffic;
 - consecutive runs found the model not serving: CONFIRMATIONS runs, or for an
   API that gives no answer at all, API_SILENCE seconds; and the backoff after
   a failed attempt (BACKOFF) has passed.
@@ -61,7 +63,7 @@ import traceback
 import urllib.error
 import urllib.request
 
-from runtime.common import compose, installer, process_lock
+from runtime.common import compose, fabric_layout, installer, process_lock
 from runtime.host import controller, discovery, host_load, node, progress, retained_source
 
 SCHEMA = "sparkring-recovery/v1"
@@ -286,6 +288,19 @@ def local_target():
 def local_status(host):
     """This Spark's ``sparkring node status`` document, read in process."""
     return node.status()
+
+
+def ring_of_four():
+    """Whether the recorded fabric is a four-Spark cycle, the only layout whose Sparks run per-deployment mesh
+    units and report them in their status documents (``node.mesh_ring``). A four-rank group on a larger fabric,
+    such as Sparks 0-3 of a ring of eight, runs no ring mesh. Without a readable cluster record the mesh guard
+    holds, as on a ring of four."""
+    from runtime.host import placement
+    try:
+        layout = placement.layout_of(installer.read(controller.STATE / "cluster.json"))
+    except (OSError, ValueError, KeyError, IndexError, TypeError):
+        return True
+    return layout == fabric_layout.layout(fabric_layout.CYCLE, 4)
 
 
 def local_command(host, args, *, timeout=180):
@@ -820,7 +835,7 @@ def observe(directory, lock, record, state, *, invoke, api=None, tunnel=None):
     baseline = (record.get("boots") or {}) if record.get("generation") == state.get("generation") else {}
     rebooted = [host for host in hosts if baseline.get(host) and boots.get(host) and baseline[host] != boots[host]]
     finding = assess(ranks, api=health, rebooted=rebooted, nodes=documents, tunnel=tunnel,
-                     require_mesh=len(hosts) == 4)
+                     require_mesh=len(hosts) == 4 and ring_of_four())
     finding["boots"] = boots
     return finding
 
@@ -871,8 +886,10 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
             update(directory, finding=shown, pending=None)
             return _outcome("changed", "Observed again before acting: " + finding["summary"], directory, finding=shown)
         if len(lock["site"]["ranks"]) == 4:
-            # retained_source.apply does not check the hairpin setting; up does.
-            problem = controller._hairpin_problem()
+            # retained_source.apply does not check the hairpin setting; up does, for the Sparks that relay
+            # the group's lanes (every relaying Spark for a model on the whole fabric).
+            from runtime.host import placement
+            problem = controller._hairpin_problem(placement.from_lock(lock))
             if problem:
                 shown = {"state": "hairpin", "summary": "The ConnectX hairpin setting is not in effect",
                          "next_action": "on Node A: sudo sparkring hairpin", "details": problem.splitlines()}

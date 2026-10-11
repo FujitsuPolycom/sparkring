@@ -1220,9 +1220,12 @@ table names. It acts only when all of these hold:
   the Spark it waits for.
 - Two checks in a row found the model not serving. An API that gives no
   answer at all, rather than a 503, must stay silent for 5 minutes.
-- For a four-Spark model: every Spark reports its mesh services, the
-  [hairpin setting](#four-spark-rings) is in effect, and no mesh forwarding
-  process runs without its service ([below](#mesh-forwarding-without-its-service)).
+- For a four-Spark model on a four-Spark ring: every Spark reports its mesh
+  services and no mesh forwarding process runs without its service
+  ([below](#mesh-forwarding-without-its-service)). For every four-Spark model,
+  including a group of four on a larger ring, which runs no ring mesh: the
+  [hairpin setting](#four-spark-rings) is in effect on the Sparks that relay
+  its traffic.
 
 Before it acts it takes the install lock and checks everything again, so a
 `recover off`, another command or a model that came back in the meantime
