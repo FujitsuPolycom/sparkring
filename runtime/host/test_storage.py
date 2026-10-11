@@ -442,7 +442,10 @@ def test_disk_use_stops_at_its_time_limit(tmp_path):
     assert storage.disk_use(str(tmp_path / "absent"), deadline=time.monotonic() + 60)["bytes"] == 0
 
 
-@pytest.mark.parametrize("profile", installer_image.SUPPORTED)
+# storage.profile_references reads the image locks this package carries; none admits the SparkCache variants,
+# whose cache root test_sparkcache_variants checks against CACHE_NAME.
+@pytest.mark.parametrize("profile", [profile for profile in installer_image.SUPPORTED
+                                     if profile not in installer_image.SPARKCACHE_VARIANTS])
 def test_profile_cache_names_are_the_caches_installer_containers_use(profile):
     from runtime.common.test_compose_installer import install_site
     metadata, _ = profiles.load(profile)

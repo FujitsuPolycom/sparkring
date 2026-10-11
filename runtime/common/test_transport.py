@@ -844,8 +844,15 @@ def test_the_adapter_names_no_variable_the_sircl_package_does_not_read():
 def test_every_installer_profile_renders_on_sircl_on_its_layouts(profile, nccl):
     cases = ([("cycle", 4, [0, 1, 2, 3])] if profile.endswith("-tp4") else
              [("pair", 2, [0, 1]), ("cycle", 4, [0, 1]), ("cycle", 4, [2, 3])])
+    image = None
+    if profile in installer.installer_image.SPARKCACHE_VARIANTS:
+        # A variant runs only on a lock that lists it, such as its derived layer's, whose vLLM reads CSF.
+        from runtime.common.test_image_lock import CSF_PINS, sircl_block
+        default = sircl_lock()
+        image = sircl_lock(profiles=sorted({*default["profiles"], profile}),
+                           sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
     for shape, size, positions in cases:
-        lock, section = sircl_deployment(profile, shape, size, positions, nccl=nccl)
+        lock, section = sircl_deployment(profile, shape, size, positions, nccl=nccl, image=image)
         specs = installer.specifications(lock)
         assert len(specs) == len(positions)
         for spec in specs:
