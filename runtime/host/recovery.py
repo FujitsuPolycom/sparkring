@@ -64,7 +64,8 @@ import urllib.error
 import urllib.request
 
 from runtime.common import compose, fabric_layout, installer, process_lock
-from runtime.host import controller, discovery, host_load, node, operator_view, privilege, progress, retained_source
+from runtime.host import (colour, controller, discovery, host_load, node, operator_view, privilege, progress,
+                          retained_source)
 
 SCHEMA = "sparkring-recovery/v1"
 TIMER = "sparkring-recover.timer"
@@ -967,15 +968,17 @@ def status_lines(record, *, now=time.time, timer=None, state=None, backend="comp
     if backend != "compose":
         return [f"Automatic recovery: not available for this deployment ({backend}); restart it by hand"]
     if record is None:
-        return ["Automatic recovery: state unreadable; use sudo sparkring status"]
+        return [f"Automatic recovery: state unreadable; use {colour.cmd('sudo sparkring status')}"]
     if not record.get("enabled", True):
-        return ["Automatic recovery: off | turn on: sudo sparkring recover on"]
+        return [f"Automatic recovery: off | turn on: {colour.cmd('sudo sparkring recover on')}"]
     if record.get("stopped"):
-        lines = [f"Automatic recovery: {_stopped_text(record).lower()} | {UP} turns it back on"]
+        lines = [f"Automatic recovery: {_stopped_text(record).lower()} | {colour.cmd(UP)} turns it back on"]
     elif timer is False:
-        lines = [f"Automatic recovery: on, but {TIMER} is not enabled | sudo sparkring recover on enables it"]
+        lines = [f"Automatic recovery: on, but {TIMER} is not enabled | {colour.cmd('sudo sparkring recover on')}"
+                 " enables it"]
     elif state is not None and not may_act(state, record):
-        lines = ["Automatic recovery: on; idle until the next sudo sparkring up --execute or sudo sparkring install"]
+        lines = ["Automatic recovery: on; idle until the next " + colour.cmd("sudo sparkring up --execute")
+                 + " or " + colour.cmd("sudo sparkring install")]
     else:
         lines = ["Automatic recovery: on"]
     waiting = record.get("waiting")
@@ -1015,7 +1018,7 @@ def describe():
         finding = record.get("finding")
         if finding and record.get("checked_at"):
             lines.append(f"Last check at {clock(record['checked_at'])}: {finding['summary']}"
-                         + (f" | next: {finding['next_action']}" if finding.get("next_action") else ""))
+                         + (f" | next: {colour.action(finding['next_action'])}" if finding.get("next_action") else ""))
             lines += ["  " + line for line in finding.get("details") or []]
         documents.append({"deployment": str(directory), "record": record})
     if len(documents) == 1:
@@ -1040,7 +1043,7 @@ def _operator_recovery():
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring recover",
+    parser = argparse.ArgumentParser(prog="sparkring recover", parents=[colour.parser()],
                                      description="Automatic restart of the active models when a Spark stops serving.")
     parser.add_argument("action", nargs="?", choices=("status", "on", "off"),
                         help="status (default), or turn automatic recovery on or off for the active deployments: "
@@ -1049,6 +1052,7 @@ def main(argv=None):
                         help="check once and restart the model if needed; sparkring-recover.timer runs this")
     parser.add_argument("--json", action="store_true", help="print one JSON document")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     if args.auto and args.action:
         parser.error("--auto takes no action")
     try:
@@ -1080,7 +1084,7 @@ def main(argv=None):
                 # sparkring group reads the published operator view instead.
                 result = _operator_recovery()
         print(json.dumps({key: value for key, value in result.items() if key != "lines"}, indent=2)
-              if args.json else "\n".join(result["lines"]))
+              if args.json else colour.render("\n".join(result["lines"]), sys.stdout))
         return 0
     except PermissionError as error:
         print(f"SparkRing recover: {error}; use sudo", file=sys.stderr)

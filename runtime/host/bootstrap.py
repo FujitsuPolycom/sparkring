@@ -144,7 +144,8 @@ def login_failure(hop, errors):
                    "--ssh-user NAME if that Spark's account has another name")
     elif "Connection refused" in errors:
         message = (f"{where} refused SSH on port {hop['port']}; start SSH on that Spark "
-                   "(sudo systemctl enable --now ssh) or prepare it offline with sudo sparkring setup --worker-bundle")
+                   "(sudo systemctl enable --now ssh) or prepare it offline with "
+                   "sudo sparkring setup --worker-bundle")
     elif any(text in errors for text in UNANSWERED):
         message = f"{where} did not answer SSH; check the fabric cable to that Spark"
     elif "REMOTE HOST IDENTIFICATION HAS CHANGED" in errors or offending:

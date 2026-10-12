@@ -19,7 +19,7 @@ import time
 import pytest
 
 from runtime.common import installer
-from runtime.host import controller, fabric_bandwidth as bandwidth, placement, single_uplink
+from runtime.host import colour, controller, fabric_bandwidth as bandwidth, placement, single_uplink
 from runtime.host.test_fabric_ssh import cluster
 from runtime.host.test_setup_prompts import four_sparks  # noqa: F401 (fixture)
 
@@ -445,8 +445,8 @@ def saved(tmp_path, document):
 def test_status_says_never_measured_without_a_saved_result(tmp_path):
     value = bandwidth.summary(tmp_path)
     assert value == {"state": "never-measured"}
-    assert bandwidth.status_lines(value) == ["Fabric bandwidth: never measured; sudo sparkring cabling --bandwidth "
-                                             "measures it"]
+    assert [colour.plain(line) for line in bandwidth.status_lines(value)] == [
+        "Fabric bandwidth: never measured; sudo sparkring cabling --bandwidth measures it"]
 
 
 def test_status_shows_a_healthy_result_with_its_age(tmp_path):
@@ -491,7 +491,7 @@ def test_status_names_cables_that_failed_or_were_skipped(tmp_path):
 def test_status_treats_a_result_of_another_setup_or_an_unreadable_one_as_unmeasured(tmp_path):
     _, _, document = checked(2)
     value = saved(tmp_path, document)
-    assert bandwidth.status_lines(value, "f" * 64) == [
+    assert [colour.plain(line) for line in bandwidth.status_lines(value, "f" * 64)] == [
         "Fabric bandwidth: never measured on this setup (the saved result is from another setup of the Sparks); "
         "sudo sparkring cabling --bandwidth measures it"]
     (tmp_path / bandwidth.RECORD).write_text("{not json")

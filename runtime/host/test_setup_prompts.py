@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from runtime.host import bootstrap, controller, single_uplink, topology
+from runtime.host import bootstrap, colour, controller, single_uplink, topology
 
 
 @pytest.mark.parametrize("answer,approved", [("", True), ("Y", True), ("yes", True), ("n", False), ("no", False)])
@@ -231,8 +231,10 @@ def test_setup_accepts_the_driver_reload_flag_and_explains_it(tmp_path, monkeypa
                              "--allow-driver-reload", "--output", str(tmp_path / "plan")]) == 0
     assert "--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD in capsys.readouterr().out
     monkeypatch.setattr(single_uplink.os, "geteuid", lambda: 1000, raising=False)
-    with pytest.raises(ValueError, match="Run sudo sparkring setup"):
+    with pytest.raises(ValueError) as refused:
         single_uplink.main(["--allow-driver-reload"])
+    # The message highlights its command on a terminal; the plain text is unchanged.
+    assert colour.plain(str(refused.value)).startswith("Run sudo sparkring setup")
     assert "--allow-driver-reload: " + controller.ALLOW_DRIVER_RELOAD in capsys.readouterr().out
 
 

@@ -5,10 +5,14 @@ import shutil
 import threading
 import time
 
+from runtime.host import colour
+
 
 class Console:
     def __init__(self, stream, *, plain=False):
         self.stream = stream
+        # The --color value a command's parser accepts arrives after this
+        # construction, so "never" is re-checked on every read.
         self.enabled = not plain and self._interactive(stream)
         self.active = {}
         self.lock = threading.RLock()
@@ -28,6 +32,14 @@ class Console:
     @staticmethod
     def _interactive(stream):
         return stream.isatty() and os.environ.get("TERM") != "dumb" and "NO_COLOR" not in os.environ
+
+    @property
+    def enabled(self):
+        return self._enabled and colour.mode() != "never"
+
+    @enabled.setter
+    def enabled(self, value):
+        self._enabled = value
 
     def __enter__(self):
         if self.enabled:
@@ -87,6 +99,10 @@ class Console:
         with self.lock:
             self._clear()
             decorated = self.enabled and self._interactive(target)
+            # A console disabled by --plain or --details keeps every span plain,
+            # even on a terminal; a disabled-by-stream console lets the mode
+            # decide, so --color=always still reaches a pipe.
+            text = colour.render(text, target) if self._enabled else colour.plain(text)
             target.write(self._color(text) if decorated else text)
             target.flush()
             if text and (target is self.stream or decorated):
@@ -101,6 +117,7 @@ class Console:
             others = f" | {len(self.active)} active" if len(self.active) > 1 else ""
             width = max(1, shutil.get_terminal_size(fallback=(80, 24)).columns - 1)
             line = f"{self.frames[self.frame % len(self.frames)]} {message}{elapsed}{others}"[:width]
+            line = colour.render(line, self.stream)
             self.stream.write(f"\r\033[2K\033[36m{line}\033[0m")
             self.stream.flush()
             self.drawn = True

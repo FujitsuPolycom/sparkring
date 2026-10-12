@@ -10,8 +10,8 @@ import sys
 import time
 
 from runtime.common import distribution, fabric_layout, installer
-from runtime.host import (bootstrap, cabling, control, control_node, controller, discovery, fabric, fabric_bandwidth,
-                          lan_peers, node, packages, reform, seed, settings, survey, topology)
+from runtime.host import (bootstrap, cabling, colour, control, control_node, controller, discovery, fabric,
+                          fabric_bandwidth, lan_peers, node, packages, reform, seed, settings, survey, topology)
 from scripts import hairpin_setting
 
 # The approval lines for the ConnectX hairpin setting on fabrics that relay.
@@ -236,8 +236,9 @@ def admin_fallback(args, base, public, directory, *, invoke=discovery.ssh, colle
     for target, config in zip(targets, extended, strict=True):
         invoke(target, ["sudo", "-n", "/usr/bin/sparkring", "node", "control-configure"],
                data=json.dumps({"control": config, "ssh_key": public}))
-    print("Fallback paths added. Each Spark checks its tunnel paths every 20 seconds; "
-          "sudo sparkring status names a worker reached over a fallback path.")
+    print(colour.render("Fallback paths added. Each Spark checks its tunnel paths every 20 seconds; "
+                        + colour.cmd("sudo sparkring status") + " names a worker reached over a fallback path.",
+                        sys.stdout))
     return 0
 
 
@@ -387,7 +388,8 @@ def _arguments(argv):
     pre.add_argument("--env", type=Path)
     env, _ = pre.parse_known_args(argv)
     values = settings.load(env.env)
-    parser = argparse.ArgumentParser(prog="sparkring setup", description="Run on Node A to install a pair/ring through its fabric links.")
+    parser = argparse.ArgumentParser(prog="sparkring setup", parents=[colour.parser()],
+                                     description="Run on Node A to install a pair/ring through its fabric links.")
     parser.add_argument("--env", type=Path, help="optional literal preferences; never required for guided setup")
     parser.add_argument("--name", default=values["SPARKRING_NAME"])
     parser.add_argument("--ssh-user", default=values["SPARKRING_SSH_USER"])
@@ -410,6 +412,7 @@ def _arguments(argv):
                         help="on an installed cluster, add fallback paths (the other fabric cables, the LAN) to the "
                              "administration network; changes nothing else")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     chosen = settings.explicit(env.env)
     if args.fabric_cidr is None and "SPARKRING_FABRIC_CIDR" in chosen:
         args.fabric_cidr = values["SPARKRING_FABRIC_CIDR"]
@@ -587,5 +590,5 @@ def main(argv=None, *, follow=None):
     fabric.finish_setup(base, cluster, directory, bandwidth=bandwidth)
     from runtime.host import dashboard_admin
     dashboard_admin.after_setup()
-    print("Setup complete. Choose a model: sparkring models")
+    print(colour.render("Setup complete. Choose a model: " + colour.cmd("sparkring models"), sys.stdout))
     return 0

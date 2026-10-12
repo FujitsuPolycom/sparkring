@@ -16,6 +16,7 @@ import sys
 import threading
 import time
 
+from runtime.host import colour
 from runtime.host.privilege import reader_request, share, share_directory
 from runtime.host.terminal import Console
 
@@ -50,10 +51,12 @@ def emit(state, label, *, node=None, phase=None, elapsed=None, **fields):
     """
     if _events is None:
         return
-    document = {"schema": EVENT_SCHEMA, "time": _now(), "state": state, "label": label, "node": node, "phase": phase}
+    document = {"schema": EVENT_SCHEMA, "time": _now(), "state": state, "label": colour.plain(label), "node": node,
+                "phase": phase}
     if elapsed is not None:
         document["elapsed_s"] = round(elapsed, 1)
-    document.update((key, value) for key, value in fields.items() if value is not None)
+    document.update((key, colour.plain(value) if isinstance(value, str) else value)
+                    for key, value in fields.items() if value is not None)
     with _lock:
         try:
             _events.write(json.dumps(document) + "\n")
@@ -82,20 +85,23 @@ def record(message):
     if _log is not None:
         stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         with _lock:
-            _log.write(stamp + "  " + message.rstrip() + "\n")
+            _log.write(stamp + "  " + colour.plain(message).rstrip() + "\n")
             _log.flush()
 
 
 def say(message):
+    stream = sys.stderr
     with _lock:
-        sys.stderr.write(message + "\n")
-        sys.stderr.flush()
+        # Under run() the stream is the Tee: it renders the marks for its
+        # console and records the plain text. Alone, say renders itself.
+        stream.write((message if isinstance(stream, Tee) else colour.render(message, stream)) + "\n")
+        stream.flush()
 
 
 def failure(message):
     if _details is not None:
         with _lock:
-            _details.write(message + "\n")
+            _details.write(colour.plain(message) + "\n")
             _details.flush()
     lines = [line for line in message.splitlines() if line.strip()]
     text = lines[-1][:500] if lines else "Operation failed"
@@ -157,7 +163,7 @@ def run(operation, *, events=None):
             with Console(sys.stderr) as _console:
                 with contextlib.redirect_stdout(Tee(sys.stdout, _console)), contextlib.redirect_stderr(Tee(sys.stderr, _console)):
                     print(f"SparkRing {operation}. Progress: {paths[0]}", flush=True)
-                    print("Follow from another terminal: sudo sparkring logs --follow", flush=True)
+                    print("Follow from another terminal: " + colour.cmd("sudo sparkring logs --follow"), flush=True)
                     emit("start", "SparkRing " + operation, phase=operation)
                     yield
         finally:
@@ -280,7 +286,7 @@ def command(argv, *, title, invoke=subprocess.run, **kwargs):
     if _details is None:
         return invoke(argv, **kwargs)
     with step(title):
-        _details.write("COMMAND " + title + "\n")
+        _details.write("COMMAND " + colour.plain(title) + "\n")
         _details.flush()
         try:
             return invoke(argv, stdout=_details, stderr=_details, **kwargs)
@@ -298,12 +304,13 @@ def unreadable(path: Path) -> bool:
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring logs")
+    parser = argparse.ArgumentParser(prog="sparkring logs", parents=[colour.parser()])
     parser.add_argument("--follow", action="store_true")
     parser.add_argument("--details", action="store_true")
     parser.add_argument("--plain", action="store_true", help="disable terminal colors and animation")
     parser.add_argument("--lines", type=int, default=40)
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     root = Path(os.environ.get("SPARKRING_LOG_DIR", LOG_ROOT))
     path = root / ("install-details.log" if args.details else "install.log")
     if not path.exists() and root == Path(LOG_ROOT) and unreadable(root):
@@ -313,7 +320,8 @@ def main(argv=None):
         root = Path.home() / ".local/state/sparkring/logs"
         path = root / path.name
     if not path.exists():
-        print("No installation log yet. Run sparkring setup or up first.")
+        print(colour.render("No installation log yet. Run " + colour.cmd("sparkring setup") + " or up first.",
+                            sys.stdout))
         return 0
     if not 1 <= args.lines <= 10000:
         parser.error("--lines must be between 1 and 10000")

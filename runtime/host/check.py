@@ -43,7 +43,7 @@ import subprocess
 import sys
 
 from runtime.common import distribution, installer, transport, transport_names
-from runtime.host import (api_endpoint, controller, fabric, gpu_clocks, node, progress, retained_source,
+from runtime.host import (api_endpoint, colour, controller, fabric, gpu_clocks, node, progress, retained_source,
                           transport_receipts)
 
 SCHEMA = "sparkring-check/v1"
@@ -323,7 +323,7 @@ def report(output, result, *, state=None, now=None):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring check", description=(
+    parser = argparse.ArgumentParser(prog="sparkring check", parents=[colour.parser()], description=(
         "Check the running models: functional requests to each API and, on SIRCL ring sessions, which transport "
         "carried each collective. Sends requests; changes no Spark. Run on Node A with sudo."))
     parser.add_argument("--on", metavar="ARC", help="only the model on these Sparks, such as 0,1, 0-3 or 6-1")
@@ -331,20 +331,22 @@ def main(argv=None):
     parser.add_argument("--report", type=Path, metavar="DIR",
                         help="also write the sanitized tester bundle (sparkring-test-report/v1) under DIR")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     say = (lambda line: print(line, file=sys.stderr)) if args.json else print
     try:
         if not hasattr(os, "geteuid") or os.geteuid() != 0:
-            raise ValueError("Run sudo sparkring check on Node A: it reads the controller's deployment records")
+            raise ValueError(f"Run {colour.cmd('sudo sparkring check')} on Node A: it reads the controller's "
+                             "deployment records")
         result = run(args.on, say=say)
         if not result["deployments"]:
-            raise ValueError("No model deployment is active; sudo sparkring install starts one")
+            raise ValueError("No model deployment is active; " + colour.cmd("sudo sparkring install") + " starts one")
         if args.report is not None:
             result["report"] = report(args.report, result)
             say(f"Report: {result['report']['directory']}" + (
                 f" ({len(result['report']['left_out'])} files left out; see report.json)"
                 if result["report"]["left_out"] else "") + ". Review it, then attach it to a Test report issue.")
     except (ValueError, OSError, KeyError, RuntimeError, subprocess.SubprocessError) as error:
-        print("SparkRing: " + str(error), file=sys.stderr)
+        print(colour.render("SparkRing: " + str(error), sys.stderr), file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(result, indent=2))

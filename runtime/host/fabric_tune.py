@@ -91,7 +91,7 @@ import threading
 import time
 
 from runtime.common import fabric_document, fabric_layout, image_lock, installer, process_lock, transport
-from runtime.host import fabric
+from runtime.host import colour, fabric
 
 STATE = fabric.STATE
 # The root of Node A's own filesystem, which holds its copies of the measured tables (Node A is position 0).
@@ -628,7 +628,10 @@ class Measurement:
         report = fabric.gather(self.document, self.cluster["plan"], access=self.access, say=self.say)
         name = fabric.save_report(self.state, report, now=self.now)
         if report["result"] != "healthy":
-            raise ValueError("\n".join(fabric.report_lines(report)) + f"\nNothing was measured (report {name})")
+            # The report lines name repair commands for the terminal; this
+            # message is also stored, so it carries the plain text.
+            raise ValueError(colour.plain("\n".join(fabric.report_lines(report)))
+                             + f"\nNothing was measured (report {name})")
         self.say(f"Fabric verified before the measurement ({name})")
 
     def stage(self, rows):
@@ -936,17 +939,19 @@ def summary(state, *, facts=None, host_root=None):
 
 
 def status_line(value):
-    """The ``SIRCL tuning:`` line of ``sparkring status``."""
+    """The ``SIRCL tuning:`` line of ``sparkring status``; the command it names is highlighted on a terminal."""
     failed = [name for name, entry in (value.get("last_run") or {}).items() if entry["state"] in ("failed", "pending")]
     tail = f"; last measurement left {', '.join(failed)} unmeasured" if failed else ""
     if value["state"] == "default":
-        return "SIRCL tuning: the default table; sudo sparkring fabric tune measures this fabric" + tail
+        return ("SIRCL tuning: the default table; " + colour.cmd("sudo sparkring fabric tune")
+                + " measures this fabric" + tail)
     if value["state"] == "unreadable":
         return (f"SIRCL tuning: the measured table cannot be used ({value['error']}); installations use the default "
                 "table")
     if value["state"] == "stale":
         return (f"SIRCL tuning: the table measured {value['measured_at']} no longer applies ({value['problems'][0]}); "
-                "installations use the default table; sudo sparkring fabric tune measures again" + tail)
+                "installations use the default table; " + colour.cmd("sudo sparkring fabric tune")
+                + " measures again" + tail)
     text = (f"SIRCL tuning: measured on this fabric {value['measured_at']} for {', '.join(value['rows'])} with image "
             f"{value['image']}")
     if not value["covers_default"] and value.get("default_image"):
@@ -1027,13 +1032,14 @@ def command(args, *, state=STATE, access=None, harness=run_harness, now=time.tim
 
 def main(argv=None):
     """``sparkring fabric tune`` alone (``runtime/host/fabric.py`` dispatches to ``command``)."""
-    parser = argparse.ArgumentParser(prog="sparkring fabric tune")
+    parser = argparse.ArgumentParser(prog="sparkring fabric tune", parents=[colour.parser()])
     add_arguments(parser)
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     try:
         if not hasattr(os, "geteuid") or os.geteuid() != 0:
             raise ValueError("Run sudo sparkring fabric tune: it reads root-only state on every Spark")
         return command(args)
     except FAILURES as error:
-        print("SparkRing: " + str(error), file=sys.stderr)
+        print(colour.render("SparkRing: " + str(error), sys.stderr), file=sys.stderr)
         return 2

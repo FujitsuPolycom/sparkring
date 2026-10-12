@@ -12,6 +12,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from runtime.common import installer, serving  # noqa: E402
+from runtime.host import colour  # noqa: E402
 from scripts.installer_runner import Runner, discover  # noqa: E402
 
 
@@ -30,7 +31,7 @@ def main(argv=None):
     initialize.add_argument("--output", type=Path)
     serving.add_arguments(initialize)
     for operation in ("up", "down", "status", "export"):
-        command = commands.add_parser(operation)
+        command = commands.add_parser(operation, parents=[colour.parser()])
         command.add_argument("--deployment", type=Path, default=Path(".sparkring/deployment"))
         if operation in ("up", "down"):
             command.add_argument("--execute", action="store_true", help="apply this locked deployment's printed scope")
@@ -44,6 +45,7 @@ def main(argv=None):
             command.add_argument("--variant", choices=("nvfp4-spark", "nvfp4-qad"))
         command.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    colour.set_mode(getattr(args, "color", None))
     try:
         if args.action == "init":
             if args.site and args.host:

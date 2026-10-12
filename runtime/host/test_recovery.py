@@ -7,7 +7,7 @@ import urllib.error
 import pytest
 
 from runtime.common import installer, process_lock
-from runtime.host import controller, node, recovery
+from runtime.host import colour, controller, node, recovery
 from runtime.host.test_fabric_ssh import cluster
 from scripts import installer_runner, sparkring
 
@@ -510,7 +510,11 @@ def test_api_health_reads_vllm_health_without_a_proxy():
 
 def test_status_lines_name_the_choice_the_wait_and_the_attempts():
     base = {"enabled": True, "failures": 0, "stopped": False}
-    assert recovery.status_lines({**base, "enabled": False}) == [
+
+    def plain(lines):
+        return [colour.plain(line) for line in lines]
+
+    assert plain(recovery.status_lines({**base, "enabled": False})) == [
         "Automatic recovery: off | turn on: sudo sparkring recover on"]
     lines = recovery.status_lines({**base, "failures": 1, "waiting": {"hosts": ["rank 1 (spark1)"], "since": 999_999_000},
                                    "last": {"action": "restart", "started_at": 999_999_000, "result": "failed",
@@ -521,11 +525,12 @@ def test_status_lines_name_the_choice_the_wait_and_the_attempts():
     assert lines[2].startswith("  last attempt: restart at ") and lines[2].endswith(", failed: ready: phase failed")
     assert lines[3].startswith("  next attempt: not before ")
     stopped = recovery.status_lines({**base, "failures": 4, "stopped": True})
-    assert stopped == ["Automatic recovery: stopped: 4 failed attempts in a row | sudo sparkring up --execute turns "
-                       "it back on"]
+    assert plain(stopped) == ["Automatic recovery: stopped: 4 failed attempts in a row | "
+                              "sudo sparkring up --execute turns it back on"]
     assert recovery.status_lines(base, backend="glm-managed") == [
         "Automatic recovery: not available for this deployment (glm-managed); restart it by hand"]
-    assert recovery.status_lines(base, state={"generation": 2, "operation": "down", "complete": True}) == [
+    assert plain(recovery.status_lines(base, state={"generation": 2, "operation": "down",
+                                                    "complete": True})) == [
         "Automatic recovery: on; idle until the next sudo sparkring up --execute or sudo sparkring install"]
 
 

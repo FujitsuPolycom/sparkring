@@ -35,7 +35,7 @@ import sys
 import time
 
 from runtime.common import fabric_document, fabric_layout
-from runtime.host import relays, topology
+from runtime.host import colour, progress, relays, topology
 from scripts import hairpin_setting
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -498,8 +498,8 @@ def report_lines(report):
     for lane in report["lanes"]:
         if lane["state"] != "ok":
             lines.append(f"  lane {lane['what']}: {lane['state']}" + (f"; {lane['detail']}" if lane.get("detail") else ""))
-    lines.append("sudo sparkring setup repairs what setup owns; sudo sparkring hairpin applies the ConnectX hairpin "
-                 "setting.")
+    lines.append(f"{colour.cmd('sudo sparkring setup')} repairs what setup owns; "
+                 f"{colour.cmd('sudo sparkring hairpin')} applies the ConnectX hairpin setting.")
     return lines
 
 
@@ -557,7 +557,9 @@ def finish(state, cluster, document, plan_value, *, access=None, bandwidth=None,
         if written.get("sha256") != fabric_document.digest(document) or written.get("position") != rank:
             raise ValueError(f"Position {rank} did not confirm its copy of the fabric document")
     for line in report_lines(report):
-        say(line)
+        # Under a progress run the stdout Tee renders the marks for its console
+        # and records the plain text; alone, the line renders here.
+        say(line if isinstance(sys.stdout, progress.Tee) else colour.render(line, sys.stdout))
     say(f"Fabric document {document['id']} recorded on {len(plan['spec']['hosts'])} Sparks.")
     return document
 
@@ -628,19 +630,22 @@ def summary(state, cluster):
 
 
 def status_line(value):
-    """One ``sparkring status`` line from ``summary``."""
+    """One ``sparkring status`` line from ``summary``; the commands it names are highlighted on a terminal."""
     if value.get("error"):
-        return f"Fabric: the recorded fabric document cannot be read ({value['error']}); sudo sparkring setup records it"
+        return (f"Fabric: the recorded fabric document cannot be read ({value['error']}); "
+                f"{colour.cmd('sudo sparkring setup')} records it")
     relays_ = {"table": "relay table restored at every boot", "none": "no relays needed",
-               "mesh-service": "relays: mesh service (run sudo sparkring setup to move to the fabric relay table)",
-               "absent": "no relay table (run sudo sparkring setup with a package that carries the relay marker)"}
+               "mesh-service": f"relays: mesh service (run {colour.cmd('sudo sparkring setup')} to move to the fabric "
+                               "relay table)",
+               "absent": f"no relay table (run {colour.cmd('sudo sparkring setup')} with a package that carries the "
+                         "relay marker)"}
     text = f"Fabric: {value['layout']}, {relays_[value['relays']]}"
     if value.get("document") is None:
-        return text + "; no fabric document (sudo sparkring setup records it)"
+        return text + f"; no fabric document ({colour.cmd('sudo sparkring setup')} records it)"
     verified = value.get("verified") or {}
     if verified:
         text += f"; last verified {verified.get('result')} at {verified.get('at')}"
-    return text + "; sudo sparkring fabric verify checks it"
+    return text + f"; {colour.cmd('sudo sparkring fabric verify')} checks it"
 
 
 def show(state=STATE, *, json_output=False):
@@ -648,8 +653,9 @@ def show(state=STATE, *, json_output=False):
     path = Path(state) / "fabric.json"
     if not path.exists():
         cluster = _cluster(state)
-        print("This cluster has no fabric document; it was set up by a SparkRing package that did not record one. "
-              f"sudo sparkring setup records it ({len(cluster['plan']['spec']['hosts'])} Sparks).")
+        print(colour.render("This cluster has no fabric document; it was set up by a SparkRing package that did not "
+                            f"record one. {colour.cmd('sudo sparkring setup')} records it "
+                            f"({len(cluster['plan']['spec']['hosts'])} Sparks).", sys.stdout))
         print("Relays: the per-deployment mesh service carries four-Spark two-hop paths until then.")
         return 1
     document = read_document(state)
@@ -709,7 +715,7 @@ def verify(state=STATE, *, traffic="none", allow_serving=False, json_output=Fals
         print(json.dumps(report | {"file": name}, indent=2))
     else:
         for line in report_lines(report):
-            print(line)
+            print(colour.render(line, sys.stdout))
         print(f"Report: {Path(state) / REPORTS / name}")
     return 0 if report["result"] == "healthy" else 1
 
@@ -724,30 +730,34 @@ def _boot_id():
 def main(argv=None):
     """``sparkring fabric show|verify|tune|spread-check``; ``tune`` is ``runtime/host/fabric_tune.py``."""
     from runtime.host import fabric_tune
-    parser = argparse.ArgumentParser(prog="sparkring fabric", description=(
+    parser = argparse.ArgumentParser(prog="sparkring fabric", parents=[colour.parser()], description=(
         "Show, verify or tune this cluster's fabric: the Sparks' positions, ports and cables, the relay table, the "
         "boot units that restore it, and SIRCL's tuning table measured on it, or time a spread of test files along "
         "its cables. Run on Node A."))
     commands = parser.add_subparsers(dest="command", required=True)
-    shown = commands.add_parser("show", help="print the recorded fabric document and its port map; changes nothing")
+    shown = commands.add_parser("show", parents=[colour.parser()],
+                                help="print the recorded fabric document and its port map; changes nothing")
     shown.add_argument("--json", action="store_true", help="print the document and the last verification as JSON")
-    checked = commands.add_parser("verify", help="check every Spark's links, addresses, routes, relays, markers and "
-                                                 "boot units, and the reachability matrix; changes nothing")
+    checked = commands.add_parser("verify", parents=[colour.parser()],
+                                  help="check every Spark's links, addresses, routes, relays, markers and "
+                                       "boot units, and the reachability matrix; changes nothing")
     checked.add_argument("--traffic", choices=("none", "light"), default="none",
                          help="light: also run one short bidirectional RDMA write per relayed lane "
                               "(about 10 seconds each)")
     checked.add_argument("--while-serving", action="store_true", help="with --traffic light, test while a model serves")
     checked.add_argument("--json", action="store_true", help="print the sparkring-fabric-verify/v1 report")
-    tuned = commands.add_parser("tune", help="measure SIRCL's tuning table on this fabric with SIRCL's ring harness; "
-                                             "prints the plan unless --execute")
+    tuned = commands.add_parser("tune", parents=[colour.parser()],
+                                help="measure SIRCL's tuning table on this fabric with SIRCL's ring harness; "
+                                     "prints the plan unless --execute")
     fabric_tune.add_arguments(tuned)
-    spreading = commands.add_parser("spread-check", help=(
+    spreading = commands.add_parser("spread-check", parents=[colour.parser()], help=(
         "spread test files from Node A to every Spark along the cables, as an install spreads the image and the "
         "checkpoint; prints when each Spark finished and removes the files once all hold them"))
     spreading.add_argument("--files", type=int, default=16, help="number of test files (default 16)")
     spreading.add_argument("--size", type=int, default=1024, help="size of each test file in MiB (default 1024)")
     spreading.add_argument("--while-serving", action="store_true", help="run while a model serves")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     try:
         if args.command == "show":
             return show(json_output=args.json)
@@ -762,5 +772,5 @@ def main(argv=None):
             return spread_check.main(args, STATE)
         return verify(traffic=args.traffic, allow_serving=args.while_serving, json_output=args.json)
     except (ValueError, KeyError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        print("SparkRing: " + str(error), file=sys.stderr)
+        print(colour.render("SparkRing: " + str(error), sys.stderr), file=sys.stderr)
         return 2

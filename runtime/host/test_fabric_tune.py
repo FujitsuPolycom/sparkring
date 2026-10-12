@@ -27,7 +27,7 @@ import pytest
 from runtime.common import fabric_document, fabric_layout, image_lock, installer, transport
 from runtime.common.test_image_lock import sircl_block, sircl_lock
 from runtime.common.test_transport import TP4, install_site
-from runtime.host import fabric, fabric_tune, relays
+from runtime.host import colour, fabric, fabric_tune, relays
 from runtime.host.test_fabric_layouts import plan_of
 from runtime.host.test_transport_receipts import receipt, report
 from spark_transport.sircl.sparkring_sircl import tuning as sircl_tuning
@@ -633,7 +633,8 @@ def test_a_stale_table_gives_way_to_the_default_and_says_why(cycle4, change, rea
 def test_status_says_which_table_installations_use_and_when_it_went_stale(cycle4, monkeypatch):
     state, host = cycle4["state"], cycle4["fleet"].host(0)
     value = fabric_tune.summary(state, facts={"gpu": GPU, "kernel": KERNEL}, host_root=host)
-    assert fabric_tune.status_line(value).startswith("SIRCL tuning: the default table; sudo sparkring fabric tune")
+    assert colour.plain(fabric_tune.status_line(value)).startswith(
+        "SIRCL tuning: the default table; sudo sparkring fabric tune")
     assert tune(cycle4) == 0
     image_value = image()
     monkeypatch.setattr(fabric_tune.image_lock, "catalog", lambda: [{"lock": image_value}])

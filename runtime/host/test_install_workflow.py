@@ -29,7 +29,7 @@ import pytest
 
 from runtime.common import distribution, fabric_document, installer, installer_image
 from runtime.host import checkpoint_place as place
-from runtime.host import (api_endpoint, checkpoint_plan, control, controller, fabric, hairpin, hairpin_ring,
+from runtime.host import (api_endpoint, checkpoint_plan, colour, control, controller, fabric, hairpin, hairpin_ring,
                           install_assets, install_space, install_workflow as flow, node, rollout, single_uplink,
                           test_hairpin, topology)
 from runtime.host.install_errors import NeedsInput
@@ -335,7 +335,7 @@ def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     (previous / "deployment.lock.json").write_text(json.dumps({"selection": {"profile": "older-profile"}}))
     assert flow.summary({}, connection, str(previous)) == {**value, "dashboard_url": None, "commands": {
         **value["commands"], "switch_back": "sudo sparkring install --profile older-profile"}}
-    lines = flow.summary_lines({**connection, **value})
+    lines = [colour.plain(line) for line in flow.summary_lines({**connection, **value})]
     assert lines[:3] == ["  Model:               Model-A", "  API:                 http://192.0.2.10:8000/v1",
                          "  Model status:        http://192.0.2.10:8000/v1/sparkring/status/view"]
     assert "  Switch back:         " + REPEAT + " --checkpoint qad-step-4000" in lines

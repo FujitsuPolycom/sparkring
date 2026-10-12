@@ -59,7 +59,7 @@ import threading
 import time
 
 from runtime.common import fabric_layout, installer
-from runtime.host import cabling, discovery, node, placement, topology
+from runtime.host import cabling, colour, discovery, node, placement, topology
 
 SCHEMA = "sparkring-fabric-bandwidth/v1"
 # The latest result, in the controller directory beside cluster.json.
@@ -717,7 +717,7 @@ def status_lines(value, cluster_id=None):
     A degraded cable's line carries its rates and its repair lines. A result
     saved for another setup plan than ``cluster_id`` counts as never measured.
     """
-    again = f"{COMMAND} measures it"
+    again = f"{colour.cmd(COMMAND)} measures it"
     if value["state"] == "never-measured":
         return [f"Fabric bandwidth: never measured; {again}"]
     if value["state"] == "unreadable":

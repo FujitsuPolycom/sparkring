@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import pytest
 
 from runtime.common import compose, fabric_document, fabric_layout
-from runtime.host import fabric, node, relays, topology
+from runtime.host import colour, fabric, node, relays, topology
 from runtime.host.test_fabric_layouts import LAYOUTS, configured, plan_of
 
 MARKER = {"binary": relays.MARKER_BINARY, "sha256": "ab" * 32}
@@ -346,15 +346,17 @@ def test_status_names_the_fabric_its_relays_and_the_last_verification(tmp_path):
     cluster = {"name": "test", "plan": plan}
     value = fabric.summary(tmp_path, cluster)
     assert value == {"layout": "cycle-4", "document": None, "relays": "mesh-service", "verified": None}
-    assert fabric.status_line(value) == ("Fabric: cycle-4, relays: mesh service (run sudo sparkring setup to move to "
-                                         "the fabric relay table); no fabric document (sudo sparkring setup records it)")
+    assert colour.plain(fabric.status_line(value)) == (
+        "Fabric: cycle-4, relays: mesh service (run sudo sparkring setup to move to "
+        "the fabric relay table); no fabric document (sudo sparkring setup records it)")
     recorded = dict(document, verified={"at": "2026-10-07T10:05:00Z", "result": "healthy", "report": "r.json",
                                         "after_boot": False})
     (tmp_path / "fabric.json").write_text(fabric_document.encoded(recorded), encoding="utf-8")
     value = fabric.summary(tmp_path, cluster)
     assert value["relays"] == "table" and value["document"] == document["id"]
-    assert fabric.status_line(value) == ("Fabric: cycle-4, relay table restored at every boot; last verified healthy "
-                                         "at 2026-10-07T10:05:00Z; sudo sparkring fabric verify checks it")
+    assert colour.plain(fabric.status_line(value)) == (
+        "Fabric: cycle-4, relay table restored at every boot; last verified healthy "
+        "at 2026-10-07T10:05:00Z; sudo sparkring fabric verify checks it")
 
 
 def test_kept_addresses_that_follow_the_rule_count_as_planned():

@@ -64,7 +64,7 @@ import time
 from runtime.common import distribution, fabric_layout, image_lock, installer, installer_image, process_lock, profiles
 from runtime.common import serving as serving_settings
 from runtime.common import transport as transports
-from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, controller, derivation, discovery,
+from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, colour, controller, derivation, discovery,
                           fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
                           recovery, retained_source, retention, rollout, settings, spread, topology)
 from runtime.host import placement as placements
@@ -1068,11 +1068,14 @@ def retain_preference(args):
 
 
 DASHBOARD = "/v1/sparkring/status/view"
-# The summary card's Recovery line for each value of the result's "recovery".
-RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: sudo sparkring recover off",
-                 "off": "off; turn on: sudo sparkring recover on",
+# The summary card's Recovery line for each value of the result's "recovery";
+# the card is terminal text, so its commands carry the highlight marks.
+RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: "
+                       + colour.cmd("sudo sparkring recover off"),
+                 "off": "off; turn on: " + colour.cmd("sudo sparkring recover on"),
                  "unsupported": "not available for this model's backend; restart it by hand",
-                 "unrecorded": "not set up (see the warning above); sudo sparkring recover on retries"}
+                 "unrecorded": "not set up (see the warning above); " + colour.cmd("sudo sparkring recover on")
+                               + " retries"}
 STOP_COMMAND = "sudo sparkring down --execute"
 # The summary card's label column: its longest label, "SparkRing dashboard:", and one space.
 CARD_LABEL_WIDTH = 21
@@ -1222,7 +1225,9 @@ def summary_lines(result):
 
     ``Model status`` is the model's runtime-status page (``dashboard_url``); ``SparkRing
     dashboard`` is the dashboard service on Node A (``sparkring_dashboard_url``), shown only
-    while that service is on."""
+    while that service is on. The commands in it are highlighted on a terminal; the result
+    document that carries the same commands stays plain.
+    """
     if "example_request" not in result:
         return []
     commands = result.get("commands") or {}
@@ -1230,10 +1235,12 @@ def summary_lines(result):
             ("Model status", result.get("dashboard_url")),
             ("SparkRing dashboard", result.get("sparkring_dashboard_url")),
             ("Transport", transport_card_line(result)),
-            ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
-            ("Stop", commands.get("stop")),
+            ("Try it", result["example_request"]),
+            ("Switch back", colour.cmd(commands["switch_back"]) if commands.get("switch_back") else None),
+            ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
             ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
-            ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
+            ("Uninstall", f"stop the model, then {colour.cmd(commands['remove'])} on each Spark"
+             if commands.get("remove") else None)]
     lines = [f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}" for name, value in rows if value]
     if isinstance(result.get("start_checks"), dict):
         from runtime.host import start_checks
@@ -1577,7 +1584,8 @@ def execute(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring install", description="Set up this Spark ring and deploy one exact model profile.")
+    parser = argparse.ArgumentParser(prog="sparkring install", parents=[colour.parser()],
+                                     description="Set up this Spark ring and deploy one exact model profile.")
     parser.add_argument("--profile", help="exact profile from sparkring models; prompted in a terminal")
     parser.add_argument("--on", metavar="ARC",
                         help="the Sparks a profile of fewer Sparks than the fabric runs on: consecutive positions in "
@@ -1646,6 +1654,7 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
     args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    colour.set_mode(args.color)
     if args.profile:
         # Every later step, and every record, uses the profile's ID (models.ALIASES).
         args.profile = models.canonical(args.profile)
@@ -1702,7 +1711,7 @@ def main(argv=None):
                 print(hairpin_ring.complete_text(len(result["hairpin"].get("ranks") or []) or 4))
             print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
-                print(line)
+                print(colour.render(line, sys.stdout))
         elif result["state"] == "needs_input":
             print(result["message"])
             # A checkpoint message already names every file, path and size its
@@ -1716,7 +1725,7 @@ def main(argv=None):
                 print(line)
         elif result["state"] == "planned":
             command = (result.get("checkpoint") or {}).get("command") or checkpoint_plan.COMMAND
-            print(f"Plan saved. Install it with {command} --yes.")
+            print(colour.render(f"Plan saved. Install it with {colour.cmd(command)} --yes.", sys.stdout))
         progress.emit(result["state"], "SparkRing install", phase="install", message=result.get("message"),
                       field=result.get("field"), api_url=result.get("api_url") if result["state"] == "complete" else None)
     if args.json:

@@ -1,9 +1,11 @@
 """Expose canonical deployment identities without ambiguous family shortcuts."""
 import argparse
 import json
+import sys
 
 from runtime.common import installer, profiles, toolchain_profiles, thinking
 from runtime.common.profile_aliases import ALIASES, canonical  # noqa: F401 (ALIASES is part of this module's interface)
+from runtime.host import colour
 
 THINKING_FIELDS = ("default", "level", "levels", "range", "effort", "off")
 
@@ -85,10 +87,11 @@ def select(value, nodes):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring models")
+    parser = argparse.ArgumentParser(prog="sparkring models", parents=[colour.parser()])
     parser.add_argument("action", nargs="?", choices=("list",), default="list")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     rows = catalog()
     if args.json:
         print(json.dumps(rows, indent=2))
@@ -102,5 +105,6 @@ def main(argv=None):
                 print("  Checkpoint: " + checkpoint_text(row["checkpoints"]))
             if row["aliases"]:
                 print("  Also selected as: " + ", ".join(row["aliases"]))
-        print("Install a profile with: sudo sparkring install --profile PROFILE")
+        print(colour.render("Install a profile with: " + colour.cmd("sudo sparkring install --profile PROFILE"),
+                            sys.stdout))
     return 0

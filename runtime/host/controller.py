@@ -20,7 +20,8 @@ import sys
 import time
 
 from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
-from runtime.host import dashboard_admin, discovery, fabric, hairpin_ring, node, operator_view, privilege, relays, topology
+from runtime.host import (colour, dashboard_admin, discovery, fabric, hairpin_ring, node, operator_view, privilege,
+                          relays, topology)
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -265,7 +266,8 @@ def retire_cluster_record(plan, *, state=None, now=None):
 
 
 def setup(argv=None):
-    parser = argparse.ArgumentParser(prog="sparkring setup", description="Discover a pair, line or ring of up to eight "
+    parser = argparse.ArgumentParser(prog="sparkring setup", parents=[colour.parser()],
+                                     description="Discover a pair, line or ring of up to eight "
                                      "Sparks, review its fabric, then save persistent host setup.")
     parser.add_argument("--node", action="append", help="USER@management-IP (include this head); bypass mDNS")
     parser.add_argument("--name", default="sparkring")
@@ -281,6 +283,7 @@ def setup(argv=None):
     parser.add_argument("--head-id", help="head node UUID for offline inventory")
     parser.add_argument("--output", type=Path, help="new private setup receipt directory")
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     if args.plan and args.apply or args.inventory and (args.apply or not args.plan):
         raise ValueError("Offline inventory requires --plan; --plan and --apply are exclusive")
     if args.yes and not args.apply and not args.plan:
@@ -622,7 +625,7 @@ def _operator_status(argv):
 
 
 def lifecycle(argv):
-    parser = argparse.ArgumentParser(prog="sparkring " + argv[0])
+    parser = argparse.ArgumentParser(prog="sparkring " + argv[0], parents=[colour.parser()])
     parser.add_argument("operation", choices=("up", "down", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
@@ -650,6 +653,7 @@ def lifecycle(argv):
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
+    colour.set_mode(args.color)
     if args.profile:
         # A deployment's directory, records and status name the profile's ID (models.ALIASES).
         from runtime.host import models
@@ -726,11 +730,13 @@ def lifecycle(argv):
                 if model and model["state"] != "serving":
                     # What stops a model comes first, with the step that restarts it.
                     where = f"{placements.text(tuple(view['placement']), size)}: " if view["placement"] else ""
-                    print(where + model["summary"] + " | next: " + model["next_action"])
+                    print(colour.render(where + model["summary"] + " | next: "
+                                        + colour.action(model["next_action"]), sys.stdout))
                     for line in model["details"]:
                         print("  " + line)
             # Node A's own state; each Spark's line follows.
-            print(result["state"] + " | next: " + result.get("next_action", "sparkring status"))
+            print(colour.render(result["state"] + " | next: "
+                                + colour.action(result.get("next_action", "sparkring status")), sys.stdout))
             if not result.get("nodes"):
                 for warning in result.get("warnings", []):
                     print("  warning: " + warning)
@@ -743,7 +749,7 @@ def lifecycle(argv):
                 if row["state"] not in HEALTHY:
                     attention.append(name)
                     if row.get("next_action"):
-                        print("    next: " + row["next_action"])
+                        print(colour.render("    next: " + colour.action(row["next_action"]), sys.stdout))
                 for warning in row.get("warnings", []):
                     print("    warning: " + warning)
                 for unit in (row.get("mesh") or {}).get("failed") or []:
@@ -760,11 +766,11 @@ def lifecycle(argv):
                 print("Sparks that need attention: " + ", ".join(attention))
             if "fabric_bandwidth" in result:
                 for line in fabric_bandwidth.status_lines(result["fabric_bandwidth"], plan_id):
-                    print(line)
+                    print(colour.render(line, sys.stdout))
             if "fabric" in result:
-                print(fabric.status_line(result["fabric"]))
+                print(colour.render(fabric.status_line(result["fabric"]), sys.stdout))
             if "sircl_tuning" in result:
-                print(fabric_tune.status_line(result["sircl_tuning"]))
+                print(colour.render(fabric_tune.status_line(result["sircl_tuning"]), sys.stdout))
             for view in views:
                 saved, lock, record, model = view["deployment"], view["lock"], view["record"], view.get("model")
                 if len(views) > 1 or view["placement"]:
@@ -788,7 +794,7 @@ def lifecycle(argv):
                 if "thinking" in saved:
                     print("Thinking: " + thinking.deployment_text(saved["thinking"]))
                 if saved.get("transport"):
-                    print(transport_status_line(saved["transport"]))
+                    print(colour.render(transport_status_line(saved["transport"]), sys.stdout))
                 print(saved["api_url"] + (f" (SparkRing's own checks use {saved['check_url']})"
                                           if saved.get("check_url") else ""))
                 if saved.get("observations"):
@@ -804,7 +810,7 @@ def lifecycle(argv):
                     for line in recovery.status_lines(None if "error" in recorded else record,
                                                       timer=recorded.get("timer_enabled"), state=saved["state"],
                                                       backend=lock.get("backend")):
-                        print(line)
+                        print(colour.render(line, sys.stdout))
             print("Network observations do not qualify GPU/RDMA serving.")
         return 0
     if args.plan and args.execute:
@@ -1087,7 +1093,7 @@ def transport_view(directory, lock):
 
 
 def transport_status_line(value):
-    """The ``Transport:`` line of ``sparkring status``."""
+    """The ``Transport:`` line of ``sparkring status``; the command it names is highlighted on a terminal."""
     if value.get("backend") == "libsircl":
         from runtime.common import libsircl
         return libsircl.status_line(value)
@@ -1099,9 +1105,9 @@ def transport_status_line(value):
     from runtime.host import transport_receipts
     if "verdict" not in value:
         return (f"Transport: sircl on {value['group']} (NCCL {value['nccl']}); no receipt check recorded yet: "
-                "sudo sparkring check")
+                + colour.cmd("sudo sparkring check"))
     line = transport_receipts.text({"problems": ["no detail"], **value})
-    return line + f" (checked {value.get('checked_at')}); sudo sparkring check repeats it"
+    return line + f" (checked {value.get('checked_at')}); {colour.cmd('sudo sparkring check')} repeats it"
 
 
 def recorded_fabric_id():
@@ -1152,7 +1158,7 @@ def main(argv):
                 return uplink_main(argv[1:])
             return setup(argv[1:])
     except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as error:
-        print("SparkRing: " + str(error), file=sys.stderr)
+        print(colour.render("SparkRing: " + str(error), sys.stderr), file=sys.stderr)
         for line in detail_lines(getattr(error, "details", None)):
             print("  " + line, file=sys.stderr)
         return 2
