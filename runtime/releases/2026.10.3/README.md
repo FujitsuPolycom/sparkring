@@ -93,7 +93,7 @@ conditions:
 | Setting | Profiles | Measurement | Conditions |
 |---|---|---|---|
 | `--async-scheduling`, stated explicitly | every installer profile | Nothing to claim. In the image's vLLM (`vllm/config/vllm.py`, lines 1725-1774), an unset `async_scheduling` turns on for MTP, DFlash and DSpark speculation on the `mp` executor, which every profile uses, so the flag resolves to vLLM's default. A `deepseek-v41-flash-tp4` start and a `qwen38-flash-next-tp4` start with the flag resolved to the same settings as starts without it, and their speed differences are start-to-start spread | inferred from vLLM's source; vLLM does not log the resolved value |
-| `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` | `glm53-flash-tp4` | 32K prefill 3,334 against 3,004 tok/s without it (+11 %); first token 10-11 % sooner at 8K, 16K and 32K; decode 61.7 / 125.0 / 213.6 against 62.7 / 122.6 / 206.5, within the start-to-start spread. Prompt log-probabilities move: rank-1 agreement 0.983 with the start without it, against 0.992 between two starts without it | one start each, runner (llm-inference-bench 0.4.29), `csf`, Sparks 0-3 |
+| `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` | `glm53-flash-tp4` | 32K prefill 3,334 against 3,004 tok/s for the matched start without it (+11 %); campaign arms that also change the draft head or the top-k weight precision do not isolate it; first token 10-11 % sooner at 8K, 16K and 32K; decode 61.7 / 125.0 / 213.6 against 62.7 / 122.6 / 206.5, within the start-to-start spread. Prompt log-probabilities move: rank-1 agreement 0.983 with the start without it, against 0.992 between two starts without it | one start each, runner (llm-inference-bench 0.4.29), `csf`, Sparks 0-3 |
 | `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` | `glm53-flash-tp2` | 32K prefill 2,319 tok/s; decode 38.7 / 84.1 / 123.9. No start without it ran on this image: the README row, 2,138 tok/s and 39.5 / 87.1 / 123.2, ran on other images | one start, runner (0.4.29), `csf`, Sparks 4-5 |
 | MTP draft KV cache `auto`: BF16 beside the target's FP8 KV cache (unset, the draft inherits FP8) | `qwen38-flash-next-tp2`, `qwen38-flash-next-tp4`, `qwen38-flash-next-qad-tp8` | Four Sparks: 81.6 / 185.9 / 234.0 against 60.9-62.8 / 148.6-149.9 / 237.2 for two starts without it, from 2.52-2.57 instead of 1.88-2.08 accepted tokens per step; prefill unchanged | one start, runner (0.4.29), `--checkpoint qad-step5500-mxfp8-attention`, Sparks 4-7 |
 | Target LM head quantized to MXFP8 at load (`VLLM_MXFP8_LM_HEAD=1`) | the same three | Four Sparks: 64.7 / 153.4 / 231.9 against the same two starts; prefill equal | one start, runner (0.4.29), the same checkpoint and Sparks |
@@ -104,9 +104,13 @@ The Qwen target KV cache stays FP8 in 32-token blocks: with the draft's KV
 cache at `auto`, BF16 in 16-token blocks, the setting of Local Inference Lab's
 launch catalog, decoded 20-32 % slower from 8K to 64K context at temperature 1
 on two Sparks ([catalog](../../../performance/enhancements.md#qwen38-bfloat16-kv-block16)).
-With the same serving settings on that pair, the `csf` checkpoint decoded 7 %
-faster at 32K and one stream than `qad-step5500-mxfp8-attention` and 5 % in the
-median cell ([catalog](../../../performance/enhancements.md#qwen38-flash-next-csf-checkpoint)).
+In a separate comparison on that pair, with BF16 target KV in 16-token
+blocks, the MXFP8 LM head and the runner at temperature 0, the `csf`
+checkpoint decoded 7 % faster at 32K and one stream than
+`qad-step5500-mxfp8-attention` and 5 % in the median cell
+([catalog](../../../performance/enhancements.md#qwen38-flash-next-csf-checkpoint)).
+No comparison of the two checkpoints has run with the profile's FP8 target KV
+cache or at temperature 1.
 
 Not measured:
 
