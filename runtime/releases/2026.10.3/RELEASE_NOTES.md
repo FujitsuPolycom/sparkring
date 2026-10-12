@@ -100,8 +100,11 @@ has the evidence and the open gates.
 - 2026.10.2's: installed libsircl deployments report `ok: false` in
   `sparkring check`, and libsircl's broadcast is slow.
 - The SparkCache variant on two Sparks made both Sparks unreachable in its
-  first start, with larger capture slots than this release gives it. Its
-  smaller slots have not run yet.
+  first start, with larger capture slots than this release gives it. With
+  this release's smaller slots, a private record reports one start that
+  passed every step it ran of its test plan, including recovery after a
+  restart and after SIGKILL; no public record holds it, one step and the
+  two-start comparison did not run, and the variant stays research-only.
 
 ## Try it
 

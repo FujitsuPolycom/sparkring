@@ -48,7 +48,7 @@
     {
       "id": "sparkcache-variants",
       "status": "research-only",
-      "scope": "glm53-flash-nvfp4-sparkcache-tp2 (512 MiB capture slots) and -tp4 (8 GiB), admitted only by the lock of the derived layer installer-sparkcache-gab86b70, whose image (e1607979b7f0) a Spark built and whose lock is not in this repository; Stage 1 (TP4) passed steps 1-7 and 9; Stage 2 (TP2) stopped both Sparks with 8 GiB capture slots and has not run with 512 MiB slots",
+      "scope": "glm53-flash-nvfp4-sparkcache-tp2 (512 MiB capture slots) and -tp4 (8 GiB), admitted only by the lock of the derived layer installer-sparkcache-gab86b70, whose image (e1607979b7f0) a Spark built and whose lock is not in this repository; Stage 1 (TP4) passed steps 1-7 and 9; Stage 2 (TP2) stopped both Sparks with 8 GiB capture slots, and with 512 MiB slots passed steps 1-7 and 9 in one start that only a private record (2026-10-11) reports, without step 8 or the two-start A/B",
       "record": "performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md"
     },
     {
@@ -301,7 +301,7 @@
     {
       "id": "sparkcache-variants",
       "result": "partial",
-      "scope": "Stage 1 (TP4): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (TP2): failed with 8 GiB capture slots, not run with 512 MiB slots",
+      "scope": "Stage 1 (TP4): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (TP2): failed with 8 GiB capture slots; with 512 MiB slots, steps 1-7 and 9 passed in one start that only a private record (2026-10-11) reports, step 8 and the two-start A/B not run",
       "record": "performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md"
     },
     {

@@ -14,8 +14,13 @@ GLM-5.3-Flash on a pair. The checkpoint publisher is Local Inference Lab
 ([`local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD`](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
 at `dec48abd33ef`). Its first start, with two 8 GiB capture slots, stopped
 both Sparks of a pair during kernel compilation
-([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots));
-nothing has run with its 512 MiB slots. The SparkCache model profile
+([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots)).
+With the profile's two 512 MiB slots, a private record reports one start on a
+pair of a ring of eight that passed steps 1-7 and 9 of the
+[hardware test plan](../../performance/sparkcache-flash-csf-hardware-test-plan.md)
+on both ranks ([catalog](../../performance/enhancements.md#sparkcache-persistent-prefix)).
+No public record holds that run, and step 8 and the two-start A/B did not run,
+so the variant stays research-only. The SparkCache model profile
 `glm53-flash-hybrid` was qualified on shared release 2026.09.3 on other
 checkpoints and another vLLM line.
 
@@ -82,9 +87,20 @@ deployment.
 
 ## Evidence
 
-None. The hardware test plan for the first runs, TP4 first and then TP2, is in
-the [gap analysis section 7.2](../../docs/operations/install-reference.md) and
-its record goes under `performance/records/images/` when it runs. CPU
+- Two 8 GiB capture slots: the first start stopped both Sparks during kernel
+  compilation; memory exhaustion is inferred, not measured
+  ([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots)).
+- Two 512 MiB capture slots, the profile's value: one start, reported by a
+  private record (2026-10-11: SparkCache TP2 hardware test of GLM-5.3-Flash
+  CSF) and summarized in the
+  [catalog](../../performance/enhancements.md#sparkcache-persistent-prefix).
+  Steps 1-7 and 9 passed on both ranks; after a planned restart and after
+  SIGKILL each rank restored a 32,768-token prefix; the lowest `MemAvailable`
+  was 9.52 GiB. Step 8 and the two-start A/B did not run. No public record
+  holds the run.
+
+The hardware test plan is in the
+[gap analysis section 7.2](../../docs/operations/install-reference.md). CPU
 conformance of the lease contract against the release image's vLLM is in the
 external SparkCache repository
 (`sparkcache/runtime_patches/test_gab86b70_contract.py`).

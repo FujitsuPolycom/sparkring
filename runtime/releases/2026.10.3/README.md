@@ -173,9 +173,14 @@ package `46eeb18b`, 2026-10-10 and 2026-10-11 (research-only, one start each):
   refused its connector configuration ([record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
 - `glm53-flash-nvfp4-sparkcache-tp2` on positions 0 and 1, with two 8 GiB
   capture slots: both Sparks stopped answering during kernel compilation,
-  most likely through memory exhaustion; this release gives it two 512 MiB
-  slots, which have not run, and their recovery is not confirmed
+  most likely through memory exhaustion
   ([record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots)).
+  This release gives it two 512 MiB slots. With them, a private record
+  (2026-10-11, package `5faff595`) reports one start on a pair of the ring
+  that passed steps 1-7 and 9 on both ranks, including prefix restoration
+  after a planned restart and after SIGKILL, with at least 9.52 GiB of
+  `MemAvailable` ([catalog](../../../performance/enhancements.md#sparkcache-persistent-prefix)).
+  No public record holds that run; step 8 and the two-start A/B did not run.
 - The dashboard's page, terminal view, loopback listener and reload worked
   (reported by the ring test; no record).
 
@@ -210,7 +215,7 @@ without research options (private record):
 | `arc-image`: an install with `--on` on a ring of eight leaves the Sparks outside the arc without image writes | pending | |
 | `arc-recovery`: automatic recovery restarts a stopped four-rank group on part of a ring of eight | pending | |
 | `glm53-nvfp4-csf-tp8-install`: an installation that starts and serves, with column-split loading in effect | passed, one start (research-only); the profile is parked | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md) |
-| `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots, not run with 512 MiB slots | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
+| `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots; with 512 MiB slots, steps 1-7 and 9 passed in one start that only a private record reports, step 8 and the two-start A/B not run | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
 | `serving-defaults-install`: installations of the changed profiles without research options | partial: `qwen38-flash-next-tp2` and `glm53-flash-tp2` completed and served; the other changed profiles not run | [Evidence](#evidence) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |

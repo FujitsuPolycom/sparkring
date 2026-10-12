@@ -77,9 +77,11 @@ deployment.
 
 ## Evidence
 
-None. The hardware test plan for the first runs, TP4 first and then TP2, is in
-the [gap analysis section 7.2](../../docs/operations/install-reference.md) and
-its record goes under `performance/records/images/` when it runs. CPU
+Stage 1 of the hardware test plan, on four Sparks of a ring of eight: steps 1-7
+and 9 passed on every rank; step 8 and the two-start A/B did not run
+([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
+The hardware test plan is in the
+[gap analysis section 7.2](../../docs/operations/install-reference.md). CPU
 conformance of the lease contract against the release image's vLLM is in the
 external SparkCache repository
 (`sparkcache/runtime_patches/test_gab86b70_contract.py`).
