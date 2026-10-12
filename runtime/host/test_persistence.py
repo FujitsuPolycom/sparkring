@@ -182,12 +182,15 @@ def plain_up(tmp_path, monkeypatch):
 
 
 def test_sparkring_up_uses_the_cluster_checkpoint_directory_through_a_plain_runner(plain_up):
-    from runtime.common import installer, setup
+    from runtime.common import image_lock, installer, setup
     from scripts import installer_runner
     assert controller.lifecycle(["up", UP_PROFILE, "--execute"]) == 0
-    directory = installer.checkpoint_directory("test", setup.selection(UP_PROFILE))
-    assert directory == ("/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4/"
-                         "60215d26cf5e42c2db6128774032d57fc62678da")
+    # The checkpoint sparkring install installs without --checkpoint: on the default image, whose vLLM reads it,
+    # the profile's preferred CSF checkpoint.
+    variant = image_lock.preferred_checkpoint(image_lock.default(), UP_PROFILE)
+    directory = installer.checkpoint_directory("test", setup.selection(UP_PROFILE, variant))
+    assert directory == ("/srv/sparkring/test/checkpoints/local-inference-lab--Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD/"
+                         "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2")
     lock = installer.load(controller.STATE / "deployments" / UP_PROFILE)
     assert [(row["model"], row["reuse_verified_model"]) for row in lock["site"]["ranks"]] == [(directory, False)] * 2
     # The plain runner's model operation adopts what that directory holds and

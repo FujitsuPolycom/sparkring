@@ -182,12 +182,17 @@ def test_the_qwen_csf_checkpoint_runs_the_csf_quantization_and_loader_with_its_d
     assert all(name.startswith("tensors/") for name in pins["weights"])
     assert f"{card['model_repository']}@{card['model_revision']}" == QWEN_CSF
     assert image_lock.CHECKPOINT_BUILDS[QWEN_CSF] == ("sparkring-kraken-beta-20261007-bc9ea774",)
-    assert image_lock.CHECKPOINT_STATUS[QWEN_CSF].startswith("research-only")
-    # It is neither the default nor the preferred checkpoint, and the four-Spark profile does not list it:
-    # 640 expert channels split four ways give 160 per rank, which the loader's 64-channel steps refuse.
+    # An installation of it passed the installer's checks, so plans that install it state no status.
+    assert QWEN_CSF not in image_lock.CHECKPOINT_STATUS
+    # It is the two-Spark profile's preferred checkpoint, which an image whose vLLM reads it installs without
+    # --checkpoint; the default entry, step 5500, keeps the profile's own settings for every other image. The
+    # four-Spark profile does not list it: 640 expert channels split four ways give 160 per rank, which the
+    # loader's 64-channel steps refuse.
     profile = adapter.read(PROFILE)
-    assert (profile["checkpoint"], adapter.preferred_checkpoint(profile)) == ("qad-step5500-ple1000", None)
+    assert (profile["checkpoint"], adapter.preferred_checkpoint(profile)) == ("qad-step5500-ple1000", "csf")
+    assert adapter.checkpoint_settings(profile, None) is profile
     tp4 = adapter.read(ROOT / "profiles/qwen38-flash-next-qad-tp4/config.json")
+    assert adapter.preferred_checkpoint(tp4) is None
     assert "csf" not in adapter.checkpoint_names(tp4)[1]
     assert QWEN_CSF not in {f"{entry['model']['repository']}@{entry['model']['revision']}"
                             for entry in tp4["checkpoints"].values()}
@@ -405,7 +410,7 @@ def test_the_csf_checkpoint_keeps_no_larger_kv_cache_than_nvfp4_spark_for_smalle
 def test_a_preferred_checkpoint_is_another_listed_published_checkpoint():
     profile = adapter.read(GLM_TP2)
     assert adapter.preferred_checkpoint(profile) == "csf"
-    assert adapter.preferred_checkpoint(adapter.read(PROFILE)) is None
+    assert adapter.preferred_checkpoint(adapter.read(PROFILE)) == "csf"
     # The preferred checkpoint changes no setting of the profile's own command.
     assert adapter.checkpoint_settings(profile, None) is profile
     for preferred in ("nvfp4-spark", "missing", 1):
@@ -730,7 +735,7 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
     swift = adapter.canonical(adapter.read(ROOT / "profiles" / swift_id / "config.json"))
     qwen = adapter.read(ROOT / "profiles" / qwen_id / "config.json")
     owned = {"model", "served_model_name", "cache_namespace", "status", "qualification",
-             "checkpoint", "checkpoints", "checkpoint_aliases", "environment", "vllm_args"}
+             "checkpoint", "checkpoints", "checkpoint_aliases", "preferred_checkpoint", "environment", "vllm_args"}
     assert {k: v for k, v in swift.items() if k not in owned} == {k: v for k, v in qwen.items() if k not in owned}
     expected = dict(qwen["environment"])
     if adapter.node_count(swift) == 2:

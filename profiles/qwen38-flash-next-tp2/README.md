@@ -1,16 +1,25 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-This profile, with `--checkpoint csf`, runs Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD,
+This profile runs Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD,
 created by Local Inference Lab, Inc., a non-profit organization, available at
 https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
 Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
 Lab License, Version 1.0.
 
-[Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
-([Local Inference Lab](https://huggingface.co/local-inference-lab)'s QAD
-checkpoint step 5500, revision `60215d26cf5e`) on two DGX Sparks, with MTP
-speculative decoding and 262K context. Node A serves the API on port 8000 as
-`Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, with no API key. Status: Development.
+Qwen3.8-Flash-Next on two DGX Sparks, with MTP speculative decoding and 262K
+context. Node A serves the API on port 8000, with no API key. Status:
+Development.
+
+- On an image whose vLLM reads the CSF checkpoint, the default image among
+  them, the profile installs
+  [Local Inference Lab](https://huggingface.co/local-inference-lab)'s
+  [Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD/tree/dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2)
+  (revision `dc5b8ab2fa14`, research-only), served as
+  `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2`.
+- On every other image it installs
+  [Qwen3.8-Flash-Next NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)
+  (Local Inference Lab's QAD checkpoint step 5500, revision `60215d26cf5e`),
+  served as `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`.
 
 On the Spark connected to your network:
 
@@ -18,7 +27,8 @@ On the Spark connected to your network:
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
-Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
+Add `--checkpoint qad-step5500-ple1000` to install step 5500 on any image, or
+`--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
 `629bc3218833`) instead; the installer then runs the draft's NVFP4 experts on
 B12X, as that checkpoint needs.
 Two checkpoints decode faster at a small quality cost:
@@ -29,15 +39,13 @@ steps per second than step 5500 on one pair,
 and `--checkpoint jmni-qad5500-hybrid`, a third-party build of the same idea
 (research-only)
 ([checkpoints](../../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
-`--checkpoint csf` installs Local Inference Lab's
-[Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD/tree/dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2),
-licensed under the Local Inference Lab License, Version 1.0. It carries the
-hybrid's layer recipes with compressed expert block scales and a quantized
-vision tower, and installs only on two Sparks, with an image whose vLLM reads
-it, such as release 2026.10.2's (research-only).
+The CSF checkpoint carries the hybrid's layer recipes with compressed expert
+block scales and a quantized vision tower. It installs only on two Sparks,
+with an image whose vLLM reads it, such as release 2026.10.2's;
+`--checkpoint csf` on any other image is refused.
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
-logs and recovery. To run the same containers with Docker Compose, see
+logs and recovery. To run step 5500's containers with Docker Compose, see
 [Compose](compose/README.md).
 
 ## Settings
@@ -45,7 +53,7 @@ logs and recovery. To run the same containers with Docker Compose, see
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
 | Image | `dev-20261004-kraken-cuda1342-nccl2323-status034` | `shared-2026.09.3` |
-| Checkpoint | Step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
+| Checkpoint | CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it; otherwise step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
 | KV | 24 GiB FP8 per rank | 24 GiB FP8 per rank; separate from host cache buffers |

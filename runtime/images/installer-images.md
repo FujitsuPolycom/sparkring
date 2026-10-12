@@ -443,8 +443,8 @@ lock records the pinned vLLM build in `sircl.vllm_pins`, which the installer
 requires for the CSF checkpoint (`image_lock.CHECKPOINT_BUILDS`). An
 installation with the v2 lock of this layer alone therefore keeps each
 profile's default checkpoint and refuses `--checkpoint csf`; with the v3 lock,
-the GLM-5.3-Flash profiles of two and four Sparks install the CSF checkpoint
-by default.
+the GLM-5.3-Flash profiles of two and four Sparks and `qwen38-flash-next-tp2`
+install their CSF checkpoint by default.
 [layer_delta.py](layer_delta.py) writes a `docker load` archive of a derived
 image without the layers its parent provides, so a Spark that holds the parent
 loads only the added layers.

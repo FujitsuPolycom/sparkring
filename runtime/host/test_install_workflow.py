@@ -42,8 +42,12 @@ from scripts.test_installer_adopt import audit_hook, audited, only_links_changed
 
 PROFILE = "qwen38-flash-next-tp2"
 TP4 = "qwen38-flash-next-qad-tp4"
+# The tests' deployment request names PROFILE's default checkpoint, step 5500, whose files the simulated Sparks
+# hold: without --checkpoint, the default image, whose vLLM reads the profile's preferred CSF checkpoint,
+# installs that one instead.
+STEP5500 = "qad-step5500-ple1000"
 # The command that repeats the tests' deployment request, as messages suggest it.
-REPEAT = "sudo sparkring install --profile " + PROFILE
+REPEAT = f"sudo sparkring install --profile {PROFILE} --checkpoint {STEP5500}"
 
 
 def cluster(size):
@@ -248,7 +252,9 @@ def machine(tmp_path, monkeypatch, sparks):
 
 
 def command(*extra):
-    return sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", *extra])
+    """``sparkring install`` of the tests' request: step 5500 of PROFILE unless ``extra`` names a checkpoint."""
+    named = () if "--checkpoint" in extra else ("--checkpoint", STEP5500)
+    return sparkring.main(["install", "--profile", PROFILE, *named, "--yes", "--json", *extra])
 
 
 def test_documented_command_updates_prepares_switches_and_emits_only_json(machine, capsys):
@@ -934,14 +940,27 @@ def test_an_unlisted_checkpoint_changes_nothing(machine, sparks, capsys):
             and not sparks.surveys)
 
 
-def test_naming_the_default_checkpoint_installs_the_same_deployment(machine, capsys):
+def test_the_default_image_installs_the_preferred_checkpoint_unless_the_default_is_named(machine, capsys):
     assert command() == 0
     first = json.loads(capsys.readouterr().out)
+    # The default checkpoint's name and its alias request the same deployment, and the commands that repeat it
+    # name the default, which no flag would not install on this image.
     for name in ("qad-step5500-ple1000", "qad-step-5500"):
         assert command("--checkpoint", name) == 0
         second = json.loads(capsys.readouterr().out)
         assert second["deployment"] == first["deployment"] and second["replaces"] is None
         assert second["checkpoint"]["command"] == REPEAT
+    # Without a name, the default image, whose vLLM reads the CSF checkpoint, installs it as another deployment,
+    # the same as naming it.
+    assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json"]) == 0
+    preferred = json.loads(capsys.readouterr().out)
+    assert preferred["deployment"] != first["deployment"]
+    lock = installer.load(preferred["deployment"])
+    assert (lock["selection"]["target_variant"], lock["selection"]["model_revision"]) == (
+        "csf", "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2")
+    assert preferred["checkpoint"]["command"] == f"sudo sparkring install --profile {PROFILE} --checkpoint csf"
+    assert command("--checkpoint", "csf") == 0
+    assert json.loads(capsys.readouterr().out)["deployment"] == preferred["deployment"]
 
 
 def test_serving_settings_install_another_deployment_and_are_listed(machine, sparks, capsys):
@@ -1121,7 +1140,7 @@ def test_a_terminal_installation_asks_where_the_api_listens(machine, sparks, mon
         return answers.pop(0)
     monkeypatch.setattr(builtins, "input", answer)
     answers = ["3", "9100", "y"]
-    assert sparkring.main(["install", "--profile", PROFILE]) == 0
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 0
     err = output_lines(capsys.readouterr().err)
     assert prompts == ["API address number [1]: ", "API port [8000]: ", "Apply this installation? [Y/n]: "]
     assert err[line_index(err, "Model API (Enter keeps the first choice):") + 1:][:3] == [
@@ -1133,7 +1152,7 @@ def test_a_terminal_installation_asks_where_the_api_listens(machine, sparks, mon
     assert installer.read(chosen / "deployment.lock.json")["serving"] == {"api_bind": "203.0.113.7", "api_port": 9100}
     # Enter keeps the automatic endpoint: the deployment of the same request without the question.
     answers = ["", "", "y"]
-    assert sparkring.main(["install", "--profile", PROFILE]) == 0
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 0
     automatic = rollout.active(controller.STATE)
     assert automatic != chosen and "serving" not in installer.read(automatic / "deployment.lock.json")
     capsys.readouterr()
@@ -1141,7 +1160,7 @@ def test_a_terminal_installation_asks_where_the_api_listens(machine, sparks, mon
     assert json.loads(capsys.readouterr().out)["deployment"] == str(automatic)
     # An answer that is not listed changes nothing.
     answers = ["7"]
-    assert sparkring.main(["install", "--profile", PROFILE]) == 3
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 3
     assert "Choose one of the listed API addresses. Nothing has been changed." in capsys.readouterr().err
 
 
@@ -1286,7 +1305,7 @@ def test_first_installation_asks_before_attention_items(machine, sparks, first_i
             prompts.append((prompt, output_lines(capsys.readouterr().err)))
             return "y"
         monkeypatch.setattr(builtins, "input", answer)
-        assert sparkring.main(["install", "--profile", PROFILE]) == 0
+        assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 0
         assert first_installation == [[]]
         [(prompt, printed)] = prompts
         assert prompt == "Proceed with this checkpoint plan? [y/N]: "
@@ -1713,7 +1732,7 @@ def test_suggested_commands_repeat_the_deployment_request(machine, sparks, capsy
     # The survey measures the named cache's filesystem, which the plan counts the cache allowance on.
     assert {options["cache"] for _, options in sparks.surveys} == {"/mnt/fast/cache"}
     # Without --yes and without a terminal, the request names both ways forward.
-    assert sparkring.main(["install", "--profile", PROFILE, "--json", *options]) == 3
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500, "--json", *options]) == 3
     refused = json.loads(capsys.readouterr().out)
     assert refused["field"] == "approval" and refused["message"] == (
         f"Approve this installation with {repeat} --yes, or review its plan first with {repeat} --plan. Nothing has "
@@ -1733,14 +1752,14 @@ def test_cancelling_the_checkpoint_prompt_keeps_setup_and_names_the_command(mach
     monkeypatch.setattr(flow.sys, "stdin", Terminal())
     prompts = []
     monkeypatch.setattr(builtins, "input", lambda prompt: prompts.append(prompt) or "")
-    assert sparkring.main(["install", "--profile", PROFILE]) == 2
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 2
     assert prompts == ["Proceed with this checkpoint plan? [y/N]: "] and first_installation == [[]]
     assert ("Error: Cancelled before any checkpoint or model change; setup is complete. Repeat "
             f"{REPEAT} to review the checkpoint plan again.") in output_lines(capsys.readouterr().err)
     assert (controller.STATE / "cluster.json").exists() and not events
     # Answering y approves the plan it printed, which then bounds later --yes runs as a reviewed plan.
     monkeypatch.setattr(builtins, "input", lambda prompt: "y")
-    assert sparkring.main(["install", "--profile", PROFILE]) == 0
+    assert sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500]) == 0
     assert assets.prepared["plan"]["approval"] == "prompt"
     [deployment] = deployments_besides(previous)
     assert saved({"deployment": str(controller.STATE / "deployments" / deployment)})["reviewed"] is True

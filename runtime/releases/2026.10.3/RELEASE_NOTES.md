@@ -7,7 +7,7 @@ https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
 SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
 Local Inference Lab, Inc., a non-profit organization, available at
 https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-SparkRing's `qwen38-flash-next-tp2` profile, with `--checkpoint csf`, runs
+SparkRing's `qwen38-flash-next-tp2` profile runs
 Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc.,
 a non-profit organization, available at
 https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
@@ -31,8 +31,9 @@ has the evidence and the open gates.
 - The installer refuses to start a model whose GPU memory share plus
   SparkCache's pinned host memory leaves a Spark less than 6 GiB for the
   system, and says by how much.
-- `qwen38-flash-next-tp2 --checkpoint csf` installs Local Inference Lab's
-  Qwen3.8-Flash-Next CSF checkpoint (research-only).
+- `qwen38-flash-next-tp2` installs Local Inference Lab's Qwen3.8-Flash-Next
+  CSF checkpoint on this release's image (research-only);
+  `--checkpoint qad-step5500-ple1000` installs step 5500.
 - Research-only profiles: `glm53-nvfp4-csf-tp8`, GLM-5.3-NVFP4-CSF on eight
   Sparks, which installs only with `--image-lock FILE` and is parked, and
   SparkCache variants of the GLM-5.3-Flash profiles, which need an image this

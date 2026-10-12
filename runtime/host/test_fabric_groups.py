@@ -308,6 +308,8 @@ def test_the_glm_pair_installs_the_csf_checkpoint_without_a_name_on_an_image_tha
     spark = result(capsys)
     assert spark["deployment"] != preferred["deployment"]
     assert lock_of(spark)["selection"]["model_repository"] == "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark"
+    # Without the name this image would install csf, so the commands that repeat the request name nvfp4-spark.
+    assert "--checkpoint nvfp4-spark" in spark["checkpoint"]["command"]
     command = list(installer.specifications(lock_of(spark), only_rank=0)[0].command)
     assert command[command.index("--quantization") + 1] == "modelopt_mixed"
     # An image whose vLLM cannot read it installs NVFP4-Spark without a name, the same request as naming

@@ -7,7 +7,7 @@ https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
 SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
 Local Inference Lab, Inc., a non-profit organization, available at
 https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-SparkRing's `qwen38-flash-next-tp2` profile, with `--checkpoint csf`, runs
+SparkRing's `qwen38-flash-next-tp2` profile runs
 Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc.,
 a non-profit organization, available at
 https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.

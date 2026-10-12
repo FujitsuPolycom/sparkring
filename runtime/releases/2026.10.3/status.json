@@ -42,7 +42,7 @@
     {
       "id": "qwen-csf-checkpoint",
       "status": "research-only",
-      "scope": "qwen38-flash-next-tp2 --checkpoint csf: local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD at dc5b8ab2fa14; one start on positions 6 and 7 of the ring of eight loaded, served and answered correctly",
+      "scope": "qwen38-flash-next-tp2 installs local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD at dc5b8ab2fa14 without --checkpoint on an image whose vLLM reads it, this release's among them, and step 5500 on every other image; one start on positions 6 and 7 of the ring of eight loaded, served and answered correctly",
       "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md"
     },
     {

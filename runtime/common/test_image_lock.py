@@ -347,32 +347,39 @@ def test_the_recorded_locks_of_a_layer_built_from_a_vendored_snapshot_validate_f
 
 CSF_PINS = ["lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"]
 GLM_PROFILES = ("glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4")
+# The profiles that prefer a CSF checkpoint: (default checkpoint, the CSF checkpoint's repository and revision).
+PREFERRING = {
+    **{profile: ("nvfp4-spark", "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
+                 "dec48abd33efa73c3bb7c95b74eee10cad34f9be") for profile in GLM_PROFILES},
+    "qwen38-flash-next-tp2": ("qad-step5500-ple1000", "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD",
+                              "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"),
+}
 
 
-@pytest.mark.parametrize("profile", GLM_PROFILES)
-def test_the_glm_profiles_prefer_the_csf_checkpoint_only_on_an_image_that_reads_it(profile, monkeypatch):
+@pytest.mark.parametrize("profile", sorted(PREFERRING))
+def test_a_profile_prefers_its_csf_checkpoint_only_on_an_image_that_reads_it(profile, monkeypatch):
+    default, repository, revision = PREFERRING[profile]
     pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
     assert image_lock.preferred_checkpoint(pinned, profile) == "csf"
     # The default image, a SIRCL image of another vLLM build and the lock's v2 view keep the default checkpoint.
     for value in (installer_image.default_lock(), sircl_lock(), image_lock.v2_view(pinned)):
         assert image_lock.preferred_checkpoint(value, profile) is None
     from runtime.common import setup
+    assert setup.selection(profile)["target_variant"] == default
     card = setup.selection(profile, "csf")
-    assert {key: card[key] for key in CSF if key != "target_variant"} == {
-        key: value for key, value in CSF.items() if key != "target_variant"}
+    assert (card["model_repository"], card["model_revision"], card["target_variant"]) == (repository, revision, "csf")
     assert image_lock.checkpoint_problem(pinned, card) is None
     assert "(--checkpoint csf)" in image_lock.checkpoint_problem(installer_image.default_lock(), card)
-    # An installation of the CSF checkpoint passed the installer's checks, so its plans state no status.
+    # An installation of each CSF checkpoint passed the installer's checks, so its plans state no status.
     assert image_lock.checkpoint_notice(pinned, profile, card, preferred=True) is None
     # A checkpoint with a recorded status: the plan states it, and how to install the default when the image
     # chose it.
-    key = f"{card['model_repository']}@{card['model_revision']}"
-    monkeypatch.setitem(image_lock.CHECKPOINT_STATUS, key, "research-only: no installation of it has passed the "
-                                                           "installer's checks")
+    monkeypatch.setitem(image_lock.CHECKPOINT_STATUS, f"{repository}@{revision}",
+                        "research-only: no installation of it has passed the installer's checks")
     preferred = image_lock.checkpoint_notice(pinned, profile, card, preferred=True)
-    assert preferred.startswith("Checkpoint csf (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at "
-                                "dec48abd33ef) is research-only: no installation of it has passed")
-    assert f"{profile} installs it without --checkpoint" in preferred and "--checkpoint nvfp4-spark" in preferred
+    assert preferred.startswith(f"Checkpoint csf ({repository} at {revision[:12]}) is research-only: no installation "
+                                "of it has passed")
+    assert f"{profile} installs it without --checkpoint" in preferred and f"--checkpoint {default}" in preferred
     explicit = image_lock.checkpoint_notice(pinned, profile, card, preferred=False)
     assert explicit.startswith("Checkpoint csf") and "without --checkpoint" not in explicit
     assert image_lock.checkpoint_notice(pinned, profile, setup.selection(profile), preferred=False) is None
@@ -394,7 +401,7 @@ def test_a_preferred_checkpoint_is_one_that_only_some_vllm_builds_read():
         # Otherwise every image would install it and it would be the profile's default.
         assert f"{preferred['model_repository']}@{preferred['model_revision']}" in image_lock.CHECKPOINT_BUILDS
         assert image_lock.checkpoint_problem(installer_image.default_lock(), card) is None
-    assert preferring == list(GLM_PROFILES)
+    assert preferring == sorted(PREFERRING)
 
 
 # vLLM general plugins a derived layer added, an optional block of a v3 lock.

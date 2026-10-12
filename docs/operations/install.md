@@ -60,14 +60,16 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
   `--stop-workloads`. An unknown SSH host key always needs its own answer.
 - `--plan` shows what it would change and changes nothing. On a Spark without
   SparkRing, run with `--package-only` first; it installs only the package.
-- Qwen profiles install checkpoint step 5500; add `--checkpoint qad-step-4000`
-  for step 4000. Two Qwen options trade a little quality for faster
-  decoding: `--checkpoint qad-step5500-mxfp8-attention` builds step 5500
-  with MXFP8 attention on the Sparks (it downloads 2.8 GB of step 4000;
-  implemented), and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs'
-  third-party hybrid (research-only). On two Sparks, `--checkpoint csf`
-  installs Local Inference Lab's CSF build of the hybrid's recipes on an
-  image whose vLLM reads it (research-only). GLM profiles install the CSF
+- On two Sparks, Qwen installs Local Inference Lab's CSF checkpoint on an
+  image whose vLLM reads it, the default image among them (research-only),
+  and checkpoint step 5500 on every other image; on four Sparks it installs
+  step 5500. Add `--checkpoint qad-step5500-ple1000` for step 5500 on any
+  image, or `--checkpoint qad-step-4000` for step 4000. Two Qwen options
+  trade a little quality for faster decoding:
+  `--checkpoint qad-step5500-mxfp8-attention` builds step 5500 with MXFP8
+  attention on the Sparks (it downloads 2.8 GB of step 4000; implemented),
+  and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs' third-party
+  hybrid (research-only). GLM profiles install the CSF
   checkpoint on an image whose vLLM reads it, the default image among
   them (implemented; installations passed the installer's checks and a
   256-request correctness screen), and NVFP4-Spark on every other image,

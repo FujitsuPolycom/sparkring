@@ -247,8 +247,6 @@ CHECKPOINT_BUILDS = {
 # the plan states it (checkpoint_notice), because a profile installs such a checkpoint without --checkpoint on
 # an image that reads it. Remove an entry when a record shows an installation of that checkpoint that passed.
 CHECKPOINT_STATUS: dict[str, str] = {
-    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2":
-        "research-only: no installation of it has passed the installer's checks",
     "local-inference-lab/GLM-5.3-NVFP4-CSF@a4d406932f2db96db8e852867c7939f448e0cd6f":
         "research-only: no installation of it has passed the installer's checks, and its first start settles "
         "whether the online MXFP8 linears, the MTP draft's load-time quantization and glm53full_speedups' "
@@ -294,10 +292,10 @@ def preferred_checkpoint(value, profile):
     """The checkpoint that installer profile ``profile`` installs without ``--checkpoint`` on the image of
     lock ``value``: its ``preferred_checkpoint`` when that image reads it, else None for its default.
 
-    A profile prefers a checkpoint that only some vLLM builds read (CHECKPOINT_BUILDS), such as
-    GLM-5.3-Flash's CSF checkpoint. Its default checkpoint, whose settings are the profile's own, is
-    what every other image installs, so a profile whose admitted images differ keeps one installable
-    default on each of them.
+    A profile prefers a checkpoint that only some vLLM builds read (CHECKPOINT_BUILDS), such as the
+    CSF checkpoints of GLM-5.3-Flash and Qwen3.8-Flash-Next. Its default checkpoint, whose settings are
+    the profile's own, is what every other image installs, so a profile whose admitted images differ
+    keeps one installable default on each of them.
     """
     from runtime.common import toolchain_profiles, setup
     card = setup.selection(profile)

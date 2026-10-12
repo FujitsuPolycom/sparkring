@@ -123,7 +123,8 @@ def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
     assert switch["state"] == "complete" and switch["displaced"] == [str(Path(tp4["deployment"]).resolve())]
     assert first["commands"]["stop"] == "sudo sparkring down --on 0,1 --execute"
     assert first["commands"]["switch_back"] == f"sudo sparkring install --profile {TP4}"
-    assert first["checkpoint"]["command"] == f"sudo sparkring install --profile {QWEN} --on 0,1"
+    # The default image reads the pair's preferred CSF checkpoint, which the commands that repeat the request name.
+    assert first["checkpoint"]["command"] == f"sudo sparkring install --profile {QWEN} --on 0,1 --checkpoint csf"
 
     # Half (2, 3): the other half keeps running.
     assert install("--profile", GLM, "--on", "2,3", "--checkpoint", "nvfp4-qad") == 0
@@ -165,7 +166,7 @@ def test_installing_on_a_serving_half_replaces_only_that_half(ring, capsys):
     assert ops(ring) == [f"{QWEN}@01:down", "park-ring", f"{GLM}@01:settle-memory", f"{GLM}@01:up",
                          f"{GLM}@01:verify"]
     assert recorded() == {None: None, (0, 1): GLM + "@01", (2, 3): GLM + "@23"}
-    assert replaced["commands"]["switch_back"] == f"sudo sparkring install --profile {QWEN} --on 0,1"
+    assert replaced["commands"]["switch_back"] == f"sudo sparkring install --profile {QWEN} --on 0,1 --checkpoint csf"
 
 
 def test_a_failed_half_restarts_the_four_spark_model_it_stopped(ring, capsys):

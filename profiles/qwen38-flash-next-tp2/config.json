@@ -8,6 +8,7 @@
     "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4"
   },
   "checkpoint": "qad-step5500-ple1000",
+  "preferred_checkpoint": "csf",
   "checkpoints": {
     "qad-step5500-ple1000": {
       "model": {

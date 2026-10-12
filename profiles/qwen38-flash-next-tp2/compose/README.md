@@ -4,7 +4,8 @@
 profile on two DGX Sparks connected by one direct cable, with the same file on
 each Spark. Spark 0 serves `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` on port 8000.
 The containers are the ones [`sparkring install`](../../../docs/operations/install.md)
-runs; unlike the installer, this recipe assumes the network, image and
+runs with this image, whose vLLM cannot read the profile's CSF checkpoint;
+unlike the installer, this recipe assumes the network, image and
 checkpoint are already set up.
 
 ## Files

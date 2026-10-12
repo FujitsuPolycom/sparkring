@@ -663,9 +663,13 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         print("Note: " + notice)
     # A checkpoint is requested by its listed name: an alias requests the same
     # deployment as that name, and the profile's default the same as no flag on
-    # an image that does not read its preferred checkpoint.
+    # an image that does not read its preferred checkpoint. On an image that
+    # reads it, no flag selects the preferred checkpoint, so a request for the
+    # default there keeps its name, and the commands that repeat the request
+    # install the default again.
     checkpoint = (card["target_variant"] if requested_checkpoint is not None
-                  and card["target_variant"] != installer.setup.selection(profile)["target_variant"] else None)
+                  and (card["target_variant"] != installer.setup.selection(profile)["target_variant"]
+                       or image_lock.preferred_checkpoint(image, profile) is not None) else None)
     hosts = cluster["plan"]["spec"]["hosts"]
     api_address = cluster.get("api_address")
     if placement is not None and placement[0] != 0:

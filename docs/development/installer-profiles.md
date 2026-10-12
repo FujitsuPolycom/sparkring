@@ -148,7 +148,8 @@ some vLLM builds read (`runtime/common/image_lock.py` `CHECKPOINT_BUILDS`).
 Without `--checkpoint`, `sparkring install` and `sparkring up` install it on
 an image whose lock lists one of those builds in `sircl.vllm_pins`
 (`image_lock.preferred_checkpoint`), and the default entry on every other
-image. The GLM-5.3-Flash profiles of two and four Sparks prefer `csf`. The
+image. The GLM-5.3-Flash profiles of two and four Sparks and
+`qwen38-flash-next-tp2` prefer `csf`. The
 default entry keeps the profile's own settings, so the profile's
 `SHA256SUMS`, its Compose exports, whose images cannot read the preferred
 checkpoint, and every reader of the profile's top-level command describe the
