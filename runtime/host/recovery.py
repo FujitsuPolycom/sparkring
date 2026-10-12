@@ -64,7 +64,7 @@ import urllib.error
 import urllib.request
 
 from runtime.common import compose, fabric_layout, installer, process_lock
-from runtime.host import controller, discovery, host_load, node, progress, retained_source
+from runtime.host import controller, discovery, host_load, node, operator_view, privilege, progress, retained_source
 
 SCHEMA = "sparkring-recovery/v1"
 TIMER = "sparkring-recover.timer"
@@ -1023,6 +1023,22 @@ def describe():
     return {"deployment": None, "record": None, "deployments": documents, "lines": lines}
 
 
+def _operator_recovery():
+    """``sparkring recover status`` for a member of the ``sparkring`` group.
+
+    The recovery lines come from the published operator view
+    (``runtime.host.operator_view``) with the site addresses redacted; the
+    controller's records stay root-only and nothing is written.
+    """
+    if not privilege.member():
+        raise ValueError("Reading the recovery status needs membership of the sparkring group: "
+                         + privilege.reader_request())
+    document = operator_view.load()
+    if document is None:
+        raise ValueError("No operator status is recorded yet; an operator's sudo sparkring status writes it")
+    return {"deployment": None, "record": None, "lines": operator_view.lines(document)}
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring recover",
                                      description="Automatic restart of the active models when a Spark stops serving.")
@@ -1057,7 +1073,12 @@ def main(argv=None):
             result = ({**documents[0], "lines": lines} if len(documents) == 1 else
                       {"deployment": None, "record": None, "deployments": documents, "lines": lines})
         else:
-            result = describe()
+            try:
+                result = describe()
+            except PermissionError:
+                # The controller's records are root's; a member of the
+                # sparkring group reads the published operator view instead.
+                result = _operator_recovery()
         print(json.dumps({key: value for key, value in result.items() if key != "lines"}, indent=2)
               if args.json else "\n".join(result["lines"]))
         return 0

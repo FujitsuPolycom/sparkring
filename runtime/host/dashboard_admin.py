@@ -90,6 +90,10 @@ def refresh_site(*, log=None, run=None) -> bool:
     `sudo sparkring dashboard export` when the write fails."""
     try:
         write_site()
+        # The group-readable operator view follows the same changes, so a
+        # member of the sparkring group reads an up-to-date status.
+        from runtime.host import operator_view
+        operator_view.publish()
     except Exception as error:  # noqa: BLE001 - the dashboard must never fail an installation
         (log or _stderr)(f"Dashboard: its site file was not refreshed ({type(error).__name__}: {error}); "
                          "sudo sparkring dashboard export writes it")

@@ -16,11 +16,15 @@ import sys
 import threading
 import time
 
+from runtime.host.privilege import reader_request, share, share_directory
 from runtime.host.terminal import Console
 
 EVENT_SCHEMA = "sparkring-install-event/v1"
 # Seconds between a running step's "Still working" lines.
 HEARTBEAT = 30
+# The root installation log; members of the sparkring group read it (mode 0640,
+# group sparkring, set by share), everyone else is told how to gain access.
+LOG_ROOT = "/var/log/sparkring"
 
 _log = None
 _details = None
@@ -71,7 +75,7 @@ def directory():
         if not path.is_absolute():
             raise ValueError("SPARKRING_LOG_DIR must be absolute")
         return path
-    return Path("/var/log/sparkring") if hasattr(os, "geteuid") and os.geteuid() == 0 else Path.home() / ".local/state/sparkring/logs"
+    return Path(LOG_ROOT) if hasattr(os, "geteuid") and os.geteuid() == 0 else Path.home() / ".local/state/sparkring/logs"
 
 
 def record(message):
@@ -134,6 +138,7 @@ def run(operation, *, events=None):
     if any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("Installation log directory contains a symlink")
     root.mkdir(parents=True, exist_ok=True, mode=0o750)
+    share_directory(root, 0o750)
     paths = [root / "install.log", root / "install-details.log"]
     if any(p.is_symlink() for p in paths):
         raise ValueError("Installation log file cannot be a symlink")
@@ -142,6 +147,9 @@ def run(operation, *, events=None):
         details = stack.enter_context(paths[1].open("a", encoding="utf-8", buffering=1))
         for path in paths:
             path.chmod(0o600)
+            # The sparkring group follows the installation progress; the log
+            # carries no key or token, but stays closed to other users.
+            share(path, 0o640)
         _log, _details = primary, details
         try:
             if events is not None:
@@ -280,6 +288,15 @@ def command(argv, *, title, invoke=subprocess.run, **kwargs):
             raise RuntimeError(title + "; see " + str(directory() / "install-details.log")) from error
 
 
+def unreadable(path: Path) -> bool:
+    """Whether ``path`` exists and this process may neither read nor enter it."""
+    try:
+        path.stat()
+    except OSError:
+        return False
+    return not os.access(path, os.R_OK | os.X_OK)
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="sparkring logs")
     parser.add_argument("--follow", action="store_true")
@@ -287,8 +304,11 @@ def main(argv=None):
     parser.add_argument("--plain", action="store_true", help="disable terminal colors and animation")
     parser.add_argument("--lines", type=int, default=40)
     args = parser.parse_args(argv)
-    root = Path(os.environ.get("SPARKRING_LOG_DIR", "/var/log/sparkring"))
+    root = Path(os.environ.get("SPARKRING_LOG_DIR", LOG_ROOT))
     path = root / ("install-details.log" if args.details else "install.log")
+    if not path.exists() and root == Path(LOG_ROOT) and unreadable(root):
+        print("The installation log is root's: " + reader_request() + ".", file=sys.stderr)
+        return 2
     if not path.exists():
         root = Path.home() / ".local/state/sparkring/logs"
         path = root / path.name
@@ -313,6 +333,6 @@ def main(argv=None):
     except KeyboardInterrupt:
         pass
     except PermissionError:
-        print("Use sudo sparkring logs to read the installation log.", file=sys.stderr)
+        print("The installation log is root's: " + reader_request() + ".", file=sys.stderr)
         return 2
     return 0

@@ -46,6 +46,15 @@ def no_dashboard_service(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def no_operator_view(monkeypatch):
+    """Replace the operator view's publication, which as root writes
+    /var/lib/sparkring/operator-status.json on the machine running the tests.
+    ``runtime.host.test_operator_view`` tests publication through ``REAL_PUBLISH``."""
+    from runtime.host import operator_view
+    monkeypatch.setattr(operator_view, "publish", lambda *args, **kwargs: False)
+
+
+@pytest.fixture(autouse=True)
 def recovery_reads_node_a_like_the_others(monkeypatch):
     """Route the recovery timer's reads of Node A's own rank through ``discovery.ssh`` as for every other
     Spark, so the tests' fake SSH answers them instead of this machine's status file and Docker.

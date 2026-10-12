@@ -20,7 +20,7 @@ import sys
 import time
 
 from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
-from runtime.host import dashboard_admin, discovery, fabric, hairpin_ring, node, relays, topology
+from runtime.host import dashboard_admin, discovery, fabric, hairpin_ring, node, operator_view, privilege, relays, topology
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
 
 STATE = Path("/var/lib/sparkring/controller")
@@ -580,6 +580,47 @@ def _hairpin_problem(placement=None):
     return problem.replace("\n", "\n  ") if problem else None
 
 
+def _operator_status(argv):
+    """``sparkring status`` for a member of the ``sparkring`` group: the last published operator view.
+
+    Reached when the live path is root's (the controller records refused this
+    process). The view (``runtime.host.operator_view``) is the status document
+    root's commands publish with the site addresses redacted. Nothing is
+    written and no Spark is contacted: ``--refresh`` stays root's.
+    """
+    parser = argparse.ArgumentParser(prog="sparkring status", add_help=False)
+    parser.add_argument("profile", nargs="?")
+    parser.add_argument("--refresh", action="store_true")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--instance", default="main")
+    parser.add_argument("--on")
+    args, _ = parser.parse_known_args(argv[1:])
+    if not privilege.member():
+        raise ValueError("Reading the status needs membership of the sparkring group: "
+                         + privilege.reader_request())
+    document = operator_view.load()
+    if document is None:
+        raise ValueError("No operator status is recorded yet; an operator's sudo sparkring status writes it")
+    if args.refresh:
+        raise ValueError("sparkring status --refresh observes the Sparks live and needs root; "
+                         "the operator view shows the state as last recorded")
+    if args.on:
+        raise ValueError("--on names a live placement; the operator view lists the recorded deployments")
+    deployments = document.get("deployments") or []
+    if args.profile or args.instance != "main":
+        named = [row for row in deployments
+                 if (not args.profile or row.get("profile") == args.profile)
+                 and (args.instance == "main" or row.get("id") == args.profile + "-" + args.instance
+                      or row.get("id") == args.instance)]
+        document = {**document, "deployments": named}
+    if args.json:
+        print(json.dumps(document, indent=2))
+    else:
+        for line in operator_view.lines(document):
+            print(line)
+    return 0
+
+
 def lifecycle(argv):
     parser = argparse.ArgumentParser(prog="sparkring " + argv[0])
     parser.add_argument("operation", choices=("up", "down", "status"))
@@ -675,6 +716,8 @@ def lifecycle(argv):
         if len(views) > 1 or any(view["placement"] for view in views):
             result["slots"] = [{key: value for key, value in view.items() if key not in ("lock", "record")}
                                for view in views]
+        # Publish the group-readable operator view the next non-root status reads.
+        operator_view.publish()
         if args.json:
             print(json.dumps(result, indent=2))
         else:
@@ -1093,6 +1136,12 @@ def main(argv):
         if argv[0] != "setup":
             try:
                 return lifecycle(argv)
+            except PermissionError:
+                # The controller's records are root's; a member of the
+                # sparkring group reads the published operator view instead.
+                if argv[0] == "status" and not privilege.running_as_root():
+                    return _operator_status(list(argv))
+                raise
             finally:
                 # up and down change deployment records, whether they finish or fail.
                 if argv[0] in ("up", "down"):
