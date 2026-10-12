@@ -112,6 +112,7 @@ services:
       B12X_ROCE_HCA: rocep1s0f0,roceP2p1s0f0
       B12X_ROCE_PAIR_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 0=0/1
+      B12X_W4A16_A4_PREFILL_MIN_TOKENS: '1536'
       B12X_W4A16_SMALL_M_OCCUPANCY: '1'
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
@@ -179,7 +180,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: 4f253db82f1a6387f3dc3b80eb046d724c6a5f494763819611362ad8a678803e
+      io.sparkring.deployment: 8762bdfd073cbc125f679ab17b062df75f6c08c28aadf1fb5cbb3389867bfbab
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

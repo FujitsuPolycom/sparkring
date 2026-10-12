@@ -652,11 +652,13 @@
       "detect": [{"env": "B12X_W4A16_A4_PREFILL_MIN_TOKENS", "at_least": 1}],
       "requires": ["b12x-w4a16-experts"],
       "provided_by": {"images": ["dev-20261004-kraken-cuda1342-nccl2323-status034"]},
-      "status": "research-only",
-      "gain": {"percent": null, "summary": "part of every measured CSF configuration and of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone"},
-      "measurements": [],
-      "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "profiles/glm53-flash-csf-tp8/README.md", "source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/prefill_a4.py (a4_prefill_min_tokens)"],
-      "profiles": ["glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
+      "status": "implemented",
+      "gain": {"percent": 12, "summary": "GLM-5.3-Flash CSF TP4: 32K prefill 3,336 tok/s against 2,945-3,012 for arms of the same campaign without it (+11-13 %), decode unchanged"},
+      "measurements": [
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "sparkring install of glm53-flash-nvfp4-spark-tp4 with --checkpoint csf on a path of four Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, one start per arm: with the setting, 8K / 32K prefill 3,408 / 3,336 tok/s and 32K decode 61.7 / 125.0 / 213.6 tok/s at 1 / 4 / 8 streams; arms without it (NVFP4 draft head; FP32 top-k weights) 2,979-3,041 / 2,945-3,012 tok/s and 62.5-64.5 / 123.1-126.3 / 204.5-205.5 tok/s", "evidence": "private record 2026-10-11: GLM-5.3-Flash CSF fastest serving configuration"}
+      ],
+      "evidence": ["runtime/images/compositions/external-kraken-20261004/README.md", "profiles/glm53-flash-csf-tp8/README.md", "profiles/glm53-flash-nvfp4-spark-tp4/config.json", "profiles/glm53-flash-nvfp4-spark-tp2/config.json", "source: b12x@cc36aa6f b12x/moe/_shared/kernels/w4a16/prefill_a4.py (a4_prefill_min_tokens)"],
+      "profiles": ["glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4:csf", "glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"]
     },
     {
       "id": "b12x-w4a16-fp32-topk-weights",
