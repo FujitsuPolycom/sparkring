@@ -1,5 +1,12 @@
 # Release 2026.10.2: the SIRCL, libsircl and GLM-5.3 plugin installer image
 
+This image's sources read
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
+
 GitHub release `2026.10.2` publishes installer image release
 `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`. It is a
 kraken-line image (built on Local Inference Lab's `karmic-kraken-beta` vLLM and

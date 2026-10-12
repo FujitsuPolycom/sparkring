@@ -1,5 +1,12 @@
 # Qwen3.8-Flash-Next on two DGX Sparks with Docker Compose
 
+This profile runs Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD,
+created by Local Inference Lab, Inc., a non-profit organization, available at
+https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
+Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
+Lab License, Version 1.0.
+This Compose recipe serves step 5500, a separate checkpoint.
+
 [`standalone.yaml`](standalone.yaml) runs the [`qwen38-flash-next-tp2`](../README.md)
 profile on two DGX Sparks connected by one direct cable, with the same file on
 each Spark. Spark 0 serves `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` on port 8000.

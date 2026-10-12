@@ -1,5 +1,12 @@
 # Kraken-line image with SIRCL and the CSF-capable sources
 
+This image's sources read
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
+
 Release `dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` is a
 kraken-line installer image whose lock (`sparkring-installer-image/v3`)
 carries SIRCL ring sessions and whose vLLM and B12X read the GLM-5.3-Flash CSF
