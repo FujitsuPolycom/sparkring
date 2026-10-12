@@ -214,7 +214,7 @@ without research options (private record):
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
 | `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. the same three installed on two new rings of four (DeepSeek on a whole ring, the pairs on the other) with the same model settings and SIRCL's ring-of-four tuning ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)); the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |
-| `publication`: tag, package built with the relay marker, GitHub release | passed: tag `2026.10.3` on this commit; GitHub release `2026.10.3`, marked latest, carries the arm64 package and the relay marker with their SHA-256 files; `main` fast-forwarded to the tag | [GitHub release](https://github.com/FujitsuPolycom/sparkring/releases/tag/2026.10.3) |
+| `publication`: tag, package built with the relay marker, GitHub release | passed: tag `2026.10.3`; GitHub release `2026.10.3`, marked latest, carries the arm64 package and the relay marker with their SHA-256 files; `main` fast-forwarded to the tag | [GitHub release](https://github.com/FujitsuPolycom/sparkring/releases/tag/2026.10.3) |
 
 ## Validation
 
@@ -262,8 +262,10 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
   prompts and short prefill chunks: this image's vLLM uses the value only as
   an on/off switch. The output quality of short prefills with it is not
   separately qualified.
-- The repository README's speed table shows measurements made on earlier
-  images before these serving defaults; its two-Spark Qwen row is step 5500.
+- The repository README's speed table shows this release's profiles measured
+  once each at temperature 1; the four-Spark GLM-5.3-Flash and Qwen profiles
+  have no measurement with these settings, and the README gives their
+  development-image results separately.
 - No image this package carries runs the SparkCache variants: only the lock
   their derived layer records admits them, and that lock is not in this
   repository. They are listed in the research catalog.
