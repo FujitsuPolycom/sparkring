@@ -571,7 +571,7 @@
       "category": "kernel-backend",
       "sides": ["decode"],
       "models": [
-        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 3, "summary": "step-4000 checkpoint, TP2 / TP4: per-step time about -3 %; installer deployments 2-5 % faster"}},
+        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 3, "summary": "step-4000 checkpoint, TP2 / TP4: per-step time about -3 %; installer deployments 2-5 % faster; MXFP8-attention checkpoint at TP4: 32K decode +3-6 % at 1-4 streams, -2 % at 8, prefill equal"}},
         {"name": "GLM-5.3", "status": "research-only"}
       ],
       "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
@@ -583,10 +583,57 @@
       "measurements": [
         {"image": "dev-20260925-cuda1342-nccl2323-status031", "tp": 4, "dcp": 1, "streams": null, "context": null, "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "per-step time about -3 %; prose / code / JSON 2-5 % above the BF16-head installer deployments (TP4 JSON +0.3 %); prefill within 3 %", "evidence": "performance/records/qwen38-flash-next/decode-ab-20260925.md"},
         {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 8, "dcp": 4, "streams": null, "context": null, "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "part of the GLM-5.3 TP8 serving A/B configuration run on image 816c6d6a7e96 on 2026-10-08; not measured alone", "evidence": "private record 2026-10-08: serving A/B matrix definitions"},
-        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "checkpoint qad-step-4000 with SIRCL ring schedules, GPU clocks locked: 27.0 / 92.4 steps/s at 1 / 8 streams, TTFT 2.13 / 8.37 s at 8K / 32K; not measured against the BF16 head", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
+        {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc321", "result": "checkpoint qad-step-4000 with SIRCL ring schedules, GPU clocks locked: 27.0 / 92.4 steps/s at 1 / 8 streams, TTFT 2.13 / 8.37 s at 8K / 32K; not measured against the BF16 head", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"},
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4 (qad-step5500-mxfp8-attention)", "result": "sparkring install of qwen38-flash-next-qad-tp4 on a path of four Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, one start: 32K decode 64.7 / 153.4 / 231.9 tok/s at 1 / 4 / 8 streams and 32K prefill 4,436 tok/s, against 60.9-62.8 / 148.6-149.9 / 237.2 and 4,436-4,441 with the BF16 head (two starts)", "evidence": "private record 2026-10-11: Qwen3.8-Flash-Next TP4 fastest configuration on a path of four"}
       ],
       "evidence": ["performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md", "performance/records/qwen38-flash-next/decode-ab-20260925.md", "profiles/labels.json"],
-      "profiles": ["glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp4:qad-step-4000", "qwen38-flash-next-tp2:qad-step-4000"]
+      "profiles": ["glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2"]
+    },
+    {
+      "id": "qwen38-bfloat16-kv-block16",
+      "title": "BF16 KV cache in 16-token blocks",
+      "description": "Stores Qwen3.8-Flash-Next's KV cache (its full-attention layers) as bfloat16 in 16-token blocks (--kv-cache-dtype bfloat16 --block-size 16), as Local Inference Lab's lil-catalog launch settings do, instead of FP8 in 32-token blocks. The MTP draft's KV cache is then BF16 whether its kv_cache_dtype is auto or unset. No profile sets it: with the profiles' other settings it decoded 20-32 % slower than FP8 KV in 32-token blocks with the draft's KV at auto, at 8K to 64K context.",
+      "category": "kernel-backend",
+      "sides": ["decode", "prefill"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next"}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"arguments": {"--kv-cache-dtype": "bfloat16", "--block-size": "16"}},
+      "detect": [{"arg": "--kv-cache-dtype", "equals": "bfloat16"}],
+      "trade_off": "BF16 KV holds half the tokens that FP8 KV holds in the same --kv-cache-memory-bytes",
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
+      "status": "research-only",
+      "gain": {"percent": -26, "summary": "Qwen3.8-Flash-Next TP2, CSF checkpoint, with the draft's KV cache at auto, temperature 1: decode 20-32 % slower than FP8 KV in 32-token blocks at 8K to 64K context and prefill 7-12 % slower; with the draft's KV cache unset (TP4, temperature 0): 32K decode +4-11 % at one stream"},
+      "measurements": [
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4 (qad-step5500-mxfp8-attention)", "result": "sparkring install of qwen38-flash-next-qad-tp4 on a path of four Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, two starts: 32K decode 65.1-69.3 / 156.3-162.9 / 237.1-240.4 tok/s at 1 / 4 / 8 streams and 32K prefill 4,455-4,457 tok/s, against 60.9-62.8 / 148.6-149.9 / 237.2 and 4,436-4,441 with FP8 KV in 32-token blocks (two starts). With the MXFP8 LM head also on (and --async-scheduling, which changes no resolved setting), two starts gave 72.5-74.0 / 158.5-164.8 / 236.4-237.1 tok/s and 4,434-4,463 tok/s", "evidence": "private record 2026-10-11: Qwen3.8-Flash-Next TP4 fastest configuration on a path of four"},
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 2, "dcp": 1, "streams": "1-8", "context": "8K-128K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2", "result": "sparkring install of qwen38-flash-next-tp2 --checkpoint csf on Sparks 6 and 7 of a ring of eight, GPU clocks locked at 2,418 MHz, one start each, llm-inference-bench 0.7.6 at temperature 1 (20 s cells, at most 2,048 output tokens), with async scheduling, the MXFP8 LM head and the draft's KV cache at auto. With BF16 target KV in 16-token blocks: 48.9 / 79.1 / 119.2 / 174.0 at 8K and 48.2 / 78.0 / 119.0 / 174.4 at 32K (26.1 steps/s and 1.85 accepted tokens per step); prefill 3,434 / 3,620 / 3,188; coding-peak median 84.9; with FP8 target KV in 32-token blocks: decode 68.5 / 104.7 / 163.6 / 242.8 tok/s at 1 / 2 / 4 / 8 streams at 8K and 71.4 / 110.2 / 164.8 / 229.3 at 32K (28.2 steps/s and 2.53 accepted tokens per step at one stream); prefill 3,882 / 3,920 / 3,414 tok/s at 8K / 32K / 128K; coding-peak median 93.8 tok/s. BF16 KV was 20-32 % slower in every cell from 8K to 64K context, with 5-11 % fewer engine steps per second and about 2.0 accepted tokens per step against 2.3-2.6; at 128K 21 % slower at one stream, equal at four and 8 % slower at eight (the FP8 run's 128K two-stream cell overlapped another run)", "evidence": "private record 2026-10-11: Qwen3.8-Flash-Next CSF on two Sparks at temperature 1, llm-inference-bench 0.7.6 runs WD and WDB"}
+      ],
+      "evidence": ["private record 2026-10-11: Qwen3.8-Flash-Next TP4 fastest configuration on a path of four", "source: local-inference-lab/lil-catalog Qwen3.8-Flash-Next-NVFP4/lil.yaml", "private record 2026-10-11: Qwen3.8-Flash-Next CSF on two Sparks at temperature 1, llm-inference-bench 0.7.6 runs WD and WDB"],
+      "profiles": []
+    },
+    {
+      "id": "qwen38-mtp-draft-kv-auto",
+      "title": "MTP draft KV cache in the model's dtype",
+      "description": "Sets the MTP draft's KV cache dtype to auto, the model's dtype (BF16), with kv_cache_dtype in --speculative-config. Unset, the draft's KV cache inherits the target's --kv-cache-dtype, FP8 in the Qwen profiles; with auto the draft keeps BF16 KV while the target keeps FP8. With a BF16 target KV cache the key changes nothing.",
+      "category": "speculative-decoding",
+      "sides": ["decode"],
+      "models": [
+        {"name": "Qwen3.8-Flash-Next", "gain": {"percent": 24, "summary": "temperature 0: MXFP8-attention checkpoint at TP4, 32K decode +30-34 % at one stream, +24-25 % at four, -1 % at eight; prefill equal"}}
+      ],
+      "parallelism": {"supported": [{"tp": "any", "dcp": "any"}]},
+      "enable": {"speculative": {"kv_cache_dtype": "auto"}},
+      "detect": [{"arg": "--speculative-config", "json": "kv_cache_dtype", "equals": "auto"}],
+      "trade_off": "the gain rests on one start at temperature 0 (Qwen3.8-Flash-Next TP4, MXFP8-attention checkpoint); at temperature 1 the profiles' configuration is measured alone. The 2026-10-11 Qwen TP2 comparison of a start with the key and FP8 target KV against a start with BF16 target KV and the key unset measured the target KV dtype, not this key: the draft's KV was BF16 in both",
+      "provided_by": {"images": ["dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "implemented",
+      "gain": {"percent": 24, "summary": "Qwen3.8-Flash-Next TP4, MXFP8-attention checkpoint, temperature 0: 32K decode +30-34 % at one stream and +24-25 % at four, -1 % at eight; prefill equal"},
+      "measurements": [
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-8", "context": "0K, 16K, 32K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4 (qad-step5500-mxfp8-attention)", "result": "sparkring install of qwen38-flash-next-qad-tp4 on a path of four Sparks of a ring of eight, GPU clocks locked at 2,418 MHz, the serving A/B runner at temperature 0 (at most 1,024 output tokens), FP8 target KV in 32-token blocks, without the MXFP8 LM head: with the draft's KV cache at auto, so BF16 (S-draftkv, one start), 32K decode 81.6 / 185.9 / 234.0 tok/s at 1 / 4 / 8 streams with 2.52-2.57 accepted tokens per step, against 60.9-62.8 / 148.6-149.9 / 237.2 tok/s with 1.88-2.08 with it unset, so inheriting FP8 (B1, B2); 0K decode 89.4 / 213.1 / 301.9 against 85.5-87.4 / 209 / 294-304; 32K prefill 4,435 tok/s against 4,435-4,440", "evidence": "private record 2026-10-11: Qwen3.8-Flash-Next TP4 fastest configuration on a path of four"},
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 2, "dcp": 1, "streams": "1-8", "context": "8K-128K", "checkpoint": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2", "result": "sparkring install of qwen38-flash-next-tp2 --checkpoint csf on Sparks 6 and 7 of a ring of eight, GPU clocks locked at 2,418 MHz, one start each, llm-inference-bench 0.7.6 at temperature 1 (20 s cells, at most 2,048 output tokens), with async scheduling, the MXFP8 LM head and the draft's KV cache at auto, the profile's settings: with FP8 target KV in 32-token blocks: decode 68.5 / 104.7 / 163.6 / 242.8 tok/s at 1 / 2 / 4 / 8 streams at 8K and 71.4 / 110.2 / 164.8 / 229.3 at 32K (28.2 steps/s and 2.53 accepted tokens per step at one stream); prefill 3,882 / 3,920 / 3,414 tok/s at 8K / 32K / 128K; coding-peak median 93.8 tok/s. With BF16 target KV in 16-token blocks: 48.9 / 79.1 / 119.2 / 174.0 at 8K and 48.2 / 78.0 / 119.0 / 174.4 at 32K (26.1 steps/s and 1.85 accepted tokens per step); prefill 3,434 / 3,620 / 3,188; coding-peak median 84.9. No temperature-1 run with the draft's KV cache unset compares them. The two starts differ only in the target KV cache: the draft's KV is BF16 in both, as auto in the first and inherited from the BF16 target in the second", "evidence": "private record 2026-10-11: Qwen3.8-Flash-Next CSF on two Sparks at temperature 1, llm-inference-bench 0.7.6 runs WD and WDB"}
+      ],
+      "evidence": ["private record 2026-10-11: arm audit of the 2026-10-11 serving measurements", "source: vllm@bc9ea774 vllm/config/speculative.py (kv_cache_dtype: unset inherits the target's; auto is the model dtype)", "private record 2026-10-11: Qwen3.8-Flash-Next TP4 fastest configuration on a path of four", "private record 2026-10-11: Qwen3.8-Flash-Next CSF on two Sparks at temperature 1, llm-inference-bench 0.7.6 runs WD and WDB"],
+      "profiles": ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2"]
     },
     {
       "id": "b12x-w4a16-experts",

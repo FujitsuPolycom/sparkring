@@ -19,8 +19,8 @@ curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/insta
 ```
 
 Add `--checkpoint qad-step-4000` to install checkpoint step 4000 (revision
-`629bc3218833`) instead; the installer then uses the MXFP8 target LM head and
-runs the draft's NVFP4 experts on B12X, as that checkpoint needs.
+`629bc3218833`) instead; the installer then runs the draft's NVFP4 experts on
+B12X, as that checkpoint needs.
 Two checkpoints decode faster at a small quality cost:
 `--checkpoint qad-step5500-mxfp8-attention`, step 5500 with MXFP8 attention,
 which the installer builds on the Sparks (implemented; 7–17% more decode
@@ -49,8 +49,8 @@ logs and recovery. To run the same containers with Docker Compose, see
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |
 | KV | 24 GiB FP8 per rank | 24 GiB FP8 per rank; separate from host cache buffers |
-| Loading / speculation | Managed B12X / MTP3; the draft's MXFP8 experts run on the `humming` MoE backend; drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`) | Managed B12X / MTP3; the draft's NVFP4 experts run on B12X; greedy drafts |
-| Decode weights | BF16 target LM head; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op | BF16 LM head and hyper-connection projections |
+| Loading / speculation | Managed B12X / MTP3; the draft's MXFP8 experts run on the `humming` MoE backend; drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`); the draft's KV cache in the model's dtype (`"kv_cache_dtype": "auto"`) | Managed B12X / MTP3; the draft's NVFP4 experts run on B12X; greedy drafts |
+| Decode weights | Target LM head quantized to MXFP8 at load; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op, which runs because vLLM turns on breakable CUDA graphs for this model and so leaves torch.compile off and every custom op on: `--compilation-config`'s `custom_ops` and `pass_config` change nothing | BF16 LM head and hyper-connection projections |
 | Prefill | Hyper-connection token-row ownership (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`) with the image's `qwen-collectives` and `qwen4-prefill` features | Hyper-connection row sharding off |
 | Decode collectives | All-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`) | No Qwen dispatch setting |
 | Media | Three images, one video; 16 configured video frames | Same |

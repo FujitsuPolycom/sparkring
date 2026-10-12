@@ -167,6 +167,10 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
                    "VLLM_QWEN4_EXP_MXFP8_HC", "QWEN_DISPATCH_AR_BYTES",
                    "NCCL_IB_EXTENDED_IPV4_GIDS", "NCCL_ROOT", "NCCL_LIB_DIR", "NCCL_INCLUDE_DIR",
                    "NCCL_LOCAL_INFERENCE_PATH", "VLLM_NCCL_SO_PATH", "LD_PRELOAD"}
+    # The installer profile also quantizes its target LM head to MXFP8 at load; the SparkCache profile keeps
+    # the BF16 head.
+    assert (base.environment["VLLM_MXFP8_LM_HEAD"], spec.environment["VLLM_MXFP8_LM_HEAD"]) == ("1", "0")
+    image_bound.add("VLLM_MXFP8_LM_HEAD")
     def comparable(environment):
         return {key: value for key, value in environment.items()
                 if key not in image_bound and not value.startswith("/cache/qwen-flash-next-")}
@@ -208,11 +212,13 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert installer_graphs.pop("custom_ops") == ["+rotary_embedding"]
     assert installer_graphs == json.loads(args[graphs])
     native[graphs] = args[graphs]
-    # The installer profile samples its drafts and runs its checkpoint's MXFP8
-    # MTP experts on the humming MoE backend; the SparkCache profile keeps greedy
-    # drafting and runs its checkpoint's NVFP4 MTP experts on B12X.
+    # The installer profile samples its drafts, keeps the draft's KV cache in the
+    # model's dtype and runs its checkpoint's MXFP8 MTP experts on the humming MoE
+    # backend; the SparkCache profile keeps greedy drafting and runs its
+    # checkpoint's NVFP4 MTP experts on B12X.
     installer_draft = json.loads(native[draft])
     assert installer_draft.pop("draft_sample_method") == "probabilistic"
+    assert installer_draft.pop("kv_cache_dtype") == "auto"
     assert installer_draft.pop("moe_backend") == "humming"
     cache_draft = json.loads(args[draft])
     assert cache_draft.pop("moe_backend") == "b12x"

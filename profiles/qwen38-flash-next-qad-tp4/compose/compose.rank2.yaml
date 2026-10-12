@@ -80,7 +80,7 @@ services:
     - qwen3_xml
     - --enable-auto-tool-choice
     - --speculative-config
-    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X","draft_sample_method":"probabilistic"}'
+    - '{"method":"mtp","num_speculative_tokens":3,"moe_backend":"humming","attention_backend":"B12X","draft_sample_method":"probabilistic","kv_cache_dtype":"auto"}'
     - --compilation-config
     - '{"pass_config":{"fuse_act_quant":true},"cudagraph_mode":"FULL_AND_PIECEWISE","max_cudagraph_capture_size":64,"cudagraph_capture_sizes":[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["+rotary_embedding"]}'
     - --media-io-kwargs
@@ -157,7 +157,7 @@ services:
       VLLM_HOST_IP: 192.0.2.12
       VLLM_LM_HEAD_A16: '1'
       VLLM_MTP_NVFP4_LM_HEAD: '1'
-      VLLM_MXFP8_LM_HEAD: '0'
+      VLLM_MXFP8_LM_HEAD: '1'
       VLLM_NCCL_INCLUDE_PATH: /opt/sparkring/toolchain/nccl/include
       VLLM_NCCL_SO_PATH: /opt/sparkring/toolchain/nccl/lib/libnccl.so.2
       VLLM_PLE_CPU_OFFLOAD: '0'
@@ -177,7 +177,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-aba309e4610c-60215d26cf5e
     labels:
-      io.sparkring.deployment: 2c583195f5caae7d4a69087b6e465ee258aa97d10c7a07836be2b844bb3f7db6
+      io.sparkring.deployment: 912176aa942862d0b75247db018cbb6945708b4ba4faae3380f7f0d4b643e6e8
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

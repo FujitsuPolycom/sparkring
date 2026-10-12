@@ -135,7 +135,8 @@ def test_the_jmni_hybrid_runs_its_nvfp4_draft_experts_on_b12x():
     command, default = plan(checkpoint="jmni-qad5500-hybrid"), plan()
     draft = json.loads(command[command.index("--speculative-config") + 1])
     assert draft == {**json.loads(default[default.index("--speculative-config") + 1]), "moe_backend": "b12x"}
-    assert "VLLM_MXFP8_LM_HEAD=0" in command
+    # The profile quantizes that head to MXFP8 at load, as for step 5500.
+    assert "VLLM_MXFP8_LM_HEAD=1" in command and "VLLM_MXFP8_LM_HEAD=1" in default
     assert command[command.index("--served-model-name") + 1] == "Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid-TP2"
     assert f"VLLM_CACHE_ROOT=/cache/qwen-flash-next-{installer_image_id()[7:19]}-87c8f2fb738b/vllm" in command
     pins = installer.checkpoint_pins(installer.setup.selection("qwen38-flash-next-tp2", "jmni-qad5500-hybrid"))
@@ -429,8 +430,8 @@ def test_qwen_model_and_native_prefix_only():
     assert "VLLM_USE_V2_MODEL_RUNNER=1" in command
     assert not any(value.startswith("VLLM_PLE_TABLE_MEMORY=") for value in command)
     assert "VLLM_PLE_CPU_OFFLOAD=0" in command
-    # The step-5500 checkpoint serves with its BF16 target LM head.
-    assert "VLLM_MXFP8_LM_HEAD=0" in command
+    # The step-5500 checkpoint's BF16 target LM head is quantized to MXFP8 at load.
+    assert "VLLM_MXFP8_LM_HEAD=1" in command
     # The installer image registers this setting and quantizes the BF16
     # hyper-connection down/injection projections to MXFP8 at load.
     assert "VLLM_QWEN4_EXP_MXFP8_HC=1" in command
@@ -736,6 +737,8 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
         # Two Sparks cannot keep the 95.4 GiB BF16 PLE table resident beside the other weights and KV.
         del expected["VLLM_PLE_CPU_OFFLOAD"]
         expected["VLLM_PLE_TABLE_MEMORY"] = "disk"
+    # The Qwen profiles' MXFP8 target LM head is not adopted: no Swift start has measured it.
+    expected["VLLM_MXFP8_LM_HEAD"] = "0"
     assert swift["environment"] == expected
     args, expected_args = list(swift["vllm_args"]), list(qwen["vllm_args"])
     expected_args[expected_args.index("--master-port") + 1] = master_port
@@ -745,6 +748,8 @@ def test_swift_follows_the_qwen_profile_except_its_checkpoint_format(swift_id, q
     draft = json.loads(expected_args[index])
     # The draft's BF16 experts run on vLLM's unquantized MoE kernel, not an MXFP8 backend.
     del draft["moe_backend"]
+    # The Qwen draft's KV cache in the model's dtype is not adopted: no Swift start has measured it.
+    del draft["kv_cache_dtype"]
     assert json.loads(args[index]) == draft
     args[index] = expected_args[index] = None
     assert args == expected_args
