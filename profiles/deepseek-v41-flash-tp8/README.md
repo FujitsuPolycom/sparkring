@@ -34,9 +34,10 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 
 ## Evidence and open items
 
-No installation of this profile has run on hardware. The four-Spark
-profile served on SIRCL at TP4 on a four-Spark line of an eight-Spark ring
-through SIRCL's own launcher ([package status](../../spark_transport/sircl/STATUS.md)).
+One installation of this profile ran on a ring of eight DGX Sparks with release
+2026.10.2's image (research-only, one start): it served with a KV cache of
+32,677,006 tokens and was measured once at temperature 1
+([record](../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md#not-adopted-engram-projection-sharding-at-tp8)).
 The model's 64 attention heads, 8 output groups and 384 routed experts divide
-by eight; whether TP8 decodes faster than two groups of four on the same
-ring, and the KV capacity at TP8, are not measured.
+by eight. Whether TP8 serves more requests than two groups of four on the same
+ring is not measured.
