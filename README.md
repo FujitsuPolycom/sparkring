@@ -69,30 +69,35 @@ profiles are Experimental ([profile catalog](profiles/README.md)).
 
 ## Speed
 
-Decode at 32K context, output tok/s:
+Output tok/s of this release's profiles installed with no options, measured
+with llm-inference-bench 0.7.6 at temperature 1 (`--concurrency 1,2,4,8
+--contexts 8k,16k,32k,64k,128k --duration 20 --max-tokens 2048 --coding-peak`),
+one start each, on release 2026.10.2's image `d52737a1`. Decode and prefill are
+at 32K context; the coding peak is the median of five single-stream code
+generations.
 
-| Model | Checkpoint | Sparks | `--profile` | 1 / 4 / 8 streams | Prefill, 32K prompt (tok/s) | Image |
-|---|---|---|---|---|---|---|
-| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 47.9 / 99.8 / 143.7 | 1,343 | `27e9f75c` |
-| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 64.2 / 126.6 / 218.7 | 3,127 | `1a8c1035` |
-| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 39.5 / 87.1 / 123.2 | 2,138 | `816c6d6a`; 8 streams `1a8c1035` |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 62.1 / 149.4 / 234.0 | 4,666 | `1a8c1035` |
-| Qwen3.8-Flash-Next | QAD step 5500 | 2 | `qwen38-flash-next-tp2` | 42.9 / 109.9 / 162.9 | 3,649 | `1a8c1035` |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 63.8 / 127.5 / 182.8 | 4,328 | `1a8c1035` |
+| Model | Checkpoint | Sparks | `--profile` | Decode, 1 / 4 / 8 streams | Prefill, 32K prompt | Coding peak | Layout |
+|---|---|---|---|---|---|---|---|
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 8 | `deepseek-v41-flash-tp8` | 73.7 / 174.2 / 258.9 | 4,851 | 133.8 | ring of eight |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.6 / 136.7 / 194.3 | 4,388 | 102.4 | ring of four |
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 45.8 / 93.7 / 129.1 | 1,387 | 51.4 | ring of eight |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 37.8 / 83.1 / 112.9 | 2,420 | 49.0 | pair |
+| Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
 
-On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes 6–8 % faster than the default checkpoint in the median of two starts on the same ring; it was not compared on two Sparks.
+Records: [ring of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md), [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md). Speed
+varies from start to start: the same deployment measured twice differed by up
+to about 10 %.
 
-The rows ran on development images built before 2026.10.2's `d52737a1`:
-`1a8c1035` has its SIRCL layer and differs only in libsircl and the status
-dashboard; `27e9f75c` and `816c6d6a` carry SIRCL 0.3.1 and 0.3.0. Each row's
-record is under `performance/records/`. The rows also predate release
-2026.10.3's serving defaults: the Qwen profiles' MXFP8 LM head and BF16 MTP
-draft KV cache, the GLM-5.3-Flash profiles' 4-bit-activation prefill and
-`deepseek-v41-flash-tp4`'s sharded Engram projections. The two-Spark Qwen row
-is step 5500, which this image installs only with
-`--checkpoint qad-step5500-ple1000`. Release 2026.10.3's
-[record](runtime/releases/2026.10.3/README.md#serving-defaults) has the
-research-only measurements of these settings.
+The four-Spark GLM-5.3-Flash and Qwen3.8-Flash-Next profiles have no
+measurement with this release's settings. Their latest results, at 32K
+context with output tok/s for 1 / 4 / 8 streams, are from development image
+`1a8c1035`, before the 4-bit-activation GLM prefill and the Qwen MXFP8 LM head
+and BF16 MTP draft cache, with an earlier method:
+`glm53-flash-tp4` (CSF) 64.2 / 126.6 / 218.7 with a 3,127 tok/s prefill, and
+`qwen38-flash-next-tp4` (QAD step 5500) 62.1 / 149.4 / 234.0 with a 4,666 tok/s
+prefill. On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes
+6-8 % faster than the default checkpoint in the median of two starts on the
+same ring. Each earlier result's record is under `performance/records/`.
 
 ## Documentation
 
