@@ -99,6 +99,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+from runtime.common.transport_names import collective_name
+
 SCHEMA = "sparkring-dashboard/v1"
 SITE_SCHEMA = "sparkring-dashboard-site/v1"
 SITE_PATH = Path("/var/lib/sparkring/dashboard/site.json")
@@ -152,7 +154,6 @@ SETTING_KEYS = (
 )
 LABELS = {"serving": "Serving", "not_ready": "Not ready", "stopped": "No model running",
           "offline": "Offline", "idle": "Idle", None: "Checking"}
-COLLECTIVE_LABELS = {"sircl": "SIRCL", "rocenante": "RoCEnante", "nccl": "NCCL"}
 MODEL_TAIL_WORDS = {"nvfp4", "fp8", "fp4", "mxfp8", "mxfp4", "int4", "int8", "awq", "gptq", "bf16",
                     "fp16", "qad", "spark", "attention", "gguf", "nf3", "exl3"}
 LABEL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)="((?:[^"\\]|\\.)*)"')
@@ -338,7 +339,13 @@ def read_transport(doc: dict) -> dict | None:
     """The transport of the TP group's collectives and the b12x bundle the image carries.
 
     runtime-status 0.3.6 and later report `tp_collective_transport` per worker; for older
-    images the label comes from the TP group's resident backend facts."""
+    images the label comes from the TP group's resident backend facts. `label` is the
+    transport's display name (``runtime.common.transport_names``).
+
+    `bundle` (and its older alias `profile`) names the b12x RoCEnante bundle in the image,
+    whichever transport runs; `bundle_in_use` is True when RoCEnante carries the
+    collectives, False when another transport does and None when that is not known. The
+    page and the terminal view show the transport, never the bundle name."""
     backend = rocenante = nccl_available = nccl_disabled = collective = sircl_version = None
     for rank in (doc.get("workers") or {}).get("ranks") or []:
         transport = rank.get("transport") or {}
@@ -356,23 +363,21 @@ def read_transport(doc: dict) -> dict | None:
             sircl_version = sircl_version or known(effective.get("tp_sircl_version"))
     provenance = doc.get("provenance") or {}
     bundle = known((provenance.get("b12x_comm_bundle") or {}).get("name")) or known(provenance.get("transport_profile"))
-    if collective is not None:
-        label = COLLECTIVE_LABELS.get(str(collective), str(collective))
-    elif isinstance(backend, str) and "sircl" in backend.lower():
-        label = "SIRCL"
-    elif rocenante is True:
-        label = "RoCEnante"
-    elif backend:
-        label = str(backend)
-    elif nccl_available and not nccl_disabled:
-        label = "NCCL"
-    else:
-        label = None
+    running = collective
+    if collective is None:
+        if isinstance(backend, str) and "sircl" in backend.lower():
+            running = "sircl"
+        elif rocenante is True:
+            running = "rocenante"
+        elif not backend and nccl_available and not nccl_disabled:
+            running = "nccl"
+    label = collective_name(running) if running is not None else (str(backend) if backend else None)
     if label is None and bundle is None:
         return None
     nccl_on = None if nccl_available is None and nccl_disabled is None else bool(nccl_available) and not nccl_disabled
+    in_use = None if running is None else running == "rocenante"
     return {"label": label, "collective": collective, "sircl_version": sircl_version if collective == "sircl" else None,
-            "nccl": nccl_on, "bundle": bundle, "profile": bundle, "source": "runtime"}
+            "nccl": nccl_on, "bundle": bundle, "profile": bundle, "bundle_in_use": in_use, "source": "runtime"}
 
 
 def read_runtime_status(doc: dict) -> dict:
@@ -1149,6 +1154,17 @@ def default_bind(source: Source) -> str:
     if rows and socket.gethostname() == rows[0]["hostname"]:
         return rows[0].get("lan_address") or rows[0].get("address") or "127.0.0.1"
     return "127.0.0.1"
+
+
+def service_url(fabric_path: Path = FABRIC_PATH) -> str:
+    """The address of the dashboard service on this Spark, by the service's default bind rule
+    (``default_bind``): Node A's LAN address, else loopback. A ``--bind`` given to the service
+    is not visible here."""
+    source = Source(fabric_path, SITE_PATH)
+    source.refresh()
+    bind = default_bind(source)
+    literal = f"[{bind}]" if ":" in bind else bind
+    return f"http://{literal}:{DEFAULT_PORT}"
 
 
 def listen_addresses(bind: str) -> list:

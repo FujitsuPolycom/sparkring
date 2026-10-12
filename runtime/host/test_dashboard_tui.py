@@ -70,7 +70,8 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     assert "GLM-5.3-Flash-NVFP4-Spark-TP2" in text and f"http://{NODE_A_LAN}:8000/v1" in text
     assert "TP2 pair · profile · spark0, spark1 · workers 2/2" in text
     assert "positions 0–1 · spark0 → spark1 · from deployment record" in text
-    assert "SIRCL 0.3.2 · b12x bundle tp2-prepared" in text
+    assert [line.rstrip() for line in lines if " transport " in line][0].endswith("transport  SIRCL 0.3.2")
+    assert "tp2-prepared" not in text and "RoCEnante" not in text and "bundle" not in text
     assert "spark0:8000 · container sr-0-r0" in text
     assert "of 1.2M tok (24.0G) · 4.50× concurrency @ 131k ctx" in text
     assert "sudo docker logs --tail 200 sr-0-r0  on spark0" in text and "image 0123456789ab" in text
@@ -78,6 +79,16 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     assert len(sparks) == 6        # the recorded runtime status of positions 2-3 reports no host resources
     assert "▲ 0 spark0" in sparks[0] and f" {NODE_A_LAN}  rank 0 · ram 101G/119G · disk free 931G" in sparks[0]
     assert "▲ 1 spark1" in sparks[1] and " 192.0.2.11  rank 1" in sparks[1]
+
+
+def test_the_transport_line_names_roce_by_its_display_name_without_the_bundle(tmp_path):
+    snapshot, _ = snapshot_of(tmp_path)
+    member = snapshot["groups"][0]["members"][0]
+    member["transport"] = dashboard.read_transport(runtime_document(collective="rocenante"))
+    _, lines = render(snapshot, 140)
+    line = next(line for line in lines if " transport " in line)
+    assert line.rstrip().endswith("transport  RoCEnante (b12x)")
+    assert not any("tp2-prepared" in text for text in lines)
 
 
 def test_a_slow_first_token_is_coloured_on_the_card(tmp_path):

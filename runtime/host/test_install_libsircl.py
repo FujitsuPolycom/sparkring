@@ -73,7 +73,7 @@ def test_an_installation_on_libsircl_records_its_section_and_does_not_judge_its_
     assert [row["LIBSIRCL_POSITION"] for row in recorded["routes"]] == ["0", "1"]
     assert result["transport"]["verdict"] == "unknown" and "does not judge" in result["transport"]["problems"][0]
     assert events.index("candidate:up") < events.index("candidate:transport")
-    assert "  Transport:   libsircl (research-only), receipts not judged" in out.err
+    assert "  Transport:           libsircl (research-only), receipts not judged" in out.err
 
 
 def test_libsircl_sircl_and_the_prepared_transport_are_separate_deployments(libsircl, capsys):

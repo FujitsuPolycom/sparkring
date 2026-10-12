@@ -775,7 +775,8 @@ def test_the_plan_says_what_carries_the_collectives_and_where_the_settings_come_
     assert pair["group"]["cabling"] == "all"
     assert transport.plan_lines(pair)[0].startswith("Transport: sircl; NCCL may carry what the cabling allows")
     assert transport.prepared_line("image X carries no SIRCL layer", False) == (
-        "Transport: prepared, because image X carries no SIRCL layer")
+        "Transport: RoCEnante (b12x), because image X carries no SIRCL layer")
+    assert transport.prepared_line(None, True) == "Transport: RoCEnante (b12x) (--transport prepared)"
 
 
 class Image:

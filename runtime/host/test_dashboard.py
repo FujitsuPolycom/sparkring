@@ -78,10 +78,11 @@ def metrics_text(model, generated, started, running=1.0):
     ]) + "\n"
 
 
-def runtime_document(tp=2, nodes=("spark0", "spark1")):
-    """A sparkring-runtime-status/v1 document as runtime-status 0.3.6 reports it, trimmed."""
+def runtime_document(tp=2, nodes=("spark0", "spark1"), collective="sircl"):
+    """A sparkring-runtime-status/v1 document as runtime-status 0.3.6 reports it, trimmed; `collective`
+    is the workers' tp_collective_transport."""
     ranks = [{"identity": {"rank": {"state": "known", "value": rank}},
-              "effective": {"tp_collective_transport": {"state": "known", "value": "sircl"},
+              "effective": {"tp_collective_transport": {"state": "known", "value": collective},
                             "tp_sircl_version": {"state": "known", "value": "0.3.2"}},
               "resources": {"node": node, "memory": {"total_bytes": 128e9, "available_bytes": 20e9},
                             "filesystems": [{"paths": ["/"], "total_bytes": 4e12, "available_bytes": 1e12}]}}
@@ -358,6 +359,40 @@ def test_runtime_status_of_a_tp2_server():
     assert [(n["rank"], n["node"], n["memory_available"]) for n in current["nodes"]] == [
         (0, "spark0", 20e9), (1, "spark1", 20e9)]
     assert current["transport"]["bundle"] == "tp2-prepared" and current["started_at"] == 1_790_000_000
+
+
+def test_the_transport_is_named_by_what_carries_the_collectives():
+    """The image's b12x bundle stays in the JSON (`bundle`, `profile`) whichever transport runs;
+    `bundle_in_use` says whether RoCEnante, the bundle's transport, carries the collectives."""
+    sircl = dashboard.read_runtime_status(runtime_document(tp=4))["transport"]
+    assert (sircl["label"], sircl["collective"], sircl["sircl_version"]) == ("SIRCL", "sircl", "0.3.2")
+    assert (sircl["bundle"], sircl["profile"], sircl["bundle_in_use"]) == ("tp2-prepared", "tp2-prepared", False)
+    prepared = dashboard.read_runtime_status(runtime_document(tp=4, collective="rocenante"))["transport"]
+    assert (prepared["label"], prepared["collective"], prepared["sircl_version"]) == ("RoCEnante (b12x)", "rocenante", None)
+    assert (prepared["bundle"], prepared["bundle_in_use"]) == ("tp2-prepared", True)
+    nccl = dashboard.read_runtime_status(runtime_document(collective="nccl"))["transport"]
+    assert (nccl["label"], nccl["bundle_in_use"]) == ("NCCL", False)
+    # Images before runtime-status 0.3.6 report the TP group's backend facts only.
+    older = runtime_document()
+    for rank in older["workers"]["ranks"]:
+        del rank["effective"]
+        rank["transport"] = {"groups": {"TP": {"rocenante": {"enabled": {"state": "known", "value": True}}}}}
+    legacy = dashboard.read_runtime_status(older)["transport"]
+    assert (legacy["label"], legacy["collective"], legacy["bundle_in_use"]) == ("RoCEnante (b12x)", None, True)
+    unknown = runtime_document()
+    for rank in unknown["workers"]["ranks"]:
+        del rank["effective"]
+    assert dashboard.read_transport(unknown) == {"label": None, "collective": None, "sircl_version": None,
+                                                 "nccl": None, "bundle": "tp2-prepared", "profile": "tp2-prepared",
+                                                 "bundle_in_use": None, "source": "runtime"}
+
+
+def test_the_page_shows_the_transport_and_not_the_image_bundle():
+    """The settings list names the collective transport; the image's b12x bundle name, which a
+    SIRCL or NCCL deployment does not use, is left to the status JSON."""
+    text = dashboard.page_bytes()[0].decode("utf-8")
+    assert '["Collective transport", transport]' in text
+    assert '"b12x bundle"' not in text and "tr.bundle ||" not in text and "tr.profile" not in text
 
 
 def test_label_escapes_and_short_model_names():

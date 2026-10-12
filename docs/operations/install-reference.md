@@ -340,8 +340,12 @@ sudo sparkring status --refresh --json
   network changes separately with `sparkring setup`.
 - With a [download limit](#limit-the-download-rate), the result holds it in
   `download_limit_bps`, in bits per second.
-- A `complete` result also holds the card's fields: `dashboard_url` (null
-  when the image has no dashboard), `example_request` (a `curl` command for
+- A `complete` result also holds the card's fields: `dashboard_url`, the
+  model's status page that the card prints as `Model status:` (null when the
+  image has no status page), `sparkring_dashboard_url`, the
+  [SparkRing dashboard](dashboard.md#every-model-on-one-page) on Node A that
+  the card prints as `SparkRing dashboard:` (null while its service is off),
+  `example_request` (a `curl` command for
   `/v1/chat/completions` with the served model name) and `commands` with
   `switch_back` (null when no other model ran before), `stop` and `remove`.
 - With `--api-address`, `api_url`, `dashboard_url` and `example_request` use
@@ -578,14 +582,15 @@ A deployment's collectives run on one of these transports:
 | Transport | Where it runs | NCCL |
 |---|---|---|
 | `sircl`, SIRCL ring sessions | An image whose lock lists `sircl` (image lock v3) on a fabric recorded by `sudo sparkring setup` whose relay table is installed | Off unless `--nccl auto` |
-| `prepared`, the prepared RoCEnante transport | Every installer image | The profile's settings |
+| `prepared`, shown as RoCEnante (b12x): b12x's RoCE all-reduce with SparkRing's adaptive peer paths | Every installer image | The profile's settings |
 | `nccl`, vLLM's PyNccl alone | Any installer image, on a recorded fabric, on a group NCCL's cabling rule holds for: a cabled pair or a whole cycle; only with `--transport nccl` | Every collective; on a whole cycle with NCCL's ring settings |
 | `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
 
 `sudo sparkring install` chooses `sircl` wherever it can run and says so
 before it asks: `Transport: sircl on every collective, NCCL off (...)`, or
-`Transport: prepared, because ...` with the reason. `sparkring images` lists
-the transports each image carries.
+`Transport: RoCEnante (b12x), because ...` with the reason; RoCEnante (b12x)
+is the `prepared` transport. `sparkring images` lists the transports each
+image carries by identifier.
 
 - `--transport sircl` or `--transport prepared` chooses one. `sircl` stops
   with the reason where it cannot run; nothing changes.

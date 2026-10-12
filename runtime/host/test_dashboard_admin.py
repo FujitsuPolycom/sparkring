@@ -20,6 +20,7 @@ from runtime.host.test_setup_prompts import four_sparks  # noqa: F401 (fixture)
 REAL_REFRESH_SITE = dashboard_admin.refresh_site
 REAL_AFTER_SETUP = dashboard_admin.after_setup
 REAL_RELOAD_SERVICE = dashboard_admin.reload_service
+REAL_PAGE_URL = dashboard_admin.page_url
 RELOAD = ["--no-block", "try-reload-or-restart", dashboard_admin.UNIT]
 NODE_A_LAN = "192.0.2.50"
 ROOT = Path(__file__).resolve().parents[2]
@@ -260,7 +261,7 @@ def test_disable_keeps_the_dashboard_off_until_enable(tmp_path, monkeypatch, cap
     assert (tmp_path / "etc" / "dashboard.disabled").exists()
     assert systemctl.calls == [["disable", "--now", dashboard_admin.UNIT]]
     assert dashboard_admin.plan_line(NODE_A_LAN, "192.0.2.10") == (
-        "Dashboard: off (sudo sparkring dashboard enable turns it on)")
+        "SparkRing dashboard: off (sudo sparkring dashboard enable turns it on)")
     assert dashboard_admin.switch("enable", run=systemctl) == 0
     assert not (tmp_path / "etc" / "dashboard.disabled").exists()
     assert systemctl.calls[-1] == ["enable", "--now", dashboard_admin.UNIT]
@@ -272,11 +273,41 @@ def test_disable_keeps_the_dashboard_off_until_enable(tmp_path, monkeypatch, cap
 def test_the_plan_names_the_listen_address_and_port(tmp_path, monkeypatch):
     monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
     assert dashboard_admin.plan_line(NODE_A_LAN, "192.0.2.10") == (
-        f"Dashboard: http://{NODE_A_LAN}:8090/ on Node A and http://127.0.0.1:8090/ on Node A itself, read-only, "
+        f"SparkRing dashboard: http://{NODE_A_LAN}:8090/ on Node A and http://127.0.0.1:8090/ on Node A itself, read-only, "
         "LAN and loopback only (sparkring-dashboard.service; sudo sparkring dashboard disable turns it off)")
-    assert dashboard_admin.plan_line(None, "192.0.2.10").startswith("Dashboard: http://192.0.2.10:8090/")
+    assert dashboard_admin.plan_line(None, "192.0.2.10").startswith("SparkRing dashboard: http://192.0.2.10:8090/")
     summarize = (ROOT / "runtime" / "host" / "controller.py").read_text(encoding="utf-8")
     assert 'print(dashboard_admin.plan_line(api_address, plan["spec"]["hosts"][0].get("management_address")))' in summarize
+
+
+class UnitState:
+    """systemctl is-enabled / is-active for the dashboard unit: exit 0 for the states in `on`."""
+
+    def __init__(self, *on, missing=False):
+        self.on, self.missing, self.calls = set(on), missing, []
+
+    def __call__(self, argv, **kwargs):
+        self.calls.append(argv[1:])
+        if self.missing:
+            raise FileNotFoundError("systemctl")
+        return subprocess.CompletedProcess(argv, 0 if argv[1] in self.on else 1, "", "")
+
+
+def test_the_install_card_names_the_page_only_while_its_service_is_on(tmp_path, monkeypatch):
+    from runtime.host.test_dashboard import NODE_A_LAN as FABRIC_NODE_A_LAN, fabric_file
+    import socket
+    monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
+    monkeypatch.setattr(socket, "gethostname", lambda: "spark0")
+    path = fabric_file(tmp_path)
+    page = f"http://{FABRIC_NODE_A_LAN}:8090/"
+    assert REAL_PAGE_URL(run=UnitState("is-enabled"), fabric_path=path) == page
+    assert REAL_PAGE_URL(run=UnitState("is-active"), fabric_path=path) == page     # running, though not enabled
+    off = UnitState()
+    assert REAL_PAGE_URL(run=off, fabric_path=path) is None
+    assert off.calls == [["is-enabled", "--quiet", dashboard_admin.UNIT], ["is-active", "--quiet", dashboard_admin.UNIT]]
+    assert REAL_PAGE_URL(run=UnitState(missing=True), fabric_path=path) is None    # no systemctl on this host
+    (tmp_path / "dashboard.disabled").write_text("")
+    assert REAL_PAGE_URL(run=UnitState("is-enabled", "is-active"), fabric_path=path) is None
 
 
 def test_the_package_turns_the_dashboard_on_unless_it_was_turned_off():

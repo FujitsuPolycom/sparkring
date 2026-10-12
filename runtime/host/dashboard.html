@@ -569,7 +569,9 @@ function settings(s) {
   const media = cap.mm ? Object.entries(cap.mm).map(([k, v]) => v + " " + k + (v === 1 ? "" : "s")).join(" · ") : null;
   // Images with runtime-status 0.3.6 and later report the transport carrying the TP collectives
   // (tr.collective, with SIRCL's version); for older images the label is inferred from the TP
-  // group's backend facts. The b12x bundle is what the image carries, not the active transport.
+  // group's backend facts. tr.label is the transport's display name, such as "RoCEnante (b12x)".
+  // The image's b12x bundle (tr.bundle) names what the image carries, whichever transport runs,
+  // so the page shows only the transport; the status JSON keeps the bundle.
   const tr = s.transport || {};
   const transport = !tr.label ? null : tr.collective
     ? tr.label + (tr.sircl_version ? " " + tr.sircl_version : "")
@@ -590,7 +592,6 @@ function settings(s) {
     ["Quantization", t ? t.quantization : null],
     ["Tensor parallel", t ? t.tensor_parallel_size : null],
     ["Collective transport", transport],
-    ["b12x bundle", tr.bundle || tr.profile],
     ["Image", s.image],
   ].filter((r) => has(r[1]) && r[1] !== "");
   return `<dl>${rows.map((r) => `<div><dt>${esc(r[0])}</dt><dd>${esc(r[1])}</dd></div>`).join("")}</dl>`;

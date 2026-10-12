@@ -34,14 +34,15 @@ def no_memory_settle(monkeypatch):
 
 @pytest.fixture(autouse=True)
 def no_dashboard_service(monkeypatch):
-    """Replace the dashboard's site-file refresh, its reload request and its start at the end of setup,
-    which would write /var/lib/sparkring/dashboard/site.json and call systemctl on the machine running
-    the tests. ``runtime.host.test_dashboard_admin`` tests them through ``REAL_REFRESH_SITE``,
-    ``REAL_RELOAD_SERVICE`` and ``REAL_AFTER_SETUP``."""
+    """Replace the dashboard's site-file refresh, its reload request, its start at the end of setup and
+    the page address of the install card, which would write /var/lib/sparkring/dashboard/site.json and
+    call systemctl on the machine running the tests. ``runtime.host.test_dashboard_admin`` tests them
+    through ``REAL_REFRESH_SITE``, ``REAL_RELOAD_SERVICE``, ``REAL_AFTER_SETUP`` and ``REAL_PAGE_URL``."""
     from runtime.host import dashboard_admin
     monkeypatch.setattr(dashboard_admin, "refresh_site", lambda **kwargs: True)
     monkeypatch.setattr(dashboard_admin, "reload_service", lambda **kwargs: True)
     monkeypatch.setattr(dashboard_admin, "after_setup", lambda **kwargs: True)
+    monkeypatch.setattr(dashboard_admin, "page_url", lambda **kwargs: None)
 
 
 @pytest.fixture(autouse=True)

@@ -1051,7 +1051,8 @@ def transport_status_line(value):
     if value.get("backend") == "nccl":
         return f"Transport: nccl on {value['group']} (SIRCL and the RoCEnante slot are off)"
     if value.get("backend") != "sircl":
-        return "Transport: prepared"
+        from runtime.common import transport_names
+        return "Transport: " + transport_names.PREPARED_NAME
     from runtime.host import transport_receipts
     if "verdict" not in value:
         return (f"Transport: sircl on {value['group']} (NCCL {value['nccl']}); no receipt check recorded yet: "

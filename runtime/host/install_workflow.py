@@ -1074,6 +1074,8 @@ RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: s
                  "unsupported": "not available for this model's backend; restart it by hand",
                  "unrecorded": "not set up (see the warning above); sudo sparkring recover on retries"}
 STOP_COMMAND = "sudo sparkring down --execute"
+# The summary card's label column: its longest label, "SparkRing dashboard:", and one space.
+CARD_LABEL_WIDTH = 21
 REMOVE_COMMAND = "sudo apt remove sparkring"
 
 
@@ -1109,7 +1111,10 @@ def summary(lock, connection, previous, *, displaced=()):
     ``previous`` is the deployment directory the installation replaced, or None;
     ``displaced`` lists the models of other ring slots it stopped.
 
-    ``dashboard_url`` is null for a model whose image has no status dashboard.
+    ``dashboard_url`` is the model's runtime-status page, served by vLLM on
+    the model's API port; it is null for a model whose image has no status
+    page. The SparkRing dashboard on Node A (``sparkring_dashboard_url``)
+    is added by ``execute``, because it depends on the host's service.
     ``commands.switch_back`` is null when no other model ran before; after a
     switch that stopped several models it names each command, joined by
     `` ; ``. A model on a ring half stops with ``--on`` naming its half.
@@ -1201,7 +1206,8 @@ def transport_card_line(result):
     if value.get("backend") == "nccl":
         return "nccl"
     if value.get("backend") != "sircl":
-        return "prepared" if value else None
+        from runtime.common import transport_names
+        return transport_names.PREPARED_NAME if value else None
     from runtime.host import transport_receipts
     if "verdict" not in value:
         return None
@@ -1212,17 +1218,23 @@ def transport_card_line(result):
 
 
 def summary_lines(result):
-    """The card printed after ``Model ready:``; empty when the result lacks the summary fields."""
+    """The card printed after ``Model ready:``; empty when the result lacks the summary fields.
+
+    ``Model status`` is the model's runtime-status page (``dashboard_url``); ``SparkRing
+    dashboard`` is the dashboard service on Node A (``sparkring_dashboard_url``), shown only
+    while that service is on."""
     if "example_request" not in result:
         return []
     commands = result.get("commands") or {}
-    rows = [("Model", result.get("model")), ("API", result.get("api_url")), ("Dashboard", result.get("dashboard_url")),
+    rows = [("Model", result.get("model")), ("API", result.get("api_url")),
+            ("Model status", result.get("dashboard_url")),
+            ("SparkRing dashboard", result.get("sparkring_dashboard_url")),
             ("Transport", transport_card_line(result)),
             ("Try it", result["example_request"]), ("Switch back", commands.get("switch_back")),
             ("Stop", commands.get("stop")),
             ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
             ("Uninstall", f"stop the model, then {commands['remove']} on each Spark" if commands.get("remove") else None)]
-    lines = [f"  {name + ':':<13}{value}" for name, value in rows if value]
+    lines = [f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}" for name, value in rows if value]
     if isinstance(result.get("start_checks"), dict):
         from runtime.host import start_checks
         lines += ["  Start checks:"] + ["    " + line for line in start_checks.text(result["start_checks"])]
@@ -1556,8 +1568,10 @@ def execute(args):
         checks = start_check_result(directory)
         if checks is not None:
             plan["start_checks"] = checks
+        from runtime.host import dashboard_admin
         completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
-                     **summary(lock, plan, replaces, displaced=displaced)}
+                     **summary(lock, plan, replaces, displaced=displaced),
+                     "sparkring_dashboard_url": dashboard_admin.page_url()}
         save_result(directory, completed)
         return completed
 

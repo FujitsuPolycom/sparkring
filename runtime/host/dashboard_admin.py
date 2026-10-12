@@ -23,7 +23,7 @@ import sys
 import time
 import urllib.parse
 
-from runtime.host.dashboard import CONTAINER_RE, DEFAULT_PORT, SITE_PATH, SITE_SCHEMA
+from runtime.host.dashboard import CONTAINER_RE, DEFAULT_PORT, FABRIC_PATH, SITE_PATH, SITE_SCHEMA, service_url
 
 DISABLED_PATH = Path("/etc/sparkring/dashboard.disabled")
 UNIT = "sparkring-dashboard.service"
@@ -134,11 +134,39 @@ def listen_address(api_address, management_address) -> str:
 def plan_line(api_address, management_address) -> str:
     """The line setup's plan prints about the dashboard."""
     if DISABLED_PATH.exists():
-        return "Dashboard: off (sudo sparkring dashboard enable turns it on)"
+        return "SparkRing dashboard: off (sudo sparkring dashboard enable turns it on)"
     address = listen_address(api_address, management_address)
     loopback = "" if address == "127.0.0.1" else f" and http://127.0.0.1:{DEFAULT_PORT}/ on Node A itself"
-    return (f"Dashboard: http://{address}:{DEFAULT_PORT}/ on Node A{loopback}, read-only, LAN and loopback only "
+    return (f"SparkRing dashboard: http://{address}:{DEFAULT_PORT}/ on Node A{loopback}, read-only, LAN and loopback only "
             f"({UNIT}; sudo sparkring dashboard disable turns it off)")
+
+
+def service_on(*, run=None) -> bool:
+    """Whether the dashboard service on this host is enabled or running, and not turned off with
+    `sparkring dashboard disable`. False where systemctl is absent or cannot answer."""
+    if DISABLED_PATH.exists():
+        return False
+    for query in ("is-enabled", "is-active"):
+        try:
+            if (run or subprocess.run)(["systemctl", query, "--quiet", UNIT], check=False, capture_output=True,
+                                       text=True, timeout=10).returncode == 0:
+                return True
+        except (OSError, subprocess.SubprocessError):
+            return False
+    return False
+
+
+def page_url(*, run=None, fabric_path=None) -> str | None:
+    """The address of the SparkRing dashboard page when its service is on (``service_on``), else None.
+
+    The address follows the service's default bind rule (``dashboard.service_url``): Node A's LAN
+    address from the fabric document, else loopback."""
+    if not service_on(run=run):
+        return None
+    try:
+        return service_url(Path(fabric_path or FABRIC_PATH)) + "/"
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
 
 def after_setup(*, log=None, run=None) -> bool:

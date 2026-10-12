@@ -331,9 +331,9 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
     label = transport.get("label")
     if label and transport.get("sircl_version"):
         label += f" {transport['sircl_version']}"
-    bundle = transport.get("bundle") or transport.get("profile")
-    bits = [label, "NCCL off" if transport.get("nccl") is False and not transport.get("collective") else None,
-            f"b12x bundle {bundle}" if bundle else None]
+    # The transport that carries the collectives, by its display name; the image's b12x bundle
+    # names what the image carries whichever transport runs, so the view does not show it.
+    bits = [label, "NCCL off" if transport.get("nccl") is False and not transport.get("collective") else None]
     if any(bits):
         add(lbl("transport"), *dotted(" · ".join(b for b in bits if b)))
     head_row = member.get("head") or {}
@@ -572,11 +572,7 @@ def require_local(url: str, addresses: set) -> str:
 
 def local_url(fabric_path: Path = dashboard.FABRIC_PATH) -> str:
     """The dashboard service's address on this Spark, by the service's own default bind rule."""
-    source = dashboard.Source(fabric_path, dashboard.SITE_PATH)
-    source.refresh()
-    bind = dashboard.default_bind(source)
-    literal = f"[{bind}]" if ":" in bind else bind
-    return f"http://{literal}:{dashboard.DEFAULT_PORT}"
+    return dashboard.service_url(fabric_path)
 
 
 def default_urls(fabric_path: Path = dashboard.FABRIC_PATH) -> list:

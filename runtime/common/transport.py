@@ -120,7 +120,7 @@ import json
 from pathlib import Path, PurePosixPath
 import re
 
-from runtime.common import fabric_document, fabric_layout, image_lock
+from runtime.common import fabric_document, fabric_layout, image_lock, transport_names
 from runtime.common.container_spec import Bind
 
 SECTION_SCHEMA = "sparkring-transport/v1"
@@ -1276,9 +1276,11 @@ def plan_lines(value, notes=()):
 
 
 def prepared_line(reason, explicit):
+    """What ``sparkring install`` prints about a deployment on the prepared transport, by its display name."""
+    name = transport_names.PREPARED_NAME
     if explicit:
-        return "Transport: prepared (--transport prepared)"
-    return f"Transport: prepared, because {reason}" if reason else "Transport: prepared"
+        return f"Transport: {name} (--transport prepared)"
+    return f"Transport: {name}, because {reason}" if reason else f"Transport: {name}"
 
 
 def nccl_plan_lines(value, notes=()):

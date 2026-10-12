@@ -42,7 +42,7 @@ import re
 import subprocess
 import sys
 
-from runtime.common import distribution, installer, transport
+from runtime.common import distribution, installer, transport, transport_names
 from runtime.host import (api_endpoint, controller, fabric, gpu_clocks, node, progress, retained_source,
                           transport_receipts)
 
@@ -146,7 +146,7 @@ def run(on=None, *, client=None, say=print, read=None):
         verdict = transport_check(directory, lock, cache=cache)
         if verdict.get("backend") in ("prepared", "nccl"):
             # Neither transport writes receipts, so there is no receipt verdict to judge.
-            say(f"  Transport: {verdict['backend']}")
+            say(f"  Transport: {transport_names.display_name(verdict['backend'])}")
         else:
             say("  " + (transport_receipts.text({"problems": ["no detail"], **verdict}) or "Transport: sircl"))
         gpus = gpu_clocks.check(lock["site"]["ranks"], run=read)

@@ -285,9 +285,23 @@ def test_completion_prints_a_summary_card_after_model_ready(machine, capsys):
     assert result["commands"] == {"switch_back": None, "stop": "sudo sparkring down --execute",
                                   "remove": "sudo apt remove sparkring"}
     card = out.err[out.err.index("Model ready:"):]
-    assert f"  Model:       {result['model']}" in card and f"  Dashboard:   {result['dashboard_url']}" in card
-    assert "  Try it:      curl " in card and "  Stop:        sudo sparkring down --execute" in card
-    assert "  Uninstall:   stop the model, then sudo apt remove sparkring on each Spark" in card
+    assert f"  Model:               {result['model']}" in card and f"  Model status:        {result['dashboard_url']}" in card
+    assert "  Try it:              curl " in card and "  Stop:                sudo sparkring down --execute" in card
+    assert "  Uninstall:           stop the model, then sudo apt remove sparkring on each Spark" in card
+    # The SparkRing dashboard's service is off on the machine the tests run on (conftest.py).
+    assert result["sparkring_dashboard_url"] is None and "SparkRing dashboard:" not in card
+
+
+def test_the_card_names_the_sparkring_dashboard_while_its_service_is_on(machine, monkeypatch, capsys):
+    from runtime.host import dashboard_admin
+    monkeypatch.setattr(dashboard_admin, "page_url", lambda **kwargs: "http://192.0.2.50:8090/")
+    assert command() == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["sparkring_dashboard_url"] == "http://192.0.2.50:8090/"
+    card = out.err[out.err.index("Model ready:"):].splitlines()
+    status = card.index(f"  Model status:        {result['dashboard_url']}")
+    assert card[status + 1] == "  SparkRing dashboard: http://192.0.2.50:8090/"
 
 
 def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
@@ -322,9 +336,9 @@ def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     assert flow.summary({}, connection, str(previous)) == {**value, "dashboard_url": None, "commands": {
         **value["commands"], "switch_back": "sudo sparkring install --profile older-profile"}}
     lines = flow.summary_lines({**connection, **value})
-    assert lines[:3] == ["  Model:       Model-A", "  API:         http://192.0.2.10:8000/v1",
-                         "  Dashboard:   http://192.0.2.10:8000/v1/sparkring/status/view"]
-    assert "  Switch back: " + REPEAT + " --checkpoint qad-step-4000" in lines
+    assert lines[:3] == ["  Model:               Model-A", "  API:                 http://192.0.2.10:8000/v1",
+                         "  Model status:        http://192.0.2.10:8000/v1/sparkring/status/view"]
+    assert "  Switch back:         " + REPEAT + " --checkpoint qad-step-4000" in lines
     assert flow.summary_lines({"api_url": connection["api_url"]}) == []
 
 
@@ -2924,14 +2938,14 @@ def test_installation_turns_automatic_recovery_on_unless_asked_not_to(machine, c
     result = json.loads(out.out)
     directory = rollout.active(controller.STATE)
     assert result["auto_recover"] is True and recovery.record_of(recovery.load(), directory)["enabled"] is True
-    assert "  Recovery:    restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
+    assert "  Recovery:            restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
     recovery.update(directory, failures=2)
     assert command("--no-auto-recover") == 0
     out = capsys.readouterr()
     value = recovery.record_of(recovery.load(), directory)
     assert json.loads(out.out)["auto_recover"] is False
     assert (value["enabled"], value["failures"]) == (False, 0)
-    assert "  Recovery:    off; turn on: sudo sparkring recover on" in out.err
+    assert "  Recovery:            off; turn on: sudo sparkring recover on" in out.err
 
 
 @pytest.mark.parametrize("outcome, expected, line", [
@@ -2946,7 +2960,7 @@ def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported
     out = capsys.readouterr()
     result = json.loads(out.out)
     assert (result["recovery"], result["auto_recover"]) == (expected, False)
-    assert "  Recovery:    " + line in out.err
+    assert "  Recovery:            " + line in out.err
 
 
 def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatch):

@@ -11,7 +11,8 @@ http://API_HOST:PORT/v1/sparkring/status/view
   0 and 1 of a ring. For the model on Sparks 2 and 3 (`--on 2,3`), it is
   Spark 2 ([where each half serves](install-reference.md#two-models-on-one-ring)).
   A deployment installed with `--api-bind` serves only at that address.
-  `Model ready:` and `sudo sparkring status` print each model's address.
+  `sudo sparkring status` prints each model's address, and the card after
+  `Model ready:` prints it as `Model status:`.
 - `PORT` is the profile's API port: 8000, 8015 or 8020
   ([profile table](../../README.md#profiles)), or the port that `--api-port`
   sets ([API endpoint](install-reference.md#api-endpoint)).
@@ -94,12 +95,15 @@ http://NODE_A_LAN_ADDRESS:8090/
 
 - `NODE_A_LAN_ADDRESS` is the address setup recorded for Node A's own LAN
   connection, where the model API of a model on Node A serves; without one,
-  Node A's management address. Setup's plan prints the exact address.
+  Node A's management address. Setup's plan prints the exact address, and
+  while the page is on, the card after `Model ready:` prints it as
+  `SparkRing dashboard:`.
 - It listens on port 8090 on that address and on `127.0.0.1`, never on the
   fabric or the administration network. On Node A itself,
   `curl http://127.0.0.1:8090/api/status` reads it.
 - It shows the ring and every model of the fabric, and links each model to the
-  page above.
+  page above. Each model's transport is the one that carries its collectives:
+  `SIRCL`, `NCCL` or `RoCEnante (b12x)` (the `prepared` transport).
 - Installing the SparkRing package or running `sudo sparkring setup` turns it
   on. `sudo sparkring dashboard disable` turns it off for good, across reboots,
   setups and upgrades; `sudo sparkring dashboard enable` turns it back on.
