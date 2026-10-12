@@ -29,7 +29,7 @@ fabric setup an eight-Spark ring needs, logs and recovery.
 |---|---|
 | Parallelism | TP8/DCP1 on the eight positions of an eight-Spark ring, Node A as rank 0 |
 | Transport | SIRCL ring sessions, NCCL off; the default tuning table's `cycle-8` row |
-| Engram projections | Replicated on every rank; the four-Spark profile shards them (`"projection_tp": true`), which has not run at TP8 |
+| Engram projections | Replicated on every rank. The four-Spark profile shards them (`"projection_tp": true`); at TP8 one start with sharding showed no consistent gain ([record](../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md#not-adopted-engram-projection-sharding-at-tp8)) |
 | Everything else | The values of [`deepseek-v41-flash-tp4`](../deepseek-v41-flash-tp4/config.json): DSpark5 with block rejection and adaptive verification, Engram tables on disk, 1048576-token context, 16 sequences, 8192-token batches, GPU memory utilization 0.83 |
 
 ## Evidence and open items
