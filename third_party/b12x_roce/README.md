@@ -24,11 +24,16 @@ development source and records its distinct source and manifest hashes.
 
 ## Attribution and design origins
 
-RoCEnante originates with Local Inference Lab's contributors, not SparkRing.
-Credit includes Luke (`lukealonso`), the Local Inference Lab community. The implementation derives from
-[B12X PR 295](https://github.com/local-inference-lab/b12x/pull/295), with
-the six-QP two-path peer mapping and hardware-forwarded opposite-peer path
-used by the SparkRing mesh profile. It is not an unmodified installation of
+This directory includes software derived from RoCEnante (`b12x/comm/roce`,
+Local Inference Lab), written by Jason (`original-el8`) in
+local-inference-lab/b12x
+[PR 295](https://github.com/local-inference-lab/b12x/pull/295), with
+dual-rail striping and graph-collective work by Luke Alonso (`lukealonso`),
+licensed under Apache-2.0 ([LICENSE](LICENSE)); b12x now lives in FlashInfer
+at `flashinfer/experimental/b12x`. RoCEnante originates with Local Inference
+Lab's contributors, not SparkRing. The vendored implementation derives from
+PR 295, with the six-QP two-path peer mapping and hardware-forwarded
+opposite-peer path used by the SparkRing mesh profile. It is not an unmodified installation of
 the PR or a replacement for the B12X kernel package.
 
 That communication work and its

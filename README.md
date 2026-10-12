@@ -117,10 +117,17 @@ SparkRing builds on [Local Inference Lab](https://local-inference-lab.ai/)
 [B12X](https://github.com/local-inference-lab/b12x) kernel library, the
 [Qwen3.8-Flash-Next](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)
 and [GLM-5.3-Flash Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)
-NVFP4 checkpoints, the RoCEnante RDMA transport by Luke (`lukealonso`) and
-contributors ([provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)),
+NVFP4 checkpoints,
 [llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench)
 and their [vLLM fork](https://github.com/local-inference-lab/vllm).
+
+SparkRing includes software derived from RoCEnante (`b12x/comm/roce`, Local
+Inference Lab), written by Jason (`original-el8`) in local-inference-lab/b12x
+[PR 295](https://github.com/local-inference-lab/b12x/pull/295), with
+dual-rail striping and graph-collective work by Luke Alonso (`lukealonso`),
+licensed under Apache-2.0; b12x now lives in FlashInfer at
+`flashinfer/experimental/b12x`
+([provenance](third_party/b12x_roce/README.md#attribution-and-design-origins)).
 
 SparkRing's NCCL patches follow Joseph Rose's
 [nccl-spark-switchless](https://github.com/josephdrose/nccl-spark-switchless).
