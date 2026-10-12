@@ -219,6 +219,16 @@ def test_a_collection_rebuilds_offline_from_its_raw_reads():
     assert document["served_models"] == ["Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2"]
 
 
+def test_ranks_agree_on_session_settings_whatever_their_place_in_the_group():
+    line = ("(Worker pid=1) INFO 10-11 22:11:43 [adapter.py:487] SIRCL receipt group=tp:0 global_rank={r} rank={r} "
+            "world=4 layout=ring:8 positions=0,1,2,3 nccl=none pynccl=skipped session=ring lanes=2 hcas=dev{r} "
+            "capacity=131072 p2p=peers={peers},slots=8x524288,windows=65536 state=ready")
+    document = resolved.build([{"rank": r, "log": line.format(r=r, peers=1 if r in (0, 3) else 2)} for r in range(4)])
+    assert document["settings"]["sircl.tp.p2p"] == "slots=8x524288,windows=65536"
+    assert document["settings"]["sircl.tp.capacity"] == 131072 and "sircl.tp.hcas" not in document["settings"]
+    assert document["rank_mismatches"] == []
+
+
 def test_the_rank_read_script_reads_only_and_never_the_full_environment():
     script = collect.rank_script("sr-x-r0")
     assert "Config.Env" not in script and "docker exec \"$C\" env | grep -E" in script

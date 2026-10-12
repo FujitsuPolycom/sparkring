@@ -342,7 +342,12 @@ def rank_settings(scan: Mapping, *, env: Mapping[str, str] | None = None, comman
     for group, (receipt, source) in sorted(groups.items()):
         for key in RECEIPT_KEYS:
             if key in receipt:
-                put(f"sircl.{group}.{key}", receipt[key], source)
+                value = receipt[key]
+                if key == "p2p" and isinstance(value, str):
+                    # The peer count is the rank's place in the group (an end of a path has one neighbour,
+                    # a middle rank two); the slots and windows are the session's settings.
+                    value = re.sub(r"(^|,)peers=\d+", "", value).strip(",")
+                put(f"sircl.{group}.{key}", value, source)
 
     if image_id:
         put("image.id", image_id, "docker inspect")
