@@ -244,7 +244,7 @@ def build(root, output, *, version=None, marker="prebuilt", marker_binary=None):
         # the ConnectX hairpin start check to the host's mesh units.
         generator = generators / "sparkring-hairpin-mesh-check"
         shutil.copyfile(templates / "sparkring-hairpin-mesh-check", generator)
-        for unit in [*templates.glob("*.service"), *templates.glob("*.timer")]:
+        for unit in [*templates.glob("*.service"), *templates.glob("*.timer"), *templates.glob("*.socket")]:
             shutil.copyfile(unit, units / unit.name)
         # A change of an administration link (NetworkManager) or a re-created ConnectX interface
         # (udev, a driver restart) starts the administration tunnel's check at once.

@@ -315,6 +315,19 @@ def _main(argv: Sequence[str] | None = None) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     import os
     raw = list(argv if argv is not None else sys.argv[1:])
+    # The opted-in privileged helper (runtime.host.helper): a mutating command
+    # from a non-root process goes through the root helper's socket instead of
+    # sudo. The helper validates the argv against its fixed allowlist and
+    # audits every request in the journal.
+    socket_path = os.environ.get("SPARKRING_HELPER_SOCKET")
+    if socket_path and raw and raw[0] in ("up", "down", "recover"):
+        from runtime.host import helper, privilege
+        if not privilege.running_as_root():
+            try:
+                return helper.request(raw, socket_path=socket_path)
+            except OSError as error:
+                print(f"SparkRing helper: {error}", file=sys.stderr)
+                return 2
     root = Path(__file__).resolve().parents[1]
     installation = raw and raw[0] in ("setup", "init", "up", "down") and not any(a in raw for a in ("-h", "--help"))
     if raw[:2] in (["setup", "show"], ["setup", "storage"]):

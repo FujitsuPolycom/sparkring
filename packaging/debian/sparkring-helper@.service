@@ -1,0 +1,22 @@
+[Unit]
+Description=SparkRing privileged helper: validates and runs one allowlisted mutating command
+Documentation=file:///usr/lib/sparkring/docs/development/least-privilege.md
+
+[Service]
+# One instance per connection (Accept=yes): stdin is the helper's socket.
+# The instance exits after the single request, so its audit line and any
+# output it streams land in this unit's journal entry.
+ExecStart=/usr/bin/sparkring node helper
+StandardInput=socket
+StandardOutput=journal
+StandardError=journal
+# Root by design: this unit is the narrow root path. The request's argv is
+# validated against runtime/host/helper.py's COMMANDS before anything runs.
+NoNewPrivileges=yes
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectClock=yes
+# Serving containers and their images are root's to start, and the commands
+# run Docker, systemctl and SSH; the file-system sandbox stays light.

@@ -1,0 +1,17 @@
+[Unit]
+Description=SparkRing privileged helper socket: the audited root path for mutating commands
+Documentation=file:///usr/lib/sparkring/docs/development/least-privilege.md
+
+[Socket]
+# The opt-in narrow alternative to sudo: an operator enables this socket with
+# systemctl enable --now sparkring-helper.socket. Members of the sparkring
+# group may connect; every request is validated against the helper's fixed
+# allowlist and audited in the journal.
+ListenStream=/run/sparkring/helper.sock
+SocketGroup=sparkring
+SocketMode=0660
+Accept=yes
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

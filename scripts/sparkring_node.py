@@ -58,6 +58,8 @@ def main(argv=None):
                                         "sparkring-ssh-mux.service on Node A")
     commands.add_parser("relay-markers", help="run this Spark's relay markers until stopped "
                                               "(sparkring-relay-marker.service)")
+    commands.add_parser("helper", help="serve one privileged-helper request on stdin "
+                                       "(sparkring-helper@.service, socket-activated)")
     commands.add_parser("relay-marker-check", help="check the installed package's relay marker against the "
                                                    "SHA-256 the package records (the package installation runs it)")
     commands.add_parser("fabric-check", help="check this Spark's part of the fabric that Node A sends on stdin "
@@ -164,6 +166,12 @@ def main(argv=None):
             return host_load.mux_main()
         elif args.action == "relay-markers":
             return node.relay_markers()
+        elif args.action == "helper":
+            import socket as _socket
+            from runtime.host import helper
+            # Socket activation (Accept=yes): the connection is this process's stdin.
+            helper.serve(_socket.socket(fileno=0))
+            return 0
         elif args.action == "relay-marker-check":
             from runtime.host import relays
             result = relays.check_installed()
