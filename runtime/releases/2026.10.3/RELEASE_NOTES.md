@@ -9,7 +9,9 @@ licensed under the Local Inference Lab License, Version 1.0:
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
 (`qwen38-flash-next-tp2`).
 
-Pre-release for testing. It uses 2026.10.2's image unchanged
+The latest SparkRing release: `main`, `install.sh` from `main` and the
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) install it. It uses
+2026.10.2's image unchanged
 (`ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`),
 so a Spark that holds that image downloads nothing. The
 [release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.3/runtime/releases/2026.10.3/README.md)
@@ -119,10 +121,17 @@ sudo sparkring install --profile PROFILE
 sudo sparkring check --report ~/sparkring-report
 ```
 
-## Go back to 2026.10.2
+## Go back
 
-Reinstall 2026.10.2's package; the image is the same:
+To 2026.10.2, a pre-release on the same image:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/2026.10.2/install.sh | bash -s -- --ref 2026.10.2 --package-only
+```
+
+To 2026.10.1, the latest release before this one, which installs image
+`dev-20261004-kraken-cuda1342-nccl2323-status034`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/2026.10.1/install.sh | bash -s -- --ref 2026.10.1 --package-only
 ```

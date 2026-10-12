@@ -18,15 +18,16 @@ describes its layers, evidence and publication. This page is the record of
 release 2026.10.3. [RELEASE_NOTES.md](RELEASE_NOTES.md) is the summary for
 users, and [status.json](status.json) states the same status for programs.
 
-Status: **implemented**; release maturity **candidate**. No tag, package or
-GitHub release exists for it yet ([open gates](#qualification)); its image is
-already published.
+Status: **implemented**; release maturity **accepted**: GitHub release
+`2026.10.3` is the latest release, and `main` installs it. Its image is release
+2026.10.2's, already published. The serving-defaults qualification gate stays
+open ([open gates](#qualification)).
 
 ## Identity
 
 | Item | Value |
 |---|---|
-| GitHub release tag | `2026.10.3`, not yet created; `2026.10.2` is the release before it |
+| GitHub release tag | `2026.10.3`, the latest release; `2026.10.2` (a pre-release) and `2026.10.1` (the latest release before it) precede it |
 | Image | Release 2026.10.2's, unchanged: image configuration ID `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b`, registry reference `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`. A Spark that holds it downloads nothing |
 | Lock | Release 2026.10.2's, unchanged: [installer-image.json](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json), SHA-256 `d58cbfefedd47bd861d634c9337aa388b284c8759664d5e10580015a28ac8f79`, 13 profiles, which that directory's `release.json` pins. That directory's lock, `release.json`, `publication.json`, `status.json` and `RELEASE_NOTES.md` are byte-identical to release 2026.10.2's; its README adds the Local Inference Lab attribution notice after its heading |
 | Image sources | The sources the image carries are byte-identical to release 2026.10.2's: `spark_transport/libsircl` is git tree `030419b8a2b61acc1a74010308a1c3e758863e2f`, the lock's `libsircl.source_tree`; `spark_transport/sircl` is tree `8a54c1abf591`, `integrations/vllm/runtime_status` `de6358a86f8c`, and the GLM-5.3 plugin directories are unchanged |
@@ -213,7 +214,7 @@ without research options (private record):
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
 | `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. the same three installed on two new rings of four (DeepSeek on a whole ring, the pairs on the other) with the same model settings and SIRCL's ring-of-four tuning ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)); the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |
-| `publication`: tag, package built with the relay marker, GitHub pre-release | pending | |
+| `publication`: tag, package built with the relay marker, GitHub release | passed: tag `2026.10.3` on this commit; GitHub release `2026.10.3`, marked latest, carries the arm64 package and the relay marker with their SHA-256 files; `main` fast-forwarded to the tag | [GitHub release](https://github.com/FujitsuPolycom/sparkring/releases/tag/2026.10.3) |
 
 ## Validation
 

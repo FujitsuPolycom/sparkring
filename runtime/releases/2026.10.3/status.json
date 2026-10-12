@@ -3,7 +3,7 @@
   "release": "2026.10.3",
   "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
   "status": "implemented",
-  "maturity": "candidate",
+  "maturity": "accepted",
   "record": "runtime/releases/2026.10.3/README.md",
   "notes": "runtime/releases/2026.10.3/RELEASE_NOTES.md",
   "image": {
