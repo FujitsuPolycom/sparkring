@@ -53,7 +53,7 @@ libsircl offers the same protocol behind NCCL's C API
 
 | Model | Checkpoint | Sparks | `--profile` value | API port | Thinking |
 |---|---|---|---|---|---|
-| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh |
+| Qwen3.8-Flash-Next | [CSF (NVFP4/MXFP8), Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-tp4` | 8015 | on · xhigh |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 2 | `glm53-flash-tp2` | 8000 | always · max |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 4 | `glm53-flash-tp4` | 8015 | always · max |
@@ -66,7 +66,10 @@ libsircl offers the same protocol behind NCCL's C API
 
 `glm53-flash-tp2` and `glm53-flash-tp4` are short names of the profile IDs
 `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`; both names
-install the CSF checkpoint on this image. `qwen38-flash-next-tp4` is the short
+install the CSF checkpoint on this image. `qwen38-flash-next-tp2` installs the
+Qwen CSF checkpoint on this image and serves it as
+`Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2`; `--checkpoint qad-step5500-ple1000`
+installs step 5500 instead. `qwen38-flash-next-tp4` is the short
 name of the profile ID `qwen38-flash-next-qad-tp4`. The other eight-Spark
 profiles are Experimental ([profile catalog](profiles/README.md)).
 
@@ -88,7 +91,14 @@ On four Sparks, `--checkpoint qad-step5500-mxfp8-attention` decodes 6–8 % fast
 The rows ran on development images built before 2026.10.2's `d52737a1`:
 `1a8c1035` has its SIRCL layer and differs only in libsircl and the status
 dashboard; `27e9f75c` and `816c6d6a` carry SIRCL 0.3.1 and 0.3.0. Each row's
-record is under `performance/records/`.
+record is under `performance/records/`. The rows also predate release
+2026.10.3's serving defaults: the Qwen profiles' MXFP8 LM head and BF16 MTP
+draft KV cache, the GLM-5.3-Flash profiles' 4-bit-activation prefill and
+`deepseek-v41-flash-tp4`'s sharded Engram projections. The two-Spark Qwen row
+is step 5500, which this image installs only with
+`--checkpoint qad-step5500-ple1000`. Release 2026.10.3's
+[record](runtime/releases/2026.10.3/README.md#serving-defaults) has the
+research-only measurements of these settings.
 
 ## Documentation
 

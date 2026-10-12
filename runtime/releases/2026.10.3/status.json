@@ -62,6 +62,36 @@
       "status": "implemented",
       "scope": "the memory settle refuses a start whose vLLM share plus SparkCache's pinned capture slots and restore arenas exceed a Spark's total less 6 GiB; tested offline only",
       "record": "runtime/host/memory_settle.py"
+    },
+    {
+      "id": "async-scheduling-explicit",
+      "status": "implemented",
+      "scope": "every installer profile states --async-scheduling; the image's vLLM turns asynchronous scheduling on for MTP, DFlash and DSpark speculation on the mp executor, so the flag changes no resolved setting and no speed is claimed for it",
+      "record": "performance/enhancements.json"
+    },
+    {
+      "id": "glm53-flash-a4-prefill",
+      "status": "implemented",
+      "scope": "glm53-flash-nvfp4-spark-tp2 and -tp4 set B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536, which acts on the csf checkpoint's W4A16 experts; measurements research-only",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "qwen-draft-kv-and-lm-head",
+      "status": "implemented",
+      "scope": "qwen38-flash-next-tp2, -qad-tp4 and -qad-tp8 keep the MTP draft's KV cache at auto (BF16 beside the FP8 target KV in 32-token blocks) and quantize the target LM head to MXFP8 at load; measurements research-only; not run together on four or eight Sparks",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "deepseek-engram-projection-tp",
+      "status": "implemented",
+      "scope": "deepseek-v41-flash-tp4 shards its Engram projections (projection_tp); approved by the owner on two starts and correct greedy outputs on eight prompts, without a matched log-probability comparison; deepseek-v41-flash-tp8 unchanged",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "enhancement-catalog",
+      "status": "implemented",
+      "scope": "performance/enhancements.json states the serving defaults with their measurements and lists Local Inference Lab's launch settings, the Qwen CSF checkpoint, the GLM-5.3-Flash TP2 split pages, the SparkCache layer image and libsircl 0.7.0's copy-relay broadcast",
+      "record": "performance/enhancements.md"
     }
   ],
   "profiles": [
@@ -173,6 +203,50 @@
       "scope": "the dashboard page, terminal view, loopback listener and reload, reported by the ring test",
       "result": "worked; no record under performance/records",
       "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "glm53-flash-a4-prefill-20261011",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10) cabled as one ConnectX-7 RoCE ring of eight, GPU clocks locked at 2,418 MHz, outside clients paused; positions 0 to 3 (a path of four) and 4 and 5",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "one start each of glm53-flash-nvfp4-spark-tp4 --checkpoint csf with and without the setting, and one start of glm53-flash-nvfp4-spark-tp2 --checkpoint csf with it; serving A/B runner, temperature 0",
+      "result": "TP4: 32K prefill 3,334 against 3,004 tok/s, decode within the start-to-start spread, prompt log-probability rank-1 agreement 0.983; TP2: 32K prefill 2,319 tok/s, decode 38.7 / 84.1 / 123.9 tok/s at 1 / 4 / 8 streams, no start without it on this image",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "qwen-draft-kv-lm-head-20261011",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10) cabled as one ConnectX-7 RoCE ring of eight, GPU clocks locked at 2,418 MHz, outside clients paused; positions 4 to 7 (a path of four) and 6 and 7",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "qwen38-flash-next-qad-tp4 --checkpoint qad-step5500-mxfp8-attention with each setting alone, one start each, against two starts without; qwen38-flash-next-tp2 --checkpoint csf with the profile's full configuration, one start",
+      "result": "TP4 32K decode at 1 / 4 / 8 streams: draft KV auto 81.6 / 185.9 / 234.0, MXFP8 LM head 64.7 / 153.4 / 231.9, neither 60.9-62.8 / 148.6-149.9 / 237.2 (temperature 0); TP2 csf: 64.0 / 130.4 / 213.7 at temperature 0 and 71.4 / 110.2 / 164.8 / 229.3 at 1 / 2 / 4 / 8 streams at temperature 1",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "deepseek-engram-projection-tp-20261011",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10) cabled as one ConnectX-7 RoCE ring of eight, GPU clocks locked at 2,418 MHz, outside clients paused; positions 0 to 3 (a path of four)",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "two starts of deepseek-v41-flash-tp4 with sharded Engram projections, each against a start with otherwise the same resolved settings; llm-inference-bench 0.7.6 defaults and the serving A/B runner",
+      "result": "engine steps/s +5.5 % at one stream and +12 % at eight, prefill 1-2 % lower; greedy outputs of eight fixed prompts correct; no matched log-probability comparison",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "serving-defaults-install-20261011",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10) cabled as one ConnectX-7 RoCE ring of eight, GPU clocks locked at 2,418 MHz, outside clients paused; positions 6 and 7, and 4 and 5",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "installations without research options of qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 from a package of this release's Qwen and GLM-5.3-Flash serving defaults (revision 4c9528fb)",
+      "result": "both chose csf without --checkpoint, completed and served; the Qwen engine resolved FP8 target KV in 32-token blocks, draft KV auto and asynchronous scheduling",
+      "record": "runtime/releases/2026.10.3/README.md"
     }
   ],
   "gates": [
@@ -229,6 +303,24 @@
       "result": "partial",
       "scope": "Stage 1 (TP4): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (TP2): failed with 8 GiB capture slots, not run with 512 MiB slots",
       "record": "performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md"
+    },
+    {
+      "id": "serving-defaults-measured",
+      "result": "partial",
+      "scope": "each changed serving setting measured against a start without it; research-only, one start per setting and two for DeepSeek's Engram sharding; no start on deepseek-v41-flash-tp8, qwen38-flash-next-qad-tp8, the Swift-1.5 profiles or the MiMo profiles",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "serving-defaults-install",
+      "result": "partial",
+      "scope": "installations of the changed profiles without research options: qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 completed and served; the others not run",
+      "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "serving-defaults-qualification",
+      "result": "pending",
+      "scope": "a second start, a correctness screen and a soak of each changed profile with its settings",
+      "record": null
     },
     {
       "id": "publication",

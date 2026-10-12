@@ -2752,9 +2752,11 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   ([record](../../performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md)).
   Measured serving of the CSF checkpoint at TP4 on SIRCL, outside this
   repository, also set `B12X_W4A16_FP32_TOPK_WEIGHTS=1` and
-  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`. A checkpoint entry changes only
-  variables the profile already sets, and these profiles set neither, so
-  `csf` runs without them, as `glm53-flash-csf-tp8` does.
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`. Both profiles set
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` for every checkpoint; it acts only
+  on the W4A16 experts that `csf` forces. Neither sets
+  `B12X_W4A16_FP32_TOPK_WEIGHTS`, and `glm53-flash-csf-tp8` sets neither
+  variable.
 - NVIDIA's revision `da920bb0b9f4` holds the same weights and weight index as
   revision `423acf37583782c51c142d145aef733d72943d93`, which the
   [manual NVIDIA target](../../profiles/glm53-nvidia-nvfp4.md) pins. Its

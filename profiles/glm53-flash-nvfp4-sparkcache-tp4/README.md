@@ -20,7 +20,9 @@ other checkpoints and another vLLM line.
 
 ## What the variant changes
 
-The profile keeps every speed setting of the cache-off profile: MTP3 with the
+The profile keeps every speed setting of the cache-off profile except its
+4-bit-activation prefill cutoff (`B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`), which
+no start of this variant has run, so its prefill MoE calls run W4A16: MTP3 with the
 CSF checkpoint's draft settings (marlin draft experts, draft tensor
 parallelism, probabilistic draft sampling, standard rejection),
 `--async-scheduling`, the B12X attention, linear and KDA-prefill backends with

@@ -35,6 +35,10 @@ The GLM installer profiles of two and four Sparks install Local Inference
 Lab's CSF checkpoint by default on an image whose vLLM reads it, and the
 NVFP4-Spark checkpoint the GLM rows below name on every other image
 ([default checkpoint by profile](glm53-checkpoints.md#default-checkpoint-by-profile)).
+The two-Spark Qwen installer profile, `qwen38-flash-next-tp2`, likewise
+installs Local Inference Lab's Qwen3.8-Flash-Next CSF checkpoint by default on
+an image whose vLLM reads it, and step 5500 on every other image
+([checkpoints](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
 runs on image `dev-20261004-kraken-cuda1342-nccl2323-status034`

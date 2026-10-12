@@ -63,9 +63,15 @@ logs and recovery. To run step 5500's containers with Docker Compose, see
 | Decode collectives | All-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`) | No Qwen dispatch setting |
 | Media | Three images, one video; 16 configured video frames | Same |
 | Caching | vLLM native prefix cache; SparkCache off | 4 GiB disk per rank, reclaim toward 3 GiB; about 1.25 GiB data buffers per rank |
-| API | Port 8000, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, no API key | Same |
+| API | Port 8000, no API key; model `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2` with the CSF checkpoint, `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` with step 5500 | Port 8000, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, no API key |
 
 ## Performance
+
+The CSF checkpoint with this profile's settings, on one pair of a ring of
+eight with release 2026.10.2's image and GPU clocks locked at 2,418 MHz,
+decoded 71.4 / 110.2 / 164.8 / 229.3 tokens/s at 32K and 1 / 2 / 4 / 8
+streams, temperature 1.0, with 32K prefill at 3,920 tokens/s (one start,
+research-only; [release 2026.10.3's record](../../runtime/releases/2026.10.3/README.md#serving-defaults)).
 
 One pair, step 5500 ([record](../../performance/records/images/dev-20260925-qwendecode-qwen-step5500-20260926.md)). Throughput matrix ([llm-inference-bench](https://github.com/local-inference-lab/llm-inference-bench), temperature 1.0), total
 tokens/s across streams:

@@ -23,6 +23,19 @@ has the evidence and the open gates.
 
 ## What's in it
 
+- Faster serving defaults, measured research-only on a ring of eight
+  ([serving defaults](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.3/runtime/releases/2026.10.3/README.md#serving-defaults)):
+  - Qwen keeps its MTP draft's KV cache in BF16 beside the FP8 target cache
+    and quantizes its LM head to MXFP8. On two Sparks with the CSF checkpoint
+    it decoded 71.4 tok/s at 32K and one stream, temperature 1.
+  - GLM-5.3-Flash runs prefill MoE calls of 1,536 tokens or more with 4-bit
+    activations: 11 % faster 32K prefill on four Sparks.
+  - DeepSeek-V4.1-Flash on four Sparks shards its Engram projections: 5.5 %
+    more decode steps per second at one stream and 12 % at eight. The owner
+    approved it on two starts and correct outputs for eight prompts; no
+    log-probability comparison has run.
+  - Every profile states `--async-scheduling`. vLLM already turns it on for
+    these models, so it changes nothing.
 - `sparkring dashboard`: a read-only status page on Node A, port 8090, and
   `sparkring dashboard tui` for a terminal.
 - `--on` places the serving image only on the Sparks it names. Models serving
@@ -34,10 +47,23 @@ has the evidence and the open gates.
 - `qwen38-flash-next-tp2` installs Local Inference Lab's Qwen3.8-Flash-Next
   CSF checkpoint on this release's image (research-only);
   `--checkpoint qad-step5500-ple1000` installs step 5500.
+- The enhancement catalog lists Local Inference Lab's launch settings, the
+  Qwen CSF checkpoint, the SparkCache layer image and libsircl's copy-relay
+  broadcast.
 - Research-only profiles: `glm53-nvfp4-csf-tp8`, GLM-5.3-NVFP4-CSF on eight
   Sparks, which installs only with `--image-lock FILE` and is parked, and
   SparkCache variants of the GLM-5.3-Flash profiles, which need an image this
   release does not publish.
+
+## Before you upgrade
+
+- `qwen38-flash-next-tp2` without `--checkpoint` installs the 95.2 GiB CSF
+  checkpoint, downloading it when the Sparks lack it, and serves it as
+  `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2`.
+  Clients that request `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` must change the name,
+  or install with `--checkpoint qad-step5500-ple1000` to keep step 5500.
+- Installing any profile with this package creates a separate deployment and
+  restarts the model.
 
 ## Profiles
 
@@ -57,8 +83,13 @@ has the evidence and the open gates.
   on four Sparks passed every step it ran of its test plan's first stage (one
   step and the two-start comparison did not run). The
   dashboard's page, terminal view, loopback address and reload worked.
+- The serving defaults: one start per setting on the ring of eight with GPU
+  clocks locked, two for DeepSeek's Engram sharding. `qwen38-flash-next-tp2`
+  and `glm53-flash-tp2` also installed and served with these settings and no
+  research options. No start with them has run on DeepSeek on eight Sparks,
+  Qwen on eight Sparks, Swift-1.5 or MiMo.
 - The `--on` image placement and the recovery change are tested offline only.
-- CPU checks pass, apart from tests that also fail on 2026.10.2 on Windows.
+- CPU checks pass, apart from tests that also fail before these changes.
 
 ## Known issues
 
