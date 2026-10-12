@@ -263,9 +263,10 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
   an on/off switch. The output quality of short prefills with it is not
   separately qualified.
 - The repository README's speed table shows this release's profiles measured
-  once each at temperature 1; the four-Spark GLM-5.3-Flash and Qwen profiles
-  have no measurement with these settings, and the README gives their
-  development-image results separately.
+  once each at temperature 1. The four-Spark GLM-5.3-Flash and Qwen profiles
+  have no temperature-1 measurement; the README gives their runner results
+  on four Sparks of the ring of eight separately, and no start of the
+  four-Spark Qwen profile has both Qwen settings.
 - No image this package carries runs the SparkCache variants: only the lock
   their derived layer records admits them, and that lock is not in this
   repository. They are listed in the research catalog.
