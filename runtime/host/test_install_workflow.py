@@ -2153,10 +2153,12 @@ def simulated(machine, monkeypatch, tmp_path):
 
 
 def install_simulated(request, capsys, *protected):
-    """Run ``sudo sparkring install --yes --json`` while the audit hook refuses changes under ``protected``."""
+    """Run ``sudo sparkring install --checkpoint STEP5500 --yes --json`` while the audit hook refuses changes
+    under ``protected``. The request names step 5500, whose files the simulated Sparks hold: without
+    ``--checkpoint`` the default image installs the profile's preferred CSF checkpoint."""
     protect = request.getfixturevalue("audited")
     with protect(*protected):
-        code = sparkring.main(["install", "--profile", PROFILE, "--yes", "--json"])
+        code = sparkring.main(["install", "--profile", PROFILE, "--checkpoint", STEP5500, "--yes", "--json"])
     out = capsys.readouterr()
     assert code == 0, out.err[-3000:]
     return json.loads(out.out), output_lines(out.err)
