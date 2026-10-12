@@ -1,6 +1,6 @@
 """Tables of a campaign: decode per cell and arm, TTFT per prompt length, and output agreement.
 
-``python -m performance.harnesses.serving_ab.report RESULTS_DIR LABEL [LABEL ...]`` prints them for the named
+``python -m performance.harnesses.serving_ab.report RESULTS_DIR LABEL [LABEL ...] [--allow-layout-mix]`` prints them for the named
 starts (directories of RESULTS_DIR); :func:`summary` returns the same as JSON. A label's arm is its prefix:
 ``S+`` for labels starting ``S+``, otherwise the first letter (``S``, ``N``, ``P``); a warm-up label ``W-<arm>``
 counts as its arm. Ratios are against arm ``N`` when the starts include it.
@@ -9,8 +9,10 @@ Every start's row also shows its run receipt: the measurement method its decode 
 (receipt/method.py), its key resolved settings and digest (``resolved.json``, receipt/resolved.py) and, when
 the start's directory holds the verdict of ``receipt check`` as ``check.json``, the declared change and
 whether the arm differed from its control in exactly that change. A ratio between two arms is refused,
-and the tables say why, when the arms' decode results record different measurement settings or when a
-start of either arm failed its check.
+and the tables say why, when the arms' decode results record different measurement settings, when a
+start of either arm failed its check, or when the arms ran in different layouts (``layout.group`` in
+``layout.fabric``: a path of four Sparks inside a cycle of eight is not a ring of four) unless
+``--allow-layout-mix`` is given; the layout of every start is shown either way.
 """
 
 from __future__ import annotations
@@ -57,6 +59,8 @@ def receipt_of(d: Path) -> dict:
         settings = document.get("settings") or {}
         out["digest"] = document.get("digest")
         out["settings"] = {k: settings[k] for k in KEY_SETTINGS if k in settings}
+        if settings.get("layout.group"):
+            out["layout"] = f"{settings['layout.group']} in {settings.get('layout.fabric') or '?'}"
         if document.get("error"):
             out["error"] = document["error"]
     path = d / "check.json"
@@ -133,7 +137,7 @@ def _median(values):
     return statistics.median(values) if values else None
 
 
-def comparability(runs: list[dict], arms: list[str], base: str | None) -> dict:
+def comparability(runs: list[dict], arms: list[str], base: str | None, *, allow_layout_mix: bool = False) -> dict:
     """Per arm: whether its ratio to ``base`` counts, and every reason it does not."""
     out = {}
     for arm in arms:
@@ -148,11 +152,16 @@ def comparability(runs: list[dict], arms: list[str], base: str | None) -> dict:
                              if canonical(v) != canonical(first.get(f))})
             reasons.append("measured differently (" + ", ".join(f"{r['label']} {r['method']['name']}" for r in group)
                            + "; differing: " + ", ".join(fields) + ")")
+        layouts = {r["receipt"].get("layout") for r in group if r["receipt"].get("layout")}
+        if len(layouts) > 1 and not allow_layout_mix:
+            reasons.append("ran in different layouts (" + ", ".join(
+                f"{r['label']} {r['receipt'].get('layout') or 'unrecorded'}" for r in group)
+                + "); --allow-layout-mix compares them anyway")
         out[arm] = {"base": base, "refused": bool(reasons), "reasons": reasons}
     return out
 
 
-def summary(root: Path, labels: list[str]) -> dict:
+def summary(root: Path, labels: list[str], *, allow_layout_mix: bool = False) -> dict:
     runs = [load(root, label) for label in labels]
     arms = sorted({r["arm"] for r in runs},
                   key=lambda a: (ARM_ORDER.index(a) if a in ARM_ORDER else len(ARM_ORDER), a))
@@ -187,7 +196,8 @@ def summary(root: Path, labels: list[str]) -> dict:
     base = "N" if "N" in arms else None
     return {"starts": [{"label": r["label"], "arm": r["arm"], "ready_s": r["ready_s"], "method": r["method"],
                         "receipt": r["receipt"]} for r in runs],
-            "arms": arms, "comparisons": comparability(runs, arms, base), "decode": cells, "ttft": ttft,
+            "arms": arms, "comparisons": comparability(runs, arms, base, allow_layout_mix=allow_layout_mix),
+            "decode": cells, "ttft": ttft,
             "outputs": pairs}
 
 
@@ -209,10 +219,10 @@ RECEIPT_COLUMNS = (("target KV", "target.kv_cache_dtype"), ("block", "target.blo
 
 def receipt_table(doc: dict) -> list[str]:
     """One row per start: method, digest, key resolved settings, declared change, check verdict."""
-    lines = ["Run receipts: decode method, resolved settings (resolved.json) and declared change (check.json)",
-             "| start | arm | method | digest | " + " | ".join(name for name, _ in RECEIPT_COLUMNS)
+    lines = ["Run receipts: decode method, layout, resolved settings (resolved.json) and declared change (check.json)",
+             "| start | arm | method | layout | digest | " + " | ".join(name for name, _ in RECEIPT_COLUMNS)
              + " | declared change | check |",
-             "|---|---|---|---|" + "---|" * len(RECEIPT_COLUMNS) + "---|---|"]
+             "|---|---|---|---|---|" + "---|" * len(RECEIPT_COLUMNS) + "---|---|"]
     for start in doc["starts"]:
         receipt = start.get("receipt") or {}
         settings = receipt.get("settings") or {}
@@ -222,7 +232,8 @@ def receipt_table(doc: dict) -> list[str]:
         digest = (receipt.get("digest") or "-").removeprefix("sha256:")[:12]
         cells = " | ".join(_short(settings.get(key)) if key in settings else "?" for _, key in RECEIPT_COLUMNS)
         lines.append(f"| {start['label']} | {start['arm']} | {(start.get('method') or {}).get('name', '-')} | "
-                     f"{digest} | {cells} | {change} | {receipt.get('check') or 'not checked'} |")
+                     f"{receipt.get('layout') or '?'} | {digest} | {cells} | {change} | "
+                     f"{receipt.get('check') or 'not checked'} |")
     return lines
 
 
@@ -288,4 +299,5 @@ def tables(doc: dict) -> str:
 
 
 if __name__ == "__main__":
-    print(tables(summary(Path(sys.argv[1]), sys.argv[2:])))
+    arguments = [a for a in sys.argv[1:] if a != "--allow-layout-mix"]
+    print(tables(summary(Path(arguments[0]), arguments[1:], allow_layout_mix="--allow-layout-mix" in sys.argv)))

@@ -135,8 +135,8 @@ def run(args) -> int:
         path = collect.write(document, texts, Path(args.output))
         settings = document["settings"]
         print(f"{path}: {document['deployment'].get('profile')} on {args.positions}, digest {document['digest']}")
-        for key in ("target.kv_cache_dtype", "target.block_size", "speculative.kv_cache_dtype",
-                    "scheduler.async_scheduling", "compilation.mode"):
+        for key in ("layout.group", "layout.fabric", "target.kv_cache_dtype", "target.block_size",
+                    "speculative.kv_cache_dtype", "scheduler.async_scheduling", "compilation.mode"):
             print(f"  {key} = {compare.show(settings.get(key, compare.MISSING))} ({document['sources'].get(key, '-')})")
         for mismatch in document["rank_mismatches"]:
             print(f"  WARN rank {mismatch['rank']} {mismatch['key']} = {compare.show(mismatch['value'])}, "

@@ -560,11 +560,13 @@ def collect(plan: dict, site: remote.Site, arm: str, out: Path) -> list[str]:
     return logs
 
 
-def write_receipt(out: Path) -> None:
+def write_receipt(out: Path, layout: dict | None = None) -> None:
     """``resolved.json``: the start's resolved settings from the logs and inspections it saved
-    (receipt/resolved.py); the report shows its key settings beside each start."""
+    (receipt/resolved.py); the report shows its key settings and layout beside each start. ``layout``
+    (``resolved.layout_of`` of the run's positions on the site's ring) applies where no SIRCL receipt
+    line states the group's layout, as in an NCCL arm."""
     try:
-        document = resolved.from_runner_start(out)
+        document = resolved.from_runner_start(out, layout=layout)
     except Exception as error:  # noqa: BLE001 - a receipt failure never stops a campaign; it is recorded
         document = {"schema": resolved.SCHEMA, "error": f"{type(error).__name__}: {error}"}
     (out / "resolved.json").write_text(json.dumps(document, indent=1, default=str), encoding="utf-8")
@@ -650,7 +652,7 @@ def _campaign(args, stack) -> int:
                 return 1
             (d / "ready.json").write_text(json.dumps({"ready_seconds": round(time.monotonic() - t0)}), encoding="utf-8")
             logs = collect(plan, site, arm, d)
-            write_receipt(d)
+            write_receipt(d, layout=resolved.layout_of(plan["positions"], site.size))
             evidence = verify.check(arm, logs, receipts(plan, site, arm), dcp=plan["dcp"])
             (d / "evidence.json").write_text(json.dumps(evidence, indent=1), encoding="utf-8")
             log(f"{label}: ready after {round(time.monotonic() - t0)} s; arm checks "

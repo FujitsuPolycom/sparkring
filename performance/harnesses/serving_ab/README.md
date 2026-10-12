@@ -193,12 +193,15 @@ and ratios to `N`, per-start tok/s, steps/s and acceptance, TTFT per prompt
 length, and pairwise fingerprint and logprob agreement. Labels are `W-<arm>`
 for warm-ups and `<arm><n>` for measured starts.
 
-The report refuses a ratio, prints `REFUSED` in its cell and states the reason
-above the tables, when the two arms' decode results record different
-measurement settings (tool version, temperature, token limit, contexts,
-streams, cell duration, warm-up, prefill mode, coding peak and its
-temperature) or when a start of either
-arm holds a `check.json` whose check failed.
+The report shows each start's layout (`path-4 in cycle-8`: four consecutive
+Sparks of a ring of eight, which is not a ring of four, `cycle-4 in cycle-4`)
+and refuses a ratio, prints `REFUSED` in its cell and states the reason above
+the tables, when the two arms' decode results record different measurement
+settings (tool version, temperature, token limit, contexts, streams, cell
+duration, warm-up, prefill mode, coding peak and its temperature), when a start
+of either arm holds a `check.json` whose check failed, or when the arms ran in
+different layouts. `python -m performance.harnesses.serving_ab.report DIR
+LABEL ... --allow-layout-mix` compares across layouts on purpose.
 
 ## Run receipts
 
@@ -248,7 +251,10 @@ To measure an arm against its control:
 
    It exits 1 and lists every setting that differs without a declaration and
    every declared change that did not take effect: the arm lacks the value, or
-   the control already holds it. Warnings name a declared change that leaves
+   the control already holds it. A different layout (group shape or positions,
+   fabric, fabric digest, SIRCL tuning state) is such a difference, named as a
+   layout difference; declare `"layout.*": null` to compare across layouts on
+   purpose. Warnings name a declared change that leaves
    the effective value unchanged, such as a draft KV dtype of `auto` against a
    control whose draft already inherits a BF16 target KV.
 5. **Measure** with a named method, and record the window afterwards:
@@ -288,7 +294,11 @@ $R method runs/WD1/result.json --expect owner-temp1-matrix
 
 What `resolved.json` holds, per rank and for the deployment (rank 0):
 
-- `settings`, which `check` compares: the target KV dtype and block size, the
+- `settings`, which `check` compares: the layout (`layout.group` such as
+  `pair`, `path-4` or `cycle-4`, `layout.positions`, `layout.fabric` such as
+  `cycle-8`, `layout.fabric_digest` and `layout.sircl_tuning`, from
+  `sparkring status --json`, else from the SIRCL receipt line), the target KV
+  dtype and block size, the
   speculative configuration including the draft's `kv_cache_dtype`, the
   engine's resolved `compilation_config` (mode, CUDA graph mode and sizes,
   custom ops, pass configuration), async scheduling, `max_num_seqs`,
@@ -327,7 +337,9 @@ Limitations:
   exceeds the benchmark's streams, at vLLM's 10 s logging interval; another
   kind of client on the same machine is not seen.
 - The serving A/B runner's own `resolved.json` reads the containers'
-  environment from `docker inspect`, not the vLLM process's.
+  environment from `docker inspect`, not the vLLM process's, and takes the
+  layout from the SIRCL receipt lines, or from its positions on the site's ring
+  for an arm without them.
 
 ## Locking
 

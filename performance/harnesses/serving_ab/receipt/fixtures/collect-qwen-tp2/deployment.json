@@ -100,5 +100,29 @@
   "checked_at": "2026-10-11T23:38:54Z",
   "receipts": "/var/lib/sparkring/controller/deployments/qwen38-flash-next-tp2-ie5356b016ed6/receipts/20261011T233854Z",
   "problems": []
+ },
+ "group": {
+  "shape": "pair",
+  "positions": [
+   6,
+   7
+  ],
+  "api_position": 6
+ },
+ "fabric": {
+  "layout": "cycle-8",
+  "document": "sha256:2bf46dcd8537b54bf025b705cb2a7a5d3d54ff0ecf87b17192fb7cca499bad46",
+  "relays": "table",
+  "verified": {
+   "at": "2026-10-11T12:03:07Z",
+   "result": "healthy",
+   "report": "fabric-verify-20261011T120307Z.json"
+  },
+  "transports": [
+   "sircl"
+  ]
+ },
+ "sircl_tuning": {
+  "state": "default"
  }
 }

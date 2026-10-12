@@ -12,7 +12,10 @@ replaces the compilation configuration); it asserts no value.
 
 :func:`check` fails, listing every finding, when
 
-- a setting differs between arm and control and no declared change covers it;
+- a setting differs between arm and control and no declared change covers it; a difference of
+  ``layout.*`` (the group's shape or positions, the fabric, its digest, the SIRCL tuning state) is
+  reported as a layout difference, since a path of four Sparks inside a cycle of eight is not a ring of
+  four;
 - a declared change did not take effect: the arm lacks the key or holds another value, or the control
   already holds the declared value, or the control does not hold a declared ``from`` value.
 
@@ -105,8 +108,11 @@ def check(arm: Mapping, control: Mapping, declaration: Mapping, *, ignore: Seque
     arm_settings, control_settings = arm.get("settings") or {}, control.get("settings") or {}
     for key, (mine, theirs) in found["settings"].items():
         if not _covered(key, changes):
-            problems.append({"kind": "undeclared", "key": key, "arm": show(mine), "control": show(theirs),
-                             "text": f"{key} differs and is not declared: arm {show(mine)}, control {show(theirs)}"})
+            kind = "layout" if key.startswith("layout.") else "undeclared"
+            text = f"{key} differs and is not declared: arm {show(mine)}, control {show(theirs)}"
+            if kind == "layout":
+                text += " (the arms ran in different layouts)"
+            problems.append({"kind": kind, "key": key, "arm": show(mine), "control": show(theirs), "text": text})
     for key, value in changes.items():
         if key.endswith(".*"):
             prefix = key[:-1]

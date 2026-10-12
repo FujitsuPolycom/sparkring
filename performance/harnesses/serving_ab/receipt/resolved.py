@@ -11,14 +11,22 @@ API's ``/metrics`` text. The output separates three kinds of values:
     ``kv_cache_dtype``), ``compilation.*`` (the engine's resolved ``compilation_config``), ``scheduler.*``,
     ``engram.*``, ``model.*``, ``backends.*``, ``kernel.*``, ``parallel.*``, ``args.*`` (every other explicit
     vLLM argument), ``env.*`` (the vLLM process's ``VLLM_*``, ``B12X_*``, ``SIRCL_*``, ``OMP_*``, ``NCCL_*``
-    and related variables), ``sircl.*`` (the SIRCL session receipts) and ``image.id`` and ``deployment.*``.
-    A comparison fails on any undeclared difference here.
+    and related variables), ``sircl.*`` (the SIRCL session receipts), ``layout.*`` (the group's shape and
+    positions, the cabled fabric it sits in, the fabric document's digest and the SIRCL tuning table's
+    state), ``image.id`` and ``deployment.*``. A comparison fails on any undeclared difference here.
 ``derived``
     Values that follow from settings by vLLM's documented rules: the effective target and draft KV dtypes
     (``auto`` is the model dtype; a draft without ``kv_cache_dtype`` inherits the target's).
 ``observed``
     Outcomes and conditions: KV capacity in tokens, the resolved attention block size, the kernels chosen,
     custom fusions, variables vLLM set itself, GPU clocks. Reported, never failed on.
+
+The layout keeps apart results that must not be compared as if they were alike: a path of four Sparks
+inside a cycle of eight (``layout.group`` ``path-4``, ``layout.fabric`` ``cycle-8``) is not a ring of four
+(``cycle-4`` in ``cycle-4``), whose last and first Sparks share a cable. It comes from ``sparkring status``
+(the slot's group, the fabric's layout and document digest), else from the SIRCL receipt line of the
+tensor-parallel group (``layout=ring:8 fabric=path:0-1-2-3``), else from the caller (the serving A/B runner
+knows its positions and the ring's size).
 
 Per-rank identity is excluded from ``settings`` so that two deployments on different Sparks compare:
 addresses, ports, rank numbers, RDMA device names and cache or library paths (:data:`IDENTITY_ENV`,
@@ -58,9 +66,10 @@ ASYNC_SPECULATION = frozenset({"eagle", "eagle3", "extract_hidden_states", "mtp"
                                "draft_model"})
 RECEIPT_KEYS = ("nccl", "nccl_mode", "pynccl", "session", "lanes", "capacity", "dispatch", "oneshot_max", "gather",
                 "gather_piece", "large_piece", "schedules", "chain_min", "ring_min", "links", "column_gather",
-                "fused_norm", "mhc", "op_per_peer", "four_rank_sessions", "relay_factor", "layout", "tuning", "p2p")
-"""SIRCL receipt fields that are session settings (counters, devices and ranks are left out)."""
-KEY_SETTINGS = ("target.kv_cache_dtype", "target.block_size", "speculative.method",
+                "fused_norm", "mhc", "op_per_peer", "four_rank_sessions", "relay_factor", "tuning", "p2p")
+"""SIRCL receipt fields that are session settings (counters, devices and ranks are left out; the receipt's
+``layout`` and ``fabric`` fields are the ``layout.*`` settings)."""
+KEY_SETTINGS = ("layout.group", "layout.fabric", "target.kv_cache_dtype", "target.block_size", "speculative.method",
                 "speculative.num_speculative_tokens", "speculative.kv_cache_dtype", "scheduler.async_scheduling",
                 "compilation.mode", "compilation.cudagraph_mode", "scheduler.max_num_seqs",
                 "scheduler.max_num_batched_tokens", "scheduler.prefill_schedule_interval", "model.quantization")
@@ -167,6 +176,50 @@ def _dtype_name(dtype) -> str | None:
     return dtype.split(".")[-1] if isinstance(dtype, str) else None
 
 
+def fabric_name(text: str | None) -> str | None:
+    """SparkRing's name of a cabled fabric from SIRCL's (``ring:8`` -> ``cycle-8``, ``path:4`` -> ``path-4``)."""
+    if not text or ":" not in str(text):
+        return None
+    kind, _, size = str(text).partition(":")
+    return {"ring": f"cycle-{size}", "path": f"path-{size}"}.get(kind, "pair" if kind == "pair" else None)
+
+
+def group_name(text: str | None) -> tuple[str | None, list[int] | None]:
+    """(shape, positions) of a SIRCL group fabric (``path:0-1-2-3`` -> ``path-4``, ``cycle:0-1-2-3`` ->
+    ``cycle-4``, ``pair:6-7`` -> ``pair``)."""
+    if not text or ":" not in str(text):
+        return None, None
+    kind, _, members = str(text).partition(":")
+    positions = [int(p) for p in members.split("-") if p.isdigit()]
+    if kind == "pair" or len(positions) == 2:
+        return "pair", positions
+    return (f"{kind}-{len(positions)}" if kind in ("path", "cycle") else None), positions
+
+
+def layout_of(positions, ring_size: int) -> dict:
+    """The layout of consecutive ``positions`` of a cabled ring of ``ring_size`` Sparks."""
+    positions = list(positions)
+    if len(positions) == 2:
+        group = "pair"
+    elif len(positions) == ring_size and ring_size >= 3:
+        group = f"cycle-{ring_size}"
+    else:
+        group = f"path-{len(positions)}"
+    return {"group": group, "positions": positions, "fabric": f"cycle-{ring_size}" if ring_size >= 3 else "pair"}
+
+
+def parse_status_text(text: str) -> dict:
+    """The fabric and the groups of ``sparkring status`` text (``Fabric: cycle-8, ...``, ``Group: path-4 at
+    positions 0, 1, 2, 3; ...``)."""
+    out: dict = {"fabric": None, "groups": []}
+    match = re.search(r"^Fabric: ([a-z]+-\d+|pair)", text, flags=re.M)
+    if match:
+        out["fabric"] = match[1]
+    for match in re.finditer(r"^Group: (\S+) at positions ([\d, ]+)", text, flags=re.M):
+        out["groups"].append({"shape": match[1], "positions": [int(p) for p in match[2].split(",") if p.strip()]})
+    return out
+
+
 def async_rule(explicit, method, executor, disabled: bool) -> tuple[bool | None, str]:
     """The resolved async-scheduling value and how it is known (see the module docstring)."""
     if disabled:
@@ -182,8 +235,13 @@ def async_rule(explicit, method, executor, disabled: bool) -> tuple[bool | None,
 
 def rank_settings(scan: Mapping, *, env: Mapping[str, str] | None = None, command_args: Mapping | None = None,
                   receipts: Mapping[str, Mapping] | None = None, metrics: Mapping | None = None,
-                  image_id: str | None = None, deployment: Mapping | None = None) -> dict:
-    """``settings``, ``derived``, ``observed`` and ``sources`` of one rank from its parsed evidence."""
+                  image_id: str | None = None, deployment: Mapping | None = None,
+                  layout: Mapping | None = None) -> dict:
+    """``settings``, ``derived``, ``observed`` and ``sources`` of one rank from its parsed evidence.
+
+    ``layout``: ``{group, positions, fabric}`` from the caller, used where neither the deployment's status
+    (``deployment["group"]``, ``deployment["fabric"]``) nor a SIRCL receipt line states it.
+    """
     settings: dict = {}
     derived: dict = {}
     observed: dict = {}
@@ -349,6 +407,32 @@ def rank_settings(scan: Mapping, *, env: Mapping[str, str] | None = None, comman
                     value = re.sub(r"(^|,)peers=\d+", "", value).strip(",")
                 put(f"sircl.{group}.{key}", value, source)
 
+    # Layout: the group's shape and positions inside the cabled fabric.
+    status_group = (deployment or {}).get("group") or {}
+    status_fabric = (deployment or {}).get("fabric") or {}
+    lines = scan.get("sircl_receipt_lines") or {}
+    tp_line = next((fields for group, fields in sorted(lines.items(), key=lambda item: not item[0].startswith("tp:"))
+                    if fields.get("fabric") not in (None, "-")), None)
+    line_group, line_positions = group_name(tp_line.get("fabric")) if tp_line else (None, None)
+    for key, values in (
+            ("group", [(status_group.get("shape"), "sparkring status --json"),
+                       (line_group, "log: SIRCL receipt line"), ((layout or {}).get("group"), "caller")]),
+            ("positions", [(status_group.get("positions"), "sparkring status --json"),
+                           (line_positions, "log: SIRCL receipt line"), ((layout or {}).get("positions"), "caller")]),
+            ("fabric", [(status_fabric.get("layout"), "sparkring status --json"),
+                        (fabric_name(tp_line.get("layout")) if tp_line else None, "log: SIRCL receipt line"),
+                        (fabric_name((env or {}).get("SIRCL_FABRIC")), "vLLM process environment (SIRCL_FABRIC)"),
+                        ((layout or {}).get("fabric"), "caller")])):
+        value, source = next(((v, s) for v, s in values if v), (None, None))
+        if value is not None:
+            put(f"layout.{key}", list(value) if isinstance(value, (list, tuple)) else value, source)
+    digest_value = status_fabric.get("document") or ((deployment or {}).get("transport") or {}).get("fabric")
+    if digest_value:
+        put("layout.fabric_digest", digest_value, "sparkring status --json")
+    tuning = (deployment or {}).get("sircl_tuning") or {}
+    if tuning.get("state"):
+        put("layout.sircl_tuning", tuning["state"], "sparkring status --json")
+
     if image_id:
         put("image.id", image_id, "docker inspect")
     for key in ("profile", "checkpoint", "model_repository", "model_revision", "image_release"):
@@ -409,7 +493,8 @@ def parse_clocks(text: str) -> list[dict]:
     return out
 
 
-def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapping | None = None) -> dict:
+def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapping | None = None,
+               layout: Mapping | None = None) -> dict:
     """One rank's record from :mod:`.collect`'s raw sections (see :func:`build`)."""
     inspect = raw.get("inspect") or {}
     config = inspect.get("Config") or {}
@@ -422,7 +507,7 @@ def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapp
     scan = vllm_log.scan(raw.get("log") or "")
     record = rank_settings(scan, env=env, command_args=args_from_command(command), receipts=raw.get("receipts"),
                            metrics=metrics, image_id=inspect.get("Image") or raw.get("image_id"),
-                           deployment=deployment)
+                           deployment=deployment, layout=layout)
     if env_source != "vLLM process environment":
         record["sources"] = {k: (env_source if v == "vLLM process environment" else v)
                              for k, v in record["sources"].items()}
@@ -446,16 +531,17 @@ def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapp
 
 
 def build(ranks: list[Mapping], *, deployment: Mapping | None = None, metrics_text: str | None = None,
-          models: Mapping | None = None, context: Mapping | None = None) -> dict:
+          models: Mapping | None = None, context: Mapping | None = None, layout: Mapping | None = None) -> dict:
     """The ``resolved.json`` document of one deployment.
 
     ``ranks``: per rank ``{rank, position, host, container, inspect, process_env, container_env,
     process_cmdline, log, receipts, clocks}`` (missing parts are allowed); ``deployment``: the
     ``sparkring status --json`` slot's ``deployment`` object; ``metrics_text``: rank 0's ``/metrics``;
-    ``models``: its ``/v1/models``; ``context``: how and where it was collected.
+    ``models``: its ``/v1/models``; ``context``: how and where it was collected; ``layout``: the group's
+    layout where neither the status nor a SIRCL receipt states it (:func:`layout_of`).
     """
     metrics = parse_metrics_info(metrics_text or "")
-    built = [build_rank(r, metrics=metrics if r.get("rank", i) == 0 else None, deployment=deployment)
+    built = [build_rank(r, metrics=metrics if r.get("rank", i) == 0 else None, deployment=deployment, layout=layout)
              for i, r in enumerate(ranks)]
     head = built[0] if built else {"settings": {}, "derived": {}, "observed": {}, "sources": {}}
     mismatches = []
@@ -475,7 +561,9 @@ def build(ranks: list[Mapping], *, deployment: Mapping | None = None, metrics_te
         "deployment": {k: (deployment or {}).get(k) for k in (
             "profile", "checkpoint", "model_repository", "model_revision", "image_id", "image_release", "api_url",
             "model", "deployment_id", "source_revision")} | {"serving": serving,
-                                                             "transport": (deployment or {}).get("transport")},
+                                                             "transport": (deployment or {}).get("transport"),
+                                                             "group": (deployment or {}).get("group"),
+                                                             "fabric": (deployment or {}).get("fabric")},
         "served_models": [m.get("id") for m in (models or {}).get("data", [])] if models else None,
         "settings": head["settings"], "derived": head["derived"], "observed": head["observed"],
         "sources": head["sources"], "digest": digest(head["settings"]),
@@ -484,9 +572,10 @@ def build(ranks: list[Mapping], *, deployment: Mapping | None = None, metrics_te
     }
 
 
-def from_runner_start(directory) -> dict:
+def from_runner_start(directory, layout: Mapping | None = None) -> dict:
     """``resolved.json`` of a serving A/B runner start from the files it saved (``log-r<N>.txt``,
-    ``inspect-r<N>.json``); the environment is the container's, as no process environment was read."""
+    ``inspect-r<N>.json``); the environment is the container's, as no process environment was read.
+    ``layout`` (:func:`layout_of` of the run's positions) applies where the logs state none."""
     from pathlib import Path
     directory = Path(directory)
     ranks = []
@@ -501,7 +590,7 @@ def from_runner_start(directory) -> dict:
             except ValueError:
                 inspect = None
         ranks.append({"rank": r, "inspect": inspect, "log": log.read_text(encoding="utf-8", errors="replace")})
-    return build(ranks, context={"source": f"serving A/B runner start {directory.name}"})
+    return build(ranks, context={"source": f"serving A/B runner start {directory.name}"}, layout=layout)
 
 
 def command_tokens(text: str) -> list[str]:
@@ -513,4 +602,4 @@ def command_tokens(text: str) -> list[str]:
 
 
 __all__ = ["SCHEMA", "build", "build_rank", "rank_settings", "digest", "flatten", "serving_env", "args_from_command",
-           "parse_metrics_info", "from_runner_start", "command_tokens", "pyrepr"]
+           "parse_metrics_info", "from_runner_start", "command_tokens", "layout_of", "parse_status_text", "pyrepr"]

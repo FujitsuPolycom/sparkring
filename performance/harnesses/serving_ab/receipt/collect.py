@@ -1,7 +1,8 @@
 """Read what a deployment on the ring serves, read-only, through Node A.
 
 Node A is reached by SSH (``--node-a``); every other read runs on Node A: ``sudo -n sparkring status --json``
-names the deployment on the requested positions, its containers and their hosts, and each rank's Spark is
+names the deployment on the requested positions, its containers and their hosts, its group's shape (``pair``,
+``path-4``, ``cycle-4``) and the ring's fabric layout and document digest, and each rank's Spark is
 read with ``sudo -n ssh HOST sh -s``, the read script on standard input. Per rank the script prints
 ``docker inspect``, the serving subset of the container's environment and of the vLLM process's
 environment (``/proc/<pid>/environ`` of the ``vllm`` serve process, which holds variables the toolchain
@@ -183,6 +184,9 @@ def collect(node_a: NodeA, positions: Sequence[int], *, sparks: dict[int, str] |
     try:
         slot = slot_for(status, positions)
         deployment = dict(slot.get("deployment") or {})
+        # The slot's group and the ring's fabric and SIRCL tuning state: the layout the deployment runs in.
+        deployment.update(group=slot.get("group"), fabric=status.get("fabric"),
+                          sircl_tuning=status.get("sircl_tuning"))
         placement = list(slot.get("placement") or positions)
         for item in deployment.get("containers") or []:
             listed[placement[item["rank"]]] = (item["host"], item["name"])

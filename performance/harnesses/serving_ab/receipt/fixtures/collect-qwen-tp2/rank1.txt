@@ -838,6 +838,6 @@ INFO 10-11 23:33:03 [compilation.py:336] Enabled custom fusions: norm_quant, act
   "world": 2
 }
 @@SERVING-AB-RECEIPT@@ clocks
-2398 MHz, 3003 MHz, 0x0000000000000000, 2418 MHz, 46, 12.99 W
+2398 MHz, 3003 MHz, 0x0000000000000000, 2418 MHz, 46, 13.02 W
 
 @@SERVING-AB-RECEIPT@@ end

@@ -6,8 +6,9 @@ LAN and control-network addresses replaced by documentation addresses (192.0.2.0
 host names by ``spark-p<position>``:
 
 - ``collect-qwen-tp2/``: one ``receipt collect`` of qwen38-flash-next-tp2 (csf checkpoint) on positions 6
-  and 7 serving FP8 target KV in 32-token blocks with the draft's ``kv_cache_dtype`` ``auto``; the raw reads
-  of both ranks, the status entry, ``/metrics`` (cache and request gauges only) and ``/v1/models``.
+  and 7, a pair inside the cycle of eight, serving FP8 target KV in 32-token blocks with the draft's
+  ``kv_cache_dtype`` ``auto``; the raw reads of both ranks, the status entry with the slot's group and the
+  ring's fabric, ``/metrics`` (cache and request gauges only) and ``/v1/models``.
 - ``logs/``: the selected startup lines (``docker logs --timestamps``) of single server starts:
   ``qwen-tp2-fp8-kv-draft-auto.log`` (the same configuration as above) and ``qwen-tp2-bf16-kv-draft-auto.log``
   (BF16 target KV in 16-token blocks, draft ``auto``); ``glm-tp2-compile-arm.log`` (glm53-flash-nvfp4-spark-tp2
@@ -217,16 +218,56 @@ def test_a_collection_rebuilds_offline_from_its_raw_reads():
     assert document["ranks"][1]["settings"]["env.SIRCL_NCCL"] == "never"
     assert document["digest"] == resolved.digest(settings)
     assert document["served_models"] == ["Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2"]
+    layout = {k: v for k, v in settings.items() if k.startswith("layout.")}
+    assert layout == {"layout.group": "pair", "layout.positions": [6, 7], "layout.fabric": "cycle-8",
+                      "layout.fabric_digest": "sha256:2bf46dcd8537b54bf025b705cb2a7a5d3d54ff0ecf87b17192fb7cca499bad46",
+                      "layout.sircl_tuning": "default"}
+    assert document["sources"]["layout.group"] == "sparkring status --json"
+
+
+RECEIPT_LINE = ("(Worker pid=1) INFO 10-11 22:11:43 [adapter.py:487] SIRCL receipt group=tp:0 global_rank={r} rank={r} "
+                "world=4 layout={layout} fabric={fabric} positions=0,1,2,3 nccl=none pynccl=skipped session=ring lanes=2 "
+                "hcas=dev{r} capacity=131072 p2p=peers={peers},slots=8x524288,windows=65536 state=ready")
+
+
+def four_ranks(layout="ring:8", fabric="path:0-1-2-3", peers=lambda r: 1 if r in (0, 3) else 2) -> dict:
+    return resolved.build([{"rank": r, "log": RECEIPT_LINE.format(r=r, layout=layout, fabric=fabric, peers=peers(r))}
+                           for r in range(4)])
 
 
 def test_ranks_agree_on_session_settings_whatever_their_place_in_the_group():
-    line = ("(Worker pid=1) INFO 10-11 22:11:43 [adapter.py:487] SIRCL receipt group=tp:0 global_rank={r} rank={r} "
-            "world=4 layout=ring:8 positions=0,1,2,3 nccl=none pynccl=skipped session=ring lanes=2 hcas=dev{r} "
-            "capacity=131072 p2p=peers={peers},slots=8x524288,windows=65536 state=ready")
-    document = resolved.build([{"rank": r, "log": line.format(r=r, peers=1 if r in (0, 3) else 2)} for r in range(4)])
+    document = four_ranks()
     assert document["settings"]["sircl.tp.p2p"] == "slots=8x524288,windows=65536"
     assert document["settings"]["sircl.tp.capacity"] == 131072 and "sircl.tp.hcas" not in document["settings"]
     assert document["rank_mismatches"] == []
+
+
+def test_a_path_of_four_in_a_cycle_of_eight_is_not_a_ring_of_four():
+    slice_ = four_ranks()
+    ring = four_ranks(layout="ring:4", fabric="cycle:0-1-2-3", peers=lambda r: 2)
+    assert (slice_["settings"]["layout.group"], slice_["settings"]["layout.fabric"]) == ("path-4", "cycle-8")
+    assert (ring["settings"]["layout.group"], ring["settings"]["layout.fabric"]) == ("cycle-4", "cycle-4")
+    assert slice_["sources"]["layout.group"] == "log: SIRCL receipt line"
+    result = compare.check(slice_, ring, {"changes": {}})
+    assert {p["key"] for p in result["problems"] if p["kind"] == "layout"} == {"layout.group", "layout.fabric"}
+    assert "the arms ran in different layouts" in result["problems"][0]["text"]
+    declared = compare.check(slice_, ring, {"changes": {"layout.*": None}})
+    assert declared["passed"]
+
+
+def test_layouts_come_from_the_status_text_or_the_runners_positions():
+    status = "\n".join([
+        "Fabric: cycle-8, relay table restored at every boot; last verified healthy at 2026-10-11T12:03:07Z",
+        "Sparks 0-3:", "Group: path-4 at positions 0, 1, 2, 3; API on Spark 0",
+        "Sparks 4 and 5:", "Group: pair at positions 4, 5; API on Spark 4"])
+    assert resolved.parse_status_text(status) == {"fabric": "cycle-8", "groups": [
+        {"shape": "path-4", "positions": [0, 1, 2, 3]}, {"shape": "pair", "positions": [4, 5]}]}
+    assert resolved.layout_of([0, 1, 2, 3], 8) == {"group": "path-4", "positions": [0, 1, 2, 3], "fabric": "cycle-8"}
+    assert resolved.layout_of([0, 1, 2, 3], 4)["group"] == "cycle-4"
+    assert resolved.layout_of([6, 7], 8)["group"] == "pair"
+    # An arm whose logs hold no SIRCL receipt (an NCCL arm) takes the caller's layout.
+    plain = resolved.build([{"rank": 0, "log": ""}], layout=resolved.layout_of([0, 1, 2, 3], 8))
+    assert plain["settings"]["layout.group"] == "path-4" and plain["sources"]["layout.group"] == "caller"
 
 
 def test_the_rank_read_script_reads_only_and_never_the_full_environment():
@@ -423,6 +464,21 @@ def test_the_report_shows_each_starts_receipt_and_refuses_ratios_across_methods(
     text = report.tables(report.summary(other, ["S1", "N1"]))
     assert "| 0k | 1 | 25.00 (25.00-25.00) | 20.00 (20.00-20.00) | REFUSED |" in text
     assert "REFUSED: arm S against N: measured differently (S1 owner-temp1-matrix, N1 serving-ab-temp0" in text
+
+
+def test_the_report_refuses_ratios_across_layouts_unless_allowed(tmp_path):
+    runner = bench("serving-ab-temp0.json")
+    for label, layout, fabric in (("S1", "ring:8", "path:0-1-2-3"), ("N1", "ring:4", "cycle:0-1-2-3")):
+        write_start(tmp_path, label, 25.0 if label == "S1" else 20.0, runner,
+                    settings_log=RECEIPT_LINE.format(r=0, layout=layout, fabric=fabric, peers=2))
+    doc = report.summary(tmp_path, ["S1", "N1"])
+    text = report.tables(doc)
+    assert doc["comparisons"]["S"]["refused"]
+    assert "REFUSED: arm S against N: ran in different layouts (S1 path-4 in cycle-8, N1 cycle-4 in cycle-4)" in text
+    assert "| S1 | S | serving-ab-temp0 | path-4 in cycle-8 |" in text
+    mixed = report.tables(report.summary(tmp_path, ["S1", "N1"], allow_layout_mix=True))
+    assert "| 0k | 1 | 25.00 (25.00-25.00) | 20.00 (20.00-20.00) | 1.250 |" in mixed
+    assert "| N1 | N | serving-ab-temp0 | cycle-4 in cycle-4 |" in mixed
 
 
 def test_the_report_refuses_a_ratio_whose_arm_failed_its_check(tmp_path):
