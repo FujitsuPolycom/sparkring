@@ -542,6 +542,11 @@ static atomic_int abort_waits;
 /* A rank whose kernel starts op `op` `ms` milliseconds late (rank -1: none). */
 static struct { int rank; int op; int ms; } sim_lag = {-1, -1, 0};
 
+/* The missed-doorbell scenario of the last run_ops: the sequence rank 0's proxy
+ * had posted when it was stopped, and the time from its restart until every
+ * peer's flag of the op rung after the missed one arrived at rank 0. */
+static struct { uint32_t posted_at_stop; uint64_t recovery_ns; } sim_missed;
+
 /* Like the GPU kernels: the wait limit is command ring word 7 in microseconds,
  * read when the wait starts (0: WAIT_LIMIT_NS). */
 static int wait_flag(kernel_t *t, volatile uint32_t *flag, uint32_t seq, const char *what) {
@@ -773,6 +778,25 @@ static void *kernel_main(void *arg) {
         if (t->rank == sim_lag.rank && i == sim_lag.op) usleep((useconds_t)sim_lag.ms * 1000u);
         int stopped = 0;
         if (t->rank == 0 && i == t->stop_proxy_at) {
+            /* The proxy must miss exactly this op, so it is stopped only after
+             * it posted the previous one. The kernel can finish that op as soon
+             * as the peers' writes land, before its proxy takes the doorbell; a
+             * stop in that window leaves the previous op unposted, the peers
+             * never ring this op, and this kernel, which restarts the proxy only
+             * after this op, waits until its flag-wait limit fails the case. */
+            uint64_t start = now_ns();
+            while ((uint32_t)roce_stat(k->ctx, 2) != seq - 1u && !roce_failed(k->ctx) &&
+                   now_ns() - start <= WAIT_LIMIT_NS) {
+                sched_yield();
+            }
+            sim_missed.posted_at_stop = (uint32_t)roce_stat(k->ctx, 2);
+            if (sim_missed.posted_at_stop != seq - 1u) {
+                snprintf(t->why, sizeof(t->why), "rank 0's proxy had posted sequence %u, not %u, before "
+                         "the stop (%.3f s)", sim_missed.posted_at_stop, seq - 1u,
+                         (double)(now_ns() - start) * 1e-9);
+                t->failed = 1;
+                break;
+            }
             roce_stop(k->ctx);
             stopped = 1;
         }
@@ -782,12 +806,15 @@ static void *kernel_main(void *arg) {
         else if (kind == OP_DESCRIBED) rc = run_described(t, seq, nbytes);
         else rc = run_twoshot(t, seq, nbytes, kind == OP_SCATTER);
         if (stopped && rc == 0 && i + 1 < t->n_ops) {
-            /* The proxy missed op i; ring op i+1 too, then restart it. */
+            /* The proxy missed op i; ring op i+1 too, then restart it. The
+             * restart must post both from their op words: the peers finish op
+             * i, ring op i+1 and deliver it only after rank 0's posting of op i. */
             uint32_t next = seq + 1;
             uint32_t draw2 = (uint32_t)mix(((uint64_t)next << 8) ^ (uint64_t)t->rng);
             uint32_t nb2 = 16u * (1u + draw2 % (uint32_t)(s->slot_bytes / 16u));
             fill(send_of(k, s, next), 0, nb2, pattern_key(1, t->rank, next, 0));
             ring(k, next, nb2, nb2);
+            uint64_t restarted = now_ns();
             if (roce_start(k->ctx) != 0) {
                 snprintf(t->why, sizeof(t->why), "restart: %s", roce_error(k->ctx));
                 t->failed = 1;
@@ -800,6 +827,7 @@ static void *kernel_main(void *arg) {
                     fail_data(t, "one-shot payload after a missed doorbell", p, next);
                 }
             }
+            sim_missed.recovery_ns = now_ns() - restarted;
             i++;
             t->ops_done++;
         }
@@ -927,6 +955,12 @@ static void case_ops(const char *label, int world, int kind, int lanes, int n_op
                         snprintf(why, sizeof(why), "no progress-thread pause happened");
                     } else if (pauses) {
                         snprintf(why, sizeof(why), "%d pauses", atomic_load(&pauses_taken));
+                    } else if (stop_proxy_at >= 0) {
+                        uint32_t missed = first_seq + (uint32_t)stop_proxy_at;
+                        snprintf(why, sizeof(why), "rank 0's proxy stopped after posting sequence %u; the "
+                                 "restart posted %u and %u from their op words, and every peer's flag of "
+                                 "%u arrived %.3f ms after the restart", sim_missed.posted_at_stop, missed,
+                                 missed + 1u, missed + 1u, (double)sim_missed.recovery_ns * 1e-6);
                     }
                 }
             }
