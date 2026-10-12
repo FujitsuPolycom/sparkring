@@ -51,7 +51,7 @@ already published.
 | `qwen38-flash-next-tp4` and `qwen38-flash-next-tp8` select `qwen38-flash-next-qad-tp4` and `qwen38-flash-next-qad-tp8` | implemented | `runtime/host/models.py` |
 | `qwen38-flash-next-tp2` installs local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD at `dc5b8ab2fa14` without `--checkpoint` on an image whose vLLM reads the nvfp4_csf format (this one), and step 5500 on every other image; `--checkpoint qad-step5500-ple1000` installs step 5500 on any image | research-only | [install reference](../../../docs/operations/install-reference.md), `profiles/qwen38-flash-next-tp2/config.json`, `runtime/common/image_lock.py` |
 | Every installer profile states `--async-scheduling`; the nine that did not, `deepseek-v41-flash-tp4` and `-tp8`, `mimo-v26-flash-mopd-tp2` and `-tp4`, `qwen38-flash-next-tp2`, `qwen38-flash-next-qad-tp4` and `-qad-tp8`, and `swift15-qwen38-flash-next-tp2` and `-tp4`, gain it. vLLM already schedules every one of them asynchronously, so the flag changes no resolved setting and no speed is claimed for it | implemented | [serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md#async-scheduling) |
-| `glm53-flash-tp2` and `glm53-flash-tp4` set `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`: on the `csf` checkpoint's W4A16 experts, MoE calls of 1,536 tokens or more run 4-bit activations | implemented; measurements research-only | [serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md#b12x-w4a16-a4-prefill) |
+| `glm53-flash-tp2` and `glm53-flash-tp4` set `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`: on the `csf` checkpoint's W4A16 experts, every prefill row of a MoE call outside a CUDA graph runs 4-bit activations, whatever its length. In this image's vLLM the variable is only an on/off switch, so the value sets no 1,536-token cutoff and short prefills also run 4-bit activations; decode rows, graph-captured calls and the MTP draft layer stay W4A16. The output quality of short prefills is not separately qualified | implemented; measurements research-only | [serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md#b12x-w4a16-a4-prefill) |
 | `qwen38-flash-next-tp2`, `qwen38-flash-next-tp4` and `qwen38-flash-next-qad-tp8` keep the MTP draft's KV cache in the model's dtype (`"kv_cache_dtype": "auto"` in `--speculative-config`), BF16 beside the target's FP8 KV cache in 32-token blocks, and quantize the target LM head to MXFP8 at load (`VLLM_MXFP8_LM_HEAD=1`). The four-Spark profile's default checkpoint stays step 5500 | implemented; measurements research-only | [serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md#qwen38-mtp-draft-kv-auto) |
 | `deepseek-v41-flash-tp4` shards its two Engram projections over the four ranks (`"projection_tp": true` in `--engram-config`); `deepseek-v41-flash-tp8` keeps them replicated | implemented; measurements research-only | [serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md#ds41-engram-projection-tp) |
 | `glm53-nvfp4-csf-tp8`: GLM-5.3-NVFP4-CSF at `a4d406932f2d` on eight Sparks with every setting of `glm53-nvfp4-tp8`, served from a serving directory derived without a donor. No lock of this package admits it: it installs with `--image-lock FILE`, and the owner has parked it | research-only | [profile guide](../../../profiles/glm53-nvfp4-csf-tp8/README.md) |
@@ -191,8 +191,8 @@ without research options (private record):
   engine resolved FP8 target KV in 32-token blocks, the draft's KV cache at
   `auto`, asynchronous scheduling and compilation mode none. It completed and
   served.
-- `glm53-flash-tp2 --on 4,5` chose `csf` with the prefill cutoff set. It
-  completed and served.
+- `glm53-flash-tp2 --on 4,5` chose `csf` with
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` set. It completed and served.
 
 ## Qualification
 
@@ -244,8 +244,13 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
   ([known limitations](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md#known-limitations)).
 - The serving defaults rest on research-only measurements with the limits
   that [Serving defaults](#serving-defaults) lists. The GLM-5.3-Flash
-  SparkCache variants do not set the prefill cutoff of their cache-off
-  profiles.
+  SparkCache variants do not set their cache-off profiles'
+  `B12X_W4A16_A4_PREFILL_MIN_TOKENS`, so their prefill runs W4A16.
+- `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536` puts every uncaptured prefill row of
+  the GLM-5.3-Flash `csf` entries on 4-bit activations, including short
+  prompts and short prefill chunks: this image's vLLM uses the value only as
+  an on/off switch. The output quality of short prefills with it is not
+  separately qualified.
 - The repository README's speed table shows measurements made on earlier
   images before these serving defaults; its two-Spark Qwen row is step 5500.
 - No image this package carries runs the SparkCache variants: only the lock

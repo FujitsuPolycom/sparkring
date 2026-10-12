@@ -72,7 +72,7 @@
     {
       "id": "glm53-flash-a4-prefill",
       "status": "implemented",
-      "scope": "glm53-flash-nvfp4-spark-tp2 and -tp4 set B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536, which acts on the csf checkpoint's W4A16 experts; measurements research-only",
+      "scope": "glm53-flash-nvfp4-spark-tp2 and -tp4 set B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536, which acts on the csf checkpoint's W4A16 experts; in this image's vLLM any positive value puts every uncaptured prefill row on 4-bit activations whatever the call size, so 1536 sets no cutoff, while decode rows, graph-captured calls and the MTP draft layer stay W4A16; short-prefill output quality not separately qualified; measurements research-only",
       "record": "runtime/releases/2026.10.3/README.md"
     },
     {

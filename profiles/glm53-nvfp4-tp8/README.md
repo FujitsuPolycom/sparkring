@@ -58,7 +58,7 @@ skip the plugins this profile names and serve without them.
 | Context / sequences / batch | 1048576 / 16 / 8192 |
 | KV cache | 43 GiB per rank, `fp8_ds_mla`; `--gpu-memory-utilization 0.91`, because vLLM's startup check of free memory refuses the default 0.92 by about 0.4 GiB on GB10 |
 | Weights | `--quantization modelopt_fp4` (the checkpoint's NVFP4 routed experts); the BF16 dense linears quantized to MXFP8 at load (`--quantization-config`, except `*kv_b_proj` and `*.indexer.wk_weights_proj`) on `--linear-backend b12x`; MXFP8 LM head |
-| Experts | B12X W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=1`), two CTAs per SM for small batches, 4-bit activations for prefill calls of 1,536 tokens or more, host barrier reset off |
+| Experts | B12X W4A16 (`VLLM_B12X_MOE_FP4_FORCE_A16=1`), two CTAs per SM for small batches, 4-bit activations for prefill rows outside CUDA graphs (`B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`; release 2026.10.2's image reads any positive value as on, with no size cutoff, so short prefills also run them), host barrier reset off |
 | Attention | B12X, with the compressed-KV gather for up to 589,824 tokens |
 | Speculative decoding | MTP, two tokens, B12X attention, draft TP8, probabilistic draft sampling; the draft's linears MXFP8 and its experts W4A16 (except `*kv_b_proj` and `*.indexer.*`). `--hf-overrides` keeps the BF16 MTP layer 78 out of the target's NVFP4 quantization |
 | vLLM plugins | `glm_dsa_indexer_split` (the DSA indexer's prefill rows split over the DCP groups, full launches) and `glm53full_speedups` (the latent projection split over TP8, row-parallel MTP `eh_proj`); `glm_dcp_decode_comm` loaded with its five items off (below) |

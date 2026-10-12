@@ -28,8 +28,12 @@ has the evidence and the open gates.
   - Qwen keeps its MTP draft's KV cache in BF16 beside the FP8 target cache
     and quantizes its LM head to MXFP8. On two Sparks with the CSF checkpoint
     it decoded 71.4 tok/s at 32K and one stream, temperature 1.
-  - GLM-5.3-Flash runs prefill MoE calls of 1,536 tokens or more with 4-bit
-    activations: 11 % faster 32K prefill on four Sparks.
+  - GLM-5.3-Flash with the CSF checkpoint runs its prefill with 4-bit
+    activations: 11 % faster 32K prefill on four Sparks. The setting,
+    `B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`, is an on/off switch in this
+    image, not a 1,536-token cutoff: short prompts also prefill with 4-bit
+    activations, and their output quality is not separately qualified.
+    Decode stays W4A16.
   - DeepSeek-V4.1-Flash on four Sparks shards its Engram projections: 5.5 %
     more decode steps per second at one stream and 12 % at eight. The owner
     approved it on two starts and correct outputs for eight prompts; no
