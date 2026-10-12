@@ -212,12 +212,12 @@ without research options (private record):
 | `cpu-checks`: the CPU jobs of `.github/workflows/ci.yml` that run on Windows 11 with Python 3.12.10: ruff 0.15.17, the generators' `--check`, the layout, link and release-safety checks, the image composition check, the Compose and Install Builder jobs, and pytest over the tests job's paths, `runtime/images` and `spark_transport/sircl` | passed apart from tests that also fail on release 2026.10.2's head `dc0300ac` on the same host. Pytest at commit `187bf795`: 11,161 passed, 77 failed, 37 errors, 682 skipped; 111 of the 114 failing tests also fail on `dc0300ac`, and the other 3 (a timing-bound spread test, a container-cleanup test and a sweep-harness timeout) pass and fail from run to run on both | [Validation](#validation) |
 | `qwen-csf-tp2`: an installation of `qwen38-flash-next-tp2 --checkpoint csf` that loads, serves and answers correctly | passed, one start (research-only) | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md) |
 | `dashboard-hardware`: the dashboard on the ring | reported, not recorded | [Evidence](#evidence) |
-| `arc-image`: an install with `--on` on a ring of eight leaves the Sparks outside the arc without image writes | pending | |
-| `arc-recovery`: automatic recovery restarts a stopped four-rank group on part of a ring of eight | pending | |
+| `arc-image`: an install with `--on` on a ring of eight leaves the Sparks outside the arc without image writes | passed: `--on 6,7` prepared its two Sparks only while GLM on 4-5 and DeepSeek on 0-3 kept serving, with no restart and no new image | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
+| `arc-recovery`: automatic recovery restarts a stopped four-rank group on part of a ring of eight | passed: one stopped rank of `deepseek-v41-flash-tp4` on positions 0-3; serving again 6 min 47 s after the stop, the pairs beside it untouched | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `glm53-nvfp4-csf-tp8-install`: an installation that starts and serves, with column-split loading in effect | passed, one start (research-only); the profile is parked | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md) |
 | `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots; with 512 MiB slots, steps 1-7 and 9 passed in one start that only a private record reports, step 8 and the two-start A/B not run | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
-| `serving-defaults-install`: installations of the changed profiles without research options | partial: `qwen38-flash-next-tp2` and `glm53-flash-tp2` completed and served; the other changed profiles not run | [Evidence](#evidence) |
+| `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. No start on a ring of four; the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |
 | `publication`: tag, package built with the relay marker, GitHub pre-release | pending | |
 
@@ -251,6 +251,12 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
 
 - Release 2026.10.2's limitations hold
   ([known limitations](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md#known-limitations)).
+- The installed-profile evidence ran on a ring of eight: `deepseek-v41-flash-tp4`
+  as a path of four inside it and the two-Spark profiles as pairs. No start of
+  these settings has run on a ring of four.
+- Engram projection sharding stays a four-Spark setting: one start of
+  `deepseek-v41-flash-tp8` with it showed no consistent gain on a ring of eight
+  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md#not-adopted-engram-projection-sharding-at-tp8)).
 - The serving defaults rest on research-only measurements with the limits
   that [Serving defaults](#serving-defaults) lists. The GLM-5.3-Flash
   SparkCache variants do not set their cache-off profiles'

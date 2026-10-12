@@ -88,11 +88,17 @@ has the evidence and the open gates.
   step and the two-start comparison did not run). The
   dashboard's page, terminal view, loopback address and reload worked.
 - The serving defaults: one start per setting on the ring of eight with GPU
-  clocks locked, two for DeepSeek's Engram sharding. `qwen38-flash-next-tp2`
-  and `glm53-flash-tp2` also installed and served with these settings and no
-  research options. No start with them has run on DeepSeek on eight Sparks,
-  Qwen on eight Sparks, Swift-1.5 or MiMo.
-- The `--on` image placement and the recovery change are tested offline only.
+  clocks locked, two for DeepSeek's Engram sharding. `deepseek-v41-flash-tp4`
+  (four Sparks of the ring), `glm53-flash-tp2` and `qwen38-flash-next-tp2`
+  (`--checkpoint csf`, two Sparks each) installed from a package of this
+  release with no research options; their run receipts show the measured
+  settings, and each served one measurement at temperature 1. DeepSeek on
+  eight Sparks started and served once; Engram sharding showed no consistent
+  gain there, so that profile keeps it off. No start with these settings has
+  run on a ring of four, Qwen on eight Sparks, Swift-1.5 or MiMo.
+- On the ring of eight: an `--on` install on two Sparks left the deployments
+  beside it serving, and automatic recovery restarted DeepSeek's four-Spark
+  group 6 min 47 s after one of its Sparks stopped.
 - CPU checks pass, apart from tests that also fail before these changes.
 
 ## Known issues

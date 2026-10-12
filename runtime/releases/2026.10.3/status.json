@@ -30,14 +30,14 @@
     {
       "id": "arc-image-placement",
       "status": "implemented",
-      "scope": "an install with --on places the serving image only on the arc's Sparks; tested offline only",
-      "record": "docs/operations/install-reference.md"
+      "scope": "an install with --on places the serving image only on the arc's Sparks; on a ring of eight an --on install on two Sparks left the deployments beside it serving with no new image (one run, research-only)",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md"
     },
     {
       "id": "arc-recovery",
       "status": "implemented",
-      "scope": "automatic recovery judges a four-rank group on a fabric other than a four-Spark ring without mesh reports; tested offline only",
-      "record": "runtime/host/recovery.py"
+      "scope": "automatic recovery judges a four-rank group on a fabric other than a four-Spark ring without mesh reports; on a ring of eight it restarted a four-Spark group 6 min 47 s after one Spark's container stopped (one run, research-only)",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md"
     },
     {
       "id": "qwen-csf-checkpoint",
