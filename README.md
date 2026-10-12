@@ -1,19 +1,13 @@
 # SparkRing
 
-SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
-non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
-Local Inference Lab, Inc., a non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-SparkRing's `qwen38-flash-next-tp2` profile runs
-Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc.,
-a non-profit organization, available at
-https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, GLM-5.3-NVFP4-CSF and
-Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD are licensed under the Local Inference
-Lab License, Version 1.0.
+SparkRing's profiles run three models created by Local Inference Lab, Inc. and
+licensed under the Local Inference Lab License, Version 1.0:
+[GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
+(`glm53-flash-tp2`, `glm53-flash-tp4`),
+[GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
+(`glm53-nvfp4-csf-tp8`) and
+[Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
+(`qwen38-flash-next-tp2`).
 
 SparkRing serves large language models on two to eight NVIDIA DGX Sparks
 cabled directly to each other over ConnectX-7, with no switch. vLLM serves the

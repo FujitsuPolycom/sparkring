@@ -1,19 +1,13 @@
 # SparkRing 2026.10.3
 
-SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
-non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
-Local Inference Lab, Inc., a non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-SparkRing's `qwen38-flash-next-tp2` profile runs
-Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc.,
-a non-profit organization, available at
-https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, GLM-5.3-NVFP4-CSF and
-Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD are licensed under the Local Inference
-Lab License, Version 1.0.
+SparkRing's profiles run three models created by Local Inference Lab, Inc. and
+licensed under the Local Inference Lab License, Version 1.0:
+[GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
+(`glm53-flash-tp2`, `glm53-flash-tp4`),
+[GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
+(`glm53-nvfp4-csf-tp8`) and
+[Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
+(`qwen38-flash-next-tp2`).
 
 Pre-release for testing. It uses 2026.10.2's image unchanged
 (`ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911`),

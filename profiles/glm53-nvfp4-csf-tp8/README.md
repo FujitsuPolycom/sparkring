@@ -1,10 +1,9 @@
 # GLM-5.3 NVFP4-CSF on eight Sparks
 
-This profile runs GLM-5.3-NVFP4-CSF, created by Local Inference Lab, Inc., a
-non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
-GLM-5.3-NVFP4-CSF is licensed under the Local Inference Lab License, Version
-1.0.
+This profile runs
+[GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF),
+created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
+License, Version 1.0.
 
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF/tree/a4d406932f2db96db8e852867c7939f448e0cd6f)
 (revision `a4d406932f2d`) is Local Inference Lab's lossless container of

@@ -1,10 +1,8 @@
 # Kraken-line image with SIRCL and the CSF-capable sources
 
 This image's sources read
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
-non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+[GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD),
+created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
 License, Version 1.0.
 
 Release `dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` is a

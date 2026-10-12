@@ -1,10 +1,8 @@
 # dev-20261010-sparkcache-gab86b70-plugins-status036
 
 The SparkCache variants this image's lock lists run
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
-non-profit organization, available at
-https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
-GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+[GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD),
+created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
 License, Version 1.0.
 
 Status: **research-only**. This release directory holds the build recipe of a

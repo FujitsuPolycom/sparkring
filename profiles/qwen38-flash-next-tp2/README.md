@@ -1,10 +1,9 @@
 # Qwen3.8-Flash-Next NVFP4 QAD on two Sparks
 
-This profile runs Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD,
-created by Local Inference Lab, Inc., a non-profit organization, available at
-https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
-Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference
-Lab License, Version 1.0.
+This profile runs
+[Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD),
+created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
+License, Version 1.0.
 
 Qwen3.8-Flash-Next on two DGX Sparks, with MTP speculative decoding and 262K
 context. Node A serves the API on port 8000, with no API key. Status:
