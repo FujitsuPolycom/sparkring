@@ -61,6 +61,7 @@ settings are identical, including DeepSeek's Engram projection sharding.
 | GLM-5.3-Flash CSF TP2, pair of ring B | 36.2-38.3 | 107.3-117.7 (8 streams) | 2,421 / 2,384 | 49.0 |
 | GLM-5.3-Flash CSF TP2, pair of the cycle of eight | 37.2-43.0 | 109.1-119.6 | 2,489 / 2,411 | 50.9 |
 | Qwen3.8-Flash-Next CSF TP2, pair of ring B | 58.7-66.1 | 211.7-228.6 (8 streams) | 3,284 / 3,276 | 87.2 |
+| Qwen3.8-Flash-Next CSF TP2, pair of ring B, repeated with the ring quiet (21:00 UTC, same start) | 67.4-69.6 | 214.9-227.4 (8 streams) | 3,487 / 3,260 | 90.7 |
 | Qwen3.8-Flash-Next CSF TP2, pair of the cycle of eight | 64.3-82.2 | 225.0-229.0 | 3,809 / 3,427 | 94.8 |
 
 The ring-of-eight rows are from the ring-of-eight record, measured with the three deployments' clients
@@ -73,7 +74,8 @@ settings as on the ring of eight. SIRCL selects the ring-of-four tuning without 
 measures the same on a whole ring of four as on a path of four, within one start's variation: its decode
 all-reduces are small and latency-bound, so the relayed closing link of a path costs little.
 
-The two pairs measured lower than on the ring of eight: GLM by up to about 10 % at one stream, and Qwen by
-5-10 % with an 8K prefill 14 % lower. Their settings are identical, and a pair is the same single cable in
-either ring. Qwen's run overlapped the image copy described above and used a different second Spark. One
-start each cannot separate these causes from start-to-start variation, so no layout effect is claimed.
+The two pairs measured somewhat lower than on the ring of eight in their first runs: GLM by up to about
+10 % at one stream, and Qwen by 5-10 %, with its 8K prefill 14 % lower. Their settings are identical, and a
+pair is the same single cable in either ring. Qwen's first run overlapped the image copy described above.
+Repeated on the same start with ring B otherwise idle, Qwen's single-stream decode (67.4-69.6 tok/s) lies
+inside the ring-of-eight range, with prefill and coding peak 2-5 % below. No layout effect is claimed.
