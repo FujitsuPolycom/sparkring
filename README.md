@@ -80,13 +80,14 @@ generations.
 |---|---|---|---|---|---|---|---|
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 8 | `deepseek-v41-flash-tp8` | 73.7 / 174.2 / 258.9 | 4,851 | 133.8 | ring of eight |
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.6 / 136.7 / 194.3 | 4,388 | 102.4 | ring of four |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.4 / 139.1 / 198.0 | 4,426 | 101.7 | path of four: four Sparks of a ring of eight |
 | GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 45.8 / 93.7 / 129.1 | 1,387 | 51.4 | ring of eight |
 | GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 37.8 / 83.1 / 112.9 | 2,420 | 49.0 | pair |
 | Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
 
-Records: [ring of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md), [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md). Speed
-varies from start to start: the same deployment measured twice differed by up
-to about 10 %.
+Records: [ring of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md), [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md). The path-of-four row ran with two other deployments measured on the rest of the
+ring at the same time. Speed varies from start to start: the same deployment
+measured twice differed by up to about 10 %.
 
 The four-Spark GLM-5.3-Flash and Qwen3.8-Flash-Next profiles have no
 measurement with this release's settings. Their latest results, at 32K
