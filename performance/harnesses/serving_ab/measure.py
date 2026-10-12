@@ -13,8 +13,9 @@ The decode step's measurement method is a named method of :mod:`.receipt.method`
 - ``serving-ab-temp0`` (the default): temperature 0, at most 1,024 output tokens, prefill skipped, the metric
   set's contexts and stream counts;
 - ``owner-temp1-matrix``: the deployment owner's matrix (temperature 1, contexts 8k-128k, 1/2/4/8 streams,
-  20 s cells, at most 2,048 tokens, integrated prefill scout, coding peak), whatever the metric set; the
-  benchmark checkout (``--bench-dir``) must be llm-inference-bench 0.7.6 for its result to match the method.
+  20 s cells after a 5 s warm-up, at most 2,048 tokens, integrated prefill scout, coding peak at temperature
+  1), whatever the metric set; the benchmark checkout (``--bench-dir``) must be llm-inference-bench 0.7.6 for
+  its result to match the method.
 
 ``temperature`` and ``max_tokens`` override the method's values; the method recorded is then the one whose
 every fixed setting the run still has, or ``custom``. :func:`measure` returns the method's name and settings

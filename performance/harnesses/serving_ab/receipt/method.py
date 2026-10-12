@@ -5,16 +5,17 @@ output-token limit, context lengths, stream counts, cell duration, prefill mode 
 probe runs. Two arms compare only when their results were measured the same way. llm-inference-bench
 (``llm_decode_bench.py``) records these settings in its result JSON (``metadata``: ``version``,
 ``temperature``, ``max_tokens``, ``context_lengths``, ``concurrency_levels``, ``duration_per_test``,
-``prefill_mode``, ``decode_warmup_seconds``, ``ignore_eos``; the top-level ``coding_peak`` object when that
-probe ran), so :func:`recorded` reads the method from the result itself rather than from how the run was
-started.
+``prefill_mode``, ``decode_warmup_seconds``, ``ignore_eos``; the top-level ``coding_peak`` object, with its
+temperature, when that probe ran), so :func:`recorded` reads the method from the result itself rather than
+from how the run was started.
 
 :data:`METHODS`:
 
 ``owner-temp1-matrix``
     llm-inference-bench 0.7.6 at temperature 1, contexts 8k, 16k, 32k, 64k and 128k, 1, 2, 4 and 8
-    streams, 20 s cells, at most 2,048 output tokens, the integrated prefill scout and the coding-peak
-    probe: the matrix the deployment owner publishes.
+    streams, 20 s cells after a 5 s decode warm-up, at most 2,048 output tokens, the integrated prefill scout
+    and the coding-peak probe at temperature 1: the matrix the deployment owner publishes (its result files
+    record these values).
 ``serving-ab-temp0``
     The serving A/B runner's decode method (``measure.py``): temperature 0, at most 1,024 output tokens,
     30 s cells after a 10 s warm-up, prefill skipped (time to first token is measured separately); its
@@ -31,25 +32,27 @@ from collections.abc import Mapping
 from pathlib import Path
 
 FIELDS = ("tool", "version", "temperature", "max_tokens", "context_lengths", "concurrency_levels",
-          "duration_per_test", "prefill_mode", "decode_warmup_seconds", "coding_peak", "ignore_eos")
+          "duration_per_test", "prefill_mode", "decode_warmup_seconds", "coding_peak", "coding_peak_temperature",
+          "ignore_eos")
 
 METHODS: dict[str, dict] = {
     "owner-temp1-matrix": {
-        "description": "llm-inference-bench 0.7.6, temperature 1, contexts 8k-128k, 1/2/4/8 streams, 20 s cells, "
-                       "at most 2,048 tokens, integrated prefill scout, coding peak",
+        "description": "llm-inference-bench 0.7.6, temperature 1, contexts 8k-128k, 1/2/4/8 streams, 20 s cells "
+                       "after a 5 s warm-up, at most 2,048 tokens, integrated prefill scout, coding peak at temperature 1",
         "tool": "llm-inference-bench", "version": "0.7.6", "temperature": 1.0, "max_tokens": 2048,
         "context_lengths": [8192, 16384, 32768, 65536, 131072], "concurrency_levels": [1, 2, 4, 8],
-        "duration_per_test": 20.0, "prefill_mode": "integrated_decode_scout", "decode_warmup_seconds": None,
-        "coding_peak": True, "ignore_eos": None,
+        "duration_per_test": 20.0, "prefill_mode": "integrated_decode_scout", "decode_warmup_seconds": 5.0,
+        "coding_peak": True, "coding_peak_temperature": 1.0, "ignore_eos": None,
         "bench_args": ["--contexts", "8k,16k,32k,64k,128k", "--concurrency", "1,2,4,8", "--duration", "20",
-                       "--max-tokens", "2048", "--temperature", "1", "--coding-peak"],
+                       "--max-tokens", "2048", "--temperature", "1", "--decode-warmup-seconds", "5",
+                       "--cell-warmup-timeout-seconds", "900", "--coding-peak", "--coding-peak-temperature", "1"],
     },
     "serving-ab-temp0": {
         "description": "serving A/B runner decode: temperature 0, at most 1,024 tokens, 30 s cells after 10 s, "
                        "prefill skipped; contexts and streams from the metric set",
         "tool": "llm-inference-bench", "version": None, "temperature": 0.0, "max_tokens": 1024,
         "context_lengths": None, "concurrency_levels": None, "duration_per_test": 30.0, "prefill_mode": "skipped",
-        "decode_warmup_seconds": 10.0, "coding_peak": False, "ignore_eos": None,
+        "decode_warmup_seconds": 10.0, "coding_peak": False, "coding_peak_temperature": None, "ignore_eos": None,
         "bench_args": ["--skip-prefill", "--token-targeting", "exact", "--temperature", "0", "--max-tokens", "1024",
                        "--decode-warmup-seconds", "10", "--cell-warmup-timeout-seconds", "900"],
     },
@@ -71,6 +74,8 @@ def recorded(result: Mapping) -> dict:
         "prefill_mode": meta.get("prefill_mode"),
         "decode_warmup_seconds": meta.get("decode_warmup_seconds"),
         "coding_peak": bool(isinstance(peak, Mapping) and (peak.get("runs_ok") or peak.get("samples"))),
+        "coding_peak_temperature": (None if not isinstance(peak, Mapping) or peak.get("temperature") is None
+                                    else float(peak["temperature"])),
         "ignore_eos": meta.get("ignore_eos"),
     }
     return out
@@ -91,7 +96,8 @@ def check(result: Mapping, name: str) -> list[str]:
         else:
             same = have == want
         if not same:
-            shown = "the server's default" if field == "temperature" and have is None else json.dumps(have)
+            shown = ("the server's default" if field in ("temperature", "coding_peak_temperature") and have is None
+                     else json.dumps(have))
             problems.append(f"{field}: method {name} has {json.dumps(want)}, the result records {shown}")
     return problems
 

@@ -152,7 +152,7 @@ The decode step follows a named measurement method (`--method`,
 | Method | Decode |
 |---|---|
 | `serving-ab-temp0` (default) | the set's contexts and streams, temperature 0, at most 1,024 output tokens, prefill skipped |
-| `owner-temp1-matrix` | contexts 8k, 16k, 32k, 64k and 128k, 1, 2, 4 and 8 streams, 20 s cells, temperature 1, at most 2,048 output tokens, the integrated prefill scout and the coding-peak probe, whatever the set; needs llm-inference-bench 0.7.6 in `--bench-dir` |
+| `owner-temp1-matrix` | contexts 8k, 16k, 32k, 64k and 128k, 1, 2, 4 and 8 streams, 20 s cells after a 5 s warm-up, temperature 1, at most 2,048 output tokens, the integrated prefill scout and the coding-peak probe at temperature 1, whatever the set; needs llm-inference-bench 0.7.6 in `--bench-dir` |
 
 `--temperature` and `--max-tokens` replace the method's values. Each start's
 `method.json` and `measure.json` name the method, or `custom` when an override
@@ -196,7 +196,8 @@ for warm-ups and `<arm><n>` for measured starts.
 The report refuses a ratio, prints `REFUSED` in its cell and states the reason
 above the tables, when the two arms' decode results record different
 measurement settings (tool version, temperature, token limit, contexts,
-streams, cell duration, prefill mode, coding peak) or when a start of either
+streams, cell duration, warm-up, prefill mode, coding peak and its
+temperature) or when a start of either
 arm holds a `check.json` whose check failed.
 
 ## Run receipts

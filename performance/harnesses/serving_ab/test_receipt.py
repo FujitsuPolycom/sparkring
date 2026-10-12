@@ -17,7 +17,8 @@ host names by ``spark-p<position>``:
 - ``window/``: rank 0 access-log lines of one measurement window with one client, and access plus engine lines
   of a window in which two benchmark clients on one machine overlapped.
 - ``bench/``: llm-inference-bench result metadata: the owner's temperature-1 matrix (0.7.6), the serving A/B
-  runner's temperature-0 decode (0.4.29) and a run with the tool's own defaults.
+  runner's temperature-0 decode (0.4.29), a run with the tool's own defaults, and an arm's run with the
+  owner's grid, temperature and token limit but the tool's default warm-up and coding-peak temperature.
 """
 
 from __future__ import annotations
@@ -253,7 +254,13 @@ def test_method_profiles_identify_the_owner_matrix_and_the_runner_method():
     assert any(p.startswith("temperature:") and "the server's default" in p for p in problems)
     assert any(p.startswith("max_tokens:") and "8192" in p for p in problems)
     assert {p.split(":")[0] for p in problems} == {"temperature", "max_tokens", "context_lengths", "concurrency_levels",
-                                                     "duration_per_test", "coding_peak"}
+                                                     "duration_per_test", "decode_warmup_seconds", "coding_peak",
+                                                     "coding_peak_temperature"}
+    # A run with the owner's grid, temperature and token limit still differs in its warm-up and in the
+    # coding peak's temperature, which the run left to the server.
+    assert method.check(bench("temp1-arm-run.json"), "owner-temp1-matrix") == [
+        "decode_warmup_seconds: method owner-temp1-matrix has 5.0, the result records 3.0",
+        "coding_peak_temperature: method owner-temp1-matrix has 1.0, the result records the server's default"]
     assert {p.split(":")[0] for p in method.check(bench("serving-ab-temp0.json"), "owner-temp1-matrix")} >= {
         "version", "temperature", "max_tokens", "prefill_mode"}
 
@@ -275,6 +282,8 @@ def test_the_runner_decode_keeps_its_arguments_by_default_and_runs_the_owner_met
                                      "--cell-warmup-timeout-seconds", "900"]
     owner = measure.decode_method("phase1", "owner-temp1-matrix")
     assert owner["method"] == "owner-temp1-matrix" and "--coding-peak" in owner["bench_args"]
+    assert owner["bench_args"][owner["bench_args"].index("--decode-warmup-seconds") + 1] == "5"
+    assert owner["bench_args"][owner["bench_args"].index("--coding-peak-temperature") + 1] == "1"
     assert "--skip-prefill" not in owner["bench_args"]
     assert owner["bench_args"][owner["bench_args"].index("--contexts") + 1] == "8k,16k,32k,64k,128k"
     custom = measure.decode_method("phase1", temperature=1.0)

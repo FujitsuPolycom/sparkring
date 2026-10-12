@@ -1,0 +1,96 @@
+{
+ "metadata": {
+  "version": "0.7.6",
+  "engine": "vllm",
+  "model": "Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2",
+  "server": "192.0.2.232:8000",
+  "timestamp": "2026-10-11T18:29:57.625010",
+  "decode_mode": "duration",
+  "primary_decode_layer": "sustained_decode",
+  "duration_per_test": 20.0,
+  "request_count": 0,
+  "warmup_request_count": 0,
+  "run_burst": false,
+  "prefill_mode": "integrated_decode_scout",
+  "standalone_prefill": false,
+  "prefill_only": false,
+  "skip_prefill": false,
+  "burst_e2e_status": "not_run_use_--run-burst",
+  "burst_request_count": 0,
+  "burst_warmup_request_count": 0,
+  "burst_requests_per_concurrency": 5,
+  "decode_warmup_seconds": 3.0,
+  "decode_warmup_context": 131072,
+  "decode_warmup_loop_diagnostics": [],
+  "loop_detection": {
+   "enabled": true,
+   "scope": "decode_cells_and_their_warmups",
+   "confirmed_min_chars": 4096,
+   "confirmed_min_cycles": 4,
+   "max_period_chars": 32768,
+   "history_chars_per_request_channel": 131072,
+   "check_interval_chars": 256,
+   "invalid_cell_aggregate_tps_sentinel": -3.0,
+   "limitation": "exact repeated text heuristic; not a semantic correctness test"
+  },
+  "decode_warmup_concurrency": 1,
+  "cell_warmup_timeout_seconds": 0.0,
+  "cell_warmup_timeout_policy": "<=32k:60s,64k:120s,>=128k:180s when override is 0",
+  "show_capacity_limited_values": false,
+  "max_tokens": 2048,
+  "temperature": 1.0,
+  "ignore_eos": true,
+  "max_total_tokens": 1653281,
+  "dcp_size": 0,
+  "metrics_available": true,
+  "metrics_warning": "",
+  "concurrency_levels": [
+   1,
+   2,
+   4,
+   8
+  ],
+  "context_lengths": [
+   8192,
+   16384,
+   32768,
+   65536,
+   131072
+  ],
+  "startup_diagnostics_available": true,
+  "nvidia_p2p_override_effective": false,
+  "p2pmark_status": "not_run",
+  "amd_fabric_status": "not_run"
+ },
+ "coding_peak": {
+  "mode": "coding_peak",
+  "prompt": "Write a Python script that implements the Sieve of Eratosthenes.",
+  "runs_requested": 5,
+  "runs_ok": 5,
+  "max_tokens": 2000,
+  "temperature": null,
+  "summary": {
+   "mean_generation_tok_s": 85.70051439637085,
+   "median_generation_tok_s": 84.87820708258474,
+   "max_generation_tok_s": 90.4776732296799,
+   "min_generation_tok_s": 82.1813353162673,
+   "cjk_runs": 0
+  }
+ },
+ "results": [
+  {
+   "context_tokens": 8192,
+   "concurrency": 1,
+   "aggregate_tps": 48.92835526870054,
+   "server_steps_per_s": 26.065105414103254,
+   "server_spec_accept_length": 1.8771593090211134
+  },
+  {
+   "context_tokens": 16384,
+   "concurrency": 1,
+   "aggregate_tps": 50.83381381165348,
+   "server_steps_per_s": 26.067339562865612,
+   "server_spec_accept_length": 1.9500959692898272
+  }
+ ]
+}
