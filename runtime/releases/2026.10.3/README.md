@@ -1,5 +1,20 @@
 # Release 2026.10.3: installer and profile changes on release 2026.10.2's image
 
+SparkRing's `glm53-flash-tp2` and `glm53-flash-tp4` profiles run
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+SparkRing's `glm53-nvfp4-csf-tp8` profile runs GLM-5.3-NVFP4-CSF, created by
+Local Inference Lab, Inc., a non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF.
+SparkRing's `qwen38-flash-next-tp2` profile runs
+Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc.,
+a non-profit organization, available at
+https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, GLM-5.3-NVFP4-CSF and
+Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD are licensed under the Local Inference
+Lab License, Version 1.0.
+
 GitHub release `2026.10.3` carries SparkRing package changes that need no new
 container image. It installs installer image release
 `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, the image

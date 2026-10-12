@@ -1,5 +1,12 @@
 # vLLM and B12X sources that read the GLM-5.3-Flash CSF checkpoint
 
+These sources read
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
+
 Status: **implemented** as a build input. These are the source files of the
 layer that [derive_kraken_csf_sources.py](../../derive_kraken_csf_sources.py)
 (`installer-kraken-csf-sources`) adds to

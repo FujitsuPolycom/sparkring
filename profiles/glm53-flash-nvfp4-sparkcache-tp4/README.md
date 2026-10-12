@@ -1,5 +1,12 @@
 # GLM-5.3-Flash CSF on four Sparks with SparkCache (research-only)
 
+This profile runs
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD, created by Local Inference Lab, Inc., a
+non-profit organization, available at
+https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD.
+GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD is licensed under the Local Inference Lab
+License, Version 1.0.
+
 Status: **research-only**. This variant of the installer profile
 [`glm53-flash-nvfp4-spark-tp4`](../glm53-flash-nvfp4-spark-tp4/profile.json) adds
 SparkRing's persistent context cache, SparkCache, to the CSF checkpoint of
