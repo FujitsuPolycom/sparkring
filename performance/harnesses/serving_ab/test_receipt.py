@@ -336,6 +336,20 @@ def test_two_clients_on_one_machine_share_an_address_and_only_the_engine_peak_ca
     assert record["exclusive"] and record["engine_peak"]["requests"] == 8  # within the benchmark's own 8 streams
     assert not window.summarize(entries, clients=["192.0.2.114"], engine_stats=stats, max_concurrency=4)["exclusive"]
     assert window.format_window(record).endswith("EXCLUSIVE")
+    # The excerpt starts during a run whose tool had started earlier; a second instance of the tool starts
+    # inside it (GET /version, /get_server_info and /v1/models at 22:19:22).
+    started = window.summarize(entries, clients=["192.0.2.114"], engine_stats=stats, max_concurrency=8,
+                               expect_tool_starts=0)
+    assert started["tool_starts"] == 1 and started["extra_tool_starts"] and not started["exclusive"]
+    assert "another instance of the benchmark tool started" in window.format_window(started)
+
+
+def test_a_runner_window_holds_one_tool_start_per_decode_step():
+    # measure_api.py runs the runner's warm-up and then its measured start: two starts of the tool.
+    entries = window.parse_access_log(window_log("qwen-tp2-arm-window.log"))
+    record = window.summarize(entries, clients=["192.0.2.114"], expect_tool_starts=2)
+    assert record["tool_starts"] == 2 and record["exclusive"]
+    assert not window.summarize(entries, clients=["192.0.2.114"], expect_tool_starts=1)["exclusive"]
 
 
 def test_preflight_refuses_a_serving_deployment_and_another_owners_reservation():

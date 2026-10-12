@@ -255,16 +255,18 @@ To measure an arm against its control:
 
    ```bash
    python -m performance.harnesses.serving_ab.receipt window --node-a NODE_A --positions 6,7 \
-     --since T0 --client CLIENT_ADDRESS --max-concurrency 8 --output ARM_DIR/window.json
+     --since T0 --client CLIENT_ADDRESS --max-concurrency 8 --expect-tool-starts 1 --output ARM_DIR/window.json
    python -m performance.harnesses.serving_ab.receipt method RESULT.json --expect owner-temp1-matrix
    ```
 
    `window` counts rank 0's access-log requests from `T0` by source address,
    method and path. It fails when another address sent anything but monitoring
    reads (`GET /metrics`, `/health`, `/v1/models` and similar; `--strict` fails
-   those too), or, with `--max-concurrency`, when vLLM's engine line reports
-   more running plus waiting requests than the benchmark sends. `method` fails
-   unless the result's recorded settings are the method's.
+   those too); with `--expect-tool-starts`, when the client's address started
+   llm-inference-bench (its `GET /version`) more often than the campaign did;
+   and with `--max-concurrency`, when vLLM's engine line reports more running
+   plus waiting requests than the benchmark sends. `method` fails unless the
+   result's recorded settings are the method's.
 
 `diff A B` lists every difference of two receipts. Every command exits 0 when
 its verdict holds, 1 when it does not and 2 on a read or usage error, so a
@@ -279,7 +281,8 @@ $R collect --node-a NODE_A --positions 6,7 --output runs/WD1
 $R check runs/WD1 runs/W1 --declare arms/WD.json --output runs/WD1/check.json
 T0=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 # ... run the benchmark with the declared method into runs/WD1/result.json ...
-$R window --node-a NODE_A --positions 6,7 --since "$T0" --client CLIENT_ADDRESS --max-concurrency 8 --output runs/WD1/window.json
+$R window --node-a NODE_A --positions 6,7 --since "$T0" --client CLIENT_ADDRESS --max-concurrency 8 \
+  --expect-tool-starts 1 --output runs/WD1/window.json
 $R method runs/WD1/result.json --expect owner-temp1-matrix
 ```
 
@@ -318,9 +321,11 @@ Limitations:
   compilation mode to `NONE` whatever `--compilation-config` asks;
   `compilation.mode` shows the resolved mode.
 - An access log names a client by address, so two clients on one machine look
-  like one. The pre-flight keeps a second client out; `--max-concurrency`
-  catches one only while the sum of both exceeds the benchmark's streams, at
-  vLLM's 10 s logging interval.
+  like one. The pre-flight keeps a second client out. Inside the window,
+  `--expect-tool-starts` catches a second instance of llm-inference-bench that
+  starts there, and `--max-concurrency` catches one only while the sum of both
+  exceeds the benchmark's streams, at vLLM's 10 s logging interval; another
+  kind of client on the same machine is not seen.
 - The serving A/B runner's own `resolved.json` reads the containers'
   environment from `docker inspect`, not the vLLM process's.
 

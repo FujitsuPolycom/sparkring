@@ -22,10 +22,15 @@ dashboard or health check sends without loading the GPU). With ``strict`` every 
 source fails it.
 
 An access log names a client by its address only, so two clients on one machine look like one. The
-pre-flight is what keeps a second client on the same machine out; inside the window, ``max_concurrency``
-(the benchmark's largest stream count) fails the record when vLLM's periodic engine line reports more
-running plus waiting requests than the benchmark sends. That line comes every 10 s while the engine is busy,
-so an overlap shorter than that, or one whose sum stays within the limit, is not seen.
+pre-flight is what keeps a second client on the same machine out. Inside the window two signs remain:
+
+- ``expect_tool_starts``: llm-inference-bench reads ``GET /version`` once when it starts, so a window in
+  which the declared address read it more often than the campaign started the tool holds another instance
+  of the tool (a campaign that runs a warm-up and a measured start of the serving A/B runner starts it
+  twice);
+- ``max_concurrency`` (the benchmark's largest stream count): vLLM's periodic engine line reports more
+  running plus waiting requests than the benchmark sends. That line comes every 10 s while the engine is
+  busy, so an overlap shorter than that, or one whose sum stays within the limit, is not seen.
 """
 
 from __future__ import annotations
@@ -77,7 +82,7 @@ def parse_engine_stats(text: str) -> list[dict]:
 
 def summarize(entries: Iterable[Mapping], *, clients: Sequence[str], since: str | None = None,
               until: str | None = None, strict: bool = False, engine_stats: Iterable[Mapping] = (),
-              max_concurrency: int | None = None) -> dict:
+              max_concurrency: int | None = None, expect_tool_starts: int | None = None) -> dict:
     """Request counts in [since, until] by source, method and path, and the window's verdict."""
     start = parse_time(since) if since else None
     end = parse_time(until) if until else None
@@ -111,10 +116,14 @@ def summarize(entries: Iterable[Mapping], *, clients: Sequence[str], since: str 
             outside.append(row)
         rows.append(row)
     over = max_concurrency is not None and peak is not None and peak["requests"] > max_concurrency
+    starts = sum(n for (address, method, path), n in counts.items()
+                 if address in clients and (method, path) == ("GET", "/version"))
+    extra_starts = expect_tool_starts is not None and starts > expect_tool_starts
     return {"since": since, "until": until, "clients": list(clients), "strict": strict, "rows": rows,
             "outside": outside, "outside_requests": sum(r["requests"] for r in outside),
             "lines_without_time": untimed, "max_concurrency": max_concurrency, "engine_peak": peak,
-            "over_concurrency": over, "exclusive": not outside and not over}
+            "over_concurrency": over, "tool_starts": starts, "expect_tool_starts": expect_tool_starts,
+            "extra_tool_starts": extra_starts, "exclusive": not outside and not over and not extra_starts}
 
 
 def format_window(record: Mapping) -> str:
@@ -128,6 +137,11 @@ def format_window(record: Mapping) -> str:
                         if record.get("max_concurrency") else ""))
     if record.get("over_concurrency"):
         lines.append("the engine held more requests than the benchmark sends: another client was active")
+    if record.get("expect_tool_starts") is not None:
+        lines.append(f"benchmark tool starts from the declared clients (GET /version): {record['tool_starts']}, "
+                     f"expected {record['expect_tool_starts']}")
+    if record.get("extra_tool_starts"):
+        lines.append("another instance of the benchmark tool started from a declared address in the window")
     lines.append(f"outside requests: {record['outside_requests']} -> "
                  f"{'EXCLUSIVE' if record['exclusive'] else 'NOT EXCLUSIVE'}")
     return "\n".join(lines)

@@ -101,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--strict", action="store_true", help="also fail on monitoring reads by other sources")
     p.add_argument("--max-concurrency", type=int,
                    help="the benchmark's largest stream count: fail when the engine held more requests in the window")
+    p.add_argument("--expect-tool-starts", type=int,
+                   help="how often the campaign started llm-inference-bench in the window: fail when the declared "
+                        "addresses read GET /version more often")
     p.add_argument("--log", help="a saved docker logs --timestamps text instead of reading the ring")
     p.add_argument("--node-a")
     p.add_argument("--positions")
@@ -186,7 +189,7 @@ def run(args) -> int:
             source = f"{host} {container}"
         record = window.summarize(window.parse_access_log(text), clients=args.client, since=args.since, until=until,
                                   strict=args.strict, engine_stats=window.parse_engine_stats(text),
-                                  max_concurrency=args.max_concurrency)
+                                  max_concurrency=args.max_concurrency, expect_tool_starts=args.expect_tool_starts)
         record["log"] = source
         write_json(args.output, record)
         print(window.format_window(record))
