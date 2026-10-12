@@ -5,6 +5,17 @@ table says otherwise. `sparkring COMMAND --help` prints the same flags.
 
 [Install SparkRing](install.md) · [Reference](install-reference.md)
 
+## Command highlighting
+
+The commands a message suggests, such as `sudo sparkring fabric verify` in a
+`status` line, print in bold cyan on a terminal. Everywhere else — pipes,
+saved logs, `--json` output — the text is plain and unchanged. `NO_COLOR` (any
+value) and `TERM=dumb` also force plain output. `status`, `install`, `setup`,
+`up`, `down`, `recover`, `check`, `models`, `fabric` and `logs` accept
+`--color=auto|always|never`, which overrides the `SPARKRING_COLOR` variable;
+`always` keeps the colour on a non-terminal, for
+`watch -c sudo sparkring status --color=always`.
+
 ## Common examples
 
 Pick `PROFILE` for your model and number of Sparks from the
@@ -594,6 +605,7 @@ recovery timer reads Node A's own status and container without SSH.
 | `--details` | Read `install-details.log`, the full command output, instead |
 | `--lines N` | Lines to show first, 1 to 10000 (default 40) |
 | `--plain` | No colors or spinner |
+| `--color WHEN` | `auto` (default), `always`, or `never`; the log lines stay plain either way |
 
 ## hairpin
 

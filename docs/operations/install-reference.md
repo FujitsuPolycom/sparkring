@@ -420,7 +420,12 @@ sudo sparkring logs --follow
 - Credentials entered through SSH are not recorded.
 - Interactive terminals show colored results and a spinner; saved logs and
   piped output stay plain. The follower's spinner means it awaits log lines,
-  not that the model is ready.
+  not that the model is ready. The commands a message suggests, such as
+  `sudo sparkring fabric verify` in a `status` line, print in bold cyan on a
+  terminal; `install`, `setup`, `up`, `down`, `status`, `recover`, `check`,
+  `models`, `fabric` and `logs` accept `--color=auto|always|never`, which
+  overrides the `SPARKRING_COLOR` variable. `always` keeps the colour on a
+  non-terminal, for `watch -c sudo sparkring status --color=always`.
 - `sparkring logs --plain` drops terminal decoration from the follower. For
   `sparkring install` itself, set `NO_COLOR` through `sudo`, which does not
   pass the caller's environment: `sudo env NO_COLOR=1 sparkring install ...`.
