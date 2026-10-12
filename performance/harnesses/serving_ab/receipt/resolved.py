@@ -470,7 +470,7 @@ def build(ranks: list[Mapping], *, deployment: Mapping | None = None, metrics_te
     serving = dict((deployment or {}).get("serving") or {})
     return {
         "schema": SCHEMA,
-        "collected_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "collected_at": (context or {}).get("collected_at") or time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         **({"context": dict(context)} if context else {}),
         "deployment": {k: (deployment or {}).get(k) for k in (
             "profile", "checkpoint", "model_repository", "model_revision", "image_id", "image_release", "api_url",

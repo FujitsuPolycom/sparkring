@@ -20,6 +20,7 @@ import json
 import os
 import shlex
 import subprocess
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Sequence
@@ -171,6 +172,7 @@ def collect(node_a: NodeA, positions: Sequence[int], *, sparks: dict[int, str] |
     ``sparkring status --json`` reports, for a deployment the status does not list; ``api`` replaces its API
     URL.
     """
+    started = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     status_text = node_a.run("sudo -n sparkring status --json", check=False)
     try:
         status = json.loads(status_text)
@@ -210,7 +212,7 @@ def collect(node_a: NodeA, positions: Sequence[int], *, sparks: dict[int, str] |
             models = json.loads(listed_models) if listed_models else None
         except ValueError:
             models = None
-    context = {"node_a": node_a.target, "positions": list(positions), "api": url,
+    context = {"collected_at": started, "node_a": node_a.target, "positions": list(positions), "api": url,
                "method": "read-only: sparkring status --json, docker inspect/exec env/logs, receipt files, "
                          "nvidia-smi, GET /metrics and /v1/models"}
     document = resolved.build(ranks, deployment=deployment, metrics_text=metrics, models=models, context=context)
@@ -226,6 +228,8 @@ def rebuild(raw_dir: Path) -> dict:
     deployment = json.loads((raw_dir / "deployment.json").read_text(encoding="utf-8"))
     placement = {item["rank"]: (item["host"], item["name"]) for item in deployment.get("containers") or []}
     context = json.loads((raw_dir / "context.json").read_text(encoding="utf-8"))
+    context.setdefault("collected_at", time.strftime("%Y-%m-%dT%H:%M:%SZ",
+                                                     time.gmtime((raw_dir / "rank0.txt").stat().st_mtime)))
     ranks = []
     for path in sorted(raw_dir.glob("rank*.txt"), key=lambda p: int(p.stem[4:])):
         rank = int(path.stem[4:])
