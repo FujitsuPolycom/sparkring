@@ -88,8 +88,10 @@ has the evidence and the open gates.
   release with no research options; their run receipts show the measured
   settings, and each served one measurement at temperature 1. DeepSeek on
   eight Sparks started and served once; Engram sharding showed no consistent
-  gain there, so that profile keeps it off. No start with these settings has
-  run on a ring of four, Qwen on eight Sparks, Swift-1.5 or MiMo.
+  gain there, so that profile keeps it off. The same three also installed on
+  two new rings of four, set up as a new four-Spark user would: DeepSeek on
+  one ring measured the same as on the ring of eight. No start with these
+  settings has run for Qwen on eight Sparks, Swift-1.5 or MiMo.
 - On the ring of eight: an `--on` install on two Sparks left the deployments
   beside it serving, and automatic recovery restarted DeepSeek's four-Spark
   group 6 min 47 s after one of its Sparks stopped.

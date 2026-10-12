@@ -211,7 +211,7 @@ without research options (private record):
 | `glm53-nvfp4-csf-tp8-install`: an installation that starts and serves, with column-split loading in effect | passed, one start (research-only); the profile is parked | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md) |
 | `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots; with 512 MiB slots, steps 1-7 and 9 passed in one start that only a private record reports, step 8 and the two-start A/B not run | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
-| `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. No start on a ring of four; the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
+| `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. the same three installed on two new rings of four (DeepSeek on a whole ring, the pairs on the other) with the same model settings and SIRCL's ring-of-four tuning ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)); the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |
 | `publication`: tag, package built with the relay marker, GitHub pre-release | pending | |
 
@@ -245,9 +245,10 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
 
 - Release 2026.10.2's limitations hold
   ([known limitations](../dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md#known-limitations)).
-- The installed-profile evidence ran on a ring of eight: `deepseek-v41-flash-tp4`
-  as a path of four inside it and the two-Spark profiles as pairs. No start of
-  these settings has run on a ring of four.
+- The installed-profile evidence is one start per profile: on a ring of eight
+  (`deepseek-v41-flash-tp4` as a path of four inside it, the two-Spark profiles as
+  pairs) and on two new rings of four set up with `sparkring setup --re-form`
+  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)).
 - Engram projection sharding stays a four-Spark setting: one start of
   `deepseek-v41-flash-tp8` with it showed no consistent gain on a ring of eight
   ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md#not-adopted-engram-projection-sharding-at-tp8)).
