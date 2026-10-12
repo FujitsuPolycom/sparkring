@@ -52,7 +52,7 @@ services:
     - --moe-backend
     - b12x
     - --engram-config
-    - '{"table_memory":"disk","disk_resident_scales":true}'
+    - '{"table_memory":"disk","disk_resident_scales":true,"projection_tp":true}'
     - --speculative-config
     - '{"method":"dspark","num_speculative_tokens":5,"draft_sample_method":"probabilistic","rejection_sample_method":"block","enable_adaptive_verification":true}'
     - --compilation-config
@@ -150,7 +150,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-aba309e4610c-dba1be0a40aa
     labels:
-      io.sparkring.deployment: 5f04721aab1b9c23e69ff0ce33887ccf1fb3b5131970665e5feccf61c94f436d
+      io.sparkring.deployment: fde290fc0e1ade9abc4739b8acbb0c6902d74d9521b80f2948ab0d0d54728706
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

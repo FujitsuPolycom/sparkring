@@ -99,7 +99,7 @@
     "--moe-backend",
     "b12x",
     "--engram-config",
-    "{\"table_memory\":\"disk\",\"disk_resident_scales\":true}",
+    "{\"table_memory\":\"disk\",\"disk_resident_scales\":true,\"projection_tp\":true}",
     "--speculative-config",
     "{\"method\":\"dspark\",\"num_speculative_tokens\":5,\"draft_sample_method\":\"probabilistic\",\"rejection_sample_method\":\"block\",\"enable_adaptive_verification\":true}",
     "--compilation-config",

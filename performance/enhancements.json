@@ -1619,24 +1619,28 @@
     },
     {
       "id": "ds41-engram-projection-tp",
-      "title": "Engram projection tensor parallelism at TP8",
-      "description": "Shards DeepSeek-V4.1-Flash's Engram projections over the eight tensor-parallel ranks. Measured with launch code outside the repository that was not read; no SparkRing image or profile carries it.",
+      "title": "Engram projection tensor parallelism",
+      "description": "Shards DeepSeek-V4.1-Flash's two Engram WKV projections, replicated [25600, 6144] FP8 matrices of 157 MB each, by output column over the tensor-parallel ranks and gathers the BF16 result (projection_tp in --engram-config). Each rank then reads about 236 MB less per target forward at TP4, the inferred source of the gain. deepseek-v41-flash-tp4 sets it; deepseek-v41-flash-tp8 does not, and no start of it at TP8 has run with this option.",
       "category": "kernel-backend",
       "sides": ["decode", "memory"],
       "models": [
-        {"name": "DeepSeek-V4.1-Flash"}
+        {"name": "DeepSeek-V4.1-Flash", "gain": {"percent": 5.5, "summary": "TP4, temperature 1: engine steps/s +5.5 % at one stream and +12 % at eight; output tok/s +4-7 % at 1-8 streams and -2 to +2 % at 16; prefill -1 to -2 %"}}
       ],
-      "parallelism": {"supported": [{"tp": [8], "dcp": [1]}]},
-      "enable": {"note": "no implementation in SparkRing"},
-      "detect": null,
-      "provided_by": {"images": [], "port": "an implementation in SparkRing's image layers; the measured code is outside the repository"},
-      "status": "research-only",
-      "gain": {"percent": 5.5, "summary": "+4-7 % at 1-4 streams, neutral at 8 and more; a re-test gave +3-10 % at 1-8; saves 0.27 GiB per rank"},
+      "parallelism": {"supported": [{"tp": [4], "dcp": [1]}]},
+      "enable": {"arguments": {"--engram-config": "{\"table_memory\":\"disk\",\"disk_resident_scales\":true,\"projection_tp\":true}"}},
+      "detect": [{"arg": "--engram-config", "json": "projection_tp", "equals": true}],
+      "trade_off": "greedy outputs on eight fixed prompts were correct and coherent; no matched log-probability comparison against replicated projections was run, and the owner approved the TP4 default on that evidence (2026-10-11). An all-gather of the BF16 projection output is added per Engram layer and step",
+      "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]},
+      "status": "implemented",
+      "gain": {"percent": 5.5, "summary": "DeepSeek-V4.1-Flash TP4, temperature 1: engine steps/s +5.5 % at one stream and +12 % at eight against the same settings without it; prefill -1 to -2 %"},
       "measurements": [
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-16", "context": "8K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "sparkring install of deepseek-v41-flash-tp4 on Sparks 0-3, a path of four in a ring of eight, research package afe1561f, asynchronous scheduling, adaptive DSpark verification at depth 5, GPU clocks locked at 2,418 MHz, one start each; the serving A/B runner at temperature 0, at most 1,024 output tokens: 8K decode 64.5 tok/s (26.2 steps/s at 2.47 accepted tokens per step) / 206.4 / 273.9 at 1 / 8 / 16 streams; 128K 66.5 (25.3 at 2.63) / 192.6 / 270.9", "evidence": "private record 2026-10-11: DeepSeek-V4.1-Flash TP4 with sharded Engram projections on a path of four"},
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-16", "context": "8K, 32K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "sparkring install of deepseek-v41-flash-tp4 on Sparks 0-3, a path of four in a ring of eight, research package afe1561f, asynchronous scheduling, adaptive DSpark verification at depth 5, GPU clocks locked at 2,418 MHz, one start each; llm-inference-bench 0.7.6 defaults, temperature 1, up to 8,192 output tokens: with it, 8K decode 64.6 tok/s (26.9 steps/s at 2.40) / 213.0 (92.9 steps/s) / 268.8 at 1 / 8 / 16 streams and 128K 63.9 (26.4 at 2.43) / 207.7 (91.4) / 266.8, prefill 4,414 / 4,332 / 4,046 tok/s at 8K / 32K / 128K (cold, median of three); without it, 8K 60.5 (25.5 at 2.37) / 198.8 (82.9) / 273.3 and 128K 61.7 (25.0 at 2.47) / 194.8 (81.6) / 261.9, prefill 4,495 / 4,376 / 4,087", "evidence": "private record 2026-10-11: DeepSeek-V4.1-Flash TP4 with sharded Engram projections on a path of four"},
+        {"image": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036", "tp": 4, "dcp": 1, "streams": "1-16", "context": "8K, 64K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "the start with it, measured by the owner with llm-inference-bench 0.7.6 at temperature 1, at most 2,048 output tokens: 8K decode 66.5 tok/s (26.7 steps/s at 2.49) / 142.1 / 202.8 / 276.7 at 1 / 4 / 8 / 16 streams; 128K 62.0 (26.7 at 2.32) / 138.3 / 204.6 / 271.2; prefill 4,481 / 4,302 / 4,074 tok/s at 8K / 64K / 128K; coding-peak median 103.5 tok/s", "evidence": "private record 2026-10-11: DeepSeek-V4.1-Flash TP4 with sharded Engram projections on a path of four"},
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with launch code outside the repository", "tp": 8, "dcp": 1, "streams": "1-16", "context": "16K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash@dba1be0a", "result": "+4-7 % at 1-4 streams, neutral at 8+; re-test +3-10 % at 1-8", "evidence": "private record 2026-10-05: eight-Spark session notes"}
       ],
-      "evidence": ["private record 2026-10-05: eight-Spark session notes"],
-      "profiles": []
+      "evidence": ["private record 2026-10-11: DeepSeek-V4.1-Flash TP4 with sharded Engram projections on a path of four", "private record 2026-10-05: eight-Spark session notes"],
+      "profiles": ["deepseek-v41-flash-tp4"]
     },
     {
       "id": "ds41-split-fused-attention",
