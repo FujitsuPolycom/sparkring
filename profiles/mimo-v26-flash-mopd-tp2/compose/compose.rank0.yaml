@@ -41,6 +41,7 @@ services:
     - '262144'
     - --max-num-seqs
     - '16'
+    - --async-scheduling
     - --max-num-batched-tokens
     - '8192'
     - --dtype
@@ -148,7 +149,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/mimo-v26-flash-rl-aba309e4610c-2479e2d0029e
     labels:
-      io.sparkring.deployment: 183de6c982b48b70ea94f503838ad313cef307a113b2411bf7fc98b2dd7fea59
+      io.sparkring.deployment: 726a1008d94fa9da0137a9a56db5e3ddbd2d356bf58f953d903e5f43dc45889c
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

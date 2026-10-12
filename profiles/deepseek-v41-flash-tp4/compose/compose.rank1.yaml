@@ -40,6 +40,7 @@ services:
     - '1048576'
     - --max-num-seqs
     - '16'
+    - --async-scheduling
     - --max-num-batched-tokens
     - '8192'
     - --gpu-memory-utilization
@@ -149,7 +150,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-aba309e4610c-dba1be0a40aa
     labels:
-      io.sparkring.deployment: fe5b791fb510615b95824ab44f26fe3872b9099ca09f705eb414dc41d7dd0c56
+      io.sparkring.deployment: c09b91a487ac3a5d07db08bdc76c32ef28a04be9db85e5a5a386615a65f3ecde
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

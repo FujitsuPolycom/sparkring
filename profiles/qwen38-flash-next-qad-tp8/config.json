@@ -90,6 +90,7 @@
     "262144",
     "--max-num-seqs",
     "16",
+    "--async-scheduling",
     "--max-num-batched-tokens",
     "8192",
     "--dtype",

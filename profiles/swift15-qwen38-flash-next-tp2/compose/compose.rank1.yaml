@@ -40,6 +40,7 @@ services:
     - '262144'
     - --max-num-seqs
     - '16'
+    - --async-scheduling
     - --max-num-batched-tokens
     - '8192'
     - --dtype
@@ -160,7 +161,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-aba309e4610c-3ff0520224f2
     labels:
-      io.sparkring.deployment: 6b478a96d9a1eb1ceeb7fedb0b3588cc9b026228bd0232ddf3870c23bcbdd056
+      io.sparkring.deployment: 05f758e5dbba41422a47f15a88d6b4ec4d07e71b480e14879d0b1271de553be3
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

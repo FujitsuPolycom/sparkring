@@ -40,6 +40,7 @@ services:
     - '262144'
     - --max-num-seqs
     - '16'
+    - --async-scheduling
     - --max-num-batched-tokens
     - '8192'
     - --dtype
@@ -176,7 +177,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-aba309e4610c-60215d26cf5e
     labels:
-      io.sparkring.deployment: 3eb50b58770dae38609c40b63d855cb1febc1fb5cb07d723af842d1668e83ce3
+      io.sparkring.deployment: 2c583195f5caae7d4a69087b6e465ee258aa97d10c7a07836be2b844bb3f7db6
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

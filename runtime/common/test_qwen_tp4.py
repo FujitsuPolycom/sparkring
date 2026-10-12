@@ -197,6 +197,9 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
         index = args.index(flag)
         del args[index:index + 2]
     native = list(base.command)
+    # The installer profile also schedules asynchronously; the SparkCache profile does not.
+    native.remove("--async-scheduling")
+    assert "--async-scheduling" not in args
     draft = native.index("--speculative-config") + 1
     # The installer profile also selects the fused rotary-embedding op, measured
     # on the installer image; the SparkCache profile keeps its compilation config.

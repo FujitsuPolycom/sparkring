@@ -87,6 +87,7 @@
     "1048576",
     "--max-num-seqs",
     "16",
+    "--async-scheduling",
     "--max-num-batched-tokens",
     "8192",
     "--gpu-memory-utilization",
