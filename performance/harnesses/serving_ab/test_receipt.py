@@ -225,6 +225,40 @@ def test_a_collection_rebuilds_offline_from_its_raw_reads():
     assert document["sources"]["layout.group"] == "sparkring status --json"
 
 
+class FakeNodeA:
+    """Node A for :func:`collect.collect`: a fixed ``sparkring status --json`` and fixed rank reads."""
+
+    target = "operator@node-a"
+
+    def __init__(self, status: dict, rank_texts: dict[str, str]):
+        self.status, self.rank_texts = status, rank_texts
+
+    def run(self, command: str, check: bool = True) -> str:
+        return json.dumps(self.status) if "sparkring status --json" in command else ""
+
+    def spark(self, host: str, script: str) -> str:
+        return self.rank_texts[host]
+
+
+def test_a_deployment_over_the_whole_fabric_is_collected_from_the_status_top_level_entry():
+    # A profile that uses every Spark has no slots: the status lists it as its top-level deployment, and
+    # its group is the cabled fabric itself.
+    raw = FIXTURES / "collect-qwen-tp2"
+    deployment = json.loads((raw / "deployment.json").read_text(encoding="utf-8"))
+    hosts = {item["rank"]: item["host"] for item in deployment["containers"]}
+    status = {"size": 2, "fabric": {"layout": "cycle-2", "document": "sha256:" + "0" * 64},
+              "sircl_tuning": {"state": "default"}, "deployment": {**deployment, "api_url": None}}
+    texts = {hosts[r]: (raw / f"rank{r}.txt").read_text(encoding="utf-8") for r in hosts}
+    document, _ = collect.collect(FakeNodeA(status, texts), [0, 1])
+    settings = document["settings"]
+    assert (settings["layout.group"], settings["layout.positions"], settings["layout.fabric"]) == \
+        ("cycle-2", [0, 1], "cycle-2")
+    assert document["sources"]["layout.group"] == "sparkring status --json"
+    assert settings["target.kv_cache_dtype"] == "fp8"
+    with pytest.raises(collect.CollectError):  # a subset of the fabric still needs a slot
+        collect.collect(FakeNodeA({**status, "size": 8}, texts), [0, 1])
+
+
 RECEIPT_LINE = ("(Worker pid=1) INFO 10-11 22:11:43 [adapter.py:487] SIRCL receipt group=tp:0 global_rank={r} rank={r} "
                 "world=4 layout={layout} fabric={fabric} positions=0,1,2,3 nccl=none pynccl=skipped session=ring lanes=2 "
                 "hcas=dev{r} capacity=131072 p2p=peers={peers},slots=8x524288,windows=65536 state=ready")

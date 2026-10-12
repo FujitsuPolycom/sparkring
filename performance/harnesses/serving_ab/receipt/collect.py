@@ -191,7 +191,18 @@ def collect(node_a: NodeA, positions: Sequence[int], *, sparks: dict[int, str] |
         for item in deployment.get("containers") or []:
             listed[placement[item["rank"]]] = (item["host"], item["name"])
     except CollectError:
-        if not sparks:
+        # A deployment over the whole fabric has no slots: the status reports it as its top-level
+        # ``deployment``, ranks in fabric-position order, and the group is the fabric itself.
+        whole = dict(status.get("deployment") or {})
+        items = whole.get("containers") or []
+        if items and len(items) == len(positions) == status.get("size", len(items)):
+            deployment = whole
+            deployment.update(group={"shape": (status.get("fabric") or {}).get("layout"),
+                                     "positions": list(positions)}, fabric=status.get("fabric"),
+                              sircl_tuning=status.get("sircl_tuning"))
+            for item in items:
+                listed[list(positions)[item["rank"]]] = (item["host"], item["name"])
+        elif not sparks:
             raise
     ranks, texts = [], {}
     for rank, position in enumerate(positions):
