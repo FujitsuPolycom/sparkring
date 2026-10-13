@@ -27,6 +27,7 @@ EXPECTED = {
     "lil-karmic-kraken-beta-4a87c588": {**dict.fromkeys(EVERY_SHIM, "verified"),
                                         "mhc_prefill_shard": "absent", "qwen_hc_prefill_shard": "absent"},
     "sparkring-kraken-beta-20261007-bc9ea774": dict.fromkeys(EVERY_SHIM, "verified"),
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": dict.fromkeys(EVERY_SHIM, "verified"),
 }
 
 

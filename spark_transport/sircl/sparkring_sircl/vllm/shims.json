@@ -20,6 +20,11 @@
    "name": "sparkring-kraken-beta-20261007-bc9ea774",
    "version": "the image's vLLM with the CSF overlay payload over it",
    "source": "FujitsuPolycom/vllm sparkring/kraken-beta-20261007 at bc9ea7744bc73d1f45cf3232d5de1b8f823919ae: local-inference-lab/vllm integration/karmic-kraken-beta 89f1ceec merged into the image's build, sparkring/kraken-beta-20261004 at d51b4181. Overlay payload csf_payload.tar, SHA-256 05ba9d1c6e5ac005c0279901b911afc78b7d74a792c06a359ee2aed854c53c84"
+  },
+  {
+   "name": "sparkring-kraken-bc9ea774-tp2-dcp2-prefill",
+   "version": "the image's vLLM with the CSF overlay payload over it",
+   "source": "CSF sources with SparkRing dcp2-prefill composition"
   }
  ],
  "shims": [
@@ -86,6 +91,9 @@
     },
     "sparkring-kraken-beta-20261007-bc9ea774": {
      "v1/attention/ops/dcp.py": "5cc592b1baa5defd47336d19be4002fe0f98827134ebbd755ef9364350456a53"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
+     "v1/attention/ops/dcp.py": "5cc592b1baa5defd47336d19be4002fe0f98827134ebbd755ef9364350456a53"
     }
    },
    "enable": "SIRCL's communicator installs it when it builds a decode-context-parallel group of two or more ranks with a session (SIRCL_GROUPS=tp,dcp; bundle --session-groups tp,dcp)",
@@ -143,6 +151,9 @@
      "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
     },
     "sparkring-kraken-beta-20261007-bc9ea774": {
+     "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
      "distributed/device_communicators/b12x_dcp.py": "a9a3c370cee1e2be46506612b863905f0fe4920f9dba3b5ea6287b418089e206"
     }
    },
@@ -271,6 +282,13 @@
      "ir/op.py": "fd0355b398c0d96235bb6aba0c9c08f73c199429bd8ec2aed227178c297c1eb2",
      "ir/ops/layernorm.py": "65d33dcb96404ddde273acf84ef901151a8155a2cffc144bdd0c49fe1d576a22",
      "kernels/vllm_c.py": "ef37e71736807026f0b8ad187155b63f147984c03d287a78790ef8f8ed642ec1"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
+     "models/common/ops/fused_allreduce_rms_norm.py": "664180169082cb65241bd9b82497d669e552ebb1f063c2e0b23657b3707dd080",
+     "model_executor/layers/layernorm.py": "4126258bf85aa3af54c78cfbf2a0f32000491e42be37661f2d1ac9f0beea00f3",
+     "ir/op.py": "fd0355b398c0d96235bb6aba0c9c08f73c199429bd8ec2aed227178c297c1eb2",
+     "ir/ops/layernorm.py": "65d33dcb96404ddde273acf84ef901151a8155a2cffc144bdd0c49fe1d576a22",
+     "kernels/vllm_c.py": "ef37e71736807026f0b8ad187155b63f147984c03d287a78790ef8f8ed642ec1"
     }
    },
    "enable": "SIRCL_FUSED_NORM=1 (bundle --fused-norm on), research-only: SIRCL's communicator installs it when it binds the fused kernels to a tensor-parallel session",
@@ -393,6 +411,10 @@
     "sparkring-kraken-beta-20261007-bc9ea774": {
      "models/glm5next/nvidia/mhc_prefill_sharding.py": "b3616d081087eec0a35475e202f37e08c5e88753cfd280e64fb09e0e2ed1a66c",
      "models/glm5next/nvidia/model.py": "1576615576632007e80fbb7138996b0f4fe4cfdbeb1695841ee0e3cef2210791"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
+     "models/glm5next/nvidia/mhc_prefill_sharding.py": "61d02201f0288bd58ef76687b8698900e45b45446f37a045c1703f8726c288e3",
+     "models/glm5next/nvidia/model.py": "1576615576632007e80fbb7138996b0f4fe4cfdbeb1695841ee0e3cef2210791"
     }
    },
    "enable": "SIRCL's communicator installs it when it builds a tensor-parallel group without PyNccl, with a session, while VLLM_GLM53_MHC_PREFILL_SHARD is set (the profile's value; serve --mhc-prefill-shard profile)",
@@ -513,6 +535,10 @@
     "sparkring-kraken-beta-20261007-bc9ea774": {
      "models/qwen4_exp/nvidia/hc_prefill.py": "7c7ed3319d99a7d2d7e608f06a0950b33b3d268713a3ea58ffee4720c205e1ab",
      "models/qwen4_exp/nvidia/model.py": "1808f802faf97a7ec5add2ff3db261786f92e5ef01b7b9aeaad26c8f07c692c3"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
+     "models/qwen4_exp/nvidia/hc_prefill.py": "7c7ed3319d99a7d2d7e608f06a0950b33b3d268713a3ea58ffee4720c205e1ab",
+     "models/qwen4_exp/nvidia/model.py": "1808f802faf97a7ec5add2ff3db261786f92e5ef01b7b9aeaad26c8f07c692c3"
     }
    },
    "enable": "SIRCL's communicator installs it when it builds a tensor-parallel group without PyNccl, with a session, while VLLM_QWEN3_8_HC_PREFILL_MODE=shard (the profile's value)",
@@ -573,6 +599,10 @@
      "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
     },
     "sparkring-kraken-beta-20261007-bc9ea774": {
+     "distributed/device_communicators/b12x_roce_all_reduce.py": "cca86b8c97d96b3647e4ef3f90f9638ebc4d8b5dfc1673abc2e5a7750bed9018",
+     "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
      "distributed/device_communicators/b12x_roce_all_reduce.py": "cca86b8c97d96b3647e4ef3f90f9638ebc4d8b5dfc1673abc2e5a7750bed9018",
      "distributed/device_communicators/cuda_communicator.py": "33d27cad52def83159c7f63a9b7bd47e61d3e1d50c453ea9927576fc808f3ad8"
     }
@@ -706,6 +736,9 @@
     },
     "sparkring-kraken-beta-20261007-bc9ea774": {
      "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
+     "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
     }
    },
    "enable": "SIRCL's communicator installs it with the first group that gets a session",
@@ -776,6 +809,9 @@
      "v1/worker/gpu_worker.py": "d0dd42c8ec547d2efb0135b455ef5372ef4bf93231c2c69c1904a5212821c368"
     },
     "sparkring-kraken-beta-20261007-bc9ea774": {
+     "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
+    },
+    "sparkring-kraken-bc9ea774-tp2-dcp2-prefill": {
      "v1/worker/gpu_worker.py": "8ce5974c30bfff30fb69cd080d8e68dfaf98ce431127687d2e2128c05baa5948"
     }
    },
