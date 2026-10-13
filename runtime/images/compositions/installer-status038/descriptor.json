@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "status038",
+  "parent_lock": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-status038.json",
+  "purpose": "Runtime-status 0.3.8: the bounded CPU stat-logger snapshot plugin for viewer-side dashboard rates plus the TP6 resident quantization facts that the GLM-5.3 TP6 start check reads. Development composition only; serving overhead is unqualified. Source component tree ae8b68dd7114fc68e3485186e26c810118085aa8, archive and SOURCE_DATE_EPOCH 1791927655, Python 3.12.3, setuptools 78.1.0, wheel 0.42.0 and pip 24.0. Stack it on a derived image with prepare --parent-lock.",
+  "files": {},
+  "runtime_status": {
+    "wheel": {
+      "path": "sparkring_runtime_status-0.3.8-py3-none-any.whl",
+      "sha256": "c9ab1507596f5d0d14e1b8a4b18c5c3806f2dfa019cbb01cbe2dc2408ffcc5cb"
+    },
+    "source_archive": {
+      "path": "sparkring-runtime-status-0.3.8-source.tar.gz",
+      "sha256": "d37dc3eac6b4d290ee8904044abd0d56d980629009d0a7a6acdc1e86fc4f5e17"
+    }
+  }
+}

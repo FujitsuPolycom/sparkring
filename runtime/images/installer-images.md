@@ -243,7 +243,14 @@ descriptor pins the version 0.3.4 wheel and source archive, built from Git tree
 `dev-20261001-statusrows-cuda1342-nccl2323-status034`, which the
 `installer-derived-layer` entry of [builders.json](builders.json) lists. Its
 build follows the descriptor commands below, with `--status-artifacts` naming a
-directory that holds both files.
+directory that holds both files. The
+[installer-status038](compositions/installer-status038/descriptor.json)
+descriptor pins the version 0.3.8 wheel and source archive, which carry both
+the CPU stat-logger plugin and the TP6 resident quantization facts, built from
+Git tree `ae8b68dd7114fc68e3485186e26c810118085aa8` with archive time
+`1791927655`. It names the image with ID `sha256:d52737a109e0` as its parent and
+is a development composition; `prepare --parent-lock` stacks it on an image
+derived from that parent.
 
 ### Commands
 

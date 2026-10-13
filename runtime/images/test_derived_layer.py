@@ -1163,3 +1163,16 @@ def test_dashboard_composition_preserves_published_parent_and_pins_status_artifa
     assert descriptor["files"] == {}
     assert descriptor["runtime_status"]["wheel"]["path"] == "sparkring_runtime_status-0.3.7-py3-none-any.whl"
     assert descriptor["runtime_status"]["source_archive"]["path"] == "sparkring-runtime-status-0.3.7-source.tar.gz"
+
+
+def test_status038_composition_pins_the_repository_status_version():
+    descriptor = layer.descriptor(ROOT / "runtime/images/compositions/installer-status038/descriptor.json")
+    parent = json.loads((ROOT / descriptor["parent_lock"]).read_text())
+    assert parent["image_id"].startswith("sha256:d52737a109e0") and parent["status_version"] == "0.3.6"
+    version = layer.tomllib.loads((ROOT / "integrations/vllm/runtime_status/pyproject.toml").read_text())[
+        "project"]["version"]
+    assert version == "0.3.8" and descriptor["files"] == {}
+    assert descriptor["runtime_status"]["wheel"]["path"] == f"sparkring_runtime_status-{version}-py3-none-any.whl"
+    assert descriptor["runtime_status"]["source_archive"]["path"] == f"sparkring-runtime-status-{version}-source.tar.gz"
+    # 0.3.8 keeps the stat-logger entry point that 0.3.7 introduced.
+    assert "vllm.stat_logger_plugins" in layer.status_entry_points(version)
