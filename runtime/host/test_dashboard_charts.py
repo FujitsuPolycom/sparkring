@@ -152,22 +152,27 @@ def test_thinking_line_renders_and_updates_in_place(smooth_page, width):
     member = value["groups"][0]["members"][0]
     row = {"profile": "glm53-flash-nvfp4-spark-tp2"}
     member["thinking"] = dashboard.thinking_line(row, {})
+    member["thinking_provenance"] = dashboard.thinking.provenance_text(dashboard.thinking_state(row, {}))
     update_page(page)
     card = page.locator("article.card").first
     line = card.locator(".thinking")
-    assert line.is_visible() and line.inner_text() == "Thinking: max (model default)"
+    assert line.is_visible() and line.inner_text() == "Thinking: always · high (levels: low, high or max)"
+    details = card.locator(".thinking-details")
+    assert not details.locator("p").is_visible()
+    details.locator("summary").click()
+    assert details.locator("p").inner_text() == "Deployment default; Model default: always · max"
     line.evaluate("el => window.heldThinking = el")
     card.evaluate("el => window.heldCard = el")
     card.locator("details").first.evaluate("el => { el.open = true; window.heldDetail = el; }")
     before = len(requests)
-    member["settings"]["default_chat_template_kwargs"] = {"reasoning_effort": "high"}
+    member["settings"]["default_chat_template_kwargs"] = {"reasoning_effort": "low"}
     member["thinking"] = dashboard.thinking_line(row, member["settings"])
     update_page(page)
-    assert line.inner_text() == "Thinking: high (deployment default)"
+    assert line.inner_text() == "Thinking: always · low (levels: low, high or max)"
     assert line.evaluate("el => el === heldThinking && !el.closest('details')")
     assert card.evaluate("el => el === heldCard")
     assert card.locator("details").first.evaluate("el => el === heldDetail && el.open")
-    assert 'Chat defaults' in card.text_content() and '{"reasoning_effort":"high"}' in card.text_content()
+    assert 'Chat defaults' in card.text_content() and '{"reasoning_effort":"low"}' in card.text_content()
     assert all("/api/status" in url for url in requests[before:])
     assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
     output = os.environ.get("SPARKRING_CHART_SCREENSHOTS")

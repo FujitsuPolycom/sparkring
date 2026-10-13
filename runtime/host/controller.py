@@ -23,6 +23,7 @@ from runtime.common import (
     distribution,
     fabric_layout,
     installer,
+    serving,
     thinking,
 )
 from runtime.host import (
@@ -825,9 +826,9 @@ def _lifecycle(argv, *, output, locks):
                               f"derived from {source}")
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
-                if saved.get("serving"):
+                if saved.get("serving_requested"):
                     print("Serving settings: " + ", ".join(serving.label(name, value)
-                                                           for name, value in sorted(saved["serving"].items())))
+                                                           for name, value in sorted(saved["serving_requested"].items())))
                 if "thinking" in saved:
                     print("Thinking: " + thinking.deployment_text(saved["thinking"]))
                 if saved.get("transport"):
@@ -1079,6 +1080,20 @@ def _refuse_conflicts(slot):
                              + " --execute")
 
 
+def status_serving_settings(path, lock):
+    """Operator options from the saved request; omit indistinguishable legacy profile defaults."""
+    from runtime.host.install_workflow import saved_plan
+    plan = saved_plan(path)
+    if plan is not None and isinstance(plan.get("request"), dict):
+        return plan["request"].get("serving") or {}
+    selection = lock.get("selection") or {}
+    try:
+        inherited = serving.defaults(selection.get("profile"), selection.get("target_variant"))
+    except (OSError, ValueError, KeyError):
+        inherited = {}
+    return {key: value for key, value in (lock.get("serving") or {}).items() if inherited.get(key) != value}
+
+
 def _status_view(slot, path, args, result, cache, *, layout=None):
     """One deployment's part of ``sparkring status``: its saved state, recovery record and, with --refresh, model check.
 
@@ -1108,7 +1123,9 @@ def _status_view(slot, path, args, result, cache, *, layout=None):
         model = thinking.of(selection.get("profile"), selection.get("target_variant"))
     except (OSError, ValueError):
         model = None
-    view["deployment"]["thinking"] = thinking.deployment_default(model, lock.get("serving"))
+    effective = serving.effective(selection["profile"], lock.get("serving"), selection.get("target_variant")) if model else {}
+    view["deployment"]["thinking"] = thinking.deployment_default(model, effective)
+    view["deployment"]["serving_requested"] = status_serving_settings(path, lock)
     view["deployment"]["transport"] = transport_view(path, lock)
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)

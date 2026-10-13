@@ -129,7 +129,7 @@ profile ([commands](install.md#install)) and ends with `Model ready:` and the
 served model, Spark positions and recorded host names, and elapsed time.
 The card lists the profile, TP size and transport, observed capacity when
 available, the API, `Model status` and `Ring dashboard` addresses, the
-`Thinking` deployment default, and a `Test it` request. `Start again` repeats
+`Thinking` mode, effective level and available levels, and a `Test it` request. `Start again` repeats
 this installation's saved command. Suggested install commands repeat explicit
 serving choices; inherited profile defaults remain defaults on the next install.
 `Stop`, `Recovery` and `Uninstall` name the corresponding commands. See the
@@ -826,7 +826,7 @@ DeepSeek-V4.1-Flash, vLLM's prompt encoder decides:
 | Profiles | Without a choice | Effort levels (`reasoning_effort`) | Turns thinking off |
 |---|---|---|---|
 | `qwen38-flash-next-*`, `swift15-qwen38-flash-next-*` | on, `xhigh` | `low`, `medium`, `xhigh` | `"enable_thinking": false` |
-| GLM-5.3-Flash and GLM-5.3 shared-image serving profiles | always, `high` (deployment default; template: `max`) | `low`, `high`, `max` | nothing: the model always thinks |
+| GLM-5.3-Flash and GLM-5.3 shared-image serving profiles | always · high | `low`, `high`, `max` | nothing: the model always thinks |
 | `mimo-v26-flash-mopd-*` | on | none | `"enable_thinking": false` |
 | `deepseek-v41-flash-tp4` | on, `high` | `low` (50), `high` (75), `max` (100), or a whole number from 1 to 100; `xhigh` is 75 like `high` | `"thinking": false`, or `"reasoning_effort": "none"` |
 

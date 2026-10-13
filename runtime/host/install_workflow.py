@@ -1481,10 +1481,11 @@ def execute(args):
             print("Warning: " + line)
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
                                                             else "start the selected model."))
+        if lock is not None:
+            print("Thinking: " + thinking.deployment_text(thinking.deployment_default(
+                thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock.get("serving"))))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Thinking: " + thinking.deployment_text(thinking.deployment_default(
-                thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock["serving"])))
             print("Serving settings: " + "; ".join(serving_settings.describe(
                 lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
             for line in serving_settings.warnings(lock["serving"], base):

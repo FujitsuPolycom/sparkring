@@ -301,29 +301,42 @@ def test_status_names_the_deployments_thinking_default(tmp_path, monkeypatch, ca
              "api_url": "http://192.0.2.10:8000/v1"}
     monkeypatch.setattr(retained_source, "apply", lambda *a, **k: dict(saved))
 
-    def status(selection, serving=None):
+    def status(selection, serving=None, requested=None):
         path = tmp_path / "model" / "deployment.lock.json"
         if path.exists():
             path.unlink()
         installer.write(path, {"id": "d" * 64, "backend": "compose", "selection": {**selection, "release": "dev-image"},
                                "site": {"name": "sparkring-test", "ranks": [{"rank": 0, "host": "root@192.0.2.10"}]},
                                **({"serving": serving} if serving else {})})
+        if requested is not None:
+            (path.parent / "checkpoint-plan.json").write_text(json.dumps({
+                "schema": "sparkring-checkpoint-plan/v1", "request": {"serving": requested}}))
         assert controller.lifecycle(["status"]) == 0
-        lines = [line for line in capsys.readouterr().out.splitlines() if line.startswith("Thinking: ")]
+        output = capsys.readouterr().out
+        if requested is not None:
+            assert ("Serving settings:" in output) == bool(requested)
+            if requested:
+                assert "Serving settings: --reasoning-effort high" in output
+        lines = [line for line in output.splitlines() if line.startswith("Thinking: ")]
         assert controller.lifecycle(["status", "--json"]) == 0
         return lines, json.loads(capsys.readouterr().out)["deployment"]["thinking"]
 
     qwen = installer.setup.selection("qwen38-flash-next-tp2")
     lines, value = status(qwen)
-    assert lines == ["Thinking: on · xhigh (model default)"]
-    assert value == {"thinking": "on", "level": "xhigh", "chosen": False, "model": {"thinking": "on", "level": "xhigh"}}
+    assert lines == ["Thinking: on · xhigh (levels: low, medium or xhigh)"]
+    assert value == {"thinking": "on", "level": "xhigh", "chosen": False, "model": {"thinking": "on", "level": "xhigh"}, "levels": ["low", "medium", "xhigh"]}
     lines, value = status(qwen, {"reasoning_effort": "low"})
-    assert lines == ["Thinking: on · low (deployment default; model default: on · xhigh)"] and value["chosen"]
+    assert lines == ["Thinking: on · low (levels: low, medium or xhigh)"] and value["chosen"]
     lines, _ = status(installer.setup.selection("mimo-v26-flash-mopd-tp2"), {"thinking": "off"})
-    assert lines == ["Thinking: off (deployment default; model default: on)"]
+    assert lines == ["Thinking: off"]
     # A deployment whose checkpoint this package does not list, or a profile without a record, has none.
     lines, value = status({**qwen, "target_variant": "qad-step-1000"})
     assert lines == ["Thinking: not recorded for this model"] and value is None
+    glm = installer.setup.selection("glm53-flash-nvfp4-spark-tp2")
+    for requested in ({}, {"reasoning_effort": "high"}):
+        lines, value = status(glm, {"reasoning_effort": "high"}, requested)
+        assert lines == ["Thinking: always · high (levels: low, high or max)"]
+        assert value["model"] == {"thinking": "always", "level": "max"}
 
 
 def test_up_refuses_to_start_while_a_spark_lacks_the_hairpin_setting(tmp_path, monkeypatch, capsys):

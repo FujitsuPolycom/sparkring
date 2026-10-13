@@ -897,6 +897,7 @@ function card(s, now) {
     </div>
     <div class="model">${model}</div>
     ${s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : ""}
+    ${s.thinking && s.thinking_provenance ? `<details class="thinking-details"><summary>Thinking details</summary><p>${esc(s.thinking_provenance)}</p></details>` : ""}
     ${serving && s.endpoint ? `<div class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button>${s.details_url ? `<a href="${esc(s.details_url)}" target="_blank" rel="noopener" title="The model's own status page. While it is open it asks every worker for a report every 5 s, through the engine.">Details</a>` : ""}<button class="copy reread" type="button" data-model="${esc(s.id)}">Re-read settings</button></div>` : ""}
     ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
     ${s.unmanaged ? unmanagedFacts(s) : ""}

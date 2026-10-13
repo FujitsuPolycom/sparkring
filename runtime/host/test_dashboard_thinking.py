@@ -24,18 +24,18 @@ def test_launch_kwargs_are_bounded_public_facts():
 
 
 @pytest.mark.parametrize("profile,kwargs,expected", [
-    (GLM, {"reasoning_effort": "high"}, "high (deployment default)"),
-    (GLM, None, "max (model default)"),
-    (GLM, {"enable_thinking": False}, "max (model default)"),
-    (QWEN, {"enable_thinking": False, "reasoning_effort": "low"}, "off (deployment default)"),
-    (QWEN, None, "xhigh (model default)"),
-    (QWEN, {"enable_thinking": True}, "xhigh (deployment default)"),
-    ("mimo-v26-flash-mopd-tp2", None, "on (model default)"),
-    ("mimo-v26-flash-mopd-tp2", {"enable_thinking": True}, "on (deployment default)"),
-    ("deepseek-v41-flash-tp4", {"thinking": False}, "off (deployment default)"),
-    ("deepseek-v41-flash-tp4", {"enable_thinking": False}, "off (deployment default)"),
-    ("deepseek-v41-flash-tp4", {"reasoning_effort": "none"}, "off (deployment default)"),
-    ("deepseek-v41-flash-tp4", {"reasoning_effort": 75}, "75 (deployment default)"),
+    (GLM, {"reasoning_effort": "high"}, "always · high (levels: low, high or max)"),
+    (GLM, None, "always · high (levels: low, high or max)"),
+    (GLM, {"enable_thinking": False}, "always · max (levels: low, high or max)"),
+    (QWEN, {"enable_thinking": False, "reasoning_effort": "low"}, "off (levels: low, medium or xhigh)"),
+    (QWEN, None, "on · xhigh (levels: low, medium or xhigh)"),
+    (QWEN, {"enable_thinking": True}, "on · xhigh (levels: low, medium or xhigh)"),
+    ("mimo-v26-flash-mopd-tp2", None, "on"),
+    ("mimo-v26-flash-mopd-tp2", {"enable_thinking": True}, "on"),
+    ("deepseek-v41-flash-tp4", {"thinking": False}, "off (levels: low, high, xhigh or max, or a whole number from 1 to 100)"),
+    ("deepseek-v41-flash-tp4", {"enable_thinking": False}, "off (levels: low, high, xhigh or max, or a whole number from 1 to 100)"),
+    ("deepseek-v41-flash-tp4", {"reasoning_effort": "none"}, "off (levels: low, high, xhigh or max, or a whole number from 1 to 100)"),
+    ("deepseek-v41-flash-tp4", {"reasoning_effort": 75}, "on · 75 (levels: low, high, xhigh or max, or a whole number from 1 to 100)"),
     ("unknown", {"reasoning_effort": "high"}, None),
 ])
 @pytest.mark.parametrize("encoded", [False, True])
@@ -54,6 +54,10 @@ def test_collector_and_terminal_defaults(tmp_path, profile, kwargs, expected, en
     requests = list(api.requests)
     member = found.snapshot()["groups"][0]["members"][0]
     assert member["thinking"] == expected
+    if expected:
+        state = member["thinking_default"]
+        assert "model" in state and "chosen" in state
+        assert "Model default:" in member["thinking_provenance"]
     text = "\n".join("".join(s for s, _ in line) for line in dashboard_tui.model_details(member, clock.now))
     assert ("Thinking: " + expected in text) if expected else "Thinking:" not in text
     assert api.requests == requests
@@ -62,20 +66,20 @@ def test_collector_and_terminal_defaults(tmp_path, profile, kwargs, expected, en
 def test_unknown_checkpoint_and_saved_settings():
     assert dashboard.thinking_line({"profile": GLM, "checkpoint": "unrecorded"}, {}) is None
     row = {"profile": GLM, "serving": {"reasoning_effort": "high"}}
-    assert dashboard.thinking_line(row, {}) == "high (deployment default)"
-    assert dashboard.thinking_line(row, {"default_chat_template_kwargs": {}}) == "max (model default)"
-    assert dashboard.thinking_line(row, {"default_chat_template_kwargs": {"reasoning_effort": "low"}}) == "low (deployment default)"
-    assert dashboard.thinking_line({"profile": QWEN, "serving": {"thinking": "off"}}, {}) == "off (deployment default)"
+    assert dashboard.thinking_line(row, {}) == "always · high (levels: low, high or max)"
+    assert dashboard.thinking_line(row, {"default_chat_template_kwargs": {}}) == "always · max (levels: low, high or max)"
+    assert dashboard.thinking_line(row, {"default_chat_template_kwargs": {"reasoning_effort": "low"}}) == "always · low (levels: low, high or max)"
+    assert dashboard.thinking_line({"profile": QWEN, "serving": {"thinking": "off"}}, {}) == "off (levels: low, medium or xhigh)"
     for invalid in ("bad json", "[]", [], False):
-        assert dashboard.thinking_line({"profile": GLM}, {"default_chat_template_kwargs": invalid}) == "max (model default)"
+        assert dashboard.thinking_line({"profile": GLM}, {"default_chat_template_kwargs": invalid}) == "always · high (levels: low, high or max)"
 
 
 @pytest.mark.parametrize("kwargs,expected", [
-    (None, "model default"), ({}, "model default"),
-    ({"reasoning_effort": "high"}, "high (deployment default)"),
-    ({"enable_thinking": False}, "off (deployment default)"),
-    ({"thinking": False}, "off (deployment default)"),
-    ({"enable_thinking": True}, "on (deployment default)"),
+    (None, "unknown"), ({}, "unknown"),
+    ({"reasoning_effort": "high"}, "on · high"),
+    ({"enable_thinking": False}, "off"),
+    ({"thinking": False}, "off"),
+    ({"enable_thinking": True}, "on"),
 ])
 @pytest.mark.parametrize("source", ["launch", "runtime"])
 def test_unmanaged_observed_defaults(tmp_path, kwargs, expected, source):

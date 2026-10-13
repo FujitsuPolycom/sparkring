@@ -270,7 +270,7 @@ def test_remote_cache_projects_only_public_facts_without_active_deployments(tmp_
     found.node_reports_path = output
     found.cycle()
     assert len(found.models) == 1
-    assert found.snapshot()["groups"][0]["members"][0]["thinking"] == "high (deployment default)"
+    assert found.snapshot()["groups"][0]["members"][0]["thinking"] == "on · high"
     found.quiet_path.write_text("")
     assert dashboard_admin.refresh_nodes(**arguments) == {} and calls == [hosts]
     found.quiet_path.unlink()

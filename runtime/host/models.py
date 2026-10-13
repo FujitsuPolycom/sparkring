@@ -55,10 +55,7 @@ def catalog():
 
 def thinking_text(record):
     """A profile's thinking default and levels in one line: ``on · xhigh (levels: low, medium or xhigh)``."""
-    levels = thinking.levels_text(record)
-    state = record.get("deployment_default")
-    default = thinking.deployment_text(state) if state and state["chosen"] else thinking.summary(record)
-    return default + (f" (levels: {levels})" if levels else " (no levels)")
+    return thinking.deployment_text(record.get("deployment_default") or thinking.deployment_default(record, {}))
 
 
 def checkpoint_text(record):

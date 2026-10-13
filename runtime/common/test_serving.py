@@ -330,10 +330,10 @@ def test_thinking_flags_parse_as_serving_settings():
 def test_plans_show_a_thinking_setting_beside_the_models_default():
     args = tuple(profile_args(QWEN))
     assert serving.describe({"reasoning_effort": "low", "max_images": 2}, args, model=(QWEN, None)) == [
-        "--max-images 2 (profile: 3)", "--reasoning-effort low (model default: xhigh)"]
+        "--max-images 2 (profile: 3)", "--reasoning-effort low"]
     assert serving.describe({"thinking": "off"}, args, model=("mimo-v26-flash-mopd-tp2", None)) == [
-        "--thinking off (model default: on)"]
-    assert serving.describe({"reasoning_effort": "low"}, args) == ["--reasoning-effort low (model default: not recorded)"]
+        "--thinking off"]
+    assert serving.describe({"reasoning_effort": "low"}, args) == ["--reasoning-effort low"]
 
 
 def test_without_thinking_settings_commands_compose_files_and_locks_are_unchanged():

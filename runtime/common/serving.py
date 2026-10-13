@@ -386,15 +386,11 @@ def label(name, value):
 
 
 def describe(settings, command, *, model=None):
-    """One line per named setting: its value and the profile's, or for a CHOICES setting the model's default.
-
-    ``model`` is ``(profile, checkpoint)`` as for apply; without it, or
-    without a thinking record, a CHOICES setting's default reads ``not recorded``.
-    """
+    """One line per named setting; thinking choices use only their command-line form."""
     lines = []
     for name, value in sorted(settings.items()):
         if name in CHOICES:
-            lines.append(label(name, value) + f" (model default: {model_default(name, model)})")
+            lines.append(label(name, value))
             continue
         lines.append(label(name, value) + (" (profile: off)" if name in SWITCHES else f" (profile: {profile_value(command, name)})"))
     return lines

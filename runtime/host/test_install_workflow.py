@@ -1202,7 +1202,7 @@ def test_thinking_settings_install_another_deployment_and_the_plan_names_the_mod
     out = capsys.readouterr()
     tuned = json.loads(out.out)
     assert tuned["deployment"] != plain["deployment"] and tuned["serving"] == {"reasoning_effort": "low"}
-    assert "Serving settings: --reasoning-effort low (model default: xhigh)" in out.err
+    assert "Serving settings: --reasoning-effort low" in out.err
     # A level the model does not accept is refused before any Spark is surveyed.
     surveys = len(sparks.surveys)
     assert command("--plan", "--reasoning-effort", "max") == 2
@@ -2995,19 +2995,19 @@ def test_glm_profile_default_in_plan_ready_card_and_saved_result(machine, sparks
     out = capsys.readouterr()
     plan = json.loads(out.out)
     expected = {"thinking": "always", "level": effort or "high", "chosen": True,
-                "model": {"thinking": "always", "level": "max"}}
+                "model": {"thinking": "always", "level": "max"}, "levels": ["low", "high", "max"]}
     assert plan["thinking"] == expected
     command = plan["checkpoint"]["command"]
     assert ("--reasoning-effort" in command) == (effort is not None)
     if effort:
         assert f"--reasoning-effort {effort}" in command
     assert plan["serving"] == {"reasoning_effort": effort or "high"}
-    assert f"Thinking: always · {effort or 'high'} (deployment default; model default: always · max)" in out.err
+    assert f"Thinking: always · {effort or 'high'} (levels: low, high or max)" in out.err
     assert sparkring.main(args) == 0
     out = capsys.readouterr()
     result = json.loads(out.out)
     assert result["thinking"] == expected
-    assert f"always · {effort or 'high'} (deployment default; model default: always · max)" in out.err
+    assert f"always · {effort or 'high'} (levels: low, high or max)" in out.err
     saved = json.loads((Path(result["deployment"]) / flow.RESULT_FILE).read_text())
     assert saved["thinking"] == expected
     assert saved["commands"]["start_again"] == command

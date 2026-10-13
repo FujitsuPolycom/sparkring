@@ -135,12 +135,12 @@ def test_a_profile_without_a_record_refuses_thinking_settings():
 def test_deployment_default_names_the_setting_and_the_models_default():
     qwen = thinking.of("qwen38-flash-next-tp2")
     plain = thinking.deployment_default(qwen, {"max_images": 2})
-    assert plain == {"thinking": "on", "level": "xhigh", "chosen": False, "model": {"thinking": "on", "level": "xhigh"}}
-    assert thinking.deployment_text(plain) == "on · xhigh (model default)"
+    assert plain == {"thinking": "on", "level": "xhigh", "chosen": False, "model": {"thinking": "on", "level": "xhigh"}, "levels": ["low", "medium", "xhigh"]}
+    assert thinking.deployment_text(plain) == "on · xhigh (levels: low, medium or xhigh)"
     low = thinking.deployment_default(qwen, {"reasoning_effort": "low"})
-    assert thinking.deployment_text(low) == "on · low (deployment default; model default: on · xhigh)"
+    assert thinking.deployment_text(low) == "on · low (levels: low, medium or xhigh)"
     off = thinking.deployment_default(thinking.of("mimo-v26-flash-mopd-tp2"), {"thinking": "off"})
-    assert thinking.deployment_text(off) == "off (deployment default; model default: on)"
+    assert thinking.deployment_text(off) == "off"
     assert thinking.deployment_default(None, {}) is None
     assert thinking.deployment_text(None) == "not recorded for this model"
 

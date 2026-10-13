@@ -419,7 +419,7 @@ with a `Group:` line naming its shape, positions and API Spark:
 ```text
 Saved model operation: PROFILE | up complete
 Checkpoint: NAME (REPOSITORY @ REVISION) | Image: RELEASE
-Thinking: on · xhigh (model default)
+Thinking: on · xhigh (levels: low, medium or xhigh)
 Transport: sircl, NCCL: absent (checked 2026-10-08T10:00:00Z); sudo sparkring check repeats it
 Automatic recovery: on
 ```

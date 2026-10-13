@@ -130,8 +130,10 @@ unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
 Each card's **Thinking** line shows what applies when a request does not
-choose: an effort level, on, off or always, followed by model or deployment
-default. The terminal view shows the same text in its detail rows. Installed
+choose: the mode, effective effort level and available levels, such as
+`Thinking: always · high (levels: low, high or max)`. The terminal view shows
+the same text in its detail rows. Expand **Thinking details** for one line
+of default provenance; the JSON retains the effective and model defaults. Installed
 checkpoints without a recorded thinking behaviour have no line. The raw
 **Chat defaults** row remains in the web details.
 
@@ -168,7 +170,7 @@ See the [observation contract](../development/dashboard-counters.md#unmanaged-mo
 for bounds and freshness rules.
 
 For these models, **Thinking** uses explicit chat defaults from runtime status
-or agent launch facts. Without them it says **model default**, without guessing
+or agent launch facts. Without them it says **unknown**, without guessing
 a level. This display adds no model API requests.
 
 ### Rates and graphs

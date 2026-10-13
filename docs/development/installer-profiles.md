@@ -300,8 +300,13 @@ thinking default. A request's arguments take precedence over the deployment.
 The shared container adapter writes the effective choice into
 `--default-chat-template-kwargs` on the API rank only. The installer lock and
 Compose manifest record the effective settings in `serving`. Model ready,
-status, the plan and `sparkring models` show the deployment default alongside
-the template default through `thinking.deployment_default`.
+status, the plan, `sparkring models`, the dashboard and terminal show the mode,
+effective level and available levels through `thinking.deployment_text`.
+`thinking.deployment_default` retains the effective and template defaults in
+structured output. Expanded dashboard details show their provenance on one line.
+Status lists only operator options under **Serving settings**, using the saved
+checkpoint request. Without that request, values equal to profile defaults
+are omitted because their origin cannot be distinguished.
 
 GLM profiles select `high`, while the thinking records preserve the template's
 `max` default and historical measurements retain their original conditions.

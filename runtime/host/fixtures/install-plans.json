@@ -1,5 +1,5 @@
 {
- "generated_at": "ring-preview-20261013",
+ "generated_at": "codex/ring-preview-followups: short thinking display",
  "plans": {
   "prepared": {
    "printed": [
@@ -9,6 +9,7 @@
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
     "Transport: RoCEnante (b12x) (--transport prepared)",
     "Update workers and prepare assets; then replace the current model.",
+    "Thinking: on \u00b7 xhigh (levels: low, medium or xhigh)",
     "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
     "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",
     "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB",
@@ -163,6 +164,11 @@
     "thinking": {
      "chosen": false,
      "level": "xhigh",
+     "levels": [
+      "low",
+      "medium",
+      "xhigh"
+     ],
      "model": {
       "level": "xhigh",
       "thinking": "on"
@@ -186,6 +192,7 @@
     "  NCCL: opt-in only (auto); tables choose among SIRCL options",
     "  SIRCL settings: gather_link_chunk 1048576, gather_schedule ring, large_schedule ring, link_slot 1048576, oneshot_max 65536, reduce_link_chunk 1048576, scatter_link_chunk 1048576, scatter_schedule ring",
     "Update workers and prepare assets; then replace the current model.",
+    "Thinking: on \u00b7 xhigh (levels: low, medium or xhigh)",
     "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
     "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",
     "Checkpoint local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e: 53 files, 102.6 GiB",
@@ -340,6 +347,11 @@
     "thinking": {
      "chosen": false,
      "level": "xhigh",
+     "levels": [
+      "low",
+      "medium",
+      "xhigh"
+     ],
      "model": {
       "level": "xhigh",
       "thinking": "on"

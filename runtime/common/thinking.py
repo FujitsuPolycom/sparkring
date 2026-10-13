@@ -222,7 +222,8 @@ def arguments(record, settings, profile_id):
 def deployment_default(record, settings):
     """What applies to a request that names no thinking argument, or None without a record.
 
-    ``{"thinking", "level", "chosen", "model"}``: ``thinking`` and ``level``
+    ``{"thinking", "level", "chosen", "model", "levels"}`` and optional ``range``:
+    ``thinking`` and ``level``
     as the deployment's thinking settings make them, ``chosen`` whether it
     has such a setting, and ``model`` the record's own default and level.
     """
@@ -236,14 +237,22 @@ def deployment_default(record, settings):
     elif settings.get("reasoning_effort") is not None:
         current["level"] = settings["reasoning_effort"]
     chosen = settings.get("thinking") is not None or settings.get("reasoning_effort") is not None
-    return {**current, "chosen": chosen, "model": default}
+    return {**current, "chosen": chosen, "model": default, "levels": record["levels"],
+            **({"range": record["range"]} if "range" in record else {})}
 
 
 def deployment_text(state):
-    """``deployment_default`` in words: ``on · xhigh (model default)`` or ``off (deployment default; model default: on)``."""
+    """The effective mode, level and choices, shared by every thinking display."""
     if state is None:
         return "not recorded for this model"
+    value = summary({"default": state["thinking"], "level": None if state["thinking"] == "off" else state["level"]})
+    levels = levels_text({**state, "levels": state.get("levels", [])})
+    return value + (f" (levels: {levels})" if levels else "")
+
+
+def provenance_text(state):
+    """One short line for expanded details; structured defaults remain in the state."""
+    if state is None:
+        return None
     model_text = summary({"default": state["model"]["thinking"], "level": state["model"]["level"]})
-    if not state["chosen"]:
-        return model_text + " (model default)"
-    return summary({"default": state["thinking"], "level": state["level"]}) + f" (deployment default; model default: {model_text})"
+    return ("Deployment default; " if state["chosen"] else "") + f"Model default: {model_text}"

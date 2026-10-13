@@ -104,7 +104,7 @@ import urllib.parse
 import urllib.request
 
 from runtime.common.transport_names import collective_name
-from runtime.common import thinking
+from runtime.common import serving, thinking
 from runtime.host.dashboard_rates import number, plugin_fresh
 
 SCHEMA = "sparkring-dashboard/v1"
@@ -576,8 +576,8 @@ def chat_defaults(row, settings):
     return None
 
 
-def thinking_line(row, settings):
-    """Default for requests that do not choose thinking; unknown installed checkpoints have no line."""
+def thinking_state(row, settings):
+    """Effective thinking and provenance from observations, then saved/profile defaults."""
     unmanaged = row.get("unmanaged")
     profile, checkpoint = row.get("profile"), row.get("checkpoint")
     record = None if unmanaged or not isinstance(profile, str) or (
@@ -588,7 +588,7 @@ def thinking_line(row, settings):
     chosen = {}
     enabled = False
     if kwargs is None:
-        chosen = (row.get("serving") or {}) if not unmanaged else {}
+        chosen = serving.effective(profile, row.get("serving"), checkpoint) if not unmanaged else {}
     else:
         off = record and record["off"]
         enabled = bool(off) and all(kwargs.get(k) is True for k in off)
@@ -601,17 +601,21 @@ def thinking_line(row, settings):
                 unmanaged or thinking.accepts(record, kwargs["reasoning_effort"])):
             chosen = {"reasoning_effort": kwargs["reasoning_effort"]}
         elif unmanaged and (kwargs.get("enable_thinking") is True or kwargs.get("thinking") is True):
-            return "on (deployment default)"
+            chosen = {"thinking": "on"}
     if unmanaged:
-        if chosen.get("thinking") == "off":
-            return "off (deployment default)"
-        effort = chosen.get("reasoning_effort")
-        return f"{effort} (deployment default)" if effort is not None else "model default"
+        return {"thinking": chosen.get("thinking", "on" if "reasoning_effort" in chosen else "unknown"),
+                "level": chosen.get("reasoning_effort"), "chosen": bool(chosen), "levels": [],
+                "model": {"thinking": "unknown", "level": None}}
     state = thinking.deployment_default(record, chosen)
     if enabled and state["thinking"] != "off":
         state.update(thinking="on", chosen=True)
-    value = state["thinking"] if state["thinking"] == "off" or state["level"] is None else state["level"]
-    return f"{value} ({'deployment' if state['chosen'] else 'model'} default)"
+    return state
+
+
+def thinking_line(row, settings):
+    """Shared display text; unknown installed checkpoints have no line."""
+    state = thinking_state(row, settings)
+    return thinking.deployment_text(state) if state else None
 
 
 def rendezvous_head(fabric, container, observed):
@@ -1226,6 +1230,7 @@ class Collector:
             up = True if serving else (False if model.state == "offline" and position == positions[0] else None)
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
                            "lan_address": spark.get("lan_address"), "up": up, "position": position})
+        thought = thinking_state(row, runtime.get("settings"))
         return {
             "id": model.id, "name": "Sparks " + ", ".join(map(str, positions)) if row.get("unmanaged") else run_name(positions),
             "profile": row.get("profile"),
@@ -1249,7 +1254,8 @@ class Collector:
             "totals": {"finished": metrics.get("finished"), "preemptions": metrics.get("preemptions"),
                        "output_tokens": metrics.get("gen"), "prompt_tokens": metrics.get("prompt")}
             if model.metrics else None,
-            "thinking": thinking_line(row, runtime.get("settings")),
+            "thinking": thinking.deployment_text(thought) if thought else None,
+            "thinking_default": thought, "thinking_provenance": thinking.provenance_text(thought),
             "settings": runtime.get("settings"), "nodes": nodes, "capacity": capacity if serving else None,
             "workers": runtime.get("workers"), "image": runtime.get("image"), "transport": runtime.get("transport"),
             "sparks": sparks,
