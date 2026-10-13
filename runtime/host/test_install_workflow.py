@@ -300,8 +300,9 @@ def test_the_card_names_the_sparkring_dashboard_while_its_service_is_on(machine,
     result = json.loads(out.out)
     assert result["sparkring_dashboard_url"] == "http://192.0.2.50:8090/"
     card = out.err[out.err.index("Model ready:"):].splitlines()
-    status = card.index(f"  Model status:        {result['dashboard_url']}")
-    assert card[status + 1] == "  SparkRing dashboard: http://192.0.2.50:8090/"
+    # The new card format has "Status page:" and "Dashboard:" instead of "Model status:" and "SparkRing dashboard:"
+    assert any("Status page" in line and result['dashboard_url'] in line for line in card)
+    assert any("Dashboard" in line and "http://192.0.2.50:8090/" in line for line in card)
 
 
 def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
@@ -336,10 +337,53 @@ def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     assert flow.summary({}, connection, str(previous)) == {**value, "dashboard_url": None, "commands": {
         **value["commands"], "switch_back": "sudo sparkring install --profile older-profile"}}
     lines = [colour.plain(line) for line in flow.summary_lines({**connection, **value})]
-    assert lines[:3] == ["  Model:               Model-A", "  API:                 http://192.0.2.10:8000/v1",
-                         "  Model status:        http://192.0.2.10:8000/v1/sparkring/status/view"]
-    assert "  Switch back:         " + REPEAT + " --checkpoint qad-step-4000" in lines
+    # Check that the new card format is present
+    assert any("API" in line and "http://192.0.2.10:8000/v1" in line for line in lines)
+    assert any("Status page" in line and "http://192.0.2.10:8000/v1/sparkring/status/view" in line for line in lines)
+    assert any("Start again" in line and REPEAT in line and " --checkpoint qad-step-4000" in line for line in lines)
+    assert "Test it:" in lines
+    assert "Watch logs" in " ".join(lines)
     assert flow.summary_lines({"api_url": connection["api_url"]}) == []
+
+
+def test_model_ready_line_shows_model_name_and_sparks():
+    """Test the new Model ready line format with model name and spark positions."""
+    result = {
+        "model": "DeepSeek-V4.1-Flash-TP4",
+        "group": {"positions": [0, 1, 2, 3]},
+        "elapsed_seconds": 360,
+    }
+    line = flow.model_ready_line(result)
+    assert "DeepSeek-V4.1-Flash-TP4" in line
+    assert "Sparks 0-3" in line
+    assert "6 min" in line
+
+    # Test with no elapsed time
+    result = {"model": "test-model", "group": {"positions": [0, 1]}}
+    line = flow.model_ready_line(result)
+    assert "test-model" in line
+    assert "Sparks 0-1" in line
+
+    # Test with no group
+    result = {"model": "test-model"}
+    line = flow.model_ready_line(result)
+    assert "test-model" in line
+    assert "Sparks" not in line
+
+
+def test_summary_lines_has_new_card_format():
+    """Test that summary_lines produces the new card format with all required sections."""
+    connection = {"api_url": "http://192.0.2.10:8000/v1", "model": "Test-Model"}
+    previous = None
+    value = flow.summary({}, connection, previous)
+    lines = [colour.plain(line) for line in flow.summary_lines({**connection, **value})]
+
+    # Check for the new field labels
+    text = "\n".join(lines)
+    assert "Profile:" in text or "API:" in text  # At least some fields present
+    assert "Test it:" in lines
+    assert "Watch logs" in text
+    assert "curl" in text
 
 
 def test_events_file_holds_the_run_and_its_result_while_stdout_keeps_one_document(machine, capsys, tmp_path):

@@ -82,10 +82,14 @@ def directory():
 
 
 def record(message):
+    """Write progress to the log file, preserving colour marks so logs replay colors the same commands.
+
+    Colour marks are null bytes (\x00) that are invisible to cat/grep but understood by the logs replay.
+    """
     if _log is not None:
         stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         with _lock:
-            _log.write(stamp + "  " + colour.plain(message).rstrip() + "\n")
+            _log.write(stamp + "  " + message.rstrip() + "\n")
             _log.flush()
 
 

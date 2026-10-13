@@ -87,11 +87,20 @@ def apply(directory, operation, *, cache, run=subprocess.run):
     code = inspect.getsource(_operation) + "\n" + """import contextlib,json,sys
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
+op_descriptions = {
+    "saved-status": "Reading the saved status of deployment",
+    "up": "Starting deployment",
+    "down": "Stopping deployment",
+    "prepare": "Preparing deployment",
+    "verify": "Verifying deployment",
+    "transport": "Checking transport"
+}
 with contextlib.redirect_stdout(sys.stderr):
  if sys.argv[3].startswith('review-'):
   result=_operation(sys.argv[2],sys.argv[3])
  else:
-  with progress.run('retained deployment '+sys.argv[3]):
+  desc=op_descriptions.get(sys.argv[3],'Running '+sys.argv[3])
+  with progress.run(desc):
    result=_operation(sys.argv[2],sys.argv[3])
 print(json.dumps(result))
 """

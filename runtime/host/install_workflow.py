@@ -1220,32 +1220,124 @@ def transport_card_line(result):
     return line.removeprefix("Transport: ").replace("Transport check failed", "check failed", 1)
 
 
+def model_ready_line(result):
+    """The ``Model ready:`` line with model name, sparks and elapsed time.
+
+    Returns a line like: "DeepSeek-V4.1-Flash-TP4 on Sparks 0-3 (spark-edfd, spark-ebb8, ...) · 6 min"
+    or None when required fields are missing.
+    """
+    model = result.get("model")
+    group = result.get("group") or {}
+    elapsed = result.get("elapsed_seconds")
+
+    if not model:
+        return None
+
+    parts = [model]
+
+    # Add spark positions and names if available
+    positions = group.get("positions")
+    if positions:
+        spark_range = f"{min(positions)}-{max(positions)}" if len(positions) > 1 else str(positions[0])
+        # Try to get host names from the transaction or lock data
+        transaction = result.get("transaction") or {}
+        spark_names = []
+        if isinstance(transaction, dict) and "ranks" in transaction:
+            for pos in positions:
+                # Try to find the host name for this position
+                for rank_data in transaction.get("ranks", []):
+                    if rank_data.get("rank") == pos:
+                        host = rank_data.get("host", "")
+                        # Extract short hostname from full SSH address
+                        if "@" in host:
+                            host = host.split("@", 1)[1]
+                        # Try to extract spark name (e.g., "spark-xxxx" from hostname)
+                        spark_match = host.split(".")[0]
+                        if spark_match and not spark_match.startswith("-"):
+                            spark_names.append(spark_match)
+                        break
+
+        if spark_names:
+            parts.append(f"on Sparks {spark_range} ({', '.join(spark_names)})")
+        else:
+            parts.append(f"on Sparks {spark_range}")
+
+    # Add elapsed time if available
+    if elapsed and elapsed > 0:
+        minutes = int(elapsed // 60)
+        if minutes > 0:
+            parts.append(f"· {minutes} min")
+        else:
+            seconds = int(elapsed)
+            if seconds > 0:
+                parts.append(f"· {seconds} s")
+
+    return " ".join(parts)
+
+
 def summary_lines(result):
     """The card printed after ``Model ready:``; empty when the result lacks the summary fields.
 
-    ``Model status`` is the model's runtime-status page (``dashboard_url``); ``SparkRing
-    dashboard`` is the dashboard service on Node A (``sparkring_dashboard_url``), shown only
-    while that service is on. The commands in it are highlighted on a terminal; the result
-    document that carries the same commands stays plain.
+    The commands in it are highlighted on a terminal; the result document that carries
+    the same commands stays plain (the colour marks are stored in the log).
     """
     if "example_request" not in result:
         return []
     commands = result.get("commands") or {}
-    rows = [("Model", result.get("model")), ("API", result.get("api_url")),
-            ("Model status", result.get("dashboard_url")),
-            ("SparkRing dashboard", result.get("sparkring_dashboard_url")),
-            ("Transport", transport_card_line(result)),
-            ("Try it", result["example_request"]),
-            ("Switch back", colour.cmd(commands["switch_back"]) if commands.get("switch_back") else None),
-            ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
-            ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
-            ("Uninstall", f"stop the model, then {colour.cmd(commands['remove'])} on each Spark"
-             if commands.get("remove") else None)]
+    rows = [("Profile", result.get("profile")),
+            ("Capacity", _capacity_text(result)),
+            ("API", result.get("api_url")),
+            ("Status page", result.get("dashboard_url")),
+            ("Dashboard", result.get("sparkring_dashboard_url")),
+            ("Transport", transport_card_line(result))]
+    # Non-inline commands: Test it, Watch logs, Stop, Start again, Recovery, Uninstall
     lines = [f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}" for name, value in rows if value]
+
+    # Test it section with curl on its own line
+    lines.append("")
+    lines.append("  Test it:")
+    lines.append("    " + colour.cmd(result["example_request"]))
+
+    # Single-line commands
+    inline_commands = [("Watch logs", colour.cmd("sudo sparkring logs --follow")),
+                       ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
+                       ("Start again", colour.cmd(commands["switch_back"]) if commands.get("switch_back") else None),
+                       ("Recovery", RECOVERY_TEXT.get(result.get("recovery")))]
+    for name, value in inline_commands:
+        if value:
+            lines.append(f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}")
+
+    # Uninstall section
+    if commands.get("remove"):
+        stop_cmd = commands.get("stop", "sudo sparkring down --execute")
+        uninstall_text = f"{colour.cmd(stop_cmd)}, then {colour.cmd(commands['remove'])} on each Spark"
+        lines.append(f"  {'Uninstall:':<{CARD_LABEL_WIDTH}}{uninstall_text}")
+
     if isinstance(result.get("start_checks"), dict):
         from runtime.host import start_checks
+        lines.append("")
         lines += ["  Start checks:"] + ["    " + line for line in start_checks.text(result["start_checks"])]
     return lines
+
+
+def _capacity_text(result):
+    """The Capacity line from model capacity fields, or None when unknown."""
+    capacity = result.get("capacity") or {}
+    context = capacity.get("context_length")
+    kv_tokens = capacity.get("kv_tokens")
+    max_requests = capacity.get("max_requests")
+    parts = []
+    if context is not None:
+        parts.append(f"{context:,} context")
+    if kv_tokens is not None:
+        # Format as "12.7M KV tokens" or "12,700,000 KV tokens"
+        if kv_tokens >= 1_000_000:
+            parts.append(f"{kv_tokens / 1_000_000:.1f}M KV tokens")
+        else:
+            parts.append(f"{kv_tokens:,} KV tokens")
+    if max_requests is not None:
+        parts.append(f"up to {max_requests} requests")
+    return " · ".join(parts) if parts else None
 
 
 def execute(args):
@@ -1709,7 +1801,11 @@ def main(argv=None):
         if result["state"] == "complete":
             if (result.get("hairpin") or {}).get("required"):
                 print(hairpin_ring.complete_text(len(result["hairpin"].get("ranks") or []) or 4))
-            print("Model ready: " + result["api_url"])
+            ready_line = model_ready_line(result)
+            if ready_line:
+                print("Model ready: " + ready_line)
+            else:
+                print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
                 print(colour.render(line, sys.stdout))
         elif result["state"] == "needs_input":
