@@ -14,7 +14,7 @@ Sections: the [privilege inventory](#1-privilege-inventory), the
 [privileged mutation path](#4-one-privileged-path-for-mutations), the
 [rootless serving assessment](#5-serving-without-the-docker-group), the
 [fabric tool](#6-the-fabric-tool), the [staged plan](#7-staged-plan) and the
-[45-minute hardware test plan](#8-hardware-test-plan-one-pair-of-sparks).
+[45-minute hardware test plan](#8-hardware-test-plan-one-pair-of-sparks-45-minutes).
 
 Three classifications are used throughout:
 

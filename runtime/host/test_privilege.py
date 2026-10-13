@@ -37,13 +37,13 @@ def test_without_the_group_nobody_but_root_reads(monkeypatch):
 def test_redact_removes_site_addresses_and_keeps_ports_ranks_and_names():
     document = {
         "api_url": "http://192.0.2.50:8000/v1", "rank": 3, "model": "glm53",
-        "hosts": ["root@192.0.2.10", "sparkops@10.253.255.1"],
-        "note": "route to 10.253.0.17 missing", "port": 8000,
-        "nested": {"address": "172.16.4.9", "state": "serving"},
+        "hosts": ["root@192.0.2.10", "sparkops@198.51.100.1"],
+        "note": "route to 198.51.100.17 missing", "port": 8000,
+        "nested": {"address": "203.0.113.9", "state": "serving"},
     }
     redacted = privilege.redact(document)
     text = json.dumps(redacted)
-    assert "192.0.2." not in text and "10.253." not in text and "172.16." not in text
+    assert "192.0.2." not in text and "198.51.100." not in text and "203.0.113." not in text
     assert redacted["api_url"] == f"http://{privilege.REDACTED}:8000/v1"
     assert redacted["rank"] == 3 and redacted["port"] == 8000 and redacted["model"] == "glm53"
     assert redacted["hosts"] == [f"root@{privilege.REDACTED}", f"sparkops@{privilege.REDACTED}"]
