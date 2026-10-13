@@ -409,7 +409,7 @@
         {"image": "dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree", "tp": 8, "dcp": 4, "streams": null, "context": "16K", "checkpoint": "local-inference-lab/GLM-5.3-NVFP4@b472e4ee", "result": "prefill 1,378 -> 1,423 tok/s", "evidence": "private record 2026-10-08: eight-Spark evening results"}
       ],
       "evidence": ["spark_transport/sircl/STATUS.md", "profiles/glm53-nvfp4-tp8/README.md", "private record 2026-10-08: eight-Spark evening results"],
-      "profiles": ["deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-csf-tp6", "glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8"]
+      "profiles": ["deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8"]
     },
     {
       "id": "sircl-fused-allreduce-rmsnorm",

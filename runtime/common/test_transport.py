@@ -933,8 +933,8 @@ def eight_spark_image():
 def test_every_relayed_profile_renders_on_its_group_of_an_eight_spark_ring(profile):
     nodes = installer.setup.selection(profile)["nodes"]
     lock, section = sircl_deployment(profile, "cycle", 8, list(range(nodes)), image=eight_spark_image())
-    assert section["group"]["name"] == ("cycle-8" if nodes == 8 else "path-6")
-    assert section["tuning"]["row"] == ("cycle-8" if nodes == 8 else "path")
+    assert section["group"]["name"] == ("cycle-8" if nodes == 8 else "cycle-6")
+    assert section["tuning"]["row"] == ("cycle-8" if nodes == 8 else "cycle")
     specs = installer.specifications(lock)
     assert len(specs) == nodes
     groups = "tp,dcp" if transport.profile_dcp(profile) > 1 else "tp"

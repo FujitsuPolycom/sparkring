@@ -43,7 +43,7 @@ from .. import groups as groups_mod
 from .. import routes as routes_mod
 from ..p2p import budget
 from ..p2p.settings import P2PSettings
-from . import fabric
+from . import fabric, settings
 from .fabric import FabricError, GroupTopology, Layout
 
 P2P_KINDS = ("pp", "tp", "dcp")
@@ -51,7 +51,7 @@ SESSION_KINDS = ("tp", "dcp")
 # Variables whose values shape the instance plan (the cache key holds them).
 PLAN_VARIABLES = ("SIRCL_FORWARD_WINDOW_BYTES", "SIRCL_FORWARD_CHUNK_BYTES", "SIRCL_HAIRPIN_QUEUE_BYTES",
                   "SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE",
-                  "SIRCL_P2P_WINDOW_BYTES", "SIRCL_P2P_CHUNK_BYTES", "SIRCL_MAX_RELAYS")
+                  "SIRCL_P2P_WINDOW_BYTES", "SIRCL_P2P_CHUNK_BYTES", "SIRCL_MAX_RELAYS", "SIRCL_ROUTE_SCOPE")
 
 
 @dataclasses.dataclass(frozen=True)
@@ -136,13 +136,13 @@ class GroupChannels:
 
 
 def topology_for(kind: str, layout: Layout, positions: Sequence[int], *, instance: Sequence[int],
-                 parent: Sequence[int] | None = None) -> GroupTopology:
+                 parent: Sequence[int] | None = None, route_scope: str = "group") -> GroupTopology:
     """Where a group's channels route: a PP group over the instance's fabric, a session group as its session."""
     if kind == "pp":
-        return fabric.describe_group(layout, positions, parent=tuple(sorted(set(instance))))
+        return fabric.describe_group(layout, positions, parent=tuple(sorted(set(instance))), route_scope=route_scope)
     if kind == "dcp" and parent is not None:
-        return fabric.describe_group(layout, positions, parent=parent)
-    return fabric.describe_group(layout, positions)
+        return fabric.describe_group(layout, positions, parent=parent, route_scope=route_scope)
+    return fabric.describe_group(layout, positions, route_scope=route_scope)
 
 
 def _lane_set(name: str, topology: GroupTopology) -> budget.LaneSet:
@@ -171,7 +171,8 @@ class InstancePlan:
 
         def place(kind: str, ranks: Sequence[int], parent: Sequence[int] | None = None) -> GroupTopology:
             return topology_for(kind, layout, [self.positions[r] for r in ranks], instance=instance,
-                                parent=None if parent is None else [self.positions[r] for r in parent])
+                                parent=None if parent is None else [self.positions[r] for r in parent],
+                                route_scope=settings.route_scope(environ))
 
         if shape is not None:
             self.basis = "instance"

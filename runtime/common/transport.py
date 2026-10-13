@@ -535,10 +535,10 @@ def sircl_layout(document):
 def group_topology(layout_text, positions, *, research=False):
     _, _, fabric = _sircl()
     try:
-        # Six-rank path profiles are research-only. Their owned cables route
-        # the closing edge through four members, outside the qualified limit.
-        limit = 4 if research and len(positions) == 6 else fabric.DEFAULT_MAX_RELAYS
-        return fabric.describe_group(fabric.Layout.parse(layout_text), list(positions), max_relays=limit)
+        # Only the research TP6 admission changes. Its routes must agree with
+        # the installed universal table, including relays without a model rank.
+        scope = "fabric" if research and len(positions) == 6 else "group"
+        return fabric.describe_group(fabric.Layout.parse(layout_text), list(positions), route_scope=scope)
     except fabric.FabricError as error:
         raise TransportError(str(error)) from None
 
@@ -929,7 +929,8 @@ def dcp_topologies(layout_text, positions, size):
              f"decode-context parallelism {size} must divide the group's {len(positions)} ranks")
     try:
         layout = fabric.Layout.parse(layout_text)
-        return [fabric.describe_group(layout, positions[start:start + size], parent=positions)
+        scope = "fabric" if len(positions) == 6 else "group"
+        return [fabric.describe_group(layout, positions[start:start + size], parent=positions, route_scope=scope)
                 for start in range(0, len(positions), size)]
     except fabric.FabricError as error:
         raise TransportError(str(error)) from None
@@ -1096,6 +1097,8 @@ def environment(value, profile_environment, arguments):
         }
         if topology.max_relays() > 3:
             common["SIRCL_MAX_RELAYS"] = str(topology.max_relays())
+        if len(topology.members) == 6:
+            common["SIRCL_ROUTE_SCOPE"] = "fabric"
         if spin is not None:
             common["SIRCL_SPIN_LIMIT"] = str(spin)
         common.update(plan.oneshot_environment(settings.get("oneshot_max"), dispatch))

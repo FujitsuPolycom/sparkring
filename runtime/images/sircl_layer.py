@@ -1,7 +1,10 @@
 """Add SIRCL ring sessions to a kraken-line installer image and record its v3 lock.
 
 The layer adds to a parent image whose lock carries the prepared transport
-(``sparkring-installer-image/v2``):
+(``sparkring-installer-image/v2``), or replaces a recorded SIRCL layer on a v3
+image after verifying every inherited SIRCL file against its pinned receipt.
+The upgrade preserves other transport layers and removes obsolete SIRCL files.
+It installs:
 
 - the SIRCL package installed in the serving interpreter's site-packages, from
   a reproducible wheel ``sparkring_sircl-<version>-py3-none-any.whl``
@@ -288,7 +291,8 @@ def prepare(lock, read, wheel, natives, output):
     """Write the build context: the layer's files and the re-recorded external-base and toolchain receipts."""
     output = Path(output).resolve()
     require(not output.exists(), "Build context must not exist")
-    require(lock["schema"] == installer_image.SCHEMA, "The SIRCL layer derives from a v2 kraken-line image lock")
+    require(lock["schema"] in (installer_image.SCHEMA, image_lock.SCHEMA_V3),
+            "The SIRCL layer derives from a v2 or v3 kraken-line image lock")
     base_raw, toolchain_raw = read(derived_layer.BASE_RECEIPT), read(derived_layer.TOOLCHAIN_RECEIPT)
     require(digest(base_raw) == lock["parent_receipt_sha256"], "External-base receipt differs from the parent lock")
     require(digest(toolchain_raw) == lock["toolchain_receipt_sha256"], "Toolchain receipt differs from the parent lock")
@@ -297,9 +301,32 @@ def prepare(lock, read, wheel, natives, output):
             "Toolchain receipt does not record the external-base receipt")
     site = site_packages(base)
     payloads, receipt = layer_files(lock, wheel, natives, site)
+    inherited = {}
+    if lock["schema"] == image_lock.SCHEMA_V3 and image_lock.sircl(lock):
+        previous_raw = read(image_lock.LAYER_RECEIPT)
+        require(digest(previous_raw) == lock['sircl']['receipt']['sha256']
+                == base['files'].get(image_lock.LAYER_RECEIPT), "Parent SIRCL receipt differs from its lock")
+        previous = json.loads(previous_raw)
+        require(previous.get('schema') == LAYER_SCHEMA and previous.get('site_packages') == site,
+                "Parent SIRCL receipt has another schema or Python root")
+        inherited = previous['files']
+        for path, sha256 in inherited.items():
+            require(base['files'].get(path) == sha256 and digest(read(path)) == sha256,
+                    "Parent SIRCL file differs from its receipt: " + path)
+        # A recorded SIRCL layer may own only its package, resolver, wheel metadata and native libraries.
+        allowed = (site + 'sparkring_sircl/', site + 'sparkring_sircl-', image_lock.LIBRARY_DIRECTORY + '/')
+        require(all(str(PurePosixPath(path)) == path and '..' not in PurePosixPath(path).parts
+                    and (path == site + 'spark_roce_gid.py' or path.startswith(allowed)) for path in inherited),
+                "Parent SIRCL receipt claims a file outside its owners")
     recorded = sorted(path for path in payloads if path in base["files"])
-    require(not recorded, "The parent image already records " + ", ".join(recorded[:5]))
+    unexpected = set(recorded) - set(inherited) - ({image_lock.LAYER_RECEIPT} if inherited else set())
+    require(not unexpected, "The parent image already records " + ", ".join(sorted(unexpected)[:5]))
     derived = copy.deepcopy(base)
+    removed = sorted(set(inherited) - set(payloads))
+    for path in removed:
+        del derived['files'][path]
+    if removed:
+        derived['removed_files'] = sorted(set(derived.get('removed_files', [])) | set(removed))
     for path, data in payloads.items():
         derived["files"][path] = digest(data)
     derived.setdefault("capabilities", {})["sircl"] = {
@@ -314,8 +341,10 @@ def prepare(lock, read, wheel, natives, output):
         path = output / "files" / target.lstrip("/")
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(raw)
-    (output / "Dockerfile").write_text(derived_layer.dockerfile())
-    plan = {"schema": PLAN_SCHEMA, "parent_lock": lock, "added": sorted(payloads),
+    (output / "Dockerfile").write_text(derived_layer.dockerfile(removed))
+    plan = {"schema": PLAN_SCHEMA, "parent_lock": lock,
+            "added": sorted(set(payloads) - set(base['files'])),
+            "replaced": sorted(set(payloads) & set(base['files'])),
             "receipts": {derived_layer.BASE_RECEIPT: digest(base_out),
                          derived_layer.TOOLCHAIN_RECEIPT: digest(toolchain_out)},
             "layer": receipt, "layer_sha256": digest(payloads[image_lock.LAYER_RECEIPT]),
@@ -337,7 +366,7 @@ def sircl_block(plan, probe_record):
 
 
 def v3_lock(plan, image, name, probe_record, profiles=None):
-    """The v3 lock of the built image: the parent's v2 contract bound to the image, with the SIRCL layer.
+    """The v3 lock of the built image: the parent contract with the replaced SIRCL layer.
 
     ``profiles`` replaces the parent lock's profile list; it may name the
     profiles that run only on SIRCL ring sessions, which a v2 lock cannot.
@@ -347,7 +376,8 @@ def v3_lock(plan, image, name, probe_record, profiles=None):
                 image_bytes=image["Size"], download_bytes=lock["download_bytes"] + plan["payload_bytes"],
                 parent_receipt_sha256=plan["receipts"][derived_layer.BASE_RECEIPT],
                 toolchain_receipt_sha256=plan["receipts"][derived_layer.TOOLCHAIN_RECEIPT],
-                line="kraken", transports=["prepared", "sircl"], sircl=sircl_block(plan, probe_record),
+                line="kraken", transports=sorted(set([*lock.get('transports', ['prepared']), 'sircl'])),
+                sircl=sircl_block(plan, probe_record),
                 tuning_defaults_sha256=plan["tuning_defaults_sha256"], archived=False)
     if profiles:
         lock["profiles"] = sorted(set(profiles))
@@ -385,6 +415,9 @@ def record(context, image_id, name, output, *, run=_run, profiles=None):
                                  library=PurePosixPath(plan["layer"]["native"]["path"]).name)
     require(not blockers, "The built image's SIRCL probe found: " + "; ".join(blockers))
     lock = v3_lock(plan, image, name, probed, profiles)
+    if image_lock.libsircl(lock):
+        from runtime.common import libsircl
+        libsircl.check_layer(lock['image_id'], lock['parent_receipt_sha256'], lock['libsircl'], run=run)
     view = image_lock.v2_view(lock)
     for profile in image_lock.profiles_of(lock):
         installer_image.admit(view, run=run, profile=profile)
@@ -418,6 +451,7 @@ def main(argv=None):
     prepared.add_argument("--natives", required=True, type=Path)
     prepared.add_argument("--base-receipt", type=Path, help="the parent's " + derived_layer.BASE_RECEIPT)
     prepared.add_argument("--toolchain-receipt", type=Path, help="the parent's " + derived_layer.TOOLCHAIN_RECEIPT)
+    prepared.add_argument("--parent-root", type=Path, help="exported parent root for offline v3 replacement")
     recorded = actions.add_parser("record", help="admit a built image and write its v3 lock")
     recorded.add_argument("--image", required=True)
     built = actions.add_parser("build", help="build a prepared context, then record it")
@@ -438,8 +472,10 @@ def main(argv=None):
                 result = build_natives(lock, args.wheel, args.output)
             else:
                 require(bool(args.base_receipt) == bool(args.toolchain_receipt), "Supply both copied receipts or neither")
-                read = (derived_layer.receipt_reader(args.base_receipt, args.toolchain_receipt)
-                        if args.base_receipt else derived_layer.docker_reader(lock["image_id"]))
+                fallback = (derived_layer.root_reader(args.parent_root) if args.parent_root
+                            else derived_layer.docker_reader(lock["image_id"]))
+                read = (derived_layer.receipt_reader(args.base_receipt, args.toolchain_receipt, fallback)
+                        if args.base_receipt else fallback)
                 result = prepare(lock, read, args.wheel, args.natives, args.output)
         elif args.action == "record":
             profiles = args.profiles.split(",") if args.profiles else None

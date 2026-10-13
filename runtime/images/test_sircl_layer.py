@@ -115,6 +115,35 @@ def prepared(tmp_path):
     return lock, base, wheel, result
 
 
+def test_v3_upgrade_checks_parent_bytes_and_preserves_other_transports(tmp_path):
+    _, _, wheel, result = prepared(tmp_path)
+    context = Path(result['context'])
+    plan = json.loads((context / 'plan.json').read_text())
+    probe = {'vllm': {'matches': ['sparkring-kraken-beta-20261007-bc9ea774']}}
+    lock = sircl_layer.v3_lock(plan, {'Id': 'sha256:' + '7' * 64, 'Size': 1000}, 'test-parent', probe)
+    # Preserving the list and unrelated lock fields is essential on the CSF image.
+    from runtime.common.test_image_lock import libsircl_block
+    lock['transports'] = sorted([*lock['transports'], 'libsircl'])
+    lock['libsircl'] = libsircl_block()
+    files = {('/' + p.relative_to(context / 'files').as_posix()): p.read_bytes()
+             for p in (context / 'files').rglob('*') if p.is_file()}
+    stage = tmp_path / 'upgrade'
+    stage.mkdir()
+    directory = natives(stage, lock, wheel)
+    upgraded = sircl_layer.prepare(lock, files.__getitem__, wheel['wheel'], directory, stage / 'context')
+    new_plan = json.loads((Path(upgraded['context']) / 'plan.json').read_text())
+    assert new_plan['added'] == []
+    assert SITE + 'sparkring_sircl/vllm/adapter.py' in new_plan['replaced']
+    new = sircl_layer.v3_lock(new_plan, {'Id': 'sha256:' + '8' * 64, 'Size': 2000}, 'test-child', probe)
+    assert new['transports'] == lock['transports']
+    assert new['libsircl'] == lock['libsircl']
+    adapter = SITE + 'sparkring_sircl/vllm/adapter.py'
+    assert b'route_scope=config.route_scope' in files[adapter]
+    files[adapter] += b'\n# tampered parent\n'
+    with pytest.raises(ValueError, match='Parent SIRCL file differs'):
+        sircl_layer.prepare(lock, files.__getitem__, wheel['wheel'], directory, stage / 'bad')
+
+
 def test_the_context_installs_the_wheel_and_libraries_and_records_them_in_the_parent_receipt(tmp_path):
     lock, base, wheel, result = prepared(tmp_path)
     context = Path(result["context"])

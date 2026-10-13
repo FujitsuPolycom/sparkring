@@ -329,7 +329,7 @@ Measured without a gain, not adopted:
 - Models: GLM-5.3, GLM-5.3-Flash, Qwen3.8-Flash-Next, Swift-1.5-Qwen3.8-Flash-Next, MiMo-V2.6-Flash-MOPD, DeepSeek-V4.1-Flash. Sizes: 2/4/8.
 - Availability: from SIRCL 0.3.0 and libsircl image (816c6d6a), SIRCL 0.3.1, libsircl and GLM-5.3 plugin image (27e9f75c), SIRCL 0.3.2, libsircl and GLM-5.3 plugin image (1a8c1035), 2026.10.2.
 - Requires: [`sircl-transport`](#sircl-transport).
-- Profiles that turn it on: `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-nvfp4-csf-tp6`, `glm53-nvfp4-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `qwen38-flash-next-qad-tp8`.
+- Profiles that turn it on: `deepseek-v41-flash-tp8`, `glm53-flash-csf-tp8`, `glm53-nvfp4-csf-tp8`, `glm53-nvfp4-tp8`, `glm53-nvfp4-tp8-dcp1`, `qwen38-flash-next-qad-tp8`.
 - Measured (TP8/DCP4, context 16K, local-inference-lab/GLM-5.3-NVFP4@b472e4ee, image dev-20261004-kraken-cuda1342-nccl2323-status034 with workspace plugins and SIRCL from a staged tree): prefill 1,378 -> 1,423 tok/s. Evidence: private record 2026-10-08: eight-Spark evening results.
 - Evidence: [spark_transport/sircl/STATUS.md](../spark_transport/sircl/STATUS.md); [profiles/glm53-nvfp4-tp8/README.md](../profiles/glm53-nvfp4-tp8/README.md); private record 2026-10-08: eight-Spark evening results.
 

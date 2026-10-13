@@ -150,6 +150,39 @@ def _metric(pattern, text):
     return sum(values) if values else None
 
 
+def resident_tp6_quantization(workers):
+    """Require every TP6 worker's resident methods; weight GiB is not a proxy."""
+    expected = {'target_qo_projections': 156, 'target_qo_mxfp8': 156,
+                'draft_qo_projections': 2, 'draft_qo_mxfp8': 2,
+                'draft_nvfp4_a16_experts': 1, 'target_head_mxfp8': True}
+    seen, evidence, missing, wrong = set(), [], False, False
+    for worker in workers if isinstance(workers, list) else []:
+        if not isinstance(worker, dict) or not isinstance(worker.get('identity'), dict):
+            missing = True
+            continue
+        rank_fact = worker['identity'].get('rank')
+        rank = rank_fact.get('value') if isinstance(rank_fact, dict) else None
+        if type(rank) is not int or rank not in range(6) or rank in seen:
+            missing = True
+            continue
+        seen.add(rank)
+        choices = worker.get('effective', {})
+        if not isinstance(choices, dict):
+            missing = True
+            continue
+        for key, wanted in expected.items():
+            item = choices.get(key, {})
+            actual = item.get('value') if isinstance(item, dict) and item.get('state') == 'known' else None
+            missing |= actual is None
+            wrong |= actual is not None and (type(actual) is not type(wanted) or actual != wanted)
+            evidence.append(f'rank {rank} {key}: {actual}')
+    verdict = NOT if wrong else UNKNOWN if missing or seen != set(range(6)) else TOOK
+    return _check(verdict, evidence or ['no resident worker facts'],
+                  'all six ranks: 78 target layers and one MTP layer expose MXFP8 Q/O methods, '
+                  'the target head is MXFP8 and the draft routed expert method is NVFP4 A16; '
+                  'method metadata does not establish execution or numerical correctness')
+
+
 def judge(log, status, metrics, facts, environment, checks=CHECKS):
     """The ``sparkring-start-checks/v1`` document from the gathered sources; any of them may be None.
 
@@ -178,6 +211,10 @@ def judge(log, status, metrics, facts, environment, checks=CHECKS):
 
     weights_text = f"rank 0 loaded {weights} GiB of weights" if weights is not None else "no weight figure in the log"
     result = {}
+    if 'glm53-tp6-resident-quantization' in checks:
+        worker_status = status.get('workers') if isinstance(status, dict) else None
+        stale = isinstance(worker_status, dict) and worker_status.get('stale') is True
+        result['glm53-tp6-resident-quantization'] = resident_tp6_quantization(None if stale else workers)
     head = fact("target_head_mxfp8")
     if head is False or (weights is not None and weights >= BF16_LINEARS_GIB):
         verdict = NOT
@@ -201,6 +238,12 @@ def judge(log, status, metrics, facts, environment, checks=CHECKS):
         f"draft tokens accepted {accepted} of {drafted}" if drafted is not None else "no speculative-decoding metrics",
         weights_text], f"draft experts quantized when weights per rank are under {DRAFT_BOUND_GIB} GiB and the draft's "
                        f"tokens are accepted; BF16 draft experts between {DRAFT_BOUND_GIB} and {REFERENCE_GIB} GiB")
+    worlds = {int(world) for _, rank, world, _ in CSF_LAYER.findall(log) if rank == '0'}
+    tp = fact('tensor_parallel_size')
+    if (type(tp) is int and tp != 8) or (worlds and worlds != {8}):
+        for name in ('mxfp8-linears', 'draft-quantization'):
+            result[name] = _check(UNKNOWN, [weights_text, f'tensor parallel size: {tp}; log worlds: {sorted(worlds)}'],
+                                  'the weight thresholds apply only to TP8; inspect resident methods at other sizes')
     patched = {flag for _, flag in PATCHED.findall(log)}
     built = {flag for flag, pattern in SPLIT_BUILT.items() if pattern.search(log)}
     kept = sorted(set(SPLIT_KEPT.findall(log)))
@@ -220,9 +263,9 @@ def judge(log, status, metrics, facts, environment, checks=CHECKS):
         "glm53full_speedups' own log lines: every flag set to 1 patched its constructor and rank 0 built the split "
         "layer, with no refusal and no replicated fallback; the weights loaded, since the API answered the smoke "
         "request")
-    layers = CSF_LAYER.findall(log)
-    modes = sorted({mode.strip() for _, _, _, mode in layers})
-    a4 = sum(1 for _, _, _, mode in layers if mode.strip() == "W4A16 decode, A4 prefill")
+    layers = {int(layer): mode.strip() for layer, rank, _, mode in CSF_LAYER.findall(log) if rank == '0'}
+    modes = sorted(set(layers.values()))
+    a4 = sum(mode == "W4A16 decode, A4 prefill" for mode in layers.values())
     verdict = TOOK if a4 >= CSF_LAYERS else NOT if layers else UNKNOWN
     result["csf-w4a16-a4-prefill"] = _check(verdict, [f"{len(layers)} NVFP4-CSF layer lines on rank 0, modes: "
                                                       f"{', '.join(modes) or 'none'}"],

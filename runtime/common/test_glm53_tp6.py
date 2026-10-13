@@ -15,9 +15,10 @@ def option(args, name):
 
 def test_six_rank_launch_uses_path6_and_three_dcp_pairs():
     lock, section = sircl_deployment(PROFILE, "cycle", 8, list(range(6)), image=eight_spark_image())
-    assert section["group"]["name"] == "path-6"
+    assert section["group"]["name"] == "cycle-6"
     assert section["group"]["positions"] == list(range(6))
-    assert section["tuning"]["row"] == "path"
+    assert section["tuning"]["row"] == "cycle"
+    assert section["tuning"]["row_source"] == "rules"
     specs = installer.specifications(lock)
     assert len(specs) == 6
     for rank, spec in enumerate(specs):
@@ -28,7 +29,9 @@ def test_six_rank_launch_uses_path6_and_three_dcp_pairs():
         assert spec.environment["SIRCL_NCCL"] == "never"
         assert spec.environment["SIRCL_GROUPS"] == "tp,dcp"
         assert spec.environment["SIRCL_FABRIC"] == "ring:8"
-        assert spec.environment["SIRCL_MAX_RELAYS"] == "4"
+        assert spec.environment["SIRCL_ROUTE_SCOPE"] == "fabric"
+        assert spec.environment["SIRCL_COLUMN_GATHER"] == "0"
+        assert "SIRCL_MAX_RELAYS" not in spec.environment
         assert option(args, "--decode-context-parallel-size") == "2"
         assert option(args, "--cp-kv-cache-interleave-size") == "1"
         assert int(option(args, "--max-model-len")) >= 131072 + 2048
@@ -81,10 +84,40 @@ def test_six_rank_placement_preserves_the_other_pair(tmp_path):
     assert placement.choose(tmp_path, PROFILE, layout, 6) == arc
 
 
-def test_path6_routes_stay_inside_its_members():
+def test_six_rank_routes_use_the_universal_cycle_table():
     top = transport.group_topology("ring:8", list(range(6)), research=True)
-    assert top.max_relays() == 4 and top.lane_count == 2
-    assert [lane.positions for lane in top.lanes(5, 0)] == [(5, 4, 3, 2, 1, 0)] * 2
-    assert all(set(lane.positions) <= set(range(6))
-               for rank in range(6) for peer in range(6) if rank != peer
-               for lane in top.lanes(rank, peer))
+    assert top.max_relays() == 3 and top.lane_count == 2
+    assert [lane.positions for lane in top.lanes(5, 0)] == [(5, 6, 7, 0)] * 2
+    for size in (2, 3, 6):
+        assert len(transport.dcp_topologies("ring:8", list(range(6)), size)) == 6 // size
+
+
+def test_every_relayed_lane_matches_installed_addresses_devices_and_tags():
+    from runtime.common import fabric_document
+    from runtime.host import relays
+    from runtime.host.test_relays import prepared
+    _, document, table = prepared('cycle', 8)
+    top = transport.group_topology('ring:8', list(range(6)), research=True)
+    for rank in range(6):
+        local = fabric_document.devices(document, rank)
+        for peer in range(6):
+            if peer == rank:
+                continue
+            remote = fabric_document.devices(document, peer)
+            for lane in top.lanes(rank, peer):
+                if not lane.relays:
+                    continue
+                origin = local[lane.device()]
+                destination = remote[lane.remote_device()]['address']
+                section = table['positions'][rank]
+                assert any(row['dst'] == destination + '/32' and row['dev'] == origin['netdev']
+                           and row['src'] == origin['address'] and row['relay_positions'] == list(lane.relays)
+                           for row in section['routes'])
+                marker = next(row for row in section['markers'] if row['rdma'] == lane.device())
+                assert {'dst': destination, 'ethertype': relays.hex16(relays.tag(len(lane.relays)))} in marker['rules']
+                for index, position in enumerate(lane.relays):
+                    remaining = len(lane.relays) - index
+                    assert any(rule['handle'] == remaining
+                               and rule['protocol'] == relays.hex16(relays.tag(remaining))
+                               and rule['actions'][0]['pedit']['eth_type'] == relays.hex16(relays.tag(remaining - 1))
+                               for rule in table['positions'][position]['filters'])

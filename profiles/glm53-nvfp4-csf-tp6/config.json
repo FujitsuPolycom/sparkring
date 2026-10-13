@@ -31,7 +31,8 @@
   "start_checks": [
     "csf-w4a16-a4-prefill",
     "csf-scale-prefetch",
-    "w4a16-host-barrier-reset"
+    "w4a16-host-barrier-reset",
+    "glm53-tp6-resident-quantization"
   ],
   "environment": {
     "VLLM_USE_V2_MODEL_RUNNER": "1",
@@ -100,7 +101,7 @@
     "GLM_DCP_DECODE_SELECTION_REUSE": "0",
     "GLM_DCP_DECODE_A2A_FUSED": "0",
     "SIRCL_FUSED_NORM": "1",
-    "SIRCL_COLUMN_GATHER": "1"
+    "SIRCL_COLUMN_GATHER": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",
