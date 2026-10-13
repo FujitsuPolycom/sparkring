@@ -36,6 +36,10 @@
     {
       "id": "glm53-flash-nvfp4-spark-tp2-dcp2",
       "path": "profiles/glm53-flash-nvfp4-spark-tp2-dcp2/profile.json"
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp6",
+      "path": "profiles/glm53-nvfp4-csf-tp6/profile.json"
     }
   ]
 }

@@ -477,9 +477,17 @@ def describe_group(
     parent: Sequence[int] | None = None,
     lane_count: int = MAX_LANES,
     max_relays: int = DEFAULT_MAX_RELAYS,
+    route_scope: str = "group",
 ) -> GroupTopology:
-    """Place a group on the layout and check its lanes against the relay limit."""
+    """Place a group; ``fabric`` scope uses an existing universal relay table.
+
+    Scope changes routes, never group membership or NCCL's cabling policy.
+    Sessions with unhosted fabric positions cannot use ring/chain link ops.
+    """
     members = tuple(int(p) for p in members)
+    if route_scope not in ("group", "fabric"):
+        raise FabricError(f"invalid route scope {route_scope!r}")
+    _check_positions(layout, members)
     if parent is None:
         fabric = group_fabric(layout, members)
         subgroup = False
@@ -490,6 +498,8 @@ def describe_group(
                               f"group {list(parent)}")
         fabric = group_fabric(layout, parent)
         subgroup = True
+    if route_scope == "fabric":
+        fabric = group_fabric(layout, range(layout.size))
     topology = GroupTopology(layout, fabric, members, lane_count, max_relays, subgroup)
     relays = topology.max_relays() if len(members) > 1 else 0
     if relays > max_relays:

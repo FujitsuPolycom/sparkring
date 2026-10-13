@@ -46,6 +46,43 @@ def verdicts(document):
     return {name: item["verdict"] for name, item in document["checks"].items()}
 
 
+def test_tp6_never_uses_tp8_weight_thresholds():
+    value = start_checks.judge(log(weights=73.7).replace('rank 0/8', 'rank 0/6'),
+                               status(), METRICS, FACTS, ENVIRONMENT)
+    assert value['checks']['mxfp8-linears']['verdict'] == start_checks.UNKNOWN
+    assert value['checks']['draft-quantization']['verdict'] == start_checks.UNKNOWN
+
+
+def test_a4_layers_must_be_distinct_and_from_rank_zero():
+    repeated = log(layers=1) * 75
+    other_rank = log().replace('rank 0/8', 'rank 1/8')
+    for text in (repeated, other_rank):
+        assert start_checks.judge(text, status(), METRICS, FACTS, ENVIRONMENT)[
+            'checks']['csf-w4a16-a4-prefill']['verdict'] != start_checks.TOOK
+
+
+def test_tp6_resident_check_requires_six_complete_workers_and_rejects_wrong_methods():
+    rows = []
+    for rank in range(6):
+        choices = {'target_qo_projections': 156, 'target_qo_mxfp8': 156,
+                   'draft_qo_projections': 2, 'draft_qo_mxfp8': 2,
+                   'draft_nvfp4_a16_experts': 1, 'target_head_mxfp8': True}
+        rows.append({'identity': {'rank': {'value': rank}},
+                     'effective': {key: {'state': 'known', 'value': value} for key, value in choices.items()}})
+    judge = start_checks.resident_tp6_quantization
+    assert judge(rows)['verdict'] == start_checks.TOOK
+    assert judge(rows[:5])['verdict'] == start_checks.UNKNOWN
+    assert judge(rows + [rows[0]])['verdict'] == start_checks.UNKNOWN
+    assert judge([None, {'identity': {'rank': 0}}])['verdict'] == start_checks.UNKNOWN
+    stale = {'workers': {'ranks': rows, 'stale': True}}
+    checks = ('glm53-tp6-resident-quantization',)
+    assert start_checks.judge('', stale, '', {}, {}, checks)['checks'][checks[0]]['verdict'] == start_checks.UNKNOWN
+    rows[5]['effective']['draft_nvfp4_a16_experts']['value'] = 0
+    assert judge(rows)['verdict'] == start_checks.NOT
+    rows[5]['effective']['draft_nvfp4_a16_experts'] = {'state': 'unknown'}
+    assert judge(rows)['verdict'] == start_checks.UNKNOWN
+
+
 def test_every_setting_took_effect():
     document = start_checks.judge(log(), status(), METRICS, FACTS, ENVIRONMENT)
     assert document["schema"] == start_checks.SCHEMA and document["weights_gib"] == 51.08

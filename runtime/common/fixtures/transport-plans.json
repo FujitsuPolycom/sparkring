@@ -44,7 +44,7 @@
    ]
   },
   "sircl-cycle-8": {
-   "lock_id": "f7fce9678130259c3f1b1f9e73f39359abe6aadbabb549995900af2242d4f1bf",
+   "lock_id": "090933e6dd9064902ae03d4fbaff96f99467da7d6331d16b954b6e1abd16595a",
    "plan_lines": [
     "Transport: sircl on every collective, NCCL off (default table, cycle-8)",
     "  SIRCL group: cycle-8 at positions 0, 1, 2, 3, 4, 5, 6, 7; 2 lanes per peer, at most 3 relays on a lane",
@@ -53,14 +53,14 @@
    ],
    "section_sha256": "d44d43e7906555907284c7d71501bbd4c7182070f9b133d234443d70d34f2001",
    "specs_sha256": [
-    "4c7b7a72a271e53906ce3ba458d4aaf5704fdb8d1182f0ffc4c69f12782b8c2d",
-    "e25c8350a95627025857087929eed3b9d6f69fbdb2190681445ab4a5e2c59980",
-    "5813fb210383d90e532650f3bce44db80a3868ae7c62d7d4bafab030509d2ca7",
-    "1e7d2834a541de7b7a07612fc50f13369fe3532253fcc8cf008228d2ace482ef",
-    "f46a7ff006a55dd2d5c7e826bffecb5e8c94e5775953fabce1417d71aec16eac",
-    "8cbc0970d2566d067211ef6434bb460f286ad7dee25fd2463b176d80ab07ab8e",
-    "efdda9d69c197210fff611f790c946512a2615dcca5f30e5290bedf016c3cec3",
-    "219f1943013eeaa23a0a43f0a279a524e1bda0a11741f98184fb79713dc1efec"
+    "79224df6491c16784c680e7d189c9f147adcbe76b081c947ddacae06ce88f837",
+    "8d65e8c32e38da4b138700c7d195d441a516185b710c4dd0362e0721c8b82933",
+    "b465c1b28360436e75a15d5aa3fa15605682495ef2728cde788d7e10542bb639",
+    "ed3a658ddd6d1e61e5d09e93c91cd17d6087e398d5fb7757918511a57cddb977",
+    "41b9ab40a424382c60597d4f28fa5dd14c7057e371fccb4f3913ac44a9dbcc67",
+    "85a141f55def1022f36b7533653e5af68959bbbc766a8fb2c06256009ba4c4b1",
+    "255ea044a2f9249550bba1099cbe09bf1c59cce6a878b44acd1cf4cd3610c739",
+    "c309210a52493ebf662ac44141f1bca5a1cf6f17a3b89721b207c76f0cc5e325"
    ]
   },
   "sircl-pair": {
@@ -150,6 +150,6 @@
    null
   ]
  },
- "generated_at": null,
+ "generated_at": "codex/glm53-tp6",
  "schema": "sparkring-transport-plan-digests/v1"
 }

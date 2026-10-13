@@ -123,6 +123,9 @@ def test_the_probe_reads_pyncclss_bound_functions_and_the_library_selector_from_
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text)
     monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    # The image-plugin suites collect a stand-in vLLM in sys.modules. find_spec
+    # must inspect this test's on-disk package, not that previously cached spec.
+    monkeypatch.delitem(sys.modules, "vllm", raising=False)
     found = stock_image_probe.vllm_facts()
     assert found["nccl_so_path"] and found["find_reads_nccl_so_path"] and found["multinode"]
     assert found["pynccl_functions"] == ["ncclAllReduce", "ncclCommSuspend"]

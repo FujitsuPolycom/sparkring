@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-nvfp4-csf-tp6",
+  "title": "GLM-5.3 NVFP4-CSF on six Sparks",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-nvfp4-csf-tp6/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-nvfp4-csf-tp6/README.md",
+  "evidence_scope": "Research-only TP6 draft for positions 0-5 of an eight-Spark cycle, with SIRCL and NCCL off. Uses the pinned CSF serving directory with in-memory HF overrides: 66 attention heads and 2304 expert columns (384 per rank), DCP2, 32 GiB KV per rank, 135168-token maximum sequence, eight sequences and two-token MTP. CPU configuration and universal-route tests plus RTX 5090 collective emulation; no DGX RDMA, model correctness or throughput measurement at TP6. Requires the updated SIRCL route-scope adapter and runtime-status resident-method collector. Requires a separate v3 image lock admitting this profile and the indexer plugin on the pinned CSF-capable build. No shipped lock admits it. See the profile guide for omitted TP8-only speedups and capacity limits. Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-nvfp4-csf-tp6/config.json"
+    ]
+  }
+}

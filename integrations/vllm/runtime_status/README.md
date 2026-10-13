@@ -66,7 +66,7 @@ config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
 
-The package version is 0.3.6. It provides passive transport, resource, library
+The package version is 0.3.7. It provides passive transport, resource, library
 and acceptance views, and the settings tables described below. Its Transport
 table names the transport that carries each worker's tensor-parallel
 collectives (SIRCL with its version, B12X's RoCE all-reduce adapter or NCCL)
@@ -421,7 +421,7 @@ Python 3.12, setuptools 78.1.0 and pip 24.0:
 ```bash
 COMMIT=$(git rev-parse HEAD)
 EPOCH=$(git log -1 --format=%ct "$COMMIT")
-VERSION=0.3.6
+VERSION=0.3.7
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
 git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \
@@ -465,3 +465,15 @@ The [counter contract and verification plan](../../../docs/development/dashboard
 describe fields, rate precision, image composition, host delivery, CPU tests
 and the required DeepSeek on/off hardware comparison. The package remains
 unqualified for serving overhead until that comparison is recorded.
+
+## TP6 resident quantization evidence
+
+At tensor-parallel size six, the collector walks at most 8192 resident modules
+per target/draft model, reading only stored Python fields. It reports Q/O
+projection counts, the count using `Mxfp8OnlineLinearMethod`, and the number
+of distinct `Nvfp4OnlineA16MoEMethod` draft expert methods. Missing models or
+a truncated walk produce unknown facts. The GLM-5.3 TP6 startup check consumes
+these facts from every rank; it never infers TP6 quantization from TP8 weight
+thresholds. Method classes establish resident configuration, not which kernel
+ran or whether the result is numerically qualified. Other TP sizes do not run
+this additional traversal. Package changed sources through a new image receipt.

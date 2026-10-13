@@ -331,7 +331,7 @@ SHARED = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2", "glm53-flash-
           "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SWIFT = ("swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 # Installer profiles that only SIRCL ring sessions run; no v2 lock lists them.
-SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8",
+SIRCL_ONLY = ("deepseek-v41-flash-tp8", "glm53-flash-csf-tp8", "glm53-nvfp4-csf-tp6", "glm53-nvfp4-csf-tp8", "glm53-nvfp4-tp8",
               "glm53-nvfp4-tp8-dcp1", "qwen38-flash-next-qad-tp8")
 
 

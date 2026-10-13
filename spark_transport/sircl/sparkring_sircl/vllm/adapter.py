@@ -146,6 +146,8 @@ class AdapterConfig:
     receipt_dir: str | None
     p2p_groups: tuple[str, ...] = settings.DEFAULT_P2P_GROUPS
     p2p_module: str = settings.DEFAULT_P2P_MODULE
+    max_relays: int = fabric.DEFAULT_MAX_RELAYS
+    route_scope: str = "group"
 
     def __post_init__(self) -> None:
         # topology is another name for auto (settings.NCCL_MODE_ALIASES); policies and receipts name the mode.
@@ -162,7 +164,9 @@ class AdapterConfig:
                 f"{layout.describe()} layout")
         return cls(layout, positions, settings.groups(environ), settings.nccl_mode(environ),
                    settings.large_allreduce(environ), settings.relay_per_peer_bytes(environ),
-                   settings.receipt_dir(environ), settings.p2p_groups(environ), settings.p2p_module(environ))
+                   settings.receipt_dir(environ), settings.p2p_groups(environ), settings.p2p_module(environ),
+                   settings.byte_count("SIRCL_MAX_RELAYS", fabric.DEFAULT_MAX_RELAYS, environ),
+                   settings.route_scope(environ))
 
     def cabled(self, global_a: int, global_b: int) -> bool:
         a, b = self.positions[global_a], self.positions[global_b]
@@ -210,7 +214,8 @@ class GroupPlacement:
                 if parent_ranks is None:
                     raise SirclSetupError(f"subgroup {unique_name} needs its parent group's ranks")
                 parent = tuple(config.positions[r] for r in parent_ranks)
-            topology = fabric.describe_group(config.layout, positions, parent=parent)
+            topology = fabric.describe_group(config.layout, positions, parent=parent, max_relays=config.max_relays,
+                                             route_scope=config.route_scope)
             raw_policy, raw_reason = topology.nccl_policy, topology.nccl_reason
         else:
             raw_policy, raw_reason = fabric.nccl_policy_of(config.layout, positions)
