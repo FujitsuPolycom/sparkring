@@ -56,7 +56,9 @@ import subprocess
 import sys
 import time
 
-from runtime.common import installer, process_lock
+from runtime.common import installer
+from runtime.host import slices
+
 from runtime.host import control, discovery, hairpin, node, progress
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network, hairpin_setting as rule
@@ -1273,7 +1275,7 @@ def execute(args, context):
     from runtime.host import controller, install_workflow
     install_workflow.require_head(command="hairpin")
     interactive = not args.json and sys.stdin.isatty()
-    with process_lock.hold(controller.STATE / "install.lock"):
+    with slices.hold(controller.STATE, None, "hairpin"):
         path = controller.STATE / "cluster.json"
         if not path.exists():
             raise NeedsInput("No fabric is configured on this Spark. Run sudo sparkring install on Node A; on a "

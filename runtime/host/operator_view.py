@@ -116,7 +116,8 @@ def publish(state_root: Path | None = None, *, target: Path = PATH) -> bool:
     try:
         document = view(state_root)
         target.parent.mkdir(parents=True, exist_ok=True)
-        temporary = target.with_name(target.name + ".writing")
+        import uuid
+        temporary = target.with_name(target.name + "." + uuid.uuid4().hex + ".writing")
         temporary.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
         temporary.replace(target)
         privilege.share(target, 0o640)

@@ -9,12 +9,13 @@ import contextlib
 import datetime
 import json
 import os
-from pathlib import Path
 import re
 import subprocess
 import sys
 import threading
 import time
+import uuid
+from pathlib import Path
 
 from runtime.host import colour
 from runtime.host.privilege import reader_request, share, share_directory
@@ -31,6 +32,7 @@ _log = None
 _details = None
 _console = None
 _events = None
+_operation_id = None
 _lock = threading.RLock()
 
 
@@ -89,6 +91,34 @@ def record(message):
             _log.flush()
 
 
+class Copies:
+    """Write combined and operation logs from the same existing progress events."""
+    def __init__(self, *streams):
+        self.streams = streams
+
+    def write(self, text):
+        for stream in self.streams:
+            stream.write(text)
+
+    def flush(self):
+        for stream in self.streams:
+            stream.flush()
+
+
+def bind_slice(positions):
+    if _operation_id is None:
+        return
+    from runtime.host import node
+    key = "ring" if positions is None else "-".join(map(str, sorted(positions)))
+    root = directory()
+    node.save(root, "slice-" + key + ".json", {"operation": _operation_id}, mode=0o640)
+    share(root / ("slice-" + key + ".json"), 0o640)
+
+
+def operation_log():
+    return directory() / (f"operation-{_operation_id}.log" if _operation_id else "install.log")
+
+
 def say(message):
     stream = sys.stderr
     with _lock:
@@ -137,37 +167,42 @@ class Tee:
 
 
 @contextlib.contextmanager
-def run(operation, *, events=None):
+def run(operation, *, events=None, json_output=False):
     """Log progress of ``operation``; ``events`` is a path that receives the event stream, replacing its content."""
-    global _log, _details, _console, _events
+    global _log, _details, _console, _events, _operation_id
     root = directory()
     if any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("Installation log directory contains a symlink")
     root.mkdir(parents=True, exist_ok=True, mode=0o750)
     share_directory(root, 0o750)
-    paths = [root / "install.log", root / "install-details.log"]
+    _operation_id = uuid.uuid4().hex
+    paths = [root / "install.log", root / "install-details.log",
+             operation_log(), root / f"operation-{_operation_id}-details.log"]
     if any(p.is_symlink() for p in paths):
         raise ValueError("Installation log file cannot be a symlink")
     with contextlib.ExitStack() as stack:
         primary = stack.enter_context(paths[0].open("a", encoding="utf-8", buffering=1))
         details = stack.enter_context(paths[1].open("a", encoding="utf-8", buffering=1))
+        own = stack.enter_context(paths[2].open("a", encoding="utf-8", buffering=1))
+        own_details = stack.enter_context(paths[3].open("a", encoding="utf-8", buffering=1))
         for path in paths:
             path.chmod(0o600)
             # The sparkring group follows the installation progress; the log
             # carries no key or token, but stays closed to other users.
             share(path, 0o640)
-        _log, _details = primary, details
+        _log, _details = Copies(primary, own), Copies(details, own_details)
         try:
             if events is not None:
                 _events = stack.enter_context(open(events, "w", encoding="utf-8", buffering=1))
             with Console(sys.stderr) as _console:
                 with contextlib.redirect_stdout(Tee(sys.stdout, _console)), contextlib.redirect_stderr(Tee(sys.stderr, _console)):
-                    print(f"SparkRing {operation}. Progress: {paths[0]}", flush=True)
-                    print("Follow from another terminal: " + colour.cmd("sudo sparkring logs --follow"), flush=True)
+                    output = sys.stderr if json_output else sys.stdout
+                    print(f"SparkRing {operation}. Progress: {paths[2]}", flush=True, file=output)
+                    print("Follow from another terminal: " + colour.cmd("sudo sparkring logs --follow"), flush=True, file=output)
                     emit("start", "SparkRing " + operation, phase=operation)
                     yield
         finally:
-            _log = _details = _console = _events = None
+            _log = _details = _console = _events = _operation_id = None
 
 
 def size_text(done, total):
@@ -288,10 +323,22 @@ def command(argv, *, title, invoke=subprocess.run, **kwargs):
     with step(title):
         _details.write("COMMAND " + colour.plain(title) + "\n")
         _details.flush()
+        destination = _details.streams[-1] if isinstance(_details, Copies) else _details
+        offset = destination.tell()
         try:
-            return invoke(argv, stdout=_details, stderr=_details, **kwargs)
+            return invoke(argv, stdout=destination, stderr=destination, **kwargs)
         except subprocess.CalledProcessError as error:
             raise RuntimeError(title + "; see " + str(directory() / "install-details.log")) from error
+        finally:
+            if isinstance(_details, Copies):
+                # The child writes directly to its own file descriptor. Copy
+                # that completed segment to the compatibility log on return;
+                # no tee process or background reader is needed.
+                with open(destination.name, encoding="utf-8", errors="replace") as source:
+                    source.seek(offset)
+                    while block := source.read(65536):
+                        _details.streams[0].write(block)
+                _details.streams[0].flush()
 
 
 def unreadable(path: Path) -> bool:
@@ -309,10 +356,28 @@ def main(argv=None):
     parser.add_argument("--details", action="store_true")
     parser.add_argument("--plain", action="store_true", help="disable terminal colors and animation")
     parser.add_argument("--lines", type=int, default=40)
+    select = parser.add_mutually_exclusive_group()
+    select.add_argument("--on", help="latest operation on these fabric positions")
+    select.add_argument("--operation", help="operation identifier printed at start")
     args = parser.parse_args(argv)
     colour.set_mode(args.color)
     root = Path(os.environ.get("SPARKRING_LOG_DIR", LOG_ROOT))
     path = root / ("install-details.log" if args.details else "install.log")
+    ident = args.operation
+    if args.on:
+        from runtime.common import fabric_layout
+        from runtime.host import placement
+        positions = placement.parse(args.on, fabric_layout.layout("cycle", 8))
+        key = "ring" if positions is None else "-".join(map(str, sorted(positions)))
+        index = root / ("slice-" + key + ".json")
+        if not index.exists():
+            print("No operation log for these Sparks.")
+            return 0
+        ident = json.loads(index.read_text(encoding="utf-8"))["operation"]
+    if ident:
+        if not re.fullmatch(r"[0-9a-f]{32}", ident):
+            parser.error("--operation must be a recorded operation identifier")
+        path = root / (f"operation-{ident}" + ("-details" if args.details else "") + ".log")
     if not path.exists() and root == Path(LOG_ROOT) and unreadable(root):
         print("The installation log is root's: " + reader_request() + ".", file=sys.stderr)
         return 2

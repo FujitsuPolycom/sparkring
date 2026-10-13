@@ -48,7 +48,7 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
     if journal.exists():
         retained = installer.read(journal)
         pending = retained["state"] in ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
-        # The caller holds install.lock, so a journal left mid-switch belongs
+        # The caller holds every affected Spark's lock, so a journal left mid-switch belongs
         # to an install that stopped, for example because a Spark restarted.
         # Installing the same candidate resumes it; another candidate may
         # replace it, like a switch whose recovery failed.

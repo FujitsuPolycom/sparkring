@@ -127,6 +127,8 @@ import sys
 import time
 
 from runtime.common import managed_deployment
+from runtime.host import slices
+
 from runtime.host import checkpoint_place, checkpoints
 from runtime.host.install_errors import NeedsInput
 
@@ -1328,10 +1330,9 @@ def _refusal(item, node_entry):
 
 def release_cluster(path, state_root, invoke, *, yes, interactive, write=print):
     """``sparkring storage --release PATH`` on Node A; see the module description for its rules."""
-    from runtime.common import process_lock
     from runtime.host import controller
     path = _absolute(path)
-    with process_lock.hold(Path(state_root) / "install.lock"):
+    with slices.hold(Path(state_root), None, "storage release"):
         cluster = checkpoints._cluster(state_root)
         if cluster is None:
             raise ValueError("Release SparkRing data from Node A of a configured cluster, which records the "
@@ -1560,9 +1561,8 @@ def main(argv=None, *, state_root=None, invoke=None):
         if not _administrator():
             raise ValueError("Run sudo sparkring storage")
         if args.retain_deployments is not None:
-            from runtime.common import process_lock
             from runtime.host import retention
-            with process_lock.hold(Path(state_root) / "install.lock"):
+            with slices.hold(Path(state_root), None, "storage release"):
                 retain = retention.save_setting(state_root, args.retain_deployments)
             result = {"schema": SCHEMA, "state": "saved", "retain_deployments": "off" if retain is None else retain}
             write(retention.setting_text(retain))

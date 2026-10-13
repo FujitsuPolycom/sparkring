@@ -2,15 +2,23 @@
 import hashlib
 import inspect
 import json
-from pathlib import Path
 import re
 import subprocess
 import sys
+from pathlib import Path
 
-from runtime.common import distribution, installer
+from runtime.common import distribution, installer, process_lock
 
 
 def checkout(directory, cache, *, run=subprocess.run):
+    revision = installer.read(Path(directory) / "deployment.lock.json")["source_revision"]
+    if not re.fullmatch(r"[0-9a-f]{40}", revision):
+        raise ValueError("Retained deployment lacks a complete source identity")
+    with process_lock.hold(Path(cache) / (revision + ".lock"), wait=True):
+        return _checkout(directory, cache, run=run)
+
+
+def _checkout(directory, cache, *, run):
     directory = Path(directory).resolve()
     lock = installer.read(directory / "deployment.lock.json")
     revision, digest = lock["source_revision"], lock["bundle_sha256"]

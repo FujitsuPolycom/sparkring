@@ -59,6 +59,8 @@ import threading
 import time
 
 from runtime.common import fabric_layout, installer
+from runtime.host import slices
+
 from runtime.host import cabling, colour, discovery, node, placement, topology
 
 SCHEMA = "sparkring-fabric-bandwidth/v1"
@@ -815,7 +817,6 @@ def command(*, json_output=False, allow_serving=False, state_root=None, access=N
     then. The installation lock is held throughout, so no model starts and
     setup does not run while the check measures.
     """
-    from runtime.common import process_lock
     from runtime.host import controller
     root = Path(state_root or controller.STATE)
     if not (root / "cluster.json").exists():
@@ -824,7 +825,7 @@ def command(*, json_output=False, allow_serving=False, state_root=None, access=N
     cluster = installer.read(root / "cluster.json")
     size = len(cluster["plan"]["spec"]["hosts"])
     say = (lambda line: print(line, file=sys.stderr)) if json_output else print
-    with process_lock.hold(root / "install.lock"):
+    with slices.hold(root, None, "fabric bandwidth"):
         busy = serving(root, size)
         document = check(cluster, access=access or Access(cluster["plan"]), busy=busy, allow_serving=allow_serving,
                          say=say)

@@ -1,11 +1,12 @@
 """Process-scoped local locks that are released automatically after interruption."""
 import contextlib
+import json
 import os
 from pathlib import Path
 
 
 @contextlib.contextmanager
-def hold(path):
+def hold(path, *, shared=False, wait=False, owner=None):
     path = Path(path)
     for item in reversed((path, *path.parents)):
         if item.is_symlink():
@@ -16,16 +17,18 @@ def hold(path):
         try:
             if os.name == "nt":
                 import msvcrt
-                msvcrt.locking(stream.fileno(), msvcrt.LK_NBLCK, 1)
+                msvcrt.locking(stream.fileno(), msvcrt.LK_LOCK if wait else msvcrt.LK_NBLCK, 1)
             else:
                 import fcntl
-                fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(stream, (fcntl.LOCK_SH if shared else fcntl.LOCK_EX)
+                            | (0 if wait else fcntl.LOCK_NB))
         except (OSError, BlockingIOError) as error:
             raise ValueError("Another operation is active; use sparkring status to follow it") from error
         try:
-            stream.seek(0)
-            stream.truncate()
-            stream.write(str(os.getpid()).encode())
+            if not shared:
+                stream.seek(0)
+                stream.truncate()
+                stream.write(json.dumps(owner).encode() if owner else str(os.getpid()).encode())
             yield
         finally:
             stream.seek(0)

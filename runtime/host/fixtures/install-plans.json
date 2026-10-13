@@ -1,9 +1,9 @@
 {
- "generated_at": "bf35ba2a59d3ec8bbc110c1a3926a7603703f239",
+ "generated_at": "4773cdf8-independent-slices",
  "plans": {
   "prepared": {
    "printed": [
-    "SparkRing install. Progress: <tmp>/logs/install.log",
+    "SparkRing install. Progress: <tmp>/logs/operation-<id>.log",
     "Follow from another terminal: sudo sparkring logs --follow",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
@@ -159,7 +159,7 @@
   },
   "sircl": {
    "printed": [
-    "SparkRing install. Progress: <tmp>/logs/install.log",
+    "SparkRing install. Progress: <tmp>/logs/operation-<id>.log",
     "Follow from another terminal: sudo sparkring logs --follow",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",

@@ -9,6 +9,8 @@ stop leaves the state a completed operation leaves, so the switching rules see
 which models run.
 """
 import json
+import multiprocessing
+import os
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,44 @@ from runtime.host.test_fabric_layouts import configured, sparks as layout_sparks
 from runtime.host.test_hairpin_ring import document as hairpin_document
 from runtime.host.test_install_workflow import machine, sparks  # noqa: F401  (pytest fixtures)
 from scripts import sparkring
+
+
+@pytest.mark.skipif(os.name != "posix", reason="Forked fake Sparks exercise Linux flock")
+def test_two_disjoint_install_processes_prepare_together(ring8, monkeypatch):
+    """Both controllers reach preparation before either may finish."""
+    context = multiprocessing.get_context("fork")
+    first_ready, second_ready, finish = context.Event(), context.Event(), context.Event()
+    original = flow.install_assets.Assets.sync_packages
+    def prepare(assets):
+        (first_ready if os.environ.get("SLICE_TEST_ON") == "4-5" else second_ready).set()
+        assert finish.wait(30), "disjoint installs did not reach preparation together"
+        return original(assets)
+    monkeypatch.setattr(flow.install_assets.Assets, "sync_packages", prepare)
+    def run(on):
+        os.environ["SLICE_TEST_ON"] = on
+        raise SystemExit(sparkring.main(["install", "--profile", QWEN_TP2, "--on", on,
+                                        "--image-lock", str(ring8.lock), "--yes", "--json"]))
+    children = [context.Process(target=run, args=(on,)) for on in ("4-5", "6-7")]
+    try:
+        for child in children:
+            child.start()
+        assert first_ready.wait(30) and second_ready.wait(30)
+        from runtime.host import slices
+        assert len(slices.active(controller.STATE)) == 2
+        with pytest.raises(ValueError, match="Blocked"):
+            with slices.hold(controller.STATE, (4, 5), "restart"):
+                pytest.fail("overlapping restart admitted")
+        finish.set()
+        for child in children:
+            child.join(30)
+            assert child.exitcode == 0
+        assert set(placement.running(controller.STATE)) == {(4, 5), (6, 7)}
+    finally:
+        finish.set()
+        for child in children:
+            if child.is_alive():
+                child.terminate()
+            child.join(5)
 
 QWEN_TP2 = "qwen38-flash-next-tp2"
 GLM_TP2 = "glm53-flash-nvfp4-spark-tp2"

@@ -697,7 +697,7 @@ def test_up_and_down_wait_for_no_installation(tmp_path, lifecycle_calls):
     active = _deployment(tmp_path, UP_PROFILE)
     installer.write(tmp_path / "active.json", {"path": str(active)})
     with process_lock.hold(tmp_path / "install.lock"):
-        with pytest.raises(ValueError, match="Another operation is active"):
+        with pytest.raises(ValueError, match="holds"):
             controller.lifecycle(["down", "--execute"])
         # Plans change nothing and need no lock.
         assert controller.lifecycle(["down", "--plan"]) == 0
@@ -711,16 +711,16 @@ def _installation_completes_before_the_lock(monkeypatch, installed):
     The command under test resolved its target before an installation that
     held the lock finished and recorded its own deployment active.
     """
-    from runtime.common import process_lock
-    hold = process_lock.hold
+    from runtime.host import slices
+    hold = slices.hold
 
     @contextlib.contextmanager
-    def after_installation(path):
+    def after_installation(root, positions, operation, **kwargs):
         # As rollout.execute records a verified installation.
         controller.node.save(controller.STATE, "active.json", {"path": str(installed)}, mode=0o600)
-        with hold(path):
-            yield
-    monkeypatch.setattr(controller.process_lock, "hold", after_installation)
+        with hold(root, positions, operation, **kwargs) as owner:
+            yield owner
+    monkeypatch.setattr(slices, "hold", after_installation)
 
 
 def test_down_of_a_named_deployment_keeps_an_installation_that_completed_meanwhile(tmp_path, lifecycle_calls, monkeypatch):

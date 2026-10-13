@@ -92,6 +92,8 @@ def test_a_failed_refresh_logs_one_line_and_never_raises(records, monkeypatch):
 @pytest.fixture
 def reloads(tmp_path, monkeypatch):
     """The real refresh and reload request, with the site write stubbed and systemctl recorded."""
+    if controller.STATE == Path("/var/lib/sparkring/controller"):
+        monkeypatch.setattr(controller, "STATE", tmp_path / "state")
     monkeypatch.setattr(dashboard_admin, "DISABLED_PATH", tmp_path / "dashboard.disabled")
     monkeypatch.setattr(dashboard_admin, "refresh_site", REAL_REFRESH_SITE)
     monkeypatch.setattr(dashboard_admin, "reload_service", REAL_RELOAD_SERVICE)

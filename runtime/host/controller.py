@@ -19,7 +19,7 @@ import subprocess
 import sys
 import time
 
-from runtime.common import distribution, fabric_layout, installer, process_lock, thinking
+from runtime.common import distribution, fabric_layout, installer, thinking
 from runtime.host import (colour, dashboard_admin, discovery, fabric, hairpin_ring, node, operator_view, privilege,
                           relays, topology)
 from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
@@ -956,7 +956,9 @@ def lifecycle(argv):
         return 0
     # The installation lock keeps sparkring install, setup and the hairpin
     # procedure from changing deployments or networking meanwhile.
-    with process_lock.hold(STATE / "install.lock"):
+    from runtime.host import progress, slices
+    with slices.hold(STATE, slot, args.operation):
+        progress.bind_slice(slot)
         # sparkring install records its deployment active while it holds this
         # lock, so the record read before the lock may be stale. Every decision
         # below uses the record read under the lock; a command without a
@@ -984,9 +986,6 @@ def lifecycle(argv):
         # own, neither in this deployment nor in the active one it replaces.
         for path in {directory, active} - {None}:
             recovery.forget_attempt(path)
-        if args.operation == "up" and slot is not None:
-            from runtime.host import install_workflow
-            install_workflow.park_ring(installer.read(STATE / "cluster.json"))
         result = retained_source.apply(directory, args.operation, cache=cache)
         from runtime.host import api_endpoint
         result = api_endpoint.present(result, api_endpoint.recorded(directory))
@@ -999,8 +998,9 @@ def lifecycle(argv):
             # Resets automatic recovery's failures and records the generation's boots.
             recovery.started(directory)
             # With --json, stdout carries only the result document.
-            result["retention"] = retention.after_operation(
+            result["retention"] = (retention.after_operation(
                 STATE, discovery.ssh, write=(lambda line: print(line, file=sys.stderr)) if args.json else print)
+                if slot is None else {"state": "deferred", "reason": "Global retention requires a ring-wide storage operation"})
     print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
     return 0
 
@@ -1134,7 +1134,8 @@ def _setup_lock(argv):
     """
     if any(flag in argv for flag in ("--plan", "--inventory", "-h", "--help")):
         return contextlib.nullcontext()
-    return process_lock.hold(STATE / "install.lock")
+    from runtime.host import slices
+    return slices.hold(STATE, None, "setup")
 
 
 def main(argv):

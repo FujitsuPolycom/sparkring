@@ -130,7 +130,7 @@ def test_a_ring_switches_from_one_model_to_two_and_back(ring, capsys):
     assert install("--profile", GLM, "--on", "2,3", "--checkpoint", "nvfp4-qad") == 0
     second = result(capsys)
     assert second["stops"] == [] and second["replaces"] is None
-    assert ops(ring) == ["park-ring", f"{GLM}@23:settle-memory", f"{GLM}@23:up", f"{GLM}@23:verify"]
+    assert ops(ring) == [f"{GLM}@23:settle-memory", f"{GLM}@23:up", f"{GLM}@23:verify"]
     assert recorded() == {None: None, (0, 1): QWEN + "@01", (2, 3): GLM + "@23"}
     assert second["commands"]["switch_back"] is None
     lock = installer.read(Path(second["deployment"]) / "deployment.lock.json")
@@ -163,7 +163,7 @@ def test_installing_on_a_serving_half_replaces_only_that_half(ring, capsys):
     replaced = result(capsys)
     assert Path(replaced["replaces"]).resolve() == Path(first["deployment"]).resolve()
     assert [row["profile"] for row in replaced["stops"]] == [QWEN]
-    assert ops(ring) == [f"{QWEN}@01:down", "park-ring", f"{GLM}@01:settle-memory", f"{GLM}@01:up",
+    assert ops(ring) == [f"{QWEN}@01:down", f"{GLM}@01:settle-memory", f"{GLM}@01:up",
                          f"{GLM}@01:verify"]
     assert recorded() == {None: None, (0, 1): GLM + "@01", (2, 3): GLM + "@23"}
     assert replaced["commands"]["switch_back"] == f"sudo sparkring install --profile {QWEN} --on 0,1 --checkpoint csf"
@@ -371,9 +371,9 @@ def halves(tmp_path, monkeypatch):
     return simulated
 
 
-def test_up_on_a_half_parks_the_ring_and_starts_on_its_own_sparks(halves):
+def test_up_on_a_half_parks_only_its_own_sparks(halves):
     hosts = halves.hosts
-    assert sorted(halves.parks) == sorted(hosts * 2)
+    assert halves.parks == []  # no controller-wide mesh command; the rank steps below stay in their own half
     assert all(halves.running.values())
     for operation in ("ring-park", "gid-serve", "start"):
         assert sorted(host for name, host in halves.operations if name == operation) == sorted(hosts)
@@ -428,6 +428,17 @@ def test_recovery_restarts_only_the_half_that_stopped(halves):
     assert second["state"] == "recovered"
     touched = {host for name, host in halves.operations if name in ("stop", "start", "gid-serve", "ring-park")}
     assert touched == set(halves.hosts[2:]) and all(halves.running.values())
+
+
+def test_recovery_judges_an_unlocked_half_while_another_installs(halves):
+    from runtime.host import slices
+    with slices.hold(controller.STATE, (0, 1), "install fixture"):
+        result = recovery.check(now=test_recovery.Clock(), api=lambda url: test_recovery.SERVING, tunnel={})
+    assert [row["state"] for row in result["deployments"]] == ["busy", "serving"]
+
+
+
+
 
 
 def test_recover_status_and_off_cover_each_half(halves, capsys):

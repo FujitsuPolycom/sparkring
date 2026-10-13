@@ -26,6 +26,8 @@ def normalized(text, root):
     for prefix in (str(root), str(root).replace("\\", "\\\\")):
         text = text.replace(prefix, "<tmp>")
     text = re.sub(r"<tmp>[^\s'\"]*", lambda found: found.group(0).replace("\\\\", "/").replace("\\", "/"), text)
+    text = re.sub(r"operation-[0-9a-f]{32}", "operation-<id>", text)
+    text = re.sub(r'"review": "[0-9a-f]{64}"', '"review": "<review>"', text)
     return re.sub(r"'(<tmp>[^']*)'", r"\1", text)
 
 

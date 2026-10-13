@@ -12,7 +12,6 @@ import contextlib
 import inspect
 import json
 import os
-from pathlib import Path
 import posixpath
 import random
 import re
@@ -23,10 +22,19 @@ import subprocess
 import tempfile
 import threading
 import time
+from pathlib import Path
 
 from runtime.common import distribution, installer
-from runtime.host import (checkpoint_plan, fabric_stream, install_space, node, packages, progress, registry_relay,
-                          spread)
+from runtime.host import (
+    checkpoint_plan,
+    fabric_stream,
+    install_space,
+    node,
+    packages,
+    progress,
+    registry_relay,
+    spread,
+)
 from runtime.host.install_errors import NeedsInput
 
 DOCKER = ["docker", "--context", "default"]
@@ -250,6 +258,9 @@ class Assets:
                 outdated.append(rank)
         if not outdated:
             return {"updated": [], "revision": current}
+        if not getattr(self, "allow_package_updates", True):
+            raise NeedsInput("Worker packages differ from Node A; run sparkring setup to upgrade under the ring-wide lock "
+                             "before installing a slice.", field="packages", details={"ranks": outdated})
         # Existing enrolled access is retained; this bundle does not invoke seed.
         bundle = self.directory / ("worker-" + str(time.time_ns()))
         archive = bundle.with_suffix(".tar")
@@ -292,7 +303,7 @@ class Assets:
         the relay. ``wanted`` lists the ranks that must hold the image (default
         every rank); the fabric spread passes the others by where it can.
         """
-        relay = registry_relay.Relay(card["image_reference"], self.directory / "relay")
+        relay = registry_relay.Relay(card["image_reference"], self.directory / "relay", port=0)
         try:
             try:
                 layout = relay.image(card["image_id"])
@@ -1123,7 +1134,7 @@ def operation(runner, rank, name, data=None):
         return runner.remote(rank, name, data=data)
     except NeedsInput:
         raise
-    except Exception as error:  # noqa: BLE001 - reported with the Spark it came from
+    except Exception as error:
         raise RuntimeError(f"Node {rank}: {cause(error)}") from error
 
 

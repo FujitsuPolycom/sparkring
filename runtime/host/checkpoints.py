@@ -69,6 +69,8 @@ try:
 except ImportError:  # Non-POSIX development hosts import the module; listing and release need Linux.
     fcntl = None
 
+from runtime.host import slices
+
 from runtime.host import checkpoint_place
 from runtime.host.install_errors import NeedsInput
 
@@ -857,10 +859,9 @@ def list_cluster(state_root, invoke):
 
 def release_cluster(path, state_root, invoke, *, yes, interactive, write=print):
     """``sparkring checkpoints --release PATH`` on Node A; see the module description for its rules."""
-    from runtime.common import process_lock
     from runtime.host import controller
     path = _absolute(path)
-    with process_lock.hold(Path(state_root) / "install.lock"):
+    with slices.hold(Path(state_root), None, "checkpoint release"):
         cluster = _cluster(state_root)
         if cluster is None:
             raise ValueError("Release a checkpoint directory from Node A of a configured cluster, which records "

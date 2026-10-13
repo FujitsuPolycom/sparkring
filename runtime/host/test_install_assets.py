@@ -36,7 +36,8 @@ class Relay:
     repository = "owner/image"
     instances = []
     layout = None
-    def __init__(self, reference, directory):
+    def __init__(self, reference, directory, *, port=0):
+        assert port == 0  # concurrent installations choose independent local listening ports
         self.closed = False
         self.fetched = []
         self.directory = directory

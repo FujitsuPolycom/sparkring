@@ -90,7 +90,9 @@ import sys
 import threading
 import time
 
-from runtime.common import fabric_document, fabric_layout, image_lock, installer, process_lock, transport
+from runtime.common import fabric_document, fabric_layout, image_lock, installer, transport
+from runtime.host import slices
+
 from runtime.host import colour, fabric
 
 STATE = fabric.STATE
@@ -769,7 +771,7 @@ def execute(state, cluster, document, image_value, value, *, access, harness=run
         raise ValueError("; ".join(value["blockers"]))
     state = Path(state)
     rows = [row for row in value["layouts"] if row["measure"]]
-    with process_lock.hold(state / "install.lock"):
+    with slices.hold(state, None, "fabric tune"):
         busy = serving(state, document["size"])
         stopped = []
         if busy:
@@ -873,7 +875,7 @@ def redistribute(state, document, *, access, say=print, host_root="/"):
         else:
             raise ValueError(f"Node A holds no copy of table {entry['sha256'][:12]}; sudo sparkring fabric tune "
                              "--execute --fresh measures again")
-    with process_lock.hold(Path(state) / "install.lock"):
+    with slices.hold(Path(state), None, "fabric tune"):
         distribute(access, document["size"], tables, say=say)
     transport.validate_tuning(value, host_root=host_root)
     return {"tables": sorted(tables)}

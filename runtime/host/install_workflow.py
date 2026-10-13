@@ -55,20 +55,48 @@ import hashlib
 import inspect
 import json
 import os
-from pathlib import Path, PurePosixPath
 import shlex
 import subprocess
 import sys
 import time
+from pathlib import Path, PurePosixPath
 
-from runtime.common import distribution, fabric_layout, image_lock, installer, installer_image, process_lock, profiles
+from runtime.common import (
+    distribution,
+    fabric_layout,
+    image_lock,
+    installer,
+    installer_image,
+    profiles,
+)
 from runtime.common import serving as serving_settings
 from runtime.common import transport as transports
-from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, colour, controller, derivation, discovery,
-                          fabric_ssh, hairpin_ring, install_assets, install_space, models, native_mesh, node, progress,
-                          recovery, retained_source, retention, rollout, settings, spread, topology)
+from runtime.host import (
+    api_endpoint,
+    checkpoint_plan,
+    checkpoint_search,
+    colour,
+    controller,
+    derivation,
+    discovery,
+    fabric_ssh,
+    hairpin_ring,
+    install_assets,
+    install_space,
+    memory_settle,
+    models,
+    native_mesh,
+    node,
+    progress,
+    recovery,
+    retained_source,
+    retention,
+    rollout,
+    settings,
+    spread,
+    topology,
+)
 from runtime.host import placement as placements
-from runtime.host import memory_settle
 from runtime.host.install_errors import NeedsInput
 from scripts import deploy_network
 
@@ -1248,6 +1276,17 @@ def summary_lines(result):
     return lines
 
 
+@contextlib.contextmanager
+def operation_scope(args, state_root):
+    from runtime.host import slices
+    selected = (resolve_placement(args, installer.read(state_root / "cluster.json"), state_root)
+                if (state_root / "cluster.json").exists() else None)
+    with slices.hold(state_root, selected, "install " + (args.profile or "profile"), expand=True) as owner:
+        args.locked_placement = selected
+        progress.bind_slice(selected)
+        yield owner
+
+
 def execute(args):
     state_root = controller.STATE
     require_head()
@@ -1268,7 +1307,8 @@ def execute(args):
         except ValueError as error:
             raise NeedsInput(f"{error}. Nothing has been changed.", field="api_address") from None
     command_line = args.yes
-    with process_lock.hold(state_root / "install.lock"):
+    with operation_scope(args, state_root) as operation:
+        ring_scope = operation["positions"] is None
         if not (state_root / "cluster.json").exists():
             if args.plan:
                 raise NeedsInput("Run sparkring setup --plan to discover this unconfigured cluster.", field="setup")
@@ -1291,6 +1331,9 @@ def execute(args):
         if args.plan:
             cluster = planned_head(cluster)
         placement = resolve_placement(args, cluster, state_root)
+        if not ring_scope and placement != args.locked_placement:
+            raise NeedsInput("The selected Sparks changed during admission; repeat with an explicit --on.", field="placement")
+        progress.bind_slice(placement)
         layout = placements.layout_of(cluster)
         size = layout["size"]
         # A model on an arc applies no ConnectX hairpin setting: a driver
@@ -1467,7 +1510,7 @@ def execute(args):
                 controller.confirm("Stop these containers before installing?")
         check_workloads(directory, previous, stop=approve_stop if args.stop_workloads or interactive else None,
                         others=displaced)
-        transport = fabric_ssh.Transport(cluster, state_root / "bulk-ssh")
+        transport = fabric_ssh.Transport(cluster, directory / "bulk-ssh")
         # With the recorded fabric document, images and checkpoints spread along its cables.
         transport.document = document
         try:
@@ -1478,11 +1521,13 @@ def execute(args):
             if problem is None:
                 raise
             raise problem from error
-        # Packages go to every Spark of the cluster. The serving image goes to
+        # Ring-wide admission permits package upgrades; slice admission only
+        # checks their versions and refuses any upgrade. The serving image goes to
         # the deployment's Sparks: every Spark, or on an arc only the arc's, so
         # a model serving beside the arc gets no image write. The checkpoint
         # moves between the deployment's own Sparks.
         assets = install_assets.Assets(transport, directory / "assets", download_limit=limit)
+        assets.allow_package_updates = operation["positions"] is None
         checkpoints = (assets if placement is None else
                        install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
         if needs_hairpin:
@@ -1494,7 +1539,7 @@ def execute(args):
         cache = state_root / "retained-sources"
 
         def apply(path, operation):
-            if operation == "up" and placements.of_directory(path) is not None:
+            if operation == "up" and placements.of_directory(path) is not None and ring_scope:
                 park_ring(cluster)
             if operation == "up":
                 settle_memory(path)
@@ -1559,7 +1604,9 @@ def execute(args):
                             else "on" if record["enabled"] else "off")
         plan["auto_recover"] = plan["recovery"] == "on"
         # Releases what older deployments hold on the Sparks; never fails the installation.
-        plan["retention"] = retention.after_operation(state_root, discovery.ssh, preference=retain)
+        plan["retention"] = (retention.after_operation(state_root, discovery.ssh, preference=retain)
+                             if operation["positions"] is None else
+                             {"state": "deferred", "reason": "Global retention requires a ring-wide storage operation"})
         try:
             plan["checkpoint"]["result"] = installer.read(directory / "assets/checkpoint-result.json")
         except (OSError, ValueError):
@@ -1576,7 +1623,7 @@ def execute(args):
         if checks is not None:
             plan["start_checks"] = checks
         from runtime.host import dashboard_admin
-        completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.directory() / "install.log"),
+        completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.operation_log()),
                      **summary(lock, plan, replaces, displaced=displaced),
                      "sparkring_dashboard_url": dashboard_admin.page_url()}
         save_result(directory, completed)

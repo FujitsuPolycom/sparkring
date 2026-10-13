@@ -17,13 +17,20 @@ The actions here run as root, in the operator's commands:
 from __future__ import annotations
 
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
 import urllib.parse
+from pathlib import Path
 
-from runtime.host.dashboard import CONTAINER_RE, DEFAULT_PORT, FABRIC_PATH, SITE_PATH, SITE_SCHEMA, service_url
+from runtime.host.dashboard import (
+    CONTAINER_RE,
+    DEFAULT_PORT,
+    FABRIC_PATH,
+    SITE_PATH,
+    SITE_SCHEMA,
+    service_url,
+)
 
 DISABLED_PATH = Path("/etc/sparkring/dashboard.disabled")
 UNIT = "sparkring-dashboard.service"
@@ -89,11 +96,13 @@ def refresh_site(*, log=None, run=None) -> bool:
     The dashboard shows the previous records until the next refresh or
     `sudo sparkring dashboard export` when the write fails."""
     try:
-        write_site()
+        from runtime.common import process_lock
+        from runtime.host import controller, operator_view
         # The group-readable operator view follows the same changes, so a
         # member of the sparkring group reads an up-to-date status.
-        from runtime.host import operator_view
-        operator_view.publish()
+        with process_lock.hold(controller.STATE / "publication.lock", wait=True):
+            write_site()
+            operator_view.publish()
     except Exception as error:  # noqa: BLE001 - the dashboard must never fail an installation
         (log or _stderr)(f"Dashboard: its site file was not refreshed ({type(error).__name__}: {error}); "
                          "sudo sparkring dashboard export writes it")

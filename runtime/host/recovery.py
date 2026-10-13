@@ -672,12 +672,9 @@ def set_enabled(enabled, *, directory=None):
     return record
 
 
-def _busy():
-    try:
-        with process_lock.hold(controller.STATE / "install.lock"):
-            return False
-    except ValueError:
-        return True
+def _busy(directory=None):
+    from runtime.host import placement, slices
+    return slices.busy(controller.STATE, placement.of_directory(directory) if directory else None)
 
 
 def _outcome(state, summary, directory=None, **fields):
@@ -751,7 +748,7 @@ def check_one(directory, *, now=time.time, invoke=None, api=None, apply=None, tu
     if not supported(lock):
         return _outcome("unsupported", f"Automatic recovery covers Compose deployments; this one uses {lock.get('backend')}",
                         directory)
-    if _busy():
+    if _busy(directory):
         return _outcome("busy", "Another SparkRing operation is running", directory)
     state = saved_state(directory)
     if record.get("attempt"):
@@ -865,7 +862,8 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
     apply = apply or (lambda operation: retained_source.apply(directory, operation, cache=cache))
     with contextlib.ExitStack() as stack:
         try:
-            stack.enter_context(process_lock.hold(controller.STATE / "install.lock"))
+            from runtime.host import placement, slices
+            stack.enter_context(slices.hold(controller.STATE, placement.from_lock(lock), "automatic recovery"))
         except ValueError:
             return _outcome("busy", "Another SparkRing operation started", directory)
         record = record_of(load(repair=True), directory)
@@ -904,6 +902,7 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
         update(directory, attempt=entry, pending=None)
         error = None
         with progress.run("recover"):
+            progress.bind_slice(placement.from_lock(lock))
             print(f"Automatic recovery of {lock['selection']['profile']}: {finding['summary']}.")
             print("Starting the model on every Spark." if start_only
                   else "Stopping the model on every Spark, then starting it.")

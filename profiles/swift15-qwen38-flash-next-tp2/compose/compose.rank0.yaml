@@ -160,7 +160,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/swift15-qwen38-flash-next-aba309e4610c-3ff0520224f2
     labels:
-      io.sparkring.deployment: b8c92e595764d89584ec6c99f17aeaebc8a0569f535792bdccb1ceb02362bbe1
+      io.sparkring.deployment: 9863cead0011fbc83c0fe51c7b0c9a8c37685e5a03222e87d181ffd58c3f5d6e
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

@@ -967,7 +967,8 @@ def test_the_layer_archive_rides_the_pipeline_to_a_spark_without_layers_and_skip
     class Relay:
         port, repository = 5255, "owner/image"
 
-        def __init__(self, reference, directory):
+        def __init__(self, reference, directory, *, port=0):
+            assert port == 0
             self.directory = Path(directory)
             self.directory.mkdir(parents=True, exist_ok=True)
             self.fetched = []
@@ -1058,7 +1059,8 @@ def test_an_install_on_an_arc_spreads_the_image_blobs_to_the_arcs_sparks_only(tm
     class Relay:
         port, repository = 5255, "owner/image"
 
-        def __init__(self, reference, directory):
+        def __init__(self, reference, directory, *, port=0):
+            assert port == 0
             self.directory = Path(directory)
             self.directory.mkdir(parents=True, exist_ok=True)
 
