@@ -158,11 +158,16 @@ def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0) ->
     connection.settimeout(timeout)
     connection.connect(socket_path)
     connection.sendall(json.dumps({"argv": list(argv)}).encode() + b"\n")
+    # One buffered reader for the whole reply: a single receive can carry
+    # several lines (the last output and the exit), and none may be dropped.
+    reader = connection.makefile("rb")
     code = 1
     while True:
-        line = _readline(connection)
+        line = reader.readline(LINE_LIMIT + 1)
         if not line:
             break
+        if len(line) > LINE_LIMIT:
+            raise ValueError("a helper reply line is too long")
         document = json.loads(line)
         if document.get("type") == "output":
             print(document["text"], end="", file=sys.stdout if document.get("stream") == "out" else sys.stderr)
@@ -171,5 +176,6 @@ def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0) ->
             if document.get("error"):
                 print("sparkring helper: " + document["error"], file=sys.stderr)
             break
+    reader.close()
     connection.close()
     return code

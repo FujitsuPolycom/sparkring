@@ -143,3 +143,29 @@ def test_a_root_run_ignores_the_opted_in_socket(monkeypatch):
     monkeypatch.setattr("runtime.host.recovery.main", lambda argv: 0)
     assert sparkring.main(["recover", "--auto"]) == 0
     assert sent == []
+
+
+def test_request_keeps_every_line_of_a_reply_that_arrives_in_one_read(tmp_path, capsys):
+    """The last output line and the exit line can arrive together; the client must not wait for more."""
+    path = tmp_path / "helper.sock"
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(path))
+    server.listen(1)
+    held = []
+
+    def reply():
+        connection, _ = server.accept()
+        held.append(connection)  # kept open: only the exit line may end the request
+        helper._readline(connection)
+        connection.sendall(json.dumps({"type": "output", "stream": "out", "text": "done\n"}).encode() + b"\n"
+                           + json.dumps({"type": "exit", "code": 0}).encode() + b"\n")
+
+    thread = threading.Thread(target=reply, daemon=True)
+    thread.start()
+    try:
+        assert helper.request(["status"], socket_path=str(path), timeout=10.0) == 0
+    finally:
+        for connection in held:
+            connection.close()
+        server.close()
+    assert capsys.readouterr().out == "done\n"
