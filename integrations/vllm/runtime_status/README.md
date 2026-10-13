@@ -450,3 +450,18 @@ records the tree and time of each later pinned pair. Rebuilding 0.3.2 and 0.3.3
 this way, the archive with Git 2.52 for Windows and the wheel with Python
 3.12.3, setuptools 78.1.0 and pip 24.0 on Linux, reproduced both pinned files
 of each version byte for byte.
+
+## Host dashboard stat logger
+
+Version 0.3.7 includes `sparkring_stats` in `vllm.stat_logger_plugins`.
+The [dashboard snapshot composition](../../../runtime/images/compositions/installer-dashboard-status037/descriptor.json)
+pins its wheel and source archive over the image with ID `sha256:d52737a109e0`.
+Compatible installer deployments enable it with a host-visible snapshot
+path; without that path the logger is inactive. It adds no endpoint or model
+request. The writer drops failed writes and retains at most one pending
+snapshot. Multi-engine data parallelism is disabled.
+
+The [counter contract and verification plan](../../../docs/development/dashboard-counters.md)
+describe fields, rate precision, image composition, host delivery, CPU tests
+and the required DeepSeek on/off hardware comparison. The package remains
+unqualified for serving overhead until that comparison is recorded.

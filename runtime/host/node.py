@@ -1076,6 +1076,10 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
     result = {"schema": "sparkring-node-status/v1", "observed_at": now(), "hostname": socket.gethostname(),
               **observation_identity(root=root), "source": "host-agent",
               "hardware_qualified": False, "state": "not-configured", "next_action": "sparkring setup"}
+    from runtime.host.telemetry import read_snapshots
+    snapshots = read_snapshots(root=root)
+    if snapshots:
+        result["telemetry"] = snapshots
     if not location(root, "/etc/sparkring/fabric.json").exists():
         return result
     warnings = []

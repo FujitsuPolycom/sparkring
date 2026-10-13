@@ -38,6 +38,17 @@ STATUS_ENTRY_POINTS = {
     "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
     "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
 }
+
+
+def status_entry_points(version):
+    """Keep pinned status wheels valid; 0.3.7 adds the CPU stat logger."""
+    points = dict(STATUS_ENTRY_POINTS)
+    if (match := re.fullmatch(r"0\.3\.([0-9]+)", version)) and int(match[1]) >= 7:
+        points["vllm.stat_logger_plugins"] = {
+            "sparkring_stats": "sparkring_runtime_status.stat_logger:SparkRingStatLogger"}
+    return points
+
+
 HC_SUPPORTED_MODES = {
     "2": [
         {"projection_tp": "1", "prefill_row_ownership": "off"},
@@ -206,7 +217,7 @@ def load_runtime_status(root, record, inventory):
             require(name and name not in sources, "Duplicate status source entry: " + name)
             require(name in {"pyproject.toml", "README.md", "schema-v1.json",
                              "test_runtime_status.py", "test_status_browser.py",
-                             "test_resources.py", "test_metrics.py", "test_transport.py",
+                             "test_stat_logger.py", "test_resources.py", "test_metrics.py", "test_transport.py",
                              "test_binding.py", "test_resources_linux.py",
                              "test_status_views.py", "sparkring_runtime_status/dashboard.html"}
                     or name.startswith("sparkring_runtime_status/") and path.suffix == ".py",
@@ -217,7 +228,7 @@ def load_runtime_status(root, record, inventory):
     require(project["name"] == "sparkring-runtime-status"
             and re.fullmatch(r"[0-9][A-Za-z0-9_.+-]*", project["version"]),
             "Status distribution identity differs")
-    require(project.get("entry-points") == STATUS_ENTRY_POINTS,
+    require(project.get("entry-points") == status_entry_points(project["version"]),
             "Status source must declare the official API and worker entry points")
     require(project.get("dependencies") == ["fastapi>=0.115"],
             "Status dependencies require a reviewed compatibility update")
@@ -261,7 +272,7 @@ def load_runtime_status(root, record, inventory):
             "Status wheel has a native or platform-specific payload")
     entry_points = configparser.ConfigParser(interpolation=None)
     entry_points.read_string(files[distribution + "/entry_points.txt"].decode())
-    require({section: dict(entry_points[section]) for section in entry_points.sections()} == STATUS_ENTRY_POINTS,
+    require({section: dict(entry_points[section]) for section in entry_points.sections()} == status_entry_points(project["version"]),
             "Status wheel must expose the official API and worker entry points")
     record_name = distribution + "/RECORD"
     records = {}
@@ -279,7 +290,7 @@ def load_runtime_status(root, record, inventory):
         "plugin_name": "sparkring_status", "python_root": PYTHON_ROOT,
         "wheel_sha256": record["wheel"]["sha256"],
         "source_archive_sha256": record["source_archive"]["sha256"],
-        "entry_points": STATUS_ENTRY_POINTS,
+        "entry_points": status_entry_points(project["version"]),
     }
     provenance = {"wheel": {"name": wheel.name, "sha256": record["wheel"]["sha256"]},
                   "source_archive": {"name": archive.name, "sha256": record["source_archive"]["sha256"]},

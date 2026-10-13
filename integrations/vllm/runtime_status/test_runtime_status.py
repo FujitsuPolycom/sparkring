@@ -513,7 +513,7 @@ def test_schema_accepts_complete_partial_missing_and_initializing():
     validator.validate({"schema": c.SCHEMA, "state": "initializing"})
 
 
-def test_offline_wheel_contains_both_official_entrypoints(tmp_path):
+def test_offline_wheel_contains_official_entrypoints(tmp_path):
     root = Path(__file__).parent
     project = tmp_path / "project"
     project.mkdir()
@@ -522,7 +522,7 @@ def test_offline_wheel_contains_both_official_entrypoints(tmp_path):
     shutil.copytree(root / "sparkring_runtime_status", project / "sparkring_runtime_status",
                     ignore=shutil.ignore_patterns("__pycache__"))
     metadata = tomllib.loads((project / "pyproject.toml").read_text())
-    assert set(metadata["project"]["entry-points"]) == {"vllm.endpoint_plugins", "vllm.general_plugins"}
+    assert set(metadata["project"]["entry-points"]) == {"vllm.endpoint_plugins", "vllm.general_plugins", "vllm.stat_logger_plugins"}
     result = subprocess.run([sys.executable, "-m", "pip", "wheel", "--no-deps",
                              "--no-build-isolation", "--no-index", "--wheel-dir", "wheels", "."],
                             cwd=project, text=True, capture_output=True, timeout=60)
@@ -535,6 +535,8 @@ def test_offline_wheel_contains_both_official_entrypoints(tmp_path):
         assert "[vllm.endpoint_plugins]" in entrypoints
         assert "sparkring_status = sparkring_runtime_status.plugin:StatusPlugin" in entrypoints
         assert "[vllm.general_plugins]" in entrypoints
+        assert "[vllm.stat_logger_plugins]" in entrypoints
+        assert "sparkring_stats = sparkring_runtime_status.stat_logger:SparkRingStatLogger" in entrypoints
         assert "sparkring_status = sparkring_runtime_status.plugin:register_worker_method" in entrypoints
         assert "sparkring_runtime_status/collector.py" in archive.namelist()
         assert "sparkring_runtime_status/presentation.py" in archive.namelist()

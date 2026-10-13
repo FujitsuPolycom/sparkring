@@ -128,8 +128,6 @@ HTTP_TIMEOUT = 2.0
 FAILED_SECONDS = 15.0         # a model API that does not answer is asked again after this long
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 MAX_FILE_BYTES = 1024 * 1024
-HISTORY_SECONDS = 3600.0
-SAMPLE_SECONDS = 330.0          # counter samples kept for the 5-minute rate windows
 MAX_EVENTS = 200
 CLOCK_STEP_SECONDS = 2.0      # a cycle whose clock reads this much earlier than the last one's saw a step back
 DEFAULT_PORT = 8090
@@ -140,6 +138,7 @@ COUNTERS = {
     "vllm:prompt_tokens_total": "prompt",
     "vllm:spec_decode_num_accepted_tokens_total": "accepted",
     "vllm:spec_decode_num_drafts_total": "drafts",
+    "vllm:spec_decode_num_draft_tokens_total": "draft_tokens",
     "vllm:num_preemptions_total": "preemptions",
     "vllm:time_to_first_token_seconds_sum": "ttft_sum",
     "vllm:time_to_first_token_seconds_count": "ttft_count",
@@ -503,7 +502,7 @@ def deployments_from_site(site: dict, size: int) -> list:
         containers = [c for c in row.get("containers") or [] if isinstance(c, dict)
                       and type(c.get("position")) is int and isinstance(c.get("name"), str)
                       and CONTAINER_RE.fullmatch(c["name"])]
-        rows.append({"id": str(row.get("id") or run_name(positions)), "profile": row.get("profile"),
+        rows.append({"id": str(row.get("id") or run_name(positions)), "deployment_id": row.get("deployment_id"), "profile": row.get("profile"),
                      "model": row.get("model"), "positions": positions, "api_host": row["api_host"],
                      "api_port": port, "display_url": row.get("display_url"),
                      "stopped": bool(row.get("stopped")), "containers": containers})
@@ -561,7 +560,7 @@ class Source:
 
 # -- one model --------------------------------------------------------------------------------
 class Model:
-    """One deployment's API endpoint: its observations, rates, history and state."""
+    """One deployment's API endpoint: raw observations and state."""
 
     def __init__(self, source: Source, row: dict):
         self.source = source
@@ -581,39 +580,11 @@ class Model:
         self.next_metrics = 0.0
         self.next_models = 0.0
         self.last_ok = None
-        self.samples: collections.deque = collections.deque()
-        self.history: collections.deque = collections.deque()
-
-    def window(self, key, seconds, now):
-        if len(self.samples) < 2:
-            return None
-        newest_t, newest = self.samples[-1]
-        base = next(((t, m) for t, m in self.samples if t >= now - seconds - 0.5), None)
-        if base is None or base[0] >= newest_t or key not in newest or key not in base[1]:
-            return None
-        delta = newest[key] - base[1][key]
-        return (delta, newest_t - base[0]) if delta >= 0 else None
-
-    def rate(self, key, seconds, now):
-        found = self.window(key, seconds, now)
-        return round(found[0] / found[1], 2) if found and found[1] >= 1 else None
-
-    def ratio(self, top, bottom, seconds, now):
-        a, b = self.window(top, seconds, now), self.window(bottom, seconds, now)
-        return a[0] / b[0] if a and b and b[0] > 0 else None
+        self.metrics_at = None
 
     def observe_metrics(self, metrics: dict, now: float) -> None:
-        if self.samples and metrics.get("gen", 0) < self.samples[-1][1].get("gen", 0):
-            self.samples.clear()  # counters went back: the server restarted
         self.metrics = metrics
-        # Rate windows need the counters only; the gauge labels stay out of the kept samples.
-        self.samples.append((now, {key: value for key, value in metrics.items() if isinstance(value, float)}))
-        while self.samples and now - self.samples[0][0] > SAMPLE_SECONDS:
-            self.samples.popleft()
-        self.history.append([round(now, 1), self.rate("gen", 15, now), metrics.get("running"),
-                             metrics.get("waiting"), metrics.get("kv")])
-        while self.history and now - self.history[0][0] > HISTORY_SECONDS:
-            self.history.popleft()
+        self.metrics_at = now
         self.capacity = capacity_from_cache_info(metrics.get("cache_info")) or self.capacity
         if metrics.get("model_name"):
             self.model = metrics["model_name"]
@@ -718,7 +689,7 @@ class Collector:
         """The wall clock stepped back, as an NTP correction after boot or a manual date does.
 
         Every schedule here is kept in that clock, so each read would otherwise wait out the whole
-        step: the reads fall due now. Rate samples and history from the clock's future are dropped,
+        step: the reads fall due now. Raw observations from the clock's future are invalidated,
         and a viewer or a state that the old clock dated later than now is dated now."""
         print(f"sparkring dashboard: the clock went back by {self.last_cycle - now:.0f} s; reads rescheduled",
               file=sys.stderr, flush=True)
@@ -733,9 +704,7 @@ class Collector:
                     model.runtime_requested_at = None
                 if model.state_since is not None and model.state_since > now:
                     model.state_since = now
-                model.samples.clear()
-                while model.history and model.history[-1][0] > now:
-                    model.history.pop()
+                model.metrics_at = None
 
     def cycle(self, now=None) -> None:
         now = self.clock() if now is None else now
@@ -787,7 +756,7 @@ class Collector:
                     state = "idle"
                     with self.lock:
                         model.metrics = None
-                        model.samples.clear()
+                        model.metrics_at = None
                 else:
                     state = "serving"
                     with self.lock:
@@ -800,7 +769,7 @@ class Collector:
                     state = "stopped"  # the records say its last operation stopped it
                 with self.lock:
                     model.metrics = None
-                    model.samples.clear()
+                    model.metrics_at = None
                 model.next_metrics = now + max(cadence, FAILED_SECONDS)
             self.set_state(model, state, now)
         if model.state == "serving" and now >= model.next_models:
@@ -906,7 +875,6 @@ class Collector:
         runtime = model.runtime or {}
         metrics = model.metrics or {}
         serving = model.state == "serving"
-        accept = model.ratio("accepted", "drafts", 300, now)
         nodes = runtime.get("nodes") or []
         head = hostnames.get(positions[0], {})
         port = row["api_port"]
@@ -931,19 +899,19 @@ class Collector:
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
             "layout": {"label": layout_label(len(positions)) if serving else None, "count": len(positions),
                        "tp": runtime.get("tp")},
-            "live": {"running": metrics.get("running"), "waiting": metrics.get("waiting"), "kv": metrics.get("kv"),
-                     "output_tps": model.rate("gen", 15, now), "prompt_tps": model.rate("prompt", 15, now),
-                     "output_tps_5m": model.rate("gen", 300, now),
-                     "accept_length_5m": round(1 + accept, 2) if accept is not None else None,
-                     "ttft_5m": model.ratio("ttft_sum", "ttft_count", 300, now),
-                     "prefix_hit_5m": model.ratio("pc_hits", "pc_queries", 300, now)} if model.metrics else None,
+            "live": {key: metrics.get(key) for key in ("running", "waiting", "kv")} if model.metrics else None,
+            "counters": {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
+                         "values": {key: value for key, value in metrics.items()
+                                    if isinstance(value, (int, float))}} if model.metrics else None,
+            "plugin_counters": ((self.node_status or {}).get("telemetry", {}).get(row.get("deployment_id"))
+                                or (self.recovery.get(row["id"]) or {}).get("telemetry")),
             "totals": {"finished": metrics.get("finished"), "preemptions": metrics.get("preemptions"),
                        "output_tokens": metrics.get("gen"), "prompt_tokens": metrics.get("prompt")}
             if model.metrics else None,
             "settings": runtime.get("settings"), "nodes": nodes, "capacity": capacity if serving else None,
             "workers": runtime.get("workers"), "image": runtime.get("image"), "transport": runtime.get("transport"),
             "sparks": sparks,
-            "history": [h for h in model.history if h[0] >= now - HISTORY_SECONDS],
+            "history": [],
             "arc": {"positions": positions, "first": positions[0], "last": positions[-1], "size": len(positions),
                     "run": run_name(positions), "source": "deployment", "source_label": "deployment record",
                     "inferred": False, "detail": None, "color": color},
@@ -952,7 +920,8 @@ class Collector:
                      "container": container},
             "logs": log_commands(head.get("hostname"), container),
             "runtime_read": model.runtime is not None,
-            "recovery": self.recovery.get(row["id"]),
+            "recovery": {k: v for k, v in self.recovery[row["id"]].items() if k != "telemetry"}
+            if row["id"] in self.recovery else None,
         }
 
     def ring(self, source: Source, members: list, now: float) -> dict:
@@ -1006,7 +975,8 @@ def recovery_findings(path: Path) -> dict:
         found[Path(str(directory)).name] = {
             "state": finding.get("state"), "summary": finding.get("summary"),
             "next_action": finding.get("next_action"), "checked_at": record.get("checked_at"),
-            "enabled": record.get("enabled", True), "stopped": bool(record.get("stopped"))}
+            "enabled": record.get("enabled", True), "stopped": bool(record.get("stopped")),
+            "telemetry": finding.get("telemetry")}
     return found
 
 
@@ -1066,6 +1036,7 @@ def lower_priority(cpu_list: str | None = None) -> list:
 def page_bytes(path: Path = PAGE) -> tuple[bytes, str]:
     """The page and its Content-Security-Policy: its inline script and style admitted by hash only."""
     text = Path(path).read_text(encoding="utf-8")
+    text = text.replace("// VIEWER_RATES", Path(__file__).with_name("dashboard_rates.js").read_text(encoding="utf-8"))
     policies = []
     for tag, directive in (("script", "script-src"), ("style", "style-src")):
         match = re.search(rf"<{tag}>(.*?)</{tag}>", text, flags=re.S)

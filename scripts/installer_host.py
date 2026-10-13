@@ -2239,6 +2239,12 @@ def perform(operation, lock, number):
             text = compose.compose_text(spec, local_image)
             compose.check_equivalence(spec, local_image, text, run=run)
             target = plain(Path(row["deployment_root"]) / lock["id"])
+            if operation in ("create", "start"):
+                # /run is volatile: restore the bind directory before Docker
+                # starts an existing container after a host reboot.
+                for mount in spec.mounts:
+                    if mount.target == "/run/sparkring/stats":
+                        plain(Path(mount.source)).mkdir(parents=True, exist_ok=True, mode=0o755)
             if operation == "create":
                 target.mkdir(parents=True, exist_ok=True)
                 path = plain(target / "compose.yaml")

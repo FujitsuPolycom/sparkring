@@ -538,7 +538,7 @@ ring shows each model's arc in its colour, and each model has a card with its
 state, TP size and arc, transport, uptime, output rate, running requests, KV
 use and budget, draft acceptance length and first-token time. `d` expands the
 selected card: model, endpoint, layout, arc, transport, head container,
-output and prompt rates, graphs of the last hour's output rate and KV use,
+output and approximate prefill rates, locally collected output and KV graphs,
 requests, KV budget with the concurrency it allows at the maximum context,
 latency with prefix-cache hits, totals, settings, parsers, image, the log
 command, and per Spark its rank, LAN address, memory and free disk. Free disk

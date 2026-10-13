@@ -324,6 +324,14 @@ def adapt(spec, value, *, binding, source_root, profile=None):
         TILELANG_CACHE_DIR=cache + "/tilelang", TVM_FFI_CACHE_DIR=cache + "/tvm-ffi",
         FLASHINFER_WORKSPACE_BASE=cache + "/flashinfer",
     )
+    stats_mounts = ()
+    if tuple(int(v) for v in value["status_version"].split(".")) >= (0, 3, 7) and binding != BINDING_TARGET:
+        deployment = PurePosixPath(binding).parent.name
+        stats_root = "/run/sparkring/telemetry/" + deployment
+        environment.update(SPARKRING_STATS_PATH="/run/sparkring/stats/snapshot.json",
+                           SPARKRING_STATS_DEPLOYMENT=deployment)
+        environment["VLLM_PLUGINS"] += ",sparkring_stats"
+        stats_mounts = (Bind(stats_root, "/run/sparkring/stats"),)
     environment.setdefault(TOOL_CHOICE_CONTRACT, "1")
     if profile in QWEN4_EXP:
         environment["VLLM_QWEN3_8_FLASH_NEXT_HC_TP"] = qwen_recipe(environment)[0]["projection_tp"]
@@ -336,7 +344,7 @@ def adapt(spec, value, *, binding, source_root, profile=None):
     return replace(spec, image_id=value["image_id"], entrypoint=ENTRYPOINT, command=spec.command[1:],
                    environment=environment, health_command=health, health_start_period=HEALTH_START_SECONDS,
                    security_opt=(*spec.security_opt, "seccomp=" + str(PurePosixPath(source_root) / loader_policy.RELATIVE)),
-                   mounts=(*spec.mounts, Bind(binding, BINDING_TARGET, True)),
+                   mounts=(*spec.mounts, *stats_mounts, Bind(binding, BINDING_TARGET, True)),
                    labels={**spec.labels, "io.sparkring.image-lock": value["name"]})
 
 

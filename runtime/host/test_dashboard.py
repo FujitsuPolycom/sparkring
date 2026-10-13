@@ -292,7 +292,7 @@ def test_reads_continue_after_the_clock_steps_back(tmp_path, capsys):
     assert "the clock went back by 3599 s" in capsys.readouterr().err   # from the last cycle, 1 s before the step
     member = found.snapshot()["groups"][0]["members"][0]
     assert all(row[0] <= clock.now for row in member["history"])
-    assert member["live"]["output_tps"] == pytest.approx(30.0, rel=0.05)
+    assert member["counters"]["at"] <= clock.now
     clock.now -= 1.0                                                  # a jitter below the bound is no step
     found.cycle()
     assert "clock went back" not in capsys.readouterr().err
@@ -584,7 +584,7 @@ def test_the_status_document_has_the_fields_the_page_reads(tmp_path):
     assert [m["name"] for m in members] == ["tp2-0-1", "tp2-2-3", "tp2-4-5", "tp2-6-7"]
     for member in members:
         assert MEMBER_FIELDS <= set(member)
-        assert member["state"] == "serving" and member["live"]["output_tps"] == pytest.approx(30.0, rel=0.05)
+        assert member["state"] == "serving" and member["counters"]["values"]["gen"] > 0
         assert member["arc"]["source"] == "deployment" and not member["arc"]["inferred"]
         assert member["capacity"]["kv_tokens"] == 1179648
     assert snapshot["ring"]["positions"][2]["member"] == members[1]["id"]

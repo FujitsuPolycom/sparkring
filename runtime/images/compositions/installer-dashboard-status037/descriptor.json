@@ -1,0 +1,18 @@
+{
+  "schema": "sparkring-derived-layer-descriptor/v1",
+  "id": "dashboard-status037",
+  "parent_lock": "runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json",
+  "provenance": "/opt/sparkring/receipts/derived-dashboard-status037.json",
+  "purpose": "Runtime-status 0.3.7 adds the bounded CPU stat-logger snapshot plugin for viewer-side dashboard rates. Development composition only; serving overhead is unqualified. Source component tree f9f0ba085d8c05ded002c380495da95803997571, archive and SOURCE_DATE_EPOCH 1791910800, setuptools 78.1.0 and wheel 0.42.0.",
+  "files": {},
+  "runtime_status": {
+    "wheel": {
+      "path": "sparkring_runtime_status-0.3.7-py3-none-any.whl",
+      "sha256": "f890a0414377afbdddadc3ac056fea74cd9f92a78539c4446d0e7f8ea699bacd"
+    },
+    "source_archive": {
+      "path": "sparkring-runtime-status-0.3.7-source.tar.gz",
+      "sha256": "67e97e816335ae87b4977b368cdaa5c2cd08c689eaa3b15ecc52d02a813fb0f6"
+    }
+  }
+}

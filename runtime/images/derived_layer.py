@@ -99,11 +99,22 @@ STATUS_ENTRY_POINTS = {
     "vllm.endpoint_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:StatusPlugin"},
     "vllm.general_plugins": {"sparkring_status": "sparkring_runtime_status.plugin:register_worker_method"},
 }
+
+
+def status_entry_points(version):
+    """Keep pinned status wheels valid; 0.3.7 adds the CPU stat logger."""
+    points = dict(STATUS_ENTRY_POINTS)
+    if (match := re.fullmatch(r"0\.3\.([0-9]+)", version)) and int(match[1]) >= 7:
+        points["vllm.stat_logger_plugins"] = {
+            "sparkring_stats": "sparkring_runtime_status.stat_logger:SparkRingStatLogger"}
+    return points
+
+
 # Files a status source archive may carry besides package modules; the
 # component directory integrations/vllm/runtime_status holds the same set.
 STATUS_SOURCES = {
     "pyproject.toml", "README.md", "schema-v1.json", "test_runtime_status.py", "test_status_browser.py",
-    "test_resources.py", "test_metrics.py", "test_transport.py", "test_binding.py",
+    "test_stat_logger.py", "test_resources.py", "test_metrics.py", "test_transport.py", "test_binding.py",
     "test_resources_linux.py", "test_status_views.py", "sparkring_runtime_status/dashboard.html",
 }
 
@@ -343,7 +354,7 @@ def status_package(artifacts, record, versions):
     version = project.get("version", "")
     require(project.get("name") == STATUS_DISTRIBUTION and re.fullmatch(STATUS_VERSION, version),
             "Status source must be sparkring-runtime-status 0.3.x, which the installer admits")
-    require(project.get("entry-points") == STATUS_ENTRY_POINTS,
+    require(project.get("entry-points") == status_entry_points(project["version"]),
             "Status source must declare the official API and worker entry points")
     require(project.get("dependencies") == ["fastapi>=0.115"], "Status dependencies require a reviewed update")
     require(not any(re.sub(r"[-_.]+", "-", name).lower() == STATUS_DISTRIBUTION for name in versions),
@@ -385,7 +396,7 @@ def status_package(artifacts, record, versions):
     entry_points = configparser.ConfigParser(interpolation=None)
     entry_points.optionxform = str
     entry_points.read_string(files[distribution + "/entry_points.txt"].decode())
-    require({section: dict(entry_points[section]) for section in entry_points.sections()} == STATUS_ENTRY_POINTS,
+    require({section: dict(entry_points[section]) for section in entry_points.sections()} == status_entry_points(project["version"]),
             "Status wheel must expose the official API and worker entry points")
     record_name = distribution + "/RECORD"
     rows = {}
@@ -405,7 +416,7 @@ def _replace_status(derived, base, record, artifacts):
     require(artifacts is not None, "Replacing the status package requires --status-artifacts")
     capability = base.get("capabilities", {}).get("runtime_status")
     require(isinstance(capability, dict) and capability.get("python_root") == PYTHON_ROOT
-            and capability.get("entry_points") == STATUS_ENTRY_POINTS,
+            and capability.get("entry_points") == status_entry_points(capability["version"]),
             "The parent image does not carry the runtime-status package in its owned Python root")
     roots = base.get("python_roots", {})
     require(set(roots) == {PYTHON_ROOT}, "The parent receipt must own exactly the status Python root")
@@ -429,7 +440,7 @@ def _replace_status(derived, base, record, artifacts):
     directories = sorted({str(PurePosixPath(name).parent) for name in removed} - kept - {PYTHON_ROOT},
                          key=lambda item: (-len(PurePosixPath(item).parts), item))
     derived["capabilities"]["runtime_status"] = {
-        **capability, "version": version, "wheel_sha256": record["wheel"]["sha256"],
+        **capability, "version": version, "entry_points": status_entry_points(version), "wheel_sha256": record["wheel"]["sha256"],
         "source_archive_sha256": record["source_archive"]["sha256"]}
     provenance = {"inherited_version": capability["version"], "version": version,
                   "wheel": dict(record["wheel"]), "source_archive": dict(record["source_archive"]),

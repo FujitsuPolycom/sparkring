@@ -68,7 +68,7 @@ def site_from_records(state_root: Path) -> dict:
                     containers.append({"position": positions[row["rank"]], "name": row["name"]})
         except (ValueError, KeyError, TypeError, IndexError):
             containers = []
-        rows.append({"id": Path(directory).name, "profile": placements.profile_of(directory),
+        rows.append({"id": Path(directory).name, "deployment_id": lock["id"], "profile": placements.profile_of(directory),
                      "model": connection["model"], "positions": positions, "api_host": host,
                      "api_port": connection["port"],
                      "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,

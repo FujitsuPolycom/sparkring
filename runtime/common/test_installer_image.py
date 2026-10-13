@@ -494,3 +494,18 @@ def test_swift_renders_the_qwen_architecture_settings_for_its_checkpoint_format(
         if rank == 0:
             assert spec.health_start_period == installer_image.HEALTH_START_SECONDS
     assert installer.connection(lock)["model"] == f"Swift-1.5-Qwen3.8-Flash-Next-NVFP4-TP{nodes}"
+
+
+def test_stat_logger_is_wired_only_for_images_that_ship_it():
+    value = image_lock()
+    value["status_version"] = "0.3.7"
+    lock = installer.make_lock(PROFILE, ring_site(), "1" * 40, "2" * 64, image_runtime=value)
+    for spec in installer.specifications(lock):
+        assert "sparkring_stats" in spec.environment["VLLM_PLUGINS"].split(",")
+        assert spec.environment["SPARKRING_STATS_DEPLOYMENT"] == lock["id"]
+        assert spec.environment["SPARKRING_STATS_PATH"] == "/run/sparkring/stats/snapshot.json"
+        mount = next(m for m in spec.mounts if m.target == "/run/sparkring/stats")
+        assert mount.source == "/run/sparkring/telemetry/" + lock["id"] and not mount.read_only
+    value["status_version"] = "0.3.6"
+    lock = installer.make_lock(PROFILE, ring_site(), "1" * 40, "2" * 64, image_runtime=value)
+    assert all("SPARKRING_STATS_PATH" not in spec.environment for spec in installer.specifications(lock))

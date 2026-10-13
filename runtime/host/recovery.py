@@ -771,6 +771,7 @@ def check_one(directory, *, now=time.time, invoke=None, api=None, apply=None, tu
     finding = observe(directory, lock, record, state, invoke=invoke, api=api, tunnel=tunnel)
     t = now()
     shown = {key: finding[key] for key in ("state", "summary", "next_action", "details")}
+    shown["telemetry"] = finding.get("telemetry")
     if finding["state"] == "unreachable":
         since = (record.get("waiting") or {}).get("since") or t
         update(directory, checked_at=t, finding=shown, pending=None, waiting={"hosts": finding["ranks"], "since": since})
@@ -843,6 +844,7 @@ def observe(directory, lock, record, state, *, invoke, api=None, tunnel=None):
     finding = assess(ranks, api=health, rebooted=rebooted, nodes=documents, tunnel=tunnel,
                      require_mesh=len(hosts) == 4 and ring_of_four())
     finding["boots"] = boots
+    finding["telemetry"] = documents.get(hosts[0], {}).get("telemetry", {}).get(lock["id"])
     return finding
 
 
@@ -889,6 +891,7 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
         # Observed again under the lock: the mesh guard and the model state must still hold.
         finding = observe(directory, lock, record, state, invoke=invoke or discovery.ssh, api=api, tunnel=tunnel)
         shown = {key: finding[key] for key in ("state", "summary", "next_action", "details")}
+        shown["telemetry"] = finding.get("telemetry")
         if finding["action"] is None:
             update(directory, finding=shown, pending=None)
             return _outcome("changed", "Observed again before acting: " + finding["summary"], directory, finding=shown)

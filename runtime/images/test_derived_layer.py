@@ -48,6 +48,10 @@ def status_artifacts(version, *, collector=b"NAME = 'served'\n"):
         'sparkring_status = "sparkring_runtime_status.plugin:StatusPlugin"\n\n'
         '[project.entry-points."vllm.general_plugins"]\n'
         'sparkring_status = "sparkring_runtime_status.plugin:register_worker_method"\n' % version).encode()
+    stats = layer.status_entry_points(version).get("vllm.stat_logger_plugins")
+    if stats:
+        project += ("\n[project.entry-points.\"vllm.stat_logger_plugins\"]\n"
+                    "sparkring_stats = \"sparkring_runtime_status.stat_logger:SparkRingStatLogger\"\n").encode()
     distribution = f"sparkring_runtime_status-{version}.dist-info"
     files = dict(modules)
     files[distribution + "/METADATA"] = (
@@ -57,6 +61,9 @@ def status_artifacts(version, *, collector=b"NAME = 'served'\n"):
     files[distribution + "/entry_points.txt"] = (
         b"[vllm.endpoint_plugins]\nsparkring_status = sparkring_runtime_status.plugin:StatusPlugin\n\n"
         b"[vllm.general_plugins]\nsparkring_status = sparkring_runtime_status.plugin:register_worker_method\n")
+    if stats:
+        files[distribution + "/entry_points.txt"] += (
+            b"\n[vllm.stat_logger_plugins]\nsparkring_stats = sparkring_runtime_status.stat_logger:SparkRingStatLogger\n")
     files[distribution + "/top_level.txt"] = b"sparkring_runtime_status\n"
     rows = ["%s,sha256=%s,%d" % (name, base64.urlsafe_b64encode(hashlib.sha256(raw).digest()).rstrip(b"=").decode(),
                                  len(raw)) for name, raw in files.items()]
@@ -1080,3 +1087,22 @@ def test_spin_wait_layer_refuses_a_parent_other_than_the_pinned_module(tmp_path)
     assert not (tmp_path / "context").exists()
     with pytest.raises(ValueError, match="Expected one occurrence"):
         SPIN.replace(lambda path: b"class SpinCondition:\n    pass\n", {})
+
+
+def test_stat_logger_wheel_is_composed_and_recorded(parent):
+    artifacts, files, _, _ = with_status(parent, version="0.3.7")
+    result = prepare(parent, artifacts=artifacts)
+    context = Path(result["context"])
+    receipt = json.loads((context / "files" / layer.BASE_RECEIPT.lstrip("/")).read_bytes())
+    assert receipt["capabilities"]["runtime_status"]["entry_points"] == layer.status_entry_points("0.3.7")
+    assert result["status_version"] == "0.3.7"
+
+
+def test_dashboard_composition_preserves_published_parent_and_pins_status_artifacts():
+    descriptor = layer.descriptor(ROOT / "runtime/images/compositions/installer-dashboard-status037/descriptor.json")
+    parent = json.loads((ROOT / descriptor["parent_lock"]).read_text())
+    assert parent["image_id"].startswith("sha256:d52737a109e0")
+    assert parent["status_version"] == "0.3.6"
+    assert descriptor["files"] == {}
+    assert descriptor["runtime_status"]["wheel"]["path"] == "sparkring_runtime_status-0.3.7-py3-none-any.whl"
+    assert descriptor["runtime_status"]["source_archive"]["path"] == "sparkring-runtime-status-0.3.7-source.tar.gz"

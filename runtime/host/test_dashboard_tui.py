@@ -32,8 +32,12 @@ def snapshot_of(tmp_path):
         api.bodies[(host, port, "/v1/sparkring/status")] = json.dumps(document).encode()
     api.bodies[("192.0.2.12", 8015, "/metrics")] = (FIXTURES / "vllm-metrics-tp2.prom").read_bytes()
     api.bodies[("192.0.2.12", 8015, "/v1/sparkring/status")] = (FIXTURES / "runtime-status-tp2.json").read_bytes()
-    run_for(found, clock, 120, viewer=True)
-    return json.loads(json.dumps(found.snapshot())), found
+    from runtime.host.dashboard_rates import ViewerRates
+    rates = ViewerRates()
+    run_for(found, clock, 115, viewer=True)
+    rates.apply(found.snapshot())
+    run_for(found, clock, 5, viewer=True)
+    return rates.apply(json.loads(json.dumps(found.snapshot()))), found
 
 
 def render(snapshot, width, *, details="all", height=None, events=False):

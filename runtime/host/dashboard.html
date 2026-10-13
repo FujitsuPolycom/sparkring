@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
 <title>SparkRing</title>
 <style>
 :root {
@@ -150,7 +150,7 @@ button.copy { font: 500 0.75rem system-ui, sans-serif; color: var(--accent); bac
               border: 1px solid var(--line2); border-radius: 5px; padding: 1px 8px; cursor: pointer; }
 button.copy:hover { border-color: var(--accent); }
 button.copy:disabled { opacity: 0.45; cursor: default; }
-.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line);
+.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line);
          border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 @media (max-width: 460px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tile { background: var(--panel2); padding: 9px 11px; min-width: 0; }
@@ -213,9 +213,36 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .manage input, .manage select { background: var(--code); color: var(--fg); padding: 7px; border: 1px solid var(--line2); }
 .manage pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+@media (prefers-color-scheme: light) {
+  :root { color-scheme: light; --bg: #f4f6fa; --panel: #fff; --panel2: #edf1f7;
+    --fg: #182334; --muted: #4b5b70; --faint: #62738a; --line: #ccd5e2; --line2: #b5c2d4;
+    --code: #edf2f8; --accent: #03699c; --chart: #0077a6; --chart2: #7c3bb3;
+    --ok: #13743a; --warn: #855900; --bad: #b32222; }
+}
+.tiles .s { white-space: normal; overflow-wrap: anywhere; }
+.chart { min-width: 0; }
+.chart button { color: var(--fg); background: var(--code); border: 1px solid var(--line2);
+  border-radius: 5px; padding: 8px; min-height: 44px; cursor: pointer; }
+.chart svg { touch-action: pan-y; }
+.chart output { display: block; min-height: 2.8em; font-size: .75rem; color: var(--fg); overflow-wrap: anywhere; }
+.chart :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+#graph-dialog { width: min(1000px, 94vw); max-height: 90vh; overflow: auto;
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; }
+#graph-dialog::backdrop { background: #0009; }
+#graph-dialog svg { height: 300px; }
+#graph-dialog input { width: 100%; min-height: 44px; }
+#graph-dialog button { min-height: 44px; }
 </style>
 </head>
 <body>
+<dialog id="graph-dialog" aria-labelledby="graph-title">
+  <button id="graph-close" type="button">Close</button>
+  <h2 id="graph-title"></h2><p>History collected in this view, up to six hours. Reloading clears it.</p>
+  <div id="graph-body" class="chart"></div>
+  <label for="graph-sample">Inspect a sample (arrow keys or drag)</label>
+  <input id="graph-sample" type="range" min="0" max="0" value="0">
+  <output id="graph-value" aria-live="polite"></output>
+</dialog>
 <div class="wrap">
   <header class="top">
     <div>
@@ -258,6 +285,8 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
   <footer id="footer"></footer>
 </div>
 <script>
+// VIEWER_RATES
+const viewerRates = new ViewerRates();
 "use strict";
 let data = null, receivedAt = 0, failing = false;
 const METRICS_VIEWED = 5, METRICS_IDLE = 60;
@@ -515,14 +544,15 @@ function selectGroup(id) {
 }
 
 // -- cards ---------------------------------------------------------------------------------
-function chart(history, idx, now, cls, scale) {
-  const span = 3600, W = 300, H = 44, gap = 3 * (data.poll_seconds || 5) + 2;
-  const pts = history.filter((h) => has(h[idx]));
-  if (pts.length < 2) return { svg: '<div class="nochart">No data in the last hour</div>', peak: null };
+function chart(history, idx, now, cls, scale, span = 3600) {
+  const W = 300, H = 44, gap = 185;
+  const pts = history.filter((h) => h[0] >= now - span && has(h[idx]));
+  if (pts.length < 2) return { svg: '<div class="nochart">Waiting for two samples</div>', peak: null };
   const peak = Math.max(...pts.map((h) => h[idx]));
   const top = scale || Math.max(peak, 1) * 1.1;
   let d = "", prev = null;
-  for (const h of pts) {
+  for (const h of history.filter(h => h[0] >= now - span)) {
+    if (!has(h[idx])) { prev = null; continue; }
     const x = Math.max(0, (h[0] - (now - span)) / span * W);
     const y = H - 2 - (h[idx] / top) * (H - 4);
     d += (prev === null || h[0] - prev > gap ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
@@ -544,23 +574,83 @@ function tiles(s) {
   const draft = has(l.accept_length_5m) ? l.accept_length_5m.toFixed(2) : "–";
   return `<div class="tiles">
     <div class="tile"><div class="k">Output</div><div class="v">${one(l.output_tps)}<small>tok/s</small></div>
-      <div class="s">5 min avg ${one(l.output_tps_5m)}</div></div>
+      <div class="s">5 min avg ${one(l.output_tps_5m)} \u00b7 ${esc(l.source === "plugin" ? "plugin" : "/metrics")}</div></div>
+    <div class="tile"><div class="k">Prefill ${l.source === "plugin" ? "" : "(approx)"}</div><div class="v">${has(l.prefill_tps) ? one(l.prefill_tps) : "&#8212;"}<small>tok/s</small></div>
+      <div class="s">${esc(l.source === "plugin" ? "plugin interval" : "/metrics interval")} \u00b7 sample ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</div></div>
+    <div class="tile"><div class="k">Steps / acceptance</div><div class="v">${one(l.steps_ps)}<small>steps/s</small></div>
+      <div class="s">${pct(l.acceptance)} accepted drafts \u00b7 ${esc(l.source || "/metrics")}</div></div>
     <div class="tile"><div class="k">Requests</div><div class="v">${int(l.running)}<small>running</small></div>
       <div class="s">${int(l.waiting)} waiting${maxSeqs ? " · max " + maxSeqs + " concurrent" : ""}</div></div>
-    <div class="tile"><div class="k">KV cache</div><div class="v">${pct(l.kv)}</div><div class="s">${esc(kvSize)}</div></div>
+    <div class="tile"><div class="k">KV cache</div><div class="v">${pct(l.kv)}</div><div class="s">${esc(kvSize)} \u00b7 ${esc(l.source || "/metrics")}</div></div>
     <div class="tile"><div class="k">Draft</div><div class="v">${draft}<small>tok/step</small></div>
-      <div class="s">${has(l.accept_length_5m) ? "last 5 min" : "no recent drafts"}</div></div>
+      <div class="s">${has(l.accept_length_5m) ? "last 5 min" : "no recent drafts"} \u00b7 ${esc(l.source || "/metrics")}</div></div>
   </div>`;
 }
 
-function charts(s, now) {
-  const out = chart(s.history || [], 1, now, "c1");
-  const kv = chart(s.history || [], 4, now, "c2", 1);
-  return `<div class="charts">
-    <div class="chart"><div class="k"><span>Output tok/s, last hour</span><span>${has(out.peak) ? "peak " + one(out.peak) : ""}</span></div>${out.svg}</div>
-    <div class="chart"><div class="k"><span>KV cache, last hour</span><span>${has(kv.peak) ? "peak " + pct(kv.peak) : ""}</span></div>${kv.svg}</div>
-  </div>`;
+const graphNames = { 1: "Output tok/s", 4: "KV cache fraction", 5: "Prefill tok/s" };
+function graphBox(s, idx, now) {
+  const g = chart(s.history || [], idx, now, idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null);
+  return `<div class="chart" data-graph="${idx}" data-graph-member="${esc(s.id)}">
+    <div class="k"><span>${graphNames[idx]}, last hour</span></div>
+    <button type="button" class="expand-graph" aria-label="Expand ${graphNames[idx]} for ${esc(s.name)}">Expand graph</button>
+    ${g.svg}<output>Hover or expand to inspect samples.</output></div>`;
 }
+function charts(s, now) { return `<div class="charts">${[1, 5, 4].map(i => graphBox(s, i, now)).join("")}</div>`; }
+let graphSelection = null, graphOpener = null;
+function graphRows(id, idx, span = 21600) {
+  const member = (data.groups || []).flatMap(g => g.members).find(m => m.id === id);
+  return (member?.history || []).filter(h => h[0] >= serverNow() - span && has(h[idx]));
+}
+function exactGraphValue(row, idx) {
+  return row ? `${new Date(row[0] * 1000).toISOString()} \u00b7 ${graphNames[idx]}: ${row[idx]} \u00b7 ${row[6] === "plugin" ? "plugin" : "approx /metrics"}` : "No sample here";
+}
+function inspectGraph() {
+  if (!graphSelection) return;
+  const rows = graphSelection.rows;
+  $("graph-value").textContent = exactGraphValue(rows[Number($("graph-sample").value)], graphSelection.idx);
+}
+function openGraph(box, opener) {
+  graphSelection = { id: box.dataset.graphMember, idx: Number(box.dataset.graph) };
+  graphOpener = opener;
+  const { id, idx } = graphSelection, rows = graphRows(id, idx);
+  graphSelection.rows = rows; graphSelection.now = serverNow();
+  $("graph-title").textContent = graphNames[idx] + " \u2014 up to six hours";
+  $("graph-body").innerHTML = chart(rows, idx, serverNow(), idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null, 21600).svg;
+  $("graph-sample").max = Math.max(0, rows.length - 1);
+  $("graph-sample").value = Math.max(0, rows.length - 1);
+  $("graph-sample").disabled = !rows.length;
+  inspectGraph(); $("graph-dialog").showModal();
+}
+$("graph-close").addEventListener("click", () => $("graph-dialog").close());
+$("graph-dialog").addEventListener("close", () => {
+  const id = graphSelection?.id, idx = graphSelection?.idx;
+  graphSelection = null;
+  const box = [...document.querySelectorAll("[data-graph-member]")].find(b => b.dataset.graphMember === id && Number(b.dataset.graph) === idx);
+  (box?.querySelector("button") || graphOpener)?.focus();
+});
+$("graph-sample").addEventListener("input", inspectGraph);
+function pointerSample(event, rows, idx, span, svg, now = serverNow()) {
+  const rect = svg.getBoundingClientRect();
+  const target = now - span + Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * span;
+  return rows.reduce((best, row) => !best || Math.abs(row[0] - target) < Math.abs(best[0] - target) ? row : best, null);
+}
+$("stacks").addEventListener("pointermove", event => {
+  const box = event.target.closest("[data-graph]"), svg = event.target.closest("svg");
+  if (!box || !svg) return;
+  const idx = Number(box.dataset.graph);
+  box.querySelector("output").textContent = exactGraphValue(pointerSample(event, graphRows(box.dataset.graphMember, idx, 3600), idx, 3600, svg), idx);
+});
+$("stacks").addEventListener("click", event => {
+  const box = event.target.closest("[data-graph]");
+  if (box && (event.target.closest("svg") || event.target.closest("button"))) openGraph(box, event.target.closest("button"));
+});
+$("graph-body").addEventListener("pointermove", event => {
+  const svg = event.target.closest("svg");
+  if (!svg || !graphSelection) return;
+  const { idx, rows, now } = graphSelection;
+  const row = pointerSample(event, rows, idx, 21600, svg, now);
+  $("graph-sample").value = Math.max(0, rows.indexOf(row)); inspectGraph();
+});
 
 function sparks(s) {
   const nodes = {};
@@ -633,8 +723,8 @@ function totals(s, now) {
   if (f.error) parts.push(`<b>${int(f.error)}</b> failed`);
   if (f.abort) parts.push(`<b>${int(f.abort)}</b> cancelled`);
   if (t.preemptions) parts.push(`<b>${int(t.preemptions)}</b> preempted`);
-  if (has(l.ttft_5m)) parts.push(`first token <b>${l.ttft_5m.toFixed(2)} s</b> avg`);
-  if (has(l.prefix_hit_5m)) parts.push(`prefix cache <b>${pct(l.prefix_hit_5m)}</b> hits`);
+  if (has(l.ttft_5m)) parts.push(`first token <b>${l.ttft_5m.toFixed(2)} s</b> avg (${esc(l.source || "/metrics")})`);
+  if (has(l.prefix_hit_5m)) parts.push(`prefix cache <b>${pct(l.prefix_hit_5m)}</b> hits (/metrics)`);
   if (s.workers && has(s.workers.expected) && s.workers.received !== s.workers.expected)
     parts.push(`<b>${int(s.workers.received)} of ${int(s.workers.expected)}</b> ranks reporting`);
   return `<div class="totals">${parts.join(" · ")}</div>`;
@@ -726,7 +816,13 @@ function render() {
   $("summary").textContent = parts.join(" · ");
   renderRings(rings, ringMembers, now);
   const html = stacks.map((s) => card(s, now)).join("");
-  if (html !== lastStacksHtml) { $("stacks").innerHTML = html; lastStacksHtml = html; }
+  if (html !== lastStacksHtml) {
+    const focused = document.activeElement?.closest("[data-graph]");
+    const focusId = focused?.dataset.graphMember, focusIdx = focused?.dataset.graph;
+    $("stacks").innerHTML = html; lastStacksHtml = html;
+    if (focused) [...document.querySelectorAll("[data-graph]")].find(b =>
+      b.dataset.graphMember === focusId && b.dataset.graph === focusIdx)?.querySelector("button")?.focus({ preventScroll: true });
+  }
   applyHighlight();
   const ev = (data.events || []).map((e) => `<li class="k-${esc(e.kind)}"><time>${esc(clock(e.at))}</time>
     <span class="ev"><span class="dot"></span><span><b>${esc(e.stack)}</b> ${esc(e.text)}</span></span></li>`).join("")
@@ -751,7 +847,7 @@ async function refresh() {
   try {
     const r = await fetch("/api/status", { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    data = await r.json();
+    data = viewerRates.apply(await r.json());
     receivedAt = Date.now() / 1000;
     failing = false;
     $("banner").hidden = true;

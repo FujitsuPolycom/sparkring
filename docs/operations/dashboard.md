@@ -129,6 +129,27 @@ every 5 s instead of every minute; `--passive` leaves the service's reads
 unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
+### Rates and graphs
+
+The ring page and terminal show prefill tokens/s during intervals with
+prompt activity. Idle shows a dash. `/metrics` prefill is labelled
+**approximate**; compatible images can supply computed-token counters through
+the SparkRing stat logger. Each card names its source and observation time.
+Plugin updates follow the existing host-agent and recovery cadence, so they
+can arrive less often than `/metrics`. Missing or stale plugin data falls
+back to `/metrics`.
+
+Hover a graph for its stored value and timestamp. Select **Expand graph**
+for up to six hours collected in that browser tab. Use the slider with a
+pointer, touch, arrow keys, Home or End; Escape closes the view. Graphs follow
+the OS light or dark theme. Interaction sends no request.
+
+Rates and graph history are calculated in the viewer. A newly opened view
+needs two observations, and reloading clears its history. The terminal does
+the same calculation only while open; `--once` has no rate history.
+See [counter methods and validation](../development/dashboard-counters.md)
+for precision, plugin installation and the hardware comparison plan.
+
 ### Why loopback as well
 
 Programs on Node A, such as the terminal view, `curl` or a monitoring agent,

@@ -183,12 +183,18 @@ def test_container_ownership_is_more_than_a_name(profile, change, monkeypatch):
 
 
 @pytest.mark.parametrize("running", [False, True])
-def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch):
+@pytest.mark.parametrize("statistics", [False, True])
+def test_a_model_starts_from_cleared_host_memory(running, statistics, tmp_path, monkeypatch):
     lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)
     lock["site"]["workspace"] = str(tmp_path / "workspace")
     (tmp_path / "workspace").mkdir()
     (tmp_path / "workspace/.installer-owner.json").write_text(json.dumps({"deployment": lock["id"]}))
     spec = installer.specifications(lock, only_rank=0)[0]
+    if statistics:
+        from dataclasses import replace
+        from runtime.common.container_spec import Bind
+        spec = replace(spec, mounts=(*spec.mounts, Bind(str(tmp_path / "volatile-stats"), "/run/sparkring/stats")))
+        monkeypatch.setattr(installer, "specifications", lambda *args, **kwargs: [spec])
     info, image = inspection(spec)
     info["State"]["Running"] = running
     events = []
@@ -206,6 +212,8 @@ def test_a_model_starts_from_cleared_host_memory(running, tmp_path, monkeypatch)
     monkeypatch.setattr(compose, "check_project_containers", lambda *a, **k: None)
     monkeypatch.setattr(compose, "check_equivalence", lambda *a, **k: None)
     assert host.perform("start", lock, 0) == {"ok": True}
+    if statistics:
+        assert (tmp_path / "volatile-stats").is_dir()
     if running:
         assert events == []
         return
