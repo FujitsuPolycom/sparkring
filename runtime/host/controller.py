@@ -14,15 +14,35 @@ import hashlib
 import ipaddress
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
+from pathlib import Path
 
-from runtime.common import distribution, fabric_layout, installer, thinking
-from runtime.host import (colour, dashboard_admin, discovery, fabric, hairpin_ring, node, operator_view, privilege,
-                          relays, topology)
-from scripts import deploy_engine, deploy_network, deploy_network_run, sparkring_bootstrap
+from runtime.common import (
+    distribution,
+    fabric_layout,
+    installer,
+    thinking,
+)
+from runtime.host import (
+    colour,
+    dashboard_admin,
+    discovery,
+    fabric,
+    hairpin_ring,
+    node,
+    operator_view,
+    privilege,
+    relays,
+    topology,
+)
+from scripts import (
+    deploy_engine,
+    deploy_network,
+    deploy_network_run,
+    sparkring_bootstrap,
+)
 
 STATE = Path("/var/lib/sparkring/controller")
 # Help text and notice of --allow-driver-reload, which setup and install accept.
@@ -50,6 +70,7 @@ def collect(targets, *, invoke=discovery.inspect_node):
             or len(set(targets)) != len(targets)):
         raise ValueError("Select two to eight distinct Spark management addresses")
     import concurrent.futures
+
     from runtime.host import progress
 
     def inspect(rank):
@@ -625,8 +646,14 @@ def _operator_status(argv):
 
 
 def lifecycle(argv):
+    output = sys.stdout
+    with contextlib.ExitStack() as locks, contextlib.redirect_stdout(sys.stderr if "--json" in argv else sys.stdout):
+        return _lifecycle(argv, output=output, locks=locks)
+
+
+def _lifecycle(argv, *, output, locks):
     parser = argparse.ArgumentParser(prog="sparkring " + argv[0], parents=[colour.parser()])
-    parser.add_argument("operation", choices=("up", "down", "status"))
+    parser.add_argument("operation", choices=("up", "down", "restart", "status"))
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
     images = parser.add_mutually_exclusive_group()
@@ -639,12 +666,15 @@ def lifecycle(argv):
                              "on them; with up PROFILE, where a new deployment of the profile runs")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
+    parser.add_argument("--yes", action="store_true", help="approve advisory activity warnings; never bypass a lock")
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--review", help=argparse.SUPPRESS)
     parser.add_argument("--allow-loopback-bind", action="store_true",
                         help="accept a loopback --api-bind such as 127.0.0.1 for a new deployment: only programs on "
                              "Node A can then use the model")
-    from runtime.common import serving, transport as transports
+    from runtime.common import serving
+    from runtime.common import transport as transports
     parser.add_argument("--transport", choices=transports.BACKENDS,
                         help="for a new deployment: sircl (the default where the image and fabric carry it), "
                              "prepared, nccl (vLLM's PyNccl alone; needs the fabric document and a group NCCL's "
@@ -653,6 +683,11 @@ def lifecycle(argv):
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
     args = parser.parse_args(argv)
+    restarting = args.operation == "restart"
+    if restarting:
+        if args.profile:
+            raise ValueError("restart selects an active deployment; use --on to choose its Sparks")
+        args.operation = "up"
     colour.set_mode(args.color)
     if args.profile:
         # A deployment's directory, records and status name the profile's ID (models.ALIASES).
@@ -723,7 +758,7 @@ def lifecycle(argv):
         # Publish the group-readable operator view the next non-root status reads.
         operator_view.publish()
         if args.json:
-            print(json.dumps(result, indent=2))
+            print(json.dumps(result, indent=2), file=output)
         else:
             for view in views:
                 model = view.get("model")
@@ -820,7 +855,24 @@ def lifecycle(argv):
     if args.profile and requested is not None and args.operation != "up":
         raise ValueError("--on with a profile names where up places a new deployment; down takes the profile alone")
     slot = None if args.profile else lifecycle_slot(args.on)
+    from runtime.host import activity, progress, slices
+    guarded_slot = slot
+    if args.profile:
+        instance = placements.instance_label(requested) if requested is not None and args.instance == "main" else args.instance
+        candidate = (deployment_directory(args.profile, instance) if args.operation == "up" else
+                     existing_deployment(args.profile, args.instance))
+        guarded_slot = placements.of_directory(candidate) if candidate.exists() else requested
     active = active_deployment(placement=slot)
+    assessment = activity.assess(STATE, guarded_slot)
+    activity.confirm(assessment, yes=args.yes, plan=args.plan or not args.execute,
+                     interactive=not args.json and sys.stdin.isatty())
+    planning = args.plan or not args.execute and not sys.stdin.isatty()
+    if not (planning and assessment["grade"] == "blocked"):
+        locks.enter_context(slices.hold(STATE, guarded_slot, "restart" if restarting else args.operation))
+    elif args.profile and not candidate.exists():
+        raise ValueError("Blocked: a deployment cannot be created until the conflicting operation finishes")
+    progress.bind_slice(guarded_slot)
+    activity.require_review(STATE, guarded_slot, args.review)
     if args.operation == "up" and args.profile:
         instance = args.instance
         if requested is not None and instance == "main":
@@ -920,7 +972,7 @@ def lifecycle(argv):
                    f"{where}; there is nothing to stop. sudo sparkring up " + _up_arguments(directory)
                    + " starts it again.")
         print(json.dumps({"operation": "down", "complete": True, "released": True, "message": message}, indent=2)
-              if args.json else message)
+              if args.json else message, file=output)
         return 0
     recorded_transport = installer.read(directory / "deployment.lock.json").get("transport")
     if args.operation == "up" and recorded_transport:
@@ -931,6 +983,10 @@ def lifecycle(argv):
                              f"recorded fabric is {current[7:19] if current else 'none'}. Run sudo sparkring install "
                              "again")
     result = retained_source.review(directory, args.operation, cache=cache)
+    if restarting:
+        stopped = retained_source.review(directory, "down", cache=cache)
+        result["phases"] = [*stopped["phases"], *result["phases"]]
+        result["operation"] = "restart"
     print(f"{args.operation}: {result['profile']} on " + ", ".join(result["hosts"]))
     if image_runtime is not None:
         print("Development image: " + image_runtime["name"] + " | " + image_runtime["image_id"])
@@ -947,61 +1003,65 @@ def lifecycle(argv):
         print("Prepare native ASIC fabric and install its supervised service.")
         for old in result["native_mesh"]["replaces"]:
             print(f"  Stop/disable rank {old['rank']} service: {old['unit']}")
+    result["activity"] = assessment
+    result["review"] = activity.fingerprint(STATE, slot)
     if args.plan or not args.execute and not sys.stdin.isatty():
         if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
             problem = _hairpin_problem(slot)
             if problem:
                 print("Warning: " + problem)
         print("Review, then repeat with --execute.")
+        if args.json:
+            print(json.dumps(result), file=output)
         return 0
     # The installation lock keeps sparkring install, setup and the hairpin
     # procedure from changing deployments or networking meanwhile.
-    from runtime.host import progress, slices
-    with slices.hold(STATE, slot, args.operation):
-        progress.bind_slice(slot)
-        # sparkring install records its deployment active while it holds this
-        # lock, so the record read before the lock may be stale. Every decision
-        # below uses the record read under the lock; a command without a
-        # profile, whose target is the earlier record, stops when they differ.
-        held_active = active_deployment(report=False, placement=slot)
-        if not args.profile and held_active != active:
-            raise ValueError(f"The active deployment changed from {active} to {held_active or 'none'} after this "
-                             f"command printed its steps. Review with 'sparkring {args.operation} --plan', then repeat.")
-        if args.operation == "up" and held_active is not None and held_active != directory:
-            previous = retained_source.apply(held_active, "saved-status", cache=cache)["state"]
-            if previous.get("operation") != "down" or not previous.get("complete"):
-                raise ValueError("Run sparkring down before selecting another model")
-        if args.operation == "up":
-            _refuse_conflicts(slot)
-        if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
-            # A mesh refused by its hairpin start check, or a relay that drops a
-            # group's lanes, would otherwise surface only as a failed systemd job
-            # or a session timeout, so nothing starts without the setting.
-            problem = _hairpin_problem(slot)
-            if problem:
-                raise ValueError(problem)
-        confirm("Apply these model/image actions?", args.execute)
-        from runtime.host import recovery
-        # Automatic recovery never takes a state this operation leaves for its
-        # own, neither in this deployment nor in the active one it replaces.
-        for path in {directory, active} - {None}:
-            recovery.forget_attempt(path)
-        result = retained_source.apply(directory, args.operation, cache=cache)
-        from runtime.host import api_endpoint
-        result = api_endpoint.present(result, api_endpoint.recorded(directory))
-        # Stopping another deployment leaves the active one in place.
-        if args.operation == "up" or held_active is None:
-            placements.record(STATE, slot, directory)
-        if args.operation == "up":
-            placements.clear_conflicting(STATE, slot)
-        if args.operation == "up" and result.get("complete"):
-            # Resets automatic recovery's failures and records the generation's boots.
-            recovery.started(directory)
-            # With --json, stdout carries only the result document.
-            result["retention"] = (retention.after_operation(
-                STATE, discovery.ssh, write=(lambda line: print(line, file=sys.stderr)) if args.json else print)
-                if slot is None else {"state": "deferred", "reason": "Global retention requires a ring-wide storage operation"})
-    print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh")
+    # sparkring install records its deployment active while it holds this
+    # lock, so the record read before the lock may be stale. Every decision
+    # below uses the record read under the lock; a command without a
+    # profile, whose target is the earlier record, stops when they differ.
+    held_active = active_deployment(report=False, placement=slot)
+    if not args.profile and held_active != active:
+        raise ValueError(f"The active deployment changed from {active} to {held_active or 'none'} after this "
+                         f"command printed its steps. Review with 'sparkring {args.operation} --plan', then repeat.")
+    if args.operation == "up" and held_active is not None and held_active != directory:
+        previous = retained_source.apply(held_active, "saved-status", cache=cache)["state"]
+        if previous.get("operation") != "down" or not previous.get("complete"):
+            raise ValueError("Run sparkring down before selecting another model")
+    if args.operation == "up":
+        _refuse_conflicts(slot)
+    if args.operation == "up" and (slot is None or placements.relayed(recorded_layout(), slot)):
+        # A mesh refused by its hairpin start check, or a relay that drops a
+        # group's lanes, would otherwise surface only as a failed systemd job
+        # or a session timeout, so nothing starts without the setting.
+        problem = _hairpin_problem(slot)
+        if problem:
+            raise ValueError(problem)
+    confirm("Apply these model/image actions?", args.execute)
+    from runtime.host import recovery
+    # Automatic recovery never takes a state this operation leaves for its
+    # own, neither in this deployment nor in the active one it replaces.
+    for path in {directory, active} - {None}:
+        recovery.forget_attempt(path)
+    if restarting:
+        retained_source.apply(directory, "down", cache=cache)
+    result = retained_source.apply(directory, args.operation, cache=cache)
+    result["activity"] = assessment
+    from runtime.host import api_endpoint
+    result = api_endpoint.present(result, api_endpoint.recorded(directory))
+    # Stopping another deployment leaves the active one in place.
+    if args.operation == "up" or held_active is None:
+        placements.record(STATE, slot, directory)
+    if args.operation == "up":
+        placements.clear_conflicting(STATE, slot)
+    if args.operation == "up" and result.get("complete"):
+        # Resets automatic recovery's failures and records the generation's boots.
+        recovery.started(directory)
+        # With --json, stdout carries only the result document.
+        result["retention"] = (retention.after_operation(
+            STATE, discovery.ssh, write=(lambda line: print(line, file=sys.stderr)) if args.json else print)
+            if slot is None else {"state": "deferred", "reason": "Global retention requires a ring-wide storage operation"})
+    print(json.dumps(result, indent=2) if args.json else "Model operation complete. sparkring status --refresh", file=output)
     return 0
 
 
@@ -1026,8 +1086,8 @@ def _status_view(slot, path, args, result, cache, *, layout=None):
     deployment, which automatic recovery acts on), ``model`` and the ``lock``
     and ``record`` the terminal text reads.
     """
-    from runtime.host import recovery, retained_source
     from runtime.host import placement as placements
+    from runtime.host import recovery, retained_source
     view = {"placement": list(slot) if slot else None, "record": None}
     if layout is not None and (slot is None or all(position < layout["size"] for position in slot)):
         group = placements.group(layout, slot)
@@ -1134,7 +1194,9 @@ def _setup_lock(argv):
     """
     if any(flag in argv for flag in ("--plan", "--inventory", "-h", "--help")):
         return contextlib.nullcontext()
-    from runtime.host import slices
+    from runtime.host import activity, slices
+    assessment = activity.assess(STATE, None)
+    activity.confirm(assessment, yes="--yes" in argv, interactive="--json" not in argv and sys.stdin.isatty())
     return slices.hold(STATE, None, "setup")
 
 
@@ -1151,7 +1213,7 @@ def main(argv):
                 raise
             finally:
                 # up and down change deployment records, whether they finish or fail.
-                if argv[0] in ("up", "down"):
+                if argv[0] in ("up", "down", "restart"):
                     dashboard_admin.refresh_site()
         with _setup_lock(argv):
             if not any(flag in argv for flag in ("--node", "--inventory")):
@@ -1159,6 +1221,13 @@ def main(argv):
                 return uplink_main(argv[1:])
             return setup(argv[1:])
     except (ValueError, KeyError, TypeError, OSError, RuntimeError, subprocess.SubprocessError) as error:
+        if "--json" in argv:
+            document = {"state": "failed", "message": str(error)}
+            if getattr(error, "activity", None):
+                document["activity"] = error.activity
+            if getattr(error, "details", None):
+                document.update(error.details)
+            print(json.dumps(document))
         print(colour.render("SparkRing: " + str(error), sys.stderr), file=sys.stderr)
         for line in detail_lines(getattr(error, "details", None)):
             print("  " + line, file=sys.stderr)

@@ -29,6 +29,14 @@
     "Plan saved. Install it with sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json --transport prepared --yes."
    ],
    "result": {
+    "activity": {
+     "grade": "clear",
+     "message": "No conflicting activity is recorded for the whole ring.",
+     "observations": [],
+     "positions": null,
+     "reasons": [],
+     "schema": "sparkring-activity/v1"
+    },
     "api_url": "http://192.0.2.10:8000/v1",
     "checkpoint": {
      "approval": null,
@@ -125,6 +133,7 @@
     "port": 8000,
     "profile": "qwen38-flash-next-tp2",
     "replaces": "<tmp>/state/deployments/previous",
+    "review": "<review>",
     "schema": "sparkring-install-result/v1",
     "serving": {},
     "spread": {
@@ -188,6 +197,14 @@
     "Plan saved. Install it with sudo sparkring install --profile qwen38-flash-next-tp2 --image-lock <tmp>/sircl-image.json --yes."
    ],
    "result": {
+    "activity": {
+     "grade": "clear",
+     "message": "No conflicting activity is recorded for the whole ring.",
+     "observations": [],
+     "positions": null,
+     "reasons": [],
+     "schema": "sparkring-activity/v1"
+    },
     "api_url": "http://192.0.2.10:8000/v1",
     "checkpoint": {
      "approval": null,
@@ -284,6 +301,7 @@
     "port": 8000,
     "profile": "qwen38-flash-next-tp2",
     "replaces": "<tmp>/state/deployments/previous",
+    "review": "<review>",
     "schema": "sparkring-install-result/v1",
     "serving": {},
     "spread": {

@@ -104,3 +104,21 @@ confirmation reuse and unchanged collector request counts. CPU evidence
 does not qualify serving latency, RDMA or resource interference. The
 [hardware test plan](../development/independent-slices-hardware.md) bounds
 that qualification to 90 minutes on eight Sparks.
+
+On 2026-10-13, 500 one-shot assessments in WSL Ubuntu on a local temporary
+filesystem, with one live two-Spark install lock and no model or network,
+used median 0.143 ms CPU (95th percentile 0.230 ms) and median 0.153 ms wall
+time (95th percentile 0.247 ms). This measures local assessment bookkeeping
+only. A neighbouring metrics read may add its 200 ms socket timeout. The
+CPU collector test advances five simulated minutes with a viewer and
+requires identical model request sequences with management enabled and
+disabled, zero helper calls at idle and no management thread creation.
+Serving latency and hardware idle load remain unqualified until the
+coordinator runs the hardware plan.
+
+External package managers do not inherit controller locks. Run an explicit
+Node A package upgrade through `flock /var/lib/sparkring/controller/install.lock
+apt-get …`, after reviewing serving downtime. SparkRing's own setup/package
+steps already run under that ring-wide gate. The worker SSH transport still
+uses the package's existing privileged node operations; bounded helper
+arguments do not turn those workers into a rootless deployment.

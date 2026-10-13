@@ -192,7 +192,7 @@ def _parser() -> argparse.ArgumentParser:
                                              "for metrics and status only, no inference request, no SSH); tui shows "
                                              "it in this terminal")
     subcommands.add_parser("validate-compose", help="offline Compose validation and mock rank registration")
-    for operation in ("init", "up", "status", "down", "export"):
+    for operation in ("init", "up", "status", "down", "restart", "export"):
         subcommands.add_parser(operation, help="profile installer: " + operation)
     host_commands = host.add_subparsers(dest="host_command", required=True)
     host_check = host_commands.add_parser("check", help="run read-only host checks")
@@ -249,8 +249,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
         from runtime.host.dashboard import main as dashboard_main
         return dashboard_main(raw[1:])
     if raw and (raw[0] == "setup" and (len(raw) == 1 or raw[1] not in ("show", "storage"))
-                or raw[0] in ("up", "down", "status") and "--deployment" not in raw
-                and (Path(root, "distribution.json").exists() or len(raw) > 1 and not raw[1].startswith("-"))):
+                or raw[0] in ("up", "down", "restart", "status") and "--deployment" not in raw
+                and (Path(root, "distribution.json").exists() or "--on" in raw or raw[0] == "restart"
+                     or len(raw) > 1 and not raw[1].startswith("-"))):
         from runtime.host.controller import main as appliance_main
         return appliance_main(raw)
     if raw and raw[0] == "validate-compose":
@@ -259,7 +260,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
             sys.path.insert(0, root)
         from runtime.common.compose_validation import main as validate_compose
         return validate_compose(raw[1:])
-    if raw and raw[0] in ("init", "up", "status", "down", "export"):
+    if raw and raw[0] in ("init", "up", "status", "down", "restart", "export"):
         try:
             from .sparkring_installer import main as installer_main
         except ImportError:
@@ -329,21 +330,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"SparkRing helper: {error}", file=sys.stderr)
                 return 2
     root = Path(__file__).resolve().parents[1]
-    installation = raw and raw[0] in ("setup", "init", "up", "down") and not any(a in raw for a in ("-h", "--help"))
+    installation = raw and raw[0] in ("setup", "init", "up", "down", "restart") and not any(a in raw for a in ("-h", "--help"))
     if raw[:2] in (["setup", "show"], ["setup", "storage"]):
         installation = False
     if installation and ((root / "distribution.json").exists() or os.environ.get("SPARKRING_LOG_DIR")):
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
         from runtime.host import progress
-        with progress.run(raw[0]):
+        with progress.run(raw[0], json_output="--json" in raw):
             try:
                 result = _main(raw)
             except Exception:
                 import traceback
                 progress.failure(traceback.format_exc())
                 return 2
-            print("Command finished." if result == 0 else "Command stopped. See the error above; completed work is recorded.", flush=True)
+            print("Command finished." if result == 0 else "Command stopped. See the error above; completed work is recorded.",
+                  flush=True, file=sys.stderr if "--json" in raw else sys.stdout)
             return result
     return _main(raw)
 

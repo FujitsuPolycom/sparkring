@@ -60,7 +60,7 @@ def conflict_error(root, positions):
     holders = conflict(root, positions)
     detail = "; ".join(f"{row['operation']} (pid {row.get('pid', 'unknown')}) holds {label(row['positions'])}"
                        for row in holders)
-    error = ValueError("Blocked: " + (detail or "another operation holds the ring gate or these Sparks")
+    error = ValueError("Another operation is active. Blocked: " + (detail or "another operation holds the ring gate or these Sparks")
                        + "; retry after it finishes")
     error.activity = {"schema": "sparkring-activity/v1", "grade": "blocked", "positions": positions,
                       "reasons": holders, "message": str(error)}

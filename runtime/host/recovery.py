@@ -22,10 +22,9 @@ A run acts only when every guard holds:
 - recovery is on for the active deployment (``recovery.json``) and has not
   stopped (FAILURE_LIMIT consecutive failed attempts, or RESTART_LIMIT
   restarts within RESTART_WINDOW);
-- the install lock (``install.lock``, ``process_lock.hold``) is free, so no
-  install, setup, hairpin procedure, up or down runs. The lock covers the
-  whole cluster: while one half of a ring installs, a run reports the other
-  half's model as ``busy`` and checks it again at its next run;
+- the deployment's position locks and the shared ring gate are available
+  (``runtime.host.slices``). An install on another slice does not stop this
+  deployment's check; an overlapping or ring-wide operation reports ``busy``;
 - the deployment's last operation is a completed ``up``, or the state that
   recovery's own previous attempt left (a manual ``down`` is never undone);
 - the deployment is a Compose deployment;
@@ -40,7 +39,7 @@ A run acts only when every guard holds:
   API that gives no answer at all, API_SILENCE seconds; and the backoff after
   a failed attempt (BACKOFF) has passed.
 
-Before it acts, the run takes the install lock, reads its record and the
+Before it acts, the run takes its slice locks, reads its record and the
 active deployment again, and observes the deployment again; it acts on that
 second observation only.
 
@@ -55,17 +54,26 @@ import contextlib
 import datetime
 import json
 import os
-from pathlib import Path
 import subprocess
 import sys
 import time
 import traceback
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from runtime.common import compose, fabric_layout, installer, process_lock
-from runtime.host import (colour, controller, discovery, host_load, node, operator_view, privilege, progress,
-                          retained_source)
+from runtime.host import (
+    colour,
+    controller,
+    discovery,
+    host_load,
+    node,
+    operator_view,
+    privilege,
+    progress,
+    retained_source,
+)
 
 SCHEMA = "sparkring-recovery/v1"
 TIMER = "sparkring-recover.timer"
@@ -1050,6 +1058,10 @@ def main(argv=None):
     parser.add_argument("--auto", action="store_true",
                         help="check once and restart the model if needed; sparkring-recover.timer runs this")
     parser.add_argument("--json", action="store_true", help="print one JSON document")
+    parser.add_argument("--on", help="apply to the active deployment on these Sparks")
+    parser.add_argument("--plan", action="store_true")
+    parser.add_argument("--yes", action="store_true")
+    parser.add_argument("--review", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     colour.set_mode(args.color)
     if args.auto and args.action:
@@ -1064,17 +1076,31 @@ def main(argv=None):
                     print(f"{item['state']}: {item['summary']}")
             return 1 if result["state"] == "failed" else 0
         if args.action in ("on", "off"):
+            from runtime.host import activity, slices
+            slot = controller.lifecycle_slot(args.on) if args.on else None
+            assessment = activity.assess(controller.STATE, slot)
+            activity.confirm(assessment, yes=args.yes, plan=args.plan,
+                             interactive=not args.json and sys.stdin.isatty())
+            if args.plan:
+                result = {"action": "recovery " + args.action, "activity": assessment,
+                          "review": activity.fingerprint(controller.STATE, slot)}
+                print(json.dumps(result) if args.json else f"Set automatic recovery {args.action} on {slices.label(slot)}.")
+                return 0
             # Applies to every slot's active deployment: the whole cluster's and each arc's.
-            found = [directory for _, directory in controller.active_deployments()] or [None]
             documents, lines = [], []
-            for directory in found:
-                record = set_enabled(args.action == "on", directory=directory)
-                directory = Path(directory or controller.active_deployment()).resolve()
-                documents.append({"deployment": str(directory), "record": record})
-                lines += ([f"Deployment: {directory}"] if len(found) > 1 else []) + status_lines(
-                    record, state=saved_state(directory))
+            with slices.hold(controller.STATE, slot, "recovery " + args.action):
+                activity.require_review(controller.STATE, slot, args.review)
+                found = ([controller.active_deployment(placement=slot)] if args.on else
+                         [directory for _, directory in controller.active_deployments()] or [None])
+                for directory in found:
+                    record = set_enabled(args.action == "on", directory=directory)
+                    directory = Path(directory or controller.active_deployment()).resolve()
+                    documents.append({"deployment": str(directory), "record": record})
+                    lines += ([f"Deployment: {directory}"] if len(found) > 1 else []) + status_lines(
+                        record, state=saved_state(directory))
             result = ({**documents[0], "lines": lines} if len(documents) == 1 else
                       {"deployment": None, "record": None, "deployments": documents, "lines": lines})
+            result["activity"] = assessment
         else:
             try:
                 result = describe()

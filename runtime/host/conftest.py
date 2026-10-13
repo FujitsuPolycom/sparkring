@@ -7,6 +7,13 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
+def no_activity_network(monkeypatch):
+    """Action warnings never contact model APIs during CPU tests."""
+    from runtime.host import activity
+    monkeypatch.setattr(activity, "read_metrics", lambda url: None)
+
+
+@pytest.fixture(autouse=True)
 def no_recovery_timer(monkeypatch):
     """Replace automatic recovery's systemd calls; a root run on a Spark would otherwise enable its timer."""
     from runtime.host import recovery

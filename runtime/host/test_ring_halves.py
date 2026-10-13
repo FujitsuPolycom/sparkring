@@ -437,6 +437,22 @@ def test_recovery_judges_an_unlocked_half_while_another_installs(halves):
     assert [row["state"] for row in result["deployments"]] == ["busy", "serving"]
 
 
+def test_recovery_toggle_and_restart_are_scoped_and_previewed(halves, capsys):
+    assert recovery.main(["off", "--on", "2,3", "--plan", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert recovery.record_of(recovery.load(), halves.second)["enabled"]
+    assert recovery.main(["off", "--on", "2,3", "--yes", "--review", preview["review"], "--json"]) == 0
+    capsys.readouterr()
+    assert recovery.record_of(recovery.load(), halves.first)["enabled"]
+    assert not recovery.record_of(recovery.load(), halves.second)["enabled"]
+    halves.operations.clear()
+    assert controller.lifecycle(["restart", "--on", "2,3", "--plan", "--json"]) == 0
+    preview = json.loads(capsys.readouterr().out)
+    assert "stop" in preview["phases"] and "start-api" in preview["phases"]
+    assert not halves.operations
+    assert controller.lifecycle(["restart", "--on", "2,3", "--execute", "--yes", "--review", preview["review"]]) == 0
+    touched = {host for name, host in halves.operations if name in ("stop", "start")}
+    assert touched == set(halves.hosts[2:])
 
 
 

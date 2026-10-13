@@ -1278,10 +1278,13 @@ def summary_lines(result):
 
 @contextlib.contextmanager
 def operation_scope(args, state_root):
-    from runtime.host import slices
+    from runtime.host import activity, slices
     selected = (resolve_placement(args, installer.read(state_root / "cluster.json"), state_root)
                 if (state_root / "cluster.json").exists() else None)
+    args.activity = activity.assess(state_root, slices.affected(state_root, selected))
+    activity.confirm(args.activity, yes=args.yes, plan=args.plan, interactive=not args.json and sys.stdin.isatty())
     with slices.hold(state_root, selected, "install " + (args.profile or "profile"), expand=True) as owner:
+        activity.require_review(state_root, selected, getattr(args, "review", None))
         args.locked_placement = selected
         progress.bind_slice(selected)
         yield owner
@@ -1438,6 +1441,7 @@ def execute(args):
         if needs_hairpin:
             steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
+                "activity": args.activity,
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
                 "serving": lock.get("serving") or {},
@@ -1462,6 +1466,8 @@ def execute(args):
             save_plan(directory, {**checkpoint, "reviewed": True})
             forget_refused(directory)
             plan["checkpoint"]["reviewed"] = True
+            from runtime.host import activity
+            plan["review"] = activity.fingerprint(state_root, placement)
             return plan
         consent = {}
         if displaced:
@@ -1664,6 +1670,7 @@ def main(argv=None):
                         help="approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an "
                              "idle ring, and model replacement; SSH trust is still required")
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
+    parser.add_argument("--review", help=argparse.SUPPRESS)
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that are not SparkRing's current deployment")
     parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
@@ -1743,6 +1750,8 @@ def main(argv=None):
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
             result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
+            if getattr(error, "activity", None):
+                result["activity"] = error.activity
             for journal in journals():
                 if journal.exists() and journal.read_bytes() != before.get(journal):
                     result["transaction"] = installer.read(journal)
