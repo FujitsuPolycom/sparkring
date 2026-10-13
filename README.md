@@ -43,6 +43,13 @@ schedule by message size from a tuning table measured on real rings, and
 libsircl offers the same protocol behind NCCL's C API
 ([architecture](docs/architecture/sircl.md)).
 
+**[net-sircl](https://github.com/FujitsuPolycom/net-sircl)** brings SIRCL to
+any NCCL application. It's an NCCL network plugin, published from this
+repository's transport: PyTorch, vLLM, SGLang and other NCCL programs run
+unmodified on directly cabled DGX Sparks, including peers reached through the
+ConnectX-7 relays, with NCCL keeping its own algorithms and CUDA-graph support.
+Version 0.1.0 is research-only and tested with NCCL 2.32.3.
+
 ## Profiles
 
 | Model | Checkpoint | Sparks | `--profile` value | API port | Thinking |
@@ -107,10 +114,8 @@ default checkpoint in the median of two starts on the same ring.
 - [Benchmarks and test results](performance/benchmarks.md)
 - [Architecture](docs/architecture/overview.md) and [mesh host setup](docs/GLM53_SPARK_MESH_HOST_SETUP.md)
 - [Container images](runtime/images/README.md#container-images)
-- [net-sircl](https://github.com/FujitsuPolycom/net-sircl), published from this
-  repository's transport: an NCCL network plugin that runs unmodified NCCL
-  applications (PyTorch, vLLM, SGLang) on directly cabled DGX Sparks, including
-  peers reached through relays on paths and rings
+- [net-sircl](https://github.com/FujitsuPolycom/net-sircl), SIRCL as an NCCL
+  network plugin ([above](#sircl))
 - [Contributing](CONTRIBUTING.md) and [repository layout](docs/development/layout.md)
 - [Community discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
 
