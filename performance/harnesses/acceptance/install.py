@@ -9,6 +9,7 @@ exists is never reused, and nothing on Node A is removed.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PureWindowsPath
 import json
 import re
 import shlex
@@ -77,6 +78,30 @@ def install_command(source, profile, extra=()):
         return f"curl -fsSL {shlex.quote(url)} | bash -s -- {ref}{flags}"
     bundle, ref = _remote_path(source.bundle), shlex.quote(source.ref)
     return f"git clone -q --branch {ref} {bundle} src && bash src/install.sh --repository {bundle} --ref {ref} {flags}"
+
+
+def argument_paths(extra):
+    """Absolute installer argument paths on Node A, rejecting Windows path conversion."""
+    paths = []
+    for argument in extra:
+        value = argument.split("=", 1)[1] if argument.startswith("-") and "=" in argument else argument
+        if PureWindowsPath(value).is_absolute() and not value.startswith("/"):
+            raise InstallError(f"Windows path {value!r} cannot address a file on Node A. "
+                               "Set MSYS_NO_PATHCONV=1 when invoking the harness from Git Bash.")
+        if value.startswith("/") and value not in paths:
+            paths.append(value)
+    return paths
+
+
+def check_paths(ssh, paths):
+    """Check argument paths before an installer is launched."""
+    for path in paths:
+        result = ssh.run(f"test -e {shlex.quote(path)}\n", timeout=30)
+        if result.returncode == 1:
+            raise InstallError(f"Install argument path does not exist on Node A: {path!r}")
+        if result.returncode != 0:
+            raise InstallError(f"Could not check install argument path on Node A (exit {result.returncode}): "
+                               f"{result.stderr.strip()}")
 
 
 def _directory(run_id):

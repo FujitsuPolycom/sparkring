@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import re
+import shlex
 import threading
 
 from performance.harnesses.acceptance.checks import QUESTIONS
@@ -80,9 +81,13 @@ class FakeNodeA:
         self.stdout, self.stderr, self.exit_code = stdout, stderr, exit_code
         self.polls_before_exit = polls_before_exit
         self.launched, self.scripts = [], []
+        self.paths = None
 
     def run(self, script, *, timeout):
         self.scripts.append(script)
+        if script.startswith("test -e "):
+            path = shlex.split(script)[2]
+            return Result(0 if self.paths is None or path in self.paths else 1, "", "")
         if "command.sh" in script:
             self.launched.append(script)
             return Result(0, "launched\n", "")

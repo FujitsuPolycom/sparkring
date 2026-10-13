@@ -104,11 +104,25 @@ profile's); `--client` describes the client; `--private-name` adds names the
 record must not contain; `--install-timeout`, `--ready-timeout`,
 `--bench-timeout` and `--poll-interval` bound the waits. `--help` lists all.
 
+Installer argument paths must exist on Node A before launch. Absolute paths
+can be separate arguments or `--option=/path` values. Windows drive paths are
+rejected. When invoking from Git Bash, set `MSYS_NO_PATHCONV=1` to preserve
+Linux paths, for example:
+
+```bash
+MSYS_NO_PATHCONV=1 python performance/harnesses/acceptance/accept_profile.py ... \
+  --install-arg=--image-lock --install-arg=/var/tmp/lock.json
+```
+
 ## Resuming
 
 Each step saves its result in `--out`. Running the same command again reuses
 every complete saved result and runs only what is missing: a failed
-benchmark run is repeated, while completed benchmark runs are kept. An
+benchmark run is repeated, while completed benchmark runs are kept.
+
+The installer command must match the saved command, including its source,
+profile and `--install-arg` values. A mismatch stops before any saved result
+is reused and names both commands with the `--redo install` action. An
 installation is never started twice from one `--out`: `install-launch.json`
 is written before the launch, and a later invocation follows the same run on
 Node A until it exits, which also recovers from a lost SSH connection or an
@@ -117,7 +131,10 @@ repeated on the next invocation; a completed but failed installation is
 reused and stops the run again.
 
 `--redo STEP[,STEP]` renames the step's saved outputs with a UTC time suffix
-and runs the step again; `--redo install` starts a separate installation.
+and runs the step again. `--redo install` also sets aside the readiness,
+functional, stress, throughput and record results tied to that installation,
+then starts a separate installation. Record files under `--record-root` remain
+preserved; choose a different `--topic` or `--date` to write another record.
 
 ## What it changes
 
