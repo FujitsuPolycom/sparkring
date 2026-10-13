@@ -28,7 +28,8 @@ Where its data comes from
     readable by root only; the site file holds only these fields, so the
     dashboard needs no privilege;
   - this Spark's host-agent status (``sparkring-node-status/v1``,
-    ``/run/sparkring/status.json``) when it exists;
+    ``/run/sparkring/status.json``) and the recovery timer's public cache of
+    every Spark's agent facts (``sparkring-dashboard-nodes/v1``, NODE_REPORTS_PATH);
   - on Node A, the recovery timer's latest finding per deployment
     (``sparkring-recovery/v1``, RECOVERY_PATH), which it writes about once a
     minute while a model is active.
@@ -109,6 +110,7 @@ SITE_SCHEMA = "sparkring-dashboard-site/v1"
 SITE_PATH = Path("/var/lib/sparkring/dashboard/site.json")
 FABRIC_PATH = Path("/etc/sparkring/fabric/topology.json")
 NODE_STATUS_PATH = Path("/run/sparkring/status.json")
+NODE_REPORTS_PATH = Path("/var/lib/sparkring/dashboard/nodes.json")
 RECOVERY_PATH = Path("/var/lib/sparkring/recovery.json")
 QUIET_PATH = Path("/run/sparkring/dashboard.quiet")
 # One file per measurement that holds quiet mode, beside QUIET_PATH (quiet_holders_directory).
@@ -154,6 +156,10 @@ COUNTERS = {
     "vllm:time_to_first_token_seconds_count": "ttft_count",
     "vllm:prefix_cache_queries_total": "pc_queries",
     "vllm:prefix_cache_hits_total": "pc_hits",
+    "sglang:generation_tokens_total": "gen",
+    "sglang:prompt_tokens_total": "prompt",
+    "sglang:time_to_first_token_seconds_sum": "ttft_sum",
+    "sglang:time_to_first_token_seconds_count": "ttft_count",
 }
 SETTING_KEYS = (
     "tensor_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens",
@@ -161,7 +167,7 @@ SETTING_KEYS = (
     "reasoning_parser", "tool_call_parser", "default_chat_template_kwargs",
     "kv_cache_memory_bytes", "prefix_caching_enabled",
 )
-LABELS = {"serving": "Serving", "not_ready": "Not ready", "stopped": "No model running",
+LABELS = {"busy": "Busy: API unavailable", "serving": "Serving", "not_ready": "Not ready", "stopped": "No model running",
           "offline": "Offline", "idle": "Idle", None: "Checking"}
 MODEL_TAIL_WORDS = {"nvfp4", "fp8", "fp4", "mxfp8", "mxfp4", "int4", "int8", "awq", "gptq", "bf16",
                     "fp16", "qad", "spark", "attention", "gguf", "nf3", "exl3"}
@@ -203,6 +209,13 @@ class Fetched:
         return self.failure is None
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    """A read endpoint cannot widen the permitted address, port or path by redirecting."""
+
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        return None
+
+
 class ReadOnlyClient:
     """Sends the collector's GET requests and counts them; the module's only network egress.
 
@@ -210,7 +223,7 @@ class ReadOnlyClient:
     requests to Spark addresses never leave through a proxy."""
 
     def __init__(self, opener=None, timeout=HTTP_TIMEOUT):
-        self.opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}))
+        self.opener = opener or urllib.request.build_opener(urllib.request.ProxyHandler({}), NoRedirect())
         self.timeout = timeout
         self.allowed: frozenset = frozenset()
         self.lock = threading.Lock()
@@ -266,7 +279,7 @@ def parse_labels(text: str) -> dict:
 
 
 def parse_metrics(text: str) -> dict:
-    """The vLLM series the page uses, summed across engines; KV cache use takes the maximum.
+    """Serving-engine series the page uses, summed across engines; KV use takes the maximum.
 
     `cache_info` holds the first engine's vllm:cache_config_info labels; `model_name` the
     model_name label of the first vLLM series; `started` the API process's
@@ -296,16 +309,16 @@ def parse_metrics(text: str) -> dict:
             value = float(parts[0])
         except ValueError:
             continue
-        if out["model_name"] is None and name.startswith("vllm:") and 'model_name="' in labels:
+        if out["model_name"] is None and name.startswith(("vllm:", "sglang:")) and 'model_name="' in labels:
             out["model_name"] = parse_labels(labels).get("model_name")
         if name in COUNTERS:
             key = COUNTERS[name]
             out[key] = out.get(key, 0.0) + value
-        elif name == "vllm:num_requests_running":
+        elif name in ("vllm:num_requests_running", "sglang:num_running_reqs"):
             out["running"] = out.get("running", 0.0) + value
-        elif name == "vllm:num_requests_waiting":
+        elif name in ("vllm:num_requests_waiting", "sglang:num_queue_reqs"):
             out["waiting"] = out.get("waiting", 0.0) + value
-        elif name in ("vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc"):
+        elif name in ("vllm:kv_cache_usage_perc", "vllm:gpu_cache_usage_perc", "sglang:token_usage"):
             kv = value if kv is None else max(kv, value)
         elif name == "vllm:request_success_total":
             reason = parse_labels(labels).get("finished_reason") or "other"
@@ -473,7 +486,12 @@ def fabric_from_document(document: dict) -> dict:
         if not isinstance(hostname, str) or not HOSTNAME_RE.fullmatch(hostname):
             raise ValueError(f"position {index} has no usable hostname")
         address = (row.get("management") or {}).get("address")
+        addresses = [address, row.get("lan_address")]
+        for port in (row.get("ports") or {}).values():
+            for function in (port.get("functions") or {}).values():
+                addresses.append(str(function.get("address") or "").split("/")[0])
         rows.append({"position": index, "hostname": hostname, "node_id": row.get("node_id"),
+                     "addresses": [a for a in addresses if _ip(a)],
                      "address": address if _ip(address) else None,
                      "lan_address": row.get("lan_address") if _ip(row.get("lan_address")) else None})
     verified = document.get("verified")
@@ -517,6 +535,75 @@ def deployments_from_site(site: dict, size: int) -> list:
                      "api_port": port, "display_url": row.get("display_url"),
                      "stopped": bool(row.get("stopped")), "containers": containers})
     return rows
+
+
+def unmanaged_groups(fabric, documents, deployments, now):
+    """Join fresh agent facts by rendezvous, never by cable order or container names."""
+    from runtime.host.node_containers import MAX_CONTAINERS
+    groups = {}
+    known = {(c["position"], c["name"]) for row in deployments if not row["stopped"] for c in row["containers"]}
+    for position in fabric["positions"]:
+        candidates = [d for d in documents if isinstance(d, dict) and d.get("node_id") == position.get("node_id")
+                      and position.get("node_id")]
+        candidates = [d for d in candidates if number(d.get("observed_at"))]
+        if not candidates:
+            continue
+        doc = max(candidates, key=lambda d: d["observed_at"])
+        interval = doc.get("interval_seconds")
+        interval = min(3600, max(30, interval)) if number(interval) else 30
+        if not -5 <= now - doc["observed_at"] <= max(90, interval * 2 + 30):
+            continue
+        rows = doc.get("model_containers")
+        for container in rows[:MAX_CONTAINERS] if isinstance(rows, list) else []:
+            if not isinstance(container, dict) or container.get("managed") is not False:
+                continue
+            name = container.get("name")
+            if not isinstance(name, str) or not CONTAINER_RE.fullmatch(name) or (position["position"], name) in known:
+                continue
+            # Revalidate the small public fact schema, including numeric types.
+            c = {k: container[k][:512] for k in ("image", "image_id", "engine", "served_model", "master_addr", "api_bind")
+                 if isinstance(container.get(k), str)}
+            c.update({k: container[k] for k in ("tp", "pp", "dp", "dcp", "nnodes", "node_rank", "master_port", "api_port")
+                      if type(container.get(k)) is int and (0 if k == "node_rank" else 1) <= container[k] <= 65535})
+            c.update(name=name, position=position["position"], headless=container.get("headless") is True)
+            master = c.get("master_addr")
+            if master:
+                try:
+                    parsed = ipaddress.ip_address(master)
+                    master = None if parsed.is_loopback or parsed.is_unspecified else str(parsed)
+                except ValueError:
+                    master = master.lower().rstrip(".")
+                    if master == "localhost":
+                        master = None
+            key = ((c.get("engine"), master, c["master_port"]) if master and c.get("master_port") else
+                   ("single", position["position"], name))
+            groups.setdefault(key, []).append(c)
+    result = []
+    for key, containers in groups.items():
+        containers.sort(key=lambda c: (c.get("node_rank", 65536), c["position"], c["name"]))
+        positions = sorted({c["position"] for c in containers})
+        ranks = {c["node_rank"] for c in containers if "node_rank" in c}
+        expected = max([c.get("nnodes", 1) for c in containers] + [max(ranks, default=0) + 1])
+        heads = [c for c in containers if c.get("node_rank", 0 if expected == 1 else -1) == 0 and not c["headless"]]
+        head = heads[0] if len(heads) == 1 else None
+        info = head or containers[0]
+        head_position = head["position"] if head else None
+        head_spark = next((p for p in fabric["positions"] if p["position"] == head_position), {})
+        bind = (head or {}).get("api_bind")
+        host = (head_spark.get("address") if not bind or bind in ("0.0.0.0", "::") else
+                bind if bind in head_spark.get("addresses", [head_spark.get("address")]) else None)
+        complete = len(ranks) == expected and len(positions) >= expected
+        if expected == 1:
+            complete = True
+        summary = None if complete else f"incomplete: {len(positions)} of {expected} Sparks reporting"
+        digest = hashlib.sha256(json.dumps(key).encode()).hexdigest()[:20]
+        result.append({"id": "unmanaged-" + digest, "unmanaged": True, "model": head.get("served_model") if head else None,
+                       "positions": positions, "head_position": head_position, "api_host": host,
+                       "api_port": head.get("api_port") if head and host else None,
+                       "stopped": False, "containers": containers, "launch": info,
+                       "expected_sparks": expected, "group_note": summary,
+                       "stopped_records": [r for r in deployments if r["stopped"] and set(r["positions"]) & set(positions)]})
+    return result
 
 
 class Source:
@@ -590,6 +677,7 @@ class Model:
         self.next_metrics = 0.0
         self.next_models = 0.0
         self.last_ok = None
+        self.models_ok_at = None
         self.metrics_at = None
 
     def observe_metrics(self, metrics: dict, now: float) -> None:
@@ -610,12 +698,15 @@ class Collector:
 
     def __init__(self, sources, client: ReadOnlyClient, *, quiet_path: Path = QUIET_PATH,
                  node_status_path: Path | None = NODE_STATUS_PATH, recovery_path: Path | None = RECOVERY_PATH,
+                 node_reports_path: Path | None = NODE_REPORTS_PATH,
                  clock=time.time, cpu_clock=time.thread_time):
         self.sources = list(sources)
         self.client = client
         self.quiet_path = Path(quiet_path) if quiet_path else None
         self.node_status_path = Path(node_status_path) if node_status_path else None
         self.recovery_path = Path(recovery_path) if recovery_path else None
+        self.node_reports_path = Path(node_reports_path) if node_reports_path else None
+        self.node_reports = []
         self.recovery: dict = {}      # deployment directory name -> the recovery timer's latest finding
         self.clock, self.cpu_clock = clock, cpu_clock
         self.lock = threading.Lock()
@@ -664,6 +755,14 @@ class Collector:
         self.reload_requested.set()
 
     def read_status_files(self) -> None:
+        self.node_reports = []
+        if self.node_reports_path is not None:
+            try:
+                doc = read_json(self.node_reports_path)
+                if doc.get("schema") == "sparkring-dashboard-nodes/v1" and isinstance(doc.get("nodes"), list):
+                    self.node_reports = doc["nodes"][:256]
+            except (OSError, ValueError, AttributeError):
+                pass
         if self.node_status_path is not None:
             try:
                 self.node_status = read_json(self.node_status_path)
@@ -675,15 +774,16 @@ class Collector:
     def reload_sources(self, force: bool = False) -> None:
         """Re-read each fabric's document and site file whose stamp changed (all of them when
         `force`), and follow the deployments they list: a model per row, kept across re-reads."""
-        changed = False
         for source in self.sources:
-            changed = source.refresh(force) or changed
-        if not changed:
-            return
+            source.refresh(force)
         hosts, wanted = set(), {}
         for source in self.sources:
-            for row in source.deployments:
-                hosts.add(row["api_host"])
+            unmanaged = unmanaged_groups(source.fabric, [*self.node_reports, self.node_status], source.deployments,
+                                         self.last_cycle if self.last_cycle is not None else self.clock()) if source.fabric else []
+            hidden = {r["id"] for group in unmanaged for r in group["stopped_records"]}
+            for row in [r for r in source.deployments if r["id"] not in hidden] + unmanaged:
+                if row["api_host"]:
+                    hosts.add(row["api_host"])
                 wanted[(source.ring_id(), row["id"])] = (source, row)
         self.client.allow(hosts)
         with self.lock:
@@ -692,6 +792,11 @@ class Collector:
             known = {model.key: model for model in self.models.values()}
             for key, (source, row) in wanted.items():
                 if key in known:
+                    if (known[key].row.get("api_host"), known[key].row.get("api_port"), known[key].row.get("containers")) != (
+                            row.get("api_host"), row.get("api_port"), row.get("containers")) and row.get("unmanaged"):
+                        fresh = Model(source, row)
+                        self.models[fresh.id] = fresh
+                        self.history_gaps.add(fresh.id)
                     known[key].row = row
                 else:
                     model = Model(source, row)
@@ -729,10 +834,10 @@ class Collector:
         forced = self.reload_requested.is_set()
         if forced:
             self.reload_requested.clear()
-        self.reload_sources(forced)
         if forced or now >= self.next_files:
             self.read_status_files()
             self.next_files = now + FILES_SECONDS
+        self.reload_sources(forced)
         # Quiet mode is checked on every cycle (a stat and a small directory listing a second), so a
         # hold takes effect before a measurement that starts right after it.
         self.quiet = bool(self.quiet_path and quiet_state(self.quiet_path, now)["quiet"])
@@ -765,6 +870,9 @@ class Collector:
         whose last recorded operation stopped it is stopped whatever its port does."""
         row = model.row
         host, port = row["api_host"], row["api_port"]
+        if row.get("unmanaged") and (host is None or port is None):
+            self.set_state(model, "busy", now)
+            return False
         sent = False
         plugin = self.plugin_snapshot(model, now)
         cadence = (METRICS_VIEWED_SECONDS if viewed and not row["stopped"] else
@@ -776,7 +884,7 @@ class Collector:
             fetched = self.client.get(host, port, "/metrics")
             if fetched.ok:
                 metrics = parse_metrics(fetched.body.decode("utf-8", "replace"))
-                if row.get("model") and metrics.get("model_name") and metrics["model_name"] != row["model"]:
+                if not row.get("unmanaged") and row.get("model") and metrics.get("model_name") and metrics["model_name"] != row["model"]:
                     state = "idle"
                     with self.lock:
                         model.metrics = None
@@ -791,6 +899,20 @@ class Collector:
                     fetched.failure, "not_ready")
                 if row["stopped"]:
                     state = "stopped"  # the records say its last operation stopped it
+                if row.get("unmanaged"):
+                    state = ("serving" if fetched.failure == "http" and model.models_ok_at is not None
+                             and 0 <= now - model.models_ok_at < MODELS_SECONDS else "busy")
+                    # SGLang can serve without --enable-metrics. Retain the same
+                    # read paths and cadence even when its counters are absent.
+                    if now >= model.next_models:
+                        model.next_models = now + MODELS_SECONDS
+                        listed = self.models_listed(self.client.get(host, port, "/v1/models"))
+                        if listed:
+                            state = "serving"
+                            with self.lock:
+                                model.models_ok_at = now
+                                model.model = listed.get("id") or model.model
+                                model.max_model_len = listed.get("max_model_len") or model.max_model_len
                 with self.lock:
                     model.metrics = None
                     model.metrics_at = None
@@ -802,6 +924,7 @@ class Collector:
             listed = self.models_listed(self.client.get(host, port, "/v1/models"))
             if listed:
                 with self.lock:
+                    model.models_ok_at = now
                     model.model = listed.get("id") or model.model
                     model.max_model_len = listed.get("max_model_len") or model.max_model_len
         if model.state == "serving" and model.runtime_due:
@@ -968,14 +1091,18 @@ class Collector:
         metrics = model.metrics or {}
         serving = model.state == "serving"
         nodes = runtime.get("nodes") or []
-        head = hostnames.get(positions[0], {})
+        head_position = row.get("head_position", positions[0])
+        head = hostnames.get(head_position, {})
         port = row["api_port"]
         endpoint = row.get("display_url") or f"http://{row['api_host']}:{port}/v1"
+        if not row["api_host"] or not port:
+            endpoint = None
         since = runtime.get("started_at") if serving and runtime.get("started_at") else model.state_since
         capacity = dict(model.capacity) if model.capacity else None
         if capacity and runtime.get("settings"):
             capacity["max_num_seqs"] = runtime["settings"].get("max_num_seqs")
-        container = next((c["name"] for c in row["containers"] if c["position"] == positions[0]), None)
+        container = next((c["name"] for c in row["containers"] if c["position"] == head_position), None)
+        launch = row.get("launch") or {}
         sparks = []
         for position in positions:
             spark = hostnames.get(position, {})
@@ -983,14 +1110,20 @@ class Collector:
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
                            "lan_address": spark.get("lan_address"), "up": up, "position": position})
         return {
-            "id": model.id, "name": run_name(positions), "profile": row.get("profile"),
+            "id": model.id, "name": "Sparks " + ", ".join(map(str, positions)) if row.get("unmanaged") else run_name(positions),
+            "profile": row.get("profile"),
+            "unmanaged": bool(row.get("unmanaged")), "launch": launch,
+            "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record" if row.get("unmanaged") else None,
+            "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
+            "stopped_records": row.get("stopped_records", []),
             "state": model.state, "state_label": LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
             "endpoint": endpoint,
             # The runtime-status view asks the workers for a report every 5 s while it is open.
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
-            "layout": {"label": layout_label(len(positions)) if serving else None, "count": len(positions),
-                       "tp": runtime.get("tp")},
+            "layout": {"label": " / ".join(f"{k.upper()}{launch.get(k, '?')}" for k in ("tp", "dcp", "pp", "dp"))
+                       if row.get("unmanaged") else layout_label(len(positions)) if serving else None, "count": len(positions),
+                       "tp": launch.get("tp") if row.get("unmanaged") else runtime.get("tp")},
             "live": {key: metrics.get(key) for key in ("running", "waiting", "kv")} if model.metrics else None,
             "counters": {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
                          "values": {key: value for key, value in metrics.items()
@@ -1004,10 +1137,11 @@ class Collector:
             "sparks": sparks,
             "history": [],
             "arc": {"positions": positions, "first": positions[0], "last": positions[-1], "size": len(positions),
-                    "run": run_name(positions), "source": "deployment", "source_label": "deployment record",
+                    "run": run_name(positions), "source": "agent" if row.get("unmanaged") else "deployment",
+                    "source_label": "agent launch facts" if row.get("unmanaged") else "deployment record",
                     "inferred": False, "detail": None, "color": color},
             "ring": model.source.ring_id(),
-            "head": {"position": positions[0], "name": head.get("hostname"), "address": row["api_host"], "port": port,
+            "head": {"position": head_position, "name": head.get("hostname"), "address": row["api_host"], "port": port,
                      "container": container},
             "logs": log_commands(head.get("hostname"), container),
             "runtime_read": model.runtime is not None,
@@ -1038,7 +1172,7 @@ class Collector:
                 "fabric": {"id": fabric["id"], "cluster": fabric["cluster"], "shape": fabric["shape"],
                            "verified": fabric["verified"], "read_from": [str(source.fabric_path)]},
                 "positions": positions, "runs": [],
-                "discovery": {"ports": sorted({m["head"]["port"] for m in members}),
+                "discovery": {"ports": sorted({m["head"]["port"] for m in members if m["head"]["port"]}),
                               "every_seconds": METRICS_VIEWED_SECONDS if self.last_view and self.viewed(now)
                               else METRICS_UNVIEWED_SECONDS, "at": now}}
 

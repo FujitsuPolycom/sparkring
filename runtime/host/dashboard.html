@@ -123,6 +123,8 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .card.st-idle { border-left-color: var(--idle); opacity: 0.75; }
 .card.st-offline { border-left-color: var(--bad); }
 .card.ringed { border-left-color: var(--gc); }
+.launch-facts { min-width: 0; overflow-wrap: anywhere; }
+.launch-facts summary { cursor: pointer; }
 .card.hot, .card.sel { box-shadow: 0 0 0 1px var(--gc, var(--accent)), 0 0 24px -8px var(--gc, var(--accent)); }
 .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .name { font-size: 1.1rem; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -332,7 +334,8 @@ const PALETTE = ["#38bdf8", "#c084fc", "#2dd4bf", "#f472b6", "#a3e635", "#fb923c
 const JOB_COLOR = "#94a3b8";
 const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
 const span = (positions) => !positions || !positions.length ? "" :
-  positions.length === 1 ? String(positions[0]) : positions[0] + "–" + positions[positions.length - 1];
+  positions.length === 1 ? String(positions[0]) :
+  positions.some((p, i) => i && p > positions[i - 1] + 1) ? positions.join(", ") : positions[0] + "–" + positions[positions.length - 1];
 function dur(s) {
   if (!has(s) || s < 0) return "";
   s = Math.round(s);
@@ -405,7 +408,8 @@ function ringSvg(ring, members, now) {
   }
   for (const g of groups) {
     const pad = step * 0.3;
-    const shape = g.size >= N ? `<circle class="shape" cx="${cx}" cy="${cy}" r="${R}"/>`
+    const contiguous = g.positions.every((p, i) => p === (g.first + i) % N);
+    const shape = !contiguous ? g.positions.map(p => `<path class="shape" data-position="${p}" d="${arc(ang(p) - pad, ang(p) + pad, R)}"/>`).join("") : g.size >= N ? `<circle class="shape" cx="${cx}" cy="${cy}" r="${R}"/>`
       : `<path class="shape" d="${arc(ang(g.first) - pad, ang(g.first) + (g.size - 1) * step + pad, R)}"/>`;
     const big = g.size >= N;
     const mid = ang(g.first) + (g.size - 1) * step / 2;
@@ -419,7 +423,7 @@ function ringSvg(ring, members, now) {
     if (g.kind === "member") {
       const m = g.m, live = m.live || {};
       l1 = clip(m.model_short || m.model || m.name, chars);
-      l2 = `TP${g.size}${g.inferred ? "?" : ""}` + (m.state === "serving" ? ` · ${rate(live.output_tps)} tok/s` : "");
+      l2 = (m.unmanaged ? `${g.size} Sparks` : `TP${g.size}${g.inferred ? "?" : ""}`) + (m.state === "serving" ? ` · ${rate(live.output_tps)} tok/s` : "");
       l3 = (m.state === "serving" ? "serving" : (m.state_label || "").toLowerCase()) + (g.inferred ? " · inferred" : "");
     } else if (g.kind === "starting") {
       l1 = clip(g.r.label, chars); l2 = `TP${g.size}`; l3 = "starting";
@@ -475,7 +479,7 @@ function stripHtml(rings, members) {
   let kv = null, kvName = "";
   for (const m of serving) if (m.live && has(m.live.kv) && (kv === null || m.live.kv > kv)) { kv = m.live.kv; kvName = m.name; }
   const short = Object.fromEntries(rings.map((r) => [r.id, r.short || r.id]));
-  const sizes = serving.map((m) => "TP" + ((m.arc && m.arc.size) || "?") + (rings.length > 1 && short[m.ring] ? " " + short[m.ring] : "")).join(" · ");
+  const sizes = serving.map((m) => (m.unmanaged ? m.layout.label : "TP" + ((m.arc && m.arc.size) || "?")) + (rings.length > 1 && short[m.ring] ? " " + short[m.ring] : "")).join(" · ");
   const tile = (k, v, unit, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}${unit ? `<small>${unit}</small>` : ""}</div><div class="s">${sub}</div></div>`;
   return tile("Serving", serving.length, serving.length === 1 ? "group" : "groups", esc(sizes || "nothing serving"))
     + tile("Output", rate(tps), "tok/s", "5 min avg " + rate(tps5))
@@ -497,7 +501,7 @@ function legendHtml(rings, members) {
       t1 = `<span class="mono">${esc(m.name)}</span>`;
       t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
       model = esc(m.model_short || m.model || "—");
-      src = `TP${a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
+      src = `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
@@ -840,6 +844,19 @@ function logsPanel(s) {
   </details>`;
 }
 
+function unmanagedFacts(s) {
+  const f = s.launch || {};
+  return `<p class="down-note">${esc(s.ownership_label)}</p>
+    ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
+    <p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>
+    <details class="launch-facts"><summary>Container launch facts and install records</summary>
+    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}<br>
+      ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
+      TP${c.tp ?? "?"} / DCP${c.dcp ?? "?"} / PP${c.pp ?? "?"} / DP${c.dp ?? "?"} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}</p>`).join("")}
+    ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · positions ${esc(span(r.positions))}</p>`).join("")}
+    </details>`;
+}
+
 function card(s, now) {
   const st = s.state || "checking", serving = st === "serving";
   const since = s.state_since ? "for " + dur(now - s.state_since) : "";
@@ -848,11 +865,11 @@ function card(s, now) {
   let sub = `${layout.count ?? (s.sparks || []).length} sparks`;
   if (serving && layout.label) sub = `${esc(layout.label)} · ${sub}`;
   else if (st === "idle") sub = `${esc(layout.label || sub)} · not deployed`;
-  if (s.head) sub += ` · API on ${esc(s.head.name)}:${esc(s.head.port)}`;
+  if (s.head && s.head.port) sub += ` · API on ${esc(s.head.name)}:${esc(s.head.port)}`;
   if (s.profile) sub += ` · ${esc(s.profile)}`;
   let model;
   if (!s.model) model = '<span class="muted">No model seen yet</span>';
-  else if (serving) model = esc(s.model);
+  else if (serving || s.unmanaged) model = esc(s.model);
   else model = `<span class="muted">Last served:</span> ${esc(s.model)}`;
   const note = (arc ? {
     not_ready: "The API port is open but the model isn't answering yet. It is probably still starting.",
@@ -881,12 +898,13 @@ function card(s, now) {
     <div class="model">${model}</div>
     ${serving && s.endpoint ? `<div class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button>${s.details_url ? `<a href="${esc(s.details_url)}" target="_blank" rel="noopener" title="The model's own status page. While it is open it asks every worker for a report every 5 s, through the engine.">Details</a>` : ""}<button class="copy reread" type="button" data-model="${esc(s.id)}">Re-read settings</button></div>` : ""}
     ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
+    ${s.unmanaged ? unmanagedFacts(s) : ""}
     ${recoveryLine(s, now)}
     ${tiles(s)}${charts(s)}
     ${sparks(s)}
     ${serving ? settings(s) + totals(s, now) : ""}
     ${logsPanel(s)}
-    ${data.manage && arc ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
+    ${data.manage && arc && !s.unmanaged ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
   </article>`;
 }
 

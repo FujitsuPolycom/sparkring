@@ -129,6 +129,36 @@ every 5 s instead of every 10 s (every minute with fresh plugin snapshots); `--p
 unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
+### Models installed outside SparkRing
+
+The ring page and terminal also show running vLLM and SGLang containers
+reported by the host agents. Their cards say **Not installed by SparkRing:
+no automatic recovery, no install record**. They show the actual Sparks,
+including non-contiguous positions, engine, image short ID, served name and
+TP/DCP/PP/DP sizes. Node counts are independent of those parallel sizes.
+
+Containers with the same rendezvous address and port form one group. Missing
+ranks show **incomplete: N of M Sparks reporting**. A container without an
+answering API keeps its Sparks busy; expand its card for launch facts.
+A stopped install record overlapping a live unmanaged group appears in
+that group's details.
+
+Node A's existing recovery timer caches each Spark's agent status about
+once a minute, including Sparks with no install record. The dashboard reads
+that cache every 30 seconds. Quiet mode suppresses the cache's additional
+status reads and the dashboard's API reads. Recovery's existing deployment
+checks remain separate. Disabling the dashboard suppresses its cache reads.
+The dashboard starts the recovery timer; only managed records with recovery
+enabled can trigger recovery actions.
+
+Only rank 0's reported API port is read, on an address recorded for that
+Spark. There is no port scan. SGLang counters need `--enable-metrics`;
+without counters, an answering model API still appears with unavailable
+graphs. Environment values and configuration-file contents are never read
+for discovery. Launch facts hidden in those inputs remain unknown.
+See the [observation contract](../development/dashboard-counters.md#unmanaged-model-observations)
+for bounds and freshness rules.
+
 ### Rates and graphs
 
 The ring page and terminal show prefill tokens/s during intervals with

@@ -1127,6 +1127,10 @@ def snapshot(*, root="/", collect=_collect_local, run=subprocess.run, now=time.t
                                 + str(error))
         require_links(config, root=root)
         facts = observe(config, collect=collect)
+        from runtime.host.node_containers import observations
+        result["model_containers"] = observations(facts, root=root)
+        processes = facts.get("gpu", {}).get("compute_processes")
+        result["gpu_compute"] = bool(processes) if processes is not None else None
         if relaying:
             # Checked before the fabric routes, the fabric service and the mesh:
             # a mesh that its start check refused then reports the root cause.

@@ -5,7 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-# Without an active deployment, as on the workers, a run ends at once.
+# Node A caches agent facts even without an active deployment. Workers have no controller record.
 ExecStart=/usr/bin/sparkring recover --auto
 # SSH to the Sparks uses root's administration keys and host keys.
 Environment=HOME=/root

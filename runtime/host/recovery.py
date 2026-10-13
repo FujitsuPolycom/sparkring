@@ -1071,7 +1071,18 @@ def main(argv=None):
         parser.error("--auto takes no action")
     try:
         if args.auto:
-            result = check()
+            from runtime.host import dashboard_admin
+            invoke = host_load.recovery_invoke()
+            documents = dashboard_admin.refresh_nodes(invoke=invoke)
+
+            def cached_status(host, args, **kwargs):
+                if args == ["/usr/bin/sparkring", "node", "status"] and host in documents:
+                    # Reuse the initial observation only. A post-restart check
+                    # must read the Spark again to see its resulting state.
+                    return json.dumps(documents.pop(host))
+                return invoke(host, args, **kwargs)
+
+            result = check(invoke=cached_status)
             if args.json:
                 print(json.dumps(result, indent=2))
             else:

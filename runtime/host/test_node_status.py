@@ -14,7 +14,8 @@ from runtime.host.test_appliance import nodes
 from scripts import hairpin_setting
 
 PAIR_KEYS = {"schema", "observed_at", "hostname", "node_id", "boot_id", "identity_errors", "source",
-             "hardware_qualified", "state", "next_action", "rank", "size", "cluster_id", "containers", "model_ready"}
+             "hardware_qualified", "state", "next_action", "rank", "size", "cluster_id", "containers", "model_ready",
+             "model_containers", "gpu_compute"}
 DROP_IN = "/run/systemd/generator/{}.d/" + node.MESH_START_CHECK
 
 

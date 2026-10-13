@@ -2,7 +2,7 @@
 Description=SparkRing dashboard: a read-only web page of the fabric's Sparks and models
 Documentation=file:///usr/lib/sparkring/docs/operations/dashboard.md
 After=network-online.target
-Wants=network-online.target
+Wants=network-online.target sparkring-recover.timer
 # Node A holds the controller's copy of the fabric document; other Sparks run no dashboard.
 ConditionPathExists=/var/lib/sparkring/controller/fabric.json
 # sudo sparkring dashboard disable writes this file; the dashboard then stays off.

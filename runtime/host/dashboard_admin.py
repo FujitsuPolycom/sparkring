@@ -29,11 +29,55 @@ from runtime.host.dashboard import (
     FABRIC_PATH,
     SITE_PATH,
     SITE_SCHEMA,
+    NODE_REPORTS_PATH,
+    QUIET_PATH,
+    quiet_state,
     service_url,
 )
 
 DISABLED_PATH = Path("/etc/sparkring/dashboard.disabled")
 UNIT = "sparkring-dashboard.service"
+
+
+def refresh_nodes(*, state_root=None, output=None, invoke=None, quiet_path=None, now=time.time):
+    """Cache every recorded Spark's public agent facts for the unprivileged dashboard.
+
+    Called by the existing recovery timer, including when no deployment is
+    active. Reads cached node status through recovery's existing SSH client,
+    never refreshes an agent or runs Docker. Quiet mode and dashboard disable
+    suppress these additional reads. Returns full documents only in memory so
+    recovery can reuse its node-status reads during the same timer run.
+    """
+    from runtime.host import controller, host_load, node, recovery
+    from runtime.host.node_containers import MAX_CONTAINERS
+    state_root = Path(state_root or controller.STATE)
+    if DISABLED_PATH.exists() or quiet_state(Path(quiet_path or QUIET_PATH), now())["quiet"]:
+        return {}
+    try:
+        hosts = host_load.recorded_targets(state_root)[:256]
+        if not hosts:
+            return {}
+        documents = recovery.node_documents(hosts, invoke=invoke)
+        public = []
+        fields = ("name", "image", "image_id", "managed", "engine", "served_model", "tp", "pp", "dp", "dcp",
+                  "nnodes", "node_rank", "api_port", "api_bind", "master_addr", "master_port", "headless", "dp_addr", "dp_port", "dp_rank")
+        for document in documents.values():
+            if not isinstance(document, dict) or not document.get("node_id"):
+                continue
+            row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
+                   if k in document and isinstance(document[k], (str, int, float, bool))}
+            containers = document.get("model_containers")
+            row["model_containers"] = [
+                {k: (c[k][:512] if isinstance(c[k], str) else c[k]) for k in fields
+                 if k in c and isinstance(c[k], (str, int, float, bool))}
+                for c in containers[:MAX_CONTAINERS] if isinstance(c, dict)] if isinstance(containers, list) else []
+            public.append(row)
+        output = Path(output or NODE_REPORTS_PATH)
+        node.save(output.parent, output.name, {"schema": "sparkring-dashboard-nodes/v1", "written_at": now(), "nodes": public})
+        return documents
+    except (OSError, ValueError, KeyError, TypeError) as error:
+        _stderr(f"Dashboard: agent facts could not be cached ({type(error).__name__})")
+        return {}
 
 
 def site_from_records(state_root: Path) -> dict:

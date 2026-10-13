@@ -26,6 +26,65 @@ are retained. Each retained sample explicitly labels its selected source as `plu
 `metrics`.
 No derived rate is stored.
 
+### Unmanaged model observations
+
+The host agent adds `model_containers` and `gpu_compute` to its existing
+`sparkring-node-status/v1` snapshot. It reuses the inventory's running
+container IDs and GPU PIDs. Local Docker-socket GETs inspect at most 32
+containers, with a 256 KiB response limit, 250 ms socket timeout and a
+one-second budget for starting inspections. It starts no extra subprocess.
+GPU launch lookup reads at most 256 known PIDs and eight same-container
+ancestors per PID. Each argv is limited to 256 arguments and 16 KiB;
+oversized argv is discarded. Only recognized launch fields are emitted;
+raw argv, arbitrary labels and environment values are excluded.
+
+`runtime/host/node_containers.py` parses vLLM TP/PP/DP/DCP, node count/rank,
+headless state, model name, HTTP binding/port and master rendezvous. SGLang
+aliases and `--dist-init-addr`/`--nccl-init-addr` produce the same fields.
+Literal defaults are used only for recognized server launches without a
+configuration-file argument. Shell variables are not expanded. Unknown
+GPU containers remain visible with engine `unknown`; absent launch facts
+cannot establish a cross-Spark group. Bridged Docker port translation and
+launches discoverable only through environment/configuration files are not
+inferred.
+
+The recovery timer writes an allowlisted projection to
+`/var/lib/sparkring/dashboard/nodes.json` (`sparkring-dashboard-nodes/v1`).
+It reads all setup-recorded SSH targets through its existing client and
+reuses remote status answers for the initial recovery check only. Post-restart
+checks read fresh status. It makes no Docker or
+model request for this cache. This includes a controller without active
+deployments. Quiet mode and dashboard disable suppress these added reads;
+they do not change managed recovery policy. The dashboard itself still
+starts no process and uses only its existing `ReadOnlyClient` and `READ_PATHS`.
+
+Facts match Sparks by node identity. Their original agent timestamp expires
+after `max(90, 2 * interval_seconds + 30)` seconds; cache publication never
+renews it. Groups join by engine and literal master address/port, with no
+DNS lookup, adjacency or container-name heuristic. Localhost rendezvous is
+scoped to one Spark. Group size follows `nnodes` and observed ranks, not a
+parallel-size product. Only a unique rank-0 head supplies the model name and
+API port; an explicit API bind must match that head's recorded management,
+LAN or fabric address. No discovered rendezvous expands the address allowlist.
+HTTP redirects are refused, so an endpoint cannot cause an additional read
+at another address, port or path.
+
+Unmanaged models use the same polling, bounded history, rate calculation,
+graph controls and integer token-rate formatting as managed models.
+SGLang's generation/prompt counters, first-token histogram sum/count,
+running/waiting gauges and token-usage gauge map to the shared numeric
+contract. Other absent counters remain unknown. Metric names follow the
+[SGLang metrics reference](https://docs.sglang.io/docs/references/production_metrics)
+and its [collector](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/observability/metrics_collector.py).
+Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/).
+
+Offline coverage is in `test_dashboard_unmanaged.py` and
+`test_dashboard_charts.py`: both engines, one through eleven Sparks,
+non-contiguous membership, mixed parallel dimensions, incomplete groups,
+stale/stopped records, ownership, bounds, secret exclusion, restricted reads,
+quiet mode and in-place browser updates. These tests do not qualify live
+Docker, SSH latency, GPU serving or recovery on Spark hardware.
+
 The initial history response contains raw `counters` and optional
 `plugin_counters` envelopes for replay at their `observed_at` time.
 A global `history_cursor` identifies the last retained sequence. Status

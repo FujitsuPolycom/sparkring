@@ -145,6 +145,40 @@ def update_page(page):
     page.evaluate("async () => { await refresh(); await new Promise(requestAnimationFrame); }")
 
 
+def test_unmanaged_noncontiguous_ring_label_and_in_place_details(smooth_page, tmp_path):
+    from runtime.host.test_dashboard_unmanaged import reports, install_reports
+    page, value, requests = smooth_page
+    found, _, clock = collector(tmp_path, rows=())
+    install_reports(found, reports(found, clock, (0, 2, 3, 4, 6, 7)), tmp_path)
+    found.cycle()
+    value.update(found.snapshot())
+    value["poll_seconds"] = 60
+    update_page(page)
+    card = page.locator("article.card")
+    assert card.count() == 1
+    assert "Not installed by SparkRing: no automatic recovery, no install record" in card.inner_text()
+    assert "positions 0, 2, 3, 4, 6, 7" in card.inner_text()
+    assert page.locator("#ringviz .node.busy").count() == 6
+    assert page.locator("#ringviz .node.idle").count() == 2
+    assert page.locator("#ringviz .band .shape[data-position]").count() == 6
+    assert page.locator("#ringviz .band .shape[data-position='1']").count() == 0
+    card.locator(".launch-facts").evaluate("el => { el.open = true; window.heldDetails = el; }")
+    before = len(requests)
+    for i in range(3):
+        value["generated_at"] += 1
+        update_page(page)
+        assert card.locator(".launch-facts").evaluate("el => el === heldDetails && el.open")
+    assert all("/api/status" in url for url in requests[before:])
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.set_viewport_size({"width": 375, "height": 1000})
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    page.set_viewport_size({"width": 1400, "height": 1000})
+    output = os.environ.get("SPARKRING_CHART_SCREENSHOTS")
+    if output:
+        Path(output).mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(Path(output) / "unmanaged-noncontiguous.png"), full_page=True)
+
+
 @pytest.mark.parametrize("width,theme", [(1400, "dark"), (375, "light")])
 def test_updates_keep_nodes_pointer_focus_selection_and_layout(smooth_page, width, theme):
     page, value, _ = smooth_page

@@ -137,6 +137,8 @@ def span_text(positions) -> str:
     """'4–5' for an arc, '7–2' when it wraps past the last Spark, '3' for one position."""
     if not positions:
         return ""
+    if any(b > a + 1 for a, b in zip(positions, positions[1:])):
+        return ", ".join(map(str, positions))
     return str(positions[0]) if len(positions) == 1 else f"{positions[0]}–{positions[-1]}"
 
 
@@ -258,7 +260,8 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
     b(STATE_SHORT.get(state, state), style(STATE_COLORS.get(state, 4), bold=True))
     arc = member.get("arc") or {}
     if arc:
-        b(f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
+        b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") else
+          f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
         where = f"{member.get('ring')}:" if ring_tag and member.get("ring") else ""
         b(f"@{where}{span_text(arc.get('positions'))}", style(group_color(member), bold=True))
         transport = (member.get("transport") or {}).get("label")
@@ -310,6 +313,21 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
         lasted = dur_short(now - since)      # empty when the start lies ahead of this host's clock
         head += (f" for {lasted}" if lasted else "") + f" (since {time.strftime('%m-%d %H:%M', time.localtime(since))})"
     add((head, style(STATE_COLORS.get(state, 4), bold=True)))
+    if member.get("unmanaged"):
+        add((member["ownership_label"], style(WARN)))
+        if member.get("group_note"):
+            add((member["group_note"], style(WARN)))
+        for container in member.get("containers", []):
+            add((f"position {container['position']}: {container['name']} | {container.get('engine', 'unknown')} | "
+                 f"image {container.get('image_id') or 'unknown'}", 0))
+            add((f"image: {container.get('image')}", 0))
+            add((f"served name: {container.get('served_model') or 'unknown'}", 0))
+            sizes = " / ".join(f"{k.upper()}{container.get(k, '?')}" for k in ("tp", "dcp", "pp", "dp"))
+            add((f"node rank {container.get('node_rank', '?')} / {container.get('nnodes', '?')} nodes | {sizes}", 0))
+            api = "headless" if container.get("headless") else f"API port {container.get('api_port', '?')}"
+            add((f"master {container.get('master_addr', '?')}:{container.get('master_port', '?')} | {api}", 0))
+        for record in member.get("stopped_records", []):
+            add((f"Stopped install record: {record['id']} | {record.get('model')} | {record['positions']}", 0))
     if member.get("model"):
         add(lbl("model"), (member["model"], style(bold=True)),
             *([("  (last seen)", style(dim=True))] if state != "serving" else []))
@@ -487,6 +505,10 @@ def frame(snapshot, view: dict, *, width: int, height: int | None, age, interval
         for position, (text, st) in enumerate(bits):
             segs += ([(" ", 0)] if position else []) + [(text, st)]
         cards.append((segs, index == selected and height is not None))
+        if member.get("unmanaged") and not expanded:
+            cards.append(([("   " + member["ownership_label"], style(WARN))], False))
+            if member.get("group_note"):
+                cards.append(([("   " + member["group_note"], style(WARN))], False))
         if expanded:
             details = model_details(member, now, width)
             for row, detail in enumerate(details):
