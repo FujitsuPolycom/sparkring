@@ -12,7 +12,7 @@ import pytest
 
 from runtime.common import fabric_document, installer
 from runtime.common.test_image_lock import sircl_lock
-from runtime.host import controller, fabric, install_workflow as flow, relays
+from runtime.host import colour, controller, fabric, install_workflow as flow, relays
 from runtime.host.test_install_workflow import PROFILE, machine, sparks  # noqa: F401  (pytest fixtures)
 from scripts import sparkring
 
@@ -157,8 +157,8 @@ def test_status_prints_the_last_receipt_verdict(tmp_path):
     value = {"backend": "sircl", "nccl": "never", "group": "pair", "positions": [0, 1], "fabric": "sha256:" + "0" * 64}
     assert controller.transport_status_line(value).startswith("Transport: sircl on pair (NCCL never); no receipt "
                                                               "check recorded yet")
-    assert controller.transport_status_line({**value, **{key: VERDICT[key] for key in (
-        "verdict", "nccl_observed", "checked_at", "receipts")}, "problems": []}) == (
+    assert colour.plain(controller.transport_status_line({**value, **{key: VERDICT[key] for key in (
+        "verdict", "nccl_observed", "checked_at", "receipts")}, "problems": []})) == (
         "Transport: sircl, NCCL: absent (checked 2026-10-08T10:00:00Z); sudo sparkring check repeats it")
     assert controller.transport_status_line({"backend": "prepared"}) == "Transport: RoCEnante (b12x)"
     lock = {"transport": {"nccl": "never", "group": {"name": "pair", "positions": [0, 1]},

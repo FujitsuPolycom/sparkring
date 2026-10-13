@@ -1,6 +1,10 @@
 #!/bin/sh
 set -eu
 if [ "$1" = configure ]; then
+    # The prebuilt relay marker must match the SHA-256 that distribution.json
+    # records; a missing or different binary fails the installation.
+    /usr/bin/sparkring node relay-marker-check >/dev/null
+    /usr/bin/sparkring node initialize
     # The sparkring group reads the installation logs (/var/log/sparkring,
     # mode 0640) and the published operator status view; membership is granted
     # with sudo usermod -aG sparkring USER. Every other record stays root's.
@@ -11,10 +15,6 @@ if [ "$1" = configure ]; then
         chgrp sparkring /var/log/sparkring/install*.log 2>/dev/null || true
         chmod g+r /var/log/sparkring/install*.log 2>/dev/null || true
     fi
-    # The prebuilt relay marker must match the SHA-256 that distribution.json
-    # records; a missing or different binary fails the installation.
-    /usr/bin/sparkring node relay-marker-check >/dev/null
-    /usr/bin/sparkring node initialize
     if [ -d /run/systemd/system ]; then
         systemctl daemon-reload
         systemctl enable --now avahi-daemon.service lldpd.service
