@@ -1,0 +1,80 @@
+{
+  "schema": "sparkring-dashboard-nodes/v1",
+  "written_at": 1791919567.054529,
+  "nodes": [
+    {
+      "node_id": "fixture-node-0",
+      "hostname": "spark0",
+      "observed_at": 1791919531.7787175,
+      "model_containers": [
+        {
+          "name": "kda-mhc-r0",
+          "image": "sha256:e91876e4997c39f310185f400ea6313928d972cb2caa3b061012c5a5a262a4b2",
+          "image_id": "e91876e4997c",
+          "managed": false,
+          "engine": "unknown"
+        }
+      ]
+    },
+    {
+      "node_id": "fixture-node-1",
+      "hostname": "spark1",
+      "observed_at": 1791919537.3141444,
+      "model_containers": [
+        {
+          "name": "kda-mhc-r1",
+          "image": "sha256:e91876e4997c39f310185f400ea6313928d972cb2caa3b061012c5a5a262a4b2",
+          "image_id": "e91876e4997c",
+          "managed": false,
+          "engine": "unknown"
+        }
+      ]
+    },
+    {
+      "node_id": "fixture-node-2",
+      "hostname": "spark2",
+      "observed_at": 1791919543.2945063,
+      "model_containers": []
+    },
+    {
+      "node_id": "fixture-node-3",
+      "hostname": "spark3",
+      "observed_at": 1791919548.9633846,
+      "model_containers": []
+    },
+    {
+      "node_id": "fixture-node-4",
+      "hostname": "spark4",
+      "observed_at": 1791919554.3446724,
+      "model_containers": [
+        {
+          "name": "seqs16-mtp3-r0",
+          "image": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+          "image_id": "d52737a109e0",
+          "managed": false,
+          "engine": "unknown"
+        }
+      ]
+    },
+    {
+      "node_id": "fixture-node-5",
+      "hostname": "spark5",
+      "observed_at": 1791919559.4637325,
+      "model_containers": [
+        {
+          "name": "seqs16-mtp3-r1",
+          "image": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+          "image_id": "d52737a109e0",
+          "managed": false,
+          "engine": "unknown"
+        }
+      ]
+    },
+    {
+      "node_id": "fixture-node-7",
+      "hostname": "spark7",
+      "observed_at": 1791919550.874718,
+      "model_containers": []
+    }
+  ]
+}

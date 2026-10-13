@@ -145,6 +145,24 @@ def update_page(page):
     page.evaluate("async () => { await refresh(); await new Promise(requestAnimationFrame); }")
 
 
+def test_unmanaged_four_pairs_with_reused_rendezvous(smooth_page, tmp_path):
+    from runtime.host.test_dashboard_ring_observation import ring_observation
+    page, value, _ = smooth_page
+    found, _, _, _, _ = ring_observation(tmp_path)
+    found.cycle()
+    value.update(found.snapshot())
+    value["poll_seconds"] = 60
+    update_page(page)
+    cards = page.locator("article.card")
+    assert cards.count() == 4
+    for pair in range(4):
+        card = cards.filter(has_text=f"Research-pair-{pair}")
+        assert card.count() == 1
+        assert f"Sparks {pair * 2}, {pair * 2 + 1}" in card.inner_text()
+        assert "TP2 / DCP2" in card.inner_text()
+    assert page.locator("#ringviz .node.busy").count() == 8
+
+
 def test_unmanaged_noncontiguous_ring_label_and_in_place_details(smooth_page, tmp_path):
     from runtime.host.test_dashboard_unmanaged import reports, install_reports
     page, value, requests = smooth_page

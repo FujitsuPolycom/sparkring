@@ -1,0 +1,14 @@
+{
+  "node_id": "fixture-node-6",
+  "hostname": "spark6",
+  "observed_at": 1791919630.9047005,
+  "model_containers": [
+    {
+      "name": "seqs16-pp2-r0",
+      "image": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "image_id": "d52737a109e0",
+      "managed": false,
+      "engine": "unknown"
+    }
+  ]
+}

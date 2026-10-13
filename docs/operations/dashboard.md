@@ -137,7 +137,8 @@ no automatic recovery, no install record**. They show the actual Sparks,
 including non-contiguous positions, engine, image short ID, served name and
 TP/DCP/PP/DP sizes. Node counts are independent of those parallel sizes.
 
-Containers with the same rendezvous address and port form one group. Missing
+Containers using the same head Spark and rendezvous port form one group.
+The fabric's cable addresses distinguish pairs reusing the same IP address. Missing
 ranks show **incomplete: N of M Sparks reporting**. A container without an
 answering API keeps its Sparks busy; expand its card for launch facts.
 A stopped install record overlapping a live unmanaged group appears in
@@ -148,6 +149,7 @@ once a minute, including Sparks with no install record. The dashboard reads
 that cache every 30 seconds. Quiet mode suppresses the cache's additional
 status reads and the dashboard's API reads. Recovery's existing deployment
 checks remain separate. Disabling the dashboard suppresses its cache reads.
+Package upgrades preserve operator quiet mode and active quiet holds.
 The dashboard starts the recovery timer; only managed records with recovery
 enabled can trigger recovery actions.
 

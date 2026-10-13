@@ -169,7 +169,8 @@ def test_eleven_sparks_and_rank_zero_not_lowest_position(tmp_path):
     fabric = found.sources[0].fabric
     fabric["positions"] = [{"position": i, "node_id": str(i), "address": f"192.0.2.{10+i}"} for i in range(11)]
     docs = [{"node_id": str((rank + 4) % 11), "observed_at": clock.now, "model_containers": [
-        {**nc.launch_facts(argv(size=11, rank=rank)), "managed": False, "name": str(rank)}]} for rank in range(11)]
+        {**nc.launch_facts(argv(size=11, rank=rank)), "master_addr": "192.0.2.14",
+         "managed": False, "name": str(rank)}]} for rank in range(11)]
     group = dashboard.unmanaged_groups(fabric, docs, [], clock.now)[0]
     assert group["positions"] == list(range(11)) and group["head_position"] == 4
     assert group["api_host"] == "192.0.2.14" and group["expected_sparks"] == 11
