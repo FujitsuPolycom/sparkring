@@ -312,3 +312,102 @@ def test_plan_requires_no_endpoint_or_key(monkeypatch, capsys):
     plan = json.loads(capsys.readouterr().out)
     assert plan["max_chat_requests"] == 86
     assert "api_key" not in plan["config"]
+
+
+def reasoning_dropping_count(messages):
+    """Count like a template that renders reasoning only on a final assistant turn."""
+    length = 0
+    for index, message in enumerate(messages):
+        content = message["content"]
+        if isinstance(content, list):
+            length += sum(len(part.get("text", "")) + (500 if part["type"] == "image_url" else 0)
+                          for part in content)
+        else:
+            length += len(content)
+        if message["role"] == "assistant" and index == len(messages) - 1:
+            length += len(message.get("reasoning") or message.get("reasoning_content") or "")
+        length += 20
+    return max(1, length // 5)
+
+
+def reasoning_dropping_http(calls, *, reasoning_chars=20000, content_chars=500):
+    """Serve long reasoning and a short answer, and drop reasoning from earlier turns."""
+    def send(url, payload, key, timeout, request_id=None):
+        calls.append((url, payload, request_id))
+        count = reasoning_dropping_count(payload["messages"])
+        if url.endswith("/tokenize"):
+            return io.BytesIO(json.dumps({"count": count}).encode())
+        events = [{"choices": [{"delta": {"reasoning_content": "r" * reasoning_chars}}]},
+                  {"choices": [{"delta": {"content": "a" * content_chars}, "finish_reason": "stop"}]},
+                  {"usage": {"prompt_tokens": count, "completion_tokens": 50,
+                             "prompt_tokens_details": {"cached_tokens": count // 2}}}]
+        return io.BytesIO(("".join("data: " + json.dumps(event) + "\n" for event in events)
+                           + "data: [DONE]\n").encode())
+    return send
+
+
+def test_calibration_uses_history_as_rendered_when_template_drops_reasoning(monkeypatch):
+    monkeypatch.setattr(soak, "request", reasoning_dropping_http([]))
+    history = [{"role": "user", "content": "x" * 5000},
+               {"role": "assistant", "content": "y" * 500, "reasoning_content": "z" * 20000}]
+    alone = soak.count_tokens(config(), history)
+    target = reasoning_dropping_count(history[:1]) + 200
+    # The history counted on its own includes reasoning the next prompt omits,
+    # so it already exceeds the target the next prompt must reach.
+    assert alone > target
+    messages, count = soak.calibrated_user(config(), history, "drop-reasoning", target)
+    assert abs(count - target) <= 8
+    assert messages[:2] == history
+
+
+def test_soak_grows_by_tail_when_template_drops_reasoning(monkeypatch, tmp_path):
+    calls = []
+    monkeypatch.setattr(soak, "request", reasoning_dropping_http(calls))
+    path = tmp_path / "drop-reasoning.jsonl"
+    # Each reply's reasoning (about 4,000 tokens) is larger than the 200-token growth.
+    assert soak.execute(config(context_limit=20000, reset_tokens=6000, max_tokens=64), path) == 0
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    soak_turns = [row for row in rows if row["type"] == "turn" and row["phase"] == "soak"]
+    later = [row for row in soak_turns if row["turn"] > 0]
+    assert len(soak_turns) == 6 and len(later) == 4
+    assert all(abs(row["prompt_token_growth"] - 200) <= 8 for row in later)
+    assert all(row["continuation"] for row in later)
+    assert rows[-1]["success"] is True and rows[-1]["continuations"] == 4
+
+
+def test_reply_larger_than_growth_fails_with_named_setting(monkeypatch, tmp_path):
+    monkeypatch.setattr(soak, "request", reasoning_dropping_http([], reasoning_chars=10, content_chars=5000))
+    path = tmp_path / "long-reply.jsonl"
+    assert soak.execute(config(), path) == 2
+    rows = [json.loads(line) for line in path.read_text().splitlines()]
+    error = next(row for row in rows if row["type"] == "error")
+    assert error["stage"] == "token_calibration"
+    assert error["code"] == "turn_growth_below_rendered_history"
+    assert error["details"]["rendered_history_tokens"] >= error["details"]["target_tokens"]
+
+
+def test_continuation_does_not_depend_on_growth_size(monkeypatch, tmp_path):
+    monkeypatch.setattr(soak, "request", reasoning_dropping_http([], reasoning_chars=10))
+    path = tmp_path / "large-growth.jsonl"
+    cfg = config(context_limit=100000, start_tokens=[1000], tail_tokens=12000, reset_tokens=40000,
+                 concurrency=1, max_soak_prompt_tokens=100000)
+    assert soak.execute(cfg, path) == 0
+    later = [row for row in map(json.loads, path.read_text().splitlines())
+             if row["type"] == "turn" and row.get("turn", 0) > 0]
+    assert later and all(row["continuation"] for row in later)
+
+
+@pytest.mark.parametrize("tail,max_tokens,sufficient", [("2048", "4096", False), ("4352", "4096", True),
+                                                        ("2048", "512", True)])
+def test_plan_states_turn_growth_that_holds_any_reply(monkeypatch, capsys, tail, max_tokens, sufficient):
+    monkeypatch.setattr(soak, "request", lambda *args, **kwargs: pytest.fail("unexpected HTTP"))
+    monkeypatch.setattr(sys, "argv", ["conversation_soak.py", "--plan", "--model", "deepseek-v41-flash",
+                                     "--arm", "growth", "--context-limit", "1m", "--reset-tokens", "262144",
+                                     "--tail-tokens", tail, "--max-tokens", max_tokens])
+    assert soak.main() == 0
+    growth = json.loads(capsys.readouterr().out)["turn_growth"]
+    assert growth["minimum_tail_tokens"] == int(max_tokens) + soak.TURN_FRAMING_TOKENS
+    assert growth["sufficient_for_any_reply"] is sufficient
+    assert ("warning" in growth) is not sufficient
+    if not sufficient:
+        assert f"--tail-tokens {growth['minimum_tail_tokens']}" in growth["warning"]

@@ -147,6 +147,18 @@ Every request is guarded by successful server tokenization and the declared
 context limit. Calibration preserves prior messages and includes the same
 chat-template options used for generation.
 
+Each turn's prompt is the previous prompt plus `--tail-tokens`, measured by
+the server's reported `prompt_tokens`. Calibration counts the history as the
+server renders it ahead of a new user message. Some chat templates, such as
+DeepSeek-V4.1-Flash's, drop an earlier assistant turn's reasoning once a user message
+follows, so a history counted on its own can be longer than the next prompt.
+The growth must hold the previous reply as rendered plus a short user message.
+That reply is at most `--max-tokens` whether the template keeps or drops
+reasoning, so `--plan` reports `turn_growth.minimum_tail_tokens` as
+`--max-tokens` plus 256 and warns when `--tail-tokens` is smaller. Below that
+value, a long reply stops the soak with `turn_growth_below_rendered_history`.
+With thinking on and `--max-tokens 4096`, use `--tail-tokens 4352` or more.
+
 For a longer MTP3 run, use `--concurrency 4 --start-tokens 100000
 --max-turns-per-agent 200 --duration-seconds 3600 --max-soak-prompt-tokens
 50000000 --reset-tokens 160000 --max-tokens 512 --probe-output-tokens 300`.
@@ -191,8 +203,8 @@ recalculation. `finish_reason=length` is accepted for the bounded load and is
 recorded as output-budget exhaustion, not a correctness pass.
 
 The summary compares continuation turns with reported cached tokens below or
-above half the prompt, using the condition of a positive prompt increase below
-10,000 tokens in the same conversation. Missing cached-token usage is excluded
+above half the prompt. A continuation is any turn after the first in a
+conversation whose reported prompt is longer than the previous turn's. Missing cached-token usage is excluded
 from that classification. These are server-reported numbers: the harness does
 not infer local reuse, external restore, or recomputation from latency. Correlate
 request IDs with connector and vLLM logs to establish those causes. Tokenization

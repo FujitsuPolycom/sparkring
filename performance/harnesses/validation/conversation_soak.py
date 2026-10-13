@@ -18,6 +18,10 @@ from needle_hunt import base_url  # noqa: E402
 from prefill_probe import add_quiet_argument, build_text, events, has_token, quiet_mode, request, tokens  # noqa: E402
 
 SCHEMA = "sparkring-conversation-soak/v1"
+# Room for a minimal user message and the chat framing of one exchange. A
+# turn's growth must hold the previous reply as the template renders it (at
+# most --max-tokens whether earlier reasoning is kept or dropped) plus this.
+TURN_FRAMING_TOKENS = 256
 
 
 class SoakValidationError(ValueError):
@@ -95,9 +99,29 @@ def count_tokens(config, messages, phase="soak"):
     return count
 
 
+def rendered_history(config, history, image=None, *, phase="soak"):
+    """Count the history as the server renders it ahead of one more user message.
+
+    Some chat templates render an assistant turn's reasoning only while that
+    turn ends the conversation and drop it once a user message follows, so the
+    history counted on its own can exceed the prefix of the next prompt. Counting
+    the history followed by an empty user message measures the prefix the
+    server actually receives, whatever the template keeps or drops.
+    """
+    if not history:
+        return 0
+    content = "" if image is None else [
+        {"type": "text", "text": ""}, {"type": "image_url", "image_url": {"url": image}}]
+    return count_tokens(config, history + [{"role": "user", "content": content}], phase)
+
+
 def calibrated_user(config, history, identity, target_total, image=None, *, phase="soak"):
     """Calibrate the added user message while preserving every preceding message byte."""
-    previous = count_tokens(config, history, phase) if history else 0
+    previous = rendered_history(config, history, image, phase=phase)
+    if history and previous >= target_total:
+        raise SoakValidationError("Rendered history already reaches the turn target; increase --tail-tokens",
+                                 "turn_growth_below_rendered_history",
+                                 {"target_tokens": target_total, "rendered_history_tokens": previous})
     chars = max(256, (target_total - previous) * 5)
     for _ in range(10):
         text = fixture(identity, chars)
@@ -270,12 +294,15 @@ def execute(config, output, *, dashboard_ssh=None):
                     stage = "stream"
                     record, assistant = stream_turn(config, messages, count, config["max_tokens"], identity,
                                                     "soak", request_id=request_id)
+                    # Growth is measured from the server-reported prompt size, the
+                    # length the next turn's history must actually extend.
+                    served = record["usage"]["prompt_tokens"]
                     record.update(agent=agent, conversation=conversation, turn=turn,
-                                  prompt_token_growth=count - prior_count if prior_count is not None else None,
-                                  continuation=prior_count is not None and 0 < count - prior_count < 10000,
+                                  prompt_token_growth=served - prior_count if prior_count is not None else None,
+                                  continuation=prior_count is not None and served > prior_count,
                                   image_added=picture is not None)
                     emit(record)
-                    history, prior_count, turn = messages + [assistant], count, turn + 1
+                    history, prior_count, turn = messages + [assistant], served, turn + 1
                 except Exception as error:
                     emit({"type": "error", "phase": "soak", "identity": identity,
                           "request_id": request_id, "stage": stage, **error_details(error)})
@@ -304,6 +331,19 @@ def execute(config, output, *, dashboard_ssh=None):
         summary["dashboard_quiet"] = dict(quiet)
         emit(summary)
     return 0 if summary["success"] else 2
+
+
+def turn_growth(tail_tokens, max_tokens):
+    """State whether every turn's growth can hold the previous reply plus a user message."""
+    minimum = max_tokens + TURN_FRAMING_TOKENS
+    result = {"tail_tokens": tail_tokens, "minimum_tail_tokens": minimum,
+              "sufficient_for_any_reply": tail_tokens >= minimum,
+              "basis": "growth must hold the previous reply as rendered (at most --max-tokens, whether the "
+                       "template keeps or drops earlier reasoning) plus a user message and chat framing"}
+    if tail_tokens < minimum:
+        result["warning"] = (f"a reply longer than about {max(0, tail_tokens - TURN_FRAMING_TOKENS)} tokens "
+                             f"stops the soak; use --tail-tokens {minimum} or more")
+    return result
 
 
 def main():
@@ -382,6 +422,7 @@ def main():
                           "max_chat_requests": args.concurrency * args.max_turns_per_agent + 2 * args.probe_repeats,
                           "max_output_tokens": args.concurrency * args.max_turns_per_agent * args.max_tokens
                           + 2 * args.probe_repeats * args.probe_output_tokens,
+                          "turn_growth": turn_growth(args.tail_tokens, args.max_tokens),
                           "duration_scope": "soak admission window; probes, calibration and in-flight requests may extend elapsed time",
                           "status": "implemented; no hardware qualification"}))
         return 0
