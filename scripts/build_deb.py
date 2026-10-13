@@ -182,6 +182,18 @@ def relay_marker(payload, *, mode="prebuilt", binary=None, run=None, which=shuti
     return {"path": MARKER_PATH, "sha256": digest, "source_sha256": source_sha256, "origin": origin}
 
 
+def package_file_name(version):
+    """The package's file name: the Debian version with ``~`` written as ``.``.
+
+    GitHub replaces ``~`` with ``.`` in release asset names, so a file named
+    with the version verbatim reaches users under another name than its
+    ``.sha256`` line states, and ``sha256sum --check`` finds no file. The
+    version inside the package keeps ``~``, which orders a development build
+    before its release in dpkg.
+    """
+    return f"sparkring_{version.replace('~', '.')}_arm64.deb"
+
+
 def build(root, output, *, version=None, marker="prebuilt", marker_binary=None):
     root, output = Path(root).resolve(), Path(output).resolve()
     revision = distribution.identity(root)
@@ -190,7 +202,7 @@ def build(root, output, *, version=None, marker="prebuilt", marker_binary=None):
     if not re.fullmatch(r"[0-9][A-Za-z0-9.+~]*", version):
         raise ValueError("Use a Debian upstream version without a revision suffix")
     output.mkdir(parents=True, exist_ok=True)
-    artifact = output / f"sparkring_{version}_arm64.deb"
+    artifact = output / package_file_name(version)
     if artifact.exists():
         raise ValueError("Package already exists; choose a separate output directory")
     with tempfile.TemporaryDirectory(prefix="sparkring-deb-") as temp:

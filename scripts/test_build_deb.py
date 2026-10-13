@@ -206,3 +206,32 @@ def test_the_marker_keeps_the_destination_command_line_and_adds_the_source_port_
         assert option in text
     # A destination rule outranks the source-port rule when both match a packet.
     assert "create_matcher(context, mask, 0)" in text and "create_matcher(context, source_mask, 1)" in text
+
+
+def test_the_package_file_and_its_checksum_line_keep_their_name_as_a_github_release_asset(tmp_path, monkeypatch):
+    """GitHub writes ``~`` in an asset name as ``.``; the file name already has ``.``, the package version ``~``."""
+    import tarfile
+    source = tmp_path / "source.tar"
+    with tarfile.open(source, "w") as tar:
+        tar.add(ROOT / "packaging/debian", arcname="packaging/debian")
+    seen = {}
+
+    def run(argv, **kwargs):
+        if argv[:2] == ["git", "archive"]:
+            shutil.copyfile(source, argv[argv.index("-o") + 1])
+        elif "bundle" in argv:
+            Path(argv[argv.index("create") + 1]).write_bytes(b"bundle")
+        elif argv[0] == "dpkg-deb":
+            seen["control"] = (Path(argv[-2]) / "DEBIAN/control").read_text(encoding="utf-8")
+            Path(argv[-1]).write_bytes(b"deb")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(build_deb.distribution, "identity", lambda root: "a" * 40)
+    monkeypatch.setattr(build_deb, "subprocess", SimpleNamespace(run=run, check_output=lambda *a, **k: "1790000000\n"))
+    result = build_deb.build(tmp_path, tmp_path / "dist", marker="skip")
+    package = Path(result["path"])
+    assert result["version"] == "0.1.0~dev.1790000000+gitaaaaaaaaaaaa"
+    assert "Version: 0.1.0~dev.1790000000+gitaaaaaaaaaaaa\n" in seen["control"]
+    assert package.name == "sparkring_0.1.0.dev.1790000000+gitaaaaaaaaaaaa_arm64.deb"
+    checksum = package.with_name(package.name + ".sha256").read_text(encoding="utf-8")
+    assert checksum == f"{sha(b'deb')}  {package.name}\n" and "~" not in checksum

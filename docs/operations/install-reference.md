@@ -44,11 +44,11 @@ fetch the script from that branch and pass `--ref one-command-installer`.
 
 ### Download a published build
 
-A GitHub prerelease of
-[FujitsuPolycom/sparkring](https://github.com/FujitsuPolycom/sparkring/releases)
-carries `sparkring_*_arm64.deb` and its `.sha256` file for the commit it
-names. Download both into one directory on Node A; this prints `OK` when the
-package matches the published checksum:
+Each GitHub release of
+[FujitsuPolycom/sparkring](https://github.com/FujitsuPolycom/sparkring/releases),
+the latest release and prereleases alike, carries `sparkring_*_arm64.deb` and
+its `.sha256` file for the commit it names. Download both into one directory
+on Node A; this prints `OK` when the package matches the published checksum:
 
 ```bash
 sha256sum --check sparkring_*_arm64.deb.sha256
@@ -79,6 +79,11 @@ python3 scripts/build_deb.py
   (`--output DIR` for another directory), refuses to overwrite a package
   there, and prints the package path, its SHA-256, the source `revision` and
   the package `version`.
+- The file name writes the version's `~` as `.`
+  (`sparkring_0.1.0.dev.<time>+git<commit>_arm64.deb` for version
+  `0.1.0~dev.<time>+git<commit>`), because GitHub release asset names
+  cannot hold `~`; the `.sha256` line names the same file. The version inside
+  the package keeps `~`, so dpkg orders a development build before a release.
 - Clones of one commit can produce packages with different SHA-256 values,
   because the embedded bundle depends on how the clone is packed; compare
   source revisions instead.
