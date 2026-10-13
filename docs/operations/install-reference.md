@@ -126,10 +126,13 @@ sparkring models
 
 `sudo sparkring install --profile PROFILE` on Node A installs one installer
 profile ([commands](install.md#install)) and ends with `Model ready:` and the
-model's API URL ([API endpoint](#api-endpoint)). Below it a short card names the served model, the
-API and [dashboard](dashboard.md) addresses, a sample `curl` request, and the
-commands that switch back to the model it replaced, stop the model and remove
-the package. Without `--profile`, it lists the installer profiles for the
+served model, Spark positions and recorded host names, and elapsed time.
+The card lists the profile, TP size and transport, observed capacity when
+available, the API, `Model status` and `Ring dashboard` addresses, and a
+`Test it` request. `Start again` repeats this installation's saved command;
+`Stop`, `Recovery` and `Uninstall` name the corresponding commands. See the
+[API endpoint](#api-endpoint) and [dashboards](dashboard.md).
+Without `--profile`, it lists the installer profiles for the
 cabled node count and asks for one.
 
 ### Questions and approvals
@@ -356,10 +359,17 @@ sudo sparkring status --refresh --json
   model's status page that the card prints as `Model status:` (null when the
   image has no status page), `sparkring_dashboard_url`, the
   [SparkRing dashboard](dashboard.md#every-model-on-one-page) on Node A that
-  the card prints as `SparkRing dashboard:` (null while its service is off),
+  the card prints as `Ring dashboard:` (null while its service is off),
   `example_request` (a `curl` command for
   `/v1/chat/completions` with the served model name) and `commands` with
-  `switch_back` (null when no other model ran before), `stop` and `remove`.
+  `start_again` (this installation's saved checkpoint command), `switch_back`
+  (the previous deployment's command, retained for JSON readers), `stop` and
+  `remove`. `group.hostnames` follows `group.positions` in deployment order;
+  `elapsed_seconds` uses a monotonic clock from the start of installation.
+  `capacity`, when present, contains observed `context_length`, `kv_tokens`
+  and `max_requests` from the smoke receipt's start checks. Profiles without
+  these observations omit the values; profile defaults are not substituted.
+  KV token counts use one decimal below 10M and whole millions from 10M.
 - With `--api-address`, `api_url`, `dashboard_url` and `example_request` use
   that address, and `check_url` holds the URL that SparkRing's own checks use
   ([API endpoint](#api-endpoint)). `serving` lists `api_port` and `api_bind`
@@ -436,6 +446,11 @@ sudo sparkring logs --follow
 - `sparkring logs --plain` drops terminal decoration from the follower. For
   `sparkring install` itself, set `NO_COLOR` through `sudo`, which does not
   pass the caller's environment: `sudo env NO_COLOR=1 sparkring install ...`.
+- `install.log` contains plain text without colour markers. `logs` and
+  `logs --follow` restore the card's command highlights on replay, including
+  `curl` and package removal only inside a `Model ready` card. `--plain`,
+  `--details`, automatic colour with `NO_COLOR`, and `--color=never` keep
+  replay plain. A pipe stays plain unless `--color=always` is selected.
 - From Windows PowerShell: `ssh -t NODE_A "sudo sparkring logs --follow"`
   (`NODE_A` is Node A's SSH address).
 
@@ -894,7 +909,7 @@ SparkRing shows it at the LAN address setup recorded for Node A, or at Spark
   and by the running models that the installation replaces or stops. The
   API's Spark checks the address and the port again before the model starts.
 - `--api-address` changes only what SparkRing shows: the plan's `Model API:`
-  line, `Model ready:`, the card's dashboard and `curl` lines, `api_url` in
+  line, the card's API, Model status and `curl` lines, `api_url` in
   the JSON results and `sparkring status`. The readiness wait, the short
   test request, `sparkring status --refresh` and
   [automatic recovery](#automatic-recovery) keep using the listen address,
@@ -2039,8 +2054,8 @@ sudo sparkring install --profile EIGHT_SPARK_PROFILE           # every Spark, wh
   first Spark serves the API at the profile's port: Node A's address when the
   group starts at Node A, otherwise that Spark's own LAN address, or its
   administration address, which only Node A reaches, when it has no LAN
-  connection. `Model ready:` and `sudo sparkring status` print each group's
-  URL.
+  connection. The card below `Model ready:` and `sudo sparkring status`
+  print each group's URL.
 - **Which transport.** The prepared transport of the published images runs a
   pair, a four-Spark ring and that ring's [halves](#two-models-on-one-ring),
   `--on 0,1` and `--on 2,3`. Every other group needs [SIRCL ring
@@ -2105,7 +2120,8 @@ sudo sparkring install --profile FOUR_SPARK_PROFILE           # all four again
   before it stops one outside the half you named; `--yes` approves that.
 - **Where it serves.** A half serves on its first Spark, at the profile's
   port: Sparks 0 and 1 on Node A's address, Sparks 2 and 3 on Spark 2's own
-  LAN address. `Model ready:` and `sudo sparkring status` print each URL. A
+  LAN address. The card below `Model ready:` and `sudo sparkring status`
+  print each URL. A
   Spark 2 without its own LAN connection serves on its administration
   address, which only Node A reaches; the plan says so. For Sparks 2 and 3,
   the [API options](#api-endpoint) and the question name Spark 2's

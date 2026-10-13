@@ -139,11 +139,21 @@ def apply(directory, operation, *, cache, run=subprocess.run):
     code = inspect.getsource(_operation) + "\n" + inspect.getsource(_mirror_operation_log) + "\n" + """import contextlib,json,sys
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
+op_descriptions = {
+    "saved-status": "reading the deployment's saved status",
+    "status": "reading the deployment's live status",
+    "up": "starting the model",
+    "down": "stopping the model",
+    "prepare": "preparing the deployment",
+    "verify": "checking model ownership, processes and an API response",
+    "transport": "checking which transport carried the model's collectives"
+}
 with contextlib.redirect_stdout(sys.stderr):
  if sys.argv[3].startswith('review-'):
   result=_operation(sys.argv[2],sys.argv[3])
  else:
-  with progress.run('retained deployment '+sys.argv[3]):
+  desc=op_descriptions.get(sys.argv[3],'Running '+sys.argv[3])
+  with progress.run(desc):
    with _mirror_operation_log(progress,sys.argv[4]):
     result=_operation(sys.argv[2],sys.argv[3])
 print(json.dumps(result))

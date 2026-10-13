@@ -61,7 +61,7 @@ def test_an_image_with_sircl_and_a_recorded_fabric_install_on_sircl_with_nccl_of
     assert result["transport"]["backend"] == "sircl" and result["transport"]["verdict"] == "as-expected"
     assert events.index("candidate:up") < events.index("candidate:transport")
     assert "Transport: sircl on every collective, NCCL off (default table, pair)" in out.err
-    assert "  Transport:           sircl, NCCL: absent" in out.err
+    assert f"  Profile:         {PROFILE} · TP2 · SIRCL" in out.err
     # The result stays with the deployment for sparkring check --report.
     saved = json.loads((Path(result["deployment"]) / flow.RESULT_FILE).read_text())
     assert saved["transport"]["verdict"] == "as-expected"
@@ -93,7 +93,7 @@ def test_without_a_fabric_document_the_installation_runs_on_the_prepared_transpo
     assert "transport" not in deployment(result)
     # The prepared transport reads as RoCEnante (b12x); `prepared` stays its identifier in the result.
     assert "Transport: RoCEnante (b12x), because this cluster has no fabric document" in out.err
-    assert "  Transport:           RoCEnante (b12x)" in out.err.splitlines()
+    assert f"  Profile:         {PROFILE} · TP2 · RoCEnante (b12x)" in out.err.splitlines()
     assert result["transport"]["backend"] == "prepared"
     assert install(lock, "--transport", "sircl") == 3
     refused = json.loads(capsys.readouterr().out)
@@ -131,7 +131,7 @@ def test_the_nccl_transport_installs_on_a_pair_without_sircl(machine, capsys):  
     assert result["transport"]["backend"] == "nccl" and result["transport"]["expected"] == transport.NCCL_EXPECTED
     assert ("Transport: nccl on every collective; SIRCL is not loaded and the RoCEnante slot is off "
             "(--transport nccl)") in out.err
-    assert "  Transport:           nccl" in out.err
+    assert f"  Profile:         {PROFILE} · TP2 · NCCL" in out.err
     # The nccl transport takes no --nccl mode.
     assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", "--transport", "nccl",
                            "--nccl", "auto"]) == 3
@@ -149,7 +149,7 @@ def test_a_failed_receipt_check_is_reported_and_the_model_keeps_serving(sircl, m
     out = capsys.readouterr()
     result = json.loads(out.out)
     assert result["state"] == "complete" and result["transport"]["verdict"] == "differs"
-    assert "  Transport:           check failed: rank 1 group tp:0: 14 calls reached NCCL" in out.err
+    assert f"  Profile:         {PROFILE} · TP2 · check failed: rank 1 group tp:0: 14 calls reached NCCL" in out.err
 
 
 def test_status_prints_the_last_receipt_verdict(tmp_path):

@@ -1101,13 +1101,13 @@ DASHBOARD = "/v1/sparkring/status/view"
 # the card is terminal text, so its commands carry the highlight marks.
 RECOVERY_TEXT = {"on": "restarts the model if a Spark stops serving; turn off: "
                        + colour.cmd("sudo sparkring recover off"),
-                 "off": "off; turn on: " + colour.cmd("sudo sparkring recover on"),
+                 "off": "off → " + colour.cmd("sudo sparkring recover on"),
                  "unsupported": "not available for this model's backend; restart it by hand",
                  "unrecorded": "not set up (see the warning above); " + colour.cmd("sudo sparkring recover on")
                                + " retries"}
 STOP_COMMAND = "sudo sparkring down --execute"
-# The summary card's label column: its longest label, "SparkRing dashboard:", and one space.
-CARD_LABEL_WIDTH = 21
+# The longest label, "Ring dashboard:", and two spaces.
+CARD_LABEL_WIDTH = 17
 REMOVE_COMMAND = "sudo apt remove sparkring"
 
 
@@ -1147,7 +1147,9 @@ def summary(lock, connection, previous, *, displaced=()):
     the model's API port; it is null for a model whose image has no status
     page. The SparkRing dashboard on Node A (``sparkring_dashboard_url``)
     is added by ``execute``, because it depends on the host's service.
-    ``commands.switch_back`` is null when no other model ran before; after a
+    ``commands.start_again`` repeats the installation's saved checkpoint
+    command, including its settings. ``commands.switch_back`` is null when
+    no other model ran before; after a
     switch that stopped several models it names each command, joined by
     `` ; ``. A model on a ring half stops with ``--on`` naming its half.
     """
@@ -1162,7 +1164,8 @@ def summary(lock, connection, previous, *, displaced=()):
     return {"thinking": state, "dashboard_url": base + DASHBOARD if "image_runtime" in lock else None,
             "example_request": (f"curl {connection['api_url']}/chat/completions "
                                 f"-H 'Content-Type: application/json' -d '{body}'"),
-            "commands": {"switch_back": " ; ".join(backs) or None, "stop": stop,
+            "commands": {"switch_back": " ; ".join(backs) or None,
+                         "start_again": (connection.get("checkpoint") or {}).get("command"), "stop": stop,
                          "remove": REMOVE_COMMAND}}
 
 
@@ -1238,45 +1241,102 @@ def transport_card_line(result):
     if value.get("backend") == transports.LIBSIRCL:
         from runtime.common import libsircl
         return libsircl.card_text(value)
-    if value.get("backend") == "nccl":
-        return "nccl"
+    if value.get("backend") in ("sircl", "nccl") and value.get("verdict") not in ("unknown", "differs"):
+        return value["backend"].upper()
     if value.get("backend") != "sircl":
         from runtime.common import transport_names
         return transport_names.PREPARED_NAME if value else None
     from runtime.host import transport_receipts
-    if "verdict" not in value:
-        return None
     line = transport_receipts.text({"verdict": value["verdict"], "nccl": value.get("nccl"),
                                     "nccl_observed": value.get("nccl_observed"), "problems": value.get("problems") or
                                     ["no detail"], "receipts": value.get("receipts")})
     return line.removeprefix("Transport: ").replace("Transport check failed", "check failed", 1)
 
 
+def model_ready_line(result):
+    """The ``Model ready:`` line with model name, sparks and elapsed time.
+
+    Returns a line like: "DeepSeek-V4.1-Flash-TP4 on Sparks 0-3 (spark-edfd, spark-ebb8, ...) · 6 min"
+    or None when required fields are missing.
+    """
+    model = result.get("model")
+    group = result.get("group") or {}
+    elapsed = result.get("elapsed_seconds")
+
+    if not model:
+        return None
+
+    parts = [model]
+
+    positions = group.get("positions")
+    if positions:
+        consecutive = positions == list(range(positions[0], positions[-1] + 1))
+        spark_range = (f"{positions[0]}-{positions[-1]}" if consecutive and len(positions) > 1
+                       else ", ".join(map(str, positions)))
+        names = group.get("hostnames") or []
+        hosts = f" ({', '.join(names)})" if len(names) == len(positions) and all(names) else ""
+        parts.append(f"on Sparks {spark_range}{hosts}")
+
+    # Add elapsed time if available
+    if elapsed and elapsed > 0:
+        minutes = int(elapsed // 60)
+        if minutes > 0:
+            parts.append(f"· {minutes} min")
+        else:
+            seconds = int(elapsed)
+            if seconds > 0:
+                parts.append(f"· {seconds} s")
+
+    return " ".join(parts)
+
+
 def summary_lines(result):
     """The card printed after ``Model ready:``; empty when the result lacks the summary fields.
 
-    ``Model status`` is the model's runtime-status page (``dashboard_url``); ``SparkRing
-    dashboard`` is the dashboard service on Node A (``sparkring_dashboard_url``), shown only
-    while that service is on. The commands in it are highlighted on a terminal; the result
-    document that carries the same commands stays plain.
+    The commands in it are highlighted on a terminal; the result document that carries
+    the same commands and the installation log stay plain.
     """
     if "example_request" not in result:
         return []
     commands = result.get("commands") or {}
-    rows = [("Model", result.get("model")), ("API", result.get("api_url")),
+    profile = result.get("profile")
+    transport = transport_card_line(result)
+    profile_text = " · ".join(str(part) for part in
+                              (profile, f"TP{result['nodes']}" if result.get("nodes") else None, transport) if part)
+    api = result.get("api_url")
+    if api and result.get("model"):
+        api += f'   (model "{result["model"]}")'
+    rows = [("Profile", profile_text),
+            ("Capacity", _capacity_text(result)),
+            ("API", api),
             ("Model status", result.get("dashboard_url")),
-            ("SparkRing dashboard", result.get("sparkring_dashboard_url")),
-            ("Transport", transport_card_line(result)),
-            ("Thinking", thinking.deployment_text(result["thinking"]) if result.get("thinking") else None),
-            ("Try it", result["example_request"]),
-            ("Switch back", colour.cmd(commands["switch_back"]) if commands.get("switch_back") else None),
-            ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
-            ("Recovery", RECOVERY_TEXT.get(result.get("recovery"))),
-            ("Uninstall", f"stop the model, then {colour.cmd(commands['remove'])} on each Spark"
-             if commands.get("remove") else None)]
+            ("Ring dashboard", result.get("sparkring_dashboard_url")),
+            ("Thinking", thinking.deployment_text(result["thinking"]) if result.get("thinking") else None)]
     lines = [f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}" for name, value in rows if value]
-    if isinstance(result.get("start_checks"), dict):
+
+    # Test it section with curl on its own line
+    lines.append("")
+    lines.append("  Test it:")
+    lines.append("    " + colour.cmd(result["example_request"]))
+
+    # Single-line commands
+    inline_commands = [("Watch logs", colour.cmd("sudo sparkring logs --follow")),
+                       ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
+                       ("Start again", colour.cmd(commands["start_again"]) if commands.get("start_again") else None),
+                       ("Recovery", RECOVERY_TEXT.get(result.get("recovery")))]
+    for name, value in inline_commands:
+        if value:
+            lines.append(f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}")
+
+    # Uninstall section
+    if commands.get("remove"):
+        stop_cmd = commands.get("stop", "sudo sparkring down --execute")
+        uninstall_text = f"{colour.cmd(stop_cmd)}, then {colour.cmd(commands['remove'])} on each Spark"
+        lines.append(f"  {'Uninstall:':<{CARD_LABEL_WIDTH}}{uninstall_text}")
+
+    if isinstance(result.get("start_checks"), dict) and result["start_checks"].get("checks"):
         from runtime.host import start_checks
+        lines.append("")
         lines += ["  Start checks:"] + ["    " + line for line in start_checks.text(result["start_checks"])]
     return lines
 
@@ -1295,7 +1355,28 @@ def operation_scope(args, state_root):
         yield owner
 
 
+def _capacity_text(result):
+    """The Capacity line from model capacity fields, or None when unknown."""
+    capacity = result.get("capacity") or {}
+    context = capacity.get("context_length")
+    kv_tokens = capacity.get("kv_tokens")
+    max_requests = capacity.get("max_requests")
+    parts = []
+    if context is not None:
+        parts.append(f"{context:,} context")
+    if kv_tokens is not None:
+        if kv_tokens >= 1_000_000:
+            digits = 1 if kv_tokens < 10_000_000 else 0
+            parts.append(f"{kv_tokens / 1_000_000:.{digits}f}M KV tokens")
+        else:
+            parts.append(f"{kv_tokens:,} KV tokens")
+    if max_requests is not None:
+        parts.append(f"up to {max_requests} requests")
+    return " · ".join(parts) if parts else None
+
+
 def execute(args):
+    started = time.monotonic()
     state_root = controller.STATE
     require_head()
     limit = download_limit(args)
@@ -1637,8 +1718,13 @@ def execute(args):
         checks = start_check_result(directory)
         if checks is not None:
             plan["start_checks"] = checks
+            if checks.get("capacity"):
+                plan["capacity"] = checks["capacity"]
         from runtime.host import dashboard_admin
         completed = {**plan, "state": "complete", "transaction": result, "log": str(progress.operation_log()),
+                     "group": {**plan["group"], "hostnames": [cluster["plan"]["nodes"][position].get("hostname")
+                                                             for position in group["positions"]]},
+                     "elapsed_seconds": round(time.monotonic() - started, 1),
                      **summary(lock, plan, replaces, displaced=displaced),
                      "sparkring_dashboard_url": dashboard_admin.page_url()}
         save_result(directory, completed)
@@ -1774,9 +1860,13 @@ def main(argv=None):
         if result["state"] == "complete":
             if (result.get("hairpin") or {}).get("required"):
                 print(hairpin_ring.complete_text(len(result["hairpin"].get("ranks") or []) or 4))
-            print("Model ready: " + result["api_url"])
+            ready_line = model_ready_line(result)
+            if ready_line:
+                print("Model ready: " + ready_line)
+            else:
+                print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
-                print(colour.render(line, sys.stdout))
+                print(line)
         elif result["state"] == "needs_input":
             print(result["message"])
             # A checkpoint message already names every file, path and size its

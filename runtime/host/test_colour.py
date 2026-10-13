@@ -129,6 +129,7 @@ def test_install_log_and_event_stream_receive_plain_text(tmp_path, monkeypatch):
         progress.emit("start", f"Review {colour.cmd('sudo sparkring status')} first")
         progress.record(f"Note {colour.cmd('sudo sparkring status')} beside it")
     log = (tmp_path / "install.log").read_text()
+    assert not any(byte < 0x20 and byte != 0x0a for byte in (tmp_path / "install.log").read_bytes())
     assert "Follow from another terminal: sudo sparkring logs --follow" in log
     assert "\x00" not in log and "\x1b[" not in log
     event = json.loads(events.getvalue())

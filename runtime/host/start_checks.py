@@ -285,7 +285,31 @@ def judge(log, status, metrics, facts, environment, checks=CHECKS):
     result["w4a16-host-barrier-reset"] = _check(verdict, [f"{BARRIER} readers: "
                                                           f"{', '.join(readers) if readers else readers}"],
                                                 "a reader in B12X's W4A16 expert code, which the CSF experts run")
-    return {"schema": SCHEMA, "weights_gib": weights, "checks": {name: result[name] for name in checks}}
+    return {"schema": SCHEMA, "weights_gib": weights, "checks": {name: result[name] for name in checks},
+            "capacity": capacity(status, metrics)}
+
+
+def capacity(status, metrics):
+    """Observed context, request limit and KV tokens; absent facts stay absent.
+
+    Runtime worker facts own effective limits. KV tokens come from the same
+    first-engine cache gauge used by the ring dashboard, without summing TP ranks.
+    """
+    from runtime.host.dashboard import capacity_from_cache_info, parse_metrics
+
+    cache = capacity_from_cache_info(parse_metrics(metrics or "").get("cache_info")) or {}
+    result = {"kv_tokens": cache["kv_tokens"]} if cache.get("kv_tokens") is not None else {}
+    workers = status.get("workers") if isinstance(status, dict) else None
+    workers = workers.get("ranks") if isinstance(workers, dict) else None
+    workers = workers if isinstance(workers, list) else []
+    for key, name in (("max_model_len", "context_length"), ("max_num_seqs", "max_requests")):
+        facts = [worker.get("effective") if isinstance(worker, dict) else None for worker in workers]
+        facts = [fact.get(key) if isinstance(fact, dict) else None for fact in facts]
+        values = [fact.get("value") for fact in facts if isinstance(fact, dict) and fact.get("state") == "known"]
+        if values and len(values) == len(workers) and all(type(value) is int and value > 0 for value in values):
+            if len(set(values)) == 1:
+                result[name] = values[0]
+    return result
 
 
 def text(document):
