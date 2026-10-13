@@ -247,6 +247,17 @@
       "scope": "installations without research options of qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 from a package of this release's Qwen and GLM-5.3-Flash serving defaults (revision 4c9528fb)",
       "result": "both chose csf without --checkpoint, completed and served; the Qwen engine resolved FP8 target KV in 32-token blocks, draft KV auto and asynchronous scheduling",
       "record": "runtime/releases/2026.10.3/README.md"
+    },
+    {
+      "id": "four-spark-glm-qwen-install-20261013",
+      "status": "research-only",
+      "lane": "public-functional",
+      "maturity": "live-validated",
+      "hardware": "eight DGX Sparks (GB10): two ConnectX-7 RoCE rings of four, then one ring of eight with positions 0-3 and 4-7 used as two paths of four; GPU clocks locked at 2,418 MHz",
+      "image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+      "scope": "installations without research options of qwen38-flash-next-qad-tp4 (default checkpoint qad-step5500-ple1000) on each ring of four and on positions 4-7, and of glm53-flash-nvfp4-spark-tp4 --checkpoint csf on positions 0-3; llm-inference-bench 0.7.6 at temperature 1, one start each",
+      "result": "every installation resolved the release's settings, including both Qwen settings together; Qwen decoded 73.0-78.4 tok/s at 32K and one stream and 274.3-288.1 at eight; GLM-5.3-Flash 68.1 and 203.5",
+      "record": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md"
     }
   ],
   "gates": [
@@ -313,7 +324,7 @@
     {
       "id": "serving-defaults-install",
       "result": "partial",
-      "scope": "installations of the changed profiles without research options: qwen38-flash-next-tp2 and glm53-flash-nvfp4-spark-tp2 completed and served; the others not run",
+      "scope": "installations of the changed profiles without research options, each resolving the measured settings in its run receipt and measured once at temperature 1: deepseek-v41-flash-tp4 on a ring of four and as a path of four in a ring of eight; glm53-flash-nvfp4-spark-tp2 and qwen38-flash-next-tp2 as pairs of both; qwen38-flash-next-qad-tp4 on two rings of four and as a path of four, beside glm53-flash-nvfp4-spark-tp4 on the other path of four; the other changed profiles not run",
       "record": "runtime/releases/2026.10.3/README.md"
     },
     {

@@ -113,10 +113,11 @@ Not measured:
   `qwen38-flash-next-qad-tp8`, `swift15-qwen38-flash-next-tp2` and `-tp4`, or
   `mimo-v26-flash-mopd-tp2` and `-tp4`. vLLM's rule makes it a no-op there as
   well.
-- The Qwen MXFP8 LM head and BF16 draft KV cache have run together only on two
-  Sparks with `csf`: not on four Sparks, not with the four-Spark default
-  checkpoint, step 5500, and not on eight Sparks, where
-  `qwen38-flash-next-qad-tp8` has run neither.
+- The Qwen MXFP8 LM head and BF16 draft KV cache have run together on two
+  Sparks with `csf` and on four Sparks with the four-Spark default checkpoint,
+  step 5500 (three starts, [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md)), but not on eight Sparks, where
+  `qwen38-flash-next-qad-tp8` has run neither. No start compares the four-Spark
+  profile with and without them together.
 - `deepseek-v41-flash-tp8` has not run with sharded Engram projections.
 - Apart from DeepSeek's sharding, no changed setting has a second start, and no
   changed profile has had a correctness screen or a soak with its settings.
@@ -212,7 +213,7 @@ without research options (private record):
 | `glm53-nvfp4-csf-tp8-install`: an installation that starts and serves, with column-split loading in effect | passed, one start (research-only); the profile is parked | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-nvfp4-csf-tp8-ring8-20261010.md) |
 | `sparkcache-variants`: the hardware test plan's stages | Stage 1 (four Sparks): steps 1-7 and 9 passed, step 8 and the two-start A/B not run; Stage 2 (two Sparks): failed with 8 GiB capture slots; with 512 MiB slots, steps 1-7 and 9 passed in one start that only a private record reports, step 8 and the two-start A/B not run | [record](../../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md) |
 | `serving-defaults-measured`: each changed serving setting measured against a start without it | partial: research-only, one start per setting and two for DeepSeek's Engram sharding; the profiles listed under [Not measured](#serving-defaults) have no start | [Serving defaults](#serving-defaults), [catalog](../../../performance/enhancements.md) |
-| `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. the same three installed on two new rings of four (DeepSeek on a whole ring, the pairs on the other) with the same model settings and SIRCL's ring-of-four tuning ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)); the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
+| `serving-defaults-install`: installations of the changed profiles without research options | partial: `deepseek-v41-flash-tp4` (a path of four in a ring of eight), `glm53-flash-tp2` and `qwen38-flash-next-tp2` (`--checkpoint csf`, pairs) installed from a package of this candidate, resolved the measured settings (run receipts) and served; measured once each at temperature 1. the same three installed on two new rings of four (DeepSeek on a whole ring, the pairs on the other) with the same model settings and SIRCL's ring-of-four tuning ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)); `qwen38-flash-next-tp4` on both rings of four and, beside `glm53-flash-tp4 --checkpoint csf`, as one of two paths of four in a ring of eight, each resolving the release's settings and measured once at temperature 1 ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md)); the other changed profiles not run | [record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md) |
 | `serving-defaults-qualification`: a second start, a correctness screen and a soak of each changed profile with its settings | pending | |
 | `publication`: tag, package built with the relay marker, GitHub release | passed: tag `2026.10.3`; GitHub release `2026.10.3`, marked latest, carries the arm64 package and the relay marker with their SHA-256 files; `main` fast-forwarded to the tag | [GitHub release](https://github.com/FujitsuPolycom/sparkring/releases/tag/2026.10.3) |
 
@@ -249,7 +250,9 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
 - The installed-profile evidence is one start per profile: on a ring of eight
   (`deepseek-v41-flash-tp4` as a path of four inside it, the two-Spark profiles as
   pairs) and on two new rings of four set up with `sparkring setup --re-form`
-  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)).
+  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md)),
+  and for the four-Spark GLM-5.3-Flash and Qwen profiles, one start per layout
+  ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md)).
 - Engram projection sharding stays a four-Spark setting: one start of
   `deepseek-v41-flash-tp8` with it showed no consistent gain on a ring of eight
   ([record](../../../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md#not-adopted-engram-projection-sharding-at-tp8)).
@@ -263,10 +266,8 @@ CPU checks do not validate CUDA, RDMA, serving or performance.
   an on/off switch. The output quality of short prefills with it is not
   separately qualified.
 - The repository README's speed table shows this release's profiles measured
-  once each at temperature 1. The four-Spark GLM-5.3-Flash and Qwen profiles
-  have no temperature-1 measurement; the README gives their runner results
-  on four Sparks of the ring of eight separately, and no start of the
-  four-Spark Qwen profile has both Qwen settings.
+  once per layout at temperature 1. `glm53-flash-tp4` was measured only as a
+  path of four inside a ring of eight, not on a whole ring of four.
 - No image this package carries runs the SparkCache variants: only the lock
   their derived layer records admits them, and that lock is not in this
   repository. They are listed in the research catalog.

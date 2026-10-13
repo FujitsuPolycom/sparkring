@@ -82,25 +82,20 @@ generations.
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.6 / 136.7 / 194.3 | 4,388 | 102.4 | ring of four |
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.4 / 139.1 / 198.0 | 4,426 | 101.7 | path of four: four Sparks of a ring of eight |
 | GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 45.8 / 93.7 / 129.1 | 1,387 | 51.4 | ring of eight |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 68.1 / 135.3 / 203.5 | 3,165 | 79.7 | path of four: four Sparks of a ring of eight |
 | GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 37.8 / 83.1 / 112.9 | 2,420 | 49.0 | pair |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 73.0 / 203.6 / 288.1 | 4,553 | 111.5 | ring of four |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 77.9 / 209.5 / 274.3 | 4,377 | 111.3 | path of four: four Sparks of a ring of eight |
 | Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
 
-Records: [ring of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md), [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md). The path-of-four row ran with two other deployments measured on the rest of the
-ring at the same time. Speed varies from start to start: the same deployment
-measured twice differed by up to about 10 %.
-
-The four-Spark GLM-5.3-Flash and Qwen3.8-Flash-Next profiles ran on four Sparks
-of the ring of eight with the serving A/B runner (llm-inference-bench 0.4.29,
-temperature 0, at most 1,024 output tokens; output tok/s at 32K context for 1 /
-4 / 8 streams), one start each, which the table above does not compare with:
-
-- `glm53-flash-tp4` (`csf`) with this release's settings: 61.7 / 125.0 / 213.6,
-  with a 3,334 tok/s prefill of a 32K prompt.
-- `qwen38-flash-next-tp4` with `--checkpoint qad-step5500-mxfp8-attention`,
-  each of this release's two Qwen settings alone: the draft's KV cache in the
-  model's dtype 81.6 / 185.9 / 234.0, the MXFP8 LM head 64.7 / 153.4 / 231.9,
-  against 60.9-62.8 / 148.6-149.9 / 237.2 without either. No start with both
-  settings has run on four Sparks.
+Records: [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md), [rings of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md),
+[four-Spark GLM-5.3-Flash and Qwen](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md). The DeepSeek path-of-four row ran
+beside two other deployments measured on the rest of the ring at the same time;
+the GLM-5.3-Flash and Qwen path-of-four rows ran on the two halves of one ring
+of eight, their benchmarks overlapping for two minutes. Speed varies from start
+to start: the same deployment measured twice differed by up to about 10 %, and
+Qwen's four-Spark profile on a second ring of four measured 78.4 / 207.6 / 280.0
+with a 4,569 tok/s prefill and a 110.4 coding peak.
 
 Release 2026.10.3's [record](runtime/releases/2026.10.3/README.md#serving-defaults)
 has these measurements' conditions. On four Sparks,
