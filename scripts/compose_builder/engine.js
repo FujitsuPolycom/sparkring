@@ -368,9 +368,10 @@ const SparkRingEngine = (() => {
   }
   function describe(profile, settings) {
     const rows = Object.fromEntries(profile.settings.map(r => [r.name, r]));
-    return Object.keys(settings).sort().map(name => rows[name].switch
+    settings = { ...(profile.serving_defaults || {}), ...settings };
+    return Object.keys(settings).sort().map(name => profile.serving_default_lines?.[name] || (rows[name].switch
       ? option(name) + ' (profile: off)'
-      : `${option(name)} ${settings[name]} (profile: ${rows[name].profile})`);
+      : `${option(name)} ${settings[name]} (profile: ${rows[name].profile})`));
   }
   function warnings(profile, settings) {
     const row = profile.settings.find(r => r.name === 'kv_cache_gib');
@@ -622,8 +623,11 @@ const SparkRingEngine = (() => {
       checkCeilings(checkpoint, settings);
       const variant = checkpoint.variants[settings.save_cpu ? 'on' : 'off'];
       const numeric = Object.keys(settings).filter(k => k !== 'save_cpu').sort();
+      // Profile choices are already rendered in the templates. Record them
+      // beside the form's explicit settings so the identity matches compose.build.
+      const effective = { ...(checkpoint.serving_defaults || {}), ...settings };
       const identityInputs = { profile: profile.id, site, inputs: profile.identity_inventory, ...profile.options };
-      if (Object.keys(settings).length) identityInputs.serving = settings;
+      if (Object.keys(effective).length) identityInputs.serving = effective;
       if (!checkpoint.default) identityInputs.checkpoint = checkpoint.name;
       const identity = await sha256(encoded(identityInputs));
       const files = {};
@@ -644,7 +648,7 @@ const SparkRingEngine = (() => {
         qualification: 'Generated configuration only; Compose serving is not qualified.',
       };
       const lines = describe(checkpoint, settings), warn = warnings(checkpoint, settings);
-      if (Object.keys(settings).length) manifest.serving = settings;
+      if (Object.keys(effective).length) manifest.serving = effective;
       if (!checkpoint.default) manifest.checkpoint = checkpoint.name;
       Object.assign(manifest, profile.options);
       return { ok: true, id: identity, files, deployment: encoded(manifest), site_yaml: siteYaml(site), serving_lines: lines,

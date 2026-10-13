@@ -23,7 +23,17 @@
           "0c4099f3382d6c92700dfb99725025360966fd73032f0ecf32377c0d9e6309c5",
           "34d5ee66b12fa6446cdae131c352b8f68cd85369e0e6fda115583805fada3891"
         ],
-        "reading": "chat_template.jinja lines 2-3: reasoning_effort low or high selects that level, and any other value, or none, selects max; the level is written as a system line such as 'Reasoning Effort: Max'. Line 4: clear_thinking defaults to false, which keeps earlier turns' reasoning in the prompt. The last lines: the generation prompt always opens a <think> block, and no variable closes it. The two templates differ only in content and tool-call rendering."
+        "reading": "chat_template.jinja lines 2-3: reasoning_effort low or high selects that level, and any other value, or none, selects max; the level is written as a system line such as 'Reasoning Effort: Max'. Line 4: clear_thinking defaults to false, which keeps earlier turns' reasoning in the prompt. The last lines: the generation prompt always opens a <think> block, and no variable closes it. The two templates differ only in content and tool-call rendering.",
+        "generation_configs": {
+          "230c30609ecbbb9e6583bedde8e7bdda0c6eb8fe5fad0eaeb3d1b293d751cb4f": {
+            "temperature": 1.0,
+            "top_p": 0.95
+          },
+          "a07de3408f578c6a7ca8a1646aa91a41df55d539349fda15fb8b611eb007e9b7": {
+            "temperature": 1.0,
+            "top_p": 0.95
+          }
+        }
       }
     },
     "mimo-v26-flash-template": {

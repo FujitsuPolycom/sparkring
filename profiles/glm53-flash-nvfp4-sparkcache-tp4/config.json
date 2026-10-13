@@ -1,5 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
+  "serving_defaults": {"reasoning_effort": "high"},
   "status": "research-only",
   "model": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
@@ -76,6 +77,8 @@
     "SPARK_CONTEXT_CACHE_ROOT": "/cache/glm53-flash-sparkcache-ab53c097d7ca-dec48abd33ef"
   },
   "vllm_args": [
+    "--generation-config",
+    "auto",
     "--tensor-parallel-size",
     "4",
     "--nnodes",

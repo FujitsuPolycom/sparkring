@@ -1,5 +1,5 @@
 {
- "generated_at": "bf35ba2a59d3ec8bbc110c1a3926a7603703f239",
+ "generated_at": null,
  "plans": {
   "prepared": {
    "printed": [
@@ -151,6 +151,15 @@
      "switch-model",
      "verify-serving"
     ],
+    "thinking": {
+     "chosen": false,
+     "level": "xhigh",
+     "model": {
+      "level": "xhigh",
+      "thinking": "on"
+     },
+     "thinking": "on"
+    },
     "transport": {
      "backend": "prepared",
      "reason": null
@@ -310,6 +319,15 @@
      "switch-model",
      "verify-serving"
     ],
+    "thinking": {
+     "chosen": false,
+     "level": "xhigh",
+     "model": {
+      "level": "xhigh",
+      "thinking": "on"
+     },
+     "thinking": "on"
+    },
     "transport": {
      "backend": "sircl",
      "expected": "SIRCL carries every collective; NCCL creates no communicator",

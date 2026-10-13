@@ -240,14 +240,19 @@ def test_thinking_settings_set_the_models_arguments_on_the_api_rank_only(profile
     site_value = example_site(profile)
     plain, _ = compose.build(profile, site_value)
     tuned, files = compose.build(profile, site_value, serving=settings)
-    assert tuned["serving"] == settings and tuned["id"] != plain["id"] and "serving" not in plain
+    assert tuned["serving"] == settings
+    assert (tuned["id"] == plain["id"]) == (settings == serving.defaults(profile))
     specs, _ = compose.specifications(profile, site_value, serving=settings)
     defaults, _ = compose.specifications(profile, site_value)
     # The API rank's command gains the flag and its JSON object at the end; the
     # headless ranks keep the profile's command.
-    assert specs[0].command == (*defaults[0].command, KWARGS, rendered)
+    base = defaults[0].command
+    if KWARGS in base:
+        base = base[:base.index(KWARGS)]
+    assert specs[0].command == (*base, KWARGS, rendered)
     assert [spec.command for spec in specs[1:]] == [spec.command for spec in defaults[1:]]
-    assert all(KWARGS not in spec.command for spec in defaults)
+    assert chat_defaults(defaults[0].command) == (serving.defaults(profile) or None)
+    assert all(KWARGS not in spec.command for spec in defaults[1:])
     composed = [text for name, text in sorted(files.items()) if name.endswith("compose.yaml")]
     assert f"- '{rendered}'" in composed[0] and not any(KWARGS in text for text in composed[1:])
 
@@ -338,7 +343,8 @@ def test_without_thinking_settings_commands_compose_files_and_locks_are_unchange
         specs, _ = compose.specifications(profile, site_value)
         assert compose.build(profile, site_value) == compose.build(profile, site_value, serving={})
         assert compose.build(profile, site_value, serving={"thinking": None}) == compose.build(profile, site_value)
-        assert all(KWARGS not in spec.command for spec in specs)
+        assert chat_defaults(specs[0].command) == (serving.defaults(profile) or None)
+        assert all(KWARGS not in spec.command for spec in specs[1:])
         assert all(serving.apply(spec.command, {}) == spec.command for spec in specs)
     lock = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"thinking": None, "reasoning_effort": None})
     assert "serving" not in lock and lock == installer.make_lock(QWEN, site(), "1" * 40, "2" * 64)

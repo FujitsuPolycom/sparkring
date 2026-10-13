@@ -24,7 +24,9 @@ or encoder's handling of these arguments:
 - ``off``: the arguments that turn thinking off, or null;
 - ``source``: the evidence: the SHA-256 of every chat template whose text
   was read for it (``chat_templates``), or for an encoder the image and the
-  digests of its modules, and what that text does (``reading``).
+  digests of its modules, and what that text does (``reading``). Optional
+  ``generation_configs`` maps pinned generation_config.json SHA-256 values
+  to the sampling defaults read from those files.
 
 It also maps each checkpoint, ``<repository>@<revision>``, to a behaviour.
 Each checkpoint's pin manifest under profiles/checkpoints gives the SHA-256
@@ -142,6 +144,13 @@ def of(profile_id, checkpoint=None, root=ROOT):
     key = model(profile_id, checkpoint, root)
     if key is None:
         return None
+    repository, revision = key.split("@")
+    return for_model({"repository": repository, "revision": revision}, root=root)
+
+
+def for_model(model, root=ROOT):
+    """The recorded behaviour of a served model's repository and revision, or None."""
+    key = f"{model['repository']}@{model['revision']}"
     data = catalog(root)
     name = data["checkpoints"].get(key)
     if name is None:

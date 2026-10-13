@@ -173,8 +173,8 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
         table.append(line)
     rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip() for line in table}
     assert rows == {'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-tp4': 'on · xhigh',
-                    'glm53-flash-tp2': 'always · max', 'glm53-flash-tp4': 'always · max',
-                    'glm53-nvfp4-tp8': 'always · max',
+                    'glm53-flash-tp2': 'always · high', 'glm53-flash-tp4': 'always · high',
+                    'glm53-nvfp4-tp8': 'always · high',
                     'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
                     'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
     # A stale cell is rewritten; the hand-maintained cells stay as written.
@@ -187,15 +187,16 @@ def test_readme_thinking_column_follows_each_profiles_thinking_record():
 
 
 def test_readme_thinking_column_reads_the_record_of_the_profile_an_alias_selects():
-    from runtime.common import thinking
+    from runtime.common import serving, thinking
     from runtime.common.profiles import ROOT
     from runtime.host.models import ALIASES
     from scripts.generate_profiles import thinking_column
     text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
     assert {'glm53-flash-tp2', 'glm53-flash-tp4', 'qwen38-flash-next-tp4', 'qwen38-flash-next-tp8'} <= set(ALIASES)
-    # Each alias and its profile ID give one cell: the profile's record, whichever name the row uses.
+    # Each alias and its profile ID give the same deployment default.
     for alias, ident in ALIASES.items():
-        summary = thinking.summary(thinking.of(ident))
+        state = thinking.deployment_default(thinking.of(ident), serving.defaults(ident))
+        summary = thinking.summary({"default": state["thinking"], "level": state["level"]})
         for name in (alias, ident):
             row = f'| Model | Checkpoint | 4 | `{name}` | 8015 | stale |'
             edited = text.replace('| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab]'

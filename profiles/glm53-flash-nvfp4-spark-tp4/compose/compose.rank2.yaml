@@ -20,6 +20,8 @@ services:
     - '2'
     - --master-addr
     - 192.0.2.10
+    - --generation-config
+    - auto
     - --tensor-parallel-size
     - '4'
     - --nnodes
@@ -192,7 +194,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: fa9068b620cbe8f7ec01711f96385f91cba789fdaf8dafefbe00f6393ab50bd4
+      io.sparkring.deployment: 17a0c5070c08c389bb1e8e0d7a6d2d1d3a6be035658f2ab34d1cc929ac3291a4
       io.sparkring.rank: '2'
     network_mode: host
     ipc: host

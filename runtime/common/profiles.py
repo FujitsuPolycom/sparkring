@@ -253,6 +253,10 @@ def configuration(p, root=ROOT):
         return data["model"], serving, selected["transport"], p["evidence_scope"], {"release_profile": source["key"], "template": template}
     if data.get("schema") != "sparkring-serving-profile/v1":
         raise ValueError("Unsupported serving-profile schema")
+    if "serving_defaults" in data:
+        from runtime.common import serving as serving_settings, toolchain_profiles
+        for checkpoint in data.get("checkpoints") or [None]:
+            serving_settings.profile_defaults(toolchain_profiles.checkpoint_settings(data, checkpoint), root=root)
     args = data["vllm_args"]
     serving = {}
     for key in ("tensor_parallel_size", "decode_context_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens", "kv_cache_memory_bytes"):

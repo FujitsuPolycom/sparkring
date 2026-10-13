@@ -511,6 +511,11 @@ def container_spec(profile, *, rank, master, host_ip, interface, image, model, c
     ]
     if rank:
         args += ["--headless"]
+    from runtime.common import serving, thinking
+    defaults = serving.profile_defaults(profile)
+    if defaults:
+        args = serving.template_defaults(args, thinking.for_model(profile["model"]), defaults,
+                                         profile["served_model_name"])
     port = profile["vllm_args"][profile["vllm_args"].index("--port") + 1]
     # The installer toolchain image runs its system Python; the native and R37
     # images run the interpreter in /opt/venv.

@@ -255,7 +255,7 @@ def expected(case):
         return {"ok": False, "error": str(exc)}
     return {"ok": True, "id": manifest["id"], "files": files, "deployment": compose.encoded(manifest),
             "site_yaml": yaml.safe_dump(site, sort_keys=False),
-            "serving_lines": serving_settings.describe(settings, command),
+            "serving_lines": serving_settings.describe(settings, command, model=(case["profile"], case["checkpoint"])),
             "warnings": serving_settings.warnings(settings, command), "manifest": manifest}
 
 

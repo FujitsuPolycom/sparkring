@@ -62,6 +62,7 @@ import sys
 import time
 
 from runtime.common import distribution, fabric_layout, image_lock, installer, installer_image, process_lock, profiles
+from runtime.common import thinking
 from runtime.common import serving as serving_settings
 from runtime.common import transport as transports
 from runtime.host import (api_endpoint, checkpoint_plan, checkpoint_search, colour, controller, derivation, discovery,
@@ -701,7 +702,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         document = ask_endpoint(args, cluster, placement, profile_arguments(card))
     # Serving settings are part of the request, so other settings install
     # another deployment; without any, the request is unchanged.
-    requested = serving_settings.from_arguments(args)
+    requested = serving_settings.effective(profile, serving_settings.from_arguments(args), card["target_variant"])
     if requested:
         # A setting whose vLLM flag the profile does not set, or a value above
         # the selected checkpoint's limit, is refused before any Spark is surveyed.
@@ -1127,7 +1128,10 @@ def summary(lock, connection, previous, *, displaced=()):
     backs = [command for command in [switch_back_command(previous), *map(switch_back_command, displaced)] if command]
     placement = placements.from_lock(lock)
     stop = STOP_COMMAND if placement is None else STOP_COMMAND.replace(" --execute", f" {placements.flag(placement)} --execute")
-    return {"dashboard_url": base + DASHBOARD if "image_runtime" in lock else None,
+    selected = lock.get("selection") or {}
+    state = thinking.deployment_default(
+        thinking.of(selected.get("profile"), selected.get("target_variant")), lock.get("serving"))
+    return {"thinking": state, "dashboard_url": base + DASHBOARD if "image_runtime" in lock else None,
             "example_request": (f"curl {connection['api_url']}/chat/completions "
                                 f"-H 'Content-Type: application/json' -d '{body}'"),
             "commands": {"switch_back": " ; ".join(backs) or None, "stop": stop,
@@ -1235,6 +1239,7 @@ def summary_lines(result):
             ("Model status", result.get("dashboard_url")),
             ("SparkRing dashboard", result.get("sparkring_dashboard_url")),
             ("Transport", transport_card_line(result)),
+            ("Thinking", thinking.deployment_text(result["thinking"]) if result.get("thinking") else None),
             ("Try it", result["example_request"]),
             ("Switch back", colour.cmd(commands["switch_back"]) if commands.get("switch_back") else None),
             ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
@@ -1349,6 +1354,8 @@ def execute(args):
                                                             else "start the selected model."))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
+            print("Thinking: " + thinking.deployment_text(thinking.deployment_default(
+                thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock["serving"])))
             print("Serving settings: " + "; ".join(serving_settings.describe(
                 lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
             for line in serving_settings.warnings(lock["serving"], base):
@@ -1404,6 +1411,8 @@ def execute(args):
         # The group the model serves on: its shape, its positions in rank order and the Spark of its API.
         plan["group"] = {"shape": group["name"], "positions": group["positions"],
                          "api_position": group["positions"][0]}
+        plan["thinking"] = thinking.deployment_default(
+            thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock.get("serving"))
         plan["transport"] = transport_summary(lock, choice)
         if size > 2:
             plan["stops"] = [{"deployment": str(path), "profile": placements.profile_of(path),

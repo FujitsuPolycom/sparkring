@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from runtime.common.profiles import ROOT, catalog, load, local_path, read_json, resolve, legacy_recipe_bytes, quickstart_status  # noqa: E402
 
 from runtime.common.environment import render_environment  # noqa: E402
-from runtime.common import thinking  # noqa: E402
+from runtime.common import serving, thinking  # noqa: E402
 
 START = '<!-- BEGIN GENERATED PROFILES -->'
 END = '<!-- END GENERATED PROFILES -->'
@@ -350,7 +350,7 @@ def thinking_column(text, root=ROOT):
 
     The repository README's installer table, whose header starts with
     INSTALLER_TABLE, is maintained by hand except this column: each row's
-    cell is thinking.summary of the profile in its `--profile` value column,
+    cell is the effective thinking default of the profile in its `--profile` value column,
     such as ``on · xhigh``. That column may name a profile by an alias of
     runtime.common.profile_aliases.ALIASES, which selects the profile it stands for. A
     table without the column, or a row whose profile has no record, is refused.
@@ -373,7 +373,8 @@ def thinking_column(text, root=ROOT):
         record = thinking.of(canonical(profile), root=root)
         if record is None:
             raise ValueError(f'README.md installer profile {profile} has no thinking record in {thinking.CATALOG}')
-        cells[column] = thinking.summary(record)
+        state = thinking.deployment_default(record, serving.defaults(canonical(profile), root=root))
+        cells[column] = thinking.summary({"default": state["thinking"], "level": state["level"]})
         lines[number] = '| ' + ' | '.join(cells) + ' |'
         number += 1
     return '\n'.join(lines)
