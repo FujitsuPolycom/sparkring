@@ -56,6 +56,23 @@ def bounded_argv(argv, depth=0):
     return argv
 
 
+def thinking_kwargs(value):
+    """Only bounded thinking arguments are public launch facts; arbitrary template data stays private."""
+    if isinstance(value, str):
+        if len(value) > MAX_ARGV_BYTES:
+            return None
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    if not isinstance(value, dict):
+        return None
+    return {k: v for k, v in value.items()
+            if (k in ("enable_thinking", "thinking") and type(v) is bool
+                or k == "reasoning_effort" and (type(v) is int and 1 <= v <= 100
+                                               or isinstance(v, str) and re.fullmatch(r"[a-z]{1,16}", v)))}
+
+
 def launch_facts(argv):
     argv = bounded_argv(argv)
     engine = next(("vllm" if "vllm" in a else "sglang" for a in argv
@@ -86,6 +103,9 @@ def launch_facts(argv):
         value = next((values[f] for f in flags if f in values), None)
         if value and len(value) <= 512 and not any(c in value for c in "$`\n\r"):
             facts[key] = value
+    kwargs = thinking_kwargs(values.get("--default-chat-template-kwargs"))
+    if kwargs is not None:
+        facts["default_chat_template_kwargs"] = kwargs
     for key in ("tp", "pp", "dp", "dcp"):
         if "--config" not in values and not any(f in values for f in INTEGER_FLAGS[key]):
             facts.setdefault(key, 1)

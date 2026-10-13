@@ -75,7 +75,7 @@ def refresh_nodes(*, state_root=None, output=None, invoke=None, quiet_path=None,
 def cached_node_rows(state_root, output, documents, checked_at):
     """Project public facts by setup identity, retaining failed reads at their original age."""
     from runtime.host.dashboard import read_json
-    from runtime.host.node_containers import MAX_CONTAINERS
+    from runtime.host.node_containers import MAX_CONTAINERS, thinking_kwargs
 
     def read(path):
         try:
@@ -101,10 +101,16 @@ def cached_node_rows(state_root, output, documents, checked_at):
         row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
                if k in document and isinstance(document[k], (str, int, float, bool))}
         containers = document.get("model_containers")
-        row["model_containers"] = [
-            {k: (c[k][:512] if isinstance(c[k], str) else c[k]) for k in fields
-             if k in c and isinstance(c[k], (str, int, float, bool))}
-            for c in containers[:MAX_CONTAINERS] if isinstance(c, dict)] if isinstance(containers, list) else []
+        row["model_containers"] = []
+        for source in containers[:MAX_CONTAINERS] if isinstance(containers, list) else []:
+            if not isinstance(source, dict):
+                continue
+            target = {k: (source[k][:512] if isinstance(source[k], str) else source[k]) for k in fields
+                      if k in source and isinstance(source[k], (str, int, float, bool))}
+            kwargs = thinking_kwargs(source.get("default_chat_template_kwargs"))
+            if kwargs is not None:
+                target["default_chat_template_kwargs"] = kwargs
+            row["model_containers"].append(target)
         return row
 
     # Setup positions remain visible even if a response has no identity, or the
@@ -141,7 +147,8 @@ def site_from_records(state_root: Path) -> dict:
     Each row: the deployment's directory name as `id`, its profile, served model name, positions
     (the whole fabric or the slot's arc), the API address and port SparkRing's own checks use,
     the display URL when one is recorded, whether its last operation stopped it, and each rank's
-    model container name (``installer.containers``)."""
+    model container name (``installer.containers``). Checkpoint selection and the public
+    thinking settings let the reader resolve defaults from the shipped thinking records."""
     from runtime.common import installer
     from runtime.host import api_endpoint, controller
     from runtime.host import placement as placements
@@ -168,6 +175,9 @@ def site_from_records(state_root: Path) -> dict:
         except (ValueError, KeyError, TypeError, IndexError):
             containers = []
         rows.append({"id": Path(directory).name, "deployment_id": lock["id"], "profile": placements.profile_of(directory),
+                     "checkpoint": lock["selection"].get("target_variant"),
+                     "serving": {k: v for k, v in (lock.get("serving") or {}).items()
+                                 if k in ("reasoning_effort", "thinking")},
                      "model": connection["model"], "positions": positions, "api_host": host,
                      "api_port": connection["port"],
                      "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,

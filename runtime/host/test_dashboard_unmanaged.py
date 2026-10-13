@@ -251,6 +251,8 @@ def test_remote_cache_projects_only_public_facts_without_active_deployments(tmp_
     docs = reports(found, clock)
     docs[0]["environment"] = "PRIVATE"
     docs[0]["model_containers"][0]["environment"] = "PRIVATE"
+    docs[0]["model_containers"][0]["default_chat_template_kwargs"] = {
+        "reasoning_effort": "high", "unrelated": "PRIVATE"}
     state = tmp_path / "controller"
     state.mkdir()
     hosts = ["root@192.0.2.10", "root@192.0.2.12"]
@@ -268,6 +270,7 @@ def test_remote_cache_projects_only_public_facts_without_active_deployments(tmp_
     found.node_reports_path = output
     found.cycle()
     assert len(found.models) == 1
+    assert found.snapshot()["groups"][0]["members"][0]["thinking"] == "high (deployment default)"
     found.quiet_path.write_text("")
     assert dashboard_admin.refresh_nodes(**arguments) == {} and calls == [hosts]
     found.quiet_path.unlink()

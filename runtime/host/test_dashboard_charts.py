@@ -145,6 +145,41 @@ def update_page(page):
     page.evaluate("async () => { await refresh(); await new Promise(requestAnimationFrame); }")
 
 
+@pytest.mark.parametrize("width", [1400, 375])
+def test_thinking_line_renders_and_updates_in_place(smooth_page, width):
+    page, value, requests = smooth_page
+    page.set_viewport_size({"width": width, "height": 1000})
+    member = value["groups"][0]["members"][0]
+    row = {"profile": "glm53-flash-nvfp4-spark-tp2"}
+    member["thinking"] = dashboard.thinking_line(row, {})
+    update_page(page)
+    card = page.locator("article.card").first
+    line = card.locator(".thinking")
+    assert line.is_visible() and line.inner_text() == "Thinking: max (model default)"
+    line.evaluate("el => window.heldThinking = el")
+    card.evaluate("el => window.heldCard = el")
+    card.locator("details").first.evaluate("el => { el.open = true; window.heldDetail = el; }")
+    before = len(requests)
+    member["settings"]["default_chat_template_kwargs"] = {"reasoning_effort": "high"}
+    member["thinking"] = dashboard.thinking_line(row, member["settings"])
+    update_page(page)
+    assert line.inner_text() == "Thinking: high (deployment default)"
+    assert line.evaluate("el => el === heldThinking && !el.closest('details')")
+    assert card.evaluate("el => el === heldCard")
+    assert card.locator("details").first.evaluate("el => el === heldDetail && el.open")
+    assert 'Chat defaults' in card.text_content() and '{"reasoning_effort":"high"}' in card.text_content()
+    assert all("/api/status" in url for url in requests[before:])
+    assert page.evaluate("document.documentElement.scrollWidth <= innerWidth")
+    output = os.environ.get("SPARKRING_CHART_SCREENSHOTS")
+    if output:
+        Path(output).mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(Path(output) / f"thinking-{width}.png"), full_page=True)
+    member["thinking"] = None
+    update_page(page)
+    assert card.locator(".thinking").count() == 0
+    assert card.evaluate("el => el === heldCard")
+
+
 def test_unmanaged_four_pairs_with_reused_rendezvous(smooth_page, tmp_path):
     from runtime.host.test_dashboard_ring_observation import ring_observation
     page, value, _ = smooth_page
