@@ -153,10 +153,10 @@ DEFAULT_NCCL = "never"
 SESSION_TITLES = {"tp": "tensor-parallel session", "dcp": "decode-context-parallel sessions"}
 # GLM-5.3-Flash's KDA prefill coalescing (VLLM_B12X_KDA_PREFILL_COALESCING=1) starts only at these
 # (tensor, decode-context) parallel sizes in the vLLM of the CSF-reading images
-# (validate_coalescing_config in vllm/v1/core/recurrent_prefill_checkpoint.py of build
-# sparkring-kraken-beta-20261007-bc9ea774); at any other size the model stops at construction.
+# with runtime/images/derive_dcp2_prefill.py applied. Unpatched images refuse TP2/DCP2
+# in validate_coalescing_config; the research profile requires the derived image lock.
 KDA_COALESCING = "VLLM_B12X_KDA_PREFILL_COALESCING"
-KDA_COALESCING_SIZES = ((2, 1), (4, 1), (4, 2), (4, 4))
+KDA_COALESCING_SIZES = ((2, 1), (2, 2), (4, 1), (4, 2), (4, 4))
 # The tuning-row settings that set a variable of tuning.SETTINGS, which the session then takes instead of the
 # table's: the row's link slot count and link slot.
 ROW_TABLE_SETTINGS = {"link_slots": "SIRCL_LINK_SLOTS", "link_slot": "SIRCL_LINK_SLOT_BYTES"}
@@ -1004,7 +1004,7 @@ def dcp_problems(value, groups, profile_environment, arguments, effective):
     coalescing = profile_environment.get(KDA_COALESCING, "0").strip() not in ("", "0")
     _require(not coalescing or (tensor, size) in KDA_COALESCING_SIZES,
              f"the profile turns on GLM-5.3-Flash's KDA prefill coalescing ({KDA_COALESCING}=1), which vLLM starts only "
-             f"at TP2 with decode-context parallelism 1 and TP4 with 1, 2 or 4, not at TP{tensor} with {size}")
+             f"at TP2 with decode-context parallelism 1 or 2 and TP4 with 1, 2 or 4, not at TP{tensor} with {size}")
     policy_, reason = guard.effective_policy(groups[0].nccl_policy, groups[0].nccl_reason, nccl_mode=value["nccl"],
                                              environ=profile_environment)
     if policy_.value == "none" and effective.value != "none":
@@ -1371,8 +1371,8 @@ def check_layer(image, parent_receipt_sha256, sircl, *, run):
 
 
 def check_host_document(value, *, root="/"):
-    """Raise TransportError unless this Spark's fabric document has the deployment's identity and — on a SIRCL
-    deployment, which records tuning — the Spark holds every measured tuning table the deployment mounts from
+    """Raise TransportError unless this Spark's fabric document has the deployment's identity and â€” on a SIRCL
+    deployment, which records tuning â€” the Spark holds every measured tuning table the deployment mounts from
     ``HOST_TABLES``, byte for byte. A libsircl deployment's check is ``libsircl.check_host_document``."""
     if value.get("backend") == LIBSIRCL:
         from runtime.common import libsircl
