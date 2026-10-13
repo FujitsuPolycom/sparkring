@@ -109,13 +109,19 @@ of `main`, installs it with `apt` and runs `sudo sparkring install` with every
 option you pass it. Run it on Node A as a user with sudo; the one-line command
 is in [Get the package](install-reference.md#get-the-package). It builds in a
 temporary directory under `/var/tmp` and removes it before `sparkring install`
-starts, or after a plan from the extracted package ends. When piped, it reads
+starts, or after a plan from the extracted package ends. `--keep-package`
+uses the installed version directly without a temporary clone or build. When piped, it reads
 its questions and the installer's from the terminal. It skips `apt` if the
-built version is installed.
+built version is installed. Before replacing an installed package, it checks
+the verified distribution revision against the requested source history.
+A divergent or unidentified source is named alongside the requested revision
+and requires explicit terminal approval, even with `--yes`. Use
+`--keep-package` to retain a development build while changing the model.
 
 | Flag | Meaning |
 |---|---|
-| `--yes` | Answer the package question and pass `--yes` to `sparkring install`, with the same limits; required without a terminal |
+| `--yes` | Approve package installation and pass `--yes` to `sparkring install`; replacing a divergent or unidentified source still requires terminal approval |
+| `--keep-package` | Skip fetching, building and installing a package; run the installed version, also with `--plan`; requires a package and cannot be combined with `--package-only` |
 | `--plan` | Install nothing; plan with the built version (below) |
 | `--package-only` | Ask the package question, install or keep the package and stop before `sparkring install`; not with `--plan` |
 | `--json` | One `sparkring-install-result/v1` document on stdout (below); progress, questions and `apt` output on stderr |
