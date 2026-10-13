@@ -282,8 +282,12 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 }
 .graph-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .graph-controls select, #graph-window { min-height: 44px; background: var(--code); color: var(--fg); }
-.graph-controls button { min-height: 44px; min-width: 80px; }
-.pause-age { min-width: 16ch; font-variant-numeric: tabular-nums; }
+.graph-controls .seg { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 999px; }
+.graph-controls .seg button { min-height: 28px; min-width: 0; padding: 0 10px; border: 0; border-radius: 999px;
+  background: transparent; color: var(--muted); font: 500 .75rem/1 var(--mono); }
+.graph-controls .seg button[aria-pressed="true"] { background: var(--line); color: var(--fg); }
+.graph-controls .pause { min-height: 28px; min-width: 28px; padding: 0 10px; border-radius: 999px; font: 500 .75rem/1 var(--mono); }
+.pause-age { min-width: 14ch; font: .75rem/1 var(--mono); color: var(--muted); font-variant-numeric: tabular-nums; }
 .axis { display: flex; justify-content: space-between; height: 20px; font-size: .7rem; color: var(--muted); }
 .plot-frame { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 4px; }
 .y-axis { height: 80px; margin-top: 3px; flex-direction: column-reverse; align-items: flex-end; }
@@ -683,10 +687,13 @@ function viewFor(id) {
 }
 function updateGraphControls() {
   const controls = $("page-graphs");
-  if (!controls.firstChild) patch(controls, `<label>Window <select aria-label="Graph window">${options(graphView.window)}</select></label>
-    <button type="button" data-pause>Pause</button><span class="pause-age"></span>`);
-  controls.querySelector("select").value = graphView.window;
-  text(controls.querySelector("button"), graphView.paused === null ? "Pause" : "Resume");
+  if (!controls.firstChild) patch(controls, `<span class="seg" role="group" aria-label="Graph window">${windows.map(([v, label]) =>
+    `<button type="button" data-window="${v}" aria-pressed="false">${label.replace(" min", "m").replace(" h", "h")}</button>`).join("")}</span>
+    <button type="button" class="pause" data-pause aria-label="Pause graphs">❚❚</button><span class="pause-age"></span>`);
+  for (const b of controls.querySelectorAll("[data-window]")) attr(b, "aria-pressed", String(b.dataset.window === graphView.window));
+  const pause = controls.querySelector("[data-pause]");
+  text(pause, graphView.paused === null ? "❚❚" : "▶");
+  attr(pause, "aria-label", graphView.paused === null ? "Pause graphs" : "Resume graphs");
 }
 function options(selected, dialog = false) {
   return [...windows, ...(dialog ? [["21600", "6 h"]] : [])].map(([v, label]) =>
@@ -783,12 +790,14 @@ $("stacks").addEventListener("pointerout", event => {
   const box = event.target.closest("[data-graph]");
   if (box && !box.querySelector("svg").contains(event.relatedTarget)) box.pointerX = null;
 });
-$("page-graphs").addEventListener("change", event => {
-  graphView.window = event.target.value;
-  try { localStorage.setItem("sparkring-window", event.target.value); } catch (_) { /* Storage is optional. */ }
-  scheduleRender();
-});
 $("page-graphs").addEventListener("click", event => {
+  const choice = event.target.closest("[data-window]");
+  if (choice) {
+    graphView.window = choice.dataset.window;
+    try { localStorage.setItem("sparkring-window", graphView.window); } catch (_) { /* Storage is optional. */ }
+    scheduleRender();
+    return;
+  }
   if (!event.target.closest("[data-pause]") || !data) return;
   graphView.paused = graphView.paused === null ? serverNow() : null;
   for (const member of data.groups.flatMap(g => g.members || [])) {

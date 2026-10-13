@@ -296,13 +296,13 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
     now = value["generated_at"]
     member["history"] = [[now - 600 + i * 5, 1000 if i == 1 else 20, 1, 0, .25, 50, "metrics"] for i in range(121)]
     update_page(page)
-    selector = page.locator("[data-controls] select").first
+    choose = lambda v: page.locator(f"[data-controls] [data-window='{v}']").first.click()
     assert graph.evaluate("el => el.plot.top") > 1000
     for option, seconds in [("300", 300), ("900", 600), ("3600", 600), ("10800", 600), ("auto", 600)]:
-        selector.select_option(option)
+        choose(option)
         page.wait_for_function("wanted => document.querySelector('[data-graph]').plotSignature.includes(wanted)", arg=f'"{option}"')
         assert abs(graph.evaluate("el => el.plot.now - el.plot.start") - seconds) < 5
-    selector.select_option("300")
+    choose("300")
     page.wait_for_function("() => document.querySelector('[data-graph]').plot.top < 100")
     assert page.evaluate("localStorage.getItem('sparkring-window')") == "300"
     # With a fixed window, an aging spike must leave the scale as time advances.
@@ -315,7 +315,7 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
     assert graph.evaluate("el => el.plot.top") < 100
     pause = page.locator("[data-pause]").first
     pause.click()
-    page.wait_for_function("() => document.querySelector('[data-pause]').textContent === 'Resume'")
+    page.wait_for_function("() => document.querySelector('[data-pause]').textContent === '▶'")
     frozen = graph.evaluate("el => [el.plot.start, el.plot.now, el.querySelector('path').getAttribute('d')]")
     for _ in range(3):
         value["generated_at"] += 5
@@ -385,7 +385,7 @@ def test_member_identity_order_and_display_numbers(smooth_page):
     # A browser without storage still has working controls and data updates.
     page.evaluate("Object.defineProperty(window, 'localStorage', {get() {throw new Error('disabled');}}); views.clear(); scheduleRender()")
     update_page(page)
-    page.locator("[data-controls] select").first.select_option("900")
+    page.locator("[data-controls] [data-window='900']").first.click()
 
 
 def test_stored_history_draws_on_first_render_and_polls_only_deltas(tmp_path):
