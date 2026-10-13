@@ -50,6 +50,7 @@ GEOMETRY = """() => {
   const overlap = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 &&
     Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
   for (const el of document.querySelectorAll('.legend .pill, .card .pill, .card .tag, .card .chip')) {
+    if (!el.checkVisibility()) continue;
     const parent = el.closest('li, article');
     if (!inside(box(el), box(parent))) failures.push('overflow: ' + el.textContent);
   }
@@ -64,6 +65,7 @@ GEOMETRY = """() => {
     }
   }
   for (const el of document.querySelectorAll('.legend li, .card, .card .head, .card .sub, .card .model')) {
+    if (!el.checkVisibility()) continue;
     if (el.scrollWidth > el.clientWidth + 1) failures.push('content overflow: ' + el.className);
   }
   if (document.documentElement.scrollWidth > innerWidth) failures.push('page overflow');
@@ -121,8 +123,8 @@ def test_fixture_layout_and_in_place_updates(tmp_path, width):
         assert "GPU in use" in text and "TP?" not in text
         assert page.locator("#legend .mid .t1").all_inner_texts().count("GPU in use") == 4
         assert page.locator('#legend .mid span[title="GLM-5.3-Flash-NVFP4-Spark-TP2"]').count() == 1
-        assert "1 Spark" in page.locator("#stacks").inner_text()
-        assert "2 Sparks" in page.locator("#stacks").inner_text()
+        assert "1 Spark" in page.locator("#stacks").text_content()
+        assert "2 Sparks" in page.locator("#stacks").text_content()
         assert "1 Sparks" not in page.locator("#stacks").inner_text()
         for label in page.locator(".band").all():
             assert label.locator("title").text_content()
@@ -130,7 +132,7 @@ def test_fixture_layout_and_in_place_updates(tmp_path, width):
         page.evaluate("""() => {
           const m = data.groups.flatMap(g => g.members).find(m => m.state === 'serving');
           m.state = 'busy'; m.state_label = 'Busy: API unavailable'; render();
-          document.querySelectorAll('.launch-facts').forEach(el => el.open = true);
+          document.querySelectorAll('.card-details, .launch-facts').forEach(el => el.open = true);
         }""")
         assert page.evaluate(GEOMETRY) == []
         for job in page.locator(".card").all():

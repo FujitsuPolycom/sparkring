@@ -130,8 +130,8 @@ unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
 Each card's **Thinking** line shows what applies when a request does not
-choose: an effort level, on, off or always, followed by model or deployment
-default. The terminal view shows the same text in its detail rows. Installed
+choose: on, off or always, followed by the effort level and available levels
+when known, such as `always · high (levels: low, high or max)`. The terminal view shows the same text in its detail rows. Installed
 checkpoints without a recorded thinking behaviour have no line. The raw
 **Chat defaults** row remains in the web details.
 
@@ -173,6 +173,13 @@ a level. This display adds no model API requests.
 
 ### Rates and graphs
 
+Serving cards show four tiles (output, prefill, running/max requests and KV
+in use as a percentage of tokens), then three compact graphs and node chips.
+Steps and draft acceptance share a secondary line. Empty graphs show a baseline
+and **no data yet**. Stopped deployments show their state, last model and a
+copyable start command. **Details** expands settings, recovery, totals, logs
+and container facts; node chips for stopped deployments are there too.
+
 The ring page and terminal show prefill tokens/s during intervals with
 prompt activity. Idle shows a dash. `/metrics` prefill is labelled
 **approximate**; compatible images can supply computed-token counters through
@@ -182,13 +189,15 @@ can arrive less often than `/metrics`. Missing or stale plugin data falls
 back to `/metrics`.
 
 Hover a graph for its value and timestamp. **Window** selects Auto, 5 min,
-15 min, 1 h or 3 h for a card's graphs. Auto fills the width with available
-history, up to three hours; shorter histories fill any selected window.
-**Pause** freezes those graphs while the tiles keep updating. **Resume**
-jumps to now. The browser remembers each card's window when storage is available.
+15 min, 1 h or 3 h for all cards' graphs from the page header. Auto fills
+the width with available history, up to three hours; shorter histories fill
+any selected window.
+**Pause** freezes all graphs while the tiles keep updating. **Resume**
+jumps to now. The browser remembers the page window for this viewer when
+storage is available.
 
-Select **Expand graph** for a frozen snapshot of stored and session history,
-up to six hours. Its window selector also offers 6 h. Use the slider with a
+Click or tap a graph, or focus it and press Enter or Space, for a frozen
+snapshot of stored and session history, up to six hours. Its window selector also offers 6 h. Use the slider with a
 pointer, touch, arrow keys, Home or End; Escape closes the view and restores
 focus. Graphs follow the OS light or dark theme. Interaction sends no request.
 

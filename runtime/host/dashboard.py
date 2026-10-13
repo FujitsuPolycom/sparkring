@@ -95,6 +95,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import shlex
 import socket
 import sys
 import threading
@@ -164,7 +165,7 @@ COUNTERS = {
     "sglang:time_to_first_token_seconds_count": "ttft_count",
 }
 SETTING_KEYS = (
-    "tensor_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens",
+    "tensor_parallel_size", "decode_context_parallel_size", "max_model_len", "max_num_seqs", "max_num_batched_tokens",
     "cache_dtype", "quantization", "speculative_method", "num_speculative_tokens",
     "reasoning_parser", "tool_call_parser", "default_chat_template_kwargs",
     "kv_cache_memory_bytes", "prefix_caching_enabled",
@@ -610,8 +611,9 @@ def thinking_line(row, settings):
     state = thinking.deployment_default(record, chosen)
     if enabled and state["thinking"] != "off":
         state.update(thinking="on", chosen=True)
-    value = state["thinking"] if state["thinking"] == "off" or state["level"] is None else state["level"]
-    return f"{value} ({'deployment' if state['chosen'] else 'model'} default)"
+    value = thinking.summary({"default": state["thinking"], "level": state["level"]})
+    levels = thinking.levels_text(record)
+    return value + (f" (levels: {levels})" if levels else "")
 
 
 def rendezvous_head(fabric, container, observed):
@@ -1234,6 +1236,7 @@ class Collector:
             "id": model.id, "name": ("Spark " if len(positions) == 1 else "Sparks ") + ", ".join(map(str, positions))
             if row.get("unmanaged") else run_name(positions),
             "profile": row.get("profile"),
+            "start_command": start_command(row),
             "unmanaged": bool(row.get("unmanaged")), "gpu_job": gpu_job, "launch": launch,
             "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record" if row.get("unmanaged") else None,
             "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
@@ -1326,6 +1329,21 @@ def recovery_findings(path: Path) -> dict:
             "enabled": record.get("enabled", True), "stopped": bool(record.get("stopped")),
             "telemetry": finding.get("telemetry")}
     return found
+
+
+def start_command(row):
+    """Name the saved deployment, including inactive records that share a slice."""
+    if row.get("unmanaged"):
+        return None
+    profile, identity = row.get("profile"), row.get("id", "")
+    if isinstance(profile, str) and profile and (identity == profile or identity.startswith(profile + "-")):
+        command = ["sudo", "sparkring", "up", profile]
+        instance = identity[len(profile):].removeprefix("-")
+        if instance:
+            command += ["--instance", instance]
+    else:
+        command = ["sudo", "sparkring", "up", "--on", ",".join(map(str, row["positions"]))]
+    return shlex.join(command)
 
 
 def log_commands(hostname, container) -> dict:
