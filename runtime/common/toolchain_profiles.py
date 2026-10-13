@@ -46,7 +46,7 @@ TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4",
     "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"))
 # Topology of each node count a serving profile runs on.
-TOPOLOGIES = {2: "direct-pair-2", 4: "direct-cycle-4", 8: "direct-cycle-8"}
+TOPOLOGIES = {2: "direct-pair-2", 4: "direct-cycle-4", 6: "direct-path-6", 8: "direct-cycle-8"}
 TOOLCHAIN_ENTRYPOINT = "/opt/sparkring/toolchain/toolchain.py"
 
 
@@ -79,7 +79,7 @@ def canonical(profile):
             and profile not in [read(TP4_CONFIG), read(TP4_CACHE_CONFIG)]
             and profile not in [read(path) for path in TOOLCHAIN_CONFIGS] and not fabric):
         raise ValueError("Select an unchanged canonical serving configuration")
-    topologies = ("direct-cycle-8",) if fabric else ("direct-pair-2", "direct-cycle-4")
+    topologies = ("direct-path-6", "direct-cycle-8") if fabric else ("direct-pair-2", "direct-cycle-4")
     if profile.get("schema") != "sparkring-serving-profile/v1" or profile.get("topology") not in topologies:
         raise ValueError("Invalid serving profile schema/topology")
     return profile

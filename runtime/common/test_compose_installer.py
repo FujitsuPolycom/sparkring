@@ -170,11 +170,12 @@ def test_every_public_example_resolves_to_its_specification(profile, tmp_path):
 
 
 @pytest.mark.parametrize("profile", installer_image.SIRCL_ONLY)
-def test_an_eight_spark_profile_renders_for_the_installer_and_has_no_compose_export(profile):
+def test_a_relayed_profile_renders_for_the_installer_and_has_no_compose_export(profile):
     from runtime.common import toolchain_profiles
     configuration = toolchain_profiles.read(compose.ROOT / "profiles" / profile / "config.json")
     assert toolchain_profiles.canonical(configuration) is configuration
-    assert toolchain_profiles.node_count(configuration) == 8 and configuration["topology"] == "direct-cycle-8"
+    nodes = toolchain_profiles.node_count(configuration)
+    assert (nodes, configuration["topology"]) in ((6, "direct-path-6"), (8, "direct-cycle-8"))
     with pytest.raises(ValueError, match="Select an unchanged canonical serving configuration"):
         toolchain_profiles.canonical(dict(configuration, topology="direct-cycle-4"))
     site = {"schema": "sparkring-compose-site/v1", "name": "eight", "master": "192.0.2.20", "ranks": [
@@ -183,9 +184,9 @@ def test_an_eight_spark_profile_renders_for_the_installer_and_has_no_compose_exp
          "model": "/srv/sparkring/eight/checkpoints/model", "cache": "/srv/sparkring/eight/cache",
          "repository": "/srv/sparkring/eight/source", "deployment_root": "/srv/sparkring/eight/containers",
          "fabric": {"site_path": "/etc/sparkring/fabric/topology.json", "site_sha256": "1" * 64,
-                    "plan_sha256": "2" * 64}} for rank in range(8)]}
+                    "plan_sha256": "2" * 64}} for rank in range(nodes)]}
     specs, _ = compose.specifications(profile, site)
-    assert [spec.environment["VLLM_HOST_IP"] for spec in specs] == [f"192.0.2.{20 + rank}" for rank in range(8)]
+    assert [spec.environment["VLLM_HOST_IP"] for spec in specs] == [f"192.0.2.{20 + rank}" for rank in range(nodes)]
     with pytest.raises(ValueError, match="runs only on SIRCL ring sessions, which a Compose deployment does not use"):
         compose.build(profile, site)
     assert not (compose.ROOT / "profiles" / profile / "compose").exists()

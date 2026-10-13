@@ -32,6 +32,10 @@
     {
       "id": "glm53-flash-nvfp4-sparkcache-tp4",
       "path": "profiles/glm53-flash-nvfp4-sparkcache-tp4/profile.json"
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp6",
+      "path": "profiles/glm53-nvfp4-csf-tp6/profile.json"
     }
   ]
 }
