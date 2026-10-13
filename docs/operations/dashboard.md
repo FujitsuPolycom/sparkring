@@ -97,7 +97,7 @@ http://NODE_A_LAN_ADDRESS:8090/
   connection, where the model API of a model on Node A serves; without one,
   Node A's management address. Setup's plan prints the exact address, and
   while the page is on, the card after `Model ready:` prints it as
-  `SparkRing dashboard:`.
+  `Ring dashboard:`.
 - It listens on port 8090 on that address and on `127.0.0.1`, never on the
   fabric or the administration network. On Node A itself,
   `curl http://127.0.0.1:8090/api/status` reads it.

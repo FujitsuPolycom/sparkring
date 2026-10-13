@@ -82,14 +82,11 @@ def directory():
 
 
 def record(message):
-    """Write progress to the log file, preserving colour marks so logs replay colors the same commands.
-
-    Colour marks are null bytes (\x00) that are invisible to cat/grep but understood by the logs replay.
-    """
+    """Write plain progress text; command highlighting is reconstructed on replay."""
     if _log is not None:
         stamp = datetime.datetime.now().astimezone().isoformat(timespec="seconds")
         with _lock:
-            _log.write(stamp + "  " + message.rstrip() + "\n")
+            _log.write(stamp + "  " + colour.plain(message).rstrip() + "\n")
             _log.flush()
 
 
@@ -153,7 +150,7 @@ def run(operation, *, events=None):
     if any(p.is_symlink() for p in paths):
         raise ValueError("Installation log file cannot be a symlink")
     with contextlib.ExitStack() as stack:
-        primary = stack.enter_context(paths[0].open("a", encoding="utf-8", buffering=1))
+        primary = stack.enter_context(paths[0].open("a", encoding="utf-8", buffering=1, newline="\n"))
         details = stack.enter_context(paths[1].open("a", encoding="utf-8", buffering=1))
         for path in paths:
             path.chmod(0o600)
@@ -315,6 +312,8 @@ def main(argv=None):
     parser.add_argument("--lines", type=int, default=40)
     args = parser.parse_args(argv)
     colour.set_mode(args.color)
+    if args.plain or args.details:
+        colour.set_mode("never")
     root = Path(os.environ.get("SPARKRING_LOG_DIR", LOG_ROOT))
     path = root / ("install-details.log" if args.details else "install.log")
     if not path.exists() and root == Path(LOG_ROOT) and unreadable(root):
@@ -332,14 +331,17 @@ def main(argv=None):
     try:
         with path.open(encoding="utf-8") as stream, Console(sys.stdout, plain=args.plain or args.details) as console:
             from collections import deque
-            for line in deque(stream, maxlen=args.lines):
+            replay = colour.CardReplay()
+            def replay_line(line):
+                return line if args.details else replay.line(line)
+            for line in deque((replay_line(line) for line in stream), maxlen=args.lines):
                 console.write(line)
             if args.follow:
                 console.begin("Waiting for new installation output", elapsed=False)
             while args.follow:
                 line = stream.readline()
                 if line:
-                    console.write(line)
+                    console.write(replay_line(line))
                 else:
                     time.sleep(0.25)
     except KeyboardInterrupt:

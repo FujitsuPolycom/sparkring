@@ -11,8 +11,8 @@ text on a stream decides what those marks become:
 
 The marks are private sentinel characters that only this module and the
 writers it documents (``runtime.host.terminal.Console``, ``runtime.host.progress``)
-interpret. No message is scanned for command-like text after the fact: a span
-exists only where a builder placed it.
+interpret. Log replay reconstructs the summary card's command slots from
+plain text with :class:`CardReplay`; other log messages stay plain.
 
 Colour follows the stream, not the process: ``stdout`` and ``stderr`` decide
 independently. ``--color=auto|always|never`` on a command's parser overrides
@@ -102,6 +102,53 @@ def action(text):
         return text
     match = _ACTION.match(text)
     return cmd(match[0]) + text[match.end():] if match and match[0] else text
+
+
+class CardReplay:
+    """Restore command spans inside a Model ready card, including a tailed card.
+
+    Feed every saved line before selecting the tail so a command line is
+    recognized even when its heading is outside the displayed lines.
+    The curl and package-removal commands are recognized only inside a card.
+    """
+
+    def __init__(self):
+        self.inside = False
+        self.test_request = False
+
+    def line(self, line):
+        line = plain(line)
+        match = re.match(r"^(\d{4}-\d{2}-\d{2}T\S+  )?(.*?)(\n?)$", line)
+        if not match:
+            return line
+        stamp, message, newline = match.groups()
+        if message.startswith("Model ready:"):
+            self.inside = True
+        elif message and not message.startswith("  "):
+            self.inside = False
+        if self.inside:
+            if self.test_request and message.startswith("    curl "):
+                message = "    " + cmd(message[4:])
+            else:
+                slot = re.match(r"^(  (?:Watch logs|Stop|Start again|Recovery|Uninstall):\s+)(.*)$", message)
+                if slot:
+                    prefix, value = slot.groups()
+                    if prefix.startswith("  Uninstall:"):
+                        stop, separator, remove = value.partition(", then ")
+                        if _ACTION.match(stop) and separator and remove == "sudo apt remove sparkring on each Spark":
+                            value = cmd(stop) + separator + cmd("sudo apt remove sparkring") + " on each Spark"
+                    elif prefix.startswith("  Recovery:"):
+                        start = value.find("sudo sparkring ")
+                        if start >= 0:
+                            command, suffix = (value[start:-8], " retries") if value.endswith(" retries") else (value[start:], "")
+                            value = value[:start] + action(command) + suffix
+                    elif _ACTION.match(value):
+                        value = cmd(value)
+                    message = prefix + value
+            self.test_request = message == "  Test it:"
+        else:
+            self.test_request = False
+        return (stamp or "") + message + newline
 
 
 def parser():

@@ -88,8 +88,10 @@ A download shows how much is done and the time left. The first start on new
 Sparks can take 10 to 30 minutes; progress names what the model is doing.
 
 The install ends with `Model ready:`, the API and dashboard addresses, a sample
-request and the commands to switch back or stop. If it stops early, run the
-same command again; it continues where it stopped.
+request and the commands to watch logs, stop, start again or uninstall.
+`Model status` opens this model's runtime page; `Ring dashboard` opens the
+Node A service for every Spark and model. Unknown capacity is omitted.
+If it stops early, run the same command again; it continues where it stopped.
 
 The command installs the newest SparkRing from `main`. To repeat an
 installation exactly, use the

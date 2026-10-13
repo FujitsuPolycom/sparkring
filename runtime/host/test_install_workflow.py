@@ -282,14 +282,17 @@ def test_completion_prints_a_summary_card_after_model_ready(machine, capsys):
     assert result["dashboard_url"] == result["api_url"].removesuffix("/v1") + "/v1/sparkring/status/view"
     assert result["example_request"].startswith(f"curl {result['api_url']}/chat/completions ")
     assert json.dumps(result["model"]) in result["example_request"]
-    assert result["commands"] == {"switch_back": None, "stop": "sudo sparkring down --execute",
+    assert result["commands"] == {"switch_back": None, "start_again": result["checkpoint"]["command"],
+                                  "stop": "sudo sparkring down --execute",
                                   "remove": "sudo apt remove sparkring"}
     card = out.err[out.err.index("Model ready:"):]
-    assert f"  Model:               {result['model']}" in card and f"  Model status:        {result['dashboard_url']}" in card
-    assert "  Try it:              curl " in card and "  Stop:                sudo sparkring down --execute" in card
-    assert "  Uninstall:           stop the model, then sudo apt remove sparkring on each Spark" in card
+    assert f"Model ready: {result['model']} on Sparks 0-1 (spark0, spark1)" in card
+    assert f"  Model status:    {result['dashboard_url']}" in card
+    assert "Capacity:" not in card
+    assert "  Test it:\n    curl " in card and "  Stop:            sudo sparkring down --execute" in card
+    assert "  Uninstall:       sudo sparkring down --execute, then sudo apt remove sparkring on each Spark" in card
     # The SparkRing dashboard's service is off on the machine the tests run on (conftest.py).
-    assert result["sparkring_dashboard_url"] is None and "SparkRing dashboard:" not in card
+    assert result["sparkring_dashboard_url"] is None and "Ring dashboard:" not in card
 
 
 def test_the_card_names_the_sparkring_dashboard_while_its_service_is_on(machine, monkeypatch, capsys):
@@ -300,9 +303,8 @@ def test_the_card_names_the_sparkring_dashboard_while_its_service_is_on(machine,
     result = json.loads(out.out)
     assert result["sparkring_dashboard_url"] == "http://192.0.2.50:8090/"
     card = out.err[out.err.index("Model ready:"):].splitlines()
-    # The new card format has "Status page:" and "Dashboard:" instead of "Model status:" and "SparkRing dashboard:"
-    assert any("Status page" in line and result['dashboard_url'] in line for line in card)
-    assert any("Dashboard" in line and "http://192.0.2.50:8090/" in line for line in card)
+    assert any("Model status" in line and result['dashboard_url'] in line for line in card)
+    assert any("Ring dashboard" in line and "http://192.0.2.50:8090/" in line for line in card)
 
 
 def test_switch_back_names_the_replacement_of_a_replaced_profile(tmp_path):
@@ -337,53 +339,12 @@ def test_summary_names_the_command_that_reinstalls_the_replaced_model(tmp_path):
     assert flow.summary({}, connection, str(previous)) == {**value, "dashboard_url": None, "commands": {
         **value["commands"], "switch_back": "sudo sparkring install --profile older-profile"}}
     lines = [colour.plain(line) for line in flow.summary_lines({**connection, **value})]
-    # Check that the new card format is present
     assert any("API" in line and "http://192.0.2.10:8000/v1" in line for line in lines)
-    assert any("Status page" in line and "http://192.0.2.10:8000/v1/sparkring/status/view" in line for line in lines)
-    assert any("Start again" in line and REPEAT in line and " --checkpoint qad-step-4000" in line for line in lines)
-    assert "Test it:" in lines
+    assert any("Model status" in line and "http://192.0.2.10:8000/v1/sparkring/status/view" in line for line in lines)
+    assert not any("Start again" in line for line in lines)
+    assert "  Test it:" in lines
     assert "Watch logs" in " ".join(lines)
     assert flow.summary_lines({"api_url": connection["api_url"]}) == []
-
-
-def test_model_ready_line_shows_model_name_and_sparks():
-    """Test the new Model ready line format with model name and spark positions."""
-    result = {
-        "model": "DeepSeek-V4.1-Flash-TP4",
-        "group": {"positions": [0, 1, 2, 3]},
-        "elapsed_seconds": 360,
-    }
-    line = flow.model_ready_line(result)
-    assert "DeepSeek-V4.1-Flash-TP4" in line
-    assert "Sparks 0-3" in line
-    assert "6 min" in line
-
-    # Test with no elapsed time
-    result = {"model": "test-model", "group": {"positions": [0, 1]}}
-    line = flow.model_ready_line(result)
-    assert "test-model" in line
-    assert "Sparks 0-1" in line
-
-    # Test with no group
-    result = {"model": "test-model"}
-    line = flow.model_ready_line(result)
-    assert "test-model" in line
-    assert "Sparks" not in line
-
-
-def test_summary_lines_has_new_card_format():
-    """Test that summary_lines produces the new card format with all required sections."""
-    connection = {"api_url": "http://192.0.2.10:8000/v1", "model": "Test-Model"}
-    previous = None
-    value = flow.summary({}, connection, previous)
-    lines = [colour.plain(line) for line in flow.summary_lines({**connection, **value})]
-
-    # Check for the new field labels
-    text = "\n".join(lines)
-    assert "Profile:" in text or "API:" in text  # At least some fields present
-    assert "Test it:" in lines
-    assert "Watch logs" in text
-    assert "curl" in text
 
 
 def test_events_file_holds_the_run_and_its_result_while_stdout_keeps_one_document(machine, capsys, tmp_path):
@@ -1158,7 +1119,7 @@ def test_the_api_address_is_shown_and_recorded_but_names_the_same_deployment(mac
     assert shown["api_url"] == "http://llm.example.net:8000/v1" and shown["check_url"] == plain["api_url"]
     assert shown["dashboard_url"] == "http://llm.example.net:8000/v1/sparkring/status/view"
     assert shown["example_request"].startswith("curl http://llm.example.net:8000/v1/chat/completions ")
-    assert "Model ready: http://llm.example.net:8000/v1" in output_lines(out.err)
+    assert any(line.startswith("  API: ") and "http://llm.example.net:8000/v1" in line for line in output_lines(out.err))
     assert (f"Model API: http://llm.example.net:8000/v1 (SparkRing's own checks use {plain['api_url']})"
             in output_lines(out.err))
     assert api_endpoint.recorded(shown["deployment"]) == "llm.example.net"
@@ -1205,7 +1166,7 @@ def test_a_terminal_installation_asks_where_the_api_listens(machine, sparks, mon
         "  1. Every address of Node A, shown as http://192.0.2.10:8000/v1",
         "  2. Only 192.0.2.10 (enP7s7)",
         "  3. Only 203.0.113.7 (wlP9s9)"]
-    assert "Model ready: http://203.0.113.7:9100/v1" in err
+    assert any(line.startswith("  API: ") and "http://203.0.113.7:9100/v1" in line for line in err)
     chosen = rollout.active(controller.STATE)
     assert installer.read(chosen / "deployment.lock.json")["serving"] == {"api_bind": "203.0.113.7", "api_port": 9100}
     # Enter keeps the automatic endpoint: the deployment of the same request without the question.
@@ -2982,14 +2943,14 @@ def test_installation_turns_automatic_recovery_on_unless_asked_not_to(machine, c
     result = json.loads(out.out)
     directory = rollout.active(controller.STATE)
     assert result["auto_recover"] is True and recovery.record_of(recovery.load(), directory)["enabled"] is True
-    assert "  Recovery:            restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
+    assert "  Recovery:        restarts the model if a Spark stops serving; turn off: sudo sparkring recover off" in out.err
     recovery.update(directory, failures=2)
     assert command("--no-auto-recover") == 0
     out = capsys.readouterr()
     value = recovery.record_of(recovery.load(), directory)
     assert json.loads(out.out)["auto_recover"] is False
     assert (value["enabled"], value["failures"]) == (False, 0)
-    assert "  Recovery:            off; turn on: sudo sparkring recover on" in out.err
+    assert "  Recovery:        off → sudo sparkring recover on" in out.err
 
 
 @pytest.mark.parametrize("outcome, expected, line", [
@@ -3004,7 +2965,7 @@ def test_installation_reports_recovery_only_when_it_was_recorded_for_a_supported
     out = capsys.readouterr()
     result = json.loads(out.out)
     assert (result["recovery"], result["auto_recover"]) == (expected, False)
-    assert "  Recovery:            " + line in out.err
+    assert "  Recovery:        " + line in out.err
 
 
 def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatch):

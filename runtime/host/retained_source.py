@@ -88,12 +88,13 @@ def apply(directory, operation, *, cache, run=subprocess.run):
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
 op_descriptions = {
-    "saved-status": "Reading the saved status of deployment",
-    "up": "Starting deployment",
-    "down": "Stopping deployment",
-    "prepare": "Preparing deployment",
-    "verify": "Verifying deployment",
-    "transport": "Checking transport"
+    "saved-status": "reading the deployment's saved status",
+    "status": "reading the deployment's live status",
+    "up": "starting the model",
+    "down": "stopping the model",
+    "prepare": "preparing the deployment",
+    "verify": "checking model ownership, processes and an API response",
+    "transport": "checking which transport carried the model's collectives"
 }
 with contextlib.redirect_stdout(sys.stderr):
  if sys.argv[3].startswith('review-'):

@@ -23,7 +23,7 @@ def archived_program(tmp_path):
         path = source / name
         path.mkdir(exist_ok=True)
         (path / "__init__.py").write_text("")
-    (source / "runtime/common/installer.py").write_text("def apply(directory, operation, **kw): return {'program':'retained','operation':operation,'executed':True}\n")
+    (source / "runtime/common/installer.py").write_text("def apply(directory, operation, **kw): return {'program':'retained','operation':operation,'executed':kw['execute']}\n")
     (source / "runtime/host/progress.py").write_text("from contextlib import nullcontext\ndef run(name): return nullcontext()\n")
     (source / "scripts/installer_runner.py").write_text("class Runner:\n def __init__(self, directory): pass\n")
     def git(*args):
@@ -59,3 +59,10 @@ def test_dirty_cached_controller_is_refused(archived_program, tmp_path):
     (root / "runtime/common/installer.py").write_text("raise RuntimeError('unapproved source')\n")
     with pytest.raises(ValueError, match="modified"):
         retained_source.checkout(archived_program, tmp_path / "cache")
+
+
+@pytest.mark.parametrize("operation", ["up", "down"])
+def test_review_uses_the_retained_controller_without_execution(archived_program, tmp_path, monkeypatch, operation):
+    monkeypatch.setattr(retained_source.distribution, "identity", lambda _: "0" * 40)
+    result = retained_source.review(archived_program, operation, cache=tmp_path / "cache")
+    assert result == {"program": "retained", "operation": operation, "executed": False}

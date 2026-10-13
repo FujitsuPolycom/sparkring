@@ -146,11 +146,13 @@ def test_two_four_spark_groups_serve_side_by_side_on_their_own_arcs(ring8, capsy
     assert install(ring8, "--profile", QWEN_TP4, "--on", "0-3") == 0
     first = result(capsys)
     assert first["placement"] == [0, 1, 2, 3] and first["stops"] == []
-    assert first["group"] == {"shape": "path-4", "positions": [0, 1, 2, 3], "api_position": 0}
+    assert first["group"] == {"shape": "path-4", "positions": [0, 1, 2, 3], "api_position": 0,
+                              "hostnames": [f"spark{position}" for position in range(4)]}
     assert install(ring8, "--profile", DEEPSEEK_TP4, "--on", "4-7") == 0
     out = capsys.readouterr()
     second = json.loads(out.out)
-    assert second["group"] == {"shape": "path-4", "positions": [4, 5, 6, 7], "api_position": 4}
+    assert second["group"] == {"shape": "path-4", "positions": [4, 5, 6, 7], "api_position": 4,
+                               "hostnames": [f"spark{position}" for position in range(4, 8)]}
     # The second group stops nothing: the two arcs share no Spark.
     assert second["stops"] == [] and second["replaces"] is None
     assert "Placement: path-4 at positions 4, 5, 6, 7; its API is on Spark 4." in out.err
@@ -211,6 +213,9 @@ def test_a_group_across_the_cable_to_node_a_serves_its_api_on_its_first_spark(ri
     out = capsys.readouterr()
     wrapped = json.loads(out.out)
     assert wrapped["placement"] == [6, 7, 0, 1] and wrapped["group"]["api_position"] == 6
+    assert wrapped["group"]["hostnames"] == [value["plan"]["nodes"][position]["hostname"] for position in (6, 7, 0, 1)]
+    ready = next(line for line in out.err.splitlines() if line.startswith("Model ready:"))
+    assert "on Sparks 6, 7, 0, 1 (" in ready and "on Sparks 0-7" not in ready
     assert wrapped["api_url"] == "http://198.51.100.16:8015/v1"
     assert "Install qwen38-flash-next-qad-tp4 on Sparks 6, 7, 0 and 1" in out.err
     assert lock_of(wrapped)["transport"]["group"]["positions"] == [6, 7, 0, 1]
@@ -241,7 +246,7 @@ def test_a_model_on_every_spark_stops_every_group_and_runs_tensor_parallel_eight
     assert install(ring8, "--profile", GLM_TP8) == 0
     whole = result(capsys)
     assert "placement" not in whole and whole["group"] == {"shape": "cycle-8", "positions": list(range(8)),
-                                                          "api_position": 0}
+                                                          "api_position": 0, "hostnames": [f"spark{position}" for position in range(8)]}
     assert sorted(row["profile"] for row in whole["stops"]) == [DEEPSEEK_TP4, QWEN_TP4]
     assert ops(ring8) == [f"{QWEN_TP4}@0-1-2-3:down", f"{DEEPSEEK_TP4}@4-5-6-7:down", f"{GLM_TP8}:settle-memory",
                           f"{GLM_TP8}:up", f"{GLM_TP8}:verify"]
