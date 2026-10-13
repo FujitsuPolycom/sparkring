@@ -1171,7 +1171,7 @@ class Collector:
             for source in self.sources:
                 fabric = source.fabric
                 members = []
-                for model in models:
+                for model in sorted(models, key=lambda m: (min(m.row["positions"]), m.id)):
                     if model.source is source:
                         member = self.member(model, now, color)
                         rows = self.history.get(model.id, ())

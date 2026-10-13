@@ -87,6 +87,15 @@ that Spark on a trusted network ([Security](install.md#security)).
 
 ## Every model on one page
 
+The ring figure follows the cable topology, with one numbered rectangle per
+Spark and an allocation strip below it. Managed groups use teal, green, violet
+and blue in lowest-position order; each group's cables, card edge and graph
+lines share that colour. Unmanaged groups and GPU jobs use muted outlines;
+stopped deployments are dim. State pills have separate health colours.
+Amber diamonds mark cable segments on topology-derived shortest routes with
+an intermediate Spark, rather than measured traffic. The page uses system
+fonts and follows the browser's dark or light theme without fetching assets.
+
 Node A also serves one page for the whole ring (Experimental):
 
 ```text

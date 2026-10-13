@@ -56,7 +56,7 @@ GEOMETRY = """() => {
   }
   for (const svg of document.querySelectorAll('.ringfig svg')) {
     const labels = [...svg.querySelectorAll('.lbl')];
-    const obstacles = [...svg.querySelectorAll('.node circle, .host, .downtag')];
+    const obstacles = [...svg.querySelectorAll('.node rect, .host, .downtag')];
     for (const [i, label] of labels.entries()) {
       if (!inside(box(label), box(svg))) failures.push('label outside ring: ' + label.textContent);
       for (const other of [...labels.slice(i + 1), ...obstacles]) {

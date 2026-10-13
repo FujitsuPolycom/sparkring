@@ -220,8 +220,8 @@ def test_unmanaged_noncontiguous_ring_label_and_in_place_details(smooth_page, tm
     assert "positions 0, 2, 3, 4, 6, 7" in card.inner_text()
     assert page.locator("#ringviz .node.busy").count() == 6
     assert page.locator("#ringviz .node.idle").count() == 2
-    assert page.locator("#ringviz .band .shape[data-position]").count() == 6
-    assert page.locator("#ringviz .band .shape[data-position='1']").count() == 0
+    assert page.locator("#ringviz .node.busy.outline rect").count() == 6
+    assert page.locator("#ringviz .node.busy[data-position='1']").count() == 0
     card.locator(".launch-facts").evaluate("el => { el.open = true; window.heldDetails = el; }")
     before = len(requests)
     for i in range(3):

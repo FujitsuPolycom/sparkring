@@ -7,20 +7,23 @@
 <title>SparkRing</title>
 <style>
 :root {
-  --bg: #0b0e13; --panel: #12161d; --panel2: #161b24; --fg: #e7eaf0; --muted: #8b94a5; --faint: #5d6575;
-  --line: #222934; --line2: #2e3644; --code: #0f1319;
-  --accent: #7dd3fc;
-  --ok: #4ade80; --ok-bg: rgba(74, 222, 128, 0.12); --warn: #fbbf24; --warn-bg: rgba(251, 191, 36, 0.12);
-  --bad: #f87171; --bad-bg: rgba(248, 113, 113, 0.13); --idle: #8b94a5; --idle-bg: rgba(139, 148, 165, 0.12);
-  --chart: #38bdf8; --chart2: #c084fc;
-  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+  --bg: #0f171c; --surface: #152129; --ink: #e3eaed; --muted: #93a3ac; --line: #2a3943;
+  --g1: #3fc3cf; --g2: #74d494; --g3: #ac8ef6; --g4: #7aa6f6; --relay: #e3a246;
+  --ok: #74d494; --warn: #e3a246; --bad: #f08a80;
+  --panel: var(--surface); --panel2: var(--surface); --fg: var(--ink); --faint: var(--muted);
+  --line2: var(--line); --code: var(--bg); --accent: var(--g1); --idle: var(--muted);
+  --ok-bg: color-mix(in srgb, var(--ok) 12%, transparent);
+  --warn-bg: color-mix(in srgb, var(--warn) 12%, transparent);
+  --bad-bg: color-mix(in srgb, var(--bad) 12%, transparent);
+  --idle-bg: color-mix(in srgb, var(--idle) 12%, transparent);
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--fg);
-       font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; padding: 20px 16px 40px; }
+       font: 14px/1.45 system-ui, "Segoe UI", sans-serif; padding: 20px 16px 40px; }
 .mono, code { font-family: var(--mono); }
 .wrap { max-width: 1360px; margin: 0 auto; display: grid; gap: 20px; min-width: 0; }
 .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
@@ -36,7 +39,7 @@ h1 { margin: 0; font-size: 1.45rem; font-weight: 650; letter-spacing: -0.01em; }
 
 /* -- ring panel ------------------------------------------------------------------------ */
 .ringpanel { display: grid; grid-template-columns: minmax(0, 440px) minmax(0, 1fr); gap: 22px; align-items: start;
-             background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; }
+             background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
 .ringpanel.multi { grid-template-columns: minmax(0, 720px) minmax(0, 1fr); }
 @media (max-width: 1180px) { .ringpanel.multi { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 860px) { .ringpanel { grid-template-columns: minmax(0, 1fr); padding: 14px; } }
@@ -53,34 +56,36 @@ h1 { margin: 0; font-size: 1.45rem; font-weight: 650; letter-spacing: -0.01em; }
 .ringhead h2 { margin: 0; font-size: 0.75rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em;
                color: var(--muted); }
 .ringhead .muted { font-size: 0.75rem; }
-svg .cable { fill: none; stroke: var(--line2); stroke-width: 3; stroke-linecap: round; }
-svg .cable.in { stroke: var(--gc); stroke-opacity: 0.9; stroke-width: 4; }
-svg .band { cursor: pointer; }
-svg .band .shape { fill: none; stroke: var(--gc); stroke-width: 42; stroke-linecap: round; stroke-opacity: 0.2;
-                   transition: stroke-opacity 0.15s; }
-svg .band.on .shape { stroke-opacity: 0.27; }
-svg .band.inferred .shape { stroke-opacity: 0.15; stroke-dasharray: 14 5; }
-svg .band.k-starting .shape { stroke-dasharray: 10 6; stroke-opacity: 0.22; }
-svg .band.k-job .shape { stroke-dasharray: 4 6; stroke-opacity: 0.2; }
-svg .band.hot .shape, svg .band.sel .shape { stroke-opacity: 0.42; }
+svg .cable { fill: none; stroke: var(--line); stroke-width: 5; stroke-linecap: round; }
+svg .cable.in { stroke: var(--gc); }
+svg .cable.outline { stroke-width: 2; stroke-dasharray: 5 4; }
+svg .relay { fill: var(--relay); stroke: var(--surface); stroke-width: 1; }
+svg .band, svg .node { cursor: pointer; }
 svg .lbl { text-anchor: middle; }
-svg .l1 { font: 650 13.5px system-ui, sans-serif; fill: var(--gc); }
-svg .node { cursor: pointer; }
-svg .node circle { fill: var(--panel2); stroke: var(--line2); stroke-width: 2; transition: stroke-width 0.15s; }
-svg .node .num { font: 700 14px var(--mono); fill: var(--muted); text-anchor: middle; pointer-events: none; }
-svg .node .host { font: 600 13px var(--mono); fill: var(--muted); text-anchor: middle; }
-svg .node.idle { opacity: 0.55; }
-svg .node.busy.k-member circle { fill: var(--gc); stroke: var(--gc); }
-svg .node.busy.k-member .num { fill: #0b0e13; }
-svg .node.busy .host { fill: var(--fg); }
-svg .node.busy.k-starting circle, svg .node.busy.k-job circle { stroke: var(--gc); stroke-dasharray: 4 3; }
-svg .node.busy.k-starting .num, svg .node.busy.k-job .num { fill: var(--gc); }
-svg .node.down circle { fill: var(--bad-bg); stroke: var(--bad); }
-svg .node.down .num, svg .node.down .host, svg .node .downtag { fill: var(--bad); }
-svg .node .downtag { font: 700 10.5px system-ui, sans-serif; text-anchor: middle; letter-spacing: 0.06em; }
-svg .node.unknown circle { stroke-dasharray: 3 3; }
-svg .node.hot circle, svg .node.sel circle { stroke-width: 3.5; stroke: var(--fg); }
-svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anchor: middle; }
+svg .l1 { font: 650 12px system-ui, sans-serif; fill: var(--gc); }
+svg .l2 { font: 9px var(--mono); fill: var(--muted); }
+svg .lrate { font: 650 18px var(--mono); fill: var(--ink); }
+svg .unit { font: 9px var(--mono); fill: var(--muted); }
+svg .node rect { fill: var(--surface); stroke: var(--gc, var(--line)); stroke-width: 1.5; }
+svg .node .node-dot { fill: var(--gc, var(--muted)); }
+svg .node .num { font: 700 12px var(--mono); fill: var(--ink); text-anchor: middle; }
+svg .node .host { font: 10px var(--mono); fill: var(--muted); text-anchor: middle; }
+svg .node.idle { opacity: .55; }
+svg .node.outline rect, svg .node.unknown rect { stroke-dasharray: 3 2; }
+svg .dim, .allocation .dim { opacity: .45; }
+svg .node.down .host, svg .node .downtag { fill: var(--bad); }
+svg .node .downtag { font: 700 9px var(--mono); text-anchor: middle; }
+svg .node.hot rect, svg .node.sel rect { stroke-width: 3; }
+svg .band.hot .l1, svg .band.sel .l1 { text-decoration: underline; }
+svg .center { font: 12px var(--mono); fill: var(--muted); text-anchor: middle; }
+.allocation { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 8px 0; }
+.allocation-label { width: 100%; text-align: center; font: 9px var(--mono); letter-spacing: .12em; color: var(--muted); }
+.allocation .slot { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 3px;
+  font: 11px var(--mono); color: var(--bg); background: var(--gc, var(--line)); border: 1px solid var(--gc, var(--line)); }
+.allocation .slot.outline { background: transparent; color: var(--muted); border-style: dashed; }
+.configuration { text-align: center; font: 11px var(--mono); color: var(--muted); }
+.configuration b { color: var(--ink); font-weight: 500; }
+.ringfig figcaption, .tile .v, .legend .rate, .chart .k, .axis { font-family: var(--mono); }
 .ringside { display: grid; gap: 14px; min-width: 0; align-content: start; }
 .strip { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line);
          border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
@@ -92,7 +97,8 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
              background: var(--panel2); cursor: pointer; transition: border-color 0.15s, background 0.15s; min-width: 0; }
 .legend li.hot, .legend li.sel { border-color: var(--gc); background: color-mix(in srgb, var(--gc) 8%, var(--panel2)); }
 .legend .sw { width: 12px; height: 12px; border-radius: 4px; background: var(--gc); }
-.legend .k-starting .sw, .legend .k-job .sw { background: transparent; border: 2px dashed var(--gc); }
+.legend .k-starting .sw, .legend .outline .sw { background: transparent; border: 1px dashed var(--gc); }
+.legend .dim { opacity: .45; }
 .legend .t1 { font-weight: 650; overflow-wrap: anywhere; }
 .legend .t2 { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .legend .col { min-width: 0; }
@@ -112,17 +118,19 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 /* -- cards --------------------------------------------------------------------------- */
 .stacks { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--idle);
-        border-radius: 12px; padding: 12px; display: grid; gap: 8px; min-width: 0;
-        transition: box-shadow 0.15s, border-color 0.15s; scroll-margin: 16px; }
+        border-radius: 10px; padding: 12px; display: grid; gap: 8px; min-width: 0;
+        transition: border-color 0.15s; scroll-margin: 16px; }
 .card.st-serving { border-left-color: var(--ok); }
 .card.st-not_ready { border-left-color: var(--warn); }
 .card.st-stopped { border-left-color: var(--idle); }
+.card.st-stopped { opacity: .55; }
+.card.outline { border-left-style: dashed; }
 .card.st-idle { border-left-color: var(--idle); opacity: 0.75; }
 .card.st-offline { border-left-color: var(--bad); }
 .card.ringed { border-left-color: var(--gc); }
 .launch-facts { min-width: 0; overflow-wrap: anywhere; }
 .launch-facts summary { cursor: pointer; }
-.card.hot, .card.sel { box-shadow: 0 0 0 1px var(--gc, var(--accent)), 0 0 24px -8px var(--gc, var(--accent)); }
+.card.hot, .card.sel { outline: 1px solid var(--gc, var(--accent)); }
 .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
 .head > div { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .name { font-size: 1.1rem; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -164,8 +172,7 @@ button.copy:disabled { opacity: 0.45; cursor: default; }
 .chart svg { display: block; width: 100%; height: 44px; background: var(--code); border: 1px solid var(--line);
              border-radius: 6px; margin-top: 3px; }
 .chart svg path { stroke-width: 1.6; fill: none; }
-.chart .c1 path { stroke: var(--chart); }
-.chart .c2 path { stroke: var(--chart2); }
+.chart .c1 path, .chart .c2 path { stroke: var(--gc, var(--g1)); }
 .nochart { height: 44px; display: grid; place-items: center; font-size: 0.75rem; color: var(--muted);
            background: var(--code); border: 1px solid var(--line); border-radius: 6px; margin-top: 3px; }
 .sparks { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -195,7 +202,7 @@ dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 section h2 { font-size: 0.75rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.08em;
              color: var(--muted); margin: 0 0 8px; }
 .events ul { list-style: none; margin: 0; padding: 0; background: var(--panel); border: 1px solid var(--line);
-             border-radius: 12px; }
+             border-radius: 10px; }
 .events li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 10px; padding: 8px 14px;
              border-top: 1px solid var(--line); font-size: 0.85rem; align-items: baseline; }
 .events li:first-child { border-top: 0; }
@@ -207,16 +214,16 @@ section h2 { font-size: 0.75rem; font-weight: 650; text-transform: uppercase; le
 .events .k-offline .dot { background: var(--bad); }
 .events .empty { color: var(--muted); display: block; grid-column: 1 / -1; }
 footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
-.manage { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.manage { padding: 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); }
 .manage label { display: inline-flex; flex-direction: column; margin: 5px; gap: 4px; }
 .manage input, .manage select { background: var(--code); color: var(--fg); padding: 7px; border: 1px solid var(--line2); }
 .manage pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
 @media (prefers-color-scheme: light) {
-  :root { color-scheme: light; --bg: #f4f6fa; --panel: #fff; --panel2: #edf1f7;
-    --fg: #182334; --muted: #4b5b70; --faint: #62738a; --line: #ccd5e2; --line2: #b5c2d4;
-    --code: #edf2f8; --accent: #03699c; --chart: #0077a6; --chart2: #7c3bb3;
-    --ok: #13743a; --warn: #855900; --bad: #b32222; }
+  :root { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
+    --muted: #55636c; --line: #cfd7db; --g1: #0b7f8a; --g2: #2f8a4a;
+    --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
+    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; }
 }
 .tiles .s { white-space: normal; overflow-wrap: anywhere; }
 .chart { min-width: 0; position: relative; }
@@ -226,7 +233,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .chart output { display: block; min-height: 2.8em; font-size: .75rem; color: var(--fg); overflow-wrap: anywhere; }
 .chart :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 #graph-dialog { width: min(1000px, 94vw); max-height: 90vh; overflow: auto;
-  color: var(--fg); background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; }
+  color: var(--fg); background: var(--panel); border: 1px solid var(--line2); border-radius: 10px; }
 #graph-dialog::backdrop { background: #0009; }
 #graph-dialog svg { height: 300px; }
 #graph-dialog .y-axis { height: 300px; }
@@ -360,9 +367,10 @@ const pct = (f) => has(f) ? Math.round(f * 100) + "%" : "–";
 const gb = (b) => !has(b) ? "–" : b >= 1e12 ? small(b / 1e12, 1) + " TB" : Math.round(b / 1e9) + " GB";
 const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, "") + "…" : (s || "");
 // Serving groups are told apart by color; the service assigns each group its index (arc.color).
-const PALETTE = ["#38bdf8", "#c084fc", "#2dd4bf", "#f472b6", "#a3e635", "#fb923c"];
-const JOB_COLOR = "#94a3b8";
+const PALETTE = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
+const JOB_COLOR = "var(--muted)";
 const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
+const memberColor = m => m.unmanaged || m.gpu_job ? JOB_COLOR : gcolor(m.arc?.color);
 const span = (positions) => !positions || !positions.length ? "" :
   positions.length === 1 ? String(positions[0]) :
   positions.some((p, i) => i && p > positions[i - 1] + 1) ? positions.join(", ") : positions[0] + "–" + positions[positions.length - 1];
@@ -403,12 +411,12 @@ function ringGroups(ring, members) {
   for (const m of onRing(ring, members)) {
     if (!m.arc) continue;
     groups.push({ id: m.id, kind: "member", m, ring, positions: m.arc.positions, first: m.arc.first, size: m.arc.size,
-                  color: gcolor(m.arc.color), state: m.state, inferred: m.arc.inferred });
+                  color: memberColor(m), outline: !!(m.unmanaged || m.gpu_job), state: m.state, inferred: m.arc.inferred });
   }
   for (const r of ring.runs || []) {
     const job = r.kind === "job";
     groups.push({ id: "run:" + ring.id + ":" + r.run, kind: job ? "job" : "starting", r, ring, positions: r.positions,
-                  first: r.first, size: r.positions.length, color: job ? JOB_COLOR : gcolor(r.color), state: r.state });
+                  first: r.first, size: r.positions.length, color: job ? JOB_COLOR : gcolor(r.color), outline: job, state: r.state });
   }
   return groups;
 }
@@ -422,54 +430,85 @@ function ringCaption(ring) {
   return `<figcaption title="${esc(tip)}"><b>${esc(ring.name)}</b> · ${sparkCount(ring.size)}${kind}</figcaption>`;
 }
 
-function ringSvg(ring, members, now) {
-  const N = ring.size, cx = 200, cy = 200, R = 140, step = 360 / N;
-  const ang = (p) => -90 + p * step;
-  const pt = (a, r) => [cx + r * Math.cos(a * Math.PI / 180), cy + r * Math.sin(a * Math.PI / 180)];
-  const arc = (a1, a2, r) => {
-    const [x1, y1] = pt(a1, r), [x2, y2] = pt(a2, r), sweep = ((a2 - a1) % 360 + 360) % 360;
-    return `M${x1.toFixed(1)},${y1.toFixed(1)} A${r},${r} 0 ${sweep > 180 ? 1 : 0} 1 ${x2.toFixed(1)},${y2.toFixed(1)}`;
-  };
-  const groups = ringGroups(ring, members);
+// Mark cable segments used by a shortest route with an intermediate Spark.
+// These are topology-derived routes, not a measurement of traffic.
+function relaySegments(ring, groups) {
+  const segments = new Set(), N = ring.size;
+  for (const g of groups.filter(g => !g.outline && g.state === "serving")) {
+    for (const a of g.positions) for (const b of g.positions.filter(b => b > a)) {
+      const direct = b - a, wrap = N - direct;
+      if (direct > 1 && (ring.closed === false || direct <= wrap))
+        for (let p = a; p < b; p++) segments.add(p);
+      if (ring.closed !== false && wrap > 1 && wrap <= direct)
+        for (let p = b; p !== a; p = (p + 1) % N) segments.add(p);
+    }
+  }
+  return segments;
+}
+function ringOwners(groups) {
   const owner = {};
-  for (const g of groups) for (const p of g.positions) if (!(p in owner)) owner[p] = g;
-  const nodeGap = Math.asin(22 / R) * 180 / Math.PI;
-  let s = `<svg viewBox="0 0 400 400" role="img" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
+  // Running groups own the visible nodes when stopped records share their positions.
+  for (const g of [...groups].sort((a, b) => Number(b.state === "serving") - Number(a.state === "serving")))
+    for (const p of g.positions) if (!(p in owner)) owner[p] = g;
+  return owner;
+}
+const groupStyle = g => [g?.outline ? "outline" : "", g && ["stopped", "idle", "not_installed"].includes(g.state) ? "dim" : ""].filter(Boolean).join(" ");
+function ringSvg(ring, members, now) {
+  const N = ring.size, cx = 200, cy = 190, R = 140;
+  const ang = p => -Math.PI / 2 + p * 2 * Math.PI / N;
+  const pt = p => N === 2 ? [100 + p * 200, 130] : [cx + R * Math.cos(ang(p)), cy + R * Math.sin(ang(p))];
+  const groups = ringGroups(ring, members), owner = ringOwners(groups), relays = relaySegments(ring, groups);
+  let s = `<svg viewBox="0 0 400 380" role="img" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
   for (let p = 0; p < N; p++) {
-    if (p === N - 1 && ring.closed === false) continue; // a path or pair has no cable back to position 0
-    const g = owner[p], same = g && owner[(p + 1) % N] === g && N > 1;
-    s += `<path class="cable${same ? " in" : ""}"${same ? ` style="--gc:${g.color}"` : ""} d="${arc(ang(p) + nodeGap, ang(p) + step - nodeGap, R)}"/>`;
+    if (N < 2 || (N !== 2 && p === N - 1 && ring.closed === false)) continue;
+    const q = (p + 1) % N, g = owner[p], same = g && owner[q] === g;
+    const [x1, y1] = pt(p), [x2, y2] = pt(q), offset = N === 2 ? (p ? 5 : -5) : 0;
+    s += `<path class="cable${same ? " in " + groupStyle(g) : ""}" data-segment="${p}"${same ? ` data-member="${esc(g.id)}" style="--gc:${g.color}"` : ""} d="M${x1},${y1 + offset} L${x2},${y2 + offset}"/>`;
+    if (relays.has(p)) {
+      const x = (x1 + x2) / 2, y = (y1 + y2) / 2;
+      s += `<path class="relay" data-segment="${p}" d="M${x},${y - 4} l4,4 -4,4 -4,-4 Z"><title>Relayed route through a Spark · from cable topology</title></path>`;
+    }
   }
-  for (const g of groups) {
-    const pad = step * 0.3;
-    const contiguous = g.positions.every((p, i) => p === (g.first + i) % N);
-    const shape = !contiguous ? g.positions.map(p => `<path class="shape" data-position="${p}" d="${arc(ang(p) - pad, ang(p) + pad, R)}"/>`).join("") : g.size >= N ? `<circle class="shape" cx="${cx}" cy="${cy}" r="${R}"/>`
-      : `<path class="shape" d="${arc(ang(g.first) - pad, ang(g.first) + (g.size - 1) * step + pad, R)}"/>`;
-    // One short name per reserved row; details stay in the legend and full-name tooltip.
-    const gap = Math.min(20, 140 / groups.length);
-    const ly = cy + (groups.indexOf(g) - (groups.length - 1) / 2) * gap;
-    const name = g.kind === "member" ? g.m.name : g.r.label;
-    const label = `<g class="lbl"><text class="l1" x="${cx}" y="${ly.toFixed(1)}" style="font-size:${Math.min(13.5, gap * .7)}px">${esc(clip(name, 16))}</text></g>`;
-    const cls = ["band", "k-" + g.kind, g.state === "serving" ? "on" : "", g.inferred ? "inferred" : ""].filter(Boolean).join(" ");
-    s += `<g class="${cls}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${shape}${label}</g>`;
+  const columns = groups.length > 2 ? 2 : 1, rows = Math.ceil(groups.length / columns);
+  const gap = rows > 2 ? 42 : 78, labelCenter = N === 2 ? 233 : N === 3 ? 213 : cy + (rows > 2 ? 7 : 0);
+  for (const [i, g] of groups.entries()) {
+    const x = cx + (columns === 2 ? (i % 2 ? 60 : -60) : 0);
+    const y = labelCenter + (Math.floor(i / columns) - (rows - 1) / 2) * gap - 18;
+    const name = g.m ? (g.m.gpu_job ? "GPU in use" : g.m.model_short || g.m.model || g.m.name) : g.r.label;
+    const tp = g.m?.gpu_job ? "" : g.outline ? (g.m?.layout?.tp ? "TP" + g.m.layout.tp : "Unmanaged") : "TP" + (g.m?.layout?.tp || g.size);
+    const size = groups.length > 2 ? 10 : 12;
+    const label = `<g class="lbl"><text class="l1" x="${x}" y="${y}" style="font-size:${size}px">${esc(clip(name, columns === 2 ? 18 : 28))}</text>`
+      + `<text class="l2" x="${x}" y="${y + 14}" style="font-size:${rows > 2 ? 8 : 9}px">${tp ? esc(tp) + " · " : ""}${g.size === 1 ? "Spark" : "Sparks"} ${esc(span(g.positions))}</text>`
+      + `<text class="lrate" x="${x}" y="${y + (rows > 2 ? 28 : 34)}" style="font-size:${rows > 2 ? 14 : 18}px">${g.state === "serving" ? rate(g.m?.live?.output_tps) : "–"}<tspan class="unit"> tok/s</tspan></text></g>`;
+    s += `<g class="band k-${g.kind} ${groupStyle(g)}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${label}</g>`;
   }
-  if (!groups.length) s += `<text class="center" x="${cx}" y="${cy + 4}">No serving group</text>`;
+  if (!groups.length) s += `<text class="center" x="${cx}" y="${cy}">No serving group</text>`;
   for (let p = 0; p < N; p++) {
-    const sp = ring.positions[p] || {}, g = owner[p], a = ang(p);
-    // Hostnames sit outside the ring, pushed further out at the sides where the text is wide.
-    const [x, y] = pt(a, R), [hx, hy] = pt(a, R + 28 + 11 * Math.abs(Math.cos(a * Math.PI / 180)));
-    const cls = ["node", sp.up === false ? "down" : g ? "busy k-" + g.kind : "idle", has(sp.up) ? "" : "unknown"].filter(Boolean).join(" ");
-    const tip = [`${p} · ${sp.name} · ${sp.address}`, sp.up === false ? "its model API does not answer" : null,
-                 g ? (g.kind === "member" ? `${g.m.name} · ${g.m.model || ""}` : g.r.label) : "idle",
-                 sp.up === null || sp.up === undefined ? "not observed: no model API answers for this Spark" : null].filter(Boolean).join("\n");
-    s += `<g class="${cls}" data-member="${g ? esc(g.id) : ""}"${g ? ` style="--gc:${g.color}"` : ""}><title>${esc(tip)}</title>`
-      + `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="19"/>`
-      + `<text class="num" x="${x.toFixed(1)}" y="${(y + 5).toFixed(1)}">${p}</text>`
-      + `<text class="host" x="${hx.toFixed(1)}" y="${(hy + 4.5).toFixed(1)}">${esc(sp.short || sp.name)}</text>`
-      + (sp.up === false ? `<text class="downtag" x="${hx.toFixed(1)}" y="${(hy + (Math.sin(a * Math.PI / 180) < -0.5 ? -11 : 18)).toFixed(1)}">DOWN</text>` : "")
-      + `</g>`;
+    const sp = ring.positions[p] || {}, g = owner[p], [x, y] = pt(p);
+    const dx = N === 2 ? (p ? 1 : -1) : Math.cos(ang(p)), dy = N === 2 ? 0 : Math.sin(ang(p));
+    const side = Math.abs(dy) < .25;
+    const hx = x + dx * (side ? 26 : 34), hy = y + dy * 26;
+    const cls = ["node", g ? "busy k-" + g.kind : "idle", groupStyle(g), sp.up === false ? "down" : "", has(sp.up) ? "" : "unknown"].filter(Boolean).join(" ");
+    const tip = [`${p} · ${sp.name} · ${sp.address}`, g ? groupTitle(g) : "idle", has(sp.up) ? (sp.up ? "up" : "API unavailable") : "not observed"].join("\n");
+    s += `<g class="${cls}" data-position="${p}" data-member="${g ? esc(g.id) : ""}"${g ? ` style="--gc:${g.color}"` : ""}><title>${esc(tip)}</title>`
+      + `<rect x="${x - 19}" y="${y - 12}" width="38" height="24" rx="4"/>`
+      + `<circle class="node-dot" cx="${x - 9}" cy="${y}" r="2.5"/>`
+      + `<text class="num" x="${x + 5}" y="${y + 4}">${p}</text>`
+      + `<text class="host" x="${hx}" y="${hy + 4}" style="text-anchor:${side ? (dx < 0 ? "end" : "start") : "middle"}">${esc(clip(sp.short || sp.name, side ? 5 : 10))}</text>`
+      + (sp.up === false ? `<text class="downtag" x="${hx}" y="${hy + (dy < -.5 ? -9 : 16)}">DOWN</text>` : "") + `</g>`;
   }
   return s + "</svg>";
+}
+function allocationHtml(ring, members) {
+  const groups = ringGroups(ring, members), owner = ringOwners(groups);
+  const slots = Array.from({length: ring.size}, (_, p) => {
+    const g = owner[p];
+    return `<span class="slot ${g ? groupStyle(g) : "dim"}" data-position="${p}" data-member="${g ? esc(g.id) : ""}"${g ? ` style="--gc:${g.color}"` : ""} title="${esc(g ? groupTitle(g) : "Idle")}">${p}</span>`;
+  }).join("");
+  const serving = groups.filter(g => g.state === "serving" && !g.outline), sizes = [...new Set(serving.map(g => g.size))];
+  const count = sizes.length === 1 ? `${serving.length} × TP${sizes[0]}` : serving.map(g => `TP${g.size}`).join(" + ");
+  return `<div class="allocation"><span class="allocation-label">SPARK ALLOCATION</span>${slots}</div>`
+    + `<div class="configuration"><b>${esc(count || "No managed group serving")}</b> · ${ring.size === 2 ? "A pair" : "A ring of " + ring.size}</div>`;
 }
 
 function groupTitle(g) {
@@ -527,7 +566,7 @@ function legendHtml(rings, members) {
       src = g.kind === "job" ? "no API · from container names" : "containers up · API not answering yet";
       right = `<span class="pill ${g.kind === "job" ? "" : "p-not_ready"}">${g.kind === "job" ? "GPU in use" : "Starting"}</span>`;
     }
-    return `<li class="k-${g.kind}" data-member="${esc(g.id)}" style="--gc:${g.color}"><span class="sw"></span>`
+    return `<li class="k-${g.kind} ${groupStyle(g)}" data-member="${esc(g.id)}" style="--gc:${g.color}"><span class="sw"></span>`
       + `<div class="col"><div class="t1">${t1}</div><div class="t2">${t2}</div></div>`
       + `<div class="col mid"><div class="t1">${model}</div><div class="t2">${src}</div></div>`
       + `<div class="right">${right}</div></li>`;
@@ -556,7 +595,7 @@ function renderRings(rings, members, now) {
   const viz = $("ringviz");
   const columns = String(Math.min(rings.length, 2));
   if (viz.style.getPropertyValue("--rings") !== columns) viz.style.setProperty("--rings", columns);
-  const svg = rings.map((r) => `<figure class="ringfig" data-ring="${esc(r.id)}">${ringCaption(r)}${ringSvg(r, members, now)}</figure>`).join("");
+  const svg = rings.map((r) => `<figure class="ringfig" data-ring="${esc(r.id)}">${ringCaption(r)}${ringSvg(r, members, now)}${allocationHtml(r, members)}</figure>`).join("");
   patch(viz, svg);
   patch($("strip"), stripHtml(rings, members));
   patch($("legend"), legendHtml(rings, members));
@@ -715,6 +754,7 @@ function openGraph(box, opener) {
   const id = box.dataset.graphMember, idx = Number(box.dataset.graph), v = viewFor(id);
   const member = data.groups.flatMap(g => g.members || []).find(m => m.id === id);
   graphSelection = { id, idx, history: (v.history ?? member.history ?? []).map(r => [...r]), now: v.paused ?? serverNow() };
+  $("graph-dialog").style.setProperty("--gc", memberColor(member));
   graphOpener = opener;
   text($("graph-title"), graphNames[idx] + " — frozen snapshot");
   patch($("graph-window"), options(v.window, true));
@@ -872,7 +912,7 @@ function card(s, now) {
   const st = s.state || "checking", serving = st === "serving";
   const since = s.state_since ? "for " + dur(now - s.state_since) : "";
   const layout = s.layout || {}, arc = s.arc;
-  const gc = arc ? gcolor(arc.color) : null;
+  const gc = arc ? memberColor(s) : null;
   let sub = sparkCount(layout.count ?? (s.sparks || []).length);
   if (serving && layout.label) sub = `${esc(layout.label)} · ${sub}`;
   else if (st === "idle") sub = `${esc(layout.label || sub)} · not deployed`;
@@ -910,7 +950,7 @@ function card(s, now) {
   const recoveryChip = recovery ? `<span class="tag recovery-chip" title="${esc(r.summary || recovery)}">${esc(recovery)}${has(r.checked_at) ? " · " + esc(dur(now - r.checked_at).split(" ").slice(0, 2).join(" ")) + " ago" : ""}</span>` : "";
   const thinking = s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : "";
   const modelText = s.name === s.model && !s.gpu_job ? (serving ? "" : `<span class="model muted">Last served: same model</span>`) : `<span class="model">${model}</span>`;
-  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
       <span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}

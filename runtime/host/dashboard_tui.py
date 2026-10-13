@@ -47,14 +47,13 @@ import urllib.request
 
 from runtime.host import dashboard
 
-STATE_COLORS = {"serving": 1, "not_ready": 2, "offline": 3, "stopped": 4, "idle": 4}
+STATE_COLORS = {"serving": 1, "not_ready": 2, "offline": 3, "stopped": 7, "idle": 7}
 STATE_SHORT = {"serving": "serving", "not_ready": "start", "stopped": "stopped", "offline": "OFFLINE", "idle": "idle"}
 # A segment's style: the low 4 bits are a colour pair, BOLD and DIM are flags above them.
 BOLD, DIM = 1 << 8, 1 << 9
-GOOD, WARN, CRIT, INFO, ACCENT, BLUE = 1, 2, 3, 4, 5, 6
-# Models on the ring are told apart by colour; the collector numbers them (arc.color) in the web
-# page's palette order (sky, violet, teal, pink, ...).
-RING_PALETTE = (INFO, ACCENT, GOOD, WARN, BLUE)
+GOOD, WARN, CRIT, INFO, ACCENT, BLUE, MUTED = 1, 2, 3, 4, 5, 6, 7
+# Terminal equivalents of the shared teal, green, violet and blue group tokens.
+RING_PALETTE = (INFO, GOOD, ACCENT, BLUE)
 SPARK_BLOCKS = "▁▂▃▄▅▆▇█"
 DISK_RED_FRACTION = 0.02          # disk free below this share of the root filesystem renders red
 DISK_WARN_FRACTION = 0.05         # ... and below this share yellow
@@ -143,6 +142,8 @@ def span_text(positions) -> str:
 
 
 def group_color(member: dict) -> int:
+    if member.get("unmanaged") or member.get("gpu_job"):
+        return MUTED
     arc = member.get("arc")
     return RING_PALETTE[(arc.get("color") or 0) % len(RING_PALETTE)] if arc else 0
 
@@ -388,9 +389,10 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
             kv_peak = max((h[4] or 0) for h in history)
             graph = max(10, min(60, width - 32))
             add(("tok/s      ", style(INFO, bold=True)), (f"{span:>4} ", style(dim=True)),
-                (sparkline([h[1] for h in history], graph), GOOD), (f" peak {peak:.0f}", style(GOOD, bold=True)))
+                (sparkline([h[1] for h in history], graph), group_color(member)),
+                (f" peak {peak:.0f}", style(group_color(member), bold=True)))
             add(("kv         ", style(INFO, bold=True)), (f"{span:>4} ", style(dim=True)),
-                (sparkline([h[4] for h in history], graph), WARN),
+                (sparkline([h[4] for h in history], graph), group_color(member)),
                 (f" peak {kv_peak * 100:.0f}%", style(hi_color(kv_peak * 100, 50, 75), bold=True)))
         run, wait = round(live.get("running") or 0), round(live.get("waiting") or 0)
         segs = [lbl("requests"), ("run ", style(dim=True)), (f"{run}", style(WARN, bold=True) if run else style(dim=True)),
@@ -724,7 +726,8 @@ def interactive(reader: Reader) -> int:
             except curses.error:
                 background = curses.COLOR_BLACK
             for number, color in ((1, curses.COLOR_GREEN), (2, curses.COLOR_YELLOW), (3, curses.COLOR_RED),
-                                  (4, curses.COLOR_CYAN), (5, curses.COLOR_MAGENTA), (6, curses.COLOR_BLUE)):
+                                  (4, curses.COLOR_CYAN), (5, curses.COLOR_MAGENTA), (6, curses.COLOR_BLUE),
+                                  (7, curses.COLOR_WHITE)):
                 curses.init_pair(number, color, background)
         screen.timeout(150)
         view = {"selected": 0, "top": 0, "details": False, "events": False}
