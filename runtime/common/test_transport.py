@@ -1011,7 +1011,10 @@ def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_c
         assert after.environment["VLLM_B12X_KDA_PREFILL_COALESCING"] == "1"
         command = list(after.command)
         edits = {"--served-model-name": "GLM-5.3-Flash-CSF-DCP2-TP2", "--kv-cache-memory-bytes": "15032385536",
-                 "--decode-context-parallel-size": "2"}
+                 "--decode-context-parallel-size": "2", "--max-num-seqs": "16",
+                 "--compilation-config": '{"mode":0,"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":'
+                                         '[1,2,4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],'
+                                         '"max_cudagraph_capture_size":64}'}
         for flag, value in edits.items():
             assert command[command.index(flag) + 1] == value
         assert command.count("--cp-kv-cache-interleave-size") == 1
