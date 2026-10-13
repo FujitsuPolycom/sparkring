@@ -98,7 +98,7 @@ def tokfmt(tokens) -> str:
     if tokens is None:
         return "–"
     if tokens >= 1e6:
-        return f"{tokens / 1e6:.1f}M"
+        return f"{tokens / 1e6:.0f}M"
     if tokens >= 1e3:
         return f"{round(tokens / 1e3)}k"
     return str(round(tokens))
@@ -109,8 +109,14 @@ def bytesfmt(value) -> str:
         return "–"
     for unit, size in (("T", 1 << 40), ("G", 1 << 30), ("M", 1 << 20)):
         if value >= size:
-            return f"{value / size:.0f}{unit}" if value >= 100 * size else f"{value / size:.1f}{unit}"
+            places = 1 if unit == "T" and value < 10 * size else 0
+            return f"{value / size:.{places}f}{unit}"
     return f"{value:.0f}B"
+
+
+def smallfmt(value, places=2) -> str:
+    """Keep fractional precision only for a small latency or concurrency multiple."""
+    return f"{value:.{places if value < 10 else 0}f}"
 
 
 def sparkline(values: list, width: int) -> str:
@@ -279,7 +285,7 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
             b(f"acc {live['accept_length_5m']:.2f}", 0)
         if live.get("ttft_5m") is not None:
             ttft = live["ttft_5m"]
-            b(f"ttft {ttft:.2f}s", hi_color(ttft, 1, 3) if ttft > 1 else 0)
+            b(f"ttft {smallfmt(ttft, 1)}s", hi_color(ttft, 1, 3) if ttft > 1 else 0)
     elif state in ("stopped", "offline", "not_ready") and member.get("model"):
         b("last " + str(member["model"]), style(dim=True))
     elif state == "idle":
@@ -350,7 +356,7 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
             (" \u00b7 prefill ", style(dim=True)),
             (f"{prompt_tps:,.0f} t/s" if prompt_tps is not None else "\u2014", GOOD),
             (" \u00b7 " + ("plugin" if live.get("source") == "plugin" else "approx /metrics"), style(dim=True)))
-        add(lbl("steps"), (f"{live['steps_ps']:.2f} steps/s" if live.get("steps_ps") is not None else "\u2014", INFO))
+        add(lbl("steps"), (f"{live['steps_ps']:.0f} steps/s" if live.get("steps_ps") is not None else "\u2014", INFO))
         history = member.get("history") or []
         if len(history) > 1:
             span = dur_short(history[-1][0] - history[0][0])
@@ -377,13 +383,13 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
             segs.append((f" ({bytesfmt(capacity['kv_bytes'])})", style(dim=True)))
         if capacity.get("concurrency"):
             context = member.get("max_model_len") or settings.get("max_model_len")
-            segs.append((f" · {capacity['concurrency']:.2f}× concurrency"
+            segs.append((f" · {smallfmt(capacity['concurrency'])}× concurrency"
                          + (f" @ {tokfmt(context)} ctx" if context else ""), 0))
         add(*segs)
         bits = []
         if live.get("ttft_5m") is not None:
             ttft = live["ttft_5m"]
-            bits.append([("ttft ", style(dim=True)), (f"{ttft:.2f}s", style(hi_color(ttft, 1, 3)) if ttft > 1 else 0)])
+            bits.append([("ttft ", style(dim=True)), (f"{smallfmt(ttft, 1)}s", style(hi_color(ttft, 1, 3)) if ttft > 1 else 0)])
         if live.get("accept_length_5m") is not None:
             bits.append([("accept len ", style(dim=True)), (f"{live['accept_length_5m']:.2f}", 0)])
         if live.get("prefix_hit_5m") is not None:
@@ -418,7 +424,7 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
                 (f"spec {settings['speculative_method']}×{settings.get('num_speculative_tokens') or '?'}"
                  if settings.get("speculative_method") else None),
                 "prefix-cache" if settings.get("prefix_caching_enabled") else None,
-                f"gpu {capacity['gpu_memory_utilization']:.2f}" if capacity.get("gpu_memory_utilization") else None]
+                f"gpu {capacity['gpu_memory_utilization'] * 100:.0f}%" if capacity.get("gpu_memory_utilization") else None]
         if any(bits):
             add(lbl("settings"), *dotted(" · ".join(b for b in bits if b)))
         parsers = [f"{k.split('_')[0]} {settings[k]}" for k in ("reasoning_parser", "tool_call_parser") if settings.get(k)]

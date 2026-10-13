@@ -139,13 +139,20 @@ Plugin updates follow the existing host-agent and recovery cadence, so they
 can arrive less often than `/metrics`. Missing or stale plugin data falls
 back to `/metrics`.
 
-Hover a graph for its stored value and timestamp. Select **Expand graph**
-for up to six hours collected in that browser tab. Use the slider with a
-pointer, touch, arrow keys, Home or End; Escape closes the view. Graphs follow
-the OS light or dark theme. Interaction sends no request.
+Hover a graph for its value and timestamp. **Window** selects Auto, 5 min,
+15 min, 1 h or 3 h for a card's graphs. Auto fills the width with available
+history, up to three hours; shorter histories fill any selected window.
+**Pause** freezes those graphs while the tiles keep updating. **Resume**
+jumps to now. The browser remembers each card's window when storage is available.
 
-Rates and graph history are calculated in the viewer. A newly opened view
-needs two observations, and reloading clears its history. The terminal does
+Select **Expand graph** for a frozen snapshot of stored and session history,
+up to six hours. Its window selector also offers 6 h. Use the slider with a
+pointer, touch, arrow keys, Home or End; Escape closes the view and restores
+focus. Graphs follow the OS light or dark theme. Interaction sends no request.
+
+Rates and graph history are calculated in the viewer. The page starts with
+up to three hours of stored observations, then adds session samples. Reloading
+replaces session history with the available stored history. The terminal does
 the same calculation only while open; `--once` has no rate history.
 See [counter methods and validation](../development/dashboard-counters.md)
 for precision, plugin installation and the hardware comparison plan.

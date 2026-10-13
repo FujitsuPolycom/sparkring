@@ -66,7 +66,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
         assert part in header
     assert lines[2].startswith(" ●0 spark0 ━ ●1 spark1 ─ ●2 spark2 ━ ●3 spark3") and lines[2].endswith("─ ↺")
     card = next(line for line in lines if line.startswith(" ▾ tp2-0-1"))
-    for part in ("serving", "TP2", "@0–1", "SIRCL", "up ", "t/s", "run 1", "kv 25% (1.2M tok)", "acc 2.50"):
+    for part in ("serving", "TP2", "@0–1", "SIRCL", "up ", "t/s", "run 1", "kv 25% (1M tok)", "acc 2.50"):
         assert part in card
     for label in ("model", "endpoint", "layout", "arc", "transport", "head", "throughput", "tok/s", "kv",
                   "requests", "kv cache", "latency", "totals", "settings", "runtime", "logs"):
@@ -77,7 +77,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     assert [line.rstrip() for line in lines if " transport " in line][0].endswith("transport  SIRCL 0.3.2")
     assert "tp2-prepared" not in text and "RoCEnante" not in text and "bundle" not in text
     assert "spark0:8000 · container sr-0-r0" in text
-    assert "of 1.2M tok (24.0G) · 4.50× concurrency @ 131k ctx" in text
+    assert "of 1M tok (24G) · 4.50× concurrency @ 131k ctx" in text
     assert "sudo docker logs --tail 200 sr-0-r0  on spark0" in text and "image 0123456789ab" in text
     sparks = [line for line in lines if "rank " in line and " ram " in line]
     assert len(sparks) == 6        # the recorded runtime status of positions 2-3 reports no host resources
@@ -101,7 +101,17 @@ def test_a_slow_first_token_is_coloured_on_the_card(tmp_path):
     for ttft, colour in ((0.4, 0), (1.5, tui.WARN), (4.0, tui.CRIT)):
         member["live"]["ttft_5m"] = ttft
         _, bits = tui.model_line(member, snapshot["generated_at"])
-        assert (f"ttft {ttft:.2f}s", colour) in bits
+        assert (f"ttft {ttft:.1f}s", colour) in bits
+
+
+def test_display_precision_exceptions_and_whole_units():
+    assert tui.smallfmt(4.567) == "4.57"
+    assert tui.smallfmt(12.34) == "12"
+    assert tui.smallfmt(.45, 1) == "0.5"
+    assert tui.smallfmt(12.34, 1) == "12"
+    assert tui.bytesfmt(24 * (1 << 30)) == "24G"
+    assert tui.bytesfmt(1.5 * (1 << 40)) == "1.5T"
+    assert tui.bytesfmt(12.5 * (1 << 40)) == "12T"
 
 
 def test_the_recorded_payloads_render_as_a_serving_pair(tmp_path):
@@ -162,8 +172,8 @@ def test_the_low_disk_spark_renders_its_disk_free_cell_red(tmp_path):
     cells = segment_after(rows, " · disk free ")
     assert len(cells) == 6
     red = [text for text, st in cells if st == tui.style(tui.CRIT, bold=True)]
-    assert red == ["37.3G"]                       # spark5 alone: 40 GB of 4 TB
-    assert all(st == 0 for text, st in cells if text != "37.3G")
+    assert red == ["37G"]                         # spark5 alone: 40 GB of 4 TB
+    assert all(st == 0 for text, st in cells if text != "37G")
 
 
 # -- what the view may contact -------------------------------------------------------------------

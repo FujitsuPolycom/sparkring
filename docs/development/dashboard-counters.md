@@ -92,6 +92,52 @@ Periods without observations appear as gaps, never fabricated zeros. A
 sample interval longer than 185 seconds also breaks the rate window and
 graph line. Token rates display as whole tokens per second in both viewers.
 
+## Browser rendering and display precision
+
+The browser keeps cards in arrival order, keyed by member ID. A member's
+card, tiles, controls and SVG plots survive incoming status documents.
+Detached markup for metadata is reconciled into existing text and attribute
+nodes; graph subtrees are owned by their plot updater. Open details, keyboard
+focus and selections in unchanged text remain intact. Plot paths change only
+when history or the selected window changes, or a resume requires a time-axis
+catch-up. A hovered plot resolves the sample at the pointer again after redraw.
+
+Status updates are applied in one animation frame. A separate one-second
+timer schedules only age-label updates. Hidden documents defer DOM work and
+catch up in one frame on visibility return; status request cadence is unchanged.
+Fixed tile/value/readout slots and responsive SVG view boxes prevent changing
+numbers from moving neighbouring controls. Missing values retain their slots.
+
+Each member shares one window and pause state across its three plots. Auto
+uses available history up to three hours. Explicit 5 min, 15 min, 1 h and 3 h
+windows also fill the width until enough samples exist, then scroll. The
+window is stored per member in browser local storage with an exception-safe
+fallback. Pause copies the graph history and freezes its axis; tiles continue
+updating. Resume uses live history. The dialog copies a frozen snapshot on
+opening and adds a 6 h window. Its slider selection survives status updates
+and window changes that still contain the selected sample.
+
+Output and prefill axes scale to the visible samples with headroom and whole
+ticks. KV stays at 0–100%. Gap markers and intervals over 185 seconds break
+paths. Short windows label elapsed seconds/minutes; longer windows use clock
+time. SVG paths use non-scaling strokes at phone and desktop widths.
+
+Both viewers round displayed measurements to whole numbers, including
+steps/s, memory in GB, request counts, percentages and durations of 10 seconds
+or more. Raw API values and rate calculations retain their precision.
+The fractional display exceptions are:
+
+| Measurement | Precision | Reason |
+|---|---|---|
+| Draft acceptance length | 2 places | A fractional token per draft step distinguishes draft effectiveness |
+| KV concurrency below 10× | 2 places | Fractions show whether another full-context request fits |
+| Memory below 10 TB (TiB in the terminal) | 1 place | Whole terabytes hide substantial capacity differences |
+| First-token latency below 10 s | 1 place | Whole seconds hide interactive latency differences |
+
+Timestamps, software versions, addresses, model names and copied commands are
+identifiers rather than rounded measurements. SVG coordinates retain fractional
+precision for drawing; they are not displayed numeric text.
+
 ## Plugin packaging and delivery
 
 [SparkRingStatLogger](../../integrations/vllm/runtime_status/sparkring_runtime_status/stat_logger.py)
@@ -196,7 +242,7 @@ Linux memory use or concurrent-client peaks.
 1. Open the Node A page after the collector has observations, and check Output, Prefill,
    steps, acceptance and their source labels. An idle deployment shows a
    prefill dash. An image without the plugin shows approximate `/metrics`.
-2. Hover an output, prefill or KV graph: inspect the full stored value and
+2. Hover an output, prefill or KV graph: inspect its formatted value and
    ISO timestamp. Select **Expand graph** to inspect up to six hours already
    accumulated in that view, including the stored three-hour prefill.
 3. Tab to an expand button, press Enter, then use the sample slider with

@@ -221,7 +221,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 }
 .tiles .s { white-space: normal; overflow-wrap: anywhere; }
 .chart { min-width: 0; }
-.chart button { color: var(--fg); background: var(--code); border: 1px solid var(--line2);
+.chart button, .graph-controls button { color: var(--fg); background: var(--code); border: 1px solid var(--line2);
   border-radius: 5px; padding: 8px; min-height: 44px; cursor: pointer; }
 .chart svg { touch-action: pan-y; }
 .chart output { display: block; min-height: 2.8em; font-size: .75rem; color: var(--fg); overflow-wrap: anywhere; }
@@ -230,14 +230,38 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
   color: var(--fg); background: var(--panel); border: 1px solid var(--line2); border-radius: 12px; }
 #graph-dialog::backdrop { background: #0009; }
 #graph-dialog svg { height: 300px; }
+#graph-dialog .y-axis { height: 300px; }
 #graph-dialog input { width: 100%; min-height: 44px; }
 #graph-dialog button { min-height: 44px; }
+
+/* Numeric slots and readouts keep their geometry as values arrive. */
+.tile { height: 140px; }
+.tile .v { height: 48px; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; }
+.tile .v small { margin-left: 0; height: 16px; }
+.tile .k { height: 20px; overflow: hidden; white-space: nowrap; }
+.tile .s { height: 54px; overflow: auto; }
+.chart output { height: 5.8em; overflow: auto; font-variant-numeric: tabular-nums; }
+.chart svg { height: 80px; }
+.graph-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
+.graph-controls select, #graph-window { min-height: 44px; background: var(--code); color: var(--fg); }
+.graph-controls button { min-height: 44px; min-width: 80px; }
+.pause-age { min-width: 16ch; font-variant-numeric: tabular-nums; }
+.axis { display: flex; justify-content: space-between; height: 20px; font-size: .7rem; color: var(--muted); }
+.plot-frame { display: grid; grid-template-columns: 6ch minmax(0, 1fr); gap: 4px; }
+.y-axis { height: 80px; margin-top: 3px; flex-direction: column-reverse; align-items: flex-end; }
+.x-axis { margin-left: calc(6ch + 4px); }
+.state { min-width: 16ch; }
+.legend .right { width: 13ch; }
+.legend .rate { white-space: nowrap; }
+.totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
+.totals > span { height: 3.5em; overflow: auto; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
 <dialog id="graph-dialog" aria-labelledby="graph-title">
   <button id="graph-close" type="button">Close</button>
-  <h2 id="graph-title"></h2><p>History collected in this view, up to six hours. Reloading clears it.</p>
+  <h2 id="graph-title"></h2><p>Stored history and this session, up to six hours. This snapshot stays frozen until closed.</p>
+  <label>Window <select id="graph-window"></select></label>
   <div id="graph-body" class="chart"></div>
   <label for="graph-sample">Inspect a sample (arrow keys or drag)</label>
   <input id="graph-sample" type="range" min="0" max="0" value="0">
@@ -290,17 +314,18 @@ const viewerRates = new ViewerRates();
 "use strict";
 let data = null, receivedAt = 0, failing = false;
 const METRICS_VIEWED = 5, METRICS_IDLE = 60;
-let lastStacksHtml = "", lastEventsHtml = "", lastRingHtml = "", lastSideHtml = "";
+
 let hoverId = null, selectedId = null;
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const has = (v) => v !== null && v !== undefined;
 const int = (n) => has(n) ? Math.round(n).toLocaleString() : "–";
-const one = (n) => has(n) ? (n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(1)) : "–";
+const one = int;
+const small = (n, places = 2) => !has(n) ? "–" : n < 10 ? n.toFixed(places) : int(n);
 const rate = (n) => has(n) ? Math.round(n).toLocaleString() : "–";   // token rates: whole tokens per second
 const pct = (f) => has(f) ? Math.round(f * 100) + "%" : "–";
-const gb = (b) => !has(b) ? "–" : b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB";
+const gb = (b) => !has(b) ? "–" : b >= 1e12 ? small(b / 1e12, 1) + " TB" : Math.round(b / 1e9) + " GB";
 const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, "") + "…" : (s || "");
 // Serving groups are told apart by color; the service assigns each group its index (arc.color).
 const PALETTE = ["#38bdf8", "#c084fc", "#2dd4bf", "#f472b6", "#a3e635", "#fb923c"];
@@ -505,23 +530,21 @@ function ringNote(rings, topology) {
 
 function renderRings(rings, members, now) {
   const panel = $("ringpanel");
-  if (!rings.length) { panel.hidden = true; return; }
-  panel.hidden = false;
+  if (!rings.length) { setHidden(panel, true); return; }
+  setHidden(panel, false);
   panel.classList.toggle("multi", rings.length > 1);
   const viz = $("ringviz");
-  viz.style.setProperty("--rings", String(Math.min(rings.length, 2)));
+  const columns = String(Math.min(rings.length, 2));
+  if (viz.style.getPropertyValue("--rings") !== columns) viz.style.setProperty("--rings", columns);
   const svg = rings.map((r) => `<figure class="ringfig" data-ring="${esc(r.id)}">${ringCaption(r)}${ringSvg(r, members, now)}</figure>`).join("");
-  if (svg !== lastRingHtml) { viz.innerHTML = svg; lastRingHtml = svg; }
-  const side = stripHtml(rings, members) + "\u0000" + legendHtml(rings, members) + "\u0000" + ringNote(rings, data.topology);
-  if (side !== lastSideHtml) {
-    const [a, b, c] = side.split("\u0000");
-    $("strip").innerHTML = a; $("legend").innerHTML = b; $("ringnote").innerHTML = c;
-    lastSideHtml = side;
-  }
+  patch(viz, svg);
+  patch($("strip"), stripHtml(rings, members));
+  patch($("legend"), legendHtml(rings, members));
+  patch($("ringnote"), ringNote(rings, data.topology));
   const disc = rings[0].discovery || {}, total = rings.reduce((a, r) => a + (r.size || 0), 0);
-  $("ringtitle").textContent = rings.length > 1 ? "Groups on the rings" : "Groups on the ring";
-  $("ringmeta").textContent = (rings.length > 1 ? `${rings.length} rings · ${total} Sparks` : `${rings[0].name} · ${rings[0].size} Sparks`)
-    + (disc.at ? ` · checked ${dur(now - disc.at)} ago` : "");
+  text($("ringtitle"), rings.length > 1 ? "Groups on the rings" : "Groups on the ring");
+  patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${total} Sparks` : `${esc(rings[0].name)} · ${rings[0].size} Sparks`)
+    + (disc.at ? ` · checked <span data-age="${disc.at}">${dur(now - disc.at)}</span> ago` : ""));
 }
 
 function applyHighlight() {
@@ -545,24 +568,28 @@ function selectGroup(id) {
 }
 
 // -- cards ---------------------------------------------------------------------------------
-function chart(history, idx, now, cls, scale, span = 3600) {
-  const W = 300, H = 44, gap = 185;
-  const pts = history.filter((h) => h[0] >= now - span && has(h[idx]));
-  if (pts.length < 2) return { svg: '<div class="nochart">Waiting for two samples</div>', peak: null };
-  const peak = Math.max(...pts.map((h) => h[idx]));
-  const top = scale || Math.max(peak, 1) * 1.1;
+// Each plot owns a persistent SVG; geometry is computed only for a changed snapshot/window.
+function chart(history, idx, now, cls, scale, window = "auto", limit = 10800) {
+  const span = window === "auto" ? limit : Math.min(Number(window), limit);
+  const start = Math.max(now - span, history[0]?.[0] ?? now - 1);
+  const width = Math.max(1, now - start), W = 300, H = 80;
+  const visible = history.filter(h => h[0] >= start && h[0] <= now);
+  const pts = visible.filter(h => has(h[idx]));
+  const peak = Math.max(0, ...pts.map(h => h[idx]));
+  const magnitude = 10 ** Math.floor(Math.log10(Math.max(1, peak * 1.1)));
+  const top = scale || Math.ceil(Math.max(2, peak * 1.1) / magnitude) * magnitude;
   let d = "", prev = null;
-  for (const h of history.filter(h => h[0] >= now - span)) {
+  for (const h of visible) {
     if (!has(h[idx])) { prev = null; continue; }
-    const x = Math.max(0, (h[0] - (now - span)) / span * W);
-    const y = H - 2 - (h[idx] / top) * (H - 4);
-    d += (prev === null || h[0] - prev > gap ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
+    const x = (h[0] - start) / width * W, y = H - 2 - h[idx] / top * (H - 4);
+    d += (prev === null || h[0] - prev > 185 ? "M" : "L") + x.toFixed(1) + "," + y.toFixed(1);
     prev = h[0];
   }
-  return { svg: `<svg class="${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>`, peak };
+  return { d, peak, top, start, now, rows: pts,
+    svg: `<svg class="${cls}" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="${d}" vector-effect="non-scaling-stroke"/></svg>` };
 }
 
-const tokfmt = (n) => !has(n) ? null : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 1 : 2) + "M"
+const tokfmt = (n) => !has(n) ? null : n >= 1e6 ? int(n / 1e6) + "M"
   : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
 
 function tiles(s) {
@@ -588,70 +615,142 @@ function tiles(s) {
   </div>`;
 }
 
-const graphNames = { 1: "Output tok/s", 4: "KV cache fraction", 5: "Prefill tok/s" };
-function graphBox(s, idx, now) {
-  const g = chart(s.history || [], idx, now, idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null);
-  return `<div class="chart" data-graph="${idx}" data-graph-member="${esc(s.id)}">
-    <div class="k"><span>${graphNames[idx]}, last hour</span></div>
-    <button type="button" class="expand-graph" aria-label="Expand ${graphNames[idx]} for ${esc(s.name)}">Expand graph</button>
-    ${g.svg}<output>Hover or expand to inspect samples.</output></div>`;
+const graphNames = { 1: "Output tok/s", 4: "KV cache use", 5: "Prefill tok/s" };
+const windows = [["auto", "Auto"], ["300", "5 min"], ["900", "15 min"], ["3600", "1 h"], ["10800", "3 h"]];
+const views = new Map();
+function viewFor(id) {
+  if (!views.has(id)) {
+    let window = "auto";
+    try { window = localStorage.getItem("sparkring-window:" + id) || window; } catch (_) { /* Storage is optional. */ }
+    if (!windows.some(w => w[0] === window)) window = "auto";
+    views.set(id, { window, paused: null, history: null });
+  }
+  return views.get(id);
 }
-function charts(s, now) { return `<div class="charts">${[1, 5, 4].map(i => graphBox(s, i, now)).join("")}</div>`; }
+function options(selected, dialog = false) {
+  return [...windows, ...(dialog ? [["21600", "6 h"]] : [])].map(([v, label]) =>
+    `<option value="${v}"${v === selected ? " selected" : ""}>${label}</option>`).join("");
+}
+function graphBox(s, idx) {
+  // The plot updater owns children of this island, including pointer state.
+  return `<div class="chart" data-graph="${idx}" data-graph-member="${esc(s.id)}" data-island></div>`;
+}
+function charts(s) {
+  return `<div class="graph-controls" data-island data-controls="${esc(s.id)}"></div>
+    <div class="charts">${[1, 5, 4].map(i => graphBox(s, i)).join("")}</div>`;
+}
+function plotShell(idx, title = "") {
+  return `${title}<div class="plot-frame"><div class="axis y-axis"><span>0</span><span></span><span></span></div>
+    <svg class="${idx === 4 ? "c2" : "c1"}" viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true"><path d="" vector-effect="non-scaling-stroke"/></svg>
+    </div><div class="axis x-axis"><span></span><span></span></div>`;
+}
+function drawPlot(box, history, idx, now, window, limit) {
+  const signature = JSON.stringify([history, window]);
+  if (box.plotSignature === signature) return;
+  box.plotSignature = signature;
+  const g = chart(history, idx, now, "", idx === 4 ? 1 : null, window, limit);
+  box.plot = g;
+  attr(box.querySelector("path"), "d", g.d);
+  const ys = box.querySelectorAll(".y-axis span"), xs = box.querySelectorAll(".x-axis span");
+  const fmt = idx === 4 ? pct : int;
+  text(ys[1], fmt(g.top / 2)); text(ys[2], fmt(g.top));
+  text(xs[0], now - g.start <= 900 ? dur(now - g.start) + " ago" : clock(g.start));
+  text(xs[1], now - g.start <= 900 ? "now" : clock(now));
+  if (has(box.pointerX)) inspectPointer(box, box.pointerX);
+}
+function updateGraphs(member) {
+  const card = [...$("stacks").children].find(c => c.dataset.member === member.id);
+  const v = viewFor(member.id), now = v.paused ?? serverNow(), history = v.history ?? member.history ?? [];
+  const controls = card.querySelector("[data-controls]");
+  if (!controls.firstChild) patch(controls, `<label>Window <select aria-label="Graph window for ${esc(member.name)}">${options(v.window)}</select></label>
+    <button type="button" data-pause>Pause</button><span class="pause-age"></span>`);
+  controls.querySelector("select").value = v.window;
+  text(controls.querySelector("button"), v.paused === null ? "Pause" : "Resume");
+  for (const box of card.querySelectorAll("[data-graph]")) {
+    const idx = Number(box.dataset.graph);
+    if (!box.firstChild) patch(box, plotShell(idx, `<div class="k">${graphNames[idx]}</div>
+      <button type="button" class="expand-graph" aria-label="Expand ${graphNames[idx]} for ${esc(member.name)}">Expand graph</button>`) + '<output>Hover or expand to inspect samples.</output>');
+    drawPlot(box, history, idx, now, v.window, 10800);
+  }
+}
 let graphSelection = null, graphOpener = null;
-function graphRows(id, idx, span = 21600) {
-  const member = (data.groups || []).flatMap(g => g.members).find(m => m.id === id);
-  return (member?.history || []).filter(h => h[0] >= serverNow() - span && has(h[idx]));
-}
 function exactGraphValue(row, idx) {
-  return row ? `${new Date(row[0] * 1000).toISOString()} \u00b7 ${graphNames[idx]}: ${idx === 4 ? row[idx] : rate(row[idx])} \u00b7 ${row[6] === "plugin" ? "plugin" : "approx /metrics"}` : "No sample here";
+  return row ? `${new Date(row[0] * 1000).toISOString().replace(/\.\d{3}Z$/, "Z")} \u00b7 ${graphNames[idx]}: ${idx === 4 ? pct(row[idx]) : rate(row[idx])} \u00b7 ${row[6] === "plugin" ? "plugin" : "approx /metrics"}` : "No sample here";
 }
 function inspectGraph() {
-  if (!graphSelection) return;
-  const rows = graphSelection.rows;
-  $("graph-value").textContent = exactGraphValue(rows[Number($("graph-sample").value)], graphSelection.idx);
+  if (graphSelection) text($("graph-value"), exactGraphValue(graphSelection.rows[Number($("graph-sample").value)], graphSelection.idx));
+}
+function drawDialog() {
+  const g = graphSelection, box = $("graph-body");
+  const selectedAt = g.rows?.[Number($("graph-sample").value)]?.[0];
+  if (!box.firstChild) patch(box, plotShell(g.idx));
+  attr(box.querySelector("svg"), "class", g.idx === 4 ? "c2" : "c1");
+  box.plotSignature = null;
+  drawPlot(box, g.history, g.idx, g.now, $("graph-window").value, 21600);
+  g.rows = box.plot.rows;
+  $("graph-sample").max = Math.max(0, g.rows.length - 1);
+  const selected = g.rows.findIndex(r => r[0] === selectedAt);
+  $("graph-sample").value = selected < 0 ? Math.max(0, g.rows.length - 1) : selected;
+  $("graph-sample").disabled = !g.rows.length;
+  inspectGraph();
 }
 function openGraph(box, opener) {
-  graphSelection = { id: box.dataset.graphMember, idx: Number(box.dataset.graph) };
+  const id = box.dataset.graphMember, idx = Number(box.dataset.graph), v = viewFor(id);
+  const member = data.groups.flatMap(g => g.members || []).find(m => m.id === id);
+  graphSelection = { id, idx, history: (v.history ?? member.history ?? []).map(r => [...r]), now: v.paused ?? serverNow() };
   graphOpener = opener;
-  const { id, idx } = graphSelection, rows = graphRows(id, idx);
-  graphSelection.rows = rows; graphSelection.now = serverNow();
-  $("graph-title").textContent = graphNames[idx] + " \u2014 up to six hours";
-  const history = (data.groups || []).flatMap(g => g.members).find(m => m.id === id)?.history || [];
-  $("graph-body").innerHTML = chart(history, idx, serverNow(), idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null, 21600).svg;
-  $("graph-sample").max = Math.max(0, rows.length - 1);
-  $("graph-sample").value = Math.max(0, rows.length - 1);
-  $("graph-sample").disabled = !rows.length;
-  inspectGraph(); $("graph-dialog").showModal();
+  text($("graph-title"), graphNames[idx] + " — frozen snapshot");
+  patch($("graph-window"), options(v.window, true));
+  $("graph-window").value = v.window;
+  drawDialog(); $("graph-dialog").showModal();
 }
+$("graph-window").addEventListener("change", drawDialog);
 $("graph-close").addEventListener("click", () => $("graph-dialog").close());
-$("graph-dialog").addEventListener("close", () => {
-  const id = graphSelection?.id, idx = graphSelection?.idx;
-  graphSelection = null;
-  const box = [...document.querySelectorAll("[data-graph-member]")].find(b => b.dataset.graphMember === id && Number(b.dataset.graph) === idx);
-  (box?.querySelector("button") || graphOpener)?.focus();
-});
+$("graph-dialog").addEventListener("close", () => { graphSelection = null; graphOpener?.focus(); });
 $("graph-sample").addEventListener("input", inspectGraph);
-function pointerSample(event, rows, idx, span, svg, now = serverNow()) {
-  const rect = svg.getBoundingClientRect();
-  const target = now - span + Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width)) * span;
-  return rows.reduce((best, row) => !best || Math.abs(row[0] - target) < Math.abs(best[0] - target) ? row : best, null);
+function pointerSample(clientX, box) {
+  const rect = box.querySelector("svg").getBoundingClientRect(), g = box.plot;
+  const target = g.start + Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * (g.now - g.start);
+  const row = g.rows.reduce((best, r) => !best || Math.abs(r[0] - target) < Math.abs(best[0] - target) ? r : best, null);
+  return row && Math.abs(row[0] - target) <= 185 ? row : null;
+}
+function inspectPointer(box, clientX) {
+  box.pointerX = clientX;
+  text(box.querySelector("output"), exactGraphValue(pointerSample(clientX, box), Number(box.dataset.graph)));
 }
 $("stacks").addEventListener("pointermove", event => {
-  const box = event.target.closest("[data-graph]"), svg = event.target.closest("svg");
-  if (!box || !svg) return;
-  const idx = Number(box.dataset.graph);
-  box.querySelector("output").textContent = exactGraphValue(pointerSample(event, graphRows(box.dataset.graphMember, idx, 3600), idx, 3600, svg), idx);
+  const box = event.target.closest("[data-graph]");
+  if (box && event.target.closest("svg")) inspectPointer(box, event.clientX);
+});
+$("stacks").addEventListener("pointerout", event => {
+  const box = event.target.closest("[data-graph]");
+  if (box && !box.querySelector("svg").contains(event.relatedTarget)) box.pointerX = null;
+});
+$("stacks").addEventListener("change", event => {
+  const controls = event.target.closest("[data-controls]");
+  if (!controls) return;
+  viewFor(controls.dataset.controls).window = event.target.value;
+  try { localStorage.setItem("sparkring-window:" + controls.dataset.controls, event.target.value); } catch (_) { /* Storage is optional. */ }
+  scheduleRender();
 });
 $("stacks").addEventListener("click", event => {
+  const controls = event.target.closest("[data-controls]");
+  if (controls && event.target.closest("[data-pause]")) {
+    const id = controls.dataset.controls, v = viewFor(id);
+    const member = data.groups.flatMap(g => g.members || []).find(m => m.id === id);
+    if (v.paused === null) { v.paused = serverNow(); v.history = (member.history || []).map(r => [...r]); }
+    else { v.paused = null; v.history = null; }
+    for (const box of controls.parentNode.querySelectorAll("[data-graph]")) box.plotSignature = null;
+    scheduleRender();
+  }
   const box = event.target.closest("[data-graph]");
-  if (box && (event.target.closest("svg") || event.target.closest("button"))) openGraph(box, event.target.closest("button"));
+  if (box && (event.target.closest("svg") || event.target.closest("button"))) openGraph(box, box.querySelector("button"));
 });
 $("graph-body").addEventListener("pointermove", event => {
-  const svg = event.target.closest("svg");
-  if (!svg || !graphSelection) return;
-  const { idx, rows, now } = graphSelection;
-  const row = pointerSample(event, rows, idx, 21600, svg, now);
-  $("graph-sample").value = Math.max(0, rows.indexOf(row)); inspectGraph();
+  if (!event.target.closest("svg") || !graphSelection) return;
+  const row = pointerSample(event.clientX, $("graph-body"));
+  if (!row) { text($("graph-value"), "No sample here"); return; }
+  $("graph-sample").value = graphSelection.rows.indexOf(row); inspectGraph();
 });
 
 function sparks(s) {
@@ -676,7 +775,7 @@ function settings(s) {
   if (cap.kv_bytes || (t && t.kv_cache_memory_bytes)) kvBits.push(gb(cap.kv_bytes || t.kv_cache_memory_bytes));
   if (cap.kv_tokens) kvBits.push("≈ " + tokfmt(cap.kv_tokens) + " tok");
   if (cap.concurrency !== null && cap.concurrency !== undefined)
-    kvBits.push(cap.concurrency.toFixed(2) + "× full-ctx reqs");
+    kvBits.push(small(cap.concurrency) + "× full-ctx reqs");
   const media = cap.mm ? Object.entries(cap.mm).map(([k, v]) => v + " " + k + (v === 1 ? "" : "s")).join(" · ") : null;
   // Images with runtime-status 0.3.6 and later report the transport carrying the TP collectives
   // (tr.collective, with SIRCL's version); for older images the label is inferred from the TP
@@ -713,23 +812,21 @@ function settings(s) {
 function recoveryLine(s, now) {
   const r = s.recovery;
   if (!r || !r.summary) return "";
-  const age = has(r.checked_at) ? ` · checked ${dur(now - r.checked_at)} ago` : "";
+  const age = has(r.checked_at) ? ` · checked <span data-age="${r.checked_at}">${dur(now - r.checked_at)}</span> ago` : "";
   const cls = r.state && r.state !== "serving" ? ' style="color:var(--warn)"' : "";
-  return `<p class="down-note"${cls}>Recovery check: ${esc(r.summary)}${esc(age)}${r.next_action ? " · next: " + esc(r.next_action) : ""}</p>`;
+  return `<p class="down-note"${cls}>Recovery check: ${esc(r.summary)}${age}${r.next_action ? " · next: " + esc(r.next_action) : ""}</p>`;
 }
 
 function totals(s, now) {
   const t = s.totals || {}, f = t.finished || {}, l = s.live || {};
   const done = (f.stop || 0) + (f.length || 0);
-  const parts = [`<b>${int(done)}</b> requests done`];
-  if (f.error) parts.push(`<b>${int(f.error)}</b> failed`);
-  if (f.abort) parts.push(`<b>${int(f.abort)}</b> cancelled`);
-  if (t.preemptions) parts.push(`<b>${int(t.preemptions)}</b> preempted`);
-  if (has(l.ttft_5m)) parts.push(`first token <b>${l.ttft_5m.toFixed(2)} s</b> avg (${esc(l.source || "/metrics")})`);
-  if (has(l.prefix_hit_5m)) parts.push(`prefix cache <b>${pct(l.prefix_hit_5m)}</b> hits (/metrics)`);
-  if (s.workers && has(s.workers.expected) && s.workers.received !== s.workers.expected)
-    parts.push(`<b>${int(s.workers.received)} of ${int(s.workers.expected)}</b> ranks reporting`);
-  return `<div class="totals">${parts.join(" · ")}</div>`;
+  const parts = [`<b>${int(done)}</b> requests done`,
+    `<b>${int(f.error || 0)}</b> failed`, `<b>${int(f.abort || 0)}</b> cancelled`,
+    `<b>${int(t.preemptions || 0)}</b> preempted`,
+    `first token <b>${small(l.ttft_5m, 1)} s</b> avg (${esc(l.source || "/metrics")})`,
+    `prefix cache <b>${pct(l.prefix_hit_5m)}</b> hits (/metrics)`,
+    `<b>${int(s.workers?.received)} of ${int(s.workers?.expected)}</b> ranks reporting`];
+  return `<div class="totals">${parts.map(p => `<span>${p}</span>`).join("")}</div>`;
 }
 
 // -- logs on demand ---------------------------------------------------------------------
@@ -779,13 +876,13 @@ function card(s, now) {
   return `<article class="card st-${esc(st)}${gc ? " ringed" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
       <div><div class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span>${tags.join("")}</div><div class="sub">${sub}</div></div>
-      <div class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since">${esc(since)}</span></div>
+      <div class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></div>
     </div>
     <div class="model">${model}</div>
     ${serving && s.endpoint ? `<div class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button>${s.details_url ? `<a href="${esc(s.details_url)}" target="_blank" rel="noopener" title="The model's own status page. While it is open it asks every worker for a report every 5 s, through the engine.">Details</a>` : ""}<button class="copy reread" type="button" data-model="${esc(s.id)}">Re-read settings</button></div>` : ""}
     ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
     ${recoveryLine(s, now)}
-    ${serving ? tiles(s) + charts(s, now) : ""}
+    ${tiles(s)}${charts(s)}
     ${sparks(s)}
     ${serving ? settings(s) + totals(s, now) : ""}
     ${logsPanel(s)}
@@ -794,8 +891,15 @@ function card(s, now) {
 }
 
 function render() {
-  if (!data) return;
-  $("manage").hidden = !data.manage;
+  if (document.hidden) return;
+  if (!data) {
+    setHidden($("banner"), !failing);
+    if (failing) text($("banner"), "Can't reach the dashboard service.");
+    return;
+  }
+  setHidden($("manage"), !data.manage);
+  setHidden($("banner"), !failing);
+  if (failing) text($("banner"), data ? `Can't reach the dashboard service. Showing what it reported at ${clock(data.generated_at)}.` : "Can't reach the dashboard service.");
   const now = serverNow();
   const groups = data.groups || [];
   const ringMembers = groups.filter((g) => g.kind === "ring").flatMap((g) => g.members || []);
@@ -815,35 +919,115 @@ function render() {
   }
   if (fixedMembers.length) parts.push(`${fixedMembers.filter((s) => s.state === "serving").length} of ${fixedMembers.length} profiles serving`);
   parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
-  $("summary").textContent = parts.join(" · ");
+  text($("summary"), parts.join(" · "));
   renderRings(rings, ringMembers, now);
-  const html = stacks.map((s) => card(s, now)).join("");
-  if (html !== lastStacksHtml) {
-    const focused = document.activeElement?.closest("[data-graph]");
-    const focusId = focused?.dataset.graphMember, focusIdx = focused?.dataset.graph;
-    $("stacks").innerHTML = html; lastStacksHtml = html;
-    if (focused) [...document.querySelectorAll("[data-graph]")].find(b =>
-      b.dataset.graphMember === focusId && b.dataset.graph === focusIdx)?.querySelector("button")?.focus({ preventScroll: true });
+  // Preserve arrival order even if discovery changes its ordering.
+  const incoming = new Map(stacks.map(s => [s.id, s]));
+  for (const card of [...$("stacks").children]) {
+    if (!incoming.has(card.dataset.member)) { views.delete(card.dataset.member); card.remove(); }
   }
+  const order = [...$("stacks").children].map(c => c.dataset.member);
+  for (const s of stacks) if (!order.includes(s.id)) order.push(s.id);
+  patch($("stacks"), order.map(id => card(incoming.get(id), now)).join(""));
+  for (const s of stacks) updateGraphs(s);
   applyHighlight();
   const ev = (data.events || []).map((e) => `<li class="k-${esc(e.kind)}"><time>${esc(clock(e.at))}</time>
     <span class="ev"><span class="dot"></span><span><b>${esc(e.stack)}</b> ${esc(e.text)}</span></span></li>`).join("")
     || '<li><span class="empty">No changes since the service started.</span></li>';
-  if (ev !== lastEventsHtml) { $("events").innerHTML = ev; lastEventsHtml = ev; }
+  patch($("events"), ev);
   const c = data.collector || {}, req = c.requests || {}, up = Math.max(1, c.uptime_seconds || 1);
   const sent = Object.values(req).reduce((a, n) => a + n, 0);
-  $("footer").textContent = (c.quiet ? "Paused: no request is sent. "
+  text($("footer"), (c.quiet ? "Paused: no request is sent. "
       : `Reads /metrics every ${c.metrics_seconds} s (${METRICS_VIEWED} s while this page is open, ${METRICS_IDLE} s otherwise) and /v1/models every ${c.models_seconds} s; settings once per model start. `)
-    + `Sent ${int(sent)} GET requests in ${dur(up)} (${(sent / up).toFixed(2)}/s, ${((c.received_bytes || 0) / up / 1024).toFixed(1)} KiB/s)`
-    + (has(c.cpu_ms_per_cycle) ? `, ${c.cpu_ms_per_cycle.toFixed(1)} ms CPU per collection` : "")
-    + ". No inference request, no SSH.";
+    + `Sent ${int(sent)} GET requests in ${dur(up)} (${int(sent / up)}/s, ${int((c.received_bytes || 0) / up / 1024)} KiB/s)`
+    + (has(c.cpu_ms_per_cycle) ? `, ${int(c.cpu_ms_per_cycle)} ms CPU per collection` : "")
+    + ". No inference request, no SSH.");
 }
 
-function tick() {
-  const live = $("live");
-  live.className = "live " + (failing ? "bad" : data ? "ok" : "");
-  if (data) $("fresh").textContent = failing ? "Not updating" : "Live · updated " + dur(Date.now() / 1000 - receivedAt) + " ago";
+// Text writes keep existing nodes, so unchanged selections and focus survive.
+function text(el, value) {
+  const next = String(value);
+  if (el.textContent === next) return;
+  if (el.childNodes.length === 1 && el.firstChild.nodeType === Node.TEXT_NODE) el.firstChild.nodeValue = next;
+  else el.textContent = next;
 }
+function attr(el, name, value) {
+  if (el.getAttribute(name) !== String(value)) el.setAttribute(name, value);
+}
+function setHidden(el, value) {
+  if (el.hidden !== value) el.hidden = value;
+}
+function nodeKey(n) {
+  if (n.nodeType !== Node.ELEMENT_NODE) return n.nodeName;
+  return n.tagName + ":" + (n.dataset.key || n.dataset.graph || n.dataset.controls || n.dataset.ring ||
+    (n.classList.contains("node") ? n.querySelector(".num")?.textContent : n.dataset.member) || n.id || n.classList[0] || "");
+}
+function reconcile(parent, source) {
+  const available = [...parent.childNodes], used = new Set();
+  let cursor = parent.firstChild;
+  for (const next of [...source.childNodes]) {
+    const key = nodeKey(next);
+    let node = available.find(n => !used.has(n) && nodeKey(n) === key);
+    if (!node) node = next.cloneNode(true);
+    used.add(node);
+    if (node !== cursor) parent.insertBefore(node, cursor);
+    cursor = node.nextSibling;
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (node.nodeValue !== next.nodeValue) node.nodeValue = next.nodeValue;
+    } else if (node.nodeType === Node.ELEMENT_NODE) {
+      for (const a of [...node.attributes]) {
+        if (a.name === "open" && node.tagName === "DETAILS") continue;
+        if (!next.hasAttribute(a.name)) node.removeAttribute(a.name);
+      }
+      for (const a of next.attributes) {
+        if (a.name === "class" && node.hasAttribute("data-member")) {
+          const classes = a.value.split(" ").concat(node.classList.contains("hot") ? ["hot"] : [], node.classList.contains("sel") ? ["sel"] : []);
+          attr(node, a.name, classes.join(" "));
+        } else attr(node, a.name, a.value);
+      }
+      if (!next.hasAttribute("data-island")) reconcile(node, next);
+    }
+  }
+  for (const node of available) if (!used.has(node)) node.remove();
+}
+function patch(el, html) {
+  if (el.lastMarkup === html) return;
+  el.lastMarkup = html;
+  // Only detached templates are parsed. Live subtrees are never replaced.
+  const template = document.createElement("template");
+  template.innerHTML = html;
+  reconcile(el, template.content);
+}
+let frame = null, dirty = false;
+function scheduleRender(full = true) {
+  dirty ||= full;
+  if (document.hidden || frame !== null) return;
+  frame = requestAnimationFrame(() => {
+    frame = null;
+    if (document.hidden) return;
+    if (dirty) { dirty = false; render(); }
+    tick();
+  });
+}
+function tick() {
+  if (document.hidden) return;
+  attr($("live"), "class", "live " + (failing ? "bad" : data ? "ok" : ""));
+  if (data) text($("fresh"), failing ? "Not updating" : "Live · updated " + dur(Date.now() / 1000 - receivedAt) + " ago");
+  const now = serverNow();
+  for (const el of document.querySelectorAll("[data-age]")) text(el, Number(el.dataset.age) ? (el.dataset.prefix || "") + dur(now - Number(el.dataset.age)) : "");
+  for (const el of document.querySelectorAll("[data-controls]")) {
+    const v = viewFor(el.dataset.controls);
+    text(el.querySelector(".pause-age"), v.paused === null ? "Live" : "Paused · " + dur(now - v.paused) + " ago");
+  }
+}
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) {
+    for (const box of document.querySelectorAll("[data-graph]")) {
+      if (viewFor(box.dataset.graphMember).paused === null) box.plotSignature = null;
+    }
+    scheduleRender();
+  }
+});
 
 let historyLoaded = false, historyCursor = null;
 async function refresh() {
@@ -854,7 +1038,7 @@ async function refresh() {
         const response = await fetch("/api/history", { cache: "no-store" });
         if (response.ok) {
           const history = await response.json();
-          viewerRates.seed(history); historyCursor = history.history_cursor;
+          viewerRates.seed(history); historyCursor = history.history_cursor ?? null;
         }
       } catch (_) { /* Live collection remains available if history cannot be loaded. */ }
     }
@@ -865,16 +1049,11 @@ async function refresh() {
     historyCursor = doc.history_cursor ?? null;
     receivedAt = Date.now() / 1000;
     failing = false;
-    $("banner").hidden = true;
-    render();
+    scheduleRender();
   } catch (e) {
     failing = true;
-    const b = $("banner");
-    b.textContent = data ? `Can't reach the dashboard service. Showing what it reported at ${clock(data.generated_at)}.`
-                         : "Can't reach the dashboard service.";
-    b.hidden = false;
+    scheduleRender();
   }
-  tick();
   setTimeout(refresh, ((data && data.poll_seconds) || 5) * 1000);
 }
 
@@ -1002,7 +1181,7 @@ $("stacks").addEventListener("click", (e) => {
   const reread = e.target.closest("button.reread");
   if (reread) rereadSettings(reread);
 });
-setInterval(() => { tick(); render(); }, 1000);
+setInterval(() => scheduleRender(false), 1000);
 refresh();
 </script>
 </body>
