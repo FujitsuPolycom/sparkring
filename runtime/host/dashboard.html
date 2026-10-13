@@ -63,12 +63,8 @@ svg .band.inferred .shape { stroke-opacity: 0.15; stroke-dasharray: 14 5; }
 svg .band.k-starting .shape { stroke-dasharray: 10 6; stroke-opacity: 0.22; }
 svg .band.k-job .shape { stroke-dasharray: 4 6; stroke-opacity: 0.2; }
 svg .band.hot .shape, svg .band.sel .shape { stroke-opacity: 0.42; }
-svg .lbl { pointer-events: none; text-anchor: middle; }
+svg .lbl { text-anchor: middle; }
 svg .l1 { font: 650 13.5px system-ui, sans-serif; fill: var(--gc); }
-svg .l2 { font: 600 12.5px system-ui, sans-serif; fill: var(--fg); font-variant-numeric: tabular-nums; }
-svg .l3 { font: 500 11.5px system-ui, sans-serif; fill: var(--muted); }
-svg .big .l1 { font-size: 18px; }
-svg .big .l2 { font-size: 15px; }
 svg .node { cursor: pointer; }
 svg .node circle { fill: var(--panel2); stroke: var(--line2); stroke-width: 2; transition: stroke-width 0.15s; }
 svg .node .num { font: 700 14px var(--mono); fill: var(--muted); text-anchor: middle; pointer-events: none; }
@@ -91,7 +87,7 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .strip .tile { background: var(--panel2); flex: 1 1 112px; }
 .strip .tile .s { white-space: normal; }
 .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.legend li { display: grid; grid-template-columns: 12px minmax(0, 1.1fr) minmax(0, 1.3fr) auto; gap: 4px 12px;
+.legend li { display: grid; grid-template-columns: 12px minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .9fr); gap: 4px 12px;
              align-items: center; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px;
              background: var(--panel2); cursor: pointer; transition: border-color 0.15s, background 0.15s; min-width: 0; }
 .legend li.hot, .legend li.sel { border-color: var(--gc); background: color-mix(in srgb, var(--gc) 8%, var(--panel2)); }
@@ -100,12 +96,13 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .legend .t1 { font-weight: 650; overflow-wrap: anywhere; }
 .legend .t2 { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .legend .col { min-width: 0; }
-.legend .right { display: grid; justify-items: end; gap: 3px; }
+.legend .right { display: grid; justify-items: end; gap: 3px; min-width: 0; }
 .legend .rate { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 0.9rem; }
 .legend .empty { display: block; color: var(--muted); cursor: default; grid-template-columns: 1fr; }
 @media (max-width: 520px) {
-  .legend li { grid-template-columns: 12px minmax(0, 1fr) auto; }
+  .legend li { grid-template-columns: 12px minmax(0, 1fr) minmax(0, .8fr); }
   .legend li .col.mid { grid-column: 2 / 3; }
+  .legend li .right { grid-column: 3; grid-row: 1 / 3; }
 }
 .ringnote { margin: 0; font-size: 0.78rem; color: var(--muted); }
 .ringnote b { color: var(--fg); font-weight: 600; }
@@ -113,9 +110,9 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .ringnote:empty { display: none; }
 
 /* -- cards --------------------------------------------------------------------------- */
-.stacks { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); align-items: start; }
+.stacks { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
 .card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--idle);
-        border-radius: 12px; padding: 16px; display: grid; gap: 14px; min-width: 0;
+        border-radius: 12px; padding: 12px; display: grid; gap: 8px; min-width: 0;
         transition: box-shadow 0.15s, border-color 0.15s; scroll-margin: 16px; }
 .card.st-serving { border-left-color: var(--ok); }
 .card.st-not_ready { border-left-color: var(--warn); }
@@ -127,6 +124,7 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .launch-facts summary { cursor: pointer; }
 .card.hot, .card.sel { box-shadow: 0 0 0 1px var(--gc, var(--accent)), 0 0 24px -8px var(--gc, var(--accent)); }
 .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.head > div { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .name { font-size: 1.1rem; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .name .run { font-family: var(--mono); }
 .sub, .since, .muted { color: var(--muted); }
@@ -134,13 +132,13 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .state { display: grid; justify-items: end; gap: 3px; }
 .since { font-size: 0.78rem; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 650;
-        padding: 2px 9px; border-radius: 999px; white-space: nowrap; color: var(--idle); background: var(--idle-bg); }
-.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+        padding: 2px 9px; border-radius: 999px; max-width: 100%; overflow-wrap: anywhere; color: var(--idle); background: var(--idle-bg); }
+.pill::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: currentColor; }
 .p-serving { color: var(--ok); background: var(--ok-bg); }
 .p-not_ready { color: var(--warn); background: var(--warn-bg); }
 .p-offline { color: var(--bad); background: var(--bad-bg); }
 .tag { display: inline-flex; align-items: center; font: 600 0.7rem system-ui, sans-serif; padding: 1px 7px;
-       border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; letter-spacing: 0.02em; }
+       border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); max-width: 100%; overflow-wrap: anywhere; letter-spacing: 0.02em; }
 .tag.arc { color: var(--gc, var(--fg)); border-color: color-mix(in srgb, var(--gc, var(--fg)) 45%, transparent); }
 .tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .model { font-family: var(--mono); font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -152,7 +150,7 @@ button.copy { font: 500 0.75rem system-ui, sans-serif; color: var(--accent); bac
               border: 1px solid var(--line2); border-radius: 5px; padding: 1px 8px; cursor: pointer; }
 button.copy:hover { border-color: var(--accent); }
 button.copy:disabled { opacity: 0.45; cursor: default; }
-.tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1px; background: var(--line);
+.tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line);
          border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 @media (max-width: 460px) { .tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .tile { background: var(--panel2); padding: 9px 11px; min-width: 0; }
@@ -161,8 +159,7 @@ button.copy:disabled { opacity: 0.45; cursor: default; }
 .tile .v small { font-size: 0.75rem; font-weight: 500; color: var(--muted); margin-left: 3px; letter-spacing: 0; }
 .tile .s { font-size: 0.75rem; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap;
            overflow: hidden; text-overflow: ellipsis; }
-.charts { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
-@media (max-width: 460px) { .charts { grid-template-columns: minmax(0, 1fr); } }
+.charts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .chart .k { display: flex; justify-content: space-between; font-size: 0.72rem; color: var(--muted); gap: 6px; }
 .chart svg { display: block; width: 100%; height: 44px; background: var(--code); border: 1px solid var(--line);
              border-radius: 6px; margin-top: 3px; }
@@ -173,7 +170,7 @@ button.copy:disabled { opacity: 0.45; cursor: default; }
            background: var(--code); border: 1px solid var(--line); border-radius: 6px; margin-top: 3px; }
 .sparks { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line2); border-radius: 6px;
-        padding: 3px 8px; font-size: 0.78rem; min-width: 0; background: var(--panel2); }
+        padding: 3px 8px; font-size: 0.78rem; min-width: 0; max-width: 100%; flex-wrap: wrap; overflow-wrap: anywhere; background: var(--panel2); }
 .chip .pos { font: 700 0.72rem var(--mono); color: var(--gc, var(--muted)); }
 .chip .dot { width: 7px; height: 7px; }
 .chip.up .dot { background: var(--ok); }
@@ -222,7 +219,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
     --ok: #13743a; --warn: #855900; --bad: #b32222; }
 }
 .tiles .s { white-space: normal; overflow-wrap: anywhere; }
-.chart { min-width: 0; }
+.chart { min-width: 0; position: relative; }
 .chart button, .graph-controls button { color: var(--fg); background: var(--code); border: 1px solid var(--line2);
   border-radius: 5px; padding: 8px; min-height: 44px; cursor: pointer; }
 .chart svg { touch-action: pan-y; }
@@ -236,14 +233,46 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 #graph-dialog input { width: 100%; min-height: 44px; }
 #graph-dialog button { min-height: 44px; }
 
-/* Numeric slots and readouts keep their geometry as values arrive. */
-.tile { height: 140px; }
-.tile .v { height: 48px; overflow: hidden; display: flex; flex-direction: column; align-items: flex-start; }
-.tile .v small { margin-left: 0; height: 16px; }
-.tile .k { height: 20px; overflow: hidden; white-space: nowrap; }
-.tile .s { height: 54px; overflow: auto; }
-.chart output { height: 5.8em; overflow: auto; font-variant-numeric: tabular-nums; }
-.chart svg { height: 80px; }
+/* Numeric slots keep their geometry as samples arrive. */
+.card .tile { height: 64px; padding: 6px 10px; }
+.card .tile .v { height: 30px; font-size: 1.3rem; white-space: nowrap; }
+.card .tile .k { height: 20px; white-space: nowrap; }
+.card .tile .k span { letter-spacing: 0; text-transform: none; }
+.chart svg { height: 56px; }
+.sparkline { position: relative; display: block; padding: 0; border: 0; background: none;
+  color: var(--fg); text-align: left; font: inherit; cursor: pointer; }
+.sparkline:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.sparkline .axis { display: none; }
+.sparkline .plot-frame { display: block; }
+.sparkline output { position: absolute; top: 100%; left: 0; width: max-content; max-width: 100%;
+  height: auto; min-height: 0; padding: 4px; background: var(--panel); border: 1px solid var(--line);
+  font-size: .75rem; z-index: 2; pointer-events: none; visibility: hidden; }
+.sparkline:hover output:not(:empty) { visibility: visible; }
+.empty-plot { position: absolute; inset: 30px 0 auto; text-align: center; font-size: .72rem; color: var(--muted); }
+.chart.empty .axis { visibility: hidden; }
+.card .head { align-items: center; justify-content: flex-start; gap: 6px 12px; }
+.card .name { font-size: .9rem; }
+.card .model { font-size: .82rem; }
+.card .state { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; gap: 6px; }
+.card .endpoint { margin: 0; min-width: 0; }
+.card .thinking, .secondary, .source { font-size: .75rem; }
+.card-details { min-width: 0; font-size: .8rem; }
+.card-details > summary { cursor: pointer; color: var(--muted); width: fit-content; }
+.card-details > .detail-body { display: grid; gap: 10px; padding-top: 10px; }
+.card-details p { margin: 0; overflow-wrap: anywhere; }
+.recovery-chip { font-size: .7rem; font-weight: 500; }
+.card.inactive { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.inactive .head { display: contents; }
+.inactive .card-details { margin-left: auto; }
+.inactive:has(.card-details[open]) .card-details { flex-basis: 100%; margin-left: 0; }
+.start-command { font-size: .75rem; }
+@media (max-width: 460px) {
+  .card .tile { padding: 6px 8px; height: 78px; }
+  .card .tile .k { height: 32px; white-space: normal; line-height: 15px; }
+  .card .tile .k span { display: block; }
+  .card .head { gap: 6px; }
+  .inactive .card-details { flex-basis: 100%; margin-left: 0; }
+}
 .graph-controls { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-width: 0; }
 .graph-controls select, #graph-window { min-height: 44px; background: var(--code); color: var(--fg); }
 .graph-controls button { min-height: 44px; min-width: 80px; }
@@ -276,6 +305,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
       <p class="summary" id="summary">Connecting to the dashboard…</p>
     </div>
     <div class="live" id="live"><span class="dot"></span><span id="fresh">Connecting</span></div>
+    <div id="page-graphs" class="graph-controls" data-controls="page"></div>
   </header>
   <div class="banner" id="banner" hidden></div>
   <section class="manage" id="manage" hidden aria-label="Manage slices">
@@ -336,6 +366,10 @@ const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
 const span = (positions) => !positions || !positions.length ? "" :
   positions.length === 1 ? String(positions[0]) :
   positions.some((p, i) => i && p > positions[i - 1] + 1) ? positions.join(", ") : positions[0] + "–" + positions[positions.length - 1];
+const sparkCount = n => `${n} Spark${n === 1 ? "" : "s"}`;
+const positionText = p => `position${p.length === 1 ? "" : "s"} ${span(p)}`;
+const parallelism = f => ["tp", "dcp", "pp", "dp"].filter(k => has(f[k])).map(k => k.toUpperCase() + f[k]).join(" / ");
+const gpuSummary = s => (s.containers || []).map(c => `container ${c.name}${c.image || c.image_id ? ", image " + (c.image || c.image_id) : ""}`).join("; ");
 function dur(s) {
   if (!has(s) || s < 0) return "";
   s = Math.round(s);
@@ -385,7 +419,7 @@ function ringCaption(ring) {
     ? `Fabric document ${f.cluster || ""} (${f.shape || "?"}), read from ${(f.read_from || []).join(", ")}${f.id ? "\n" + f.id : ""}`
     : "The configured Sparks in their listed cable order";
   const kind = ring.source === "fabric" ? (ring.closed === false ? ` · ${esc(f.shape || "open")}` : "") : " · configured order";
-  return `<figcaption title="${esc(tip)}"><b>${esc(ring.name)}</b> · ${esc(ring.size)} Sparks${kind}</figcaption>`;
+  return `<figcaption title="${esc(tip)}"><b>${esc(ring.name)}</b> · ${sparkCount(ring.size)}${kind}</figcaption>`;
 }
 
 function ringSvg(ring, members, now) {
@@ -400,7 +434,7 @@ function ringSvg(ring, members, now) {
   const owner = {};
   for (const g of groups) for (const p of g.positions) if (!(p in owner)) owner[p] = g;
   const nodeGap = Math.asin(22 / R) * 180 / Math.PI;
-  let s = `<svg viewBox="0 0 400 400" role="img" aria-label="${esc(ring.name)}: ${N} Sparks in cable order">`;
+  let s = `<svg viewBox="0 0 400 400" role="img" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
   for (let p = 0; p < N; p++) {
     if (p === N - 1 && ring.closed === false) continue; // a path or pair has no cable back to position 0
     const g = owner[p], same = g && owner[(p + 1) % N] === g && N > 1;
@@ -411,29 +445,11 @@ function ringSvg(ring, members, now) {
     const contiguous = g.positions.every((p, i) => p === (g.first + i) % N);
     const shape = !contiguous ? g.positions.map(p => `<path class="shape" data-position="${p}" d="${arc(ang(p) - pad, ang(p) + pad, R)}"/>`).join("") : g.size >= N ? `<circle class="shape" cx="${cx}" cy="${cy}" r="${R}"/>`
       : `<path class="shape" d="${arc(ang(g.first) - pad, ang(g.first) + (g.size - 1) * step + pad, R)}"/>`;
-    const big = g.size >= N;
-    const mid = ang(g.first) + (g.size - 1) * step / 2;
-    // Labels sit inside the ring toward their arc; wide arcs and crowded rings pull them inward
-    // and shorten them so neighbouring labels and nodes stay clear.
-    const many = groups.length > 2;
-    const radius = g.size >= 3 ? (many ? 64 : 54) : (groups.length > 1 ? 74 : 60);
-    const chars = big ? 22 : many ? 13 : groups.length === 2 ? 15 : 19;
-    const [lx, ly] = big ? [cx, cy] : pt(mid, radius);
-    let l1, l2, l3;
-    if (g.kind === "member") {
-      const m = g.m, live = m.live || {};
-      l1 = clip(m.model_short || m.model || m.name, chars);
-      l2 = (m.unmanaged ? `${g.size} Sparks` : `TP${g.size}${g.inferred ? "?" : ""}`) + (m.state === "serving" ? ` · ${rate(live.output_tps)} tok/s` : "");
-      l3 = (m.state === "serving" ? "serving" : (m.state_label || "").toLowerCase()) + (g.inferred ? " · inferred" : "");
-    } else if (g.kind === "starting") {
-      l1 = clip(g.r.label, chars); l2 = `TP${g.size}`; l3 = "starting";
-    } else {
-      l1 = clip(g.r.label, chars); l2 = `${g.size} Sparks`; l3 = "job · no API";
-    }
-    const y0 = ly - (big ? 16 : 13), gap = big ? 20 : 16;
-    const label = `<g class="lbl${big ? " big" : ""}"><text class="l1" x="${lx.toFixed(1)}" y="${y0.toFixed(1)}">${esc(l1)}</text>`
-      + `<text class="l2" x="${lx.toFixed(1)}" y="${(y0 + gap).toFixed(1)}">${esc(l2)}</text>`
-      + `<text class="l3" x="${lx.toFixed(1)}" y="${(y0 + gap + 15).toFixed(1)}">${esc(l3)}</text></g>`;
+    // One short name per reserved row; details stay in the legend and full-name tooltip.
+    const gap = Math.min(20, 140 / groups.length);
+    const ly = cy + (groups.indexOf(g) - (groups.length - 1) / 2) * gap;
+    const name = g.kind === "member" ? g.m.name : g.r.label;
+    const label = `<g class="lbl"><text class="l1" x="${cx}" y="${ly.toFixed(1)}" style="font-size:${Math.min(13.5, gap * .7)}px">${esc(clip(name, 16))}</text></g>`;
     const cls = ["band", "k-" + g.kind, g.state === "serving" ? "on" : "", g.inferred ? "inferred" : ""].filter(Boolean).join(" ");
     s += `<g class="${cls}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${shape}${label}</g>`;
   }
@@ -457,10 +473,10 @@ function ringSvg(ring, members, now) {
 }
 
 function groupTitle(g) {
-  const where = `${g.ring ? g.ring.name + " " : ""}positions ${span(g.positions)}`;
+  const where = `${g.ring ? g.ring.name + " " : ""}${positionText(g.positions)}`;
   if (g.kind === "member") {
     const m = g.m, a = m.arc || {};
-    return `${m.name} — ${where} · ${m.model || "no model"}\n`
+    return `${m.name} — ${where} · ${m.gpu_job ? "GPU in use · " + gpuSummary(m) : m.model || "no model"}\n`
       + `${a.inferred ? "inferred from " : "from "}${a.source_label || "?"}${a.detail ? " (" + a.detail + ")" : ""}`;
   }
   return `${g.r.label} — ${where} · ${g.kind === "job" ? "collective job without an API" : "containers up, API not answering yet"}`
@@ -499,17 +515,17 @@ function legendHtml(rings, members) {
     if (g.kind === "member") {
       const m = g.m, a = m.arc || {}, tr = m.transport && m.transport.label;
       t1 = `<span class="mono">${esc(m.name)}</span>`;
-      t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
-      model = esc(m.model_short || m.model || "—");
-      src = `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
+      t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
+      model = `<span title="${esc(m.model || (m.gpu_job ? gpuSummary(m) : m.name))}">${esc(m.gpu_job ? "GPU in use" : m.model_short || m.model || "—")}</span>`;
+      src = m.gpu_job ? esc(gpuSummary(m)) : `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
       t1 = `<span class="mono">${esc(g.r.label)}</span>`;
-      t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
+      t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
       model = g.kind === "job" ? "SIRCL collective job" : "serving run";
       src = g.kind === "job" ? "no API · from container names" : "containers up · API not answering yet";
-      right = `<span class="pill ${g.kind === "job" ? "" : "p-not_ready"}">${g.kind === "job" ? "Busy" : "Starting"}</span>`;
+      right = `<span class="pill ${g.kind === "job" ? "" : "p-not_ready"}">${g.kind === "job" ? "GPU in use" : "Starting"}</span>`;
     }
     return `<li class="k-${g.kind}" data-member="${esc(g.id)}" style="--gc:${g.color}"><span class="sw"></span>`
       + `<div class="col"><div class="t1">${t1}</div><div class="t2">${t2}</div></div>`
@@ -547,7 +563,7 @@ function renderRings(rings, members, now) {
   patch($("ringnote"), ringNote(rings, data.topology));
   const disc = rings[0].discovery || {}, total = rings.reduce((a, r) => a + (r.size || 0), 0);
   text($("ringtitle"), rings.length > 1 ? "Groups on the rings" : "Groups on the ring");
-  patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${total} Sparks` : `${esc(rings[0].name)} · ${rings[0].size} Sparks`)
+  patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${sparkCount(total)}` : `${esc(rings[0].name)} · ${sparkCount(rings[0].size)}`)
     + (disc.at ? ` · checked <span data-age="${disc.at}">${dur(now - disc.at)}</span> ago` : ""));
 }
 
@@ -597,39 +613,41 @@ const tokfmt = (n) => !has(n) ? null : n >= 1e6 ? int(n / 1e6) + "M"
   : n >= 1e3 ? Math.round(n / 1e3) + "k" : String(Math.round(n));
 
 function tiles(s) {
-  const l = s.live || {}, set = s.settings || {}, cap = s.capacity || {};
-  const kvParts = [];
-  if (cap.kv_bytes || set.kv_cache_memory_bytes) kvParts.push(gb(cap.kv_bytes || set.kv_cache_memory_bytes));
-  if (cap.kv_tokens) kvParts.push(tokfmt(cap.kv_tokens) + " tok");
-  const kvSize = kvParts.length ? "of " + kvParts.join(" · ") : "in use";
-  const maxSeqs = cap.max_num_seqs || set.max_num_seqs;
-  const draft = has(l.accept_length_5m) ? l.accept_length_5m.toFixed(2) : "–";
+  const l = s.live || {}, max = s.capacity?.max_num_seqs || s.settings?.max_num_seqs;
   return `<div class="tiles">
-    <div class="tile"><div class="k">Output</div><div class="v">${rate(l.output_tps)}<small>tok/s</small></div>
-      <div class="s">5 min avg ${rate(l.output_tps_5m)} \u00b7 ${esc(l.source === "plugin" ? "plugin" : "/metrics")}</div></div>
-    <div class="tile"><div class="k">Prefill ${l.source === "plugin" ? "" : "(approx)"}</div><div class="v">${has(l.prefill_tps) ? rate(l.prefill_tps) : "&#8212;"}<small>tok/s</small></div>
-      <div class="s">${esc(l.source === "plugin" ? "plugin interval" : "/metrics interval")} \u00b7 sample ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</div></div>
-    <div class="tile"><div class="k">Steps / acceptance</div><div class="v">${one(l.steps_ps)}<small>steps/s</small></div>
-      <div class="s">${pct(l.acceptance)} accepted drafts \u00b7 ${esc(l.source || "/metrics")}</div></div>
-    <div class="tile"><div class="k">Requests</div><div class="v">${int(l.running)}<small>running</small></div>
-      <div class="s">${int(l.waiting)} waiting${maxSeqs ? " · max " + maxSeqs + " concurrent" : ""}</div></div>
-    <div class="tile"><div class="k">KV cache</div><div class="v">${pct(l.kv)}</div><div class="s">${esc(kvSize)} \u00b7 ${esc(l.source || "/metrics")}</div></div>
-    <div class="tile"><div class="k">Draft</div><div class="v">${draft}<small>tok/step</small></div>
-      <div class="s">${has(l.accept_length_5m) ? "last 5 min" : "no recent drafts"} \u00b7 ${esc(l.source || "/metrics")}</div></div>
+    <div class="tile"><div class="k">Output tok/s</div><div class="v">${rate(l.output_tps)}</div></div>
+    <div class="tile"><div class="k">Prefill tok/s</div><div class="v">${rate(l.prefill_tps)}</div></div>
+    <div class="tile"><div class="k">Requests <span class="muted">running / max</span></div><div class="v">${int(l.running)} / ${int(max)}</div></div>
+    <div class="tile"><div class="k">KV in use <span class="muted">% of tokens</span></div><div class="v">${pct(l.kv)}</div></div>
   </div>`;
+}
+function metricDetails(s) {
+  const l = s.live || {};
+  return `<p>Output ${rate(l.output_tps)} tok/s · Prefill ${rate(l.prefill_tps)} tok/s · ${one(l.steps_ps)} steps/s · ${pct(l.acceptance)} draft acceptance · Requests ${int(l.running)} running · KV ${pct(l.kv)} of tokens in use</p><p>Output 5 min avg ${rate(l.output_tps_5m)} tok/s · Prefill interval ${l.source === "plugin" ? "exact" : "approximate"} · ${int(l.waiting)} requests waiting · Draft ${one(l.accept_length_5m)} tok/step (last 5 min) ? Sample time ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</p>`;
+}
+function sampleSource(s, now) {
+  const l = s.live || {};
+  return `<span class="source muted">${l.source === "plugin" ? "plugin" : "/metrics"} · sample ${has(l.read_at)
+    ? `<span data-age="${l.read_at}">${dur(now - l.read_at)}</span> ago` : "unknown"}</span>`;
 }
 
 const graphNames = { 1: "Output tok/s", 4: "KV cache use", 5: "Prefill tok/s" };
 const windows = [["auto", "Auto"], ["300", "5 min"], ["900", "15 min"], ["3600", "1 h"], ["10800", "3 h"]];
 const views = new Map();
+// One viewer-local window and pause time; each member retains its frozen samples.
+const graphView = { window: "auto", paused: null };
+try { graphView.window = localStorage.getItem("sparkring-window") || "auto"; } catch (_) { /* Storage is optional. */ }
+if (!windows.some(w => w[0] === graphView.window)) graphView.window = "auto";
 function viewFor(id) {
-  if (!views.has(id)) {
-    let window = "auto";
-    try { window = localStorage.getItem("sparkring-window:" + id) || window; } catch (_) { /* Storage is optional. */ }
-    if (!windows.some(w => w[0] === window)) window = "auto";
-    views.set(id, { window, paused: null, history: null });
-  }
-  return views.get(id);
+  if (!views.has(id)) views.set(id, { history: graphView.paused === null ? null : [] });
+  return { ...graphView, history: views.get(id).history };
+}
+function updateGraphControls() {
+  const controls = $("page-graphs");
+  if (!controls.firstChild) patch(controls, `<label>Window <select aria-label="Graph window">${options(graphView.window)}</select></label>
+    <button type="button" data-pause>Pause</button><span class="pause-age"></span>`);
+  controls.querySelector("select").value = graphView.window;
+  text(controls.querySelector("button"), graphView.paused === null ? "Pause" : "Resume");
 }
 function options(selected, dialog = false) {
   return [...windows, ...(dialog ? [["21600", "6 h"]] : [])].map(([v, label]) =>
@@ -637,16 +655,15 @@ function options(selected, dialog = false) {
 }
 function graphBox(s, idx) {
   // The plot updater owns children of this island, including pointer state.
-  return `<div class="chart" data-graph="${idx}" data-graph-member="${esc(s.id)}" data-island></div>`;
+  return `<button type="button" class="chart sparkline" data-graph="${idx}" data-graph-member="${esc(s.id)}" aria-label="Expand ${graphNames[idx]} for ${esc(s.name)}" aria-haspopup="dialog" data-island></button>`;
 }
 function charts(s) {
-  return `<div class="graph-controls" data-island data-controls="${esc(s.id)}"></div>
-    <div class="charts">${[1, 5, 4].map(i => graphBox(s, i)).join("")}</div>`;
+  return `<div class="charts">${[1, 5, 4].map(i => graphBox(s, i)).join("")}</div>`;
 }
 function plotShell(idx, title = "") {
   return `${title}<div class="plot-frame"><div class="axis y-axis"><span>0</span><span></span><span></span></div>
     <svg class="${idx === 4 ? "c2" : "c1"}" viewBox="0 0 300 80" preserveAspectRatio="none" aria-hidden="true"><path d="" vector-effect="non-scaling-stroke"/></svg>
-    </div><div class="axis x-axis"><span></span><span></span></div>`;
+    </div><div class="axis x-axis"><span></span><span></span></div><span class="empty-plot" hidden>no data yet</span>`;
 }
 function drawPlot(box, history, idx, now, window, limit) {
   const signature = JSON.stringify([history, window]);
@@ -654,7 +671,9 @@ function drawPlot(box, history, idx, now, window, limit) {
   box.plotSignature = signature;
   const g = chart(history, idx, now, "", idx === 4 ? 1 : null, window, limit);
   box.plot = g;
-  attr(box.querySelector("path"), "d", g.d);
+  attr(box.querySelector("path"), "d", g.rows.length ? g.d : "M0,78L300,78");
+  box.classList.toggle("empty", !g.rows.length);
+  setHidden(box.querySelector(".empty-plot"), !!g.rows.length);
   const ys = box.querySelectorAll(".y-axis span"), xs = box.querySelectorAll(".x-axis span");
   const fmt = idx === 4 ? pct : int;
   text(ys[1], fmt(g.top / 2)); text(ys[2], fmt(g.top));
@@ -665,15 +684,9 @@ function drawPlot(box, history, idx, now, window, limit) {
 function updateGraphs(member) {
   const card = [...$("stacks").children].find(c => c.dataset.member === member.id);
   const v = viewFor(member.id), now = v.paused ?? serverNow(), history = v.history ?? member.history ?? [];
-  const controls = card.querySelector("[data-controls]");
-  if (!controls.firstChild) patch(controls, `<label>Window <select aria-label="Graph window for ${esc(member.name)}">${options(v.window)}</select></label>
-    <button type="button" data-pause>Pause</button><span class="pause-age"></span>`);
-  controls.querySelector("select").value = v.window;
-  text(controls.querySelector("button"), v.paused === null ? "Pause" : "Resume");
   for (const box of card.querySelectorAll("[data-graph]")) {
     const idx = Number(box.dataset.graph);
-    if (!box.firstChild) patch(box, plotShell(idx, `<div class="k">${graphNames[idx]}</div>
-      <button type="button" class="expand-graph" aria-label="Expand ${graphNames[idx]} for ${esc(member.name)}">Expand graph</button>`) + '<output>Hover or expand to inspect samples.</output>');
+    if (!box.firstChild) patch(box, plotShell(idx, `<span class="k">${graphNames[idx]}</span>`) + '<output></output>');
     drawPlot(box, history, idx, now, v.window, 10800);
   }
 }
@@ -730,25 +743,23 @@ $("stacks").addEventListener("pointerout", event => {
   const box = event.target.closest("[data-graph]");
   if (box && !box.querySelector("svg").contains(event.relatedTarget)) box.pointerX = null;
 });
-$("stacks").addEventListener("change", event => {
-  const controls = event.target.closest("[data-controls]");
-  if (!controls) return;
-  viewFor(controls.dataset.controls).window = event.target.value;
-  try { localStorage.setItem("sparkring-window:" + controls.dataset.controls, event.target.value); } catch (_) { /* Storage is optional. */ }
+$("page-graphs").addEventListener("change", event => {
+  graphView.window = event.target.value;
+  try { localStorage.setItem("sparkring-window", event.target.value); } catch (_) { /* Storage is optional. */ }
+  scheduleRender();
+});
+$("page-graphs").addEventListener("click", event => {
+  if (!event.target.closest("[data-pause]") || !data) return;
+  graphView.paused = graphView.paused === null ? serverNow() : null;
+  for (const member of data.groups.flatMap(g => g.members || [])) {
+    views.set(member.id, { history: graphView.paused === null ? null : (member.history || []).map(r => [...r]) });
+  }
+  for (const box of document.querySelectorAll("[data-graph]")) box.plotSignature = null;
   scheduleRender();
 });
 $("stacks").addEventListener("click", event => {
-  const controls = event.target.closest("[data-controls]");
-  if (controls && event.target.closest("[data-pause]")) {
-    const id = controls.dataset.controls, v = viewFor(id);
-    const member = data.groups.flatMap(g => g.members || []).find(m => m.id === id);
-    if (v.paused === null) { v.paused = serverNow(); v.history = (member.history || []).map(r => [...r]); }
-    else { v.paused = null; v.history = null; }
-    for (const box of controls.parentNode.querySelectorAll("[data-graph]")) box.plotSignature = null;
-    scheduleRender();
-  }
   const box = event.target.closest("[data-graph]");
-  if (box && (event.target.closest("svg") || event.target.closest("button"))) openGraph(box, box.querySelector("button"));
+  if (box) openGraph(box, box);
 });
 $("graph-body").addEventListener("pointermove", event => {
   if (!event.target.closest("svg") || !graphSelection) return;
@@ -848,12 +859,12 @@ function unmanagedFacts(s) {
   const f = s.launch || {};
   return `<p class="down-note">${esc(s.ownership_label)}</p>
     ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
-    <p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>
+    ${s.gpu_job ? "" : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
     <details class="launch-facts"><summary>Container launch facts and install records</summary>
-    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}<br>
+    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}${s.gpu_job ? "" : `<br>
       ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
-      TP${c.tp ?? "?"} / DCP${c.dcp ?? "?"} / PP${c.pp ?? "?"} / DP${c.dp ?? "?"} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}</p>`).join("")}
-    ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · positions ${esc(span(r.positions))}</p>`).join("")}
+      ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}`}</p>`).join("")}
+    ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
     </details>`;
 }
 
@@ -862,13 +873,14 @@ function card(s, now) {
   const since = s.state_since ? "for " + dur(now - s.state_since) : "";
   const layout = s.layout || {}, arc = s.arc;
   const gc = arc ? gcolor(arc.color) : null;
-  let sub = `${layout.count ?? (s.sparks || []).length} sparks`;
+  let sub = sparkCount(layout.count ?? (s.sparks || []).length);
   if (serving && layout.label) sub = `${esc(layout.label)} · ${sub}`;
   else if (st === "idle") sub = `${esc(layout.label || sub)} · not deployed`;
   if (s.head && s.head.port) sub += ` · API on ${esc(s.head.name)}:${esc(s.head.port)}`;
   if (s.profile) sub += ` · ${esc(s.profile)}`;
   let model;
-  if (!s.model) model = '<span class="muted">No model seen yet</span>';
+  if (s.gpu_job) model = esc("GPU in use · " + gpuSummary(s));
+  else if (!s.model) model = '<span class="muted">No model seen yet</span>';
   else if (serving || s.unmanaged) model = esc(s.model);
   else model = `<span class="muted">Last served:</span> ${esc(s.model)}`;
   const note = (arc ? {
@@ -886,27 +898,37 @@ function card(s, now) {
   if (arc) {
     const rings = ringsOf(data), ring = rings.find((r) => r.id === s.ring);
     if (rings.length > 1 && ring) tags.push(`<span class="tag" title="${esc(ring.name)}">${esc(ring.short || ring.id)} ring</span>`);
-    tags.push(`<span class="tag arc" title="${esc((arc.inferred ? "inferred from " : "from ") + arc.source_label)}">positions ${esc(span(arc.positions))}</span>`);
     if (s.transport && s.transport.label) tags.push(`<span class="tag">${esc(s.transport.label)}</span>`);
+    tags.push(`<span class="tag arc" title="${esc((arc.inferred ? "inferred from " : "from ") + arc.source_label)}">${esc(positionText(arc.positions))}</span>`);
     if (arc.inferred) tags.push(`<span class="tag warn" title="${esc("placed forward from the head using the " + arc.source_label + (arc.detail ? "; " + arc.detail : ""))}">inferred</span>`);
   }
-  return `<article class="card st-${esc(st)}${gc ? " ringed" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+  const sizes = s.unmanaged ? layout.label : parallelism({tp: s.settings?.tensor_parallel_size || layout.tp, dcp: s.settings?.decode_context_parallel_size || layout.dcp}) || layout.label;
+  const endpoint = serving && s.endpoint ? `<span class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button></span>` : "";
+  const start = !serving && !s.unmanaged && s.start_command
+    ? `<span class="endpoint start-command"><code>${esc(s.start_command)}</code><button class="copy" type="button" data-copy="${esc(s.start_command)}" aria-label="Copy start command for ${esc(s.name)}">Copy</button></span>` : "";
+  const r = s.recovery, recovery = !r ? "" : r.enabled === false ? "recovery off" : r.state === "serving" ? "recovery ok" : "recovery " + (r.state || "unknown");
+  const recoveryChip = recovery ? `<span class="tag recovery-chip" title="${esc(r.summary || recovery)}">${esc(recovery)}${has(r.checked_at) ? " · " + esc(dur(now - r.checked_at).split(" ").slice(0, 2).join(" ")) + " ago" : ""}</span>` : "";
+  const thinking = s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : "";
+  const modelText = s.name === s.model && !s.gpu_job ? (serving ? "" : `<span class="model muted">Last served: same model</span>`) : `<span class="model">${model}</span>`;
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
-      <div><div class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span>${tags.join("")}</div><div class="sub">${sub}</div></div>
-      <div class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></div>
+      <span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
+      ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
+      ${tags.join("")}
+      <span class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
+      ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
     </div>
-    <div class="model">${model}</div>
-    ${s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : ""}
-    ${s.thinking && s.thinking_provenance ? `<details class="thinking-details"><summary>Thinking details</summary><p>${esc(s.thinking_provenance)}</p></details>` : ""}
-    ${serving && s.endpoint ? `<div class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button>${s.details_url ? `<a href="${esc(s.details_url)}" target="_blank" rel="noopener" title="The model's own status page. While it is open it asks every worker for a report every 5 s, through the engine.">Details</a>` : ""}<button class="copy reread" type="button" data-model="${esc(s.id)}">Re-read settings</button></div>` : ""}
-    ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
-    ${s.unmanaged ? unmanagedFacts(s) : ""}
-    ${recoveryLine(s, now)}
-    ${tiles(s)}${charts(s)}
-    ${sparks(s)}
-    ${serving ? settings(s) + totals(s, now) : ""}
-    ${logsPanel(s)}
-    ${data.manage && arc && !s.unmanaged ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
+    ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${pct(s.live?.acceptance)} draft acceptance · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
+    <details class="card-details"><summary>Details</summary><div class="detail-body">
+      <div class="sub">${sub}</div>
+      ${!serving ? thinking + sparks(s) : ""}
+      ${s.thinking && s.thinking_provenance ? `<details class="thinking-details"><summary>Thinking details</summary><p>${esc(s.thinking_provenance)}</p></details>` : ""}
+      ${s.details_url || serving ? `<div class="endpoint">${s.details_url ? `<a href="${esc(s.details_url)}" target="_blank" rel="noopener" title="The model's own status page. While it is open it asks every worker for a report every 5 s, through the engine.">Model status</a>` : ""}${serving ? `<button class="copy reread" type="button" data-model="${esc(s.id)}">Re-read settings</button>` : ""}</div>` : ""}
+      ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
+      ${s.unmanaged ? unmanagedFacts(s) : ""}
+      ${recoveryLine(s, now)}${settings(s)}${metricDetails(s)}${totals(s, now)}${logsPanel(s)}
+      ${data.manage && arc && !s.unmanaged ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
+    </div></details>
   </article>`;
 }
 
@@ -935,7 +957,7 @@ function render() {
     const busy = rings.flatMap((r) => r.positions || []).filter((p) => p.member || p.run).length;
     const size = rings.reduce((a, r) => a + (r.size || 0), 0);
     parts.push(`${n} serving group${n === 1 ? "" : "s"}${rings.length > 1 ? ` on ${rings.length} rings` : ""}`,
-               `${busy} of ${size} Sparks busy`);
+               `${busy} of ${sparkCount(size)} busy`);
   }
   if (fixedMembers.length) parts.push(`${fixedMembers.filter((s) => s.state === "serving").length} of ${fixedMembers.length} profiles serving`);
   parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
@@ -949,6 +971,7 @@ function render() {
   const order = [...$("stacks").children].map(c => c.dataset.member);
   for (const s of stacks) if (!order.includes(s.id)) order.push(s.id);
   patch($("stacks"), order.map(id => card(incoming.get(id), now)).join(""));
+  updateGraphControls();
   for (const s of stacks) updateGraphs(s);
   applyHighlight();
   const ev = (data.events || []).map((e) => `<li class="k-${esc(e.kind)}"><time>${esc(clock(e.at))}</time>
@@ -1036,7 +1059,7 @@ function tick() {
   const now = serverNow();
   for (const el of document.querySelectorAll("[data-age]")) text(el, Number(el.dataset.age) ? (el.dataset.prefix || "") + dur(now - Number(el.dataset.age)) : "");
   for (const el of document.querySelectorAll("[data-controls]")) {
-    const v = viewFor(el.dataset.controls);
+    const v = graphView;
     text(el.querySelector(".pause-age"), v.paused === null ? "Live" : "Paused · " + dur(now - v.paused) + " ago");
   }
 }

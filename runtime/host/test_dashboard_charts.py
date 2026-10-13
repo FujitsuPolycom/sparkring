@@ -159,6 +159,7 @@ def test_thinking_line_renders_and_updates_in_place(smooth_page, width):
     assert line.is_visible() and line.inner_text() == "Thinking: always · high (levels: low, high or max)"
     details = card.locator(".thinking-details")
     assert not details.locator("p").is_visible()
+    card.locator(".card-details > summary").click()
     details.locator("summary").click()
     assert details.locator("p").inner_text() == "Deployment default; Model default: always · max"
     line.evaluate("el => window.heldThinking = el")
@@ -214,6 +215,7 @@ def test_unmanaged_noncontiguous_ring_label_and_in_place_details(smooth_page, tm
     update_page(page)
     card = page.locator("article.card")
     assert card.count() == 1
+    card.locator(".card-details").evaluate("el => el.open = true")
     assert "Not installed by SparkRing: no automatic recovery, no install record" in card.inner_text()
     assert "positions 0, 2, 3, 4, 6, 7" in card.inner_text()
     assert page.locator("#ringviz .node.busy").count() == 6
@@ -243,11 +245,11 @@ def test_updates_keep_nodes_pointer_focus_selection_and_layout(smooth_page, widt
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=theme)
     card = page.locator("article.card").first
-    card.locator("details").evaluate("el => el.open = true")
+    card.locator(".card-details").evaluate("el => el.open = true")
     graph = card.locator("[data-graph='1']")
     graph.scroll_into_view_if_needed()
     graph.locator("svg").hover(position={"x": 50, "y": 20})
-    graph.locator("button").focus()
+    graph.focus()
     page.evaluate("""() => {
       window.heldNodes = [...document.querySelectorAll('article.card, .tile, [data-graph] *, #ringviz svg, #ringviz g, #legend li')];
       const model = document.querySelector('article .model');
@@ -270,8 +272,8 @@ def test_updates_keep_nodes_pointer_focus_selection_and_layout(smooth_page, widt
         update_page(page)
         page.wait_for_timeout(1000)
         assert page.evaluate("heldNodes.every(n => n.isConnected)")
-        assert graph.locator("button").evaluate("el => el === document.activeElement")
-        assert card.locator("details").evaluate("el => el.open")
+        assert graph.evaluate("el => el === document.activeElement")
+        assert card.locator(".card-details").evaluate("el => el.open")
         assert card.bounding_box()["height"] == card_height
         assert page.evaluate("getSelection().toString() === selectedText")
         assert graph.evaluate("el => el.querySelector('output').textContent === exactGraphValue(pointerSample(el.pointerX, el), 1)")
@@ -302,7 +304,7 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
         assert abs(graph.evaluate("el => el.plot.now - el.plot.start") - seconds) < 5
     selector.select_option("300")
     page.wait_for_function("() => document.querySelector('[data-graph]').plot.top < 100")
-    assert page.evaluate("localStorage.getItem('sparkring-window:' + data.groups[0].members[0].id)") == "300"
+    assert page.evaluate("localStorage.getItem('sparkring-window')") == "300"
     # With a fixed window, an aging spike must leave the scale as time advances.
     member["history"] = [[now - 295 + i * 5, 1000 if i == 0 else 20, 1, 0, .25, 50, "metrics"] for i in range(60)]
     update_page(page)
@@ -323,7 +325,7 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
         assert graph.evaluate("el => [el.plot.start, el.plot.now, el.querySelector('path').getAttribute('d')]") == frozen
     assert "99,999" in page.locator(".tiles").first.inner_text()
     assert "Paused · 15 s ago" in page.locator(".pause-age").first.inner_text()
-    graph.locator("button").click()
+    graph.click()
     before = page.locator("#graph-value").inner_text()
     page.locator("#graph-window").select_option("21600")
     assert page.evaluate("graphSelection.rows.length") == 61
@@ -336,7 +338,7 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
     pause.click()
     page.wait_for_function("() => document.querySelector('[data-graph]').plot.top > 9000")
     before_requests = len(requests)
-    graph.locator("button").click()
+    graph.click()
     page.locator("#graph-window").select_option("900")
     page.keyboard.press("Escape")
     assert len(requests) == before_requests
