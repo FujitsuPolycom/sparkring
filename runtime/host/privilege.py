@@ -21,12 +21,16 @@ developer machine), leaving today's root-only behavior unchanged.
 """
 from __future__ import annotations
 
-import grp
 import os
 import re
 import stat
 from pathlib import Path
 from typing import Any
+
+try:
+    import grp
+except ImportError:  # A host without POSIX groups (Windows CPU checks) has no sparkring group.
+    grp = None
 
 GROUP = "sparkring"
 
@@ -38,6 +42,8 @@ REDACTED = "<site-address>"
 
 def group_gid(name: str = GROUP):
     """The group's numeric id, or None on a host without the group."""
+    if grp is None:
+        return None
     try:
         return grp.getgrnam(name).gr_gid
     except (KeyError, OSError):
