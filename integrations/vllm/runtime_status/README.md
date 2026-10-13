@@ -66,7 +66,7 @@ config, for example `qwen4_exp`) appears on its own `Model architecture` line.
 When the served name is unknown, the model line says so instead of showing the
 architecture. The Model and topology settings list both with per-rank values.
 
-The package version is 0.3.7. It provides passive transport, resource, library
+The package version is 0.3.8. It provides passive transport, resource, library
 and acceptance views, and the settings tables described below. Its Transport
 table names the transport that carries each worker's tensor-parallel
 collectives (SIRCL with its version, B12X's RoCE all-reduce adapter or NCCL)
@@ -421,7 +421,7 @@ Python 3.12, setuptools 78.1.0 and pip 24.0:
 ```bash
 COMMIT=$(git rev-parse HEAD)
 EPOCH=$(git log -1 --format=%ct "$COMMIT")
-VERSION=0.3.7
+VERSION=0.3.8
 OUT=~/status-$VERSION
 mkdir -p "$OUT" ~/status-$VERSION-stage
 git -c core.autocrlf=false archive --format=tar.gz -9 --prefix=runtime_status/ --mtime="@$EPOCH" \
@@ -453,9 +453,14 @@ of each version byte for byte.
 
 ## Host dashboard stat logger
 
-Version 0.3.7 includes `sparkring_stats` in `vllm.stat_logger_plugins`.
-The [dashboard snapshot composition](../../../runtime/images/compositions/installer-dashboard-status037/descriptor.json)
-pins its wheel and source archive over the image with ID `sha256:d52737a109e0`.
+Versions 0.3.7 and later include `sparkring_stats` in
+`vllm.stat_logger_plugins`. The
+[dashboard snapshot composition](../../../runtime/images/compositions/installer-dashboard-status037/descriptor.json)
+pins the 0.3.7 wheel and source archive over the image with ID
+`sha256:d52737a109e0`; the
+[status 0.3.8 composition](../../../runtime/images/compositions/installer-status038/descriptor.json)
+pins the 0.3.8 pair, which also carries the TP6 resident quantization facts
+below.
 Compatible installer deployments enable it with a host-visible snapshot
 path; without that path the logger is inactive. It adds no endpoint or model
 request. The writer drops failed writes and retains at most one pending
@@ -468,7 +473,7 @@ unqualified for serving overhead until that comparison is recorded.
 
 ## TP6 resident quantization evidence
 
-At tensor-parallel size six, the collector walks at most 8192 resident modules
+From version 0.3.8, at tensor-parallel size six, the collector walks at most 8192 resident modules
 per target/draft model, reading only stored Python fields. It reports Q/O
 projection counts, the count using `Mxfp8OnlineLinearMethod`, and the number
 of distinct `Nvfp4OnlineA16MoEMethod` draft expert methods. Missing models or
