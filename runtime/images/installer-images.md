@@ -262,6 +262,15 @@ python3 runtime/images/derived_layer.py prepare \
   [--status-artifacts STATUS_DIRECTORY] --output CONTEXT
 ```
 
+`--parent-lock LOCK` stacks the same descriptor on another local image, for
+example an image derived from the descriptor's own parent by a code layer.
+`LOCK` replaces the descriptor's `parent_lock` and passes the same validation:
+the copied receipts must match it, each replaced file's `inherited_sha256` must
+match its receipt, and a status replacement must change the version that its
+receipt records. `plan.json` and the provenance receipt name the descriptor's
+own `parent_lock` as `descriptor_parent_lock` beside the parent image actually
+used. The descriptor and its pinned artifacts are unchanged.
+
 A code layer takes the parent lock and reads the parent files it edits, through
 a network-less container of the local parent image or, with `--parent-root`,
 from an exported root filesystem (for example a `docker export` of a created

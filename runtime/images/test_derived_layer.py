@@ -257,6 +257,55 @@ def test_record_admits_every_profile_before_writing_the_lock(parent, monkeypatch
     assert result["serving_qualified"] is False
 
 
+def stacked_parent(parent):
+    """A lock of an image derived from the fixture parent, with that image's copied receipts."""
+    context = Path(prepare(parent, output=parent.tmp / "first-context")["context"])
+    plan = json.loads((context / "plan.json").read_text())
+    lock = layer.derived_lock(plan, {"Id": "sha256:" + "8" * 64, "Size": 1234}, "dev-first")
+    lock_path = parent.tmp / "first-lock.json"
+    lock_path.write_text(json.dumps(lock))
+    receipts = {"base": context / "files" / layer.BASE_RECEIPT.lstrip("/"),
+                "toolchain": context / "files" / layer.TOOLCHAIN_RECEIPT.lstrip("/")}
+    return lock, lock_path, receipts
+
+
+def test_a_descriptor_layer_stacks_on_another_parent_lock(parent):
+    lock, lock_path, receipts = stacked_parent(parent)
+    artifacts, _, wheel_sha, _ = with_status(parent)
+    rewrite(parent, lambda record: record.update(files={}))
+    result = layer.prepare(parent.descriptor, parent.repository, receipts["base"], receipts["toolchain"],
+                           parent.tmp / "context", artifacts, parent_lock=lock_path)
+    context = Path(result["context"])
+    plan = json.loads((context / "plan.json").read_text())
+    assert plan["parent_lock"] == lock and plan["descriptor_parent_lock"] == parent.record["parent_lock"]
+    assert result["status_version"] == "0.3.2"
+    provenance = json.loads((context / "files/opt/sparkring/receipts/derived-fixture.json").read_bytes())
+    assert provenance["parent_image_id"] == "sha256:" + "8" * 64 and provenance["parent_release"] == "dev-first"
+    assert provenance["parent_receipt_sha256"] == lock["parent_receipt_sha256"]
+    assert provenance["descriptor_parent_lock"] == parent.record["parent_lock"]
+    base = json.loads((context / "files" / layer.BASE_RECEIPT.lstrip("/")).read_bytes())
+    # The first layer's files stay recorded beneath the status replacement.
+    assert base["files"][ADDED] == sha(b"VALUE = 1\n") and base["files"][REPLACED] == sha(b"STAGED = True\n")
+    assert base["capabilities"]["runtime_status"]["wheel_sha256"] == wheel_sha
+    derived = layer.derived_lock(plan, {"Id": "sha256:" + "9" * 64, "Size": 99}, "dev-second")
+    assert derived["status_version"] == "0.3.2" and derived["parent_receipt_sha256"] == plan["receipts"][layer.BASE_RECEIPT]
+
+
+def test_a_stacked_descriptor_still_requires_the_given_parents_receipts(parent):
+    _, lock_path, _ = stacked_parent(parent)
+    artifacts, _, _, _ = with_status(parent)
+    rewrite(parent, lambda record: record.update(files={}))
+    with pytest.raises(ValueError, match="External-base receipt differs"):
+        layer.prepare(parent.descriptor, parent.repository, parent.receipts / "base.json",
+                      parent.receipts / "toolchain.json", parent.tmp / "context", artifacts, parent_lock=lock_path)
+    assert not (parent.tmp / "context").exists()
+
+
+def test_without_a_parent_lock_the_plan_names_no_restacked_descriptor(parent):
+    plan = json.loads((Path(prepare(parent)["context"]) / "plan.json").read_text())
+    assert "descriptor_parent_lock" not in plan
+
+
 def test_record_refuses_an_addition_the_parent_already_has(parent):
     context = Path(prepare(parent)["context"])
 
@@ -980,6 +1029,14 @@ def test_command_lines_prepare_code_and_descriptor_layers(parent, tmp_path, caps
                      "--toolchain-receipt", str(parent.receipts / "toolchain.json"),
                      "--output", str(tmp_path / "descriptor-context")])
     assert json.loads(capsys.readouterr().out)["files"] == 2
+    stacked_lock, stacked_path, receipts = stacked_parent(parent)
+    rewrite(parent, lambda record: record.update(files={"/usr/local/lib/python3.12/dist-packages/other_hook.py": {
+        "source": "integrations/fixture/fixture_hook.py", "sha256": sha(b"VALUE = 1\n"), "inherited_sha256": None}}))
+    layer.main(argv=["prepare", "--descriptor", str(parent.descriptor), "--repository", str(parent.repository),
+                     "--parent-lock", str(stacked_path), "--base-receipt", str(receipts["base"]),
+                     "--toolchain-receipt", str(receipts["toolchain"]), "--output", str(tmp_path / "stacked-context")])
+    assert json.loads(capsys.readouterr().out)["files"] == 1
+    assert json.loads((tmp_path / "stacked-context/plan.json").read_text())["parent_lock"] == stacked_lock
     with pytest.raises(SystemExit):
         layer.main(argv=["prepare", "--descriptor", str(parent.descriptor), "--repository", str(parent.repository),
                          "--base-receipt", str(parent.receipts / "base.json"), "--output", str(tmp_path / "other")])
