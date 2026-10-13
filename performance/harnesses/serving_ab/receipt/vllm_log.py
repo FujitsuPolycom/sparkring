@@ -14,9 +14,11 @@ it recognises, raw and parsed:
   draft, in log order), SIRCL receipt lines,
   all-reduce backends, the async-scheduling warnings and SparkRing's startup audit lines.
 
-When a line occurs more than once (the API server and the engine both log some), the last occurrence of
-the last server start wins, and ``occurrences`` counts them. Lines cut short by a capture script are parsed
-as far as they go and flagged ``truncated``.
+:func:`scan` reads one server start. A container that is stopped and started again keeps its log, so
+``docker logs`` returns the lines of every start; :func:`current_start` keeps those of the container's
+latest start, which callers pass to :func:`scan`. When a line occurs more than once within a start (the API
+server and the engine both log some), the last occurrence wins, and ``occurrences`` counts them. Lines cut
+short by a capture script are parsed as far as they go and flagged ``truncated``.
 """
 
 from __future__ import annotations
@@ -60,6 +62,68 @@ LISTED = {"lm_heads": (re.compile(r"Quantizing LM head shards to (\S+) with (\S+
                        lambda m: {"format": m[1], "activations": m[2]})}
 RECEIPT = re.compile(r"SIRCL receipt group=(\S+) (.*?)\s*$")
 ASYNC_OFF = re.compile(r"Async scheduling (?:not supported with|will be disabled|is not compatible|is disabled)")
+
+
+# A ``docker logs --timestamps`` prefix (RFC 3339, UTC, nanoseconds without trailing zeros) or ``docker
+# inspect``'s ``State.StartedAt``.
+DOCKER_TIME = re.compile(r"^(\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d)(?:\.(\d+))?Z(?:\s|$)")
+# vLLM's own line prefix: level, then month-day and time of the container's clock, without a year.
+VLLM_TIME = re.compile(r"\b(?:DEBUG|INFO|WARNING|ERROR|CRITICAL) (\d\d)-(\d\d) (\d\d:\d\d:\d\d) \[")
+
+
+def _instant(match: re.Match) -> tuple[str, str]:
+    """A sortable ``(seconds, nanoseconds)`` key of a :data:`DOCKER_TIME` match."""
+    return match[1], (match[2] or "").ljust(9, "0")[:9]
+
+
+def current_start(text: str, started_at: str | None) -> tuple[str, dict]:
+    """``(lines of the latest start, selection)`` of ``text``, a container log, given the container's
+    ``State.StartedAt``.
+
+    A line belongs to the latest start when it was logged at or after ``started_at``. Its time is the
+    ``docker logs --timestamps`` prefix when the text has such prefixes. A log captured without them is
+    placed by vLLM's line prefix (month, day and second of the container's clock); that assumes the
+    container's clock is UTC, as ``State.StartedAt`` is. A line without a time (a continuation or a
+    component's own output) belongs to the start of the line before it. ``text`` is returned whole when
+    ``started_at`` is missing or zero, when no line carries a time, or when no vLLM line time falls at or
+    after the start (a container clock that is not UTC).
+
+    ``selection`` states ``started_at``, ``by`` (``docker timestamps``, ``vLLM line times`` or None for the
+    whole text) and ``earlier_lines``, the number of lines removed.
+    """
+    whole = {"started_at": started_at, "by": None, "earlier_lines": 0}
+    start = DOCKER_TIME.match(started_at or "")
+    if not start or start[1].startswith("0001-"):
+        return text, whole
+    since = _instant(start)
+    lines = text.splitlines()
+    stamped = [DOCKER_TIME.match(line) for line in lines]
+    if any(stamped):
+        by = "docker timestamps"
+        placed = [None if m is None else _instant(m) >= since for m in stamped]
+    else:
+        by = "vLLM line times"
+        year, month = int(since[0][:4]), int(since[0][5:7])
+        placed = []
+        for line in lines:
+            m = VLLM_TIME.search(line)
+            if m is None:
+                placed.append(None)
+                continue
+            # The prefix has no year: a month more than six after the start's is the year before.
+            line_year = year - 1 if int(m[1]) > month + 6 else year
+            placed.append(f"{line_year:04d}-{m[1]}-{m[2]}T{m[3]}" >= since[0])
+        if True not in placed:
+            return text, whole
+    # Lines before the first timed line belong to that line's start.
+    keep = next((p for p in placed if p is not None), True)
+    kept = []
+    for line, decision in zip(lines, placed):
+        if decision is not None:
+            keep = decision
+        if keep:
+            kept.append(line)
+    return "\n".join(kept), {"started_at": started_at, "by": by, "earlier_lines": len(lines) - len(kept)}
 
 
 def _message(line: str) -> str:

@@ -7,7 +7,10 @@ read with ``sudo -n ssh HOST sh -s``, the read script on standard input. Per ran
 ``docker inspect``, the serving subset of the container's environment and of the vLLM process's
 environment (``/proc/<pid>/environ`` of the ``vllm`` serve process, which holds variables the toolchain
 entrypoint adds), the process's command line, the log lines :mod:`.vllm_log` recognises, the SIRCL receipt
-files under ``/run/sparkring/sircl/receipts`` and ``nvidia-smi`` clocks. Rank 0's ``/metrics`` and
+files under ``/run/sparkring/sircl/receipts`` and ``nvidia-smi`` clocks. A container that is stopped and
+started again keeps its name and its log, so the log is read with ``docker logs --timestamps --since`` the
+container's ``State.StartedAt``: only the latest start's lines, each with the time that
+:func:`.vllm_log.current_start` checks again when the receipt is built. Rank 0's ``/metrics`` and
 ``/v1/models`` are read over HTTP from this machine (through Node A's ``curl`` when this machine cannot
 reach the API). Nothing is started, stopped, written or locked on the ring; no generation request is sent.
 
@@ -87,7 +90,8 @@ P=$(docker exec "$C" sh -c 'pgrep -o -f "[v]llm.entrypoints|[v]llm serve" 2>/dev
 m process_pid; echo "$P"
 m process_cmdline; docker exec "$C" sh -c "tr '\\\\0' '\\\\n' < /proc/$P/cmdline"
 m process_env; docker exec "$C" sh -c "tr '\\\\0' '\\\\n' < /proc/$P/environ" | grep -E {keep}
-m log; docker logs "$C" 2>&1 | grep -E {grep} | grep -v -E '"(GET|POST|PUT|DELETE) /' | head -n 3000
+S=$(docker inspect --format '{{{{.State.StartedAt}}}}' "$C")
+m log; docker logs --timestamps ${{S:+--since "$S"}} "$C" 2>&1 | grep -E {grep} | grep -v -E '"(GET|POST|PUT|DELETE) /' | head -n 3000
 for f in $(docker exec "$C" sh -c 'ls {RECEIPT_DIR}/*.json 2>/dev/null'); do m "receipt $(basename "$f")"; docker exec "$C" cat "$f"; done
 m clocks; nvidia-smi --query-gpu={CLOCK_QUERY} --format=csv,noheader 2>&1
 m end

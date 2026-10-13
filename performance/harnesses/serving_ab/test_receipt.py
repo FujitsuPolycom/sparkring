@@ -8,7 +8,9 @@ host names by ``spark-p<position>``:
 - ``collect-qwen-tp2/``: one ``receipt collect`` of qwen38-flash-next-tp2 (csf checkpoint) on positions 6
   and 7, a pair inside the cycle of eight, serving FP8 target KV in 32-token blocks with the draft's
   ``kv_cache_dtype`` ``auto``; the raw reads of both ranks, the status entry with the slot's group and the
-  ring's fabric, ``/metrics`` (cache and request gauges only) and ``/v1/models``.
+  ring's fabric, ``/metrics`` (cache and request gauges only) and ``/v1/models``. Both containers were
+  started at 20:47 UTC and again at 23:32 UTC under the same names, and the logs, read without
+  ``--timestamps``, hold the startup lines of both starts with identical settings.
 - ``logs/``: the selected startup lines (``docker logs --timestamps``) of single server starts:
   ``qwen-tp2-fp8-kv-draft-auto.log`` (the same configuration as above) and ``qwen-tp2-bf16-kv-draft-auto.log``
   (BF16 target KV in 16-token blocks, draft ``auto``); ``glm-tp2-compile-arm.log`` (glm53-flash-nvfp4-spark-tp2
@@ -225,6 +227,52 @@ def test_a_collection_rebuilds_offline_from_its_raw_reads():
     assert document["sources"]["layout.group"] == "sparkring status --json"
 
 
+def test_a_restarted_containers_receipt_reads_only_its_latest_start(tmp_path):
+    raw = collect.raw_rank((FIXTURES / "collect-qwen-tp2" / "rank0.txt").read_text(encoding="utf-8"),
+                           rank=0, position=6, host="spark-p6", container="sr-qwen-r0")
+    # The log holds two starts: scanned whole, it lists each start's target and draft LM heads.
+    assert len(vllm_log.scan(raw["log"])["lm_heads"]) == 4
+    document = collect.rebuild(FIXTURES / "collect-qwen-tp2")
+    for rank in document["ranks"]:
+        assert [head["format"] for head in rank["observed"]["lm_heads"]] == ["MXFP8", "NVFP4"]
+        assert all(" 10-11 23:3" in line for line in rank["log_lines"]["lm_heads"])
+        assert rank["log_selection"]["by"] == "vLLM line times"
+    assert document["ranks"][0]["log_selection"]["earlier_lines"] == 37
+    # A receipt of the container's earlier start alone (the same settings) and one of the restarted
+    # container do not differ; without the start time, the restarted container's receipt lists each head twice.
+    single = receipt_of(log("qwen-tp2-fp8-kv-draft-auto.log"))
+    restarted = receipt_of(raw["log"], inspect={"State": raw["inspect"]["State"]})
+    merged = receipt_of(raw["log"])
+    assert compare.diff(single, restarted) == {"settings": {}, "derived": {}, "observed": {}}
+    assert list(compare.diff(single, merged)["observed"]) == ["lm_heads"]
+    for name, record in (("single", single), ("restarted", restarted)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "resolved.json").write_text(json.dumps(record), encoding="utf-8")
+    assert receipt_main(["diff", str(tmp_path / "single"), str(tmp_path / "restarted")]) == 0
+
+
+def test_docker_timestamps_place_each_line_in_its_start():
+    # docker logs --timestamps of one container started twice, with different settings so that the
+    # selected start is visible: BF16 target KV in the second start, FP8 in the first.
+    text = log("qwen-tp2-fp8-kv-draft-auto.log") + log("qwen-tp2-bf16-kv-draft-auto.log")
+    # StartedAt without a fractional part sorts before the first line's 23:03:43.545680536.
+    lines, selection = vllm_log.current_start(text, "2026-10-11T23:03:43Z")
+    assert selection == {"started_at": "2026-10-11T23:03:43Z", "by": "docker timestamps", "earlier_lines": 37}
+    assert lines == log("qwen-tp2-bf16-kv-draft-auto.log").rstrip("\n")
+    record = receipt_of(text, inspect={"State": {"StartedAt": "2026-10-11T23:03:43Z"}})
+    assert record["settings"]["target.kv_cache_dtype"] == "bfloat16" and len(record["observed"]["lm_heads"]) == 2
+    # Fractions without trailing zeros compare as nanoseconds: .55 s is after the first line's .545680536 s
+    # and before the second line's .569643927 s.
+    assert vllm_log.current_start(text, "2026-10-11T23:03:43.55Z")[1]["earlier_lines"] == 38
+    # No start time, a container never started, or vLLM line times all before the start (a container clock
+    # that is not UTC) leave the log whole.
+    for started_at in (None, "0001-01-01T00:00:00Z"):
+        assert vllm_log.current_start(text, started_at) == (text, {"started_at": started_at, "by": None,
+                                                                   "earlier_lines": 0})
+    untimed = "INFO 10-11 20:47:44 [model.py:693] Resolved architecture: X"
+    assert vllm_log.current_start(untimed, "2026-10-12T01:00:00Z")[0] == untimed
+
+
 class FakeNodeA:
     """Node A for :func:`collect.collect`: a fixed ``sparkring status --json`` and fixed rank reads."""
 
@@ -308,6 +356,9 @@ def test_the_rank_read_script_reads_only_and_never_the_full_environment():
     script = collect.rank_script("sr-x-r0")
     assert "Config.Env" not in script and "docker exec \"$C\" env | grep -E" in script
     assert "[v]llm.entrypoints" in script
+    # The log is read from the container's latest start, each line with its time.
+    assert "S=$(docker inspect --format '{{.State.StartedAt}}' \"$C\")" in script
+    assert 'docker logs --timestamps ${S:+--since "$S"} "$C"' in script
     for verb in ("docker rm", "docker stop", "docker restart", "docker kill", "docker run", "mkdir", "> /"):
         assert verb not in script
     parts = collect.sections(f"x\n{collect.MARK} log\na\nb\n{collect.MARK} receipt r.json\n{{}}\n{collect.MARK} end\n")

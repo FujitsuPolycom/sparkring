@@ -1,9 +1,10 @@
 """Build a run receipt's ``resolved.json``: what a deployment actually serves, per rank, from collected evidence.
 
 The input of :func:`build` is what :mod:`.collect` reads from the ring (or what a campaign saved): per rank
-the container's selected log lines, ``docker inspect``, the vLLM process's environment and command line,
-its SIRCL receipt files and GPU clocks; per deployment Node A's ``sparkring status --json`` entry and the
-API's ``/metrics`` text. The output separates three kinds of values:
+the container's selected log lines of its latest start (:func:`.vllm_log.current_start`), ``docker inspect``,
+the vLLM process's environment and command line, its SIRCL receipt files and GPU clocks; per deployment
+Node A's ``sparkring status --json`` entry and the API's ``/metrics`` text. The output separates three
+kinds of values:
 
 ``settings``
     Serving-relevant settings as the server resolved them, flattened to dotted keys: ``target.*`` (KV cache
@@ -504,7 +505,10 @@ def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapp
     if env is None:
         env = raw.get("container_env") or parse_env("\n".join(config.get("Env") or []))
         env_source = "container environment"
-    scan = vllm_log.scan(raw.get("log") or "")
+    started_at = (inspect.get("State") or {}).get("StartedAt")
+    # A restarted container's log holds every start; only the latest start describes what it serves.
+    log, log_selection = vllm_log.current_start(raw.get("log") or "", started_at)
+    scan = vllm_log.scan(log)
     record = rank_settings(scan, env=env, command_args=args_from_command(command), receipts=raw.get("receipts"),
                            metrics=metrics, image_id=inspect.get("Image") or raw.get("image_id"),
                            deployment=deployment, layout=layout)
@@ -522,9 +526,9 @@ def build_rank(raw: Mapping, *, metrics: Mapping | None = None, deployment: Mapp
     return {
         "rank": raw.get("rank"), "position": raw.get("position"), "host": raw.get("host"),
         "container": raw.get("container"), "image_id": inspect.get("Image") or raw.get("image_id"),
-        "started_at": (inspect.get("State") or {}).get("StartedAt"), "restart_count": inspect.get("RestartCount"),
+        "started_at": started_at, "restart_count": inspect.get("RestartCount"),
         "command": command, "environment": serving_env(env), "environment_set_at_start": added,
-        "receipt_files": receipt_files,
+        "receipt_files": receipt_files, "log_selection": log_selection,
         "log_lines": scan["raw"], "log_truncated": scan.get("truncated", []), **record,
         "digest": digest(record["settings"]),
     }
