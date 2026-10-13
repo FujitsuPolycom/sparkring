@@ -66,9 +66,9 @@ def test_graph_hover_keyboard_touch_and_expansion_make_no_request(theme, touch, 
         slider = page.get_by_role("slider")
         slider.focus()
         page.keyboard.press("Home")
-        assert "Output tok/s: 0.123456" in page.locator("#graph-value").inner_text()
+        assert "Output tok/s: 0 " in page.locator("#graph-value").inner_text()
         page.keyboard.press("End")
-        assert "Output tok/s: 72.123456" in page.locator("#graph-value").inner_text()
+        assert "Output tok/s: 72 " in page.locator("#graph-value").inner_text()
         assert page.locator("#graph-body svg").bounding_box()["height"] >= 250
         # Updating cards must preserve the dialog's selected snapshot and focus.
         page.evaluate("render()")

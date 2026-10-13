@@ -298,6 +298,7 @@ const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) =>
 const has = (v) => v !== null && v !== undefined;
 const int = (n) => has(n) ? Math.round(n).toLocaleString() : "–";
 const one = (n) => has(n) ? (n >= 100 ? Math.round(n).toLocaleString() : n.toFixed(1)) : "–";
+const rate = (n) => has(n) ? Math.round(n).toLocaleString() : "–";   // token rates: whole tokens per second
 const pct = (f) => has(f) ? Math.round(f * 100) + "%" : "–";
 const gb = (b) => !has(b) ? "–" : b >= 1e12 ? (b / 1e12).toFixed(1) + " TB" : Math.round(b / 1e9) + " GB";
 const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, "") + "…" : (s || "");
@@ -393,7 +394,7 @@ function ringSvg(ring, members, now) {
     if (g.kind === "member") {
       const m = g.m, live = m.live || {};
       l1 = clip(m.model_short || m.model || m.name, chars);
-      l2 = `TP${g.size}${g.inferred ? "?" : ""}` + (m.state === "serving" ? ` · ${one(live.output_tps)} tok/s` : "");
+      l2 = `TP${g.size}${g.inferred ? "?" : ""}` + (m.state === "serving" ? ` · ${rate(live.output_tps)} tok/s` : "");
       l3 = (m.state === "serving" ? "serving" : (m.state_label || "").toLowerCase()) + (g.inferred ? " · inferred" : "");
     } else if (g.kind === "starting") {
       l1 = clip(g.r.label, chars); l2 = `TP${g.size}`; l3 = "starting";
@@ -452,7 +453,7 @@ function stripHtml(rings, members) {
   const sizes = serving.map((m) => "TP" + ((m.arc && m.arc.size) || "?") + (rings.length > 1 && short[m.ring] ? " " + short[m.ring] : "")).join(" · ");
   const tile = (k, v, unit, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}${unit ? `<small>${unit}</small>` : ""}</div><div class="s">${sub}</div></div>`;
   return tile("Serving", serving.length, serving.length === 1 ? "group" : "groups", esc(sizes || "nothing serving"))
-    + tile("Output", one(tps), "tok/s", "5 min avg " + one(tps5))
+    + tile("Output", rate(tps), "tok/s", "5 min avg " + rate(tps5))
     + tile("Requests", int(running), "running", int(waiting) + " waiting")
     + tile("Sparks up", up, "/ " + size, `${busy} busy · ${Math.max(0, up - busy)} idle${down ? ` · <span style="color:var(--bad)">${down} down</span>` : ""}`)
     + tile("KV cache", pct(kv), "", kv === null ? "no serving group" : "highest · " + esc(kvName));
@@ -473,7 +474,7 @@ function legendHtml(rings, members) {
       model = esc(m.model_short || m.model || "—");
       src = `TP${a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.state_label || "")}</span>`
-        + (m.state === "serving" ? `<span class="rate">${one((m.live || {}).output_tps)} tok/s</span>` : "");
+        + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
       t1 = `<span class="mono">${esc(g.r.label)}</span>`;
       t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
@@ -573,9 +574,9 @@ function tiles(s) {
   const maxSeqs = cap.max_num_seqs || set.max_num_seqs;
   const draft = has(l.accept_length_5m) ? l.accept_length_5m.toFixed(2) : "–";
   return `<div class="tiles">
-    <div class="tile"><div class="k">Output</div><div class="v">${one(l.output_tps)}<small>tok/s</small></div>
-      <div class="s">5 min avg ${one(l.output_tps_5m)} \u00b7 ${esc(l.source === "plugin" ? "plugin" : "/metrics")}</div></div>
-    <div class="tile"><div class="k">Prefill ${l.source === "plugin" ? "" : "(approx)"}</div><div class="v">${has(l.prefill_tps) ? one(l.prefill_tps) : "&#8212;"}<small>tok/s</small></div>
+    <div class="tile"><div class="k">Output</div><div class="v">${rate(l.output_tps)}<small>tok/s</small></div>
+      <div class="s">5 min avg ${rate(l.output_tps_5m)} \u00b7 ${esc(l.source === "plugin" ? "plugin" : "/metrics")}</div></div>
+    <div class="tile"><div class="k">Prefill ${l.source === "plugin" ? "" : "(approx)"}</div><div class="v">${has(l.prefill_tps) ? rate(l.prefill_tps) : "&#8212;"}<small>tok/s</small></div>
       <div class="s">${esc(l.source === "plugin" ? "plugin interval" : "/metrics interval")} \u00b7 sample ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</div></div>
     <div class="tile"><div class="k">Steps / acceptance</div><div class="v">${one(l.steps_ps)}<small>steps/s</small></div>
       <div class="s">${pct(l.acceptance)} accepted drafts \u00b7 ${esc(l.source || "/metrics")}</div></div>
@@ -602,7 +603,7 @@ function graphRows(id, idx, span = 21600) {
   return (member?.history || []).filter(h => h[0] >= serverNow() - span && has(h[idx]));
 }
 function exactGraphValue(row, idx) {
-  return row ? `${new Date(row[0] * 1000).toISOString()} \u00b7 ${graphNames[idx]}: ${row[idx]} \u00b7 ${row[6] === "plugin" ? "plugin" : "approx /metrics"}` : "No sample here";
+  return row ? `${new Date(row[0] * 1000).toISOString()} \u00b7 ${graphNames[idx]}: ${idx === 4 ? row[idx] : rate(row[idx])} \u00b7 ${row[6] === "plugin" ? "plugin" : "approx /metrics"}` : "No sample here";
 }
 function inspectGraph() {
   if (!graphSelection) return;
@@ -812,7 +813,7 @@ function render() {
                `${busy} of ${size} Sparks busy`);
   }
   if (fixedMembers.length) parts.push(`${fixedMembers.filter((s) => s.state === "serving").length} of ${fixedMembers.length} profiles serving`);
-  parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${one(tps)} tok/s out`);
+  parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
   $("summary").textContent = parts.join(" · ");
   renderRings(rings, ringMembers, now);
   const html = stacks.map((s) => card(s, now)).join("");

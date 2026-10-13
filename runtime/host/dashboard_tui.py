@@ -183,7 +183,7 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
     if down:
         segs += [sep, (f"{down} down", style(CRIT, bold=True))]
     segs += [sep, (f"{round(running)} reqs", style(WARN, bold=True) if running else style(dim=True)),
-             sep, (f"{tps:.1f} tok/s", style(GOOD, bold=True) if tps >= 0.05 else style(dim=True))]
+             sep, (f"{tps:,.0f} tok/s", style(GOOD, bold=True) if tps >= 0.05 else style(dim=True))]
     # `age` is the time since this view's last read of the service, `period` how often the service
     # reads each model's /metrics (5 s while viewed, 60 s otherwise).
     collector = snapshot.get("collector") or {}
@@ -264,7 +264,7 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
         live = member.get("live") or {}
         capacity = member.get("capacity") or {}
         tps = live.get("output_tps") or 0
-        b(f"{tps:.1f} t/s", style(GOOD, bold=True) if tps >= 0.05 else style(GOOD, dim=True))
+        b(f"{tps:,.0f} t/s", style(GOOD, bold=True) if tps >= 0.05 else style(GOOD, dim=True))
         run = round(live.get("running") or 0)
         b(f"run {run}", style(WARN, bold=True) if run else style(dim=True))
         if live.get("waiting"):
@@ -345,10 +345,10 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
     if state == "serving":
         out_tps, prompt_tps = live.get("output_tps"), live.get("prefill_tps")
         add(lbl("throughput"), ("out ", style(dim=True)),
-            (f"{out_tps:.1f} t/s" if out_tps is not None else "\u2014", style(GOOD)),
-            (f" (5m {live.get('output_tps_5m') or 0:.1f})", style(dim=True)),
+            (f"{out_tps:,.0f} t/s" if out_tps is not None else "\u2014", style(GOOD)),
+            (f" (5m {live.get('output_tps_5m') or 0:,.0f})", style(dim=True)),
             (" \u00b7 prefill ", style(dim=True)),
-            (f"{prompt_tps:.1f} t/s" if prompt_tps is not None else "\u2014", GOOD),
+            (f"{prompt_tps:,.0f} t/s" if prompt_tps is not None else "\u2014", GOOD),
             (" \u00b7 " + ("plugin" if live.get("source") == "plugin" else "approx /metrics"), style(dim=True)))
         add(lbl("steps"), (f"{live['steps_ps']:.2f} steps/s" if live.get("steps_ps") is not None else "\u2014", INFO))
         history = member.get("history") or []
