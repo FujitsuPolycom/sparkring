@@ -846,8 +846,9 @@ def test_every_installer_profile_renders_on_sircl_on_its_layouts(profile, nccl):
     cases = ([("cycle", 4, [0, 1, 2, 3])] if profile.endswith("-tp4") else
              [("pair", 2, [0, 1]), ("cycle", 4, [0, 1]), ("cycle", 4, [2, 3])])
     image = None
-    if profile in installer.installer_image.SPARKCACHE_VARIANTS:
-        # A variant runs only on a lock that lists it, such as its derived layer's, whose vLLM reads CSF.
+    if profile in installer.installer_image.UNLISTED:
+        # An unlisted profile runs only on a lock that lists it, such as a SparkCache variant's derived
+        # layer's, whose vLLM reads CSF.
         from runtime.common.test_image_lock import CSF_PINS, sircl_block
         default = sircl_lock()
         image = sircl_lock(profiles=sorted({*default["profiles"], profile}),
@@ -981,6 +982,53 @@ def test_decode_context_parallelism_follows_the_launchers_interleave_and_mhc_rul
     with pytest.raises(transport.TransportError,
                        match="no pinned vLLM build starts at TP8 with decode-context parallelism 4"):
         transport.dcp_problems(section, groups, {serve_plan.MHC_SHARD: "1"}, command, effective)
+
+
+def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_cache_split():
+    # On a CSF-reading lock that lists it, the variant renders the pair profile's csf deployment with
+    # decode-context parallelism 2: a SIRCL session per decode-context-parallel group, the KV cache
+    # interleaved in blocks of 4 tokens, mHC prefill row ownership off, its own KV bytes, served name and
+    # compile caches, and every other setting unchanged.
+    from runtime.common.test_image_lock import CSF_PINS, sircl_block
+    variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
+    image = sircl_lock(profiles=sorted({*sircl_lock()["profiles"], variant}),
+                       sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
+
+    def render(profile, checkpoint=None):
+        section = transport.section(image, document("cycle", 8), [6, 7], nccl="never",
+                                    tuning=transport.load_tuning(), dcp=transport.profile_dcp(profile))
+        lock = installer.make_lock(profile, install_site(2, placement=[6, 7]), "1" * 40, "2" * 64, checkpoint,
+                                   image_runtime=image_lock.v2_view(image), transport=section)
+        return section, installer.specifications(lock)
+
+    base_section, base = render(TP2, "csf")
+    section, specs = render(variant)
+    assert (base_section["group"]["dcp"], section["group"]["dcp"]) == (1, 2)
+    for before, after in zip(base, specs, strict=True):
+        changed = {key for key in {*before.environment, *after.environment}
+                   if before.environment.get(key) != after.environment.get(key)}
+        caches = {key for key in changed if after.environment[key].startswith("/cache/glm53-flash-csf-dcp2-")}
+        assert changed - caches == {"SIRCL_GROUPS", serve_plan.MHC_SHARD}
+        assert after.environment["SIRCL_GROUPS"] == "tp,dcp" and after.environment[serve_plan.MHC_SHARD] == "0"
+        command = list(after.command)
+        edits = {"--served-model-name": "GLM-5.3-Flash-CSF-DCP2-TP2", "--kv-cache-memory-bytes": "15032385536",
+                 "--decode-context-parallel-size": "2"}
+        for flag, value in edits.items():
+            assert command[command.index(flag) + 1] == value
+        assert command.count("--cp-kv-cache-interleave-size") == 1
+        assert command[command.index("--cp-kv-cache-interleave-size") + 1] == "4"
+        expected = list(before.command)
+        for flag, value in edits.items():
+            expected[expected.index(flag) + 1] = value
+        position = expected.index("--decode-context-parallel-size") + 2
+        assert command == [*expected[:position], "--cp-kv-cache-interleave-size", "4", *expected[position:]]
+    # mHC prefill row ownership does not start at TP2 with decode-context parallelism 2 on any pinned build.
+    effective, _ = transport.policy(section, {})
+    arguments = list(specs[0].command)
+    with pytest.raises(transport.TransportError,
+                       match="no pinned vLLM build starts at TP2 with decode-context parallelism 2"):
+        transport.dcp_problems(section, transport.dcp_groups(section, arguments), {serve_plan.MHC_SHARD: "1"},
+                               arguments, effective)
 
 
 def test_decode_context_parallel_groups_get_sessions_inside_the_tensor_parallel_group():

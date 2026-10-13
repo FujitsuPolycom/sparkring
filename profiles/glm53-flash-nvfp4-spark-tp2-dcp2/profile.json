@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-nvfp4-spark-tp2-dcp2",
+  "title": "GLM-5.3-Flash CSF on two Sparks (a pair) with decode-context parallelism 2 (research-only)",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-flash-nvfp4-spark-tp2-dcp2/config.json"
+  },
+  "release": "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/release.json",
+  "guide": "profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md",
+  "evidence_scope": "The csf deployment of glm53-flash-nvfp4-spark-tp2 (local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD at dec48abd33ef) with decode-context parallelism 2, --cp-kv-cache-interleave-size 4, mHC prefill row ownership off and 14 GiB of KV cache per Spark, on installer image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036 through a development image lock that lists it: nothing has run on hardware with these settings; the installer's rendering is CPU-tested (runtime/common/test_transport.py). Not serving-qualified.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-flash-nvfp4-spark-tp2-dcp2/config.json"
+    ]
+  }
+}
