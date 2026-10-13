@@ -3157,19 +3157,12 @@ def test_profile_serving_runs_decode_context_parallelism_with_a_session_per_grou
                                                        "recipe gives 2")):
         make_plans(repository, ((0, 1),), dcp_size=2, nccl_mode="never", mhc_prefill_shard="off",
                    vllm_edits=plan_mod.vllm_edits(["--attention-backend=B12X", "--cp-kv-cache-interleave-size=2"]))
-    # mHC prefill row ownership starts at TP2 only with DCP 1 in every pinned build: TP2 with DCP 2 and the
-    # profile's mHC sharding is refused, TP4 with DCP 2 keeps it, and a build pinned to admit TP2/DCP2 serves it.
-    with pytest.raises(ServePlanError, match=re.escape(
-            "--dcp-size 2: GLM-5.3-Flash's mHC prefill row ownership (VLLM_GLM53_MHC_PREFILL_SHARD=1, the "
-            "profile's) starts only at TP2/DCP1, TP4/DCP1, TP4/DCP2, TP4/DCP4 in the pinned vLLM builds, and the "
-            "model refuses TP2 with DCP 2 at startup; serve it with --mhc-prefill-shard off")):
-        make_plans(repository, ((0, 1),), dcp_size=2, nccl_mode="never", vllm_edits=b12x)
+    # Planning admits the source-patched build; stage still checks the actual
+    # image's mHC hashes and refuses unpatched TP2/DCP2 (covered above).
     assert tp4.mhc_prefill_shard and tp4.dcp_size == 2
-    monkeypatch.setitem(pins.MHC_ADMITS, "sparkring-kraken-beta-20261007-bc9ea774",
-                        pins.MHC_ADMITS_DEFAULT + ((2, 2),))
     admitted = make_plans(repository, ((0, 1),), dcp_size=2, nccl_mode="never", vllm_edits=b12x)[0]
-    assert admitted.mhc_prefill_shard and pins.mhc_builds(2, 2) == ["sparkring-kraken-beta-20261007-bc9ea774"]
-    monkeypatch.undo()
+    assert admitted.mhc_prefill_shard
+    assert pins.mhc_builds(2, 2) == ["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]
     # vLLM's parallel sizes stay the launcher's: --vllm-arg may not set it.
     with pytest.raises(ServePlanError, match="the launcher owns this argument"):
         plan_mod.vllm_edits(["--decode-context-parallel-size=2"])

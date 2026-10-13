@@ -985,15 +985,12 @@ def test_decode_context_parallelism_follows_the_launchers_interleave_and_mhc_rul
 
 
 def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_cache_split():
-    # On a CSF-reading lock that lists it, the variant renders the pair profile's csf deployment with
-    # decode-context parallelism 2: a SIRCL session per decode-context-parallel group, the KV cache
-    # interleaved in blocks of 4 tokens, mHC prefill row ownership and KDA prefill coalescing off (the
-    # CSF-reading images' vLLM starts either at TP2 only with decode-context parallelism 1), its own KV
-    # bytes, served name and compile caches, and every other setting unchanged.
+    # The source-derived image keeps both prefill features enabled and splits
+    # KV pages over DCP2 while preserving every other CSF pair setting.
     from runtime.common.test_image_lock import CSF_PINS, sircl_block
     variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
     image = sircl_lock(profiles=sorted({*sircl_lock()["profiles"], variant}),
-                       sircl=dict(sircl_block(), vllm_pins=CSF_PINS))
+                       sircl=dict(sircl_block(), vllm_pins=["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]))
 
     def render(profile, checkpoint=None):
         section = transport.section(image, document("cycle", 8), [6, 7], nccl="never",
@@ -1009,9 +1006,9 @@ def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_c
         changed = {key for key in {*before.environment, *after.environment}
                    if before.environment.get(key) != after.environment.get(key)}
         caches = {key for key in changed if after.environment[key].startswith("/cache/glm53-flash-csf-dcp2-")}
-        assert changed - caches == {"SIRCL_GROUPS", serve_plan.MHC_SHARD, "VLLM_B12X_KDA_PREFILL_COALESCING"}
-        assert after.environment["SIRCL_GROUPS"] == "tp,dcp" and after.environment[serve_plan.MHC_SHARD] == "0"
-        assert after.environment["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
+        assert changed - caches == {"SIRCL_GROUPS"}
+        assert after.environment["SIRCL_GROUPS"] == "tp,dcp" and after.environment[serve_plan.MHC_SHARD] == "1"
+        assert after.environment["VLLM_B12X_KDA_PREFILL_COALESCING"] == "1"
         command = list(after.command)
         edits = {"--served-model-name": "GLM-5.3-Flash-CSF-DCP2-TP2", "--kv-cache-memory-bytes": "15032385536",
                  "--decode-context-parallel-size": "2"}
@@ -1024,16 +1021,9 @@ def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_c
             expected[expected.index(flag) + 1] = value
         position = expected.index("--decode-context-parallel-size") + 2
         assert command == [*expected[:position], "--cp-kv-cache-interleave-size", "4", *expected[position:]]
-    # mHC prefill row ownership does not start at TP2 with decode-context parallelism 2 on any pinned build.
     effective, _ = transport.policy(section, {})
     arguments = list(specs[0].command)
     groups = transport.dcp_groups(section, arguments)
-    with pytest.raises(transport.TransportError,
-                       match="no pinned vLLM build starts at TP2 with decode-context parallelism 2"):
-        transport.dcp_problems(section, groups, {serve_plan.MHC_SHARD: "1"}, arguments, effective)
-    # Nor does KDA prefill coalescing, which vLLM refuses at model construction.
-    with pytest.raises(transport.TransportError, match="KDA prefill coalescing .* not at TP2 with 2"):
-        transport.dcp_problems(section, groups, {transport.KDA_COALESCING: "1"}, arguments, effective)
     transport.dcp_problems(section, groups, dict(specs[0].environment), arguments, effective)
 
 

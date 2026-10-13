@@ -215,7 +215,7 @@ HOOKS: tuple[Hook, ...] = (
         notes="Per 8,192-token chunk at TP4 (45 layers): 90 reduce-scatters of [8192, 4096] BF16 and "
               "90 all-gathers of [2048, 4096] BF16 shards. Groups with a working PyNccl keep vLLM's "
               "path.",
-        builds=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"),
+        builds=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
     ),
     Hook(
         collective="Qwen3.8 hyper-connection prefill row ownership (reduce-scatter and all-gather to "
@@ -244,7 +244,7 @@ HOOKS: tuple[Hook, ...] = (
         notes="Per admitted eager pure prefill of L layers: 2 L reduce-scatters of [rows, H] BF16 and "
               "2 L + 1 all-gathers of [rows / W, H] shards, plus one of [rows / W, hc H] per PLE layer "
               "and one for the MTP drafter. Groups with a working PyNccl keep vLLM's path.",
-        builds=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774"),
+        builds=("lil-image-aba309e4610c", "sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
     ),
     Hook(
         collective="Broadcasts that bypass the device communicator",

@@ -235,7 +235,7 @@ def validate_v3(value, profile):
 # GLM-5.3 container's entry also gates its serving directory.
 CHECKPOINT_BUILDS = {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
-        ("sparkring-kraken-beta-20261007-bc9ea774",),
+        ("sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2":
         ("sparkring-kraken-beta-20261007-bc9ea774",),
     "local-inference-lab/GLM-5.3-NVFP4-CSF@a4d406932f2db96db8e852867c7939f448e0cd6f":
@@ -377,6 +377,15 @@ def plugin_problem(value, profile, environment=None):
             "vllm_plugins lists them")
 
 
+def prefill_source_problem(value, profile):
+    """The DCP2 research profile requires both source-patched admissions."""
+    if profile == "glm53-flash-nvfp4-spark-tp2-dcp2" and "sparkring-kraken-bc9ea774-tp2-dcp2-prefill" not in (
+            (sircl(value) or {}).get("vllm_pins") or []):
+        return (f"{profile} enables KDA coalescing and mHC row ownership at TP2/DCP2; "
+                "use the source-pinned runtime/images/compositions/dcp2-prefill image lock")
+    return None
+
+
 def line(value):
     return value["line"] if schema(value) == SCHEMA_V3 else None
 
@@ -472,7 +481,7 @@ def for_profile(profile, explicit=None):
                                         f"image lock {SCHEMA_V3} whose image carries the SIRCL layer lists them")
         # v1 and v2 locks keep installer_image's selection, refusals and messages.
         selected = installer_image.for_profile(profile, explicit)
-        problem = plugin_problem(selected, profile)
+        problem = plugin_problem(selected, profile) or prefill_source_problem(selected, profile)
         _require(problem is None, problem)
         return selected
     try:
@@ -483,6 +492,6 @@ def for_profile(profile, explicit=None):
             raise
         others = [row["name"] for row in catalog() if profile in profiles_of(row["lock"])]
         raise ValueError(f"{error}; images that run it: {', '.join(others) or 'none'}") from None
-    problem = plugin_problem(selected, profile)
+    problem = plugin_problem(selected, profile) or prefill_source_problem(selected, profile)
     _require(problem is None, problem)
     return selected

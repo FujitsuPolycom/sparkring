@@ -218,6 +218,12 @@
       "releases": [
         "dev-20260930-spinwait-cuda1342-nccl2323-status033"
       ]
+    },
+    {
+      "id": "installer-dcp2-prefill",
+      "path": "runtime/images/derive_dcp2_prefill.py",
+      "kind": "python",
+      "reason": "Derive a CSF image with hash-pinned TP2/DCP2 KDA coalescing and mHC row ownership admission, including SIRCL pins and source-overlay receipts."
     }
   ]
 }

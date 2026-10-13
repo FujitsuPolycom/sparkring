@@ -198,6 +198,19 @@ SUPPORTED: tuple[VllmBuild, ...] = (
 MHC_ADMITS_DEFAULT: tuple[tuple[int, int], ...] = ((2, 1), (4, 1), (4, 2), (4, 4))
 MHC_ADMITS: dict[str, tuple[tuple[int, int], ...]] = {}
 
+# Source-patched CSF build: only parallel-size admission changes. The KDA
+# file is also pinned so this identity requires both prefill admissions.
+_DCP2_PARENT = next(build for build in SUPPORTED
+                    if build.name == "sparkring-kraken-beta-20261007-bc9ea774")
+SUPPORTED += (dataclasses.replace(
+    _DCP2_PARENT, name="sparkring-kraken-bc9ea774-tp2-dcp2-prefill",
+    source="CSF sources with SparkRing dcp2-prefill composition",
+    files={**_DCP2_PARENT.files,
+           "models/glm5next/nvidia/mhc_prefill_sharding.py": "61d02201f0288bd58ef76687b8698900e45b45446f37a045c1703f8726c288e3",
+           "v1/core/recurrent_prefill_checkpoint.py": "4d2c38a71f70a3992db7c63e980a032b9dcc02bfbffe87feb3243b537ee6e551"},
+),)
+MHC_ADMITS["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"] = ((2, 1), (2, 2), (4, 1), (4, 2), (4, 4))
+
 
 def mhc_admits(build: str) -> tuple[tuple[int, int], ...]:
     """The (tensor parallelism, decode-context parallelism) pairs at which the pinned build named ``build``
@@ -267,7 +280,8 @@ class Report:
 def check(root: Path | None) -> Report:
     if root is None:
         return Report(None, (), {})
-    actual = hashes(root)
+    actual = hashes(root, tuple(dict.fromkeys(
+        name for build in SUPPORTED for name in build.files)))
     matches, mismatches = [], {}
     for build in SUPPORTED:
         # A file the build does not have (None) must be absent from the tree too.

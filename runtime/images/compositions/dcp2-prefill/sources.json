@@ -1,0 +1,29 @@
+{
+  "schema": "sparkring-dcp2-prefill-sources/v1",
+  "parent_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+  "parent_image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+  "vllm_commit": "bc9ea7744bc73d1f45cf3232d5de1b8f823919ae",
+  "sircl_hook_build": "sparkring-kraken-beta-20261007-bc9ea774",
+  "files": [
+    {
+      "path": "vllm/v1/core/recurrent_prefill_checkpoint.py",
+      "inherited_sha256": "18b4d7eb66e88affffdbdf0151d3ed742077c3c60fc42ee62ad2a4b655d6e283",
+      "sha256": "4d2c38a71f70a3992db7c63e980a032b9dcc02bfbffe87feb3243b537ee6e551"
+    },
+    {
+      "path": "vllm/models/glm5next/nvidia/mhc_prefill_sharding.py",
+      "inherited_sha256": "b3616d081087eec0a35475e202f37e08c5e88753cfd280e64fb09e0e2ed1a66c",
+      "sha256": "61d02201f0288bd58ef76687b8698900e45b45446f37a045c1703f8726c288e3"
+    },
+    {
+      "path": "sparkring_sircl/vllm/pins.py",
+      "inherited_sha256": "a1578bcd9449a2e6d325151c1c0a4b393975f9274939a16c2bc6e49a35f6c1e7",
+      "sha256": "ca80f1d337dda12393872fb8886a7b8a5af703eaf11023b7b3cc1ba91702d694"
+    },
+    {
+      "path": "sparkring_sircl/vllm/hooks.py",
+      "inherited_sha256": "d4ba11c77e6b55e0ae28237b40325d078a6a81e80797c7dd3c75f80e3a1c87db",
+      "sha256": "764dfc2cc281dba9a8b02f73bc43db1d56d20e5140803dbe59f854bb1eca873c"
+    }
+  ]
+}

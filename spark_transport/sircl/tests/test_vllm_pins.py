@@ -33,7 +33,8 @@ def test_file_hash_ignores_line_endings(tmp_path):
 
 def test_every_pinned_build_names_every_hook_file():
     for build in pins.SUPPORTED:
-        assert set(build.files) == set(pins.HOOK_FILES)
+        assert set(build.files) >= set(pins.HOOK_FILES)
+        assert set(build.files) - set(pins.HOOK_FILES) <= {"v1/core/recurrent_prefill_checkpoint.py"}
         # None: the build does not have the file (it must then be absent from a matching tree).
         assert all(value is None or (isinstance(value, str) and len(value) == 64)
                    for value in build.files.values())
