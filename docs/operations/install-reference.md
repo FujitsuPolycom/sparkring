@@ -25,7 +25,14 @@ Installing the package initializes the Spark's SparkRing node, enables and
 starts `avahi-daemon` and `lldpd` for discovery and restarts
 `sparkring-agent`, so the script first shows the installed and built versions
 and asks `Install the package? [Y/n]`. Its flags, including `--yes`, `--plan`,
-`--package-only` and `--json`, are in [SparkRing commands](commands.md#installsh).
+`--keep-package`, `--package-only` and `--json`, are in [SparkRing commands](commands.md#installsh).
+
+To change a model while keeping an installed development build, pass
+`--keep-package`. The script then runs the installed package without fetching
+or building another one. Without that flag, replacing a source revision that
+is not an ancestor of the requested ref requires explicit terminal approval,
+even with `--yes`. A missing or unverifiable installed revision also requires
+that approval.
 
 ### Pin a commit
 

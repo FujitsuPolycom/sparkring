@@ -18,6 +18,7 @@ YES=0
 PLAN=0
 JSON=0
 PACKAGE_ONLY=0
+KEEP_PACKAGE=0
 # Package-build options: --relay-marker-binary PATH, when given.
 BUILD_ARGS=()
 
@@ -87,13 +88,18 @@ INSTALL_ARGS=()
 usage() {
   cat <<'EOF'
 usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [--package-only]
+                  [--keep-package]
                   [--relay-marker-binary PATH] [SPARKRING_INSTALL_OPTION ...]
 
 Run on Node A, the Spark connected to your network, as a user with sudo.
 Clones the SparkRing repository at --ref and builds its Debian package, asks
 before installing the package on this Spark, then runs `sudo sparkring install`
 with every other option, for example --profile qwen38-flash-next-tp2. That
-command asks for approval before it changes any Spark. --yes approves both.
+command asks for approval before it changes any Spark. --yes approves both,
+except replacing a package whose source is not an ancestor of the requested
+revision (or cannot be identified): that always needs terminal approval.
+--keep-package skips fetching, building and installing a package and runs
+with the package already installed on this Spark, including with --plan.
 
 The package ships the prebuilt relay marker: the build downloads the binary
 published for the source and checks its SHA-256; nothing is compiled.
@@ -127,6 +133,10 @@ while (($#)); do
       usage
       exit 0
       ;;
+    --keep-package)
+      KEEP_PACKAGE=1
+      shift
+      ;;
     --package-only)
       PACKAGE_ONLY=1
       shift
@@ -153,13 +163,42 @@ fi
 if ((PACKAGE_ONLY && PLAN)); then
   stop failed arguments "--package-only installs the package and --plan installs nothing; use one of them."
 fi
-for command_name in git python3 dpkg dpkg-deb dpkg-query apt-get; do
+if ((KEEP_PACKAGE && PACKAGE_ONLY)); then
+  stop failed arguments "--keep-package runs the installed package and --package-only installs a package; use one of them."
+fi
+COMMANDS=(dpkg-query)
+((KEEP_PACKAGE)) || COMMANDS+=(git python3 dpkg dpkg-deb apt-get)
+for command_name in "${COMMANDS[@]}"; do
   command -v "$command_name" >/dev/null 2>&1 || stop failed requirements "missing required command: $command_name"
 done
 SUDO=()
 if ((EUID != 0)); then
   command -v sudo >/dev/null 2>&1 || stop failed requirements "Run as root or as a user with sudo."
   SUDO=(sudo)
+fi
+
+run_installed_package() {
+  say ""
+  say "Starting: sudo sparkring install ${INSTALL_ARGS[*]}"
+  # When this script arrives through a pipe, its standard input is the script
+  # itself; the installer's questions are read from the terminal instead.
+  if [[ ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
+    exec "${SUDO[@]}" /usr/bin/sparkring install "${INSTALL_ARGS[@]}" </dev/tty
+  else
+    exec "${SUDO[@]}" /usr/bin/sparkring install "${INSTALL_ARGS[@]}"
+  fi
+}
+
+installed=$(dpkg-query --show --showformat='${db:Status-Abbrev}${Version}' sparkring 2>/dev/null || true)
+if [[ $installed == "ii "* ]]; then
+  installed=${installed#ii }
+else
+  installed=""
+fi
+if ((KEEP_PACKAGE)); then
+  [[ -n $installed ]] || stop needs_input package "--keep-package needs an installed SparkRing package."
+  say "Keeping the installed SparkRing package $installed."
+  run_installed_package
 fi
 
 WORK=$(mktemp -d /var/tmp/sparkring-install.XXXXXX)
@@ -189,12 +228,6 @@ python3 "$WORK/source/scripts/build_deb.py" --output "$WORK/dist" "${BUILD_ARGS[
 package=$(echo "$WORK"/dist/sparkring_*_arm64.deb)
 chmod 0644 "$package"
 version=$(dpkg-deb --field "$package" Version)
-installed=$(dpkg-query --show --showformat='${db:Status-Abbrev}${Version}' sparkring 2>/dev/null || true)
-if [[ $installed == "ii "* ]]; then
-  installed=${installed#ii }
-else
-  installed=""
-fi
 
 if ((PLAN)); then
   if [[ -z $installed ]]; then
@@ -216,13 +249,34 @@ else
     say "Replace SparkRing $installed on this Spark with $version."
   fi
   say "The package installs /usr/bin/sparkring, initializes this Spark's SparkRing node, enables and starts avahi-daemon and lldpd for discovery, and restarts sparkring-agent. It changes no other Spark."
-  if ((!YES)); then
+  source_compatible=1
+  installed_revision=""
+  if [[ -n $installed ]]; then
+    # The installed distribution verifies its source and bundled history.
+    # Unknown or divergent source requires approval even when --yes was given.
+    installed_revision=$(python3 -I -B -c 'import sys; sys.path.insert(0, "/usr/lib/sparkring"); from runtime.common import distribution; print(distribution.identity("/usr/lib/sparkring"))' 2>/dev/null || true)
+    [[ $installed_revision =~ ^[0-9a-f]{40}$ ]] || installed_revision=""
+    if [[ -z $installed_revision ]] || ! git -C "$WORK/source" merge-base --is-ancestor "$installed_revision" "$revision" 2>/dev/null; then
+      source_compatible=0
+      say "Installed source revision: ${installed_revision:-unknown}; requested source revision: $revision."
+    fi
+  fi
+  if ((!YES || !source_compatible)); then
     if ! { : </dev/tty; } 2>/dev/null; then
+      if ((!source_compatible)); then
+        stop needs_input approval "Replacing a divergent or unidentified SparkRing source needs terminal approval even with --yes; use --keep-package to retain it." \
+          "{\"installed_revision\": $(if [[ -n $installed_revision ]]; then json_string "$installed_revision"; else printf null; fi), \"requested_revision\": $(json_string "$revision")}"
+      fi
       stop needs_input approval "Installing the SparkRing package needs approval: run the command in a terminal, or pass --yes."
     fi
     answer=""
-    read -r -p "Install the package? [Y/n] " answer </dev/tty || true
-    [[ $answer =~ ^([Yy]([Ee][Ss])?)?$ ]] || stop needs_input approval "The SparkRing package was not installed."
+    if ((source_compatible)); then
+      read -r -p "Install the package? [Y/n] " answer </dev/tty || true
+      [[ $answer =~ ^([Yy]([Ee][Ss])?)?$ ]] || stop needs_input approval "The SparkRing package was not installed."
+    else
+      read -r -p "Replace the installed source? [y/N] " answer </dev/tty || true
+      [[ $answer =~ ^[Yy]([Ee][Ss])?$ ]] || stop needs_input approval "The SparkRing package was not replaced; use --keep-package to retain it."
+    fi
   fi
   say "Installing $(basename "$package")"
   "${SUDO[@]}" apt-get install --yes --allow-downgrades "$package" >&2 \
@@ -240,14 +294,6 @@ if ((PACKAGE_ONLY)); then
   exit 0
 fi
 
-say ""
-say "Starting: sudo sparkring install ${INSTALL_ARGS[*]}"
 rm -rf "$WORK"
 trap - EXIT
-# When this script arrives through a pipe, its standard input is the script
-# itself; the installer's questions are read from the terminal instead.
-if [[ ! -t 0 ]] && { : </dev/tty; } 2>/dev/null; then
-  exec "${SUDO[@]}" /usr/bin/sparkring install "${INSTALL_ARGS[@]}" </dev/tty
-else
-  exec "${SUDO[@]}" /usr/bin/sparkring install "${INSTALL_ARGS[@]}"
-fi
+run_installed_package

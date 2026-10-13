@@ -24,13 +24,15 @@ BUILT = "0.1.0~dev.2+gitbbbbbbbbbbbb"
 
 STUBS = {
     "uname": 'echo aarch64\n',
-    "git": ('[ -n "${STUB_GIT_FAILS:-}" ] && { echo "fatal: repository not found"; exit 128; }\n'
+    "git": ('if [ -n "${STUB_REAL_GIT:-}" ]; then exec "$STUB_REAL_GIT" "$@"; fi\n'
+            '[ -n "${STUB_GIT_FAILS:-}" ] && { echo "fatal: repository not found"; exit 128; }\n'
             'case "$1" in\n'
             '  clone) for last; do :; done; mkdir -p "$last" ;;\n'
-            '  -C) [ "$3" = rev-parse ] && echo ' + "a" * 40 + ' ;;\n'
+            '  -C) if [ "$3" = merge-base ]; then exit "${STUB_ANCESTOR:-1}"; fi; [ "$3" = rev-parse ] && echo ' + "a" * 40 + ' ;;\n'
             'esac\n'),
     # Builds into WORK/dist and records WORK and the build's arguments.
-    "python3": ('mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n'
+    "python3": ('if [ "$1" = -I ]; then printf "%s\\n" "${STUB_REVISION:-}"; exit; fi\n'
+                'mkdir -p "$3" && : > "$3/sparkring_${STUB_BUILT}_arm64.deb"\n'
                 'printf "%s\\n" "${3%/dist}" > "$STUB_WORK"\n'
                 'printf "%s\\n" "$*" > "$STUB_WORK.build"\n'),
     "dpkg-deb": ('if [ "$1" = -x ]; then mkdir -p "$3" && cp -R "$STUB_PAYLOAD/." "$3/"; exit; fi\n'
@@ -123,7 +125,7 @@ def test_unrecognized_options_pass_through_to_sparkring_install():
         "--download-limit", "850Mbit", "--events", "/var/tmp/install-events.jsonl"]
 
 
-def run_script(tmp_path, *arguments, installed=None, git_fails=False, plan="planned"):
+def run_script(tmp_path, *arguments, installed=None, git_fails=False, plan="planned", revision=None, ancestor=True, real_git=False, approval=None):
     """Run install.sh with stub commands; returns the process and the logged apt and sparkring calls.
 
     ``plan`` is the stand-in payload's behavior (see ``PLANNER``).
@@ -145,10 +147,33 @@ def run_script(tmp_path, *arguments, installed=None, git_fails=False, plan="plan
     environment = {**os.environ, "PATH": f"{stubs}:{os.environ['PATH']}", "STUB_LOG": str(log),
                    "STUB_BUILT": BUILT, "STUB_INSTALLED": installed or "", "STUB_GIT_FAILS": "1" if git_fails else "",
                    "STUB_WORK": str(tmp_path / "work"), "STUB_PAYLOAD": str(payload),
-                   "STUB_PLANNER": str(tmp_path / "planner.json"), "STUB_PLAN": plan}
+                   "STUB_PLANNER": str(tmp_path / "planner.json"), "STUB_PLAN": plan,
+                   "STUB_REAL_GIT": shutil.which("git") if real_git else "",
+                   "STUB_REVISION": (revision if revision is not None else "b" * 40), "STUB_ANCESTOR": "0" if ancestor else "1"}
     # A new session has no controlling terminal, as for an agent or a CI job.
-    result = subprocess.run(["bash", str(SCRIPT), *arguments], stdin=subprocess.DEVNULL, capture_output=True,
-                            text=True, env=environment, timeout=60, start_new_session=True)
+    if approval is None:
+        result = subprocess.run(["bash", str(SCRIPT), *arguments], stdin=subprocess.DEVNULL, capture_output=True,
+                                text=True, env=environment, timeout=60, start_new_session=True)
+    else:
+        import fcntl
+        import pty
+        import termios
+
+        master, slave = pty.openpty()
+
+        def terminal():
+            os.setsid()
+            fcntl.ioctl(slave, termios.TIOCSCTTY, 0)
+
+        try:
+            with subprocess.Popen(["bash", str(SCRIPT), *arguments], stdin=slave, stdout=subprocess.PIPE,
+                                  stderr=subprocess.PIPE, text=True, env=environment, preexec_fn=terminal) as child:
+                os.write(master, (approval + "\n").encode())
+                stdout, stderr = child.communicate(timeout=60)
+                result = subprocess.CompletedProcess(child.args, child.returncode, stdout, stderr)
+        finally:
+            os.close(master)
+            os.close(slave)
     return result, log.read_text().splitlines()
 
 
@@ -295,3 +320,103 @@ def test_package_only_and_plan_are_exclusive(tmp_path):
     assert result.returncode == 2
     assert only_document(result.stdout)["stage"] == "arguments"
     assert calls == []
+
+
+@pytest.mark.parametrize("revision", ["c" * 40, ""])
+def test_yes_does_not_replace_divergent_or_unknown_source(tmp_path, revision):
+    result, calls = run_script(tmp_path, "--yes", "--json", installed="0.1.0~dev.1+gitcccc",
+                               revision=revision, ancestor=False)
+    assert result.returncode == 3, result.stderr
+    document = only_document(result.stdout)
+    assert (document["state"], document["field"]) == ("needs_input", "approval")
+    assert document["details"]["requested_revision"] == "a" * 40
+    assert document["details"]["installed_revision"] == (revision or None)
+    assert "--keep-package" in document["message"]
+    assert "a" * 40 in result.stderr
+    assert (revision or "unknown") in result.stderr
+    assert calls == []
+
+
+def test_yes_can_upgrade_an_ancestor_revision(tmp_path):
+    result, calls = run_script(tmp_path, "--yes", "--json", installed="0.1.0~dev.1+gitbbbb",
+                               revision="b" * 40, ancestor=True)
+    assert result.returncode == 0, result.stderr
+    assert calls[0].startswith("apt-get install ")
+    assert calls[-1] == "sparkring install --yes --json"
+
+
+@pytest.mark.parametrize("plan", [False, True])
+def test_keep_package_runs_installed_command_without_fetch_or_build(tmp_path, plan):
+    args = ["--keep-package", "--profile", "qwen38-flash-next-tp2", "--yes", "--json"]
+    if plan:
+        args.append("--plan")
+    result, calls = run_script(tmp_path, *args, installed="0.1.0~dev.3+gitcccc", git_fails=True)
+    assert result.returncode == 0, result.stderr
+    assert calls == ["sparkring install --profile qwen38-flash-next-tp2 --yes --json" + (" --plan" if plan else "")]
+    assert not (tmp_path / "work").exists()
+    assert "Fetching SparkRing" not in result.stderr
+
+
+def test_keep_package_requires_an_installed_package(tmp_path):
+    result, calls = run_script(tmp_path, "--keep-package", "--yes", "--json")
+    assert result.returncode == 3
+    assert only_document(result.stdout)["field"] == "package"
+    assert calls == []
+    assert not (tmp_path / "work").exists()
+
+
+def test_keep_package_and_package_only_are_exclusive(tmp_path):
+    result, calls = run_script(tmp_path, "--keep-package", "--package-only", "--yes", "--json", installed=BUILT)
+    assert result.returncode == 2
+    assert only_document(result.stdout)["stage"] == "arguments"
+    assert calls == []
+
+
+@pytest.mark.parametrize("source", ["ancestor", "matching", "divergent", "missing"])
+def test_revision_guard_with_real_git_history(tmp_path, source):
+    repository = tmp_path / "repository"
+    repository.mkdir()
+
+    def git(*args):
+        return subprocess.check_output(["git", "-C", str(repository), *args], text=True).strip()
+
+    git("init", "--quiet", "--initial-branch=main")
+    git("config", "user.name", "Test")
+    git("config", "user.email", "test@example.com")
+    (repository / "file").write_text("base")
+    git("add", "file")
+    git("commit", "--quiet", "-m", "base")
+    base = git("rev-parse", "HEAD")
+    git("switch", "--quiet", "-c", "development")
+    (repository / "file").write_text("development")
+    git("commit", "--quiet", "-am", "development")
+    divergent = git("rev-parse", "HEAD")
+    git("switch", "--quiet", "main")
+    (repository / "file").write_text("published")
+    git("commit", "--quiet", "-am", "published")
+    requested = git("rev-parse", "HEAD")
+    revision = {"ancestor": base, "matching": requested, "divergent": divergent, "missing": "d" * 40}[source]
+    run = tmp_path / "run"
+    run.mkdir()
+    result, calls = run_script(run, "--repository", str(repository), "--yes", "--json",
+                               installed="0.1.0~dev.1+gitbbbb", revision=revision, real_git=True)
+    compatible = source in ("ancestor", "matching")
+    assert result.returncode == (0 if compatible else 3), result.stderr
+    assert any(call.startswith("apt-get ") for call in calls) == compatible
+    if not compatible:
+        document = only_document(result.stdout)
+        assert document["details"] == {"installed_revision": revision, "requested_revision": requested}
+        assert calls == []
+
+
+@pytest.mark.parametrize("answer", ["yes", "no", ""])
+def test_divergent_package_requires_explicit_terminal_approval(tmp_path, answer):
+    result, calls = run_script(tmp_path, "--yes", "--json", installed="0.1.0~dev.1+gitcccc",
+                               revision="c" * 40, ancestor=False, approval=answer)
+    accepted = answer == "yes"
+    assert result.returncode == (0 if accepted else 3), result.stderr
+    assert "Replace the installed source? [y/N]" in result.stderr
+    assert any(call.startswith("apt-get ") for call in calls) == accepted
+    if not accepted:
+        assert only_document(result.stdout)["state"] == "needs_input"
+        assert calls == []
