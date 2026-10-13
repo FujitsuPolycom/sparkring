@@ -1,0 +1,3 @@
+Model loading took 84.53 GiB memory and 261.194033 seconds
+Initial free memory 112.11 GiB, reserved 10.0 GiB memory for KV Cache as specified by kv_cache_memory_bytes config and skipped memory profiling. This does not respect the gpu_memory_utilization config. Only use kv_cache_memory_bytes config when you want manual control of KV cache memory size. If OOM'ed, check the difference of initial free memory between the current run and the previous run where kv_cache_memory_bytes is suggested and update it correspondingly.
+GPU KV cache size: 1,472,548 tokens, Maximum concurrency for 1,048,576 tokens per request: 1.40x

@@ -25,9 +25,10 @@ def test_images_lists_the_default_first_and_each_image_s_release_tag(capsys):
     assert lines[-1] == "Install a profile on one of them: sudo sparkring install --profile PROFILE --image NAME"
 
 
-@pytest.mark.parametrize("variant", installer_image.SPARKCACHE_VARIANTS)
-def test_no_image_of_this_package_lists_a_sparkcache_variant(capsys, variant):
-    # Only the lock that the variants' derived layer records admits them, so no listed image runs them.
+@pytest.mark.parametrize("variant", installer_image.UNLISTED)
+def test_no_image_of_this_package_lists_an_unlisted_profile(capsys, variant):
+    # Only a lock that names them admits them, such as the one the SparkCache variants' derived layer
+    # records, so no listed image runs them.
     assert images.main(["--profile", variant, "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == []
 

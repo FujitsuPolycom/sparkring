@@ -37,10 +37,10 @@ def sircl_lock(name="dev-20261009-kraken-sircl-cuda1342-nccl2323-status034", **c
     return value
 
 
-# The installer profiles every image lock of the kraken line may admit. The SparkCache variants are not among
-# them: only the lock that their derived layer's record step writes lists them
-# (test_the_sparkcache_variants_are_admitted_only_on_the_lock_of_their_derived_layer).
-SHARED = tuple(profile for profile in installer_image.SUPPORTED if profile not in installer_image.SPARKCACHE_VARIANTS)
+# The installer profiles every image lock of the kraken line may admit. The unlisted profiles are not among
+# them: only a lock that names them lists them, such as the one the SparkCache variants' derived layer's record
+# step writes (test_the_sparkcache_variants_are_admitted_only_on_the_lock_of_their_derived_layer).
+SHARED = tuple(profile for profile in installer_image.SUPPORTED if profile not in installer_image.UNLISTED)
 
 
 @pytest.mark.parametrize("profile", SHARED)

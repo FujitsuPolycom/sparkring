@@ -4,6 +4,7 @@ SparkRing's profiles run three models created by Local Inference Lab, Inc. and
 licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
 (`glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`,
+`glm53-flash-nvfp4-spark-tp2-dcp2`,
 `glm53-flash-csf-tp8`, `glm53-flash-nvfp4-sparkcache-tp2`,
 `glm53-flash-nvfp4-sparkcache-tp4`),
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
@@ -73,7 +74,8 @@ To contribute a profile that `sparkring install` sets up, see
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [2.9M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
 | **[Swift-1.5-Qwen3.8-Flash-Next](../profiles/swift15-qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 experts/BF16](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4)<br>by UkisAI | 1 | 262K / — | No | Development |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)<br>by DeepSeek | 1 | 1M / [2.2M](../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
-| [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 1M / — | Included | Experimental |
+| [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 2/1 | 1M / ([4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)/—) | No | Experimental |
+| [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1/2 | 1M / (—/[4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)) | Included | Experimental |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated)<br>by malaiwah | 1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
 
 
@@ -169,6 +171,7 @@ record links preserve configuration evidence when the guide selects a different 
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
+| DCP2 | pair | Off | Experimental | [glm53-flash-nvfp4-spark-tp2-dcp2](../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md) |
 | DCP1 | pair | On | Experimental | [glm53-flash-nvfp4-sparkcache-tp2](../profiles/glm53-flash-nvfp4-sparkcache-tp2/README.md) |
 
 </details>

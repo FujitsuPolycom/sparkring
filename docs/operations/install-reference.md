@@ -491,6 +491,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
 | `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with SparkCache persistent context; research-only, installs only on an image whose lock lists it (the derived layer of `runtime/images/compositions/installer-sparkcache-gab86b70`) | MTP, three tokens (MTP3) |
+| `glm53-flash-nvfp4-spark-tp2-dcp2` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with decode-context parallelism 2; research-only, installs only on an image whose lock lists it | MTP, three tokens (MTP3) |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
 | `deepseek-v41-flash-tp4` | DeepSeek-V4.1-Flash, revision `dba1be0a40aa` | DSpark, five tokens, probabilistic drafting, adaptive verification |
 | `swift15-qwen38-flash-next-tp2`, `swift15-qwen38-flash-next-tp4` | Swift 1.5 Qwen3.8-Flash-Next NVFP4, revision `3ff0520224f2` | MTP, three tokens, probabilistic drafting |
@@ -531,6 +532,14 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   this package except an image whose lock that layer's record step wrote. They
   keep no Compose export, and `sudo sparkring check` reports the connector's
   state for a deployment that runs one.
+- `glm53-flash-nvfp4-spark-tp2-dcp2` is a research-only variant of
+  `glm53-flash-nvfp4-spark-tp2` that serves the CSF checkpoint with
+  decode-context parallelism 2: the pair splits the KV cache, which holds
+  about twice the tokens of the same memory at decode-context parallelism 1
+  ([guide](../../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)). No
+  image lock of this package lists it, so `sparkring install` refuses it
+  except with a development image lock (`--image-lock`) that lists it and
+  whose vLLM reads CSF. It keeps no Compose export.
 - `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
   `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
   off), which the GLM-5.3 plugin layer
