@@ -710,6 +710,8 @@ def _lifecycle(argv, *, output, locks):
     from runtime.host import retained_source
     cache = STATE / "retained-sources"
     if args.operation == "status":
+        if not args.json:
+            print("Reading live model status." if args.refresh else "Reading saved model status.", file=sys.stderr, flush=True)
         from runtime.host import fabric_bandwidth
         result = node.snapshot() if args.refresh else node.status()
         plan_id = size = layout = None

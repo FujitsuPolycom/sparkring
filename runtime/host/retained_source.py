@@ -140,8 +140,6 @@ def apply(directory, operation, *, cache, run=subprocess.run):
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
 op_descriptions = {
-    "saved-status": "reading the deployment's saved status",
-    "status": "reading the deployment's live status",
     "up": "starting the model",
     "down": "stopping the model",
     "prepare": "preparing the deployment",
@@ -149,7 +147,8 @@ op_descriptions = {
     "transport": "checking which transport carried the model's collectives"
 }
 with contextlib.redirect_stdout(sys.stderr):
- if sys.argv[3].startswith('review-'):
+ # Status has one header in the caller, regardless of the number of deployments.
+ if sys.argv[3].startswith('review-') or sys.argv[3] in ('saved-status', 'status'):
   result=_operation(sys.argv[2],sys.argv[3])
  else:
   desc=op_descriptions.get(sys.argv[3],'Running '+sys.argv[3])

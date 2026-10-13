@@ -23,8 +23,8 @@ def archived_program(tmp_path):
         path = source / name
         path.mkdir(exist_ok=True)
         (path / "__init__.py").write_text("")
-    (source / "runtime/common/installer.py").write_text("def apply(directory, operation, **kw): return {'program':'retained','operation':operation,'executed':kw['execute']}\n")
-    (source / "runtime/host/progress.py").write_text("from contextlib import nullcontext\ndef run(name): return nullcontext()\n")
+    (source / "runtime/common/installer.py").write_text("def apply(directory, operation, **kw): return {'program':'retained','operation':operation,'executed':kw['execute']}\ndef status(directory): return {'state': 'saved'}\n")
+    (source / "runtime/host/progress.py").write_text("from contextlib import nullcontext\ndef run(name): print(name); return nullcontext()\n")
     (source / "scripts/installer_runner.py").write_text("class Runner:\n def __init__(self, directory): pass\n")
     def git(*args):
         return subprocess.check_output(["git", "-C", str(source), *args], text=True).strip()
@@ -83,3 +83,10 @@ def test_review_uses_the_retained_controller_without_execution(archived_program,
     monkeypatch.setattr(retained_source.distribution, "identity", lambda _: "0" * 40)
     result = retained_source.review(archived_program, operation, cache=tmp_path / "cache")
     assert result == {"program": "retained", "operation": operation, "executed": False}
+
+
+def test_saved_status_from_retained_source_has_no_per_deployment_header(archived_program, tmp_path, monkeypatch, capfd):
+    monkeypatch.setattr(retained_source.distribution, "identity", lambda _: "0" * 40)
+    for _ in range(2):
+        assert retained_source.apply(archived_program, "saved-status", cache=tmp_path / "cache") == {"state": "saved"}
+    assert capfd.readouterr().err == ""

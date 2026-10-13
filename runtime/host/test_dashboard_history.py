@@ -156,3 +156,37 @@ def test_backward_wall_clock_drops_future_records_and_marks_boundary(tmp_path):
     clock.now += 5
     found.cycle()
     assert rows(found)[-1]["boundary"]
+
+
+def test_remote_plugin_cache_with_recovery_off_and_quiet_mode(tmp_path):
+    from runtime.host import dashboard_admin
+    found, api, clock = collector(tmp_path, rows=PAIRS[3:])
+    found.reload_sources()
+    model = next(iter(found.models.values()))
+    model.row["deployment_id"] = "remote-deployment"
+    plugin = member(document(clock.now, 100, 200, plugin=True))["plugin_counters"]
+    source = {"node_id": "remote-api-head", "observed_at": clock.now,
+              "telemetry": {"remote-deployment": {**plugin, "private": "not public"}}}
+    found.node_reports_path = tmp_path / "nodes.json"
+    cached = dashboard_admin.cached_node_rows(tmp_path, found.node_reports_path, {"remote": source}, clock.now)
+    found.node_reports_path.write_text(json.dumps({"schema": "sparkring-dashboard-nodes/v1", "nodes": cached}))
+    assert "not public" not in found.node_reports_path.read_text()
+    assert found.recovery == {}
+    found.cycle()
+    assert member(found.snapshot())["plugin_counters"] == plugin
+    assert rows(found)[-1]["source"] == "plugin"
+    # Cached telemetry changes neither the endpoints nor their request budget.
+    assert sorted(paths_of(api)) == ["/metrics", "/v1/models", "/v1/sparkring/status"]
+    count = len(rows(found))
+    api.requests.clear()
+    found.quiet_path.write_text("operator pause")
+    run_for(found, clock, 60, viewer=True)
+    assert api.requests == [] and len(rows(found)) == count
+    assert member(found.snapshot())["plugin_counters"] == plugin
+    clock.now = plugin["at"] + 181
+    found.cycle()
+    assert member(found.snapshot())["plugin_counters"] is None
+    assert api.requests == []
+    found.quiet_path.unlink()
+    found.cycle()
+    assert rows(found)[-1]["source"] == "metrics"

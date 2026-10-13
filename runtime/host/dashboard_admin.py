@@ -27,6 +27,7 @@ from runtime.host.dashboard import (
     CONTAINER_RE,
     DEFAULT_PORT,
     FABRIC_PATH,
+    HISTORY_VALUES,
     SITE_PATH,
     SITE_SCHEMA,
     NODE_REPORTS_PATH,
@@ -100,6 +101,18 @@ def cached_node_rows(state_root, output, documents, checked_at):
     def project(document):
         row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
                if k in document and isinstance(document[k], (str, int, float, bool))}
+        # Publish only bounded counters; agent documents can contain private fields.
+        from runtime.host.dashboard_rates import number, plugin_fresh
+        telemetry = document.get("telemetry")
+        row["telemetry"] = {}
+        for deployment, snapshot in list(telemetry.items())[:128] if isinstance(telemetry, dict) else []:
+            if not isinstance(deployment, str) or not 0 < len(deployment) <= 256:
+                continue
+            if plugin_fresh(snapshot, None, checked_at):
+                row["telemetry"][deployment] = {
+                    k: snapshot[k] for k in (*HISTORY_VALUES, "at", "monotonic") if number(snapshot.get(k))
+                } | {"schema": "sparkring-stats/v1", "run_id": snapshot["run_id"],
+                     "step_timing": bool(snapshot.get("step_timing"))}
         containers = document.get("model_containers")
         row["model_containers"] = []
         for source in containers[:MAX_CONTAINERS] if isinstance(containers, list) else []:

@@ -1086,8 +1086,13 @@ class Collector:
     # -- the status document -----------------------------------------------------------------
     def plugin_snapshot(self, model, now):
         fallback = {"run_id": (model.metrics or {}).get("started")}
-        candidates = ((self.node_status or {}).get("telemetry", {}).get(model.row.get("deployment_id")),
-                      (self.recovery.get(model.row["id"]) or {}).get("telemetry"))
+        deployment = model.row.get("deployment_id")
+        # The recovery timer also exports node reports with recovery disabled.
+        # Read that local cache only; quiet mode must never trigger a remote read.
+        reports = [self.node_status, *self.node_reports]
+        candidates = [report["telemetry"].get(deployment) for report in reports
+                      if isinstance(report, dict) and isinstance(report.get("telemetry"), dict)]
+        candidates.append((self.recovery.get(model.row["id"]) or {}).get("telemetry"))
         return next((p for p in candidates if plugin_fresh(p, fallback, now)), None)
 
     def prune_history(self, now):

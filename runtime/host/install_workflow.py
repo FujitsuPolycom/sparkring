@@ -730,7 +730,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
         document = ask_endpoint(args, cluster, placement, profile_arguments(card))
     # Serving settings are part of the request, so other settings install
     # another deployment; without any, the request is unchanged.
-    requested = serving_settings.effective(profile, serving_settings.from_arguments(args), card["target_variant"])
+    explicit = serving_settings.from_arguments(args)
+    requested = serving_settings.effective(profile, explicit, card["target_variant"])
     if requested:
         # A setting whose vLLM flag the profile does not set, or a value above
         # the selected checkpoint's limit, is refused before any Spark is surveyed.
@@ -788,7 +789,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          "api_address": getattr(args, "api_address", None),
                                          "image_lock": str(args.image_lock) if args.image_lock else None,
                                          **({"placement": list(placement)} if placement is not None else {}),
-                                         **({"serving": request["serving"]} if request.get("serving") else {}),
+                                         # Repeat operator choices without pinning inherited profile defaults.
+                                         **({"serving": explicit} if explicit else {}),
                                          "transport": getattr(args, "transport", None),
                                          "nccl": getattr(args, "nccl", None)},
                                 derivation=derivation_section(selection, rows, surveys),

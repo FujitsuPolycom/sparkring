@@ -479,7 +479,9 @@ def test_status_prints_one_block_per_group_with_its_own_api(groups, capsys):
     assert groups.hairpin == [(0, 1, 2, 3), (4, 5, 6, 7)]
     capsys.readouterr()
     assert controller.lifecycle(["status"]) == 0
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
+    assert captured.err == "Reading saved model status.\n"
+    out = captured.out
     first, second = out.index("Sparks 0-3:"), out.index("Sparks 4-7:")
     assert first < out.index("Group: path-4 at positions 0, 1, 2, 3; API on Spark 0") < second
     assert out.index("Group: path-4 at positions 4, 5, 6, 7; API on Spark 4") > second

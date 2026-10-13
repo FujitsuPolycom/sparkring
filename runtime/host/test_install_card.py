@@ -100,14 +100,14 @@ def test_live_and_replayed_commands_match_and_logs_are_plain(completed_card, mon
     monkeypatch.setattr(progress.sys, "stdout", stream)
     path = progress.directory() / "install.log"
     # Seed the heading, append the rest while the follower waits, then stop.
-    path.write_text(colour.plain(marked[0]) + "\n")
+    path.write_text(colour.plain(marked[0]) + "\n", encoding="utf-8")
     appended = False
 
     def append_or_stop(_):
         nonlocal appended
         if appended:
             raise KeyboardInterrupt
-        with path.open("a") as target:
+        with path.open("a", encoding="utf-8") as target:
             target.write("\n".join(colour.plain(line) for line in marked[1:]) + "\n")
         appended = True
 

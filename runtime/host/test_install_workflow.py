@@ -2986,7 +2986,7 @@ def test_the_plan_warns_of_quantized_linears_without_a_linear_backend(monkeypatc
     assert flow.catalog_warnings({"backend": "glm-mesh"}) == [] and flow.catalog_warnings(None) == []
 
 
-@pytest.mark.parametrize("effort", [None, "max"])
+@pytest.mark.parametrize("effort", [None, "high", "max"])
 def test_glm_profile_default_in_plan_ready_card_and_saved_result(machine, sparks, capsys, effort):
     profile = "glm53-flash-nvfp4-spark-tp2"
     options = ["--reasoning-effort", effort] if effort else []
@@ -2997,6 +2997,10 @@ def test_glm_profile_default_in_plan_ready_card_and_saved_result(machine, sparks
     expected = {"thinking": "always", "level": effort or "high", "chosen": True,
                 "model": {"thinking": "always", "level": "max"}}
     assert plan["thinking"] == expected
+    command = plan["checkpoint"]["command"]
+    assert ("--reasoning-effort" in command) == (effort is not None)
+    if effort:
+        assert f"--reasoning-effort {effort}" in command
     assert plan["serving"] == {"reasoning_effort": effort or "high"}
     assert f"Thinking: always · {effort or 'high'} (deployment default; model default: always · max)" in out.err
     assert sparkring.main(args) == 0
@@ -3006,3 +3010,5 @@ def test_glm_profile_default_in_plan_ready_card_and_saved_result(machine, sparks
     assert f"always · {effort or 'high'} (deployment default; model default: always · max)" in out.err
     saved = json.loads((Path(result["deployment"]) / flow.RESULT_FILE).read_text())
     assert saved["thinking"] == expected
+    assert saved["commands"]["start_again"] == command
+    assert flow.switch_back_command(result["deployment"]) == command

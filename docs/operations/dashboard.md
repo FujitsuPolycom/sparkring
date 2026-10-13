@@ -177,9 +177,10 @@ The ring page and terminal show prefill tokens/s during intervals with
 prompt activity. Idle shows a dash. `/metrics` prefill is labelled
 **approximate**; compatible images can supply computed-token counters through
 the SparkRing stat logger. Each card names its source and observation time.
-Plugin updates follow the existing host-agent and recovery cadence, so they
-can arrive less often than `/metrics`. Missing or stale plugin data falls
-back to `/metrics`.
+Plugin updates follow the existing host-agent and node-cache cadence, even
+when automatic recovery is off. Reading the cache adds no remote requests;
+quiet mode suspends its collection. Snapshots older than 180 seconds fall
+back to `/metrics`, as do missing snapshots.
 
 Hover a graph for its value and timestamp. **Window** selects Auto, 5 min,
 15 min, 1 h or 3 h for a card's graphs. Auto fills the width with available

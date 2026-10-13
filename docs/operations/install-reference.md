@@ -128,8 +128,10 @@ sparkring models
 profile ([commands](install.md#install)) and ends with `Model ready:` and the
 served model, Spark positions and recorded host names, and elapsed time.
 The card lists the profile, TP size and transport, observed capacity when
-available, the API, `Model status` and `Ring dashboard` addresses, and a
-`Test it` request. `Start again` repeats this installation's saved command;
+available, the API, `Model status` and `Ring dashboard` addresses, the
+`Thinking` deployment default, and a `Test it` request. `Start again` repeats
+this installation's saved command. Suggested install commands repeat explicit
+serving choices; inherited profile defaults remain defaults on the next install.
 `Stop`, `Recovery` and `Uninstall` name the corresponding commands. See the
 [API endpoint](#api-endpoint) and [dashboards](dashboard.md).
 Without `--profile`, it lists the installer profiles for the
