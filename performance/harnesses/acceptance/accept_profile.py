@@ -2,7 +2,7 @@
 """Install (optionally), check and measure one installer profile on one cluster, then draft its record.
 
 Steps, in order: install, readiness, functional, stress, throughput, record.
-Each step saves its result in --out; a later invocation with the same --out
+Each step saves its result in --out; an invocation with the same --out and installer command
 reuses every complete saved result and runs only what is missing, so an
 interrupted run resumes where it stopped. --redo STEP sets a step's saved
 outputs aside (renamed, never deleted) and runs it again. See README.md.
@@ -125,8 +125,17 @@ class Acceptance:
 
     def run(self):
         self.out.mkdir(parents=True, exist_ok=True)
-        for step in self.args.redo:
+        redo = list(self.args.redo)
+        if "install" in redo:
+            redo.extend(step for step in STEPS if step not in redo)
+        for step in redo:
             self.set_aside(step)
+        if self.source:
+            try:
+                self.checked_install_command()
+            except install.InstallError as error:
+                self.env.log(f"install: {error}")
+                return 1
         steps = (["install"] if self.source else []) + list(self.args.steps)
         ok = True
         # The dashboard on Node A sends no request from the first load step until this run ends,
@@ -167,15 +176,32 @@ class Acceptance:
         chosen = ["--checkpoint", self.profile.checkpoint] if self.profile.checkpoint else []
         return chosen + self.args.install_arg
 
+    def checked_install_command(self):
+        arguments = self.install_arguments()
+        paths = install.argument_paths(arguments)
+        command = install.install_command(self.source, self.profile.id, arguments)
+        launch_path = self.out / "install-launch.json"
+        if launch_path.is_file():
+            saved = read_json(launch_path).get("command")
+            if saved != command:
+                raise install.InstallError("Saved install command differs from the requested command. "
+                                           f"Saved: {saved!r}. Requested: {command!r}. "
+                                           "Use --redo install to start a separate installation.")
+        elif self.saved("install") is not None:
+            raise install.InstallError("The saved installation has no command identity. "
+                                       "Use --redo install to start a separate installation.")
+        return command, paths
+
     def step_install(self):
+        command, paths = self.checked_install_command()
         ssh = self.env.ssh(self.args.node_a)
         launch_path = self.out / "install-launch.json"
         if launch_path.is_file():
             launch = read_json(launch_path)
             self.env.log(f"install: following run {launch['run_id']} on Node A, started {launch['started_at']}")
         else:
+            install.check_paths(ssh, paths)
             run_id = f"{self.profile.id}-{self.stamp()}"
-            command = install.install_command(self.source, self.profile.id, self.install_arguments())
             launch = {"run_id": run_id, "command": command, "source": asdict(self.source),
                       "started_at": self.env.now().isoformat(timespec="seconds")}
             # Saved before the launch, so a later invocation follows this run

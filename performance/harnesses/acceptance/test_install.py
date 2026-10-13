@@ -199,3 +199,36 @@ def test_install_command_appends_further_install_arguments():
     command = install.install_command(install.parse_source("bundle:/var/tmp/s.bundle:sync/next"), "p-tp2",
                                       ["--image-lock", "/var/tmp/lock one.json"])
     assert command.endswith("--profile p-tp2 --yes --json --image-lock '/var/tmp/lock one.json'")
+
+
+@pytest.mark.skipif(os.name != "posix" or not shutil.which("bash"), reason="Node A path checks use POSIX Bash")
+def test_argument_path_check_uses_bash_with_quoted_paths(tmp_path):
+    class LocalNode:
+        def run(self, script, *, timeout):
+            result = subprocess.run(["bash", "-s"], input=script, text=True,
+                                    capture_output=True, timeout=timeout)
+            return Result(result.returncode, result.stdout, result.stderr)
+
+    path = tmp_path / "image lock ' with spaces.json"
+    path.write_text("{}")
+    paths = install.argument_paths(["--image-lock=" + str(path), str(path), "model:latest", "--yes"])
+    assert paths == [str(path)]
+    install.check_paths(LocalNode(), paths)
+    path.unlink()
+    with pytest.raises(install.InstallError, match="does not exist on Node A"):
+        install.check_paths(LocalNode(), paths)
+
+
+def test_argument_path_check_distinguishes_ssh_failure():
+    class OfflineNode:
+        def run(self, script, *, timeout):
+            return Result(255, "", "offline")
+
+    with pytest.raises(install.InstallError, match="exit 255.*offline"):
+        install.check_paths(OfflineNode(), ["/var/tmp/image-lock.json"])
+
+
+def test_argument_paths_preserve_posix_paths_and_ignore_nonpaths():
+    assert install.argument_paths(["--image-lock=/var/tmp/lock.json", "/var/tmp/lock.json",
+                                   "relative.json", "https://example.invalid/model", "a:latest"]) == ["/var/tmp/lock.json"]
+    assert install.argument_paths(["//var/tmp/lock.json"]) == ["//var/tmp/lock.json"]

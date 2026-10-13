@@ -322,3 +322,79 @@ def test_an_absent_dashboard_is_recorded_and_the_run_goes_on(tmp_path):
     assert accept_profile.main(h.args(), env=env) == 0
     assert json.loads((h.out / "throughput.json").read_text())["dashboard_quiet"]["state"] == "dashboard absent"
     assert "- **Dashboard:** dashboard absent" in (h.records / f"{NAME}.md").read_text()
+
+
+@pytest.mark.parametrize("complete", [False, True])
+def test_install_command_mismatch_refuses_resume_without_remote_effects(tmp_path, complete):
+    h = Harness(tmp_path)
+    if complete:
+        assert h.main("--steps", "readiness") == 0
+    else:
+        h.node.polls_before_exit = 10
+        assert h.main("--install-timeout", "60", "--steps", "readiness") == 1
+    launch = (h.out / "install-launch.json").read_bytes()
+    scripts, requests = len(h.node.scripts), len(h.model.requests)
+    assert h.main("--install-arg=--image-lock=/var/tmp/other-lock.json", "--steps", "readiness") == 1
+    assert len(h.node.scripts) == scripts and len(h.model.requests) == requests
+    assert (h.out / "install-launch.json").read_bytes() == launch
+    assert any("--redo install" in line and "command" in line.lower() for line in h.lines)
+    assert any("--image-lock=/var/tmp/other-lock.json" in line for line in h.lines)
+
+
+def test_changed_install_source_refuses_saved_result(tmp_path):
+    h = Harness(tmp_path)
+    assert h.main("--steps", "readiness") == 0
+    scripts = len(h.node.scripts)
+    assert h.main("--steps", "readiness", install_source="published:release-test") == 1
+    assert len(h.node.scripts) == scripts
+    assert any("release-test" in line and "--redo install" in line for line in h.lines)
+
+
+def test_completed_install_without_launch_identity_requires_redo(tmp_path):
+    h = Harness(tmp_path)
+    assert h.main("--steps", "readiness") == 0
+    (h.out / "install-launch.json").unlink()
+    scripts = len(h.node.scripts)
+    assert h.main("--steps", "readiness") == 1
+    assert len(h.node.scripts) == scripts
+    assert any("--redo install" in line for line in h.lines)
+
+
+@pytest.mark.parametrize("path", ["C:/Program Files/Git/var/tmp/lock.json", r"C:\tools\lock.json"])
+def test_windows_install_argument_is_rejected_before_ssh(tmp_path, path):
+    h = Harness(tmp_path)
+    assert h.main("--steps", "readiness", "--install-arg=--image-lock=" + path) == 1
+    assert h.targets == [] and h.node.launched == []
+    assert not (h.out / "install-launch.json").exists()
+    assert any("MSYS_NO_PATHCONV=1" in line for line in h.lines)
+
+
+def test_missing_install_argument_path_prevents_launch(tmp_path):
+    h = Harness(tmp_path)
+    h.node.paths = set()
+    assert h.main("--steps", "readiness", "--install-arg=--image-lock=/var/tmp/not-present.json") == 1
+    assert h.node.launched == [] and h.model.requests == []
+    assert not (h.out / "install-launch.json").exists()
+    assert any("/var/tmp/not-present.json" in line for line in h.lines)
+
+
+def test_explicit_redo_allows_changed_command_and_preserves_outputs(tmp_path):
+    h = Harness(tmp_path)
+    assert h.main("--steps", "readiness") == 0
+    assert h.main("--steps", "readiness", "--redo", "install", "--install-arg=--image-lock=/var/tmp/other-lock.json") == 0
+    assert len(h.node.launched) == 2
+    assert len(h.model.requests) == 2
+    assert (h.out / "readiness.json.20260927T120000Z").is_file()
+    assert (h.out / "install-launch.json.20260927T120000Z").is_file()
+    assert "--image-lock=/var/tmp/other-lock.json" in json.loads((h.out / "install-launch.json").read_text())["command"]
+
+
+def test_redo_install_sets_aside_all_acceptance_results(tmp_path):
+    require_repository_drive(tmp_path)
+    h = Harness(tmp_path)
+    assert h.main() == 0
+    requests, runs = len(h.model.requests), len(h.bench.calls)
+    assert h.main("--redo", "install", "--topic", "second-installation") == 0
+    assert len(h.model.requests) > requests and len(h.bench.calls) == runs + 1
+    for step in accept_profile.STEPS:
+        assert (h.out / (accept_profile.RESULTS[step] + ".20260927T120000Z")).is_file()
