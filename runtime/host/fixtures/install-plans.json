@@ -1,5 +1,5 @@
 {
- "generated_at": "4773cdf8-independent-slices",
+ "generated_at": "ring-preview-20261013",
  "plans": {
   "prepared": {
    "printed": [
@@ -160,6 +160,15 @@
      "switch-model",
      "verify-serving"
     ],
+    "thinking": {
+     "chosen": false,
+     "level": "xhigh",
+     "model": {
+      "level": "xhigh",
+      "thinking": "on"
+     },
+     "thinking": "on"
+    },
     "transport": {
      "backend": "prepared",
      "reason": null
@@ -328,6 +337,15 @@
      "switch-model",
      "verify-serving"
     ],
+    "thinking": {
+     "chosen": false,
+     "level": "xhigh",
+     "model": {
+      "level": "xhigh",
+      "thinking": "on"
+     },
+     "thinking": "on"
+    },
     "transport": {
      "backend": "sircl",
      "expected": "SIRCL carries every collective; NCCL creates no communicator",

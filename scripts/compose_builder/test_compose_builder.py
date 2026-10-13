@@ -46,6 +46,10 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
     assert names["qad-step-4000"]["changes"] == ["VLLM_MXFP8_LM_HEAD=1", "speculative moe_backend: b12x"]
     assert names["qad-step5500-mxfp8-attention"]["derived"]
     assert {profile["id"]: profile["model_name"] for profile in data["profiles"]}["glm53-flash-nvfp4-spark-tp4"] == "GLM-5.3-Flash"
+    for profile in data["profiles"]:
+        for checkpoint in profile["checkpoints"]:
+            if profile["id"].startswith("glm53-flash-nvfp4-spark-"):
+                assert checkpoint["serving_defaults"] == {"reasoning_effort": "high"}
     # The CSF checkpoint needs a vLLM build the default image lacks: the page does not offer it there.
     assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
             if profile["id"].startswith("glm53-flash-nvfp4-spark-")} == {

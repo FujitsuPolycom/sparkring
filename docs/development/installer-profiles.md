@@ -281,3 +281,32 @@ A profile graduates when its status becomes `implemented` or `qualified`. Then:
 both files. `catalog.json` also lists research-only profiles that run from
 their own guides and launchers; their rows are inside the Compose identity like
 every other row of that file.
+
+## Thinking deployment defaults
+
+A `sparkring-serving-profile/v1` configuration may contain
+`"serving_defaults": {"reasoning_effort": "high"}`. This optional object accepts
+only settings from `runtime.common.serving.CHOICES`: `reasoning_effort` (a
+lowercase level or positive integer) or `thinking` (`off`). Values cannot be
+null and the two settings cannot be combined. Resolution validates the choice
+against every served checkpoint's thinking record; rendering also validates
+the selected checkpoint. A level must be listed or fall in the recorded range.
+
+An explicit install or Compose choice replaces the profile's thinking choice,
+including when `--thinking off` replaces an effort default. Models without an
+off switch still refuse that option. Other serving options keep the profile's
+thinking default. A request's arguments take precedence over the deployment.
+
+The shared container adapter writes the effective choice into
+`--default-chat-template-kwargs` on the API rank only. The installer lock and
+Compose manifest record the effective settings in `serving`. Model ready,
+status, the plan and `sparkring models` show the deployment default alongside
+the template default through `thinking.deployment_default`.
+
+GLM profiles select `high`, while the thinking records preserve the template's
+`max` default and historical measurements retain their original conditions.
+Their `--generation-config auto` loads temperature 1.0 and top_p 0.95. The
+thinking record's `source.generation_configs` maps each pinned file's SHA-256
+to these values; tests cover every served GLM checkpoint, including the derived
+CSF serving layout. A checkpoint lacking these values requires an explicit
+`--override-generation-config` in its profile before it can use this policy.

@@ -15,10 +15,12 @@ only, so that the API listens on that address alone. The API rank's container
 health check then asks the API at that address and port (``container``).
 
 CHOICES are settings whose value is a word, or for some models a number: what
-the model does with thinking when a request does not choose. The profile sets
-no value for them; the chat template, or for DeepSeek vLLM's prompt encoder,
-decides (runtime/common/thinking.py). A choice adds keys to the JSON object of
-vLLM's --default-chat-template-kwargs on the API rank only, since the other
+the model does with thinking when a request does not choose. A serving profile
+may set them in ``serving_defaults``. An explicit install choice replaces the
+profile's thinking choice; without either, the chat template or vLLM's prompt
+encoder decides (runtime/common/thinking.py). Effective settings are recorded
+in the deployment lock and displayed as deployment defaults. A choice adds
+keys to vLLM's --default-chat-template-kwargs JSON object on the API rank only, since the other
 ranks run --headless and serve no API. The keys and the accepted values are
 the model's, so applying a choice needs the profile and checkpoint
 (``model``). A request's own values take precedence over these defaults.
@@ -111,6 +113,48 @@ def add_arguments(parser):
 
 def from_arguments(args):
     return normalized({name: getattr(args, "serving_" + name, None) for name in (*SETTINGS, *SWITCHES, *CHOICES)})
+
+
+def profile_defaults(configuration, *, root=None):
+    """Validate a serving profile's optional ``serving_defaults`` object against its served checkpoint.
+
+    Only CHOICES keys are allowed. Values cannot be null; reasoning_effort
+    and thinking are mutually exclusive. Pass checkpoint_settings' result
+    to validate a non-default checkpoint.
+    """
+    values = configuration.get("serving_defaults", {})
+    if not isinstance(values, dict) or not set(values) <= set(CHOICES) or any(v is None for v in values.values()):
+        raise ValueError("serving_defaults must be an object of CHOICES settings with non-null values")
+    values = normalized(values)
+    if values:
+        from runtime.common import thinking
+        record = (thinking.for_model(configuration["model"], root=root or thinking.ROOT)
+                  if configuration.get("image_extension") == "toolchain" else None)
+        thinking.arguments(record, values, configuration.get("served_model_name", "profile"))
+    return values
+
+
+def defaults(profile, checkpoint=None, *, root=None):
+    """The validated CHOICES defaults of a catalog profile's selected checkpoint."""
+    from runtime.common import profiles, toolchain_profiles
+    root = root or profiles.ROOT
+    source = profiles.read_json(profiles.catalog(root)[profile])["configuration"]
+    if source["format"] != "serving-profile":
+        return {}
+    configuration = profiles.read_json(profiles.local_path(source["path"], root))
+    if "serving_defaults" not in configuration:
+        return {}
+    configuration = toolchain_profiles.checkpoint_settings(configuration, checkpoint)
+    return profile_defaults(configuration, root=root)
+
+
+def effective(profile, settings=None, checkpoint=None, *, root=None):
+    """Profile defaults plus explicit settings; either explicit thinking choice replaces both profile choices."""
+    explicit = normalized(settings)
+    inherited = defaults(profile, checkpoint, root=root)
+    if set(explicit) & set(CHOICES):
+        inherited = {}
+    return {**inherited, **explicit}
 
 
 def listenable(value):
@@ -275,7 +319,16 @@ def chat_defaults(command, settings, model):
     if model is None:
         raise ValueError(" and ".join(option(name) for name in sorted(chosen)) + " apply only with the profile and checkpoint")
     profile, checkpoint = model
-    values = thinking.arguments(thinking.of(profile, checkpoint), chosen, profile)
+    record = thinking.of(profile, checkpoint)
+    return template_defaults(command, record, chosen, profile)
+
+
+def template_defaults(command, record, chosen, profile):
+    """Apply validated thinking choices to the API command, preserving unrelated template arguments."""
+    from runtime.common import thinking
+    if not chosen:
+        return tuple(command)
+    values = thinking.arguments(record, chosen, profile)
     command = list(command)
     if "--headless" in command:
         return tuple(command)
@@ -287,6 +340,10 @@ def chat_defaults(command, settings, model):
     defaults = json.loads(command[position])
     if not isinstance(defaults, dict):
         raise ValueError(f"The profile's {flag} must be a JSON object")
+    # An explicit off choice must not leave a profile's effort argument on,
+    # and an explicit effort must not keep the profile's off switch.
+    for key in (record["effort"], *(record["off"] or {})):
+        defaults.pop(key, None)
     defaults.update(values)
     command[position] = json.dumps(defaults, sort_keys=True, separators=(",", ":"))
     return tuple(command)

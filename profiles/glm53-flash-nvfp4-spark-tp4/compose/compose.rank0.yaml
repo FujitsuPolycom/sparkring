@@ -20,6 +20,8 @@ services:
     - '0'
     - --master-addr
     - 192.0.2.10
+    - --generation-config
+    - auto
     - --tensor-parallel-size
     - '4'
     - --nnodes
@@ -103,6 +105,8 @@ services:
     - --max-parallel-prefills
     - '1'
     - --enable-prompt-tokens-details
+    - --default-chat-template-kwargs
+    - '{"reasoning_effort":"high"}'
     environment:
       B12X_COMPILE_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-cuda13.4.2-a608241037e4/b12x
       B12X_COMPILE_WORKERS: '2'
@@ -191,7 +195,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
     labels:
-      io.sparkring.deployment: 2e0fa07210bcd8a2c1593c9ede8a471a5517af47f9260c80f36bb77c78e37dcd
+      io.sparkring.deployment: 57d68e4ee4463f1a9fee989937e798e5f1d2742f5bfae41a9ffd42b7831adfc2
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host

@@ -350,7 +350,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
     selected_backend = backend(card)
     if selected_backend == "glm-managed" and all("fabric" in row for row in site["ranks"]):
         selected_backend = "glm-existing-mesh"
-    settings = serving.normalized(settings)
+    settings = serving.effective(profile, settings, card["target_variant"])
     if settings and selected_backend != "compose":
         raise ValueError("Serving settings apply to Compose deployments; this profile's backend is " + selected_backend)
     value = {"schema": "sparkring-install-lock/v1", "selection": card, "site": site,

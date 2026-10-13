@@ -344,6 +344,10 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     renders = [("off", None)] + ([("on", {"save_cpu": True})] if serving_settings.NEEDS["save_cpu"] in capabilities else [])
     for checkpoint in checkpoints:
         name = None if checkpoint["default"] else checkpoint["name"]
+        checkpoint["serving_defaults"] = serving_settings.defaults(profile_id, name)
+        checkpoint["serving_default_lines"] = {
+            key: serving_settings.describe({key: value}, (), model=(profile_id, name))[0]
+            for key, value in checkpoint["serving_defaults"].items()}
         variants = {}
         for variant, serving in renders:
             manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving, image_runtime=runtime)

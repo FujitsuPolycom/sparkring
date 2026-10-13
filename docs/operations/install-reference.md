@@ -802,14 +802,14 @@ flag, the profile's value applies.
 ### Thinking
 
 A reasoning model can think before it answers. When a request doesn't say
-whether it should, or how hard, the model's chat template decides; for
-DeepSeek-V4.1-Flash, whose checkpoint has no chat template, vLLM's prompt
-encoder decides. The installer profiles set no default of their own:
+whether it should, or how hard, the profile's `serving_defaults` apply.
+Without a profile or install choice, the chat template decides; for
+DeepSeek-V4.1-Flash, vLLM's prompt encoder decides:
 
 | Profiles | Without a choice | Effort levels (`reasoning_effort`) | Turns thinking off |
 |---|---|---|---|
 | `qwen38-flash-next-*`, `swift15-qwen38-flash-next-*` | on, `xhigh` | `low`, `medium`, `xhigh` | `"enable_thinking": false` |
-| `glm53-flash-nvfp4-spark-*` | always, `max` | `low`, `high`, `max` | nothing: the model always thinks |
+| GLM-5.3-Flash and GLM-5.3 shared-image serving profiles | always, `high` (deployment default; template: `max`) | `low`, `high`, `max` | nothing: the model always thinks |
 | `mimo-v26-flash-mopd-*` | on | none | `"enable_thinking": false` |
 | `deepseek-v41-flash-tp4` | on, `high` | `low` (50), `high` (75), `max` (100), or a whole number from 1 to 100; `xhigh` is 75 like `high` | `"thinking": false`, or `"reasoning_effort": "none"` |
 
@@ -826,7 +826,7 @@ curl http://NODE_A:PORT/v1/chat/completions -H 'Content-Type: application/json' 
 ```
 
 - `--reasoning-effort LEVEL` and `--thinking off` (serving settings above)
-  change the default of one deployment. The installer writes the model's own
+  replace the profile default for one deployment. The installer writes the model's own
   argument into vLLM's `--default-chat-template-kwargs` on Node A's model
   container, which serves the API: `--reasoning-effort low` writes
   `{"reasoning_effort":"low"}`; `--thinking off` writes
@@ -853,8 +853,10 @@ curl http://NODE_A:PORT/v1/chat/completions -H 'Content-Type: application/json' 
   each behaviour with the SHA-256 of every chat template read for it, which
   the checkpoints' pin manifests list, and for DeepSeek the installer image
   and the digests of vLLM's encoder modules. The records cover the default
-  installer image. Status: implemented. The defaults come from the templates
-  and vLLM source; no measurement covers a deployment with these settings.
+  installer image. GLM serving profiles select `high` and explicitly pass
+  `--generation-config auto`; the pinned generation configurations set
+  temperature 1.0 and top_p 0.95. The records retain the template default
+  `max`. Measurements made at `max` do not qualify the `high` default.
 
 ### API endpoint
 

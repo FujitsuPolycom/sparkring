@@ -1,5 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
+  "serving_defaults": {"reasoning_effort": "high"},
   "status": "research-only",
   "model": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
@@ -74,6 +75,8 @@
     "B12X_NVFP4_DYNAMIC_MATERIALIZED": "0"
   },
   "vllm_args": [
+    "--generation-config",
+    "auto",
     "--tensor-parallel-size",
     "8",
     "--nnodes",

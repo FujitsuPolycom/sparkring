@@ -1,5 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
+  "serving_defaults": {"reasoning_effort": "high"},
   "status": "implemented",
   "model": {
     "repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark",
@@ -138,6 +139,8 @@
     "B12X_W4A16_A4_PREFILL_MIN_TOKENS": "1536"
   },
   "vllm_args": [
+    "--generation-config",
+    "auto",
     "--tensor-parallel-size",
     "4",
     "--nnodes",

@@ -1,5 +1,6 @@
 {
   "schema": "sparkring-serving-profile/v1",
+  "serving_defaults": {"reasoning_effort": "high"},
   "status": "research-only",
   "model": {
     "repository": "local-inference-lab/GLM-5.3-NVFP4-CSF",
@@ -106,6 +107,8 @@
     "SIRCL_COLUMN_GATHER": "1"
   },
   "vllm_args": [
+    "--generation-config",
+    "auto",
     "--tensor-parallel-size",
     "8",
     "--nnodes",

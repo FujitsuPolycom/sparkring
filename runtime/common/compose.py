@@ -430,7 +430,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
             spec = installer_container(spec, image_runtime, profile_id=profile_id,
                                        source_root=rank["repository"])
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
-    settings = serving_settings.normalized(serving)
+    settings = serving_settings.effective(profile_id, serving, checkpoint)
     if settings:
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "
@@ -581,7 +581,7 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
         "local_image_id": local_image_id, "local_source_extension": local_source_extension,
         "local_kv_cache_gib": local_kv_cache_gib, "local_master_port": local_master_port,
         "image_runtime": image_runtime, "checkpoint": checkpoint_selection(profile_id, checkpoint),
-        "serving": serving_settings.normalized(serving) or None,
+        "serving": serving_settings.effective(profile_id, serving, checkpoint) or None,
     }.items() if value is not None}
     specs, image = specifications(profile_id, site, **options)
     inputs = (source_inventory(profile_id) if local_source_extension is None else

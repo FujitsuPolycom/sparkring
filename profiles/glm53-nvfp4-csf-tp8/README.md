@@ -130,7 +130,23 @@ parked it.
 - One measured start decoded at a median 3.8 % fewer engine steps per second
   and 0.17 shorter accept length than glm53-nvfp4-tp8's start on the same
   image. That start ran with `--reasoning-effort high` and the reference with
-  the default `max`, so the comparison is confounded; a comparison needs both
+  the template default `max`, so the comparison is confounded; a comparison needs both
   profiles at the same effort and two starts each.
 - The checkpoint's pins, the serving directory's manifest, the rendered rank
   commands and the installer's operations are checked by CPU tests.
+
+## Request defaults
+
+When a request chooses no effort, this profile always thinks at `high`.
+An install option such as `--reasoning-effort max` replaces that deployment
+default; a request can still choose `low`, `high` or `max`. GLM has no
+thinking-off switch.
+
+`--generation-config auto` loads the pinned checkpoint's sampling defaults:
+`temperature: 1.0` and `top_p: 0.95`. The generation-config hashes and values
+are recorded in the [thinking records](../thinking.json) and
+[GLM-5.3 record](../research-thinking.json); no sampling override is needed.
+
+Recorded measurements that omitted an effort choice used the chat template's
+`max` default. They do not measure this profile's `high` deployment default.
+Measurements with explicit request settings retain those stated conditions.
