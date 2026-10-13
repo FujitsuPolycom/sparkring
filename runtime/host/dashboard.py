@@ -85,6 +85,7 @@ from __future__ import annotations
 import argparse
 import base64
 import collections
+from functools import lru_cache
 import gzip
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -103,6 +104,7 @@ import urllib.parse
 import urllib.request
 
 from runtime.common.transport_names import collective_name
+from runtime.common import thinking
 from runtime.host.dashboard_rates import number, plugin_fresh
 
 SCHEMA = "sparkring-dashboard/v1"
@@ -543,10 +545,73 @@ def deployments_from_site(site: dict, size: int) -> list:
                       and type(c.get("position")) is int and isinstance(c.get("name"), str)
                       and CONTAINER_RE.fullmatch(c["name"])]
         rows.append({"id": str(row.get("id") or run_name(positions)), "deployment_id": row.get("deployment_id"), "profile": row.get("profile"),
+                     "checkpoint": row.get("checkpoint"), "serving": row.get("serving"),
+                     "settings": row.get("settings"),
                      "model": row.get("model"), "positions": positions, "api_host": row["api_host"],
                      "api_port": port, "display_url": row.get("display_url"),
                      "stopped": bool(row.get("stopped")), "containers": containers})
     return rows
+
+
+@lru_cache(maxsize=128)
+def thinking_record(profile, checkpoint):
+    """Resolve shipped thinking records once per profile/checkpoint, without host access."""
+    try:
+        return thinking.of(profile, checkpoint)
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def chat_defaults(row, settings):
+    """Observed runtime kwargs take precedence over launch facts and saved settings, even when empty."""
+    for source in (settings or {}, row.get("launch") or {}, row.get("settings") or {}):
+        value = source.get("default_chat_template_kwargs")
+        if isinstance(value, str):
+            try:
+                value = json.loads(value)
+            except ValueError:
+                continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def thinking_line(row, settings):
+    """Default for requests that do not choose thinking; unknown installed checkpoints have no line."""
+    unmanaged = row.get("unmanaged")
+    profile, checkpoint = row.get("profile"), row.get("checkpoint")
+    record = None if unmanaged or not isinstance(profile, str) or (
+        checkpoint is not None and not isinstance(checkpoint, str)) else thinking_record(profile, checkpoint)
+    if not unmanaged and record is None:
+        return None
+    kwargs = chat_defaults(row, settings)
+    chosen = {}
+    enabled = False
+    if kwargs is None:
+        chosen = (row.get("serving") or {}) if not unmanaged else {}
+    else:
+        off = record and record["off"]
+        enabled = bool(off) and all(kwargs.get(k) is True for k in off)
+        if (off and all(kwargs.get(k) == v for k, v in off.items())
+                or (unmanaged or record["name"] == "deepseek-v41-encoder") and (
+                    kwargs.get("enable_thinking") is False or kwargs.get("thinking") is False
+                    or kwargs.get("reasoning_effort") == "none")):
+            chosen = {"thinking": "off"}
+        elif kwargs.get("reasoning_effort") is not None and (
+                unmanaged or thinking.accepts(record, kwargs["reasoning_effort"])):
+            chosen = {"reasoning_effort": kwargs["reasoning_effort"]}
+        elif unmanaged and (kwargs.get("enable_thinking") is True or kwargs.get("thinking") is True):
+            return "on (deployment default)"
+    if unmanaged:
+        if chosen.get("thinking") == "off":
+            return "off (deployment default)"
+        effort = chosen.get("reasoning_effort")
+        return f"{effort} (deployment default)" if effort is not None else "model default"
+    state = thinking.deployment_default(record, chosen)
+    if enabled and state["thinking"] != "off":
+        state.update(thinking="on", chosen=True)
+    value = state["thinking"] if state["thinking"] == "off" or state["level"] is None else state["level"]
+    return f"{value} ({'deployment' if state['chosen'] else 'model'} default)"
 
 
 def rendezvous_head(fabric, container, observed):
@@ -579,7 +644,7 @@ def rendezvous_head(fabric, container, observed):
 
 def unmanaged_groups(fabric, documents, deployments, now):
     """Join fresh agent facts by head Spark and port, never by list index or names."""
-    from runtime.host.node_containers import MAX_CONTAINERS
+    from runtime.host.node_containers import MAX_CONTAINERS, thinking_kwargs
     groups, observed = {}, []
     known = {(c["position"], c["name"]) for row in deployments if not row["stopped"] for c in row["containers"]}
     for position in fabric["positions"]:
@@ -606,6 +671,9 @@ def unmanaged_groups(fabric, documents, deployments, now):
             c.update({k: container[k] for k in ("tp", "pp", "dp", "dcp", "nnodes", "node_rank", "master_port", "api_port")
                       if type(container.get(k)) is int and (0 if k == "node_rank" else 1) <= container[k] <= 65535})
             c.update(name=name, position=position["position"], headless=container.get("headless") is True)
+            kwargs = thinking_kwargs(container.get("default_chat_template_kwargs"))
+            if kwargs is not None:
+                c["default_chat_template_kwargs"] = kwargs
             master = c.get("master_addr")
             if master:
                 try:
@@ -1176,6 +1244,7 @@ class Collector:
             "totals": {"finished": metrics.get("finished"), "preemptions": metrics.get("preemptions"),
                        "output_tokens": metrics.get("gen"), "prompt_tokens": metrics.get("prompt")}
             if model.metrics else None,
+            "thinking": thinking_line(row, runtime.get("settings")),
             "settings": runtime.get("settings"), "nodes": nodes, "capacity": capacity if serving else None,
             "workers": runtime.get("workers"), "image": runtime.get("image"), "transport": runtime.get("transport"),
             "sparks": sparks,

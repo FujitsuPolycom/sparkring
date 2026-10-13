@@ -77,6 +77,19 @@ def test_the_site_file_lists_every_slots_active_deployment(records, tmp_path):
     assert dashboard.deployments_from_site(written, 4)[1]["api_port"] == 8015
 
 
+def test_site_preserves_thinking_selection_and_only_public_serving_defaults(records):
+    path = records / "deployments" / "whole" / "deployment.lock.json"
+    lock = json.loads(path.read_text())
+    lock["selection"]["target_variant"] = "nvfp4"
+    lock["serving"] = {"reasoning_effort": "high", "unrelated": "private"}
+    path.write_text(json.dumps(lock))
+    site = dashboard_admin.site_from_records(records)
+    row = dashboard.deployments_from_site(site, 4)[0]
+    assert row["checkpoint"] == "nvfp4"
+    assert row["serving"] == {"reasoning_effort": "high"}
+    assert "private" not in json.dumps(site)
+
+
 def test_a_failed_refresh_logs_one_line_and_never_raises(records, monkeypatch):
     def broken(output=None):
         raise PermissionError(13, "Permission denied", "/var/lib/sparkring/dashboard/site.json")

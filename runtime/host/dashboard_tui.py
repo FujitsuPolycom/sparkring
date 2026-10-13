@@ -313,6 +313,8 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
         lasted = dur_short(now - since)      # empty when the start lies ahead of this host's clock
         head += (f" for {lasted}" if lasted else "") + f" (since {time.strftime('%m-%d %H:%M', time.localtime(since))})"
     add((head, style(STATE_COLORS.get(state, 4), bold=True)))
+    if member.get("thinking"):
+        add(("Thinking: " + member["thinking"], 0))
     if member.get("unmanaged"):
         add((member["ownership_label"], style(WARN)))
         if member.get("group_note"):
