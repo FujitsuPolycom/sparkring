@@ -63,12 +63,8 @@ svg .band.inferred .shape { stroke-opacity: 0.15; stroke-dasharray: 14 5; }
 svg .band.k-starting .shape { stroke-dasharray: 10 6; stroke-opacity: 0.22; }
 svg .band.k-job .shape { stroke-dasharray: 4 6; stroke-opacity: 0.2; }
 svg .band.hot .shape, svg .band.sel .shape { stroke-opacity: 0.42; }
-svg .lbl { pointer-events: none; text-anchor: middle; }
+svg .lbl { text-anchor: middle; }
 svg .l1 { font: 650 13.5px system-ui, sans-serif; fill: var(--gc); }
-svg .l2 { font: 600 12.5px system-ui, sans-serif; fill: var(--fg); font-variant-numeric: tabular-nums; }
-svg .l3 { font: 500 11.5px system-ui, sans-serif; fill: var(--muted); }
-svg .big .l1 { font-size: 18px; }
-svg .big .l2 { font-size: 15px; }
 svg .node { cursor: pointer; }
 svg .node circle { fill: var(--panel2); stroke: var(--line2); stroke-width: 2; transition: stroke-width 0.15s; }
 svg .node .num { font: 700 14px var(--mono); fill: var(--muted); text-anchor: middle; pointer-events: none; }
@@ -91,7 +87,7 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .strip .tile { background: var(--panel2); flex: 1 1 112px; }
 .strip .tile .s { white-space: normal; }
 .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
-.legend li { display: grid; grid-template-columns: 12px minmax(0, 1.1fr) minmax(0, 1.3fr) auto; gap: 4px 12px;
+.legend li { display: grid; grid-template-columns: 12px minmax(0, 1.1fr) minmax(0, 1.3fr) minmax(0, .9fr); gap: 4px 12px;
              align-items: center; padding: 9px 12px; border: 1px solid var(--line); border-radius: 9px;
              background: var(--panel2); cursor: pointer; transition: border-color 0.15s, background 0.15s; min-width: 0; }
 .legend li.hot, .legend li.sel { border-color: var(--gc); background: color-mix(in srgb, var(--gc) 8%, var(--panel2)); }
@@ -100,12 +96,13 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .legend .t1 { font-weight: 650; overflow-wrap: anywhere; }
 .legend .t2 { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .legend .col { min-width: 0; }
-.legend .right { display: grid; justify-items: end; gap: 3px; }
+.legend .right { display: grid; justify-items: end; gap: 3px; min-width: 0; }
 .legend .rate { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 0.9rem; }
 .legend .empty { display: block; color: var(--muted); cursor: default; grid-template-columns: 1fr; }
 @media (max-width: 520px) {
-  .legend li { grid-template-columns: 12px minmax(0, 1fr) auto; }
+  .legend li { grid-template-columns: 12px minmax(0, 1fr) minmax(0, .8fr); }
   .legend li .col.mid { grid-column: 2 / 3; }
+  .legend li .right { grid-column: 3; grid-row: 1 / 3; }
 }
 .ringnote { margin: 0; font-size: 0.78rem; color: var(--muted); }
 .ringnote b { color: var(--fg); font-weight: 600; }
@@ -127,6 +124,7 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .launch-facts summary { cursor: pointer; }
 .card.hot, .card.sel { box-shadow: 0 0 0 1px var(--gc, var(--accent)), 0 0 24px -8px var(--gc, var(--accent)); }
 .head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+.head > div { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .name { font-size: 1.1rem; font-weight: 650; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .name .run { font-family: var(--mono); }
 .sub, .since, .muted { color: var(--muted); }
@@ -134,13 +132,13 @@ svg .center { font: 600 13px system-ui, sans-serif; fill: var(--faint); text-anc
 .state { display: grid; justify-items: end; gap: 3px; }
 .since { font-size: 0.78rem; }
 .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 0.75rem; font-weight: 650;
-        padding: 2px 9px; border-radius: 999px; white-space: nowrap; color: var(--idle); background: var(--idle-bg); }
-.pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+        padding: 2px 9px; border-radius: 999px; max-width: 100%; overflow-wrap: anywhere; color: var(--idle); background: var(--idle-bg); }
+.pill::before { content: ""; width: 7px; height: 7px; flex: none; border-radius: 50%; background: currentColor; }
 .p-serving { color: var(--ok); background: var(--ok-bg); }
 .p-not_ready { color: var(--warn); background: var(--warn-bg); }
 .p-offline { color: var(--bad); background: var(--bad-bg); }
 .tag { display: inline-flex; align-items: center; font: 600 0.7rem system-ui, sans-serif; padding: 1px 7px;
-       border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); white-space: nowrap; letter-spacing: 0.02em; }
+       border-radius: 6px; border: 1px solid var(--line2); color: var(--muted); max-width: 100%; overflow-wrap: anywhere; letter-spacing: 0.02em; }
 .tag.arc { color: var(--gc, var(--fg)); border-color: color-mix(in srgb, var(--gc, var(--fg)) 45%, transparent); }
 .tag.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 40%, transparent); }
 .model { font-family: var(--mono); font-size: 0.92rem; font-weight: 600; overflow-wrap: anywhere; }
@@ -173,7 +171,7 @@ button.copy:disabled { opacity: 0.45; cursor: default; }
            background: var(--code); border: 1px solid var(--line); border-radius: 6px; margin-top: 3px; }
 .sparks { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line2); border-radius: 6px;
-        padding: 3px 8px; font-size: 0.78rem; min-width: 0; background: var(--panel2); }
+        padding: 3px 8px; font-size: 0.78rem; min-width: 0; max-width: 100%; flex-wrap: wrap; overflow-wrap: anywhere; background: var(--panel2); }
 .chip .pos { font: 700 0.72rem var(--mono); color: var(--gc, var(--muted)); }
 .chip .dot { width: 7px; height: 7px; }
 .chip.up .dot { background: var(--ok); }
@@ -336,6 +334,10 @@ const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
 const span = (positions) => !positions || !positions.length ? "" :
   positions.length === 1 ? String(positions[0]) :
   positions.some((p, i) => i && p > positions[i - 1] + 1) ? positions.join(", ") : positions[0] + "–" + positions[positions.length - 1];
+const sparkCount = n => `${n} Spark${n === 1 ? "" : "s"}`;
+const positionText = p => `position${p.length === 1 ? "" : "s"} ${span(p)}`;
+const parallelism = f => ["tp", "dcp", "pp", "dp"].filter(k => has(f[k])).map(k => k.toUpperCase() + f[k]).join(" / ");
+const gpuSummary = s => (s.containers || []).map(c => `container ${c.name}${c.image || c.image_id ? ", image " + (c.image || c.image_id) : ""}`).join("; ");
 function dur(s) {
   if (!has(s) || s < 0) return "";
   s = Math.round(s);
@@ -385,7 +387,7 @@ function ringCaption(ring) {
     ? `Fabric document ${f.cluster || ""} (${f.shape || "?"}), read from ${(f.read_from || []).join(", ")}${f.id ? "\n" + f.id : ""}`
     : "The configured Sparks in their listed cable order";
   const kind = ring.source === "fabric" ? (ring.closed === false ? ` · ${esc(f.shape || "open")}` : "") : " · configured order";
-  return `<figcaption title="${esc(tip)}"><b>${esc(ring.name)}</b> · ${esc(ring.size)} Sparks${kind}</figcaption>`;
+  return `<figcaption title="${esc(tip)}"><b>${esc(ring.name)}</b> · ${sparkCount(ring.size)}${kind}</figcaption>`;
 }
 
 function ringSvg(ring, members, now) {
@@ -400,7 +402,7 @@ function ringSvg(ring, members, now) {
   const owner = {};
   for (const g of groups) for (const p of g.positions) if (!(p in owner)) owner[p] = g;
   const nodeGap = Math.asin(22 / R) * 180 / Math.PI;
-  let s = `<svg viewBox="0 0 400 400" role="img" aria-label="${esc(ring.name)}: ${N} Sparks in cable order">`;
+  let s = `<svg viewBox="0 0 400 400" role="img" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
   for (let p = 0; p < N; p++) {
     if (p === N - 1 && ring.closed === false) continue; // a path or pair has no cable back to position 0
     const g = owner[p], same = g && owner[(p + 1) % N] === g && N > 1;
@@ -411,29 +413,11 @@ function ringSvg(ring, members, now) {
     const contiguous = g.positions.every((p, i) => p === (g.first + i) % N);
     const shape = !contiguous ? g.positions.map(p => `<path class="shape" data-position="${p}" d="${arc(ang(p) - pad, ang(p) + pad, R)}"/>`).join("") : g.size >= N ? `<circle class="shape" cx="${cx}" cy="${cy}" r="${R}"/>`
       : `<path class="shape" d="${arc(ang(g.first) - pad, ang(g.first) + (g.size - 1) * step + pad, R)}"/>`;
-    const big = g.size >= N;
-    const mid = ang(g.first) + (g.size - 1) * step / 2;
-    // Labels sit inside the ring toward their arc; wide arcs and crowded rings pull them inward
-    // and shorten them so neighbouring labels and nodes stay clear.
-    const many = groups.length > 2;
-    const radius = g.size >= 3 ? (many ? 64 : 54) : (groups.length > 1 ? 74 : 60);
-    const chars = big ? 22 : many ? 13 : groups.length === 2 ? 15 : 19;
-    const [lx, ly] = big ? [cx, cy] : pt(mid, radius);
-    let l1, l2, l3;
-    if (g.kind === "member") {
-      const m = g.m, live = m.live || {};
-      l1 = clip(m.model_short || m.model || m.name, chars);
-      l2 = (m.unmanaged ? `${g.size} Sparks` : `TP${g.size}${g.inferred ? "?" : ""}`) + (m.state === "serving" ? ` · ${rate(live.output_tps)} tok/s` : "");
-      l3 = (m.state === "serving" ? "serving" : (m.state_label || "").toLowerCase()) + (g.inferred ? " · inferred" : "");
-    } else if (g.kind === "starting") {
-      l1 = clip(g.r.label, chars); l2 = `TP${g.size}`; l3 = "starting";
-    } else {
-      l1 = clip(g.r.label, chars); l2 = `${g.size} Sparks`; l3 = "job · no API";
-    }
-    const y0 = ly - (big ? 16 : 13), gap = big ? 20 : 16;
-    const label = `<g class="lbl${big ? " big" : ""}"><text class="l1" x="${lx.toFixed(1)}" y="${y0.toFixed(1)}">${esc(l1)}</text>`
-      + `<text class="l2" x="${lx.toFixed(1)}" y="${(y0 + gap).toFixed(1)}">${esc(l2)}</text>`
-      + `<text class="l3" x="${lx.toFixed(1)}" y="${(y0 + gap + 15).toFixed(1)}">${esc(l3)}</text></g>`;
+    // One short name per reserved row; details stay in the legend and full-name tooltip.
+    const gap = Math.min(20, 140 / groups.length);
+    const ly = cy + (groups.indexOf(g) - (groups.length - 1) / 2) * gap;
+    const name = g.kind === "member" ? g.m.name : g.r.label;
+    const label = `<g class="lbl"><text class="l1" x="${cx}" y="${ly.toFixed(1)}" style="font-size:${Math.min(13.5, gap * .7)}px">${esc(clip(name, 16))}</text></g>`;
     const cls = ["band", "k-" + g.kind, g.state === "serving" ? "on" : "", g.inferred ? "inferred" : ""].filter(Boolean).join(" ");
     s += `<g class="${cls}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${shape}${label}</g>`;
   }
@@ -457,10 +441,10 @@ function ringSvg(ring, members, now) {
 }
 
 function groupTitle(g) {
-  const where = `${g.ring ? g.ring.name + " " : ""}positions ${span(g.positions)}`;
+  const where = `${g.ring ? g.ring.name + " " : ""}${positionText(g.positions)}`;
   if (g.kind === "member") {
     const m = g.m, a = m.arc || {};
-    return `${m.name} — ${where} · ${m.model || "no model"}\n`
+    return `${m.name} — ${where} · ${m.gpu_job ? "GPU in use · " + gpuSummary(m) : m.model || "no model"}\n`
       + `${a.inferred ? "inferred from " : "from "}${a.source_label || "?"}${a.detail ? " (" + a.detail + ")" : ""}`;
   }
   return `${g.r.label} — ${where} · ${g.kind === "job" ? "collective job without an API" : "containers up, API not answering yet"}`
@@ -499,17 +483,17 @@ function legendHtml(rings, members) {
     if (g.kind === "member") {
       const m = g.m, a = m.arc || {}, tr = m.transport && m.transport.label;
       t1 = `<span class="mono">${esc(m.name)}</span>`;
-      t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
-      model = esc(m.model_short || m.model || "—");
-      src = `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
+      t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
+      model = `<span title="${esc(m.model || (m.gpu_job ? gpuSummary(m) : m.name))}">${esc(m.gpu_job ? "GPU in use" : m.model_short || m.model || "—")}</span>`;
+      src = m.gpu_job ? esc(gpuSummary(m)) : `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
       t1 = `<span class="mono">${esc(g.r.label)}</span>`;
-      t2 = `${where}positions ${span(g.positions)}${esc(ends)}`;
+      t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
       model = g.kind === "job" ? "SIRCL collective job" : "serving run";
       src = g.kind === "job" ? "no API · from container names" : "containers up · API not answering yet";
-      right = `<span class="pill ${g.kind === "job" ? "" : "p-not_ready"}">${g.kind === "job" ? "Busy" : "Starting"}</span>`;
+      right = `<span class="pill ${g.kind === "job" ? "" : "p-not_ready"}">${g.kind === "job" ? "GPU in use" : "Starting"}</span>`;
     }
     return `<li class="k-${g.kind}" data-member="${esc(g.id)}" style="--gc:${g.color}"><span class="sw"></span>`
       + `<div class="col"><div class="t1">${t1}</div><div class="t2">${t2}</div></div>`
@@ -547,7 +531,7 @@ function renderRings(rings, members, now) {
   patch($("ringnote"), ringNote(rings, data.topology));
   const disc = rings[0].discovery || {}, total = rings.reduce((a, r) => a + (r.size || 0), 0);
   text($("ringtitle"), rings.length > 1 ? "Groups on the rings" : "Groups on the ring");
-  patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${total} Sparks` : `${esc(rings[0].name)} · ${rings[0].size} Sparks`)
+  patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${sparkCount(total)}` : `${esc(rings[0].name)} · ${sparkCount(rings[0].size)}`)
     + (disc.at ? ` · checked <span data-age="${disc.at}">${dur(now - disc.at)}</span> ago` : ""));
 }
 
@@ -848,12 +832,12 @@ function unmanagedFacts(s) {
   const f = s.launch || {};
   return `<p class="down-note">${esc(s.ownership_label)}</p>
     ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
-    <p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>
+    ${s.gpu_job ? "" : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
     <details class="launch-facts"><summary>Container launch facts and install records</summary>
-    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}<br>
+    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}${s.gpu_job ? "" : `<br>
       ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
-      TP${c.tp ?? "?"} / DCP${c.dcp ?? "?"} / PP${c.pp ?? "?"} / DP${c.dp ?? "?"} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}</p>`).join("")}
-    ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · positions ${esc(span(r.positions))}</p>`).join("")}
+      ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}`}</p>`).join("")}
+    ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
     </details>`;
 }
 
@@ -862,13 +846,14 @@ function card(s, now) {
   const since = s.state_since ? "for " + dur(now - s.state_since) : "";
   const layout = s.layout || {}, arc = s.arc;
   const gc = arc ? gcolor(arc.color) : null;
-  let sub = `${layout.count ?? (s.sparks || []).length} sparks`;
+  let sub = sparkCount(layout.count ?? (s.sparks || []).length);
   if (serving && layout.label) sub = `${esc(layout.label)} · ${sub}`;
   else if (st === "idle") sub = `${esc(layout.label || sub)} · not deployed`;
   if (s.head && s.head.port) sub += ` · API on ${esc(s.head.name)}:${esc(s.head.port)}`;
   if (s.profile) sub += ` · ${esc(s.profile)}`;
   let model;
-  if (!s.model) model = '<span class="muted">No model seen yet</span>';
+  if (s.gpu_job) model = esc("GPU in use · " + gpuSummary(s));
+  else if (!s.model) model = '<span class="muted">No model seen yet</span>';
   else if (serving || s.unmanaged) model = esc(s.model);
   else model = `<span class="muted">Last served:</span> ${esc(s.model)}`;
   const note = (arc ? {
@@ -886,7 +871,7 @@ function card(s, now) {
   if (arc) {
     const rings = ringsOf(data), ring = rings.find((r) => r.id === s.ring);
     if (rings.length > 1 && ring) tags.push(`<span class="tag" title="${esc(ring.name)}">${esc(ring.short || ring.id)} ring</span>`);
-    tags.push(`<span class="tag arc" title="${esc((arc.inferred ? "inferred from " : "from ") + arc.source_label)}">positions ${esc(span(arc.positions))}</span>`);
+    tags.push(`<span class="tag arc" title="${esc((arc.inferred ? "inferred from " : "from ") + arc.source_label)}">${esc(positionText(arc.positions))}</span>`);
     if (s.transport && s.transport.label) tags.push(`<span class="tag">${esc(s.transport.label)}</span>`);
     if (arc.inferred) tags.push(`<span class="tag warn" title="${esc("placed forward from the head using the " + arc.source_label + (arc.detail ? "; " + arc.detail : ""))}">inferred</span>`);
   }
@@ -934,7 +919,7 @@ function render() {
     const busy = rings.flatMap((r) => r.positions || []).filter((p) => p.member || p.run).length;
     const size = rings.reduce((a, r) => a + (r.size || 0), 0);
     parts.push(`${n} serving group${n === 1 ? "" : "s"}${rings.length > 1 ? ` on ${rings.length} rings` : ""}`,
-               `${busy} of ${size} Sparks busy`);
+               `${busy} of ${sparkCount(size)} busy`);
   }
   if (fixedMembers.length) parts.push(`${fixedMembers.filter((s) => s.state === "serving").length} of ${fixedMembers.length} profiles serving`);
   parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);

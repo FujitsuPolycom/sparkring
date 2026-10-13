@@ -187,7 +187,7 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
     if len(rings) > 1:
         segs += [(f"{len(rings)} rings", style(dim=True)), sep]
     segs += [(f"{len(serving)} serving", style(GOOD, bold=True) if serving else style(WARN, bold=True)), sep,
-             (f"{busy}/{size} Sparks busy", style(INFO, bold=True) if busy else style(dim=True))]
+             (f"{busy}/{size} Spark{'s' if size != 1 else ''} busy", style(INFO, bold=True) if busy else style(dim=True))]
     if down:
         segs += [sep, (f"{down} down", style(CRIT, bold=True))]
     segs += [sep, (f"{round(running)} reqs", style(WARN, bold=True) if running else style(dim=True)),
@@ -257,7 +257,8 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
     state = member.get("state") or "checking"
     bits = []
     b = lambda text, st=0: bits.append((text, st))  # noqa: E731
-    b(STATE_SHORT.get(state, state), style(STATE_COLORS.get(state, 4), bold=True))
+    b(member.get("state_label", "Busy: API unavailable") if state == "busy" else STATE_SHORT.get(state, state),
+      style(STATE_COLORS.get(state, 4), bold=True))
     arc = member.get("arc") or {}
     if arc:
         b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") else
@@ -323,8 +324,10 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
             add((f"position {container['position']}: {container['name']} | {container.get('engine', 'unknown')} | "
                  f"image {container.get('image_id') or 'unknown'}", 0))
             add((f"image: {container.get('image')}", 0))
+            if member.get("gpu_job"):
+                continue
             add((f"served name: {container.get('served_model') or 'unknown'}", 0))
-            sizes = " / ".join(f"{k.upper()}{container.get(k, '?')}" for k in ("tp", "dcp", "pp", "dp"))
+            sizes = dashboard.parallelism(container)
             add((f"node rank {container.get('node_rank', '?')} / {container.get('nnodes', '?')} nodes | {sizes}", 0))
             api = "headless" if container.get("headless") else f"API port {container.get('api_port', '?')}"
             add((f"master {container.get('master_addr', '?')}:{container.get('master_port', '?')} | {api}", 0))
@@ -348,7 +351,8 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
     if arc:
         names = {s.get("position"): s.get("name", "?") for s in sparks}
         positions = arc.get("positions") or []
-        segs = [lbl("arc"), (f"positions {span_text(positions)}", style(group_color(member), bold=True))]
+        where = "position" if len(positions) == 1 else "positions"
+        segs = [lbl("arc"), (f"{where} {span_text(positions)}", style(group_color(member), bold=True))]
         if len(positions) > 1:
             segs.append((f" · {names.get(positions[0], '?')} → {names.get(positions[-1], '?')}", 0))
         segs += [(" · from ", style(dim=True)), (arc.get("source_label") or "?", 0)]

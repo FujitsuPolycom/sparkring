@@ -642,8 +642,13 @@ def rendezvous_head(fabric, container, observed):
     return next(iter(heads)) if len(heads) == 1 else None
 
 
+def parallelism(facts):
+    """Display only parallel sizes present in the public launch facts."""
+    return " / ".join(f"{k.upper()}{facts[k]}" for k in ("tp", "dcp", "pp", "dp") if k in facts)
+
+
 def unmanaged_groups(fabric, documents, deployments, now):
-    """Join fresh agent facts by head Spark and port, never by list index or names."""
+    """Join fresh launch facts by head Spark, or GPU jobs by image and rendezvous."""
     from runtime.host.node_containers import MAX_CONTAINERS, thinking_kwargs
     groups, observed = {}, []
     known = {(c["position"], c["name"]) for row in deployments if not row["stopped"] for c in row["containers"]}
@@ -687,7 +692,9 @@ def unmanaged_groups(fabric, documents, deployments, now):
             observed.append(c)
     for c in observed:
         head = rendezvous_head(fabric, c, observed) if c.get("master_addr") and c.get("master_port") else None
-        key = ((c.get("engine"), "head", head, c["master_port"]) if head is not None else
+        key = (("gpu-job", c.get("image_id") or c.get("image"), c["master_addr"], c["master_port"])
+               if c.get("engine") == "unknown" and c.get("master_addr") and c.get("master_port") else
+               (c.get("engine"), "head", head, c["master_port"]) if head is not None else
                ("single", c["position"], c["name"]))
         groups.setdefault(key, []).append(c)
     result = []
@@ -696,7 +703,8 @@ def unmanaged_groups(fabric, documents, deployments, now):
         positions = sorted({c["position"] for c in containers})
         ranks = {c["node_rank"] for c in containers if "node_rank" in c}
         expected = max([c.get("nnodes", 1) for c in containers] + [max(ranks, default=0) + 1])
-        heads = [c for c in containers if c.get("node_rank", 0 if expected == 1 else -1) == 0 and not c["headless"]]
+        heads = [c for c in containers if c.get("engine") in ("vllm", "sglang")
+                 and c.get("node_rank", 0 if expected == 1 else -1) == 0 and not c["headless"]]
         head = heads[0] if len(heads) == 1 else None
         info = head or containers[0]
         head_position = head["position"] if head else None
@@ -1215,6 +1223,7 @@ class Collector:
             capacity["max_num_seqs"] = runtime["settings"].get("max_num_seqs")
         container = next((c["name"] for c in row["containers"] if c["position"] == head_position), None)
         launch = row.get("launch") or {}
+        gpu_job = bool(row.get("unmanaged") and launch.get("engine") == "unknown")
         sparks = []
         for position in positions:
             spark = hostnames.get(position, {})
@@ -1222,18 +1231,19 @@ class Collector:
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
                            "lan_address": spark.get("lan_address"), "up": up, "position": position})
         return {
-            "id": model.id, "name": "Sparks " + ", ".join(map(str, positions)) if row.get("unmanaged") else run_name(positions),
+            "id": model.id, "name": ("Spark " if len(positions) == 1 else "Sparks ") + ", ".join(map(str, positions))
+            if row.get("unmanaged") else run_name(positions),
             "profile": row.get("profile"),
-            "unmanaged": bool(row.get("unmanaged")), "launch": launch,
+            "unmanaged": bool(row.get("unmanaged")), "gpu_job": gpu_job, "launch": launch,
             "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record" if row.get("unmanaged") else None,
             "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
             "stopped_records": row.get("stopped_records", []),
-            "state": model.state, "state_label": LABELS.get(model.state, "Checking"), "state_since": since,
+            "state": model.state, "state_label": "GPU in use" if gpu_job else LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
             "endpoint": endpoint,
             # The runtime-status view asks the workers for a report every 5 s while it is open.
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
-            "layout": {"label": " / ".join(f"{k.upper()}{launch.get(k, '?')}" for k in ("tp", "dcp", "pp", "dp"))
+            "layout": {"label": parallelism(launch)
                        if row.get("unmanaged") else layout_label(len(positions)) if serving else None, "count": len(positions),
                        "tp": launch.get("tp") if row.get("unmanaged") else runtime.get("tp")},
             "live": {key: metrics.get(key) for key in ("running", "waiting", "kv")} if model.metrics else None,
@@ -1244,7 +1254,7 @@ class Collector:
             "totals": {"finished": metrics.get("finished"), "preemptions": metrics.get("preemptions"),
                        "output_tokens": metrics.get("gen"), "prompt_tokens": metrics.get("prompt")}
             if model.metrics else None,
-            "thinking": thinking_line(row, runtime.get("settings")),
+            "thinking": None if gpu_job else thinking_line(row, runtime.get("settings")),
             "settings": runtime.get("settings"), "nodes": nodes, "capacity": capacity if serving else None,
             "workers": runtime.get("workers"), "image": runtime.get("image"), "transport": runtime.get("transport"),
             "sparks": sparks,
