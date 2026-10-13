@@ -12,6 +12,23 @@ The page runs in your browser. The addresses and paths you type never leave it.
 
 ## Open it
 
+The site opens with profiles, example ring allocations and the release's speed
+record. Follow **Install Builder** for commands, or **Command guide** for the
+generated command reference.
+
+The builder starts with a Spark count (two to eight), then one or more models.
+Each model has its own **Where**, checkpoint, serving settings and API address.
+Automatic reserves explicit groups first, then selects the first free aligned
+group from Node A. Commands pin smaller groups with `--on`; overlapping groups
+block every command. The installer still checks workloads already on the Sparks.
+**No model: set up the Sparks only** installs the package with `--package-only`
+on a new installation, then runs `sudo sparkring setup`.
+
+**Docker Compose packages and detailed deployment controls** opens the
+independent, verified Compose editor described below. It retains YAML import,
+Spark order, image and checkpoint selection, all hint texts, archive downloads
+and layout-switch commands for pairs and rings of four.
+
 The [Pages workflow](../../.github/workflows/compose-builder-pages.yml)
 publishes the page for each release at
 `https://fujitsupolycom.github.io/sparkring/`. The repository needs GitHub
@@ -25,17 +42,29 @@ gh workflow run compose-builder-pages.yml --ref main -f ref=TAG_OR_COMMIT
 To build the page for your checkout instead:
 
 ```bash
-python scripts/generate_compose_builder.py --output .sparkring/compose-builder
+python scripts/generate_compose_builder.py --output site --verify
 ```
 
 Serve that directory over HTTP, for example with
-`python -m http.server --directory .sparkring/compose-builder`, and open the
-address it prints. Opened as a local file, the page offers only the default
+`python -m http.server 8000 --directory site`, and open
+`http://localhost:8000/`. The builder is `builder.html`; `commands.html` is
+generated from `docs/operations/commands.md`. Opened as a local file, the detailed editor offers only the default
 installer image: each other image's data is a file beside the page,
 `images/NAME.json`, which a browser loads only over HTTP.
 `--default-image-only` writes no image files. `--verify` first compares the
 page's file generator with SparkRing's own and needs Node.js
 ([how the page is checked](#how-the-page-is-checked)).
+
+The generator requires PyYAML and Markdown (versions in `requirements-dev.txt`).
+`scripts/compose_builder/tokens.css` owns the shared dark and light tokens,
+including system fonts; it can also be loaded by an offline dashboard.
+`site.py` reads profiles from the installer catalog and thinking records, prose
+from README, and the consolidated speed table from README's release measurement
+summary, preserving its links to the individual run records. Those records do
+not all contain the individual 32K cells, so the generator never infers a cell
+from a throughput range. All displayed throughput values round half up to whole
+numbers. The command guide resolves document-relative links against the source
+revision. Browser assets are local, including the vendored MIT-licensed YAML parser.
 
 ## Installer image
 

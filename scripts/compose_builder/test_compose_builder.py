@@ -752,7 +752,7 @@ def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     monkeypatch.setattr(export, "image_catalog", lambda: [row for row in catalog() if row["default"] or "2026.09.5" in row["tags"]])
     output = tmp_path / "site"
     assert generate_compose_builder.main(["--output", str(output), "--commit", COMMIT, "--verify", "--cases", "1"]) == 0
-    html = (output / "index.html").read_text(encoding="utf-8")
+    html = (output / "builder.html").read_text(encoding="utf-8")
     embedded = json.loads(html.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0])
     assert embedded["verification"]["archives"] > 0
     other = next(row for row in embedded["images"] if not row["default"])

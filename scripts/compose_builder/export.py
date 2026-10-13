@@ -527,6 +527,7 @@ def page(data, verification=None, *, standalone=True):
     # JSON inside <script type="application/json">: escaping "<" keeps "</script" out of it.
     text = json.dumps(document, separators=(",", ":")).replace("<", "\\u003c")
     content = template.replace("__DATA__", text).replace("__ENGINE__", engine_source())
+    content = content.replace("__TOKENS__", (HERE / "tokens.css").read_text(encoding="utf-8"))
     if not standalone:
         return content
     head, body = content.split("</style>", 1)

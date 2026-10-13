@@ -57,7 +57,7 @@ jobs:
         with:
           node-version: '22'
       - name: Install the page's build dependency
-        run: python -m pip install PyYAML==6.0.3
+        run: python -m pip install PyYAML==6.0.3 Markdown==3.10.2
       # The page names and pins the checkout's exact release tag when it has one, else its commit.
       - name: Build the page, comparing its engine with compose.build
         run: python scripts/generate_compose_builder.py --output site --verify --cases 20

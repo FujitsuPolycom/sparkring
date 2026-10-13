@@ -1,38 +1,7 @@
 <title>SparkRing Install Builder</title>
 <style>
 /* Layout: configuration steps in a narrow left column; the output (install command or per-Spark Compose files) in a wide right pane that stays in view on desktop. Palette follows SparkRing's runtime-status dashboard. */
-:root {
-  color-scheme: dark;
-  --bg: #10151c;
-  --panel: #19212c;
-  --sunk: #0c1117;
-  --line: #2d3949;
-  --text: #e5edf7;
-  --muted: #a1b0c3;
-  --accent: #84d8c4;
-  --accent-soft: #15262b;
-  --on-accent: #0b1a17;
-  --warn: #ffd181;
-  --warn-soft: #2a2416;
-  --bad: #ffa6ae;
-  --bad-soft: #2c1a1e;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --mono: ui-monospace, "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
-}
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) {
-    color-scheme: light;
-    --bg: #f1f4f7; --panel: #ffffff; --sunk: #f7f9fb; --line: #d3dbe5; --text: #132030; --muted: #536375;
-    --accent: #0c7565; --accent-soft: #e2f2ee; --on-accent: #ffffff; --warn: #7d5200; --warn-soft: #fbf1dc;
-    --bad: #ad2530; --bad-soft: #fbe7e9;
-  }
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f1f4f7; --panel: #ffffff; --sunk: #f7f9fb; --line: #d3dbe5; --text: #132030; --muted: #536375;
-  --accent: #0c7565; --accent-soft: #e2f2ee; --on-accent: #ffffff; --warn: #7d5200; --warn-soft: #fbf1dc;
-  --bad: #ad2530; --bad-soft: #fbe7e9;
-}
+__TOKENS__
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 var(--sans); }
