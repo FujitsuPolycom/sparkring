@@ -1,5 +1,5 @@
 {
- "generated_at": "d08286033b3024448eb03c7d093d1ffddf7d5c9a",
+ "generated_at": "bf35ba2a59d3ec8bbc110c1a3926a7603703f239",
  "plans": {
   "prepared": {
    "printed": [
@@ -7,7 +7,7 @@
     "Follow from another terminal: sudo sparkring logs --follow",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
-    "Transport: prepared (--transport prepared)",
+    "Transport: RoCEnante (b12x) (--transport prepared)",
     "Update workers and prepare assets; then replace the current model.",
     "Spread over the fabric (pair, fabric sha256:e80b8cd1f253):",
     "  Node A reaches the Sparks in cable order (1 via 0); the farthest is 1 of at most 1 cable away.",

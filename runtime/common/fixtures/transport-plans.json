@@ -3,9 +3,9 @@
   "prepared-pair": {
    "lock_id": "11787b4e15ad8904410e1b79aa68917b14126c60e93f766e6905df0fabb3f2d7",
    "plan_lines": [
-    "Transport: prepared (--transport prepared)",
-    "Transport: prepared",
-    "Transport: prepared, because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
+    "Transport: RoCEnante (b12x) (--transport prepared)",
+    "Transport: RoCEnante (b12x)",
+    "Transport: RoCEnante (b12x), because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
    ],
    "section_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
    "specs_sha256": [
@@ -16,9 +16,9 @@
   "prepared-path-4": {
    "lock_id": "8bd5fb83491289a441df74b043a51d9cdc39e937a5d9b07d05a49f8857ef18a6",
    "plan_lines": [
-    "Transport: prepared (--transport prepared)",
-    "Transport: prepared",
-    "Transport: prepared, because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
+    "Transport: RoCEnante (b12x) (--transport prepared)",
+    "Transport: RoCEnante (b12x)",
+    "Transport: RoCEnante (b12x), because image dev-20261009-kraken-sircl-cuda1342-nccl2323-status034 carries no SIRCL layer"
    ],
    "section_sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
    "specs_sha256": [
