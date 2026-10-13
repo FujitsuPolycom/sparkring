@@ -8,12 +8,42 @@ not qualify serving performance on a DGX Spark.
 The Node A dashboard returns raw `/metrics` counters with the collector's
 read time in `counters`. `plugin_counters` carries a `sparkring-stats/v1`
 snapshot when one arrived through the existing host-status path. Node A
-does not compute model rates or retain graph samples. The browser keeps
-up to six hours, capped at 4,321 points per deployment; its five-minute
-counter window is capped at 100 samples. Closing or reloading the page
-discards this history. The terminal keeps the same bounded windows only
-while its reader is open. `--once` has no earlier sample and shows dashes
-for rates.
+does not compute model rates. It retains up to three hours of raw samples
+in memory, with no history file or NVMe writes. Restarting the dashboard
+clears this buffer. The browser fetches `/api/history` once before its first
+status render, then receives deltas through `/api/status?since=CURSOR`.
+No extra request is added per poll. The history endpoint shares the status
+endpoint's Host and authentication checks and supports gzip encoding.
+
+**Source-read:** Each deployment has at most 2,161 samples (three hours at
+five-second spacing, including both endpoints). At most eight deployments,
+in discovery order, receive server history; additional deployments retain
+live status and browser session history. Departed deployments are removed
+on the next collection cycle, freeing their history slots. Age eviction
+also runs during quiet mode. Only fixed numeric counter/gauge fields, a
+bounded run identity, source timestamps, a sequence number and a gap flag
+are retained. Each retained sample explicitly labels its selected source as `plugin` or
+`metrics`.
+No derived rate is stored.
+
+The initial history response contains raw `counters` and optional
+`plugin_counters` envelopes for replay at their `observed_at` time.
+A global `history_cursor` identifies the last retained sequence. Status
+responses carry only subsequent `counter_samples`, capped at 120 per
+deployment after a delayed poll; a truncated delta starts with a gap.
+Without a cursor, status carries just the latest sample. The browser
+merges by sequence, then by source/run/timestamp, so the initial fetch and
+live polling cannot duplicate observations. A service restart resets rate
+baselines while preserving the open browser's graph history.
+
+The browser keeps up to six hours, capped at 4,321 graph points per
+deployment, including gap markers; its five-minute counter window is
+capped at 100 samples. Reloading replaces its session history with the
+available server history. Expanded graphs include both stored history and
+samples acquired during that browser session. The terminal consumes the
+latest sample in its existing status request and keeps its own bounded
+windows; it does not fetch the three-hour archive. `--once` has no earlier
+sample and shows dashes for rates.
 
 The browser implementation is
 [dashboard_rates.js](../../runtime/host/dashboard_rates.js); the terminal
@@ -50,13 +80,17 @@ appear when vLLM reports them to its frontend. Source labels distinguish
 hits always retain the `/metrics` source.
 
 Duplicate timestamps add no history. A source or run identity change, a
-backward timestamp, or a decreasing counter clears that source's window
-and graph history. Missing counters remain unavailable. Plugin data older
+backward timestamp, or a decreasing counter clears that source's rate
+window and inserts a graph boundary, preserving earlier graph history. Missing counters remain unavailable. Plugin data older
 than 180 seconds, more than five seconds in the future, or dated before
 the `/metrics` process start falls back to `/metrics`. Cross-host wall
 clocks therefore need synchronization for freshness checks; plugin rate
 division uses monotonic time. A source transition needs two samples before
-showing a rate. No rate is extrapolated through quiet mode.
+showing a rate. Quiet mode and measurement holds stop requests and sample
+appends; the first distinct observation after release carries a boundary.
+Periods without observations appear as gaps, never fabricated zeros. A
+sample interval longer than 185 seconds also breaks the rate window and
+graph line. Token rates display as whole tokens per second in both viewers.
 
 ## Plugin packaging and delivery
 
@@ -109,18 +143,62 @@ the controller directory name. Remote delivery depends on the existing
 recovery checker being enabled and eligible to observe the deployment.
 Its roughly one-minute interval, and any slower host-agent serving interval,
 limit plugin freshness. There is no added SSH call, endpoint, polling loop
-or websocket. The `/metrics` request schedule is unchanged. Dashboard quiet
+or websocket for plugin delivery. Dashboard quiet
 mode suppresses its requests and rate updates; it does not disable the
 independent vLLM logger or change the host-agent/recovery schedules.
 
+## Collection cadence and local cost
+
+**Source-read:** A serving deployment without a fresh plugin snapshot gets
+one `/metrics` GET every 10 seconds while unviewed, or every 5 seconds while
+viewed. `/v1/models` remains every 60 seconds: respectively 7 or 13 GETs per
+minute per head in steady state (0.117 or 0.217 GET/s), plus one runtime-status
+GET per model run and explicit refreshes. A fresh plugin uses the existing
+60-second unviewed metrics schedule for auxiliary gauges/prefix statistics:
+2 GETs/minute per head unviewed, 13 viewed. Plugin snapshots themselves add
+no requests; file reads remain every 30 seconds and remote resolution is
+limited by recovery delivery. A fresh recovery copy is used when the local plugin snapshot is stale.
+If neither is valid and fresh, collection falls back to metrics.
+Stopped deployments retain 60-second reads; failed active reads retry no
+faster than every 15 seconds. Quiet mode and measurement holds send zero
+upstream requests. Browser requests only read collector memory.
+
+**Source-read:** The service retains idle CPU scheduling, nice 19,
+efficiency-core placement, `MemoryHigh=96M`, `MemoryMax=128M` and no swap.
+
+**Measured, local Windows Python 3.12.10:** Three synthetic deployments,
+2,161 samples each over three hours at the viewed cadence, occupied
+50,724,864 resident bytes (48.4 MiB), versus 45,416,448 bytes before filling.
+Holding the encoded history response raised RSS to 53,288,960 bytes
+(50.8 MiB). Compact JSON was 1,873,890 bytes; gzip level 1 was 180,251 bytes
+(176.0 KiB). Payload size depends on counters, timestamp precision and source.
+
+The measurement uses the repeated-batch method of the stat-logger cost
+measurement: nine batches, here of 1,000 full three-deployment collection
+cycles each. Median process CPU was 140.625 microseconds/cycle, maximum
+batch mean 156.250; median wall time was 141.903 microseconds/cycle. CPU
+accounting granularity can make a batch's CPU estimate exceed wall time.
+These cycles include real local file checks and parsing synthetic HTTP
+responses through the read-only client, with network waits excluded.
+The process also includes test-fixture imports. RSS is the Windows working
+set, not a Linux cgroup measurement. Browser rendering and history encoding
+are outside collection-cycle timing. The run does not measure Spark serving
+impact; that remains **unknown** until hardware comparison.
+
+**Measured:** Filling all eight history slots with 2,161 samples containing
+both plugin and auxiliary metrics fields used 74,448,896 resident bytes
+(71.0 MiB), or 92,094,464 bytes (87.8 MiB) while holding the compact and
+gzip response bodies. This local synthetic bound check does not certify
+Linux memory use or concurrent-client peaks.
+
 ## Coordinator browser checklist
 
-1. Open the Node A page, allow two observations, and check Output, Prefill,
+1. Open the Node A page after the collector has observations, and check Output, Prefill,
    steps, acceptance and their source labels. An idle deployment shows a
    prefill dash. An image without the plugin shows approximate `/metrics`.
 2. Hover an output, prefill or KV graph: inspect the full stored value and
    ISO timestamp. Select **Expand graph** to inspect up to six hours already
-   accumulated in that view. No history is fetched from the service.
+   accumulated in that view, including the stored three-hour prefill.
 3. Tab to an expand button, press Enter, then use the sample slider with
    arrows, Home and End. Escape closes the dialog and restores focus.
    Tap the control and drag the slider on a narrow touch screen.

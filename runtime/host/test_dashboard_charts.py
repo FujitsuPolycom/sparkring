@@ -21,6 +21,7 @@ def test_graph_hover_keyboard_touch_and_expansion_make_no_request(theme, touch, 
     for group in value["groups"]:
         for member in group["members"]:
             member.pop("counters", None)
+            member.pop("counter_samples", None)
             member["state"] = "serving"
             member["live"].update(source="metrics", prefill_tps=123.456, read_at=now)
             member["history"] = [[now - (72 - i) * 180, i + .123456, 1, 0, i / 100, 123.456, "metrics"]
@@ -42,8 +43,10 @@ def test_graph_hover_keyboard_touch_and_expansion_make_no_request(theme, touch, 
         def route(request):
             url = request.request.url
             requests.append(url)
-            if url.endswith("/api/status"):
+            if "/api/status" in url:
                 request.fulfill(json=value)
+            elif url.endswith("/api/history"):
+                request.fulfill(json={})
             elif url == "http://127.0.0.1:8090/":
                 request.fulfill(body=page_bytes, content_type="text/html", headers={"Content-Security-Policy": csp})
             else:
@@ -79,9 +82,62 @@ def test_graph_hover_keyboard_touch_and_expansion_make_no_request(theme, touch, 
             page.screenshot(path=str(Path(output) / f"charts-{theme}.png"))
         page.keyboard.press("Escape")
         assert not dialog.is_visible()
-        assert expand.evaluate("el => el === document.activeElement")
+        browser_api.expect(expand).to_be_focused()
         gaps = page.evaluate("""() => chart([[0, 2], [5, null], [10, 3]], 1, 10, "c1").svg""")
         assert "L" not in gaps.split('d="')[1].split('"')[0]
         assert requests == before and errors == []
         context.close()
+        browser.close()
+
+
+def test_stored_history_draws_on_first_render_and_polls_only_deltas(tmp_path):
+    browser_api = pytest.importorskip("playwright.sync_api")
+    found, _, clock = collector(tmp_path)
+    clock.now = int(time.time() // 5) * 5 - 10800
+    run_for(found, clock, 10800, viewer=True, step=5)
+    history = found.history_snapshot()
+    cursor = history["history_cursor"]
+    value = found.snapshot(since=cursor)
+    value["poll_seconds"] = 60
+    page_bytes, csp = dashboard.page_bytes()
+    with browser_api.sync_playwright() as api:
+        try:
+            browser = api.chromium.launch(headless=True)
+        except browser_api.Error:
+            try:
+                browser = api.chromium.launch(headless=True, channel="chrome")
+            except browser_api.Error:
+                pytest.skip("Chromium/Chrome unavailable for offline browser test")
+        page = browser.new_page()
+        requests, errors = [], []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+
+        def route(request):
+            url = request.request.url
+            requests.append(url.removeprefix("http://127.0.0.1:8090"))
+            if "/api/status" in url:
+                request.fulfill(json=value)
+            elif url.endswith("/api/history"):
+                request.fulfill(json=history)
+            else:
+                request.fulfill(body=page_bytes, content_type="text/html", headers={"Content-Security-Policy": csp})
+
+        page.route("**/*", route)
+        page.goto("http://127.0.0.1:8090/")
+        page.locator("[data-graph='1'] svg").first.wait_for()
+        assert page.evaluate("data.groups[0].members[0].history.length") == 2160
+        page.get_by_role("button", name="Expand Output tok/s", exact=False).first.click()
+        page.get_by_role("slider").focus()
+        page.keyboard.press("Home")
+        assert "Output tok/s: 30 " in page.locator("#graph-value").inner_text()
+        assert page.evaluate("graphSelection.rows.at(-1)[0] - graphSelection.rows[0][0]") > 10700
+        clock.now += 5
+        found.mark_viewed()
+        found.cycle()
+        value = found.snapshot(since=cursor)
+        value["poll_seconds"] = 60
+        page.evaluate("refresh()")
+        assert page.evaluate("data.groups[0].members[0].history.length") == 2161
+        assert requests == ["/", "/api/history", f"/api/status?since={cursor}", f"/api/status?since={cursor}"]
+        assert errors == []
         browser.close()

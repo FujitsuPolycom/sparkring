@@ -1,4 +1,4 @@
-"""Viewer-owned counter windows for the terminal; the service never imports this."""
+"""Raw source selection and viewer-owned counter windows; no service-side rates."""
 import math
 
 
@@ -6,11 +6,27 @@ def number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
 
+def plugin_fresh(plugin, fallback, now):
+    return (isinstance(plugin, dict) and plugin.get("schema") == "sparkring-stats/v1"
+            and number(plugin.get("at")) and -5 <= now - plugin["at"] <= 180
+            and number(plugin.get("monotonic")) and isinstance(plugin.get("run_id"), str)
+            and 0 < len(plugin["run_id"]) <= 128
+            and all(number(plugin.get(k)) and plugin[k] >= 0 for k in ("prompt", "gen", "running", "waiting", "kv"))
+            and (not number((fallback or {}).get("run_id")) or plugin["at"] >= fallback["run_id"]))
+
+
 class ViewerRates:
     def __init__(self):
         self.members = {}
 
     def apply(self, document):
+        started = document.get("service_started")
+        if getattr(self, "service_started", started) != started:
+            for state in self.members.values():
+                state.update(samples=[], key=None)
+                state.pop("seq", None)
+                state.pop("fallback", None)
+        self.service_started = started
         now = document["generated_at"]
         active = set()
         for group in document.get("groups", []):
@@ -21,15 +37,20 @@ class ViewerRates:
         return document
 
     def member(self, member, now, quiet=False):
+        for row in member.get("counter_samples", []):
+            self.ingest(member["id"], row)
         fallback = member.get("counters")
         if not fallback:  # An older service can still supply derived values.
+            state = self.members.get(member["id"])
+            if state:
+                state["samples"] = []
+                history = state["history"]
+                if history and history[-1][1:] != [None] * 6:
+                    history.append([now, *([None] * 6)])
+                state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
             return
         plugin = member.get("plugin_counters")
-        use = (isinstance(plugin, dict) and plugin.get("schema") == "sparkring-stats/v1"
-               and number(plugin.get("at")) and -5 <= now - plugin["at"] <= 180
-               and number(plugin.get("monotonic")) and bool(plugin.get("run_id"))
-               and all(number(plugin.get(k)) and plugin[k] >= 0 for k in ("prompt", "gen", "running", "waiting", "kv"))
-               and (not number(fallback.get("run_id")) or plugin["at"] >= fallback["run_id"]))
+        use = plugin_fresh(plugin, fallback, now)
         sample = ({"source": "plugin", "at": plugin["at"], "run_id": plugin["run_id"],
                    "clock": plugin["monotonic"], "values": plugin} if use else
                   {**fallback, "clock": fallback.get("at")})
@@ -39,11 +60,14 @@ class ViewerRates:
         key = (source, sample["run_id"])
         keys = ("gen", "prompt", "accepted", "drafts", "draft_tokens", "steps", "ttft_sum", "ttft_count",
                 "pc_hits", "pc_queries", "step_seconds")
-        if state["key"] != key or (samples and (stamp is None or stamp < samples[-1]["clock"] or any(
+        if quiet or member.get("boundary") or state["key"] != key or (samples and (
+                not number(sample["at"]) or sample["at"] - samples[-1]["at"] > 185
+                or stamp is None or stamp < samples[-1]["clock"] or any(
                 number(values.get(k)) and number(samples[-1]["values"].get(k))
                 and values[k] < samples[-1]["values"][k] for k in keys))):
             samples.clear()
-            history.clear()
+            if history and history[-1][1:] != [None] * 6:
+                history.append([sample["at"], *([None] * 6)])
             state["key"] = key
         fresh = (not quiet and member.get("state") == "serving" and number(stamp)
                  and number(sample["at"]) and -5 <= now - sample["at"] <= (180 if use else 125))
@@ -88,10 +112,17 @@ class ViewerRates:
                           "ttft_5m": ratio("ttft_sum", "ttft_count"), "prefix_hit_5m": ratio("pc_hits", "pc_queries")}
         if use:
             fallback_view = state.setdefault("fallback", ViewerRates())
-            other = {**member, "plugin_counters": None}
+            other = {**member, "plugin_counters": None, "counter_samples": []}
             fallback_view.member(other, now, quiet)
             member["live"]["prefix_hit_5m"] = other["live"].get("prefix_hit_5m")
         if added:
             history.append([sample["at"], rate("gen"), values.get("running"), values.get("waiting"),
                             values.get("kv"), prefill, source])
         state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
+
+    def ingest(self, model_id, row):
+        state = self.members.get(model_id)
+        if state and row["seq"] <= state.get("seq", -1):
+            return
+        self.member({"id": model_id, "state": "serving", **row}, row["observed_at"])
+        self.members[model_id]["seq"] = row["seq"]

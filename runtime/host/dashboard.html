@@ -616,7 +616,8 @@ function openGraph(box, opener) {
   const { id, idx } = graphSelection, rows = graphRows(id, idx);
   graphSelection.rows = rows; graphSelection.now = serverNow();
   $("graph-title").textContent = graphNames[idx] + " \u2014 up to six hours";
-  $("graph-body").innerHTML = chart(rows, idx, serverNow(), idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null, 21600).svg;
+  const history = (data.groups || []).flatMap(g => g.members).find(m => m.id === id)?.history || [];
+  $("graph-body").innerHTML = chart(history, idx, serverNow(), idx === 4 ? "c2" : "c1", idx === 4 ? 1 : null, 21600).svg;
   $("graph-sample").max = Math.max(0, rows.length - 1);
   $("graph-sample").value = Math.max(0, rows.length - 1);
   $("graph-sample").disabled = !rows.length;
@@ -844,11 +845,24 @@ function tick() {
   if (data) $("fresh").textContent = failing ? "Not updating" : "Live · updated " + dur(Date.now() / 1000 - receivedAt) + " ago";
 }
 
+let historyLoaded = false, historyCursor = null;
 async function refresh() {
   try {
-    const r = await fetch("/api/status", { cache: "no-store" });
+    if (!historyLoaded) {
+      historyLoaded = true;
+      try {
+        const response = await fetch("/api/history", { cache: "no-store" });
+        if (response.ok) {
+          const history = await response.json();
+          viewerRates.seed(history); historyCursor = history.history_cursor;
+        }
+      } catch (_) { /* Live collection remains available if history cannot be loaded. */ }
+    }
+    const r = await fetch("/api/status" + (historyCursor === null ? "" : `?since=${historyCursor}`), { cache: "no-store" });
     if (!r.ok) throw new Error("HTTP " + r.status);
-    data = viewerRates.apply(await r.json());
+    const doc = await r.json();
+    data = viewerRates.apply(doc);
+    historyCursor = doc.history_cursor ?? null;
     receivedAt = Date.now() / 1000;
     failing = false;
     $("banner").hidden = true;

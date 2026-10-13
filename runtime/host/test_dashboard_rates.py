@@ -35,6 +35,9 @@ CASES = [document(1000, 10, 10), document(1005, 510, 160), document(1010, 510, 3
          document(1220, 6010, 3610, plugin=True), document(1225, 6010, 3700, quiet=True),
          document(1230, 6010, 3800)]
 
+STOPPED_CASE = {"generated_at": 1250, "groups": [{"members": [
+    {"id": "deployment", "state": "stopped", "counters": None, "live": None}]}]}
+
 
 def test_prefill_idle_reset_restart_backward_clock_and_source_change():
     viewer = ViewerRates()
@@ -71,11 +74,14 @@ def test_browser_and_terminal_match_all_counter_cases():
     if not node:
         pytest.skip("Node.js is required for browser counter tests")
     code = Path(__file__).with_name("dashboard_rates.js").read_text()
-    code += "\nconst v = new ViewerRates(); console.log(JSON.stringify(" + json.dumps(CASES) + ".map(d => JSON.parse(JSON.stringify(v.apply(d))))));"
+    cases = [*CASES, STOPPED_CASE]
+    code += "\nconst v = new ViewerRates(); console.log(JSON.stringify(" + json.dumps(cases) + ".map(d => JSON.parse(JSON.stringify(v.apply(d))))));"
     actual = json.loads(subprocess.check_output([node, "-e", code], text=True))
     viewer = ViewerRates()
-    expected = [copy.deepcopy(viewer.apply(copy.deepcopy(d))) for d in CASES]
+    expected = [copy.deepcopy(viewer.apply(copy.deepcopy(d))) for d in cases]
     assert actual == expected
+    assert len(member(expected[-1])["history"]) > 2
+    assert member(expected[-1])["history"][-1][1:] == [None] * 6
 
 
 def test_plugin_presence_changes_no_upstream_request_or_quiet_cadence(tmp_path):
@@ -90,7 +96,7 @@ def test_plugin_presence_changes_no_upstream_request_or_quiet_cadence(tmp_path):
             found.node_status = {"telemetry": {"one": member(document(clock.now, 1, 1, plugin=True))["plugin_counters"]}}
         run_for(found, clock, 600, viewer=True)
         snapshot = found.snapshot()
-        assert bool(member(snapshot)["plugin_counters"]) == has_plugin
+        assert member(snapshot)["plugin_counters"] is None  # the fixture snapshot is now stale
         assert "output_tps" not in member(snapshot)["live"]
         assert member(snapshot)["counters"]["at"] <= clock.now
         assert not hasattr(next(iter(found.models.values())), "samples")
@@ -132,10 +138,20 @@ def test_plugin_restart_with_larger_counters_still_needs_baseline():
     assert member(doc)["live"]["prefill_tps"] == 100
     doc = viewer.apply(document(1010, 1000, 1000, plugin=True, run=2))
     assert member(doc)["live"]["prefill_tps"] is None
-    assert len(member(doc)["history"]) == 1
+    assert len(member(doc)["history"]) == 4
+    assert member(doc)["history"][-2][1:] == [None] * 6
 
 
 def test_metrics_acceptance_has_a_verified_token_denominator():
     from runtime.host.dashboard import parse_metrics
     counters = parse_metrics("vllm:spec_decode_num_draft_tokens_total 6\nvllm:spec_decode_num_accepted_tokens_total 3\n")
     assert counters["draft_tokens"] == 6 and counters["accepted"] == 3
+
+
+def test_service_restart_preserves_graph_but_resets_baseline():
+    viewer = ViewerRates()
+    for at in (1000, 1005):
+        viewer.apply({**document(at, at, at), "service_started": 1})
+    restarted = viewer.apply({**document(1010, 1010, 1010), "service_started": 2})
+    assert member(restarted)["live"]["output_tps"] is None
+    assert len(member(restarted)["history"]) == 4

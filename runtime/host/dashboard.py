@@ -38,7 +38,8 @@ Where its data comes from
   - ``/metrics`` every METRICS_VIEWED_SECONDS while a browser or the terminal
     view shows the status (it fetched ``/api/status`` within VIEWER_SECONDS;
     ``/api/status?viewer=passive`` does not count), else every
-    METRICS_UNVIEWED_SECONDS. The vllm:cache_config_info gauge in it gives the
+    METRICS_UNVIEWED_SECONDS (METRICS_PLUGIN_UNVIEWED_SECONDS when a fresh
+    stat-logger snapshot is available). The vllm:cache_config_info gauge gives the
     KV cache budget;
   - ``/v1/models`` every MODELS_SECONDS while the model serves, for its served
     name and context length. A failed metrics read tells the states apart: a
@@ -83,6 +84,7 @@ from __future__ import annotations
 import argparse
 import base64
 import collections
+import gzip
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import ipaddress
@@ -100,6 +102,7 @@ import urllib.parse
 import urllib.request
 
 from runtime.common.transport_names import collective_name
+from runtime.host.dashboard_rates import number, plugin_fresh
 
 SCHEMA = "sparkring-dashboard/v1"
 SITE_SCHEMA = "sparkring-dashboard-site/v1"
@@ -119,7 +122,14 @@ PAGE = Path(__file__).with_name("dashboard.html")
 # runtime-status plugin's JSON report. Each is a GET that runs no model.
 READ_PATHS = frozenset({"/metrics", "/v1/models", "/v1/sparkring/status"})
 METRICS_VIEWED_SECONDS = 5.0
-METRICS_UNVIEWED_SECONDS = 60.0
+METRICS_UNVIEWED_SECONDS = 10.0
+METRICS_PLUGIN_UNVIEWED_SECONDS = 60.0
+HISTORY_SECONDS = 3 * 3600
+HISTORY_SAMPLES = 2161
+HISTORY_DEPLOYMENTS = 8
+HISTORY_DELTA_SAMPLES = 120
+HISTORY_VALUES = ("gen", "prompt", "accepted", "drafts", "draft_tokens", "steps", "ttft_sum", "ttft_count",
+                  "pc_hits", "pc_queries", "step_seconds", "running", "waiting", "kv")
 MODELS_SECONDS = 60.0
 VIEWER_SECONDS = 60.0
 FILES_SECONDS = 30.0
@@ -620,6 +630,9 @@ class Collector:
         self.node_status = None
         self.cycles = 0
         self.cycle_cpu = collections.deque(maxlen=120)   # CPU seconds of recent cycles that sent requests
+        self.history = {}
+        self.history_seq = 0
+        self.history_gaps = set()
 
     # -- inputs ----------------------------------------------------------------------------
     def viewed(self, now) -> bool:
@@ -695,6 +708,7 @@ class Collector:
               file=sys.stderr, flush=True)
         self.next_files = now
         with self.lock:
+            self.history_gaps.update(self.models)
             if self.last_view is not None and self.last_view > now:
                 self.last_view = now
             for model in self.models.values():
@@ -722,7 +736,11 @@ class Collector:
         # Quiet mode is checked on every cycle (a stat and a small directory listing a second), so a
         # hold takes effect before a measurement that starts right after it.
         self.quiet = bool(self.quiet_path and quiet_state(self.quiet_path, now)["quiet"])
+        with self.lock:
+            self.prune_history(now)
         if self.quiet:
+            with self.lock:
+                self.history_gaps.update(self.models)
             return
         before = self.cpu_clock()
         sent = False
@@ -731,6 +749,8 @@ class Collector:
             viewed = self.viewed(now)
         for model in models:
             sent = self.poll(model, now, viewed) or sent
+            with self.lock:
+                self.remember(model, now)
         if sent:
             self.cycle_cpu.append(self.cpu_clock() - before)
             self.cycles += 1
@@ -746,9 +766,13 @@ class Collector:
         row = model.row
         host, port = row["api_host"], row["api_port"]
         sent = False
+        plugin = self.plugin_snapshot(model, now)
+        cadence = (METRICS_VIEWED_SECONDS if viewed and not row["stopped"] else
+                   METRICS_PLUGIN_UNVIEWED_SECONDS if plugin or row["stopped"] else METRICS_UNVIEWED_SECONDS)
+        if model.state == "serving" and model.metrics_at is not None:
+            model.next_metrics = min(model.next_metrics, model.metrics_at + cadence)
         if now >= model.next_metrics:
             sent = True
-            cadence = METRICS_VIEWED_SECONDS if viewed and not row["stopped"] else METRICS_UNVIEWED_SECONDS
             fetched = self.client.get(host, port, "/metrics")
             if fetched.ok:
                 metrics = parse_metrics(fetched.body.decode("utf-8", "replace"))
@@ -825,7 +849,66 @@ class Collector:
             stop.wait(1.0)
 
     # -- the status document -----------------------------------------------------------------
-    def snapshot(self, now=None) -> dict:
+    def plugin_snapshot(self, model, now):
+        fallback = {"run_id": (model.metrics or {}).get("started")}
+        candidates = ((self.node_status or {}).get("telemetry", {}).get(model.row.get("deployment_id")),
+                      (self.recovery.get(model.row["id"]) or {}).get("telemetry"))
+        return next((p for p in candidates if plugin_fresh(p, fallback, now)), None)
+
+    def prune_history(self, now):
+        for model_id in list(self.history):
+            if model_id not in self.models:
+                del self.history[model_id]
+                continue
+            rows = self.history[model_id]
+            while rows and (rows[0].get("plugin_counters") or rows[0]["counters"])["at"] < now - HISTORY_SECONDS:
+                rows.popleft()
+            while rows and rows[-1]["observed_at"] > now:
+                rows.pop()
+        self.history_gaps.intersection_update(self.models)
+
+    def remember(self, model, now):
+        """Retain only bounded raw numeric fields, never rates or mutable source documents."""
+        if model.id not in self.history:
+            if len(self.history) >= HISTORY_DEPLOYMENTS:
+                return
+            self.history[model.id] = collections.deque(maxlen=HISTORY_SAMPLES)
+        rows = self.history[model.id]
+        plugin = self.plugin_snapshot(model, now)
+        if not plugin and (model.state != "serving" or not number(model.metrics_at)):
+            self.history_gaps.add(model.id)
+            return
+        metrics = model.metrics or {}
+        counters = {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
+                    "values": {k: metrics[k] for k in HISTORY_VALUES if number(metrics.get(k))}}
+        if plugin:
+            plugin = {k: plugin[k] for k in (*HISTORY_VALUES, "at", "monotonic") if number(plugin.get(k))} | {
+                "schema": "sparkring-stats/v1", "run_id": plugin["run_id"],
+                "step_timing": bool(plugin.get("step_timing"))}
+        sample = plugin or counters
+        at = sample["at"]
+        if not number(at) or now - at > (180 if plugin else 125):
+            self.history_gaps.add(model.id)
+            return
+        # Snapshot identity is independent of the collector's read time and fallback reads.
+        previous = (rows[-1].get("plugin_counters") or rows[-1]["counters"]) if rows else None
+        if previous and (bool(rows[-1].get("plugin_counters")), previous["run_id"],
+                         previous.get("monotonic", previous["at"])) == (
+                             bool(plugin), sample["run_id"], sample.get("monotonic", at)):
+            return
+        self.history_seq += 1
+        rows.append({"seq": self.history_seq, "observed_at": now, "source": "plugin" if plugin else "metrics", "counters": counters,
+                     "plugin_counters": plugin, "boundary": model.id in self.history_gaps})
+        self.history_gaps.discard(model.id)
+
+    def history_snapshot(self, now=None):
+        now = self.clock() if now is None else now
+        with self.lock:
+            self.prune_history(now)
+            return {"generated_at": now, "service_started": self.started, "history_cursor": self.history_seq,
+                    "counter_history": {key: list(rows) for key, rows in self.history.items()}}
+
+    def snapshot(self, now=None, since=None) -> dict:
         """The sparkring-dashboard/v1 document: the fields the page reads, in the shape it reads them."""
         now = self.clock() if now is None else now
         with self.lock:
@@ -837,7 +920,14 @@ class Collector:
                 members = []
                 for model in models:
                     if model.source is source:
-                        members.append(self.member(model, now, color))
+                        member = self.member(model, now, color)
+                        rows = self.history.get(model.id, ())
+                        delta = list(rows)[-1:] if since is None else [r for r in rows if r["seq"] > since]
+                        if len(delta) > HISTORY_DELTA_SAMPLES:
+                            delta = delta[-HISTORY_DELTA_SAMPLES:]
+                            delta[0] = {**delta[0], "boundary": True}
+                        member["counter_samples"] = delta
+                        members.append(member)
                         color += 1
                 members.sort(key=lambda m: m["arc"]["first"])
                 groups.append({"id": source.ring_id(), "name": self.ring_name(source), "kind": "ring",
@@ -847,11 +937,13 @@ class Collector:
             events = list(self.events)[::-1][:60]
             quiet, viewed = self.quiet, self.viewed(now)
             cpu = list(self.cycle_cpu)
+            cursor = self.history_seq
         problems = [s.problem for s in self.sources if s.problem]
         topology = {"source": "fabric" if rings else "none", "detail": "; ".join(problems) or None,
                     "rings": len(rings)}
         counters = self.client.counters()
         return {"schema": SCHEMA, "title": "SparkRing", "generated_at": now, "service_started": self.started,
+                "history_cursor": cursor,
                 "poll_seconds": METRICS_VIEWED_SECONDS, "groups": groups, "rings": rings,
                 "ring": rings[0] if len(rings) == 1 else None, "topology": topology, "events": events,
                 "node": self.node_summary(),
@@ -903,8 +995,7 @@ class Collector:
             "counters": {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
                          "values": {key: value for key, value in metrics.items()
                                     if isinstance(value, (int, float))}} if model.metrics else None,
-            "plugin_counters": ((self.node_status or {}).get("telemetry", {}).get(row.get("deployment_id"))
-                                or (self.recovery.get(row["id"]) or {}).get("telemetry")),
+            "plugin_counters": self.plugin_snapshot(model, now),
             "totals": {"finished": metrics.get("finished"), "preemptions": metrics.get("preemptions"),
                        "output_tokens": metrics.get("gen"), "prompt_tokens": metrics.get("prompt")}
             if model.metrics else None,
@@ -1090,8 +1181,19 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
             if path == "/api/status":
                 if params.get("viewer") != "passive":   # sparkring dashboard tui --passive
                     collector.mark_viewed()
-                snapshot = collector.snapshot()
+                try:
+                    since = int(params["since"]) if "since" in params else None
+                except ValueError:
+                    return self._json(400, {"error": "Invalid history cursor"})
+                snapshot = collector.snapshot(since=since)
                 return self._json(200, {**snapshot, "manage": True} if manager else snapshot)
+            if path == "/api/history":
+                body = json.dumps(collector.history_snapshot(), separators=(",", ":")).encode()
+                extra = {"Vary": "Accept-Encoding"}
+                if "gzip" in self.headers.get("Accept-Encoding", ""):
+                    body = gzip.compress(body, compresslevel=1, mtime=0)
+                    extra["Content-Encoding"] = "gzip"
+                return self._send(200, body, "application/json", extra)
             if path == "/api/manage" and manager:
                 try:
                     return self._json(200, manager.session(self.headers))

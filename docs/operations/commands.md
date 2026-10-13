@@ -507,7 +507,7 @@ The service also compares the site file's inode and modification time every
 second, so a site file written any other way shows within a second as well.
 
 It reads files on Node A and sends only GET requests: `/metrics` every 5 s
-while a browser shows the page and every 60 s otherwise, `/v1/models` every
+while a browser shows the page and every 10 s otherwise (60 s with fresh stat-logger snapshots), `/v1/models` every
 60 s, and the model's [status report](dashboard.md) once per model start. It
 sends no inference request, opens no SSH session, starts no process and runs
 at idle priority on the efficiency cores. Each card shows the command that
@@ -549,7 +549,7 @@ else, at `http://127.0.0.1:8090` or, when nothing answers there, at the
 service's LAN address: it sends no request to any model and opens no SSH
 session, and an address of another host is refused before a connection opens. While it is
 open it counts as a viewer, as the page does, so the service reads `/metrics`
-every 5 s; `--passive` leaves the service at its 60 s reads. The view needs
+every 5 s; `--passive` leaves the service at its unviewed cadence. The view needs
 Python's `curses` module, which Linux has; `--once` prints one frame as text
 anywhere.
 

@@ -228,7 +228,7 @@ def test_collection_sends_only_get_requests_to_read_paths_and_starts_no_process(
     assert found.snapshot()["collector"]["requests"] == {p: paths_of(api).count(p) for p in set(paths_of(api))}
 
 
-def test_metrics_are_read_every_five_seconds_while_viewed_and_every_minute_otherwise(tmp_path):
+def test_metrics_are_read_every_five_seconds_while_viewed_and_every_ten_seconds_otherwise(tmp_path):
     found, api, clock = collector(tmp_path, rows=PAIRS[:1])
     run_for(found, clock, 600, viewer=True)
     viewed = paths_of(api).count("/metrics")
@@ -236,7 +236,7 @@ def test_metrics_are_read_every_five_seconds_while_viewed_and_every_minute_other
     api.requests.clear()
     clock.now += dashboard.VIEWER_SECONDS             # the browser went away
     run_for(found, clock, 600)
-    assert 9 <= paths_of(api).count("/metrics") <= 11  # 600 s / 60 s
+    assert 59 <= paths_of(api).count("/metrics") <= 61  # 600 s / 10 s
     assert paths_of(api).count("/v1/models") <= 11
     api.requests.clear()
     found.mark_viewed()                               # a viewer comes back: the next cycle reads at once
@@ -611,7 +611,7 @@ def test_the_page_loads_nothing_from_elsewhere_and_its_script_is_admitted_by_has
     assert "default-src 'none'" in csp and "connect-src 'self'" in csp and "'unsafe-inline'" not in csp.replace(
         "style-src-attr 'unsafe-inline'", "")
     assert not any(marker in text for marker in ('src="http', "src='http", 'href="http', "@import", "<link"))
-    assert set(__import__("re").findall(r"fetch\(\s*[`\"']([^`\"'?$]*)", text)) == {"/api/status", "/api/refresh", "/api/manage"}
+    assert set(__import__("re").findall(r"fetch\(\s*[`\"']([^`\"'?$]*)", text)) == {"/api/status", "/api/refresh", "/api/manage", "/api/history"}
     assert "ssh" not in text.lower().replace("no ssh", "").replace("ssh key", "")
 
 

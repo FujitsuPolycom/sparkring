@@ -125,7 +125,7 @@ sparkring dashboard tui --once     # one frame as plain text
 It reads the page's service on Node A at `http://127.0.0.1:8090`, or at
 `NODE_A_LAN_ADDRESS` when nothing answers on loopback, and refuses any other
 host. It sends nothing to any other Spark itself. Like an open page, it makes the service read each model's metrics
-every 5 s instead of every minute; `--passive` leaves the service's reads
+every 5 s instead of every 10 s (every minute with fresh plugin snapshots); `--passive` leaves the service's reads
 unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
