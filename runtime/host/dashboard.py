@@ -1092,7 +1092,8 @@ def host_allowed(header: str | None, names) -> bool:
     return _ip(host) or host.lower() == "localhost" or host.lower() in names
 
 
-def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(), password: str | None = None):
+def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(), password: str | None = None,
+                 manager=None):
     headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Referrer-Policy": "no-referrer",
                "X-Frame-Options": "DENY"}
     expected = None if password is None else "Basic " + base64.b64encode(f"sparkring:{password}".encode()).decode()
@@ -1104,7 +1105,8 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
             if not host_allowed(self.headers.get("Host"), names):
                 return self._send(421, b"This dashboard answers to its IP address or a name given with --name.\n",
                                   "text/plain; charset=utf-8")
-            if expected is not None and self.headers.get("Authorization") != expected:
+            if (expected is not None and self.headers.get("Authorization") != expected
+                    and not (manager and manager.authenticated(self.headers))):
                 self.send_response(401)
                 self.send_header("WWW-Authenticate", 'Basic realm="SparkRing dashboard", charset="UTF-8"')
                 self.send_header("Content-Length", "0")
@@ -1117,7 +1119,13 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
             if path == "/api/status":
                 if params.get("viewer") != "passive":   # sparkring dashboard tui --passive
                     collector.mark_viewed()
-                return self._json(200, collector.snapshot())
+                snapshot = collector.snapshot()
+                return self._json(200, {**snapshot, "manage": True} if manager else snapshot)
+            if path == "/api/manage" and manager:
+                try:
+                    return self._json(200, manager.session(self.headers))
+                except PermissionError as error:
+                    return self._json(401, {"error": str(error)})
             if path == "/api/refresh":
                 accepted = collector.request_runtime(params.get("model", ""))
                 return self._json(202 if accepted else 429, {"accepted": accepted})
@@ -1128,7 +1136,33 @@ def make_handler(collector: Collector, page: bytes, csp: str, names=frozenset(),
         def _refuse(self):
             self._send(405, b"read-only\n", "text/plain", {"Allow": "GET"})
 
-        do_POST = do_PUT = do_DELETE = do_PATCH = _refuse
+        do_PUT = do_DELETE = do_PATCH = _refuse
+
+        def do_POST(self):
+            if manager is None:
+                return self._refuse()
+            if not host_allowed(self.headers.get("Host"), names):
+                return self._json(421, {"error": "Host refused"})
+            if not manager.authenticated(self.headers):
+                return self._json(401, {"error": "Authentication required"})
+            if self.headers.get("Content-Type") != "application/json" or self.headers.get("Transfer-Encoding"):
+                return self._json(415, {"error": "Use a bounded JSON request"})
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                if not 0 < length <= 8192:
+                    return self._json(413, {"error": "Action request is too large or empty"})
+                self.connection.settimeout(15)
+                raw = self.rfile.read(length)
+                if len(raw) != length:
+                    raise ValueError("Incomplete request")
+                result = manager.dispatch(self.path, self.headers, json.loads(raw))
+                return self._json(200, result)
+            except PermissionError as error:
+                return self._json(403, {"error": str(error)})
+            except (ValueError, KeyError, TypeError) as error:
+                return self._json(400, {"error": str(error)})
+            except OSError as error:
+                return self._json(503, {"error": "Helper unavailable: " + str(error)})
 
         def _json(self, code, value):
             self._send(code, json.dumps(value, separators=(",", ":")).encode(), "application/json")
@@ -1216,6 +1250,14 @@ def reload_on_hangup(collector: Collector, signals=signal) -> bool:
 
 
 def serve(args) -> int:
+    manager = None
+    if getattr(args, "manage", False):
+        if not hasattr(os, "geteuid") or os.geteuid() == 0:
+            raise ValueError("Dashboard manage mode must run as an unprivileged user")
+        if not args.manage_token_file or args.fabric or args.site:
+            raise ValueError("Manage mode requires --manage-token-file and this controller's default fabric/site")
+        from runtime.host.dashboard_actions import Manager
+        manager = Manager(Path(args.manage_token_file).read_text(encoding="utf-8").strip())
     pairs = list(zip(args.fabric, args.site)) if args.fabric else [(FABRIC_PATH, SITE_PATH)]
     sources = [Source(Path(f), Path(s)) for f, s in pairs]
     client = ReadOnlyClient()
@@ -1233,7 +1275,7 @@ def serve(args) -> int:
     bind = args.bind or default_bind(sources[0])
     page, csp = page_bytes()
     names = frozenset(name.lower() for name in args.name or ())
-    servers = open_servers(listen_addresses(bind), args.port, make_handler(collector, page, csp, names, password))
+    servers = open_servers(listen_addresses(bind), args.port, make_handler(collector, page, csp, names, password, manager))
     stop = threading.Event()
     threading.Thread(target=collector.run, args=(stop,), daemon=True, name="collector").start()
     for server in servers[1:]:
@@ -1354,6 +1396,8 @@ def main(argv=None) -> int:
     run.add_argument("--site", action="append", type=Path, help="site file written by export")
     run.add_argument("--name", action="append", help="a host name browsers may use for this page")
     run.add_argument("--password-file", help="require HTTP Basic authentication (user sparkring) with this password")
+    run.add_argument("--manage", action="store_true", help="opt in to authenticated actions through the privileged helper")
+    run.add_argument("--manage-token-file", help="file containing the management bearer token (at least 32 characters)")
     run.add_argument("--cpus", help="CPU list to run on, such as 0-4,10-14 (default: the efficiency cores)")
     run.add_argument("--quiet-file", default=str(QUIET_PATH))
     run.add_argument("--no-node-status", action="store_true", help="do not read this host's sparkring-agent status")

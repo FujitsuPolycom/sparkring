@@ -208,6 +208,11 @@ section h2 { font-size: 0.75rem; font-weight: 650; text-transform: uppercase; le
 .events .k-offline .dot { background: var(--bad); }
 .events .empty { color: var(--muted); display: block; grid-column: 1 / -1; }
 footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+.manage { padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+.manage label { display: inline-flex; flex-direction: column; margin: 5px; gap: 4px; }
+.manage input, .manage select { background: var(--code); color: var(--fg); padding: 7px; border: 1px solid var(--line2); }
+.manage pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
+.actions { display: flex; flex-wrap: wrap; gap: 6px; }
 </style>
 </head>
 <body>
@@ -220,6 +225,20 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
     <div class="live" id="live"><span class="dot"></span><span id="fresh">Connecting</span></div>
   </header>
   <div class="banner" id="banner" hidden></div>
+  <section class="manage" id="manage" hidden aria-label="Manage slices">
+    <h2>Manage slices</h2>
+    <label>Management token <input id="manage-token" type="password" autocomplete="off"></label>
+    <label>Sparks <input id="manage-on" placeholder="4-5" maxlength="20"></label>
+    <label>Action <select id="manage-action"><option value="install">Install / swap</option><option value="down">Down</option><option value="restart">Restart</option><option value="recovery-on">Recovery on</option><option value="recovery-off">Recovery off</option><option value="logs">Follow logs</option></select></label>
+    <label>Profile <input id="manage-profile" placeholder="Exact profile" maxlength="64"></label>
+    <label>Checkpoint (optional) <input id="manage-checkpoint" maxlength="64"></label>
+    <label>Maximum model length (optional) <input id="manage-length" inputmode="numeric"></label>
+    <label>KV cache GiB (optional) <input id="manage-memory" inputmode="numeric"></label>
+    <label>Download limit (optional) <input id="manage-limit" placeholder="850Mbit"></label>
+    <div class="actions"><button class="copy" id="manage-preview" type="button">Review plan and activity</button><button class="copy" id="manage-confirm" type="button" disabled>Confirm reviewed action</button></div>
+    <p id="manage-message" role="status">Choose a slice and review its plan before confirming.</p>
+    <pre id="manage-output"></pre>
+  </section>
   <section class="ringpanel" id="ringpanel" hidden>
     <div class="ringviz" id="ringviz"></div>
     <div class="ringside">
@@ -678,11 +697,13 @@ function card(s, now) {
     ${sparks(s)}
     ${serving ? settings(s) + totals(s, now) : ""}
     ${logsPanel(s)}
+    ${data.manage && arc ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
   </article>`;
 }
 
 function render() {
   if (!data) return;
+  $("manage").hidden = !data.manage;
   const now = serverNow();
   const groups = data.groups || [];
   const ringMembers = groups.filter((g) => g.kind === "ring").flatMap((g) => g.members || []);
@@ -773,6 +794,72 @@ async function copy(text, btn) {
   setTimeout(() => { btn.textContent = "Copy"; }, 1500);
 }
 
+let manageTicket = null;
+let manageVersion = 0;
+function clearManageReview() {
+  manageVersion += 1;
+  manageTicket = null;
+  $("manage-confirm").disabled = true;
+}
+async function management(path, body) {
+  const token = $("manage-token").value;
+  const headers = { Authorization: `Bearer ${token}` };
+  const session = await fetch("/api/manage", { headers, cache: "no-store" });
+  const auth = await session.json();
+  if (!session.ok) throw new Error(auth.error || "Authentication failed");
+  const response = await fetch(path, { method: "POST", cache: "no-store",
+    headers: { ...headers, "Content-Type": "application/json", "X-CSRF-Token": auth.csrf },
+    body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || "Action refused");
+  return result;
+}
+$("manage").addEventListener("input", clearManageReview);
+$("manage-preview").addEventListener("click", async () => {
+  clearManageReview();
+  const version = manageVersion;
+  const button = $("manage-preview");
+  button.disabled = true;
+  $("manage-message").textContent = "Reading the plan and activity…";
+  try {
+    const action = $("manage-action").value;
+    const request = { action, on: $("manage-on").value.trim() };
+    if (action === "install") {
+      request.profile = $("manage-profile").value.trim();
+      request.options = {};
+      for (const [id, key] of [["checkpoint", "checkpoint"], ["length", "context-length"], ["memory", "kv-cache-gib"], ["limit", "download-limit"]]) {
+        const value = $("manage-" + id).value.trim();
+        if (value) request.options[key] = value;
+      }
+    }
+    const result = await management("/api/manage/preview", request);
+    const plan = result.plan || {};
+    const warning = plan.activity ? "\nActivity: " + plan.activity.grade + "\n" + plan.activity.message : "";
+    $("manage-output").textContent = (result.stderr || "") + warning + (plan.steps ? "\nPlan: " + plan.steps.join(" → ") : "") + (result.follow ? "\n" + result.stdout + "\nFollow in a terminal: " + result.follow : "");
+    if (version !== manageVersion) {
+      $("manage-message").textContent = "The selection changed while the plan was loading. Review it again.";
+      return;
+    }
+    manageTicket = result.confirmation || null;
+    $("manage-confirm").disabled = !manageTicket;
+    $("manage-message").textContent = manageTicket ? "Review the plan and activity below. Confirmation applies this exact action." : (result.follow ? "Log snapshot shown. Follow using the terminal command." : "This action cannot proceed; review the result.");
+  } catch (error) { $("manage-message").textContent = error.message; }
+  finally { button.disabled = false; }
+});
+$("manage-confirm").addEventListener("click", async () => {
+  const confirmation = manageTicket;
+  clearManageReview();
+  if (!confirmation) return;
+  $("manage-preview").disabled = true;
+  $("manage-message").textContent = "Action running. Its slice log is available in another terminal.";
+  try {
+    const result = await management("/api/manage/confirm", { confirmation });
+    $("manage-output").textContent = (result.stderr || "") + "\n" + (result.stdout || "");
+    $("manage-message").textContent = result.code === 0 ? "Action completed." : "Action stopped; see the result.";
+  } catch (error) { $("manage-message").textContent = error.message + ". Check slice logs before retrying."; }
+  finally { $("manage-preview").disabled = false; }
+});
+
 // Hovering a group anywhere (ring, legend, card) highlights it everywhere; clicking selects it.
 for (const id of ["ringviz", "legend", "stacks"]) {
   const root = $(id);
@@ -790,6 +877,15 @@ for (const id of ["ringviz", "legend"]) {
   });
 }
 $("stacks").addEventListener("click", (e) => {
+  const action = e.target.closest("button[data-action]");
+  if (action) {
+    clearManageReview();
+    $("manage-on").value = action.dataset.on;
+    $("manage-action").value = action.dataset.action;
+    $("manage-profile").value = action.dataset.profile;
+    $("manage-message").textContent = "Choose options if needed, then review the plan and activity.";
+    $("manage").scrollIntoView({ block: "start", behavior: "smooth" });
+  }
   const btn = e.target.closest("button.copy");
   if (btn && btn.dataset.copy) copy(btn.dataset.copy, btn);
   const reread = e.target.closest("button.reread");

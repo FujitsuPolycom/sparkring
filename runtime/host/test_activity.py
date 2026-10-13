@@ -67,3 +67,13 @@ def test_review_changes_only_for_overlapping_deployments(tmp_path):
 def test_json_warning_is_serializable(tmp_path):
     value = activity.assess(tmp_path, None, quiet_path=tmp_path / "quiet")
     assert json.loads(json.dumps(value))["schema"] == "sparkring-activity/v1"
+
+
+def test_package_upgrade_invalidates_a_review(tmp_path, monkeypatch):
+    package = tmp_path / "package"
+    monkeypatch.setattr(activity.installer, "ROOT", package)
+    node.save(package, "distribution.json", {"revision": "a" * 40})
+    before = activity.fingerprint(tmp_path, (4, 5))
+    node.save(package, "distribution.json", {"revision": "b" * 40})
+    with pytest.raises(NeedsInput, match="changed since preview"):
+        activity.require_review(tmp_path, (4, 5), before)

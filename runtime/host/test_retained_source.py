@@ -59,3 +59,20 @@ def test_dirty_cached_controller_is_refused(archived_program, tmp_path):
     (root / "runtime/common/installer.py").write_text("raise RuntimeError('unapproved source')\n")
     with pytest.raises(ValueError, match="modified"):
         retained_source.checkout(archived_program, tmp_path / "cache")
+
+
+def test_retained_logs_join_the_callers_operation_without_background_work(tmp_path):
+    import io
+    from types import SimpleNamespace
+    prior, details = io.StringIO(), io.StringIO()
+    progress = SimpleNamespace(_log=prior, _details=details)
+    path = tmp_path / "operation-fixture.log"
+    with retained_source._mirror_operation_log(progress, str(path)):
+        progress._log.write("retained rank stopped\n")
+        progress._log.flush()
+        # Older progress.command passes this file descriptor to subprocess.run.
+        subprocess.run([__import__("sys").executable, "-c", "print('retained details')"],
+                       stdout=progress._details, check=True)
+    assert path.read_text() == prior.getvalue() == "retained rank stopped\n"
+    assert path.with_name("operation-fixture-details.log").read_text() == details.getvalue() == "retained details\n"
+    assert progress._log is prior and progress._details is details

@@ -48,6 +48,9 @@ def fingerprint(root, positions):
             return None
     for name in ("cluster.json", "fabric.json"):
         values[name] = read(root / name)
+    # An installed package can change profile defaults between preview and
+    # confirmation even when the active deployment has not changed.
+    values["controller_package"] = read(installer.ROOT / "distribution.json")
     for slot in placement.slots(root):
         if not placement.overlap(slot, positions):
             continue
@@ -63,7 +66,7 @@ def fingerprint(root, positions):
 
 def require_review(root, positions, expected):
     if expected and fingerprint(root, positions) != expected:
-        raise NeedsInput("The deployment or fabric changed since preview; review a fresh plan.", field="review")
+        raise NeedsInput("The deployment, fabric or package changed since preview; review a fresh plan.", field="review")
 
 
 def read_metrics(url):

@@ -149,3 +149,46 @@ the LAN address only.
 SparkRing's runtime-status vLLM plugin serves the page. Its source, response
 schema, collection cost and offline tests are in
 [integrations/vllm/runtime_status](../../integrations/vllm/runtime_status/README.md).
+## Managing slices
+
+Management is off by default. On Node A, an administrator can opt in to
+the existing privileged helper and give the unprivileged dashboard a token:
+
+```bash
+sudo systemctl enable --now sparkring-helper.socket
+sudo sh -c 'umask 077; python3 -c "import secrets; print(secrets.token_urlsafe(32))" > /etc/sparkring/dashboard-manage.token'
+sudo systemctl edit sparkring-dashboard.service
+```
+
+Use this service override:
+
+```ini
+[Service]
+SupplementaryGroups=sparkring
+LoadCredential=manage-token:/etc/sparkring/dashboard-manage.token
+ExecStart=
+ExecStart=/usr/bin/sparkring dashboard serve --manage --manage-token-file %d/manage-token
+```
+
+Restart the dashboard service. Give the token only to operators allowed to
+change serving models. Use a trusted administration connection or an HTTPS
+reverse proxy; a bearer token grants management access to anyone holding it.
+The token stays in the page's password field and is never saved in browser
+storage or a URL. Removing the override and restarting returns to read-only
+mode. Rotate a token by replacing its file and restarting the service.
+
+Each slice's buttons select install/swap, down, restart, recovery on/off or
+logs. Choose a profile and optional checkpoint, context length, KV cache or
+download limit, then select **Review plan and activity**. Read the plan and
+warning before selecting **Confirm reviewed action**. Confirmations expire
+after five minutes and can be used once. A changed deployment, fabric or package
+requires another preview. A conflict never runs, even after confirmation.
+
+Actions use the helper's allow-list and journal audit. They add no periodic
+requests. Long installs keep the action request open; use the displayed
+`sparkring logs --on 4-5 --follow` command in another terminal to follow
+progress. **Follow logs** reads one snapshot and provides that command.
+The dashboard itself does not continuously stream or poll logs.
+
+See the [slice design](../architecture/independent-slices.md) for lock scopes,
+shared-resource warnings, compatibility and qualification limits.

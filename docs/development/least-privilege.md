@@ -315,6 +315,12 @@ Threat model:
 - **Who can trigger what.** Only members of the `sparkring` group can connect
   (socket mode 0660, group-checked again from `SO_PEERCRED`); only the argv
   shapes in `COMMANDS` run (`up|down [PROFILE] --execute`, `recover --auto`).
+  `runtime/host/action_commands.py` additionally admits exact slice plan and
+  execution shapes for install/swap, down, restart and recovery on/off, plus
+  bounded log reads. It rejects executable/source paths, environment files,
+  arbitrary image locks, output paths and unrecognized or repeated flags.
+  The [manage dashboard](../operations/dashboard.md#managing-slices) uses this
+  grammar and never receives root, Docker or SSH access.
   A group member cannot run arbitrary commands, cannot pass extra flags
   (`--fresh-mesh`, `--allow-loopback-bind` are refused), and cannot reach
   `setup` or `install` (not in the table; widening it is a reviewed change).
@@ -448,7 +454,7 @@ would grant write power over the traffic rules.
 | 2 | The privileged helper: allowlist, protocol, client, opt-in units, CLI flag | **Implemented** (this branch, opt-in and off by default) | `runtime/host/test_helper.py`; the unit wiring and one live `up --execute` need a Spark |
 | 3 | Remaining read-only commands for the group: `fabric show`, `checkpoints`/`storage` listings, `up`/`down` plan review, `fabric tune` plan, `hairpin --plan` — either as further redacted views or by granting the group read access to the specific non-secret records | **Research-only** (design in sections 1.2 and 3; needs an owner decision on which record fields a group member may see) | none yet |
 | 4 | Per-verb privilege tiers in `sparkring node` (read-only verbs drop the blanket euid gate; each verb declares its capability) and capability-bounded units (`sparkring-agent.service` bounds to NET_ADMIN+NET_RAW, `sparkring-ssh-mux.service` to none) | **Research-only** | none yet |
-| 5 | Replace the `sudo -n python3 -c` SSH transport with fixed `sparkring node` verbs so the sudoers grant can stop being `ALL`; then the helper allowlist can widen to `install`/`setup` | **Research-only** (largest refactor; prerequisite for a narrow sudoers rule) | none yet |
+| 5 | Replace the `sudo -n python3 -c` SSH transport with fixed `sparkring node` verbs so the worker sudoers grant can stop being `ALL` | **Research-only**; helper-managed install uses bounded controller arguments but retains this worker-side privilege | none yet |
 | 6 | Rootless serving (section 5) | **Research-only** | hardware test plan, section 8 |
 | 7 | Host `limits.d`/systemd memlock drop-ins shipped by the package, and the RDMA user setup in the operators' guide | **Research-only** (text written in section 2; the values need hardware sizing) | none yet |
 | — | Removing root from setup, boot units, package installation and the ConnectX restarts | **Unsupported by design** | — |

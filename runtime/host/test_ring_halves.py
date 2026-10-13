@@ -455,6 +455,27 @@ def test_recovery_toggle_and_restart_are_scoped_and_previewed(halves, capsys):
     assert touched == set(halves.hosts[2:])
 
 
+def test_dashboard_confirmation_runs_the_real_cli_on_fake_sparks(halves):
+    import contextlib
+    import io
+    from runtime.host import dashboard_actions, helper
+    def invoke(argv):
+        helper.validate(argv)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = sparkring.main(argv)
+        return {"code": code, "stdout": out.getvalue(), "stderr": err.getvalue()}
+    token = "fixture-" * 8
+    manager = dashboard_actions.Manager(token, invoke=invoke)
+    headers = {"Host": "localhost", "Origin": "http://localhost", "Authorization": "Bearer " + token,
+               "X-CSRF-Token": manager.csrf}
+    before = dict(halves.running)
+    preview = manager.dispatch("/api/manage/preview", headers, {"action": "down", "on": "2,3"})
+    assert preview["confirmation"] and halves.running == before
+    completed = manager.dispatch("/api/manage/confirm", headers, {"confirmation": preview["confirmation"]})
+    assert completed["code"] == 0
+    assert json.loads(completed["stdout"])["complete"]
+    assert [halves.running[host] for host in halves.hosts] == [True, True, False, False]
 
 
 def test_recover_status_and_off_cover_each_half(halves, capsys):

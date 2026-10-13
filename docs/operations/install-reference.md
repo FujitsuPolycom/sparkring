@@ -1986,6 +1986,28 @@ containers, in the same way.
 
 ## Models on part of the fabric
 
+Install, swap, down and restart operations on disjoint slices can run at
+the same time. An overlapping operation is refused with the holder and its
+Sparks; retry after it finishes. `--yes` never overrides this conflict.
+Setup, fabric changes, package upgrades and global storage release exclude
+all slices. A slice whose worker packages need an upgrade asks you to run
+setup first. Automatic retention is deferred for slice operations.
+
+Before an action, SparkRing reports recorded activity on other slices and
+shared download or image-copy resources. An advisory warning asks for
+confirmation; `--yes` approves it and `--json` includes it as data. Metrics
+are sampled once per neighbouring deployment, with a 200 ms socket timeout;
+four running requests or any waiting request count as heavy traffic. Quiet
+mode suppresses these samples. Missing metrics mean unknown traffic.
+
+Use `sparkring logs --on 4-5 --follow` for the latest operation on a slice,
+or `sparkring logs --operation ID` for one operation's retained log. Use
+`sparkring restart --on 4-5 --plan` before `--execute`, and `sparkring recover
+off --on 4-5` to disable recovery on just those Sparks. The
+[dashboard's manage mode](dashboard.md#managing-slices) provides the same
+reviewed actions through the privileged helper. See the
+[design and compatibility contract](../architecture/independent-slices.md).
+
 A fabric serves one model on all its Sparks, or several models side by side
 on runs of consecutive Sparks that share no Spark. `--on` names the Sparks of
 one model:

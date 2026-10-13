@@ -611,7 +611,7 @@ def test_the_page_loads_nothing_from_elsewhere_and_its_script_is_admitted_by_has
     assert "default-src 'none'" in csp and "connect-src 'self'" in csp and "'unsafe-inline'" not in csp.replace(
         "style-src-attr 'unsafe-inline'", "")
     assert not any(marker in text for marker in ('src="http', "src='http", 'href="http', "@import", "<link"))
-    assert set(__import__("re").findall(r"fetch\(\s*[`\"']([^`\"'?$]*)", text)) == {"/api/status", "/api/refresh"}
+    assert set(__import__("re").findall(r"fetch\(\s*[`\"']([^`\"'?$]*)", text)) == {"/api/status", "/api/refresh", "/api/manage"}
     assert "ssh" not in text.lower().replace("no ssh", "").replace("ssh key", "")
 
 

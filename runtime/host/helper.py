@@ -62,6 +62,9 @@ def validate(argv) -> None:
     for shape in COMMANDS:
         if _matches(argv, shape):
             return
+    from runtime.host import action_commands
+    if action_commands.allowed(argv):
+        return
     raise ValueError("the helper runs only: " + "; ".join(_shape_text(shape) for shape in COMMANDS))
 
 
@@ -102,13 +105,17 @@ def serve(connection: socket.socket, *, spawn=None, argv0=SPARKRING, out=None):
     argv = None
     try:
         connection.settimeout(REQUEST_TIMEOUT)
+        peer_uid = _peer_uid(connection)
         request = json.loads(_readline(connection))
         argv = request["argv"]
-        peer_uid = _peer_uid(connection)
         validate(argv)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
-        _send(connection, {"type": "exit", "code": 2, "error": str(error)})
-        print(audit_line(peer_uid, argv, 2), file=stream, flush=True)
+        try:
+            _send(connection, {"type": "exit", "code": 2, "error": str(error)})
+        except OSError:
+            pass
+        finally:
+            print(audit_line(peer_uid, argv, 2), file=stream, flush=True)
         return
     try:
         result = run(argv)
@@ -118,14 +125,18 @@ def serve(connection: socket.socket, *, spawn=None, argv0=SPARKRING, out=None):
                 _send(connection, {"type": "output", "stream": name, "text": text[start:start + 4096]})
     except (OSError, subprocess.SubprocessError) as exc:
         code, error = 2, str(exc)
-    _send(connection, {"type": "exit", "code": code, **({"error": error} if error else {})})
-    print(audit_line(peer_uid, argv, code), file=stream, flush=True)
+    try:
+        _send(connection, {"type": "exit", "code": code, **({"error": error} if error else {})})
+    except OSError:
+        pass
+    finally:
+        print(audit_line(peer_uid, argv, code), file=stream, flush=True)
 
 
 def _peer_uid(connection: socket.socket):
     """The connecting process's uid, from the kernel's peer credentials (Linux)."""
     try:
-        uid, _, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        _, uid, _ = struct.unpack("3i", connection.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
     except OSError:
         return None
     return uid
@@ -147,7 +158,7 @@ def _send(connection: socket.socket, document: dict) -> None:
     connection.sendall(json.dumps(document).encode() + b"\n")
 
 
-def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0) -> int:
+def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0, capture=False):
     """Run ``argv`` through the helper; return the child's exit status.
 
     The caller stays unprivileged. Output arrives as the helper sends it, so
@@ -162,6 +173,7 @@ def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0) ->
     # several lines (the last output and the exit), and none may be dropped.
     reader = connection.makefile("rb")
     code = 1
+    output = {"stdout": "", "stderr": ""}
     while True:
         line = reader.readline(LINE_LIMIT + 1)
         if not line:
@@ -170,12 +182,19 @@ def request(argv, *, socket_path: str = SOCKET_PATH, timeout: float = 7200.0) ->
             raise ValueError("a helper reply line is too long")
         document = json.loads(line)
         if document.get("type") == "output":
-            print(document["text"], end="", file=sys.stdout if document.get("stream") == "out" else sys.stderr)
+            if capture:
+                key = "stdout" if document.get("stream") == "out" else "stderr"
+                output[key] = (output[key] + document["text"])[-262144:]
+            else:
+                print(document["text"], end="", file=sys.stdout if document.get("stream") == "out" else sys.stderr)
         elif document.get("type") == "exit":
             code = int(document.get("code", 1))
             if document.get("error"):
-                print("sparkring helper: " + document["error"], file=sys.stderr)
+                if capture:
+                    output["stderr"] += document["error"]
+                else:
+                    print("sparkring helper: " + document["error"], file=sys.stderr)
             break
     reader.close()
     connection.close()
-    return code
+    return {"code": code, **output} if capture else code

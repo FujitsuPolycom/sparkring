@@ -45,9 +45,12 @@ def test_disjoint_processes_overlap_and_conflicts_name_holder(tmp_path):
     with holder(tmp_path, [0, 1, 2, 3]):
         with slices.hold(tmp_path, (4, 5), "restart"):
             assert len(slices.active(tmp_path)) == 2
-        with pytest.raises(ValueError, match="install fixture.*Sparks 0,1,2,3"):
+        with pytest.raises(ValueError, match="install fixture.*Sparks 0,1,2,3") as caught:
             with slices.hold(tmp_path, (2, 3), "down"):
                 pytest.fail("overlap entered")
+        reason = caught.value.activity["reasons"][0]
+        assert reason["grade"] == "blocked" and reason["resource"] == "Sparks 0,1,2,3"
+        assert reason["activity"] == "install fixture" and reason["pid"]
         with pytest.raises(ValueError, match="Blocked"):
             with slices.hold(tmp_path, None, "setup"):
                 pytest.fail("ring operation entered")

@@ -10,6 +10,48 @@ from pathlib import Path
 from runtime.common import distribution, installer, process_lock
 
 
+def _mirror_operation_log(progress, path):
+    """Bridge a retained controller's progress into the caller's operation files.
+
+    This function's source is sent to the retained Python process. Its
+    imports and dependencies must therefore remain inside the function.
+    """
+    import contextlib
+    @contextlib.contextmanager
+    def mirror():
+        primary = getattr(progress, "_log", None)
+        detail = getattr(progress, "_details", None)
+        if not path or primary is None:
+            yield
+            return
+        with contextlib.ExitStack() as stack:
+            own = stack.enter_context(open(path, "a", encoding="utf-8", buffering=1))
+            class Copies:
+                def write(self, text):
+                    primary.write(text)
+                    own.write(text)
+                def flush(self):
+                    primary.flush()
+                    own.flush()
+            progress._log = Copies()
+            own_details = None
+            if detail is not None:
+                own_details = stack.enter_context(open(path[:-4] + "-details.log", "a+", encoding="utf-8"))
+                offset = own_details.tell()
+                progress._details = own_details
+            try:
+                yield
+            finally:
+                progress._log, progress._details = primary, detail
+                if own_details is not None:
+                    own_details.flush()
+                    own_details.seek(offset)
+                    while block := own_details.read(65536):
+                        detail.write(block)
+                    detail.flush()
+    return mirror()
+
+
 def checkout(directory, cache, *, run=subprocess.run):
     revision = installer.read(Path(directory) / "deployment.lock.json")["source_revision"]
     if not re.fullmatch(r"[0-9a-f]{40}", revision):
@@ -92,7 +134,9 @@ def apply(directory, operation, *, cache, run=subprocess.run):
     if lock["source_revision"] == distribution.identity(installer.ROOT):
         return _operation(directory, operation)
     source = checkout(directory, cache, run=run)
-    code = inspect.getsource(_operation) + "\n" + """import contextlib,json,sys
+    from runtime.host import progress
+    own_log = str(progress.operation_log()) if progress._operation_id else ""
+    code = inspect.getsource(_operation) + "\n" + inspect.getsource(_mirror_operation_log) + "\n" + """import contextlib,json,sys
 sys.path.insert(0,sys.argv[1])
 from runtime.host import progress
 with contextlib.redirect_stdout(sys.stderr):
@@ -100,9 +144,10 @@ with contextlib.redirect_stdout(sys.stderr):
   result=_operation(sys.argv[2],sys.argv[3])
  else:
   with progress.run('retained deployment '+sys.argv[3]):
-   result=_operation(sys.argv[2],sys.argv[3])
+   with _mirror_operation_log(progress,sys.argv[4]):
+    result=_operation(sys.argv[2],sys.argv[3])
 print(json.dumps(result))
 """
-    result = run([sys.executable, "-I", "-B", "-c", code, str(source), str(directory), operation],
+    result = run([sys.executable, "-I", "-B", "-c", code, str(source), str(directory), operation, own_log],
                  stdout=subprocess.PIPE, text=True, check=True)
     return json.loads(result.stdout)
