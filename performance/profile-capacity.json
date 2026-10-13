@@ -40,6 +40,13 @@
         }
       }
     },
+    "glm53-flash-nvfp4-spark-tp2-dcp2": {
+      "tokens": 4126165,
+      "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md",
+      "witness": "| KV tokens | 1,472,548 | 4,126,165 |",
+      "conditions": "GLM-5.3-Flash CSF TP2/DCP2 settings of the research profile on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, positions 6 and 7 of an eight-Spark ring, 14 GiB FP8 KV per rank in 2,048-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
+      "kv_bytes_per_rank": 15032385536
+    },
     "glm53-flash-nvfp4-spark-tp4": {
       "tokens": 6128169,
       "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md",

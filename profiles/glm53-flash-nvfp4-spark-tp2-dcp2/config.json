@@ -62,7 +62,7 @@
     "MALLOC_ARENA_MAX": "4",
     "B12X_W4A16_SMALL_M_OCCUPANCY": "2",
     "B12X_W4A16_A4_PREFILL_MIN_TOKENS": "1536",
-    "VLLM_B12X_KDA_PREFILL_COALESCING": "1"
+    "VLLM_B12X_KDA_PREFILL_COALESCING": "0"
   },
   "vllm_args": [
     "--tensor-parallel-size",

@@ -1,0 +1,1 @@
+ValueError: VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported
