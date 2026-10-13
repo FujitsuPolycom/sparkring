@@ -72,7 +72,7 @@ for position, value in enumerate(args):
 start = args.index("-c") + 1
 if "/out" in mounts:
     program = [mounts.get(value, value) for value in args[start + 1:]]
-    environment = dict(os.environ, PYTHONPATH=config["stub"] + os.pathsep + config["path"])
+    environment = dict(os.environ, PYTHONPATH=config["stub"])
     done = subprocess.run([sys.executable, "-c", args[start], *program], env=environment)
     sys.exit(done.returncode)
 repository, revision, *names = args[start + 1:]
@@ -86,6 +86,10 @@ for name in names:
 
 def environment(tmp_path, monkeypatch, *, tamper_donor=False, wrong=None):
     """A derived lock over a synthetic base and donor; ``call(operation, document)`` runs a rank operation."""
+    unrelated = tmp_path / 'unrelated-image'
+    unrelated.mkdir()
+    (unrelated / 'sitecustomize.py').write_text('import os; os._exit(78)\n')
+    monkeypatch.syspath_prepend(str(unrelated))
     built = synthetic.fixture(tmp_path / "published")
     base_dir, donor_dir = built[0], built[1]
     if tamper_donor:
@@ -169,7 +173,7 @@ def environment(tmp_path, monkeypatch, *, tamper_donor=False, wrong=None):
     fake.mkdir()
     log = fake / "log.jsonl"
     (fake / "config.json").write_text(json.dumps({
-        "log": str(log), "stub": str(tmp_path / "stub"), "path": os.pathsep.join(sys.path),
+        "log": str(log), "stub": str(tmp_path / "stub"),
         "files": {name: data.hex() for name, data in donor_files.items()}}))
     program = fake / "docker"
     program.write_text(FAKE_DOCKER.replace("{python}", sys.executable))

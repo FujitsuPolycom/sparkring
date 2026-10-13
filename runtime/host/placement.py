@@ -24,7 +24,7 @@ What each transport serves (``prepared_serves``, ``unsupported``):
 - SIRCL ring sessions (``runtime/common/transport.py``) run every group whose
   lanes cross at most three relays (``MAX_RELAYS``, SIRCL's qualified limit):
   pairs, paths of three to five Sparks and whole cycles of three to eight. A
-  path of six or more Sparks is unsupported.
+  research-only six-Spark profile may opt into four relays; larger paths are unsupported.
 
 A placement is also a *slot*. Each slot records its own active deployment
 and its own model switch: the whole fabric keeps ``active.json`` and
@@ -187,11 +187,14 @@ def forwarding_positions(layout, placement):
     return list(value["positions"][1:-1])
 
 
-def unsupported(layout, placement):
+def unsupported(layout, placement, *, profile=None):
     """Why no transport runs the placement's group, or None."""
     value = group(layout, placement)
     count = relays(value)
-    if count > MAX_RELAYS:
+    research_path6 = (value["shape"] == fabric_layout.PATH and value["size"] == 6
+                      and profile in installer.profiles.relayed_research())
+    limit = 4 if research_path6 else MAX_RELAYS
+    if count > limit:
         return (f"{text(placement, layout['size'])} form a line of {WORDS[value['size']]} Sparks whose ends are "
                 f"{WORDS[count]} relays apart; SIRCL ring sessions cross at most {WORDS[MAX_RELAYS]} relays, so a line "
                 "of six or more Sparks is unsupported. Use a line of at most five Sparks, or every Spark of a cycle")
@@ -258,7 +261,7 @@ def check(placement, *, layout, profile_nodes, profile):
         if profile_nodes != size:
             raise ValueError(f"{profile} serves {WORDS.get(profile_nodes, profile_nodes)} Sparks and this "
                              f"{fabric_layout.name(layout)} has {WORDS[size]}")
-        problem = unsupported(layout, None)
+        problem = unsupported(layout, None, profile=profile)
         if problem:
             raise ValueError(problem)
         return None
@@ -269,7 +272,7 @@ def check(placement, *, layout, profile_nodes, profile):
             raise ValueError(f"{profile} uses all {WORDS[size]} Sparks; --on applies to {noun} profiles")
         raise ValueError(f"{profile} serves {WORDS.get(profile_nodes, profile_nodes)} Sparks; {text(placement)} are "
                          f"{WORDS[len(placement)]}")
-    problem = unsupported(layout, placement)
+    problem = unsupported(layout, placement, profile=profile)
     if problem:
         raise ValueError(problem)
     return placement
@@ -290,7 +293,8 @@ def fitting_profiles(layout):
         nodes = row["nodes"]
         if not row["automated"] or not isinstance(nodes, int) or nodes > size or nodes < 2:
             continue
-        if nodes == size or any(unsupported(layout, candidate) is None for candidate in aligned(layout, nodes)):
+        if nodes == size or any(unsupported(layout, candidate, profile=row["profile"]) is None
+                                for candidate in aligned(layout, nodes)):
             found.append(row["profile"])
     return sorted(found)
 
@@ -567,7 +571,7 @@ def choose(state_root, profile, layout, nodes):
     any of its Sparks. The one free candidate is chosen; otherwise
     ValueError names every candidate and what holds it.
     """
-    candidates = [candidate for candidate in aligned(layout, nodes) if unsupported(layout, candidate) is None]
+    candidates = [candidate for candidate in aligned(layout, nodes) if unsupported(layout, candidate, profile=profile) is None]
     serving = running(state_root)
     holding = {}
     for candidate in candidates:

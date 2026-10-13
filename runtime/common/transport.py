@@ -538,10 +538,13 @@ def sircl_layout(document):
     return f"path:{size}" if shape == fabric_layout.PATH else f"ring:{size}"
 
 
-def group_topology(layout_text, positions):
+def group_topology(layout_text, positions, *, research=False):
     _, _, fabric = _sircl()
     try:
-        return fabric.describe_group(fabric.Layout.parse(layout_text), list(positions))
+        # Only the research TP6 admission changes. Its routes must agree with
+        # the installed universal table, including relays without a model rank.
+        scope = "fabric" if research and len(positions) == 6 else "group"
+        return fabric.describe_group(fabric.Layout.parse(layout_text), list(positions), route_scope=scope)
     except fabric.FabricError as error:
         raise TransportError(str(error)) from None
 
@@ -623,7 +626,7 @@ def section(image_value, document, positions, *, nccl, tuning, dcp=1, root=ROOT,
     _require(unavailable(image_value, document) is None, "SIRCL cannot run: " + str(unavailable(image_value, document)))
     nccl = nccl_mode(nccl) or DEFAULT_NCCL
     layout = sircl_layout(document)
-    topology = group_topology(layout, positions)
+    topology = group_topology(layout, positions, research=True)
     shape, size = topology.fabric.kind, len(topology.members)
     name, row = tuning_row(tuning, shape, size)
     sircl = image_lock.sircl(image_value)
@@ -693,7 +696,7 @@ def validate_section(value, card, image_runtime):
              "The transport group's decode-context parallelism divides its ranks")
     _require(group["size"] == len(group["positions"]) == card["nodes"],
              f"The transport group has {card['nodes']} positions, one per rank")
-    topology = group_topology(group["layout"], group["positions"])
+    topology = group_topology(group["layout"], group["positions"], research=True)
     _require(group["layout"] == sircl_layout(fabric) and topology.fabric.kind == group["shape"]
              and topology.max_relays() == group["max_relays"] and topology.lane_count == group["lanes"]
              and topology.nccl_policy.value == group["cabling"] and group["name"] == group_name(group["shape"],
@@ -790,7 +793,7 @@ def nccl_section(image_value, document, positions, *, dcp=1):
     except sircl_fabric.FabricError as error:
         raise TransportError(str(error)) from None
     _require(raw_policy is not sircl_fabric.NcclPolicy.NONE, nccl_refusal(raw_reason))
-    topology = group_topology(layout, positions)
+    topology = group_topology(layout, positions, research=True)
     shape, size = topology.fabric.kind, len(topology.members)
     if dcp != 1:
         for group in dcp_topologies(layout, positions, dcp):
@@ -838,7 +841,7 @@ def validate_nccl_section(value, card, image_runtime):
     _require(group["layout"] == sircl_layout(fabric_value),
              "The transport group differs from its layout and positions")
     layout = group["layout"]
-    topology = group_topology(layout, group["positions"])
+    topology = group_topology(layout, group["positions"], research=True)
     _require(topology.fabric.kind == group["shape"] and topology.max_relays() == group["max_relays"]
              and topology.lane_count == group["lanes"] and topology.nccl_policy.value == group["cabling"]
              and group["name"] == group_name(group["shape"], group["size"]),
@@ -878,7 +881,7 @@ def receipt_directory(lock):
 def policy(value, environment):
     """``(NCCL policy, reason)`` the SIRCL adapter applies to the tensor-parallel group."""
     _, guard, _ = _sircl()
-    topology = group_topology(value["group"]["layout"], value["group"]["positions"])
+    topology = group_topology(value["group"]["layout"], value["group"]["positions"], research=True)
     return guard.effective_policy(topology.nccl_policy, topology.nccl_reason, nccl_mode=value["nccl"],
                                   environ=environment)
 
@@ -932,7 +935,8 @@ def dcp_topologies(layout_text, positions, size):
              f"decode-context parallelism {size} must divide the group's {len(positions)} ranks")
     try:
         layout = fabric.Layout.parse(layout_text)
-        return [fabric.describe_group(layout, positions[start:start + size], parent=positions)
+        scope = "fabric" if len(positions) == 6 else "group"
+        return [fabric.describe_group(layout, positions[start:start + size], parent=positions, route_scope=scope)
                 for start in range(0, len(positions), size)]
     except fabric.FabricError as error:
         raise TransportError(str(error)) from None
@@ -1030,7 +1034,7 @@ def environment(value, profile_environment, arguments):
         raise TransportError(str(error)) from None
     settings = value["tuning"]["settings"]
     taken = table_settings(value)
-    topology = group_topology(value["group"]["layout"], value["group"]["positions"])
+    topology = group_topology(value["group"]["layout"], value["group"]["positions"], research=True)
     capacity = settings.get("capacity", plan.DEFAULT_CAPACITY)
     dispatch = settings.get("dispatch", capacity)
     gather = settings.get("gather", plan.DEFAULT_GATHER)
@@ -1102,6 +1106,10 @@ def environment(value, profile_environment, arguments):
             "SIRCL_GID_INDEX": str(gid),
             **plan.DISABLED_TRANSPORTS,
         }
+        if topology.max_relays() > 3:
+            common["SIRCL_MAX_RELAYS"] = str(topology.max_relays())
+        if len(topology.members) == 6:
+            common["SIRCL_ROUTE_SCOPE"] = "fabric"
         if spin is not None:
             common["SIRCL_SPIN_LIMIT"] = str(spin)
         common.update(plan.oneshot_environment(settings.get("oneshot_max"), dispatch))

@@ -27,7 +27,7 @@ COMMITTED = {
     ("local-inference-lab/GLM-5.3-NVFP4", "b472e4ee53f6a9862da5486c56c6ca21be3dab70"):
         ["glm53-nvfp4-tp8", "glm53-nvfp4-tp8-dcp1"],
     ("local-inference-lab/GLM-5.3-NVFP4-CSF", "a4d406932f2db96db8e852867c7939f448e0cd6f"):
-        ["glm53-nvfp4-csf-tp8"],
+        ["glm53-nvfp4-csf-tp6", "glm53-nvfp4-csf-tp8"],
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
@@ -64,7 +64,7 @@ DERIVED = {
         [("qwen38-flash-next-qad-tp4", "qad-step5500-mxfp8-attention"),
          ("qwen38-flash-next-tp2", "qad-step5500-mxfp8-attention")],
     ("sparkring-derived/GLM-5.3-NVFP4-CSF-Serving", "bbd8f71def6bde14a201887796692cb1cc4828a8"):
-        [("glm53-nvfp4-csf-tp8", "csf-serving")],
+        [("glm53-nvfp4-csf-tp6", "csf-serving"), ("glm53-nvfp4-csf-tp8", "csf-serving")],
 }
 
 

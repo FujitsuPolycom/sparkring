@@ -243,7 +243,14 @@ descriptor pins the version 0.3.4 wheel and source archive, built from Git tree
 `dev-20261001-statusrows-cuda1342-nccl2323-status034`, which the
 `installer-derived-layer` entry of [builders.json](builders.json) lists. Its
 build follows the descriptor commands below, with `--status-artifacts` naming a
-directory that holds both files.
+directory that holds both files. The
+[installer-status038](compositions/installer-status038/descriptor.json)
+descriptor pins the version 0.3.8 wheel and source archive, which carry both
+the CPU stat-logger plugin and the TP6 resident quantization facts, built from
+Git tree `ae8b68dd7114fc68e3485186e26c810118085aa8` with archive time
+`1791927655`. It names the image with ID `sha256:d52737a109e0` as its parent and
+is a development composition; `prepare --parent-lock` stacks it on an image
+derived from that parent.
 
 ### Commands
 
@@ -261,6 +268,15 @@ python3 runtime/images/derived_layer.py prepare \
   --base-receipt base.json --toolchain-receipt toolchain.json \
   [--status-artifacts STATUS_DIRECTORY] --output CONTEXT
 ```
+
+`--parent-lock LOCK` stacks the same descriptor on another local image, for
+example an image derived from the descriptor's own parent by a code layer.
+`LOCK` replaces the descriptor's `parent_lock` and passes the same validation:
+the copied receipts must match it, each replaced file's `inherited_sha256` must
+match its receipt, and a status replacement must change the version that its
+receipt records. `plan.json` and the provenance receipt name the descriptor's
+own `parent_lock` as `descriptor_parent_lock` beside the parent image actually
+used. The descriptor and its pinned artifacts are unchanged.
 
 A code layer takes the parent lock and reads the parent files it edits, through
 a network-less container of the local parent image or, with `--parent-root`,

@@ -76,6 +76,8 @@ class Variable:
 
 
 VARIABLES: tuple[Variable, ...] = (
+    Variable("SIRCL_ROUTE_SCOPE", "group routes over group-owned cables; fabric uses the existing universal "
+             "relay table of the whole physical fabric, including positions without ranks", "group"),
     Variable("SIRCL_MODE", "custom enables the adapter in every vLLM process; disabled leaves "
              "vLLM unchanged", "disabled"),
     Variable("SIRCL_FABRIC", "physical fabric of the Sparks this instance runs on: ring:N, "
@@ -135,6 +137,10 @@ def _choice(name: str, choices: tuple[str, ...], default: str,
 
 def mode(environ: Mapping[str, str] | None = None) -> str:
     return _choice("SIRCL_MODE", MODES, "disabled", environ)
+
+
+def route_scope(environ: Mapping[str, str] | None = None) -> str:
+    return _choice("SIRCL_ROUTE_SCOPE", ("group", "fabric"), "group", environ)
 
 
 def enabled(environ: Mapping[str, str] | None = None) -> bool:

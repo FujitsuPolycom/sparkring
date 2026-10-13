@@ -17,11 +17,11 @@ COMMON = {"decode_context_parallel_size": 1, "pipeline_parallel_size": 1}
 # A serving profile's group of Sparks: ``direct-<shape>-<size>`` names the fabric layout
 # (runtime/common/fabric_layout.py) of a group of that many ranks, one per Spark; the
 # other names are the switched and mesh topologies of profiles with their own guides.
-TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "direct-cycle-8", "sparkring-rocenante-mesh",
+TOPOLOGIES = {"direct-pair-2", "direct-cycle-4", "direct-path-6", "direct-cycle-8", "sparkring-rocenante-mesh",
               "tp2-rocenante-adaptive", "switched"}
-DIRECT = {"direct-pair-2": ("pair", 2), "direct-cycle-4": ("cycle", 4), "direct-cycle-8": ("cycle", 8)}
+DIRECT = {"direct-pair-2": ("pair", 2), "direct-cycle-4": ("cycle", 4), "direct-path-6": ("path", 6), "direct-cycle-8": ("cycle", 8)}
 # Topologies whose ranks reach each other through relays, so that only SIRCL ring sessions run them.
-RELAYED = frozenset({"direct-cycle-8"})
+RELAYED = frozenset({"direct-path-6", "direct-cycle-8"})
 # Discovery reads two catalogs with the same rows (``{"id", "path"}``). CATALOG
 # lists the profiles that the Compose deployment identity covers: every
 # Compose export's label hashes this file (compose.source_inventory).

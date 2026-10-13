@@ -43,7 +43,8 @@ image's ``verify`` and the installer's admission read: the owned Python root
 version's files in ``removed_files``, and ``capabilities.runtime_status``.
 
 ``prepare`` checks the parent's receipts against the parent lock and writes a
-Docker build context; it never builds. A descriptor needs only the two
+Docker build context; it never builds. A descriptor names its parent lock; its
+``--parent-lock`` stacks the same layer on another parent, checked the same way. A descriptor needs only the two
 receipts; a code layer also reads the parent files it edits, from the local
 image through a network-less container or from an exported root filesystem.
 ``record`` inspects the built image, runs the installer's admission for every
@@ -493,8 +494,10 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
     """Write a build context whose receipts record the derived files.
 
     ``layer`` is a ``Layer`` or a validated descriptor record (then ``identity``
-    holds its id and repository). ``read`` supplies the parent's receipts and,
-    for a ``Layer``, the files it edits.
+    holds its id and repository, and ``identity["restacked_from"]``, when
+    present, the repository path of the descriptor's own parent lock that
+    ``lock`` replaces). ``read`` supplies the parent's receipts and, for a
+    ``Layer``, the files it edits.
     """
     output = Path(output).resolve()
     if output.exists():
@@ -549,6 +552,8 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
         if identity is not None:
             # Descriptor layers also name themselves and their parent release.
             provenance.update(id=name, parent_release=lock["name"])
+            if identity.get("restacked_from"):
+                provenance["descriptor_parent_lock"] = identity["restacked_from"]
         if status_provenance is not None:
             provenance["runtime_status"] = status_provenance
         written[provenance_path] = canonical_json(provenance)
@@ -567,6 +572,8 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
     }
     if descriptor_sha256 is not None:
         plan["descriptor_sha256"] = descriptor_sha256
+    if identity is not None and identity.get("restacked_from"):
+        plan["descriptor_parent_lock"] = identity["restacked_from"]
     if plugins:
         plan["plugins"] = plugins
     (output / "plan.json").write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n")
@@ -576,15 +583,31 @@ def prepare_layer(layer, lock, read, output, *, status=None, status_artifacts=No
                       "-t", "<tag>", str(output)]}
 
 
-def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output, status_artifacts=None):
+def descriptor_parent(record, repository, parent_lock=None):
+    """``(lock, identity)`` of a descriptor layer's parent.
+
+    The parent is the descriptor's ``parent_lock``, or ``parent_lock`` (a lock
+    file path) to stack the same layer on another image, for example one
+    derived from the descriptor's parent. A stacked parent passes the same
+    lock validation and receipt checks; the plan and the provenance receipt
+    name the descriptor's own parent lock beside the parent actually used.
+    """
+    identity = {"repository": repository}
+    if parent_lock is None:
+        return _parent_lock(record, repository), identity
+    identity["restacked_from"] = record["parent_lock"]
+    return load_lock(parent_lock), identity
+
+
+def prepare(descriptor_path, repository, base_receipt, toolchain_receipt, output, status_artifacts=None,
+            parent_lock=None):
     """Prepare a descriptor layer offline from the parent's two copied receipts."""
     record = descriptor(descriptor_path)
     repository = Path(repository).resolve()
-    lock = _parent_lock(record, repository)
+    lock, identity = descriptor_parent(record, repository, parent_lock)
     return prepare_layer(record, lock, receipt_reader(base_receipt, toolchain_receipt), output,
                          status=record.get("runtime_status"), status_artifacts=status_artifacts,
-                         identity={"repository": repository},
-                         descriptor_sha256=digest(Path(descriptor_path).read_bytes()))
+                         identity=identity, descriptor_sha256=digest(Path(descriptor_path).read_bytes()))
 
 
 # Build and record.
@@ -713,6 +736,9 @@ def main(layer=None, argv=None):
         prepared.add_argument("--repository", type=Path, default=Path(__file__).resolve().parents[2])
         prepared.add_argument("--status-artifacts", type=Path,
                               help="directory holding the descriptor's pinned status wheel and source archive")
+        prepared.add_argument("--parent-lock", type=Path,
+                              help="installer lock of another parent image to stack this layer on; "
+                                   "default: the descriptor's parent_lock")
     else:
         prepared.add_argument("--parent-lock", required=True, type=Path, help="installer lock of the parent image")
     prepared.add_argument("--base-receipt", type=Path, help="the parent's " + BASE_RECEIPT)
@@ -738,7 +764,7 @@ def main(layer=None, argv=None):
             if layer is None:
                 spec = descriptor(args.descriptor)
                 repository = args.repository.resolve()
-                lock = _parent_lock(spec, repository)
+                lock, identity = descriptor_parent(spec, repository, args.parent_lock)
             else:
                 lock = load_lock(args.parent_lock)
             fallback = root_reader(args.parent_root) if args.parent_root else docker_reader(lock["image_id"])
@@ -746,7 +772,7 @@ def main(layer=None, argv=None):
                     if args.base_receipt else fallback)
             if layer is None:
                 result = prepare_layer(spec, lock, read, args.output, status=spec.get("runtime_status"),
-                                       status_artifacts=args.status_artifacts, identity={"repository": repository},
+                                       status_artifacts=args.status_artifacts, identity=identity,
                                        descriptor_sha256=digest(args.descriptor.read_bytes()))
             else:
                 result = prepare_layer(layer, lock, read, args.output)

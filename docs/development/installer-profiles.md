@@ -261,7 +261,7 @@ adding, changing or removing a research-only profile changes no Compose export
 (`runtime/common/test_compose.py`).
 
 A research profile whose serving configuration's topology lets its ranks reach
-each other only through relays (`direct-cycle-8`, `profiles.RELAYED`) runs only
+each other only through relays (`direct-cycle-8` or `direct-path-6`, `profiles.RELAYED`) runs only
 on SIRCL ring sessions. `installer_image.SIRCL_ONLY`, `compose.FABRIC_PROFILES`
 and `toolchain_profiles.fabric_configs` read it from the research catalog, and it
 joins `installer_image.QWEN4_EXP` when its environment sets
@@ -310,3 +310,13 @@ thinking record's `source.generation_configs` maps each pinned file's SHA-256
 to these values; tests cover every served GLM checkpoint, including the derived
 CSF serving layout. A checkpoint lacking these values requires an explicit
 `--override-generation-config` in its profile before it can use this policy.
+
+### Research profiles of six Sparks
+
+`glm53-nvfp4-csf-tp6` uses `direct-path-6`, the research catalog, automatic
+SIRCL-only registration and the existing CSF checkpoint pins. Its profile guide
+records the padded HF overrides and the omitted TP8-only checks. Its six ranks
+use the fabric's universal routes (`SIRCL_ROUTE_SCOPE=fabric`), so the closing
+route 5-6-7-0 crosses at most three relays. Only an image lock built with the
+TP6 SIRCL layer admits it. A six-rank CPU render is not deployment
+qualification.

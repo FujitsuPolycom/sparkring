@@ -257,6 +257,28 @@ def test_staged_column_gathers_equal_the_tiled_gather_bit_for_bit(shape, dtype, 
             assert kinds == ["tiles"] * 3 and staged[rank].staging_bytes == 0
 
 
+def test_six_rank_without_links_can_disable_column_probe_bit_exactly():
+    from dataclasses import replace
+    world = 6
+    sessions = _sessions(None, world=world)
+    inputs = _inputs((24, 2816), torch.bfloat16, seed=61, world=world)
+    probes = [executor.ColumnGather(True) for _ in range(world)]
+
+    def body(rank):
+        x = inputs[rank]
+        plan = planner.plan_all_gather(TensorMeta.of(x), -1, replace(LIMITS, world=world), POLICY,
+                                       capturing=False)
+        on = executor.all_gather(sessions[rank], plan, x, -1, world, column_gather=probes[rank])
+        off = executor.all_gather(sessions[rank], plan, x, -1, world,
+                                  column_gather=executor.ColumnGather(False))
+        return on, off
+
+    expected = torch.cat(inputs, dim=-1)
+    for rank, (on, off) in enumerate(run_ranks(world, body)):
+        assert _same(on, off) and _same(off, expected)
+        assert probes[rank].last_route is None and probes[rank].staging_bytes == 0
+
+
 def test_ranks_with_different_switches_diverge_instead_of_mixing_paths():
     sessions = _sessions("ring")
     inputs = _inputs((512, 72), torch.bfloat16, seed=37)

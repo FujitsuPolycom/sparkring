@@ -38,7 +38,7 @@ SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
 # Compose exports. They are read from profiles.RESEARCH_CATALOG, which no Compose label hashes.
 FABRIC_PROFILES = tuple(profiles.relayed_research())
 # Node counts of the sites the adapter renders.
-NODE_COUNTS = (2, 4, 8)
+NODE_COUNTS = (2, 4, 6, 8)
 LABEL = "io.sparkring.deployment"
 
 

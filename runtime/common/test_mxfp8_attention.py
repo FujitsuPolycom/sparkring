@@ -227,7 +227,7 @@ def _mxfp8_e4m3_quantize_torch(tensor, swizzled):
 '''
 
 
-def test_recipe_runs_as_program_text_with_the_vllm_quantizer(tmp_path):
+def test_recipe_runs_as_program_text_with_the_vllm_quantizer(tmp_path, monkeypatch):
     """The installer runs the file's text with python3 -c; a stub vLLM module stands in for the image's."""
     base, donor, record = fixture(tmp_path / "in")
     package = tmp_path / "stub" / "vllm/model_executor/layers/quantization/utils"
@@ -237,7 +237,13 @@ def test_recipe_runs_as_program_text_with_the_vllm_quantizer(tmp_path):
     (package / "mxfp8_utils.py").write_text(STUB)
     out = tmp_path / "out"
     out.mkdir()
-    environment = {**os.environ, "PYTHONPATH": os.pathsep.join([str(tmp_path / "stub"), *sys.path])}
+    unrelated = tmp_path / 'unrelated-image'
+    unrelated.mkdir()
+    (unrelated / 'sitecustomize.py').write_text('import os; os._exit(78)\n')
+    monkeypatch.syspath_prepend(str(unrelated))
+    # Pytest adds archived image directories to sys.path during broad collection.
+    # A synthetic quantizer subprocess must not run their startup hooks.
+    environment = {**os.environ, "PYTHONPATH": str(tmp_path / "stub")}
     source = Path(recipe.__file__).read_text(encoding="utf-8")
     done = subprocess.run([sys.executable, "-c", source, "--base", str(base), "--donor", str(donor), "--out", str(out),
                            "--record", json.dumps(record)], capture_output=True, text=True, env=environment)

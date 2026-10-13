@@ -645,3 +645,32 @@ def test_official_authentication_middleware_guards_status_if_source_available():
             response = client.get(route, headers={"Authorization": "Bearer test-secret"})
             assert response.status_code == 200
             assert "test-secret" not in response.text
+
+
+def method(name, module):
+    return type(name, (), {'__module__': 'vllm.model_executor.layers.quantization.online.' + module})()
+
+
+def test_projection_inventory_counts_methods_and_ignores_bf16_kv():
+    mx = method('Mxfp8OnlineLinearMethod', 'mxfp8')
+    expert = method('Nvfp4OnlineA16MoEMethod', 'nvfp4')
+    model = NS(_modules={
+        'q_b_proj': NS(quant_method=mx), 'o_proj': NS(quant_method=mx),
+        'kv_b_proj': NS(quant_method=object()),
+        'experts': NS(quant_method=NS(old_quant_method=expert)),
+    })
+    facts = c.projection_quantization(model, 'draft')
+    assert {key: item['value'] for key, item in facts.items()} == {
+        'draft_qo_projections': 2, 'draft_qo_mxfp8': 2, 'draft_nvfp4_a16_experts': 1}
+    model._modules['o_proj'].quant_method = object()
+    assert c.projection_quantization(model, 'draft')['draft_qo_mxfp8']['value'] == 1
+
+
+def test_missing_and_truncated_models_are_unknown_and_properties_never_run():
+    class Lazy:
+        @property
+        def quant_method(self):
+            raise AssertionError('must not invoke a property')
+    assert c.projection_quantization(Lazy(), 'target')['target_qo_mxfp8']['value'] == 0
+    for model in (c.MISSING, NS(_modules={str(i): NS() for i in range(8193)})):
+        assert all(row['state'] == 'unknown' for row in c.projection_quantization(model, 'target').values())

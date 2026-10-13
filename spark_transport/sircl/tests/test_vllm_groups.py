@@ -26,6 +26,23 @@ from sparkring_sircl.vllm.fabric import Layout, NcclPolicy  # noqa: E402
 RING_NCCL = {"NCCL_ALGO": "Ring", "NCCL_SKIP_TREE_CONNECT": "1"}
 
 
+def test_path6_requires_explicit_research_relay_limit():
+    from sparkring_sircl.vllm.fabric import FabricError
+    env = {"SIRCL_FABRIC": "ring:8", "SIRCL_RANK_POSITIONS": "0,1,2,3,4,5",
+           "SIRCL_GROUPS": "tp,dcp", "SIRCL_NCCL": "never"}
+    with pytest.raises(FabricError, match="qualified limit is 3"):
+        GroupPlacement.of("tp:0", range(6), 0, AdapterConfig.from_env(6, env), environ=env)
+    env["SIRCL_MAX_RELAYS"] = "4"
+    config = AdapterConfig.from_env(6, env)
+    placed = GroupPlacement.of("tp:0", range(6), 0, config, environ=env)
+    assert placed.topology.max_relays() == config.max_relays == 4
+    assert placed.policy is NcclPolicy.NONE
+    assert placed.topology.lanes(5, 0)[0].positions == (5, 4, 3, 2, 1, 0)
+    for value in ("-1", "invalid"):
+        with pytest.raises(ValueError, match="SIRCL_MAX_RELAYS"):
+            AdapterConfig.from_env(6, {**env, "SIRCL_MAX_RELAYS": value})
+
+
 @pytest.fixture
 def sessions(monkeypatch):
     module = emulation.session_module("sircl_emulated_test")

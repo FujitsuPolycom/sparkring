@@ -30,6 +30,7 @@ STATUS_LABELS = {
 TOPOLOGY_LABELS = {
     'direct-pair-2': 'pair',
     'direct-cycle-4': 'ring of 4',
+    'direct-path-6': 'path of 6',
     'direct-cycle-8': 'ring of 8',
     'sparkring-rocenante-mesh': 'RoCEnante mesh (SIRCL carries most collectives)',
     'tp2-rocenante-adaptive': 'pair (RoCEnante adaptive bundle)',

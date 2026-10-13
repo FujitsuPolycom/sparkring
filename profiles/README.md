@@ -230,6 +230,15 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
+<summary>GLM-5.3 · 6 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP2 | path of 6 | Off | Experimental | [glm53-nvfp4-csf-tp6](../profiles/glm53-nvfp4-csf-tp6/README.md) |
+
+</details>
+
+<details>
 <summary>GLM-5.3 (NVFP4 CSF experts/BF16) · 8 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |

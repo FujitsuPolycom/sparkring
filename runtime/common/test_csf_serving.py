@@ -131,7 +131,7 @@ def test_the_selection_acquires_the_container_and_serves_its_serving_directory()
     view = derived_checkpoint.view(card, manifest)
     assert installer.checkpoint_contract(view) == model and installer.checkpoint_contract(card) == configuration()["model"]
     assert derived_checkpoint.listed()[(SERVING, manifest["revision"])] == {
-        "name": NAME, "profiles": [PROFILE], "base": {"repository": REPOSITORY, "revision": REVISION}, "donor": None}
+        "name": NAME, "profiles": ["glm53-nvfp4-csf-tp6", PROFILE], "base": {"repository": REPOSITORY, "revision": REVISION}, "donor": None}
     # The thinking record is the served directory's, whose chat template is the container's.
     assert thinking.of(PROFILE)["checkpoint"] == f"{SERVING}@{manifest['revision']}"
     assert files["chat_template.jinja"]["sha256"] in thinking.of(PROFILE)["source"]["chat_templates"]

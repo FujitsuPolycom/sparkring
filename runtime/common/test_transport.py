@@ -931,11 +931,13 @@ def eight_spark_image():
 
 
 @pytest.mark.parametrize("profile", installer.installer_image.SIRCL_ONLY)
-def test_every_eight_spark_profile_renders_on_sircl_on_every_spark_of_an_eight_spark_ring(profile):
-    lock, section = sircl_deployment(profile, "cycle", 8, list(range(8)), image=eight_spark_image())
-    assert section["group"]["name"] == "cycle-8" and section["tuning"]["row"] == "cycle-8"
+def test_every_relayed_profile_renders_on_its_group_of_an_eight_spark_ring(profile):
+    nodes = installer.setup.selection(profile)["nodes"]
+    lock, section = sircl_deployment(profile, "cycle", 8, list(range(nodes)), image=eight_spark_image())
+    assert section["group"]["name"] == ("cycle-8" if nodes == 8 else "cycle-6")
+    assert section["tuning"]["row"] == ("cycle-8" if nodes == 8 else "cycle")
     specs = installer.specifications(lock)
-    assert len(specs) == 8
+    assert len(specs) == nodes
     groups = "tp,dcp" if transport.profile_dcp(profile) > 1 else "tp"
     for rank, spec in enumerate(specs):
         environment = spec.environment
@@ -943,7 +945,7 @@ def test_every_eight_spark_profile_renders_on_sircl_on_every_spark_of_an_eight_s
         assert environment["VLLM_HOST_IP"] == f"192.0.2.{20 + rank}"
         assert environment["B12X_ROCE_PEER_HCA_MAP"] == ""
         command = list(spec.command)
-        assert command[command.index("--tensor-parallel-size") + 1] == "8"
+        assert command[command.index("--tensor-parallel-size") + 1] == str(nodes)
         assert command[command.index("--node-rank") + 1] == str(rank)
         assert ("--headless" in command) == (rank > 0)
 

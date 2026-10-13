@@ -344,6 +344,47 @@ def _head(chain):
     return next((head for item in chain if (head := _module_child(item, 'lm_head')) is not MISSING), MISSING)
 
 
+def projection_quantization(model, role):
+    """Bounded resident module metadata, never tensor reads or lazy properties.
+
+    Count Q/O projections and online A16 draft experts for the GLM TP6 check.
+    Missing models or an incomplete traversal produce unknown facts.
+    """
+    pending, seen = [("", model)], set()
+    total = mxfp8 = experts = 0
+    expert_methods = set()
+    while pending and len(seen) < 8192:
+        name, module = pending.pop()
+        if module is MISSING or module is None or id(module) in seen:
+            continue
+        seen.add(id(module))
+        method = stored(module, 'quant_method', stored(module, '_quant_method'))
+        # vLLM can wrap a routed expert method after load.
+        for _ in range(4):
+            old = stored(method, 'old_quant_method')
+            if old is MISSING:
+                break
+            method = old
+        identity = type(method).__module__ + '.' + type(method).__name__
+        if name in ('q_b_proj', 'o_proj'):
+            total += 1
+            mxfp8 += identity == 'vllm.model_executor.layers.quantization.online.mxfp8.Mxfp8OnlineLinearMethod'
+        if (identity == 'vllm.model_executor.layers.quantization.online.nvfp4.Nvfp4OnlineA16MoEMethod'
+                and id(method) not in expert_methods):
+            experts += 1
+            expert_methods.add(id(method))
+        children = stored(module, '_modules')
+        if type(children) is dict:
+            if len(children) + len(pending) > 8192:
+                pending.append(("", MISSING))
+                break
+            pending.extend(children.items())
+    complete = bool(seen) and not pending
+    return {role + '_' + key: fact(value if complete else MISSING, source='resident_quant_methods',
+                                   reason=None if complete else 'missing_or_truncated')
+            for key, value in (('qo_projections', total), ('qo_mxfp8', mxfp8), ('nvfp4_a16_experts', experts))}
+
+
 def model_choices(worker):
     """Read resident head precision and a bounded sample of attention modules."""
     runner = stored(worker, 'model_runner')
@@ -354,6 +395,9 @@ def model_choices(worker):
     draft = _model_chain(_module_child(speculator, 'model'))
     target_head, draft_head = _head(target), _head(draft)
     result = {}
+    if path(stored(worker, 'vllm_config'), 'parallel_config.tensor_parallel_size') == 6:
+        for role, chain in (('target', target), ('draft', draft)):
+            result.update(projection_quantization(chain[0] if chain else MISSING, role))
     for role, head in (('target', target_head), ('draft', draft_head)):
         quantization = stored(head, 'runtime_lm_head_quantization')
         if quantization is None:
