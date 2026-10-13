@@ -49,7 +49,6 @@ def refresh_nodes(*, state_root=None, output=None, invoke=None, quiet_path=None,
     recovery can reuse its node-status reads during the same timer run.
     """
     from runtime.host import controller, host_load, node, recovery
-    from runtime.host.node_containers import MAX_CONTAINERS
     state_root = Path(state_root or controller.STATE)
     if DISABLED_PATH.exists() or quiet_state(Path(quiet_path or QUIET_PATH), now())["quiet"]:
         return {}
@@ -57,27 +56,83 @@ def refresh_nodes(*, state_root=None, output=None, invoke=None, quiet_path=None,
         hosts = host_load.recorded_targets(state_root)[:256]
         if not hosts:
             return {}
-        documents = recovery.node_documents(hosts, invoke=invoke)
-        public = []
-        fields = ("name", "image", "image_id", "managed", "engine", "served_model", "tp", "pp", "dp", "dcp",
-                  "nnodes", "node_rank", "api_port", "api_bind", "master_addr", "master_port", "headless", "dp_addr", "dp_port", "dp_rank")
-        for document in documents.values():
-            if not isinstance(document, dict) or not document.get("node_id"):
-                continue
-            row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
-                   if k in document and isinstance(document[k], (str, int, float, bool))}
-            containers = document.get("model_containers")
-            row["model_containers"] = [
-                {k: (c[k][:512] if isinstance(c[k], str) else c[k]) for k in fields
-                 if k in c and isinstance(c[k], (str, int, float, bool))}
-                for c in containers[:MAX_CONTAINERS] if isinstance(c, dict)] if isinstance(containers, list) else []
-            public.append(row)
         output = Path(output or NODE_REPORTS_PATH)
-        node.save(output.parent, output.name, {"schema": "sparkring-dashboard-nodes/v1", "written_at": now(), "nodes": public})
+        # The service reads this public directory; process_lock's default is private.
+        output.parent.mkdir(parents=True, exist_ok=True, mode=0o755)
+        from runtime.common import process_lock
+        # Serialize collection and replacement: a slower timer must not overwrite
+        # a newer cache, or discard retained observations after a transient failure.
+        with process_lock.hold(output.with_suffix(".lock")):
+            documents = recovery.node_documents(hosts, invoke=invoke)
+            public = cached_node_rows(state_root, output, documents, now())
+            node.save(output.parent, output.name, {"schema": "sparkring-dashboard-nodes/v1", "written_at": now(), "nodes": public})
         return documents
     except (OSError, ValueError, KeyError, TypeError) as error:
         _stderr(f"Dashboard: agent facts could not be cached ({type(error).__name__})")
         return {}
+
+
+def cached_node_rows(state_root, output, documents, checked_at):
+    """Project public facts by setup identity, retaining failed reads at their original age."""
+    from runtime.host.dashboard import read_json
+    from runtime.host.node_containers import MAX_CONTAINERS
+
+    def read(path):
+        try:
+            return read_json(path)
+        except (OSError, ValueError):
+            return {}
+
+    positions = read(state_root / "fabric.json").get("positions", [])
+    identities = {p["node_id"]: p for p in positions if p.get("node_id")}
+    previous = {d["node_id"]: d for d in read(output).get("nodes", []) if d.get("node_id")}
+    targets = {}
+    for host in documents:
+        address = host.rsplit("@", 1)[-1].strip("[]")
+        matches = [p["node_id"] for p in identities.values()
+                   if address in ((p.get("management") or {}).get("address"), p.get("hostname"), p.get("lan_address"))]
+        if len(matches) == 1:
+            targets[host] = matches[0]
+    fields = ("name", "image", "image_id", "managed", "engine", "served_model", "tp", "pp", "dp", "dcp",
+              "nnodes", "node_rank", "api_port", "api_bind", "master_addr", "master_port", "headless", "dp_addr", "dp_port", "dp_rank")
+    public = {}
+
+    def project(document):
+        row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
+               if k in document and isinstance(document[k], (str, int, float, bool))}
+        containers = document.get("model_containers")
+        row["model_containers"] = [
+            {k: (c[k][:512] if isinstance(c[k], str) else c[k]) for k in fields
+             if k in c and isinstance(c[k], (str, int, float, bool))}
+            for c in containers[:MAX_CONTAINERS] if isinstance(c, dict)] if isinstance(containers, list) else []
+        return row
+
+    # Setup positions remain visible even if a response has no identity, or the
+    # cluster's host list temporarily lacks a target. No list index is an identity.
+    for node_id, position in identities.items():
+        public[node_id] = {**project(previous.get(node_id, {})), "node_id": node_id,
+                           "hostname": position.get("hostname"), "position": position["position"],
+                           "status_read": "unavailable", "checked_at": checked_at}
+    for host, document in documents.items():
+        if not isinstance(document, dict):
+            continue
+        node_id = document.get("node_id")
+        expected = targets.get(host)
+        if expected and node_id != expected:
+            public[expected]["status_read"] = "identity-mismatch" if node_id else document.get("state", "unavailable")
+            continue
+        if not node_id or (identities and node_id not in identities):
+            continue
+        # A stale agent response must not replace a newer observation already saved.
+        prior = previous.get(node_id, {})
+        observed = document.get("observed_at")
+        prior_at = prior.get("observed_at")
+        selected = prior if isinstance(prior_at, (int, float)) and (
+            not isinstance(observed, (int, float)) or prior_at > observed) else document
+        public[node_id] = {**project(selected), "status_read": document.get("state", "ok"), "checked_at": checked_at}
+        if node_id in identities:
+            public[node_id]["position"] = identities[node_id]["position"]
+    return list(public.values())
 
 
 def site_from_records(state_root: Path) -> dict:

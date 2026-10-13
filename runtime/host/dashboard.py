@@ -470,8 +470,8 @@ def fabric_from_document(document: dict) -> dict:
     """The parts of a sparkring-fabric/v1 document the dashboard uses; ValueError when unusable.
 
     The full validator (runtime.common.fabric_document.validate) also checks every port and
-    cable; the dashboard needs positions, hostnames and management addresses only, so it
-    shows a document that a later setup schema extends."""
+    cable. The dashboard retains cable address ownership to resolve repeated rendezvous
+    addresses without assuming that neighbouring containers belong to one model."""
     if not isinstance(document, dict) or document.get("schema") != "sparkring-fabric/v1":
         raise ValueError("not a sparkring-fabric/v1 document")
     size, positions, shape = document.get("size"), document.get("positions"), document.get("shape")
@@ -490,7 +490,19 @@ def fabric_from_document(document: dict) -> dict:
         for port in (row.get("ports") or {}).values():
             for function in (port.get("functions") or {}).values():
                 addresses.append(str(function.get("address") or "").split("/")[0])
+        neighbors = []
+        for port in (row.get("ports") or {}).values():
+            peer = port.get("peer") or {}
+            remote_position = peer.get("position")
+            if type(remote_position) is not int or not 0 <= remote_position < size:
+                continue
+            remote_port = (positions[remote_position].get("ports") or {}).get(str(peer.get("port")), {})
+            for function in (remote_port.get("functions") or {}).values():
+                remote_address = str(function.get("address") or "").split("/")[0]
+                if _ip(remote_address):
+                    neighbors.append({"position": remote_position, "address": remote_address})
         rows.append({"position": index, "hostname": hostname, "node_id": row.get("node_id"),
+                     "neighbors": neighbors,
                      "addresses": [a for a in addresses if _ip(a)],
                      "address": address if _ip(address) else None,
                      "lan_address": row.get("lan_address") if _ip(row.get("lan_address")) else None})
@@ -537,10 +549,38 @@ def deployments_from_site(site: dict, size: int) -> list:
     return rows
 
 
+def rendezvous_head(fabric, container, observed):
+    """Resolve a master to a Spark, preferring ownership on the worker's cable.
+
+    Unique fabric/host addresses also identify masters reached through relays.
+    Legacy reports without address ownership may use a single observed rank zero;
+    multiple possible owners are never combined into an invented distributed run.
+    """
+    master = container.get("master_addr")
+    positions = {p["position"]: p for p in fabric["positions"]}
+    local = positions[container["position"]]
+    owners = {p["position"] for p in positions.values()
+              if master in p.get("addresses", [p.get("address")])
+              or master == p.get("hostname")}
+    if container.get("node_rank") == 0:
+        return container["position"] if not owners or container["position"] in owners else None
+    neighbors = {n["position"] for n in local.get("neighbors", []) if n["address"] == master}
+    if len(neighbors) == 1:
+        return next(iter(neighbors))
+    if len(owners) == 1:
+        return next(iter(owners))
+    if owners or neighbors:
+        return None
+    heads = {c["position"] for c in observed if c.get("node_rank") == 0
+             and (c.get("engine"), c.get("master_addr"), c.get("master_port")) ==
+                 (container.get("engine"), master, container.get("master_port"))}
+    return next(iter(heads)) if len(heads) == 1 else None
+
+
 def unmanaged_groups(fabric, documents, deployments, now):
-    """Join fresh agent facts by rendezvous, never by cable order or container names."""
+    """Join fresh agent facts by head Spark and port, never by list index or names."""
     from runtime.host.node_containers import MAX_CONTAINERS
-    groups = {}
+    groups, observed = {}, []
     known = {(c["position"], c["name"]) for row in deployments if not row["stopped"] for c in row["containers"]}
     for position in fabric["positions"]:
         candidates = [d for d in documents if isinstance(d, dict) and d.get("node_id") == position.get("node_id")
@@ -575,9 +615,13 @@ def unmanaged_groups(fabric, documents, deployments, now):
                     master = master.lower().rstrip(".")
                     if master == "localhost":
                         master = None
-            key = ((c.get("engine"), master, c["master_port"]) if master and c.get("master_port") else
-                   ("single", position["position"], name))
-            groups.setdefault(key, []).append(c)
+            c["master_addr"] = master
+            observed.append(c)
+    for c in observed:
+        head = rendezvous_head(fabric, c, observed) if c.get("master_addr") and c.get("master_port") else None
+        key = ((c.get("engine"), "head", head, c["master_port"]) if head is not None else
+               ("single", c["position"], c["name"]))
+        groups.setdefault(key, []).append(c)
     result = []
     for key, containers in groups.items():
         containers.sort(key=lambda c: (c.get("node_rank", 65536), c["position"], c["name"]))

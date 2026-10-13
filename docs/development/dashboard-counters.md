@@ -41,6 +41,8 @@ raw argv, arbitrary labels and environment values are excluded.
 `runtime/host/node_containers.py` parses vLLM TP/PP/DP/DCP, node count/rank,
 headless state, model name, HTTP binding/port and master rendezvous. SGLang
 aliases and `--dist-init-addr`/`--nccl-init-addr` produce the same fields.
+SparkRing's `/opt/sparkring/toolchain/toolchain.py serve` wrapper and
+`python3 -m vllm.entrypoints.cli.main serve` supply the same vLLM launch facts.
 Literal defaults are used only for recognized server launches without a
 configuration-file argument. Shell variables are not expanded. Unknown
 GPU containers remain visible with engine `unknown`; absent launch facts
@@ -60,8 +62,18 @@ starts no process and uses only its existing `ReadOnlyClient` and `READ_PATHS`.
 
 Facts match Sparks by node identity. Their original agent timestamp expires
 after `max(90, 2 * interval_seconds + 30)` seconds; cache publication never
-renews it. Groups join by engine and literal master address/port, with no
-DNS lookup, adjacency or container-name heuristic. Localhost rendezvous is
+renews it. Failed status reads retain the setup-recorded position and previous
+facts at their original age, with `status_read` and `checked_at` describing the
+read attempt. A first failed read has no model facts. Cache refreshes use a
+process lock, reject mismatched node identities and preserve newer observations.
+
+Groups join by engine, head Spark and master port. The worker's cable peer
+owning the master address takes precedence over a globally unique address
+owner, which also resolves relay paths. Repeated per-cable addresses therefore
+remain separate. Rank zero identifies itself when ownership agrees; when no
+address ownership is available, a unique observed rank zero supports legacy
+reports. Ambiguous workers remain separate, with no DNS lookup or container-name
+heuristic. Cable proximity alone never establishes membership. Localhost rendezvous is
 scoped to one Spark. Group size follows `nnodes` and observed ranks, not a
 parallel-size product. Only a unique rank-0 head supplies the model name and
 API port; an explicit API bind must match that head's recorded management,
@@ -78,7 +90,11 @@ contract. Other absent counters remain unknown. Metric names follow the
 and its [collector](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/observability/metrics_collector.py).
 Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/).
 
-Offline coverage is in `test_dashboard_unmanaged.py` and
+The agent unit preserves its shared `/run/sparkring` directory across
+stop/start, including package upgrades. Operator quiet files and holder
+records retain their contents and expiry; reboot still clears runtime state.
+
+Offline coverage is in `test_dashboard_unmanaged.py`, `test_dashboard_ring_observation.py` and
 `test_dashboard_charts.py`: both engines, one through eleven Sparks,
 non-contiguous membership, mixed parallel dimensions, incomplete groups,
 stale/stopped records, ownership, bounds, secret exclusion, restricted reads,

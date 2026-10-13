@@ -59,8 +59,13 @@ def bounded_argv(argv, depth=0):
 def launch_facts(argv):
     argv = bounded_argv(argv)
     engine = next(("vllm" if "vllm" in a else "sglang" for a in argv
-                   if a in ("vllm", "sglang", "sglang.launch_server", "vllm.entrypoints.openai.api_server")
-                   or a.endswith("/vllm")), "unknown")
+                   if a in ("vllm", "sglang", "sglang.launch_server", "vllm.entrypoints.openai.api_server",
+                            "vllm.entrypoints.cli.main")
+                   or a.endswith(("/vllm", "/sglang"))), "unknown")
+    # SparkRing's serving wrapper execs the vLLM CLI with these same arguments.
+    wrapper = "/opt/sparkring/toolchain/toolchain.py"
+    if any(a == wrapper and argv[i + 1:i + 2] == ["serve"] for i, a in enumerate(argv)):
+        engine = "vllm"
     facts = {"engine": engine}
     if engine == "unknown" or any(a in argv for a in ("bench", "preload", "--help", "--version")):
         return {"engine": "unknown"}
@@ -101,7 +106,8 @@ def launch_facts(argv):
         facts.setdefault("master_port", 29501)
     if "model" not in facts:
         for i, arg in enumerate(argv[:-2]):
-            if Path(arg).name == "vllm" and argv[i + 1] == "serve" and not argv[i + 2].startswith("-"):
+            if (Path(arg).name == "vllm" or arg in (wrapper, "vllm.entrypoints.cli.main")) \
+                    and argv[i + 1] == "serve" and not argv[i + 2].startswith("-"):
                 value = argv[i + 2]
                 if len(value) <= 512 and not any(c in value for c in "$`\n\r"):
                     facts["model"] = value

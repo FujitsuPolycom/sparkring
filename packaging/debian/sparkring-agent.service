@@ -10,6 +10,8 @@ Restart=on-failure
 RestartSec=10
 RuntimeDirectory=sparkring
 RuntimeDirectoryMode=0755
+# Shared operator quiet file and research holds must survive package stop/start.
+RuntimeDirectoryPreserve=yes
 UMask=0022
 NoNewPrivileges=yes
 ProtectSystem=strict
