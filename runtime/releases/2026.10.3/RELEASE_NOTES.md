@@ -37,7 +37,10 @@ has the evidence and the open gates.
   - Every profile states `--async-scheduling`. vLLM already turns it on for
     these models, so it changes nothing.
 - `sparkring dashboard`: a read-only status page on Node A, port 8090, and
-  `sparkring dashboard tui` for a terminal.
+  `sparkring dashboard tui` for a terminal. The install's Model ready card
+  ends with the dashboard's address while its service is enabled.
+- Plans, status, checks and the dashboard name the transport that runs:
+  SIRCL, NCCL or RoCEnante (b12x), which `--transport prepared` selects.
 - `--on` places the serving image only on the Sparks it names. Models serving
   on the other Sparks get no image write.
 - Automatic recovery restarts a four-Spark model on part of a ring of eight.
