@@ -1262,7 +1262,7 @@
           {"tp": [2], "dcp": [4, 8], "by": "vLLM recurrent_prefill_checkpoint.py (startup, every rank)", "text": "VLLM_B12X_KDA_PREFILL_COALESCING requires GLM5Next BF16, V2, TP4 with DCP1/2/4 or TP2 with DCP1, PP1/DP1, B12X KDA, an 8192-token scheduler budget, align-mode prefix caching with retention interval 0, and static MTP3 or no speculation; LoRA, EP, PCP and fairness engines are unsupported"}
         ]
       },
-      "enable": {"environment": {"VLLM_B12X_KDA_PREFILL_COALESCING": "1"}, "note": "TP2/DCP2 requires the source-derived dcp2-prefill image composition and its SIRCL build pin; published parent images still refuse it. CPU and RTX 5090 component checks only; pair performance with both features enabled is unknown."},
+      "enable": {"environment": {"VLLM_B12X_KDA_PREFILL_COALESCING": "1"}, "note": "TP2/DCP2 admits it only on the source-derived dcp2-prefill image composition; published parent images refuse it. The TP2/DCP2 profile leaves it off: at DCP2 it cost 7 % of the KV cache with no measurable prefill gain (performance/records/images/dcp2-prefill-e91876-glm53-flash-nvfp4-spark-tp2-dcp2-settings-20261013.md)."},
       "detect": [{"env": "VLLM_B12X_KDA_PREFILL_COALESCING", "equals": "1"}],
       "provided_by": {"images": ["dev-20261001-kraken-cuda1342-nccl2323-status034", "dev-20261004-kraken-cuda1342-nccl2323-status034"]},
       "status": "implemented",
@@ -1271,7 +1271,7 @@
         {"image": "dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034", "tp": 2, "dcp": 1, "streams": "1-8", "context": "0K, 32K", "checkpoint": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd", "result": "with the CSF checkpoint, two-CTA W4A16 experts and SIRCL ring schedules, GPU clocks locked, against the same configuration without --async-scheduling, KDA prefill coalescing and the four-Spark draft settings: TTFT 3.80 / 15.33 s against 4.41 / 15.90 s at 8K / 32K, decode steps within 3 % except one start's 32K / 8-stream cell; the three were not measured apart", "evidence": "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md"}
       ],
       "evidence": ["profiles/glm53-flash-nvfp4-spark-tp4/config.json", "performance/records/images/dev-20261008-kraken-csf-sircl-libsircl-tp2-tp4-matrix-20261009.md", "source: vllm@bc9ea774 vllm/v1/core/recurrent_prefill_checkpoint.py (validate_coalescing_config)"],
-      "profiles": ["glm53-flash-csf-tp8", "glm53-flash-nvfp4-spark-tp2-dcp2",
+      "profiles": ["glm53-flash-csf-tp8",
         "glm53-flash-nvfp4-spark-tp2:csf", "glm53-flash-nvfp4-spark-tp4", "glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4", "glm53-flash-spark-tp4-switched"]
     },
     {

@@ -9,10 +9,9 @@ Status: **Experimental** (machine status `research-only`). It is the CSF deploym
 [`glm53-flash-nvfp4-spark-tp2`](../glm53-flash-nvfp4-spark-tp2/profile.json)
 with vLLM's decode-context parallelism 2 (DCP2): the two Sparks of a pair split
 the KV cache between them instead of each holding a full copy, so the same
-memory holds twice the context tokens. This configuration enables KDA prefill coalescing and mHC row ownership
-through the [source-derived image](../../runtime/images/compositions/dcp2-prefill/README.md).
-Pair serving and performance with both features on are **unknown**; the
-[recorded pair measurements](#evidence) had both features off.
+memory holds twice the context tokens, and the pair serves 16 requests at once. It enables mHC prefill row
+ownership through the [source-derived image](../../runtime/images/compositions/dcp2-prefill/README.md) and
+leaves KDA prefill coalescing off. GLM-5.3-Flash thinks at effort `high` when a request does not choose.
 
 ## What the profile changes
 
@@ -22,8 +21,11 @@ Against the pair profile's `csf` checkpoint entry:
 |---|---|---|---|
 | `--decode-context-parallel-size` | 2 | 1 | splits the KV cache over the pair |
 | `--cp-kv-cache-interleave-size` | 4 | unset | GLM-5.3-Flash's attention under decode-context parallelism needs KV blocks of a multiple of 4 tokens; vLLM does not start with the default of 1 |
+| `--max-num-seqs` | 16 | 8 | the split KV cache holds 16 requests at 128K |
+| CUDA graph capture sizes | every multiple of 4 up to 64 | up to 32 | a decode step is 4 tokens per request with MTP3; steps of more than 8 requests would otherwise run without graphs |
 | `VLLM_GLM53_MHC_PREFILL_SHARD` | 1 | 1 | source-patched vLLM and SIRCL pins admit TP2/DCP2 row ownership |
-| `VLLM_B12X_KDA_PREFILL_COALESCING` | 1 | 1 | source-patched vLLM admits TP2/DCP2 checkpoint coalescing |
+| `VLLM_B12X_KDA_PREFILL_COALESCING` | 0 | 1 | at DCP2 it cost 7 % of the KV cache and gave no measurable prefill gain ([record](../../performance/records/images/dcp2-prefill-e91876-glm53-flash-nvfp4-spark-tp2-dcp2-settings-20261013.md)) |
+| default thinking effort | `high` | `high` | `serving_defaults`; the chat template's own default is `max` |
 | `--kv-cache-memory-bytes` | 15,032,385,536 (14 GiB) per Spark | 10 GiB | see [Memory](#memory) |
 | served model name | `GLM-5.3-Flash-CSF-DCP2-TP2` | `GLM-5.3-Flash-CSF-TP2` | clients can tell the two deployments apart |
 | `cache_namespace` | `glm53-flash-csf-dcp2` | `glm53-flash-nvfp4-spark` | compile caches stay apart from the DCP1 deployment's |
@@ -35,8 +37,7 @@ probabilistic draft sampling, standard rejection, BF16 draft KV),
 backends, W4A16 decode experts
 (`VLLM_B12X_MOE_FP4_FORCE_A16=1`) with 4-bit-activation prefill
 (`B12X_W4A16_A4_PREFILL_MIN_TOKENS=1536`) and small-M occupancy 2, FP8 KV,
-the 2,048-token split pages, the 1,048,576-token context window, eight
-sequences and 8,192-token prefill chunks.
+the 2,048-token split pages, the 1,048,576-token context window and 8,192-token prefill chunks.
 
 On SIRCL, the installer gives the decode-context-parallel group a SIRCL
 session of its own (`SIRCL_GROUPS=tp,dcp`); on a pair that group holds the
@@ -47,7 +48,7 @@ same two ranks as the tensor-parallel group.
 A Spark's CPU and GPU share one 128 GB memory. The CSF checkpoint's weights
 take 84.5 GiB per Spark. The profile keeps the pair profile's GPU memory
 fraction (0.87) and context window and sets 14 GiB of KV cache per Spark,
-which held 4,126,165 tokens on a pair with both prefill features off.
+which holds 4,126,165 tokens on a pair with KDA prefill coalescing off (3,835,395 with it on).
 Under those text loads up to 512K-token
 prompts, the lowest `MemAvailable` was 6.5 GiB on the API Spark and 8.0 GiB on
 the other, about 4 GiB below the DCP1 profile's at 10 GiB of KV
@@ -62,14 +63,21 @@ then use its development lock with `--image-lock PATH`. The installer rejects
 an unpatched image even if its lock lists this profile. The profile has no
 Compose exports. Building the image does not qualify its serving behavior.
 
-The existing switches independently disable either feature. On both ranks,
-`VLLM_GLM53_MHC_PREFILL_SHARD=0` and
-`VLLM_B12X_KDA_PREFILL_COALESCING=0` select the measured baseline paths.
-Keep the 8192-token budget and small graph sizes: mHC owner rows use vLLM's
-full-ceiling prepared plan, preserving its numerical geometry. Independently
-preparing or tuning a half-row plan is not covered by the exactness evidence.
+`VLLM_GLM53_MHC_PREFILL_SHARD=0` on both ranks turns mHC row ownership off.
+Keep the 8192-token budget: mHC owner rows use vLLM's full-ceiling prepared
+plan, preserving its numerical geometry. Independently preparing or tuning a
+half-row plan is not covered by the exactness evidence. A 16384-token budget
+also needs B12X to tune KDA prefill shapes it has not seen, which did not finish
+within 37 minutes on a Spark.
 
 ## Evidence
+
+**Measured, these settings:** hand-made containers on four pairs and installed starts, 2026-10-13
+([record](../../performance/records/images/dcp2-prefill-e91876-glm53-flash-nvfp4-spark-tp2-dcp2-settings-20261013.md)). With mHC on, 16 requests and KDA coalescing off, prefill measured 1,885 / 1,976 / 1,973 tok/s
+at 16K / 64K / 128K, against 1,878 / 1,942 / 1,934 for the earlier settings measured the same way. Aggregate
+decode at 16 requests was 142-145 tok/s, against 109-112 at the earlier limit of 8. An installed start with KDA
+coalescing also on measured prefill 2,151-2,217 tok/s on a different benchmark client, 5-11 % above the earlier
+settings' installed start on that client. Every setting passed a seven-prompt correctness screen.
 
 **Measured (historical, both prefill features off):** one DCP2 start and one of the DCP1 profile's `csf`
 deployment ran on the same pair of an eight-Spark ring on installer image

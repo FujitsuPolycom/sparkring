@@ -985,8 +985,8 @@ def test_decode_context_parallelism_follows_the_launchers_interleave_and_mhc_rul
 
 
 def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_cache_split():
-    # The source-derived image keeps both prefill features enabled and splits
-    # KV pages over DCP2 while preserving every other CSF pair setting.
+    # The source-derived image enables mHC row ownership, leaves KDA prefill coalescing off,
+    # splits KV pages over DCP2 and serves 16 requests; every other CSF pair setting is kept.
     from runtime.common.test_image_lock import CSF_PINS, sircl_block
     variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
     image = sircl_lock(profiles=sorted({*sircl_lock()["profiles"], variant}),
@@ -1006,9 +1006,9 @@ def test_the_pair_dcp2_variant_is_the_pair_profiles_csf_deployment_with_its_kv_c
         changed = {key for key in {*before.environment, *after.environment}
                    if before.environment.get(key) != after.environment.get(key)}
         caches = {key for key in changed if after.environment[key].startswith("/cache/glm53-flash-csf-dcp2-")}
-        assert changed - caches == {"SIRCL_GROUPS"}
+        assert changed - caches == {"SIRCL_GROUPS", "VLLM_B12X_KDA_PREFILL_COALESCING"}
         assert after.environment["SIRCL_GROUPS"] == "tp,dcp" and after.environment[serve_plan.MHC_SHARD] == "1"
-        assert after.environment["VLLM_B12X_KDA_PREFILL_COALESCING"] == "1"
+        assert after.environment["VLLM_B12X_KDA_PREFILL_COALESCING"] == "0"
         command = list(after.command)
         edits = {"--served-model-name": "GLM-5.3-Flash-CSF-DCP2-TP2", "--kv-cache-memory-bytes": "15032385536",
                  "--decode-context-parallel-size": "2", "--max-num-seqs": "16",
