@@ -359,7 +359,9 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
         segs = [lbl("arc"), (f"{where} {span_text(positions)}", style(group_color(member), bold=True))]
         if len(positions) > 1:
             segs.append((f" · {names.get(positions[0], '?')} → {names.get(positions[-1], '?')}", 0))
-        segs += [(" · from ", style(dim=True)), (arc.get("source_label") or "?", 0)]
+        # Where the placement came from matters only when the dashboard had to guess it.
+        if arc.get("inferred"):
+            segs.append((" · positions guessed", 0))
         add(*segs)
     transport = member.get("transport") or {}
     label = transport.get("label")
