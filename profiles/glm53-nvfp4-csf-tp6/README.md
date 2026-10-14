@@ -52,8 +52,9 @@ Neither padding choice has been exercised on hardware here.
 
 The draft uses DCP2, interleave 1, two-token MTP with draft TP6, eight sequences,
 4096 batched tokens and 32 GiB of KV cache per rank. Its maximum individual
-sequence is 135168 tokens, allowing a 128K prompt plus 2048 output tokens. Eight simultaneous contexts at that length may exceed
-the cache; record queueing and preemption instead of claiming resident capacity.
+sequence is 1048576 tokens (1M), as for the eight-Spark GLM-5.3 profile. The 32 GiB KV cache per rank holds
+1,255,552 tokens, so one request can use the full context; concurrent long requests queue or are preempted, so
+record queueing and preemption instead of claiming resident capacity.
 DCP3 is an unmeasured alternative. DCP6 requires disabling the indexer row-split
 plugin, which requires at least two KV copies. The full model has no Flash mHC
 row-sharding restriction.

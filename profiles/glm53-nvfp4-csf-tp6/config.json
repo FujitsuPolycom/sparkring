@@ -126,7 +126,7 @@
     "--host",
     "0.0.0.0",
     "--max-model-len",
-    "135168",
+    "1048576",
     "--max-num-seqs",
     "8",
     "--max-num-batched-tokens",
