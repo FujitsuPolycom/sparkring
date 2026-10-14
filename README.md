@@ -66,18 +66,7 @@ Version 0.1.0 is research-only and tested with NCCL 2.32.3.
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 8000 | on · xhigh |
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 8015 | on · xhigh |
 
-`glm53-flash-tp2` and `glm53-flash-tp4` are short names of the profile IDs
-`glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`; both names
-install the CSF checkpoint on this image. `glm53-flash-tp2-dcp2` is the short
-name of `glm53-flash-nvfp4-spark-tp2-dcp2`, an Experimental profile whose two
-Sparks split the KV cache (decode-context parallelism 2); it installs on an
-image whose lock lists it (`sparkring images --profile glm53-flash-tp2-dcp2`).
-`qwen38-flash-next-tp2` installs the
-Qwen CSF checkpoint on this image and serves it as
-`Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2`; `--checkpoint qad-step5500-ple1000`
-installs step 5500 instead. `qwen38-flash-next-tp4` is the short
-name of the profile ID `qwen38-flash-next-qad-tp4`. The other eight-Spark
-profiles are Experimental ([profile catalog](profiles/README.md)).
+More profiles and options: [profile catalog](profiles/README.md).
 
 ## Speed
 
