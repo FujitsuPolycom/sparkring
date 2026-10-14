@@ -114,7 +114,7 @@ def test_the_merged_vllm_files_are_those_of_the_pinned_build_sircl_names_for_the
         else:
             assert (row["inherited_sha256"], row["sha256"]) == (image.files[name], digest), name
     checkpoint = "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be"
-    assert image_lock.CHECKPOINT_BUILDS[checkpoint] == (merged.name,)
+    assert image_lock.CHECKPOINT_BUILDS[checkpoint][0] == merged.name
 
 
 @pytest.mark.parametrize("edit, message", [

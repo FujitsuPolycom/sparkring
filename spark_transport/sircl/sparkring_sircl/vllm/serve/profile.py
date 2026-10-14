@@ -339,13 +339,21 @@ def _rank_container(document: Any, rank: int, relative: str) -> RankContainer:
 
 
 def _check_rank(container: RankContainer, *, rank: int, served: str, arguments: tuple[str, ...],
-                environment: dict[str, str], image_reference: str, port: int, relative: str) -> None:
+                environment: dict[str, str], image_reference: str, port: int, relative: str,
+                chat_defaults: bool = False) -> None:
     command = container.command
     head = ("serve", "/models/target", "--served-model-name", served, "--node-rank", str(rank), "--master-addr")
     if command[:len(head)] != head or len(command) < len(head) + 1:
         raise ProfileError(f"{relative}: the command starts {list(command[:8])}, expected {list(head)} <address>")
     tail = command[len(head) + 1:]
     expected = arguments + ((HEADLESS,) if rank else ())
+    # A profile whose config.json sets serving_defaults (for example a default reasoning effort) has the
+    # installer write them as one trailing --default-chat-template-kwargs JSON object on the API rank
+    # (runtime/common/serving.py, chat_defaults). The recipe check accepts that pair; this launcher sets its
+    # own chat template defaults with --reasoning-effort.
+    if (chat_defaults and not rank and len(tail) == len(expected) + 2 and tail[:len(expected)] == expected
+            and tail[-2] == "--default-chat-template-kwargs" and tail[-1].startswith("{")):
+        tail = tail[:len(expected)]
     if tail != expected:
         differing = [(index, a, b) for index, (a, b) in enumerate(zip(tail, expected)) if a != b][:3]
         raise ProfileError(f"{relative}: the vLLM arguments differ from config.json's recipe "
@@ -460,7 +468,8 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
         relative = f"{base}/compose/compose.rank{rank}.yaml"
         container = _rank_container(_yaml(root, relative, sources), rank, relative)
         _check_rank(container, rank=rank, served=served, arguments=arguments, environment=environment,
-                    image_reference=image_reference, port=port, relative=relative)
+                    image_reference=image_reference, port=port, relative=relative,
+                    chat_defaults=bool(config.get("serving_defaults")))
         ranks.append(container)
     extra = root / f"{base}/compose/compose.rank{tp}.yaml"
     if extra.exists():
