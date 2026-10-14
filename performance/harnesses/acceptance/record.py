@@ -24,8 +24,12 @@ STATUSES = ("implemented", "qualified", "research-only")
 
 
 def image_short(image):
-    """`dev-20260927-b12xcache-cuda1342-nccl2323-status032` -> `dev-20260927-b12xcache`."""
-    return re.sub(r"-cuda\d.*$", "", image)
+    """The image name without its toolchain and status parts.
+
+    `dev-20260927-b12xcache-cuda1342-nccl2323-status032` and
+    `dev-20261013-dcp2prefill-status038` -> `dev-20260927-b12xcache`, `dev-20261013-dcp2prefill`.
+    """
+    return re.sub(r"-(?:cuda\d|status\d).*$", "", image)
 
 
 def record_name(image, topic, date):

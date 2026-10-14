@@ -32,6 +32,7 @@ def summary(rates=(27.0853, 139.0267, 205.5873), prefill=(2675.0, 2749.0, 2040.0
 def test_record_name_uses_the_image_prefix():
     assert record.image_short(IMAGE) == "dev-20260927-b12xcache"
     assert record.image_short("custom-image") == "custom-image"
+    assert record.image_short("dev-20261013-dcp2prefill-status038") == "dev-20261013-dcp2prefill"
     assert record.record_name(IMAGE, "mimo-v26-tp2", "20260927") == "dev-20260927-b12xcache-mimo-v26-tp2-20260927"
     for topic, date in (("Bad Topic", "20260927"), ("ok", "2026-09-27"), ("../x", "20260927")):
         with pytest.raises(ValueError):

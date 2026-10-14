@@ -67,22 +67,21 @@ release there therefore changes the default image and transport of every new
 installation; record the rollback image, normally the v2 release it derives
 from, in the release notes.
 
-Installer image release names read
-`dev-DATE-CHANGE-cudaNNNN-ncclNNNN-statusNNN`. `dev` marks SparkRing's
-development image series; a GitHub release tag such as `2026.10.1` publishes
-one of them through
+Installer image release names read `dev-DATE-CHANGE-statusNNN`. `dev` marks
+SparkRing's development image series; a GitHub release tag such as `2026.10.1`
+publishes one of them through
 [installer-releases.json](../../runtime/releases/installer-releases.json), and
 the image keeps its name. DATE is the day the image was composed. CHANGE,
 where present, names what the image adds over its parent, such as `spinwait`
 or `mimovision`, or its image line: `kraken` is the line built on Local Inference Lab's
 `karmic-kraken-beta` vLLM and B12X branches, which a v3 lock records as
-`line`. `cudaNNNN` and `ncclNNNN` are the CUDA and NCCL releases the image's
-toolchain layer selects (`cuda1342` is CUDA 13.4.2, `nccl2323` NCCL 2.32.3),
-and `statusNNN` is the runtime-status dashboard version, recorded as the
-lock's `status_version` (`status034` is 0.3.4). New names spell CUDA
-`cudaNNNN`; the published image
-`dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034` spells
-CUDA 13.4.2 `cu1342` and keeps that name. Names are identities, not
+`line`. `statusNNN` is the runtime-status dashboard version, recorded as the
+lock's `status_version` (`status034` is 0.3.4). The CUDA
+and NCCL releases are not part of the name: the toolchain receipt in the lock
+records them. Images named before this rule carry them after CHANGE as
+`cudaNNNN` (or `cuNNNN`) and `ncclNNNN`, for example
+`dev-20261004-kraken-cuda1342-nccl2323-status034` (CUDA 13.4.2, NCCL 2.32.3),
+and keep those names. Names are identities, not
 descriptions: an image whose inputs change takes a new name. Earlier images
 and guides use Local Inference Lab's own release numbers: R33, R35 and R37
 are releases of its Jovian Judgement vLLM line, `jovian-r33` is SparkRing's

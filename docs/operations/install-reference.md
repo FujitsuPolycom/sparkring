@@ -483,15 +483,18 @@ integration assets and toolchain, and the vLLM and B12X sources of branches
 `sparkring/kraken-beta-20261001`; `--image 2026.10.0` selects it
 ([Another image](#another-image)).
 
-Installer image names read `dev-DATE-CHANGE-cudaNNNN-ncclNNNN-statusNNN`:
+Installer image names read `dev-DATE-CHANGE-statusNNN`:
 
 | Part | Meaning |
 |---|---|
 | `dev` | SparkRing's development image series; a GitHub release tag such as `2026.10.1` publishes one |
 | DATE | The day the image was composed |
 | CHANGE | Where present, what the image adds over its parent, or its image line: `kraken` is the line built on Local Inference Lab's `karmic-kraken-beta` vLLM and B12X branches |
-| `cuda1342`, `nccl2323` | CUDA 13.4.2 and NCCL 2.32.3. One image, `dev-20261008-kraken-csf-sircl-libsircl-cu1342-nccl2323-status034`, spells CUDA 13.4.2 `cu1342` |
 | `status034` | Runtime-status dashboard 0.3.4 |
+
+Images named before this form also carry their CUDA and NCCL releases after
+CHANGE: `cuda1342` (or `cu1342`) is CUDA 13.4.2 and `nccl2323` is NCCL 2.32.3.
+Newer names leave them out; the image lock's toolchain receipt records them.
 
 Older guides name Local Inference Lab's vLLM releases R33, R35 and R37 of its
 Jovian Judgement line. `jovian-r33` is SparkRing's ARM64 rebuild of R33. LIL
