@@ -131,7 +131,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
 
 PLUGIN_NAME = "glm_dcp_decode_comm"
-PLUGIN_VERSION = "2.0.1"
+PLUGIN_VERSION = "2.0.2"
 MARKER = "__glm_dcp_decode_comm__"
 HELPER_PREFIX = "_glm_dcp_decode_comm_"
 IMAGE = "816c6d6a7e96"
@@ -344,7 +344,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "communication stream wraps; the dcp_all_to_all and dcp_b12x_transport shims installed for a "
               "DCP group with a session"),
     FileCheck("sparkring_sircl", "vllm/adapter.py",
-              "7eab095f2acb329fbd90035ed9bec35ff66744a3850e2650a5757d674751f732",
+              "ebe9b323907ca659f9b5222a9204e46b6b84ea06d734c48eeb014e92368aeb31",
               "GroupAdapter keeps a DCP group's SirclDcpCollectives in .dcp and its runtime in .session; "
               "live_adapters"),
     FileCheck("sparkring_sircl", "vllm/dcp_collectives.py",

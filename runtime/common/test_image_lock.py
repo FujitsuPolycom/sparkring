@@ -456,7 +456,7 @@ def test_the_glm53_tp8_profile_runs_only_on_an_image_that_carries_the_glm53_plug
     profile = "glm53-nvfp4-tp8"
     assert image_lock.required_plugins(profile) == ["glm_dsa_indexer_split", "glm53full_speedups",
                                                     "glm_dcp_decode_comm"]
-    assert derive_glm53_plugins.PLUGINS == {**PLUGINS, "glm_dcp_decode_comm": "2.0.1"}
+    assert derive_glm53_plugins.PLUGINS == {**PLUGINS, "glm_dcp_decode_comm": "2.0.2"}
     with pytest.raises(ValueError, match=f"{profile} loads the vLLM plugins glm_dsa_indexer_split, "
                                          "glm53full_speedups, glm_dcp_decode_comm"):
         image_lock.for_profile(profile, with_eight_spark_profiles())
