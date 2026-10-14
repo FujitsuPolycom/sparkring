@@ -458,9 +458,11 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
 
 
 def image_catalog():
-    """The installer images `sparkring images` lists, default first, with the listed profiles each runs.
+    """The default installer image and the published release images, default first, with the listed profiles each runs.
 
-    ``option`` is the value `--image` takes: the release tag that published the
+    Development images that `sparkring images` also lists are left out: they
+    remain installable with `--image NAME`, but the Builder offers only images a
+    release published. ``option`` is the value `--image` takes: the release tag that published the
     image when there is one, else the first part of its release name that
     contains a letter and names no other image (``statusrows``), else its
     release name; installer_image.lock_path resolves each form. ``file`` is the
@@ -472,6 +474,8 @@ def image_catalog():
     names = [row["name"] for row in catalog]
     rows = []
     for row in catalog:
+        if not (row["default"] or row["tags"]):
+            continue
         runs = [profile_id for profile_id in installer_image.profiles_of(row["lock"]) if profile_id in listed]
         if not runs:
             continue
