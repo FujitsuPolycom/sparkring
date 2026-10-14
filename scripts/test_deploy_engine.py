@@ -72,6 +72,32 @@ def test_barriers_and_resume(tmp_path):
     assert all(c[1] == "verify" for c in calls)
 
 
+def test_completion_time_survives_receipt_rechecks(tmp_path, monkeypatch):
+    from scripts import deploy_engine
+    monkeypatch.setattr(deploy_engine.time, "time", lambda: 1000.0)
+    p = plan()
+    receipt = tmp_path / "run.json"
+    first = execute_plan(p, receipt, p["sha256"], runner=success)
+    assert first["completed_at"] == 1000.0
+    monkeypatch.setattr(deploy_engine.time, "time", lambda: 2000.0)
+    again = execute_plan(p, receipt, p["sha256"], runner=success, resume=True)
+    assert again["completed_at"] == 1000.0
+    following = execute_plan(p, tmp_path / "next.json", p["sha256"], runner=success)
+    assert following["completed_at"] == 2000.0
+
+
+def test_legacy_completion_is_not_dated_by_reverification(tmp_path):
+    p = plan()
+    path = tmp_path / "run.json"
+    receipt = execute_plan(p, path, p["sha256"], runner=success)
+    receipt.pop("completed_at")
+    path.write_text(json.dumps(receipt))
+    with pytest.raises(RuntimeError, match="no longer verifies"):
+        execute_plan(p, path, p["sha256"], runner=lambda *args: {"returncode": 1}, resume=True)
+    again = execute_plan(p, path, p["sha256"], runner=success, resume=True)
+    assert again["completed_at"] is None
+
+
 def test_failed_preflight_never_mutates(tmp_path):
     calls = []
 
@@ -86,6 +112,7 @@ def test_failed_preflight_never_mutates(tmp_path):
     with pytest.raises(RuntimeError, match="preflight"):
         execute_plan(p, tmp_path / "r.json", p["sha256"], runner=run)
     assert set(calls) == {"preflight"}
+    assert "completed_at" not in json.loads((tmp_path / "r.json").read_text())
 
 
 def test_uncertain_change_blocks_resume_and_later_phases(tmp_path):

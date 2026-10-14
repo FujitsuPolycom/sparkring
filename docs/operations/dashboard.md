@@ -128,6 +128,14 @@ serving group, and round once to whole numbers. Starting and stopped groups
 count as zero. The summary tiles at the top use the same sums across all
 rings.
 
+`No model running for` counts from the recorded completion of `down`.
+`Serving for` uses the runtime or process start time, with a completed `up`
+as fallback. Starting and loading durations use the recorded installation or
+container start time and continue across startup phases.
+Dashboard restarts, recovery settings and status refreshes do not
+reset these durations. If no event time was recorded, including older deployment
+receipts, the card shows the state without a duration.
+
 ### Spark details
 
 Hover a numbered Spark, focus it with Tab, or tap it to open its details card.
