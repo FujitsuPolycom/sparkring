@@ -32,3 +32,25 @@ def test_help_prints_each_serving_setting_as_written(capsys, command, argv):
     for name, row in (*serving.SETTINGS.items(), *serving.SWITCHES.items()):
         assert serving.option(name) in text
         assert compact(row[-1]) in compact(text), name
+
+
+@pytest.mark.parametrize("operation", ["up", "down", "restart"])
+@pytest.mark.parametrize("flag", ["--help", "-h"])
+def test_lifecycle_help_never_refreshes_or_writes_state(operation, flag, tmp_path, monkeypatch, capsys):
+    from runtime.host import dashboard_admin
+    from scripts import sparkring
+    monkeypatch.delenv("SPARKRING_HELPER_SOCKET", raising=False)
+    monkeypatch.setenv("SPARKRING_LOG_DIR", str(tmp_path / "logs"))
+    monkeypatch.setattr(controller, "STATE", tmp_path / "controller")
+    writes = []
+
+    def refresh():
+        writes.append(True)
+        for path in (tmp_path / "dashboard/site.json", controller.STATE / "publication.lock"):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("unexpected state write")
+    monkeypatch.setattr(dashboard_admin, "refresh_site", refresh)
+    text = printed_help(capsys, sparkring.main, [operation, "glm53", flag])
+    assert "usage:" in text
+    assert not writes
+    assert list(tmp_path.rglob("*")) == []
