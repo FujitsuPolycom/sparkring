@@ -23,10 +23,20 @@ on a ring before relying on a layout are in [`STATUS.md`](STATUS.md).
 
 The launcher reads the profile from a SparkRing checkout and stops on any
 disagreement between its sources ([`serve/profile.py`](serve/profile.py)):
-`profile.json` and the release's `installer-image.json`, the serving
-configuration (`config.json`), the per-rank Compose files (every key must be
-one the launcher translates), `SHA256SUMS` with the checkpoint manifest,
-`runtime/common/loader-seccomp.json` and `profiles/thinking.json`. It runs
+`profile.json`, the serving configuration (`config.json`), the per-rank
+Compose files (every key must be one the launcher translates), the selected
+checkpoint's `SHA256SUMS` and manifest, `runtime/common/loader-seccomp.json`
+and `profiles/thinking.json`. Generated installer exports record their
+checkpoint name, image-lock path and deployment label in
+`compose/selection.json`, with the selected checkpoint's checksums in
+`compose/SHA256SUMS`. The loader applies that entry of `config.json`'s
+`checkpoints` table and validates every rank against it and the recorded
+image lock. The generator uses the same image and checkpoint selection as
+`sparkring install`; a profile's historical release may name an older image.
+Exports without a selection record retain the base configuration, the
+release's `installer-image.json` and the profile's original `SHA256SUMS`.
+Regenerate these files with `python scripts/generate_compose_examples.py`.
+It runs
 each rank's container as its Compose file describes it, with these changes
 ([`serve/plan.py`](serve/plan.py)):
 
