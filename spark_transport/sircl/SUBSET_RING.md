@@ -80,6 +80,71 @@ and queue accounting per packet, no retained retransmission copies and
 credit release only on returning completion. It applies only to those
 explicitly bounded helper configurations, not the restored OFF pieces path.
 
+## Larger-window analysis
+
+The offline helper `subset.ring_packet_bound` fixes the conservative arena
+windows from `forward_windows(..., chunk=4096, subset_ring=True)` and solves
+each queue separately for a common ring window R. It does not configure the
+runtime. For each directed QP i, let A_i be its arena window. Its shared
+native `unacked` counter bounds arena plus ring payload by `max(A_i, R)`
+when it carries the ring, and by A_i otherwise. Let D(q,R) sum those bounds
+for every QP traversing q. The inequality is:
+
+```text
+1.5*D(q,R) + 0.5*D(reverse(q),R) + C(q) <= 524288
+```
+
+This uses `_roce_proxy.c`'s `post_stream_write`, `link_pump_windowed` and
+`ack_push`: both pumps test the same device/peer byte counter. With delivery
+proof disabled, only returning completion releases those bytes. Payload on
+other QPs can remain live. The helper includes ACK-only queues and finds the
+largest common 32 KiB-aligned window satisfying every inequality. This is the
+maximum **within this fixed-arena, shared-QP envelope**. Trading arena capacity
+for ring capacity changes the optimization problem. Control credits are also
+shared by arena and ring on each native QP and are counted once.
+
+For TP6 on positions 0-5 of ring8, the closing route is 5-6-7-0. A deployment
+confined to 6-7 sends both its payload and ACKs over their direct cable, using
+zero hairpin bytes. The limiting queues are the secondary function toward
+port 0 on positions 6 and 7:
+
+| Quantity | Bytes |
+|---|---:|
+| Conservative arena windows in each direction (three lanes) | 86,016 |
+| Control reserve (six directed QPs times 16,384) | 98,304 |
+| Arena window on the QP that also carries the ring | 28,672 |
+| Other forward arena QPs, still independently live | 57,344 |
+| Fixed other-QP framing, reverse arena ACKs and controls | 227,328 |
+| Residual for shared ring-QP payload and framing | 296,960 |
+| Unrounded ring payload allowance, floor(296960 / 1.5) | 197,973 |
+| Largest common 32 KiB-aligned window | **196,608** |
+| Occupancy bound at that window | 522,240 |
+| Occupancy at the next 32 KiB window (229,376) | 571,392: refused |
+
+This improves the retained helper's 65,536-byte common budget by three times.
+It is not close to the normal 393,216-byte ring window. Even an isolated
+393,216-byte data window would require 589,824 bytes with the minimum-MTU
+framing assumption, before controls or reverse traffic. An isolated single
+ring lane with no arena traffic can fit 327,680 bytes under this envelope;
+that requires an arena/ACK drain, which the active subset runtime does not
+establish. Larger MTU assumptions require negotiated-MTU enforcement and a
+separate reviewed proof; measured absence of drops does not supply that proof.
+
+The active arena windows are larger than the conservative helper's and retain
+delivery-proof release. Its proof assumptions therefore do not hold merely by
+setting `SIRCL_SUBSET_RING=1`. Subset ring all-reduce stays disabled, and flat
+all-gather keeps chain. No default or opt-in transport setting changes here.
+
+Using the inferred SIRCL window/RTT model in
+[schedule selection](../../docs/architecture/sircl-schedule-selection.md),
+196,608 bytes over two relays predicts 16.90 GB/s before kernel and cable/NIC
+contention, or about 1.47 times 11.5 GB/s pieces. Applying the measured
+57/46.4 RTT-growth sensitivity gives 13.76 GB/s, about 1.20 times pieces.
+These are conditional steady-state predictions, not measured gains. A
+co-resident DCP2 workload can further reduce available bandwidth. Using the
+profiled net-sircl 40.3 us directly instead predicts 9.76 GB/s (0.85 times
+pieces); the different transport/profiling conditions are material.
+
 ## Validation gates
 
 Run `python -m pytest spark_transport/sircl -q`. The subset tests cover
@@ -90,6 +155,15 @@ GPU emulation must cover exact eager and captured/replayed flat and padded
 gathers and all-reduces, with delayed link progress and matching native
 ACK-release settings. Emulation does not measure hairpin drops or serving
 performance.
+
+The offline selector tests cover every path/cycle size from two to eight,
+representative subset and co-resident placements, odd cycles, ACK-only queues,
+measurement precedence and rejection of unbounded candidates. The fixed-arena
+ring bound is checked for every admitted subset, including failure of the
+next larger common window. The selector's drained candidates do not change
+runtime admission. Both hardware plans, including the restoration budget and
+the 25-minute feasibility limit, are in the
+[selection design](../../docs/architecture/sircl-schedule-selection.md#hardware-validation-plans).
 
 Before promotion, coordinate a maximum 25-minute TP6 outage on positions
 0-5, preserving DCP2 on 6-7 with no other client. Pre-stage artifacts and

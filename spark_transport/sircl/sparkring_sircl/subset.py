@@ -97,3 +97,57 @@ def payload_budget(layout, maps, *, queue_bytes=routes.DEFAULT_HAIRPIN_QUEUE) ->
              for (p, c, e), v in queues.items()), default=0)
     return min(int(routes.RELAY_QUEUE_SHARE * queue_bytes),
                max(0, (queue_bytes - n * CONTROL_BYTES_PER_LANE) // 4))
+
+
+def ring_packet_bound(layout, maps, *, chunk=32768, queue_bytes=routes.DEFAULT_HAIRPIN_QUEUE):
+    """Offline maximum common ring window with the conservative arena windows fixed.
+
+    This is not an active runtime allowance. Completion-only credit release,
+    MTU >= 256, <= 128 bytes of overhead per packet, and no retained retry
+    copies are required. Arena and ring payload may overlap, but a native QP
+    shares one unacked counter: its payload is bounded by max(arena, ring),
+    not their sum. The reverse
+    queue's payload generates ACKs in this queue, including ACK-only queues.
+    Control credits are shared by arena and ring on each native QP.
+    """
+    order = validate(layout, maps, queue_bytes=queue_bytes)
+    if chunk <= 0 or chunk % 16:
+        raise routes.RouteError("ring bound chunk must be a positive multiple of 16")
+    arena = routes.relay_queues(layout, maps)
+    ring = routes.ring_queues(layout, maps, order)
+    tables = [routes.forward_windows(layout, maps, rank, chunk=FORWARD_CHUNK,
+                                     queue_bytes=queue_bytes, subset_ring=True)
+              for rank in range(layout.world)]
+    keys = set(arena) | set(ring)
+    keys |= {(p, c, 1 - e) for p, c, e in keys.copy()}
+    rows = []
+    for key in sorted(keys):
+        reverse = (*key[:2], 1 - key[2])
+        a = sum(tables[r][p][l] for r, p, l in arena.get(key, ()))
+        b = sum(tables[r][p][l] for r, p, l in arena.get(reverse, ()))
+        controls = (len(arena.get(key, ())) + len(arena.get(reverse, ()))) * CONTROL_BYTES_PER_LANE
+        shared = [tables[r][p][l] for r, p, l in ring.get(key, ())]
+        back_shared = [tables[r][p][l] for r, p, l in ring.get(reverse, ())]
+        # Payload on QPs that do not carry the ring remains independently live.
+        fixed2 = 3 * (a - sum(shared)) + b - sum(back_shared) + 2 * controls
+        if 3 * a + b + 2 * controls > 2 * queue_bytes:
+            raise routes.RouteError("arena exceeds the packet envelope")
+        rows.append({"queue": list(key), "arena_bytes": a, "reverse_arena_bytes": b,
+                     "control_bytes": controls, "fixed_twice_bytes": fixed2,
+                     "ring_arena_windows": shared, "reverse_ring_arena_windows": back_shared})
+
+    def occupied2(row, window):
+        return (row["fixed_twice_bytes"] + 3 * sum(max(w, window) for w in row["ring_arena_windows"])
+                + sum(max(w, window) for w in row["reverse_ring_arena_windows"]))
+
+    # A monotone piecewise-linear bound; enumerate at most Q/chunk aligned values.
+    window = 0
+    if ring:
+        for candidate in range(chunk, queue_bytes + 1, chunk):
+            if any(occupied2(row, candidate) > 2 * queue_bytes for row in rows):
+                break
+            window = candidate
+    for row in rows:
+        row["bound_bytes"] = (occupied2(row, window) + 1) // 2
+        row["next_chunk_bound_bytes"] = (occupied2(row, window + chunk) + 1) // 2
+    return window, rows
