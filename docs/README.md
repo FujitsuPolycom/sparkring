@@ -11,14 +11,15 @@ Find the page for what you want to do.
 - [Install Builder](https://fujitsupolycom.github.io/sparkring/): pick a model,
   checkpoint and layout and copy the commands
   ([how it works](operations/compose-builder.md)).
-- [Manual setup](operations/setup.md) and
+- [Manual setup](operations/setup.md) of the SparkCache profiles and
   [Docker Compose files](operations/compose-files.md), without the installer.
 
 ## Operate
 
 - [All commands](operations/commands.md): status, logs, switching models,
   stopping and starting.
-- [Status dashboard](operations/dashboard.md): what a running model reports.
+- [Status dashboard](operations/dashboard.md): each model's status page and
+  the ring dashboard on Node A (`sparkring dashboard`, port 8090).
 - [Install reference](operations/install-reference.md): serving settings,
   checkpoints, [two models on one ring](operations/install-reference.md#two-models-on-one-ring),
   storage and security.
@@ -49,20 +50,32 @@ Find the page for what you want to do.
 
 - [Architecture](architecture/overview.md): topology, serving container and
   collective path.
-- [SIRCL](architecture/sircl.md): SparkRing's collective transport for 2 to 8
-  Sparks, with ring sessions and the four-rank native sessions of retained
-  images.
+- [SIRCL](architecture/sircl.md): SparkRing's collective transport between
+  Sparks without a switch, for groups of 2 to 8 Sparks.
+- [libsircl](architecture/libsircl.md): SIRCL behind NCCL's C interface,
+  selected with `--transport libsircl` (research-only).
+- [net-sircl](https://github.com/FujitsuPolycom/net-sircl), a separate
+  repository: an NCCL network plugin that carries SIRCL to any NCCL
+  application (research-only).
 - [What is a SparkRing image?](operations/images.md)
 - [Profile catalog](../profiles/README.md): every saved deployment
   configuration and its guide.
 
-## Reproduce history
+## Results and releases
 
 - [Benchmarks](../performance/benchmarks.md) and the
   [evidence records](../performance/README.md): measured configurations and
   results.
 - [Release selections](../runtime/releases/README.md): pinned releases and
-  preserved inputs.
+  preserved inputs. [installer-releases.json](../runtime/releases/installer-releases.json)
+  maps each release tag to its installer image; the installer's default is
+  [release 2026.10.4](../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md).
+
+## History
+
+These pages record retired configurations and past repository changes. They
+are kept for reproduction and are not maintained guidance.
+
 - [Retired deployments](history/deployment-variants.md) and
   [retained runtime compositions](history/runtime-compositions.md).
 - [Repository layout adoption](development/repository-layout-adoption.md): the

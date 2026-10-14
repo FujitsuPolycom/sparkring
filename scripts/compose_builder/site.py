@@ -306,7 +306,7 @@ def landing(value):
     conditions = speed_section.split('\n| Model', 1)[0]
     body = f'''<main class="site-wrap">
       <div class="hero"><div><p class="eyebrow">DGX Spark · ConnectX-7 · no switch</p>
-      <h1>Large language models on two or more directly cabled DGX Sparks</h1>
+      <h1>Large language models on two to eight directly cabled DGX Sparks</h1>
       <div class="command-box"><pre id="install-command" data-hosted="{escape(hosted)}">{escape(cmd)}</pre><button data-copy="install-command">Copy command</button></div>
       <p class="hint">Choose <code>PROFILE</code> below or use the <a href="builder.html">Install Builder</a>.</p>
       <p>The installer asks before making changes. Use <code>--plan</code> to see what a deployment would do on your stack. <a href="commands.html">Command guide</a></p>

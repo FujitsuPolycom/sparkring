@@ -5,14 +5,14 @@ code are welcome. You do not need DGX Spark hardware or maintainer approval to
 participate. Partial reports are useful; share what you know and maintainers
 can help identify what is missing.
 
-The supported deployments and their maturity are listed in
-[`README.md`](README.md). This guide intentionally does not repeat that matrix.
+The [profile catalog](profiles/README.md) lists the supported deployments and
+the status of each.
 
 ## Issues and discussions
 
-Open an issue when something is broken or unclear, or when you want to request
-an improvement. Blank issues are enabled. The lightweight issue forms are
-prompts, not requirements.
+Open an issue when something is broken or unclear, or to request an
+improvement. Blank issues are enabled; the issue forms are prompts, not
+requirements.
 
 A useful bug report usually includes:
 
@@ -25,9 +25,9 @@ A useful bug report usually includes:
 It is fine to omit information you cannot obtain. Negative results and failed
 reproduction attempts are welcome.
 
-Use [GitHub Discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
-for open-ended questions if you prefer a conversation, but an issue is also
-acceptable. Report suspected vulnerabilities privately as described in
+Open-ended questions can go to
+[GitHub Discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
+or an issue. Report suspected vulnerabilities privately as described in
 [`SECURITY.md`](SECURITY.md).
 
 ## Pull requests
@@ -47,9 +47,12 @@ acceptable. Report suspected vulnerabilities privately as described in
   [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md) when required. Contributions
   are offered under the repository's Apache-2.0 license.
 
-For a small profile or layout check, run `python scripts/check_repository_layout.py`.
-See the [testing guide](docs/development/testing.md) for component checks and
-[Write Without Hidden Context](docs/development/writing.md) for clear technical prose.
+For a profile, layout or documentation change, run
+`python scripts/check_repository_layout.py` and
+`python scripts/check_markdown_links.py .`. The
+[testing guide](docs/development/testing.md) lists the checks for each
+component, and [Write Without Hidden Context](docs/development/writing.md) is
+the standard for repository prose.
 To add a profile that `sparkring install` sets up, follow
 [Contributing an installer profile](docs/development/installer-profiles.md).
 
@@ -57,8 +60,8 @@ Maintainers help complete partial reports. Issues are not automatically closed
 for inactivity or because a reporter cannot provide hardware evidence. A partial
 fix should state what remains unresolved.
 
-The pull request template asks for a summary and relevant validation. It does
-not require every contributor to reproduce hardware-only validation.
+The pull request template asks for a summary and the validation you ran.
+Hardware-only validation is not required of every contributor.
 
 ## Measurements and hardware work
 

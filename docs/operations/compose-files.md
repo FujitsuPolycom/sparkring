@@ -3,44 +3,66 @@
 These Docker Compose files run a profile's model without the installer: one
 file per Spark (rank), and for three two-Spark profiles one standalone file
 that both Sparks share. [`sparkring install`](install.md) is the recommended
-path; it also prepares the network, image and checkpoint the files expect.
+path. It also prepares the network, image and checkpoint that the files
+expect, and it runs a newer image than the published installer-profile files
+([images and checkpoints](#images-and-checkpoints)).
 
 [Compose deployments](compose.md) · [`compose` and `validate-compose` commands](commands.md#compose-and-validate-compose) ·
 [Install Builder](compose-builder.md): these files for your own Sparks, checkpoint and settings, as a zip
 
 ## Published files
 
-| Model | Sparks | Profile | Files | Instructions |
-|---|---|---|---|---|
-| Qwen3.8-Flash-Next | 2 | `qwen38-flash-next-tp2` | Ranks [0](../../profiles/qwen38-flash-next-tp2/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-tp2/compose/compose.rank1.yaml) · [standalone](../../profiles/qwen38-flash-next-tp2/compose/standalone.yaml) · [site example](../../profiles/qwen38-flash-next-tp2/compose/site.example.yaml) | **Step-by-step:** [Qwen on two Sparks with Compose](../../profiles/qwen38-flash-next-tp2/compose/README.md) |
-| Qwen3.8-Flash-Next | 4 | `qwen38-flash-next-qad-tp4` | Ranks [0](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank1.yaml), [2](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank2.yaml), [3](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml) | [Render and run](../../profiles/qwen38-flash-next-qad-tp4/compose/README.md) |
-| GLM-5.3-Flash | 2 | `glm53-flash-nvfp4-spark-tp2` | Ranks [0](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/compose.rank0.yaml), [1](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| GLM-5.3-Flash | 4 | `glm53-flash-nvfp4-spark-tp4` | Ranks [0](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank0.yaml), [1](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank1.yaml), [2](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank2.yaml), [3](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| MiMo-V2.6-Flash-MOPD | 2 | `mimo-v26-flash-mopd-tp2` | Ranks [0](../../profiles/mimo-v26-flash-mopd-tp2/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-mopd-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/mimo-v26-flash-mopd-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| MiMo-V2.6-Flash-MOPD | 4 | `mimo-v26-flash-mopd-tp4` | Ranks [0](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank1.yaml), [2](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank2.yaml), [3](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/mimo-v26-flash-mopd-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| DeepSeek-V4.1-Flash | 4 | `deepseek-v41-flash-tp4` | Ranks [0](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank0.yaml), [1](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank1.yaml), [2](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank2.yaml), [3](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/deepseek-v41-flash-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| Swift-1.5-Qwen3.8-Flash-Next | 2 | `swift15-qwen38-flash-next-tp2` | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| Swift-1.5-Qwen3.8-Flash-Next | 4 | `swift15-qwen38-flash-next-tp4` | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank1.yaml), [2](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank2.yaml), [3](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
-| Qwen3.8-Flash-Next with SparkCache | 2 | `qwen38-flash-next-tp2-sparkcache` | Ranks [0](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank1.yaml) · [standalone](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/standalone.yaml) · [site example](../../profiles/qwen38-flash-next-tp2/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/README.md) |
-| Qwen3.8-Flash-Next with SparkCache | 4 | `qwen38-flash-next-qad-tp4-sparkcache` | Ranks [0](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank1.yaml), [2](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank2.yaml), [3](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank3.yaml) · [site example](../../profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/README.md) |
-| GLM-5.3-Flash with SparkCache | 2 | `glm53-flash-spark-tp2-dcp1-sparkcache` | [Standalone](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml) | [Standalone file](#standalone-file-two-sparks); hosts: [profile guide](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
+| Model | Sparks | Profile | Profile status | Files | Instructions |
+|---|---|---|---|---|---|
+| Qwen3.8-Flash-Next | 2 | `qwen38-flash-next-tp2` | implemented | Ranks [0](../../profiles/qwen38-flash-next-tp2/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-tp2/compose/compose.rank1.yaml) · [standalone](../../profiles/qwen38-flash-next-tp2/compose/standalone.yaml) · [site example](../../profiles/qwen38-flash-next-tp2/compose/site.example.yaml) | **Step-by-step:** [Qwen on two Sparks with Compose](../../profiles/qwen38-flash-next-tp2/compose/README.md) |
+| Qwen3.8-Flash-Next | 4 | `qwen38-flash-next-qad-tp4` | implemented | Ranks [0](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank1.yaml), [2](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank2.yaml), [3](../../profiles/qwen38-flash-next-qad-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml) | [Render and run](../../profiles/qwen38-flash-next-qad-tp4/compose/README.md) |
+| GLM-5.3-Flash | 2 | `glm53-flash-nvfp4-spark-tp2` | implemented | Ranks [0](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/compose.rank0.yaml), [1](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/glm53-flash-nvfp4-spark-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| GLM-5.3-Flash | 4 | `glm53-flash-nvfp4-spark-tp4` | implemented | Ranks [0](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank0.yaml), [1](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank1.yaml), [2](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank2.yaml), [3](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/glm53-flash-nvfp4-spark-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| MiMo-V2.6-Flash-MOPD | 2 | `mimo-v26-flash-mopd-tp2` | implemented | Ranks [0](../../profiles/mimo-v26-flash-mopd-tp2/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-mopd-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/mimo-v26-flash-mopd-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| MiMo-V2.6-Flash-MOPD | 4 | `mimo-v26-flash-mopd-tp4` | implemented | Ranks [0](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank0.yaml), [1](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank1.yaml), [2](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank2.yaml), [3](../../profiles/mimo-v26-flash-mopd-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/mimo-v26-flash-mopd-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| DeepSeek-V4.1-Flash | 4 | `deepseek-v41-flash-tp4` | implemented | Ranks [0](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank0.yaml), [1](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank1.yaml), [2](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank2.yaml), [3](../../profiles/deepseek-v41-flash-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/deepseek-v41-flash-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| Swift-1.5-Qwen3.8-Flash-Next | 2 | `swift15-qwen38-flash-next-tp2` | implemented | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp2/compose/compose.rank1.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp2/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| Swift-1.5-Qwen3.8-Flash-Next | 4 | `swift15-qwen38-flash-next-tp4` | research-only | Ranks [0](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank0.yaml), [1](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank1.yaml), [2](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank2.yaml), [3](../../profiles/swift15-qwen38-flash-next-tp4/compose/compose.rank3.yaml) · [site example](../../profiles/swift15-qwen38-flash-next-tp4/compose/site.example.yaml) | [Per-rank files](#per-rank-files) |
+| Qwen3.8-Flash-Next with SparkCache | 2 | `qwen38-flash-next-tp2-sparkcache` | qualified | Ranks [0](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/compose.rank1.yaml) · [standalone](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/standalone.yaml) · [site example](../../profiles/qwen38-flash-next-tp2/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-tp2-sparkcache/compose/README.md) |
+| Qwen3.8-Flash-Next with SparkCache | 4 | `qwen38-flash-next-qad-tp4-sparkcache` | qualified | Ranks [0](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank0.yaml), [1](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank1.yaml), [2](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank2.yaml), [3](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/compose.rank3.yaml) · [site example](../../profiles/qwen38-flash-next-qad-tp4/compose/site.example.yaml) | [Notes](../../profiles/qwen38-flash-next-qad-tp4-sparkcache/compose/README.md) |
+| GLM-5.3-Flash with SparkCache | 2 | `glm53-flash-spark-tp2-dcp1-sparkcache` | qualified | [Standalone](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/compose/standalone.yaml) | [Standalone file](#standalone-file-two-sparks); hosts: [profile guide](../../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) |
 
-- `sparkring compose start` coordinates only the two Qwen SparkCache variants;
-  the nine installer profiles support `render` and `check` only.
-- Installer profiles run the installer image lock's image; SparkCache variants
-  run release `shared-2026.09.3`'s image. Files name images by registry digest.
+- Profile status is the profile's own; the files add no serving
+  qualification.
+- `sparkring compose start` coordinates only the two Qwen SparkCache variants.
+  For the nine installer profiles, `render` and `check` work and `start` stops
+  at image admission ([supported profiles](compose.md#supported-profiles)).
 - Qwen SparkCache variants use their base profile's site example.
-- `SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared` selects the
-  image's prepared B12X RoCE transport bundle on profiles of two and four
-  Sparks; the `tp2-` name is kept for compatibility
+- Every file sets `SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared`,
+  the image's prepared B12X RoCE transport bundle, on two and four Sparks
+  alike; the `tp2-` name is kept for compatibility
   ([transport bundle](compose.md#what-each-input-controls)).
-- Each installer-profile rank is the container `sparkring install` runs, with
-  the same image and serving settings but no per-rank runtime-binding file.
-  The status plugin then reports worker identity as `binding_not_configured`;
-  serving is unaffected.
-- GLM-5.3-Flash with SparkCache on four Sparks publishes no YAML: its
+- Each installer-profile rank is the container `sparkring install` would run
+  on the file's image and checkpoint, without the per-rank runtime-binding
+  file. The status plugin then reports worker identity as
+  `binding_not_configured`; serving is unaffected.
+- GLM-5.3-Flash with SparkCache on four Sparks has no published files: its
   [Compose creation guide](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
-  (status Development) generates private files through `sparkring deploy`.
+  (`implemented`) generates private files through `sparkring deploy`.
+
+## Images and checkpoints
+
+Files name images by registry digest.
+
+- **Installer profiles** run release 2026.10.1's image,
+  `dev-20261004-kraken-cuda1342-nccl2323-status034`, which `compose render`
+  selects without `--image` (`DEFAULT_LOCK` in
+  [`installer_image.py`](../../runtime/common/installer_image.py)), with each
+  profile's default checkpoint: NVFP4-Spark for GLM-5.3-Flash and QAD step
+  5500 for Qwen3.8-Flash-Next.
+- **`sparkring install`** runs release 2026.10.4's image,
+  `dev-20261013-dcp2prefill-status038-sircl-tp6`, and on it installs Local
+  Inference Lab's CSF checkpoint for `glm53-flash-nvfp4-spark-tp2`,
+  `glm53-flash-nvfp4-spark-tp4` and `qwen38-flash-next-tp2`. To render that
+  image and checkpoint, add `--image 2026.10.4` and, for those three
+  profiles, `--checkpoint csf` to `compose render`.
+- **SparkCache variants and the GLM-5.3-Flash standalone file** run release
+  `shared-2026.09.3`'s image.
 
 ## How to use them
 
@@ -84,7 +106,7 @@ paths. Render your own from a SparkRing checkout; take `PROFILE` and
 mkdir -p .sparkring
 cp SITE_EXAMPLE .sparkring/site.yaml
 # Set name, master and every rank's host, host_ip, interface, hcas, gid,
-# model, cache, repository and deployment_root.
+# model, cache, repository and deployment_root; on four Sparks also fabric.
 python3 scripts/sparkring.py compose render PROFILE \
   --site .sparkring/site.yaml --output .sparkring/deployments/PROFILE
 python3 scripts/sparkring.py compose check --deployment .sparkring/deployments/PROFILE

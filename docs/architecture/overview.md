@@ -1,136 +1,163 @@
 # SparkRing architecture
 
-SparkRing runs large language models on two to eight DGX Sparks that are cabled
-directly to each other, with no switch. vLLM serves each model; every Spark of
-a model runs one tensor-parallel rank in a container of the same image. Node A,
-the Spark connected to your network, runs the installer and the controller.
-The [README](../../README.md#profiles) lists the profiles that `sparkring install`
-sets up; the [profile catalog](../../profiles/README.md) lists every profile.
+SparkRing runs large language models across two to eight NVIDIA DGX Sparks
+that are cabled directly to each other, with no network switch. Each model is
+split across a group of Sparks by tensor parallelism: every Spark holds part
+of every layer, and the Sparks exchange partial results over the cables
+several times per generated token. SparkRing provides the software that makes
+those exchanges work without a switch, and an installer that sets up the
+cables, downloads the model and starts it.
+
+The pieces:
+
+| Piece | What it does | Where |
+|---|---|---|
+| Installer (`sparkring`) | Runs on Node A, the one Spark connected to your network. `sparkring setup` configures the cables; `sparkring install` downloads an image and a checkpoint and starts a model; it also serves the ring dashboard and restarts a model that stops | [`scripts/sparkring.py`](../../scripts/sparkring.py), [`runtime/`](../../runtime/README.md) |
+| Serving image | One container image, run on every Spark of a model: vLLM, B12X kernels, SIRCL, libsircl and the runtime-status plugin | [images](../operations/images.md) |
+| SIRCL | SparkRing's collective layer: moves tensors between the Sparks of a group, including Sparks that share no cable | [SIRCL](sircl.md), [`spark_transport/sircl`](../../spark_transport/sircl/README.md) |
+| libsircl | SIRCL's wire protocol behind NCCL's C API, so programs written for NCCL can load it instead (**research-only**) | [libsircl](libsircl.md) |
+| net-sircl | An NCCL network plugin that carries NCCL's traffic over the same cables and relays (**research-only**, separate repository) | [FujitsuPolycom/net-sircl](https://github.com/FujitsuPolycom/net-sircl) |
+
+The [README](../../README.md#profiles) lists the models that
+`sparkring install` sets up; the [profile catalog](../../profiles/README.md)
+lists every saved configuration.
 
 ## Topology
 
 ![A ring of eight DGX Sparks serving two four-Spark models on positions 0-3 and 4-7; Node A serves the API and dashboards, and traffic between Sparks that share no cable is forwarded in hardware by the ConnectX-7 of the Sparks between them](assets/sparkring-cluster.svg)
 
-Setup forms one of three layouts ([cabling](../operations/install-reference.md#cabling)):
+Each Spark has a ConnectX-7 network card with two ports, port 0 (p0) and
+port 1 (p1). `sparkring setup` accepts three layouts
+([cabling](../operations/install-reference.md#cabling)):
 
 | Layout | Cabling |
 |---|---|
-| Pair | One cable from port 0 (p0) to p0 |
+| Pair | One cable from p0 to p0 |
 | Line of three to eight Sparks | Each Spark's p0 to the next Spark's p1, starting at Node A |
-| Ring of three to eight Sparks | The same, plus a cable from the last Spark back to Node A |
+| Ring of three to eight Sparks | The same, plus a cable from the last Spark back to Node A's p1 |
 
-Node A is position 0, and positions follow the cables. Each ConnectX-7 port
-appears as two PCI functions, and each cable carries one fabric subnet per
-function ([addresses](../operations/install-reference.md#addresses-on-any-layout)).
+Node A is position 0, and positions follow the cables. Each port appears to
+the operating system as two network functions, so each cable carries two
+fabric subnets ([addresses](../operations/install-reference.md#addresses-on-any-layout)).
 
-Sparks that share no cable reach each other through the Sparks between them,
-whose ConnectX-7 cards forward the traffic in hardware. Setup installs one
-[relay table](../operations/install-reference.md#the-relay-table) for the
-whole fabric: routes and permanent neighbour entries toward every Spark not
-cabled to this one, ConnectX ingress rules that pass a packet out of the
-other port, and relay markers that tag RDMA packets with the number of relays
-left. Every Spark between two cables needs the ConnectX
-[hairpin setting](../operations/install-reference.md#the-hairpin-setting),
-which setup applies and `sparkring-hairpin.service` repeats at every boot.
+**Relays.** A Spark can only send directly to its cable neighbours. To reach
+a Spark further away, its packets pass through the Sparks in between, whose
+ConnectX-7 cards forward them in hardware without involving their CPU or GPU.
+On a ring of eight, traffic from Spark 0 to Spark 3 crosses Sparks 1 and 2:
+two relays. `sparkring setup` installs one
+[relay table](../operations/install-reference.md#the-relay-table) on every
+Spark that serves every pair of Sparks: routes toward Sparks it shares no
+cable with, ConnectX rules that pass a packet out of the other port, and a
+marker process that tags each RDMA packet with the number of relays left.
+Every Spark between two cables also needs the ConnectX
+[hairpin setting](../operations/install-reference.md#the-hairpin-setting).
+Boot services restore the setting and the relay table after every reboot
+([boot and reboot](../operations/install-reference.md#boot-and-reboot)).
 
-A SIRCL lane crosses at most three relays. One model on a line of six or
-more Sparks is therefore unsupported: its end Sparks are four or more relays
-apart ([models on part of the fabric](../operations/install-reference.md#models-on-part-of-the-fabric)).
+A SIRCL connection crosses at most three relays. A ring of eight stays within
+that limit (the farthest Spark is three relays away either way round), and so
+does a line of up to five Sparks. One model on a line of six or more Sparks
+is **unsupported** because its end Sparks are four or more relays apart
+([models on part of the fabric](../operations/install-reference.md#models-on-part-of-the-fabric)).
+The six-Spark GLM-5.3 profile `glm53-nvfp4-csf-tp6` (**research-only**)
+runs on positions 0-5 of an eight-Spark ring and routes around the whole
+ring, so none of its connections crosses more than three relays
+([guide](../../profiles/glm53-nvfp4-csf-tp6/README.md)).
 
-A fabric serves one model on all its Sparks, or several models side by side
-on groups of consecutive Sparks that share no Spark (`--on 0-3`, `--on 4-7`).
-Each group's first Spark serves its API. Operations on disjoint groups can
-run at the same time ([independent slices](independent-slices.md)).
+**Groups.** A fabric serves one model on all its Sparks, or several models
+side by side on groups of consecutive Sparks that share no Spark
+(`--on 0-3`, `--on 4-7`). Each group's first Spark serves its API.
+Operations on separate groups can run at the same time
+([independent slices](independent-slices.md)).
 
-Only Node A needs your network: it serves the API of a group that starts at
-Node A, the ring dashboard, and downloads the image and checkpoint for the
-other Sparks. Everything between Sparks runs over the cables: collectives,
-vLLM's startup rendezvous, the administration network (WireGuard over the
-cables' IPv6 link-local addresses, with other cables and the LAN as fallbacks)
-that carries SSH and package copies, and image and checkpoint copies.
+**Node A and your network.** Only Node A needs your network. It serves the
+API of a group that starts at Node A, the ring dashboard (port 8090), and
+downloads each image and checkpoint once for the other Sparks. Everything
+between Sparks runs over the cables: collectives, vLLM's startup
+rendezvous, image and checkpoint copies, and an administration network for
+SSH (WireGuard over the cables' IPv6 link-local addresses, falling back to
+other fabric functions and then the LAN).
 
 ## Serving container
 
 ![One serving container per Spark: the API server, vLLM with B12X kernels, SparkRing's runtime-status plugin, SIRCL ring sessions as the default collective path and the prepared RoCEnante and NCCL transport for images without SIRCL, over the four ConnectX-7 RDMA functions](assets/sparkring-serving-stack.svg)
 
-Every Spark of a model runs one container of the same image, one
-tensor-parallel rank. Its kernels come from
+Every Spark of a model runs one container of the same image and holds one
+tensor-parallel rank. vLLM schedules requests; its kernels come from
 [B12X](https://github.com/local-inference-lab/b12x), Local Inference Lab's
-kernel library for GB10 (SM121) GPUs. Each profile's `profiles/<id>/config.json`
-selects the model, the vLLM arguments and the transport limits; the
-[install reference](../operations/install-reference.md) explains them.
+kernel library for GB10 (SM121) GPUs. Each profile's
+`profiles/<id>/config.json` selects the model, the vLLM arguments and the
+transport limits ([install reference](../operations/install-reference.md)).
 
-The default installer image is the image of release 2026.10.4,
-`dev-20261013-dcp2prefill-status038-sircl-tp6`. It carries the vLLM and B12X sources that read the CSF checkpoints,
-with GLM-5.3-Flash's prefill admitted at TP2/DCP2, SIRCL 0.3.2, libsircl
-0.6.0, three GLM-5.3 vLLM plugins and the runtime-status dashboard 0.3.8
-([images](../operations/images.md#installer-image)). Its
-[image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
-lists the transports it carries and the 15 profiles admitted to it.
+The installer's default image is release 2026.10.4,
+`dev-20261013-dcp2prefill-status038-sircl-tp6`. It carries SIRCL 0.3.2,
+libsircl 0.6.0, three GLM-5.3 vLLM plugins and runtime-status 0.3.8, and
+its [image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
+admits 15 profiles. Release 2026.10.2 is its rollback
+(`--image 2026.10.2`). [Images](../operations/images.md#installer-image)
+describes both.
 
 ## Collective path
 
 ![One decode step on four ranks: two SIRCL all-reduces per layer, a SIRCL all-gather of the LM head's vocabulary slices, draft verification and the next draft; one SIRCL all-reduce stages its input in a pinned arena, writes stripes and flags over RDMA through hardware relays where needed, and sums in rank order](assets/sparkring-decode-step.svg)
 
-Tensor-parallel ranks combine their results with collectives: all-reduce,
-all-gather, reduce-scatter and all-to-all. `sparkring install` runs them on
-one of these transports
+A **collective** is an operation in which every rank of a group takes part:
+an all-reduce sums each rank's partial result and gives every rank the
+total; an all-gather gives every rank every rank's piece. A decode step runs
+two all-reduces per layer and one all-gather of the vocabulary. Decode
+messages are small, so there a collective's latency matters more than
+bandwidth; prefill sends large messages.
+
+`sparkring install` runs collectives on one of four transports
 ([transport and receipts](../operations/install-reference.md#transport-and-receipts)):
 
 | Transport | When it runs | Status |
 |---|---|---|
-| `sircl`: SIRCL ring sessions, NCCL off | The default wherever it can run: an image whose lock lists `sircl`, such as the default image, on a fabric that `sparkring setup` recorded with its relay table. Any installer profile on a pair, a line of three to five Sparks, a whole ring of three to eight, or a group within it | One-shot all-reduce and all-gather **qualified** on the eight-Spark ring; serving through vLLM **research-only** ([status table](../../spark_transport/sircl/STATUS.md#component-status)) |
-| `prepared`: RoCEnante plus NCCL 2.32.3 | Images without the SIRCL layer, such as release 2026.10.1's, a fabric that does not carry `sircl`, or `--transport prepared`. A pair, a ring of four and that ring's halves only | The transport of images without the SIRCL layer |
+| `sircl`: SIRCL ring sessions, NCCL off | The default wherever it can run: an image whose lock lists `sircl`, such as the default image, on a fabric whose relay table `sparkring setup` installed. Any installer profile on a pair, a line of three to five Sparks, a whole ring of three to eight, or a group within it | One-shot all-reduce and all-gather **qualified** on the eight-Spark ring; serving through vLLM **research-only** ([status](../../spark_transport/sircl/STATUS.md#component-status)) |
+| `prepared`: RoCEnante plus NCCL 2.32.3 | Images without SIRCL, such as release 2026.10.1's; a fabric that cannot carry `sircl`; or `--transport prepared`. Runs on a pair, a ring of four and that ring's halves only | **implemented** |
 | `nccl`: vLLM's PyNccl on NVIDIA NCCL | Only with `--transport nccl`, on a cabled pair or a whole ring; refused where ranks need relays | Opt-in |
 | `libsircl`: vLLM's PyNccl on libsircl | Only with `--transport libsircl`, on an image whose lock lists `libsircl` | **research-only** |
 
-**SIRCL**, the Switchless Inference RDMA Collective Layer, is SparkRing's
-collective layer for 2 to 8 Sparks ([SIRCL](sircl.md)). vLLM's `sircl`
-platform and general plugins put a SIRCL session in front of every collective
-of the tensor-parallel and decode-context-parallel groups. Sessions reach
-peers that share no cable through the relays, keep each relayed lane's
-unacknowledged bytes within a forward window that the relay's hairpin queue
-can hold, and choose their algorithms from a tuning table: the package's
-default or one that `sudo sparkring fabric tune` measured on your fabric. NCCL runs only where the operator
-opts in with `--nccl auto`. Each rank writes receipts that the installer
-checks after the model answers.
+**SIRCL**, the Switchless Inference RDMA Collective Layer, is described in
+[SIRCL](sircl.md). vLLM plugins named `sircl` put a SIRCL session in front of
+every collective of the tensor-parallel and decode-context-parallel groups.
+NCCL stays off unless the operator passes `--nccl auto`. Each rank writes
+receipts naming what carried each collective, and `sparkring check` reads
+them. A tuning table chooses SIRCL's algorithm per message size: the
+package's default, or one that `sudo sparkring fabric tune` measured on your
+fabric.
 
 The **prepared** transport, shown as `RoCEnante (b12x)`, splits collectives
-by size. RoCEnante, B12X's RoCE all-reduce with SparkRing's adaptive peer
+by size. RoCEnante, B12X's RoCE collectives with SparkRing's adaptive peer
 paths, takes all-reduces up to 2 MiB and all-gathers up to 16 MiB per shard,
-the per-token traffic of decode. NCCL 2.32.3 from the image takes larger
-collectives, mostly prefill; on a ring of four it runs ring algorithms along
-the cable cycle.
+which covers decode. NCCL 2.32.3 takes larger collectives, mostly prefill.
 
-**libsircl** implements NCCL's public C API on SIRCL's wire protocol, so a
-program written against NCCL loads it in place of NCCL
-([libsircl](libsircl.md)). The installer uses it only when named; every part
-of its installer integration is research-only.
-
-**net-sircl** is an NCCL network plugin: NVIDIA NCCL keeps its own
-algorithms and CUDA-graph support, and the plugin supplies the transport
-between directly cabled Sparks, including peers reached through the relays.
-It is published separately at
-[FujitsuPolycom/net-sircl](https://github.com/FujitsuPolycom/net-sircl);
-version 0.1.1 is research-only and tested with NCCL 2.32.3, and recommends
-`NCCL_MAX_NCHANNELS=8` for jobs through relays. Its source is not
-in this repository, and `sparkring install` does not use it.
+**libsircl** and **net-sircl** are two ways to use SIRCL's cabling outside
+SIRCL's own sessions. libsircl replaces the NCCL library; net-sircl keeps
+NVIDIA NCCL and its algorithms and replaces only NCCL's network transport,
+including peers reached through relays. net-sircl is published separately
+at [FujitsuPolycom/net-sircl](https://github.com/FujitsuPolycom/net-sircl)
+(version 0.1.1, aarch64 builds); `sparkring install` does not use it.
 
 ## Profile composition
 
-Catalog profiles that `sparkring install` does not set up keep their own
-images, launchers and guides; each guide states its collective path. They use
-one of these:
+Catalog profiles that `sparkring install` does not set up have their own
+images, launchers and guides, and each guide states its collective path.
+They use one of three compositions:
 
 - **Patched NCCL alone**, with the environments in `scripts/config/`:
   DeepSeek-V4-Flash-0731 and the Qwen3.8-27B EXL3 K5/K6 pair and ring.
-- **Four-rank native SIRCL sessions with patched NCCL**: the retired GLM-5.2
-  EXL3 3.5-bpw profile, a TP4/DCP4 configuration that SparkRing does not
-  support, uses SIRCL for its tensor-parallel all-reduce and vocabulary
-  collectives. These sessions serve exactly four ranks on a four-Spark ring
-  and are kept for retained images ([SIRCL](sircl.md#profile-use)).
-- **The four-Spark mesh composition** of four-rank SIRCL, an adapted RoCEnante
-  all-reduce and patched NCCL, with a per-deployment mesh service
+- **Four-rank native SIRCL sessions with patched NCCL**: SIRCL carries the
+  tensor-parallel all-reduce and the vocabulary collectives on exactly four
+  Sparks of a four-Spark ring; NCCL carries the rest. The GLM-5.3-Flash
+  four-Spark profiles of shared runtime 2026.09.3
+  ([`glm53-flash-spark-tp4-dcp1-sparkcache`](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)
+  and its variants, [`runtime/common/glm_tp4.py`](../../runtime/common/glm_tp4.py))
+  and the retired GLM-5.2 EXL3 3.5-bpw profile use it
+  ([SIRCL](sircl.md#profile-use)).
+- **The four-Spark mesh composition** of four-rank SIRCL, an adapted
+  RoCEnante all-reduce and patched NCCL, with a per-deployment mesh service.
+  Only the retired managed-mesh profile uses it
   ([composition](sircl.md#composition-with-hardware-forwarded-mesh)).
 
 On rings of four, these profiles need routes to the non-adjacent fabric
@@ -138,8 +165,9 @@ subnets, `net.ipv4.ip_forward=1` and an unrestricted `DOCKER-USER` forward
 rule on every Spark. [Prerequisites](../operations/prerequisites.md) lists
 them and [`scripts/ring_doctor.py`](../../scripts/ring_doctor.py) checks them.
 
-Their guides have the setup and details:
-[GLM-5.2 EXL3 3.5-bpw (retired)](../../profiles/glm52-exl3-r7-3.5bpw/README.md),
+Guides:
 [DeepSeek-V4-Flash-0731](../operations/deepseek-0731.md),
-[Qwen3.8-27B EXL3 K5/K6 pair](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md) and
-[Qwen3.8-27B EXL3 K5/K6 ring](../../profiles/qwen38-27b-exl3-k5k6/README.md).
+[Qwen3.8-27B EXL3 K5/K6 pair](../../profiles/qwen38-27b-exl3-k5k6-pair/README.md),
+[Qwen3.8-27B EXL3 K5/K6 ring](../../profiles/qwen38-27b-exl3-k5k6/README.md),
+[GLM-5.3-Flash four Sparks](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) and
+[GLM-5.2 EXL3 3.5-bpw (retired)](../../profiles/glm52-exl3-r7-3.5bpw/README.md).

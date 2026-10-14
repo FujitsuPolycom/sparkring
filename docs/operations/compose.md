@@ -20,7 +20,10 @@ any model downtime.
 
 Every other profile is rejected. For the nine installer-image profiles:
 
-- Each rank's container matches the one `sparkring install` runs;
+- Each rank's container runs the installer image lock's image, release
+  2026.10.1's unless `--image` names another, and the profile's default
+  checkpoint; `sparkring install` defaults to release 2026.10.4's image
+  ([images and checkpoints](compose-files.md#images-and-checkpoints)).
   `deployment.json` records the image lock.
 - Compose reads the loader seccomp policy from
   `runtime/common/loader-seccomp.json` in each host's checkout.

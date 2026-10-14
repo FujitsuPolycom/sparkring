@@ -5,12 +5,13 @@ licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
 (`glm53-flash-tp2`, `glm53-flash-tp4`, `glm53-flash-tp2-dcp2`),
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
-(`glm53-nvfp4-csf-tp8`) and
+(`glm53-nvfp4-csf-tp6`, `glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
 (`qwen38-flash-next-tp2`). https://local-inference-lab.ai/
 
-SparkRing serves large language models on two or more NVIDIA DGX Sparks cabled
-directly over ConnectX-7, with no switch, and installs them with one command.
+SparkRing serves large language models on two to eight NVIDIA DGX Sparks
+cabled directly over ConnectX-7, with no switch. One command installs a model
+on all of them, or several models on separate groups of them.
 
 ## Quick start
 
@@ -30,7 +31,9 @@ describes; the [pinned install command](docs/operations/install-reference.md#get
 installs `main` or another commit.
 
 The installer asks before it changes anything: `--plan` previews and `--yes`
-approves, and running it again updates or switches models.
+approves, and running it again updates or switches models. `--on 0-3` places
+a model on part of the Sparks. Node A restarts a model that stops serving;
+`--no-auto-recover` turns that off.
 
 More: [documentation](docs/README.md) · [commands](docs/operations/commands.md) ·
 [status dashboard](docs/operations/dashboard.md) ·
@@ -39,9 +42,9 @@ More: [documentation](docs/README.md) · [commands](docs/operations/commands.md)
 
 ## SIRCL
 
-SIRCL is SparkRing's collective layer for switchless Sparks, including Sparks
-reached through another Spark's ConnectX-7 relay
-([architecture](docs/architecture/sircl.md)).
+SIRCL, the Switchless Inference RDMA Collective Layer, carries the model's
+collectives between Sparks, including Sparks reached through another Spark's
+ConnectX-7 relay ([architecture](docs/architecture/sircl.md)).
 [net-sircl](https://github.com/FujitsuPolycom/net-sircl) brings it to any NCCL
 application as a network plugin (research-only).
 
@@ -52,7 +55,7 @@ application as a network plugin (research-only).
 | Qwen3.8-Flash-Next | [CSF (NVFP4/MXFP8), Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD) | 2 | `qwen38-flash-next-tp2` | 262K | [2.5M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md) | on · xhigh |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-tp4` | 262K | [2.8M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md) | on · xhigh |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 2 | `glm53-flash-tp2` | 1M | [1.5M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md) | always · high |
-| GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD), DCP2, research | 2 | `glm53-flash-tp2-dcp2` | 1M | [4.1M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md) | always · high |
+| GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD), DCP2 | 2 | `glm53-flash-tp2-dcp2` | 1M | [4.1M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md) | always · high |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 4 | `glm53-flash-tp4` | 1M | [5.7M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md) | always · high |
 | GLM-5.3 | [NVFP4, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4) | 8 | `glm53-nvfp4-tp8` | 1M | [3.4M](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md) | always · high |
 | MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 262K | [656K](performance/records/images/dev-20261004-kraken-matrix-20261004.md) | on |
@@ -61,25 +64,33 @@ application as a network plugin (research-only).
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 2 | `swift15-qwen38-flash-next-tp2` | 262K | [2.9M](performance/records/images/dev-20261004-kraken-matrix-20261004.md) | on · xhigh |
 | Swift-1.5-Qwen3.8-Flash-Next | [NVFP4 experts/BF16, UkisAI](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4) | 4 | `swift15-qwen38-flash-next-tp4` | 262K | [3.1M](performance/records/images/dev-20261004-kraken-matrix-20261004.md) | on · xhigh |
 
-More profiles and options: [profile catalog](profiles/README.md).
+`glm53-flash-tp2-dcp2` splits the KV cache across the pair (decode-context
+parallelism 2). It, `glm53-nvfp4-tp8` and `swift15-qwen38-flash-next-tp4` are
+research-only; the other rows are implemented. The six-Spark GLM-5.3 profile
+`glm53-nvfp4-csf-tp6` runs on positions 0-5 of an eight-Spark ring
+(research-only). More profiles and options: [profile catalog](profiles/README.md).
 
 ## Speed
 
-Output tok/s measured with llm-inference-bench 0.7.6 at temperature 1, one
-start per profile with no install options; decode and prefill at 32K context
-([benchmarks](performance/benchmarks.md)).
+Output tok/s, measured with llm-inference-bench 0.7.6 at temperature 1 on
+release 2026.10.2's image, one start per profile installed without research
+options; decode and prefill at 32K context. The default image, release
+2026.10.4's, has no speed record of its own. Records:
+[rings of four](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md),
+[ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md),
+[paths of four](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md).
 
 | Model | Checkpoint | Sparks | `--profile` | Decode, 1 / 4 / 8 streams | Prefill, 32K prompt | Coding peak | Layout |
 |---|---|---|---|---|---|---|---|
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 8 | `deepseek-v41-flash-tp8` | 73.7 / 174.2 / 258.9 | 4,851 | 133.8 | ring of eight |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.6 / 136.7 / 194.3 | 4,388 | 102.4 | ring of four |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.4 / 139.1 / 198.0 | 4,426 | 101.7 | path of four |
-| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 45.8 / 93.7 / 129.1 | 1,387 | 51.4 | ring of eight |
-| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 68.1 / 135.3 / 203.5 | 3,165 | 79.7 | path of four |
-| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 37.8 / 83.1 / 112.9 | 2,420 | 49.0 | pair |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 73.0 / 203.6 / 288.1 | 4,553 | 111.5 | ring of four |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 77.9 / 209.5 / 274.3 | 4,377 | 111.3 | path of four |
-| Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 8 | `deepseek-v41-flash-tp8` | 74 / 174 / 259 | 4,851 | 134 | ring of eight |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 71 / 137 / 194 | 4,388 | 102 | ring of four |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70 / 139 / 198 | 4,426 | 102 | path of four |
+| GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 46 / 94 / 129 | 1,387 | 51 | ring of eight |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 68 / 135 / 204 | 3,165 | 80 | path of four |
+| GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 38 / 83 / 113 | 2,420 | 49 | pair |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 73 / 204 / 288 | 4,553 | 112 | ring of four |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 78 / 210 / 274 | 4,377 | 111 | path of four |
+| Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68 / 150 / 219 | 3,716 | 91 | pair |
 
 ## Documentation
 

@@ -4,50 +4,67 @@ SparkRing's profiles run three models created by Local Inference Lab, Inc. and
 licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
 (`glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4`,
-`glm53-flash-nvfp4-spark-tp2-dcp2`,
-`glm53-flash-csf-tp8`, `glm53-flash-nvfp4-sparkcache-tp2`,
-`glm53-flash-nvfp4-sparkcache-tp4`),
+`glm53-flash-nvfp4-spark-tp2-dcp2`, `glm53-flash-csf-tp8`,
+`glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4`),
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
-(`glm53-nvfp4-csf-tp8`) and
+(`glm53-nvfp4-csf-tp6`, `glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
 (`qwen38-flash-next-tp2`).
 
-Choose a quickstart below. Each profile defines its configuration, release and
-evidence scope. See the [configuration guide](../docs/development/configuration.md)
-for inspecting defaults or preparing private site inputs, and
-[benchmarks](../performance/benchmarks.md) for measured results.
+A profile is a saved configuration of one model on a fixed number of DGX
+Sparks: checkpoint, serving image, parallelism, cabling and serving settings.
+Its ID names it in commands and records. Installer profiles are the ones that
+`sparkring install --profile ID` sets up on its default image
+([Install SparkRing](../docs/operations/install.md)); every other profile has
+its own guide. [`catalog.json`](catalog.json) and
+[`research-catalog.json`](research-catalog.json) list every profile, and
+[`scripts/generate_profiles.py`](../scripts/generate_profiles.py) generates
+the tables below from them; edit the profiles, not the tables.
 
-Model names come from `model-names.json`. The quant column links the
-checkpoint repository selected by the profile; exact revisions remain pinned
-in its configuration. “Stock” identifies the publisher’s original checkpoint.
+## Reading the tables
 
-The [NVIDIA GLM NVFP4 target](glm53-nvidia-nvfp4.md) is an optional Development
-variant of the GLM TP4 settings below; NVFP4-Spark remains their default. The
-four-Spark GLM installer profile, `glm53-flash-nvfp4-spark-tp4`, installs the
-NVIDIA and Local Inference Lab NVFP4 QAD checkpoints with `--checkpoint`
-([names and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
-The GLM installer profiles of two and four Sparks install Local Inference
-Lab's CSF checkpoint by default on an image whose vLLM reads it, and the
-NVFP4-Spark checkpoint on every other image
-([default checkpoint by profile](glm53-checkpoints.md#default-checkpoint-by-profile)).
-The two-Spark Qwen installer profile, `qwen38-flash-next-tp2`, likewise
-installs Local Inference Lab's Qwen3.8-Flash-Next CSF checkpoint by default on
-an image whose vLLM reads it, and step 5500 on every other image
-([checkpoints](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
-The rows of installer profiles show the checkpoint, context and recorded KV
-pool that `sparkring install` installs on its default image.
+- **Status.** Validated is `qualified`: documented checks passed for the exact
+  image, checkpoint, topology and workload in the linked guide. Development is
+  `implemented`; Experimental is `research-only`.
+- **Bold rows** are profiles marked recommended, which the variant tables
+  label `(default)`; other rows are alternatives.
+- **Quant** links the checkpoint repository; Stock is the publisher's original
+  checkpoint. Profiles pin exact revisions.
+- **Installer-profile rows** show what `sparkring install` installs on its
+  default image, release 2026.10.4's
+  `dev-20261013-dcp2prefill-status038-sircl-tp6`: the checkpoint, its
+  configured context and its recorded KV pool. Other rows show the profile's
+  own default.
+- **DCP** is the decode-context-parallel size, the number of Sparks that split
+  each request's KV cache. A row with several values lists its default first.
+- **Context / KV.** Context is the configured per-request limit, not a
+  completed long-context test. KV is the engine-reported KV-cache pool, in
+  tokens, from the linked record.
 
-The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
-runs by default on release 2026.10.4's image
-`dev-20261013-dcp2prefill-status038-sircl-tp6`
-([Install SparkRing](../docs/operations/install.md)). The four-Spark row's KV
-link points to the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
-whose figures were measured on the shared-2026.09.3 image with checkpoint step
-4000 (revision `629bc3218833`), not on the installer image with step 5500. On the installer image, the TP4 profile's KV cache
-held 3,131,214 tokens ([installer tuning record](../performance/records/qwen38-flash-next/installer-tuning-20260925.md)).
+The GLM-5.3-Flash installer profiles of two and four Sparks and
+`qwen38-flash-next-tp2` install Local Inference Lab's CSF checkpoint on an
+image whose vLLM reads it, the default image among them, and their own default
+checkpoint (NVFP4-Spark, or Qwen QAD step 5500) on every other image.
+`--checkpoint` selects another listed checkpoint, such as
+[NVIDIA's NVFP4 GLM-5.3-Flash](glm53-nvidia-nvfp4.md) on four Sparks
+([GLM-5.3-Flash checkpoints](glm53-checkpoints.md),
+[names and settings](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
-To contribute a profile that `sparkring install` sets up, see
-[Contributing an installer profile](../docs/development/installer-profiles.md).
+Shorter aliases select some profiles by model and Spark count
+([`profile_aliases.py`](../runtime/common/profile_aliases.py)):
+
+| Alias | Profile ID |
+|---|---|
+| `glm53-flash-tp2` | `glm53-flash-nvfp4-spark-tp2` |
+| `glm53-flash-tp2-dcp2` | `glm53-flash-nvfp4-spark-tp2-dcp2` |
+| `glm53-flash-tp4` | `glm53-flash-nvfp4-spark-tp4` |
+| `qwen38-flash-next-tp4` | `qwen38-flash-next-qad-tp4` |
+| `qwen38-flash-next-tp8` | `qwen38-flash-next-qad-tp8` |
+
+[Configuration guide](../docs/development/configuration.md): inspect defaults
+and prepare private site inputs. [Benchmarks](../performance/benchmarks.md):
+measured results. [Contributing an installer profile](../docs/development/installer-profiles.md):
+add a profile that `sparkring install` sets up.
 
 <!-- BEGIN GENERATED PROFILES -->
 
@@ -59,7 +76,7 @@ To contribute a profile that `sparkring install` sets up, see
 | **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 1M / [5.7M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [2.3M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / [2.2M](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Development |
-| **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [3.1M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
+| **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [2.8M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md) | No | Development |
 | **[Swift-1.5-Qwen3.8-Flash-Next](../profiles/swift15-qwen38-flash-next-tp4/README.md)**<br>vLLM | [NVFP4 experts/BF16](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4)<br>by UkisAI | 1 | 262K / [3.1M](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Experimental |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)<br>by DeepSeek | 1 | 1M / [1M](../performance/capacity-references.md) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp4-dcp1/README.md) | Development |
 | [DeepSeek-V4-Flash-Vision-Exp](../profiles/deepseek-v4-flash-vision-exp-tp4/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-Vision-Exp)<br>by DeepSeek | 1 | 1M / — | No | Experimental |
@@ -335,9 +352,11 @@ Retained for compatibility and historical evidence; use an active deployment abo
 
 </details>
 
-Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-Spark deployments are experimental.
+The Qwen3.8-Flash-Next SparkCache variants of two and four Sparks are qualified only for bounded correctness, restart and cache-restore checks on release shared-2026.09.3.
+Profiles of six and eight Sparks are research-only and appear only under Configuration variants.
 
 <!-- END GENERATED PROFILES -->
 
-\* KV capacity depends on configuration and enabled features, including SparkCache.
-Linked figures retain their measurement conditions.
+\* KV capacity depends on configuration and enabled features, including
+SparkCache, and does not show that concurrent full-context requests fit. Each
+linked record states its measurement conditions.

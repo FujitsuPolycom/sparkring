@@ -1666,7 +1666,7 @@ for every transport:
 
 The table comes from SIRCL's relay plan for the whole fabric, so it carries
 every lane SIRCL derives. Routes with more than three relays, on lines of
-five or more Sparks, are research-only. Every Spark between two cables needs
+six or more Sparks, are research-only. Every Spark between two cables needs
 the [ConnectX hairpin setting](#the-hairpin-setting).
 
 The relay marker ships prebuilt in the SparkRing package, so no Spark

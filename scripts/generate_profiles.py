@@ -259,7 +259,9 @@ def profile_table(root=ROOT, *, compact=False):
             if r['topology'] == 'switched':
                 layout += ' · switched'
             context = f"{s['max_model_len']:,}" if 'max_model_len' in s else '—'
-            record = recorded_kv(p['id'], checkpoint, root) if checkpoint else capacity.get(p['id'])
+            # An installer profile's KV figure is the recorded pool of the checkpoint it installs, so a
+            # measurement of another checkpoint of the profile is not shown as its capacity.
+            record = recorded_kv(p['id'], checkpoint, root) if compact and p['id'] in installs else capacity.get(p['id'])
             kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
             if compact:
                 key = deployment_family(r)
@@ -348,7 +350,8 @@ def profile_catalog_table(rows, names, root, quant_labels=None):
     for p, r in sorted(retired, key=lambda item: item[0]['id']):
         lines.append(f"- [{p['id']}]({quickstart_path(p)}) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
     lines += ['', '[Additional historical variants](docs/history/deployment-variants.md)', '', '</details>', '',
-              'Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-Spark deployments are experimental.', '', END]
+              'The Qwen3.8-Flash-Next SparkCache variants of two and four Sparks are qualified only for bounded correctness, restart and cache-restore checks on release shared-2026.09.3.',
+              'Profiles of six and eight Sparks are research-only and appear only under Configuration variants.', '', END]
     text = '\n'.join(lines)
     return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 
