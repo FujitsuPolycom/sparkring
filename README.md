@@ -9,10 +9,8 @@ licensed under the Local Inference Lab License, Version 1.0:
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
 (`qwen38-flash-next-tp2`).
 
-SparkRing serves large language models on two to eight NVIDIA DGX Sparks
-cabled directly to each other over ConnectX-7, with no switch. vLLM serves the
-model; SparkRing provides the collectives (SIRCL), the tested profiles and
-images, and a one-command installer.
+SparkRing serves large language models on two or more NVIDIA DGX Sparks cabled
+directly over ConnectX-7, with no switch, and installs them with one command.
 
 ## Quick start
 
@@ -36,19 +34,11 @@ More: [documentation](docs/README.md) · [commands](docs/operations/commands.md)
 
 ## SIRCL
 
-SIRCL is SparkRing's collective layer for Sparks cabled without a switch, and
-it replaces NCCL for vLLM's tensor-parallel collectives. It reaches Sparks that
-aren't cabled to each other through the ConnectX-7 hardware relay. It picks its
-schedule by message size from a tuning table measured on real rings, and
-libsircl offers the same protocol behind NCCL's C API
+SIRCL is SparkRing's collective layer for switchless Sparks, including Sparks
+reached through another Spark's ConnectX-7 relay
 ([architecture](docs/architecture/sircl.md)).
-
-**[net-sircl](https://github.com/FujitsuPolycom/net-sircl)** brings SIRCL to
-any NCCL application. It's an NCCL network plugin, published from this
-repository's transport: PyTorch, vLLM, SGLang and other NCCL programs run
-unmodified on directly cabled DGX Sparks, including peers reached through the
-ConnectX-7 relays, with NCCL keeping its own algorithms and CUDA-graph support.
-Version 0.1.0 is research-only and tested with NCCL 2.32.3.
+[net-sircl](https://github.com/FujitsuPolycom/net-sircl) brings it to any NCCL
+application as a network plugin (research-only).
 
 ## Profiles
 
@@ -78,21 +68,19 @@ start per profile with no install options; decode and prefill at 32K context
 |---|---|---|---|---|---|---|---|
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 8 | `deepseek-v41-flash-tp8` | 73.7 / 174.2 / 258.9 | 4,851 | 133.8 | ring of eight |
 | DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.6 / 136.7 / 194.3 | 4,388 | 102.4 | ring of four |
-| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.4 / 139.1 / 198.0 | 4,426 | 101.7 | path of four: four Sparks of a ring of eight |
+| DeepSeek-V4.1-Flash | FP8/MXFP4 | 4 | `deepseek-v41-flash-tp4` | 70.4 / 139.1 / 198.0 | 4,426 | 101.7 | path of four |
 | GLM-5.3 | NVFP4 | 8 | `glm53-nvfp4-tp8` | 45.8 / 93.7 / 129.1 | 1,387 | 51.4 | ring of eight |
-| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 68.1 / 135.3 / 203.5 | 3,165 | 79.7 | path of four: four Sparks of a ring of eight |
+| GLM-5.3-Flash | CSF | 4 | `glm53-flash-tp4` | 68.1 / 135.3 / 203.5 | 3,165 | 79.7 | path of four |
 | GLM-5.3-Flash | CSF | 2 | `glm53-flash-tp2` | 37.8 / 83.1 / 112.9 | 2,420 | 49.0 | pair |
 | Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 73.0 / 203.6 / 288.1 | 4,553 | 111.5 | ring of four |
-| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 77.9 / 209.5 / 274.3 | 4,377 | 111.3 | path of four: four Sparks of a ring of eight |
+| Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 77.9 / 209.5 / 274.3 | 4,377 | 111.3 | path of four |
 | Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
 
 ## Documentation
 
 - [Benchmarks and test results](performance/benchmarks.md)
-- [Architecture](docs/architecture/overview.md) and [mesh host setup](docs/GLM53_SPARK_MESH_HOST_SETUP.md)
+- [Architecture](docs/architecture/overview.md)
 - [Container images](runtime/images/README.md#container-images)
-- [net-sircl](https://github.com/FujitsuPolycom/net-sircl), SIRCL as an NCCL
-  network plugin ([above](#sircl))
 - [Contributing](CONTRIBUTING.md) and [repository layout](docs/development/layout.md)
 - [Community discussions](https://github.com/FujitsuPolycom/sparkring/discussions)
 
