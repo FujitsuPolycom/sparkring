@@ -740,6 +740,7 @@ class Source:
         self.fabric = None
         self.deployments: list = []
         self.problem = None
+        self.display_name = None
 
     def _stamp(self, path):
         """(device, inode, modification time, size): a file replaced by rename gets another inode
@@ -757,6 +758,7 @@ class Source:
         if stamps == self.stamps and not force:
             return False
         self.stamps = stamps
+        self.display_name = None
         try:
             self.fabric = fabric_from_document(read_json(self.fabric_path))
         except (OSError, ValueError) as error:
@@ -764,7 +766,11 @@ class Source:
             self.problem = f"fabric document {self.fabric_path}: {error}"
             return True
         try:
-            self.deployments = deployments_from_site(read_json(self.site_path), self.fabric["size"])
+            site = read_json(self.site_path)
+            self.deployments = deployments_from_site(site, self.fabric["size"])
+            from runtime.host import ring_name
+            if site.get("display_name") is not None:
+                self.display_name = ring_name.validate(site["display_name"])
             self.problem = None
         except FileNotFoundError:
             self.deployments = []
@@ -1195,7 +1201,8 @@ class Collector:
         topology = {"source": "fabric" if rings else "none", "detail": "; ".join(problems) or None,
                     "rings": len(rings)}
         counters = self.client.counters()
-        return {"schema": SCHEMA, "title": "SparkRing", "generated_at": now, "service_started": self.started,
+        return {"schema": SCHEMA, "title": rings[0]["name"] if len(rings) == 1 else "SparkRing",
+                "generated_at": now, "service_started": self.started,
                 "history_cursor": cursor,
                 "poll_seconds": METRICS_VIEWED_SECONDS, "groups": groups, "rings": rings,
                 "ring": rings[0] if len(rings) == 1 else None, "topology": topology, "events": events,
@@ -1211,7 +1218,7 @@ class Collector:
         fabric = source.fabric
         if not fabric:
             return "fabric"
-        return f"{fabric['positions'][0]['hostname']} {'ring' if fabric['closed'] else fabric['shape']}"
+        return source.display_name or fabric.get("cluster") or "sparkring"
 
     def member(self, model: Model, now: float, color: int) -> dict:
         row, fabric = model.row, model.source.fabric or {"positions": []}

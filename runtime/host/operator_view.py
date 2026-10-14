@@ -52,7 +52,8 @@ def view(state_root: Path) -> dict:
         pass
     try:
         cluster = installer.read(state_root / "cluster.json")
-        document["cluster"] = {"plan_id": cluster["plan"].get("id"),
+        from runtime.host import ring_name
+        document["cluster"] = {"name": ring_name.effective(state_root, cluster), "plan_id": cluster["plan"].get("id"),
                                "size": placements.layout_of(cluster)["size"]}
     except (OSError, ValueError, KeyError, TypeError):
         pass
@@ -95,7 +96,11 @@ def view(state_root: Path) -> dict:
         document["recovery_timer"] = recovery.timer_enabled()
     except (OSError, ValueError, RuntimeError, TypeError):
         document["recovery_timer"] = None
-    return privilege.redact(document)
+    public = privilege.redact(document)
+    if document.get("cluster", {}).get("name"):
+        # This intentionally public label must print verbatim, even if it resembles an address.
+        public["cluster"]["name"] = document["cluster"]["name"]
+    return public
 
 
 def publish(state_root: Path | None = None, *, target: Path = PATH) -> bool:
@@ -150,6 +155,8 @@ def lines(document: dict, *, now=time.time) -> list[str]:
     if node.get("error"):
         result.append("  error: " + node["error"])
     cluster = document.get("cluster") or {}
+    if cluster.get("name"):
+        result.append("Ring: " + cluster["name"])
     if cluster.get("size"):
         result.append(f"Fabric: {cluster['size']} Sparks" + (f", plan {cluster['plan_id']}" if cluster.get("plan_id") else ""))
     for deployment in document.get("deployments") or []:

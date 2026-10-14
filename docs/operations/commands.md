@@ -31,11 +31,36 @@ sudo sparkring install --profile PROFILE --on 4-7            # a model on positi
 sudo sparkring logs --follow                                 # follow progress
 ```
 
+## Name
+
+```bash
+sudo sparkring name "Draupnir"   # set the display name
+sparkring name                   # print the effective name
+sudo sparkring name --clear      # return to the cluster name
+sudo sparkring setup --display-name "Draupnir"
+bash install.sh --display-name "Draupnir" --profile PROFILE
+```
+
+Names contain 1–40 printable Unicode characters after trimming surrounding
+whitespace. Node A stores the override in
+`/var/lib/sparkring/controller/display-name.json` (`name`, mode 0600).
+Setting or clearing it changes no container, fabric or deployment identity
+and requires no restart. Without an override the cluster name is shown.
+`setup --name` still chooses that cluster identity; `--display-name` only
+chooses the label. Setup and install plans show the effective display name
+without saving it; omitting the option preserves an existing label.
+
+The label appears in the dashboard header, ring panel and page title, the
+TUI header, `status`, and the Model ready card's `Ring dashboard` line.
+Members of the `sparkring` group read the published name without sudo,
+like the recorded operator status.
+
 ## All commands
 
 | Command | Runs on | sudo | Does |
 |---|---|---|---|
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
+| [`name`](#name) | Node A | set/clear | Read or change the ring display name |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
 | [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
 | [`fabric`](#fabric) | Node A | `verify`, `tune` and `spread-check` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it; time a spread along the cables |

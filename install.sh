@@ -88,13 +88,14 @@ INSTALL_ARGS=()
 usage() {
   cat <<'EOF'
 usage: install.sh [--ref BRANCH_TAG_OR_COMMIT] [--repository URL] [--package-only]
-                  [--keep-package]
+                  [--keep-package] [--display-name TEXT]
                   [--relay-marker-binary PATH] [SPARKRING_INSTALL_OPTION ...]
 
 Run on Node A, the Spark connected to your network, as a user with sudo.
 Clones the SparkRing repository at --ref and builds its Debian package, asks
 before installing the package on this Spark, then runs `sudo sparkring install`
-with every other option, for example --profile qwen38-flash-next-tp2. That
+with every other option, including --display-name "Draupnir" to name the ring,
+for example --profile qwen38-flash-next-tp2. That
 command asks for approval before it changes any Spark. --yes approves both,
 except replacing a package whose source is not an ancestor of the requested
 revision (or cannot be identified): that always needs terminal approval.

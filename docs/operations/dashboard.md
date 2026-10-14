@@ -235,6 +235,21 @@ a loopback or wildcard address (`0.0.0.0`, `::`) is used alone. When another
 program holds port 8090 on loopback, the service logs one line and serves on
 the LAN address only.
 
+## Ring display name
+
+On Node A, run `sudo sparkring name "Draupnir"` to label the ring dashboard
+and terminal view. The header, ring panel title (for example,
+`Draupnir · ring of 8`) and browser tab use this name. `sparkring name`
+prints it; `sudo sparkring name --clear` restores the cluster name.
+[`--display-name`](commands.md#name) also sets it during setup or installation.
+
+The controller keeps the override in
+`/var/lib/sparkring/controller/display-name.json` and publishes it in the
+existing dashboard site file. The collector re-reads that file at its normal
+cadence and delivers the name in the existing status response. No extra
+request, service reload or restart is needed. Exported site files carry the
+label too; cluster and deployment identities stay unchanged.
+
 ## Source
 
 SparkRing's runtime-status vLLM plugin serves the page. Its source, response

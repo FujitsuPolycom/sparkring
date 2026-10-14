@@ -171,7 +171,8 @@ def test_setup_with_nodes_passes_its_approval_to_the_hairpin_step(four_sparks, m
     received = []
     monkeypatch.setattr(controller, "apply", lambda value, directory, **options: received.append(options) or value)
     monkeypatch.setattr(controller.fabric, "finish_setup", lambda *args, **options: None)
-    assert controller.setup([*targets, "--apply", "--yes", "--skip-enroll", "--output", str(tmp_path / "setup")]) == 0
+    assert controller.setup([*targets, "--apply", "--yes", "--skip-enroll", "--display-name", "Draupnir", "--output", str(tmp_path / "setup")]) == 0
+    assert controller.ring_name.read(controller.STATE) == "Draupnir"
     assert [options["approved"] for options in received] == [True]
     assert ("    ConnectX hairpin: restart 4 functions after addressing (1024 -> 8192), about 8 s link loss each"
             in capsys.readouterr().out)
@@ -261,8 +262,10 @@ def test_fresh_setup_plan_lists_the_hairpin_step_when_it_finds_four_sparks(tmp_p
         found = {"head": "n0", "nodes": [{"id": f"n{index}", "hostname": f"spark{index}"} for index in range(count)],
                  "routes": {}, "edges": []}
         monkeypatch.setattr(single_uplink.bootstrap, "discover", lambda transport, found=found, **options: found)
-        assert single_uplink.main(["--plan"]) == 0
+        assert single_uplink.main(["--plan", "--display-name", "Draupnir"]) == 0
         out = capsys.readouterr().out
+        assert "Ring name: Draupnir" in out
+        assert controller.ring_name.read(controller.STATE) is None
         listed = ("Setup of these Sparks also includes these steps where their layout relays:\n"
                   + "\n".join(single_uplink.HAIRPIN_SCOPE + single_uplink.RELAY_SCOPE)) in out
         assert listed is (count == 4)

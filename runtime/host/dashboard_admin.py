@@ -195,7 +195,9 @@ def site_from_records(state_root: Path) -> dict:
                      "api_port": connection["port"],
                      "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,
                      "stopped": placements.stopped(directory), "containers": containers})
-    return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows}
+    from runtime.host import ring_name
+    return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows,
+            "display_name": ring_name.read(state_root)}
 
 
 def write_site(output: Path | None = None) -> dict:
@@ -211,12 +213,13 @@ def _stderr(line):
     print(line, file=sys.stderr, flush=True)
 
 
-def refresh_site(*, log=None, run=None) -> bool:
+def refresh_site(*, log=None, run=None, reload=True) -> bool:
     """Write the site file again after a command changed deployment records and ask the service to
     re-read it; never raises. True when the file was written.
 
     The dashboard shows the previous records until the next refresh or
-    `sudo sparkring dashboard export` when the write fails."""
+    `sudo sparkring dashboard export` when the write fails. With ``reload=False``,
+    the collector picks up the file at its existing cadence without a service call."""
     try:
         from runtime.common import process_lock
         from runtime.host import controller, operator_view
@@ -229,7 +232,8 @@ def refresh_site(*, log=None, run=None) -> bool:
         (log or _stderr)(f"Dashboard: its site file was not refreshed ({type(error).__name__}: {error}); "
                          "sudo sparkring dashboard export writes it")
         return False
-    reload_service(log=log, run=run)
+    if reload:
+        reload_service(log=log, run=run)
     return True
 
 

@@ -392,6 +392,8 @@ def _arguments(argv):
                                      description="Run on Node A to install a pair/ring through its fabric links.")
     parser.add_argument("--env", type=Path, help="optional literal preferences; never required for guided setup")
     parser.add_argument("--name", default=values["SPARKRING_NAME"])
+    parser.add_argument("--display-name", type=controller.ring_name.validate,
+                        help="ring display name (1 to 40 printable characters)")
     parser.add_argument("--ssh-user", default=values["SPARKRING_SSH_USER"])
     parser.add_argument("--ssh-port", type=int, choices=(22, 2222), default=int(values["SPARKRING_SSH_PORT"]))
     parser.add_argument("--control-cidr", default=values["SPARKRING_CONTROL_CIDR"])
@@ -447,6 +449,7 @@ def main(argv=None, *, follow=None):
     if not distribution.installed(installer.ROOT):
         raise ValueError("Install the local ARM64 Debian package on Node A before fabric provisioning")
     base = controller.STATE
+    print("Ring name: " + (args.display_name or controller.ring_name.effective(base, {"name": args.name})))
     base.mkdir(parents=True, exist_ok=True, mode=0o700)
     private, public = identity_key(base)
     if args.worker_bundle:
@@ -570,7 +573,7 @@ def main(argv=None, *, follow=None):
                          f"{fabric_layout.name(topology.layout_of(plan))}. To keep the recorded layout, restore its "
                          "cables (sudo sparkring cabling shows them). To set the Sparks up as they are cabled now, "
                          "run sudo sparkring setup --re-form")
-    controller.summarize(plan, api_address=api_address)
+    controller.summarize(plan, api_address=api_address, display_name=args.display_name)
     installer.write(directory / "plan.json", plan)
     if args.plan:
         return 0
@@ -579,11 +582,13 @@ def main(argv=None, *, follow=None):
     # step and the relay table on fabrics that relay; controller.apply runs
     # them after addressing.
     final = controller.apply(plan, directory, approved=args.yes, api_address=api_address,
-                             review=lambda p: (controller.summarize(p, api_address=api_address),
+                             review=lambda p: (controller.summarize(p, api_address=api_address, display_name=args.display_name),
                                                controller.confirm("Apply this refreshed fabric plan?", args.yes)))
     cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": final,
                "api_address": api_address, "setup_receipt": str(directory / "setup.json")}
     node.save(base, "cluster.json", cluster, mode=0o600)
+    if args.display_name is not None:
+        controller.ring_name.save(base, args.display_name)
     # Fresh setups, re-forms and repeated setups all end here. A degraded
     # cable is a warning with its repair steps; setup never fails here.
     bandwidth = fabric_bandwidth.after_setup(base, cluster)

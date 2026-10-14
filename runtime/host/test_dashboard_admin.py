@@ -244,7 +244,8 @@ def test_automated_setup_starts_the_dashboard_after_recording_the_fabric(tmp_pat
     order = []
     monkeypatch.setattr(single_uplink.fabric, "finish_setup", lambda *args, **kwargs: order.append("fabric"))
     monkeypatch.setattr(dashboard_admin, "after_setup", lambda **kwargs: order.append("dashboard"))
-    assert single_uplink.main(["--yes"]) == 0
+    assert single_uplink.main(["--yes", "--display-name", "Draupnir"]) == 0
+    assert controller.ring_name.read(controller.STATE) == "Draupnir"
     assert order == ["fabric", "dashboard"]
 
 

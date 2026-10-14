@@ -62,7 +62,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     rows, lines = render(snapshot, 140)
     text = "\n".join(lines)
     header = lines[0]
-    for part in ("SparkRing", "4 serving", "8/8 Sparks busy", "reqs", "tok/s", "live 1s ago", "poll 5s"):
+    for part in ("test", "4 serving", "8/8 Sparks busy", "reqs", "tok/s", "live 1s ago", "poll 5s"):
         assert part in header
     assert lines[2].startswith(" ●0 spark0 ━ ●1 spark1 ─ ●2 spark2 ━ ●3 spark3") and lines[2].endswith("─ ↺")
     card = next(line for line in lines if line.startswith(" ▾ tp2-0-1"))
@@ -138,7 +138,7 @@ def test_a_narrow_terminal_gets_every_line_cut_to_fit(tmp_path, width):
     snapshot, _ = snapshot_of(tmp_path)
     rows, lines = render(snapshot, width)
     assert all(len(line) <= width - 1 for line in lines)
-    assert lines[0].startswith(" SparkRing · 4 serving")
+    assert lines[0].startswith(" test · 4 serving")
     ring = lines[2]
     assert ring.startswith(" ●0 ━ ●1 ─ ●2") and "spark1" not in ring     # host names give way first
     assert sum(1 for line in lines if line.startswith(" ▾ tp2-")) == 4
@@ -209,7 +209,7 @@ def test_the_view_connects_to_the_local_dashboard_service_only(service, monkeypa
     found.last_view = None
     assert tui.main(arguments(url=f"http://127.0.0.1:{port}")) == 0
     out = capsys.readouterr().out
-    assert out.startswith(" SparkRing · 4 serving") and "tp2-6-7" in out
+    assert out.startswith(" test · 4 serving") and "tp2-6-7" in out
     assert connected and set(connected) == {("127.0.0.1", port)}
     assert found.last_view is not None              # an open view counts as a viewer, as the page does
 
@@ -400,7 +400,7 @@ def test_the_curses_loop_draws_selects_expands_and_quits(tmp_path, monkeypatch):
     reader.once()
     assert tui.interactive(reader) == 0
     first, last = screen.frames[0], screen.frames[-1]
-    assert first[0].startswith(" SparkRing · 4 serving") and "q quit" in first[-1]
+    assert first[0].startswith(" test · 4 serving") and "q quit" in first[-1]
     assert any(line.startswith(" ▾ tp2-4-5") for line in last)          # two down, then expanded
     assert any(line.startswith(" events (e to hide)") for line in last)
     assert reader.interval == dashboard.METRICS_VIEWED_SECONDS - 1

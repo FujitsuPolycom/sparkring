@@ -691,8 +691,12 @@ def test_a_stop_with_an_uncertain_outcome_stops_the_repeat_before_any_preparatio
 
 def test_plan_never_updates_workers_or_stops_model(machine, capsys):
     events, previous, _, _ = machine
-    assert command("--plan") == 0
-    result = json.loads(capsys.readouterr().out)
+    assert command("--plan", "--display-name", "Draupnir") == 0
+    output = capsys.readouterr()
+    result = json.loads(output.out)
+    assert result["ring_name"] == "Draupnir"
+    assert "Ring name: Draupnir" in output.err
+    assert controller.ring_name.read(controller.STATE) is None
     assert result["state"] == "planned" and result["replaces"] == str(previous)
     assert events == []
 
@@ -1289,6 +1293,14 @@ def first_installation(machine, monkeypatch):
         return 0
     monkeypatch.setattr(single_uplink, "main", setup)
     return runs
+
+
+def test_first_installation_forwards_display_name(machine, sparks, first_installation, capsys):
+    assert command("--display-name", "Draupnir") == 0
+    result = json.loads(capsys.readouterr().out)
+    assert first_installation[0][-2:] == ["--display-name", "Draupnir"]
+    assert result["ring_name"] == "Draupnir"
+    assert controller.ring_name.read(controller.STATE) == "Draupnir"
 
 
 @pytest.mark.parametrize("approval", ["terminal", "no-terminal", "command-line"])
