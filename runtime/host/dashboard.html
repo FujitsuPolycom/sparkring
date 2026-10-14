@@ -67,6 +67,7 @@ svg .traffic { fill: var(--ink); offset-distance: 50%; animation: cable-traffic 
 svg .relay { fill: var(--relay); stroke: var(--surface); stroke-width: 1; }
 svg .band, svg .node { cursor: pointer; }
 svg .lbl { text-anchor: middle; }
+svg .lbl text { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
 svg .l1 { font: 650 12px system-ui, sans-serif; fill: var(--gc); }
 svg .l2 { font: 9px var(--mono); fill: var(--muted); }
 svg .lrate { font: 650 18px var(--mono); fill: var(--ink); }
@@ -493,7 +494,7 @@ function ringLabels(groups, N, cx, cy) {
     const x = full ? cx : cx + radius * Math.cos(angle);
     const baseY = N === 2 ? 233 : full ? cy : cy + radius * Math.sin(angle);
     const name = g.m ? (g.m.gpu_job ? "GPU in use" : g.m.model_short || g.m.model || g.m.name) : g.r.label;
-    const size = groups.length > 1 ? 10 : 12, label = clip(name, groups.length > 1 ? 18 : 28);
+    const size = groups.length > 1 ? 10 : 12, label = clip(name, groups.length > 1 ? 22 : 28);
     ringLabelMeasure.font = `650 ${size}px system-ui, sans-serif`;
     const width = Math.max(ringLabelMeasure.measureText(label).width, g.size === 1 ? 64 : 86);
     let y = baseY;

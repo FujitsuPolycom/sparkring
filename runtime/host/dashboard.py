@@ -172,7 +172,7 @@ SETTING_KEYS = (
 )
 LABELS = {"busy": "Busy: API unavailable", "serving": "Serving", "not_ready": "Not ready", "stopped": "No model running",
           "offline": "Offline", "idle": "Idle", None: "Checking"}
-MODEL_TAIL_WORDS = {"nvfp4", "fp8", "fp4", "mxfp8", "mxfp4", "int4", "int8", "awq", "gptq", "bf16",
+MODEL_TAIL_WORDS = {"csf", "nvfp4", "fp8", "fp4", "mxfp8", "mxfp4", "int4", "int8", "awq", "gptq", "bf16",
                     "fp16", "qad", "spark", "attention", "gguf", "nf3", "exl3"}
 LABEL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)="((?:[^"\\]|\\.)*)"')
 LABEL_ESCAPE_RE = re.compile(r"\\(.)")
@@ -442,7 +442,7 @@ def short_model(model) -> str | None:
     kept = []
     for part in str(model).split("/")[-1].split("-"):
         low = part.lower()
-        if kept and (low in MODEL_TAIL_WORDS or re.fullmatch(r"tp\d+", low) or re.fullmatch(r"[\d.]+bpw", low)):
+        if kept and (low in MODEL_TAIL_WORDS or re.fullmatch(r"(tp|dcp)\d+", low) or re.fullmatch(r"[\d.]+bpw", low)):
             break
         kept.append(part)
     return "-".join(kept) or str(model)
