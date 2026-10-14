@@ -325,7 +325,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     # sudo. The helper validates the argv against its fixed allowlist and
     # audits every request in the journal.
     socket_path = os.environ.get("SPARKRING_HELPER_SOCKET")
-    if socket_path and raw and raw[0] in ("up", "down", "restart", "recover", "install"):
+    if (socket_path and raw and raw[0] in ("up", "down", "recover")
+            and not any(flag in raw for flag in ("-h", "--help"))):
         from runtime.host import helper, privilege
         if not privilege.running_as_root():
             try:
