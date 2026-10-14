@@ -11,14 +11,16 @@ const SparkRingFigure = (() => {
       return [200 + 143 * Math.cos(angle), 175 + 143 * Math.sin(angle)];
     });
     let svg = '<svg viewBox="0 0 400 355" role="img" aria-label="Spark allocation and direct cabling">';
-    for (let i = 0; i < size; i++) {
+    // A pair is joined by one cable; larger groups close the cycle.
+    let relays = false;
+    for (let i = 0; i < (size === 2 ? 1 : size); i++) {
       const j = (i + 1) % size, [x, y] = points[i], [xx, yy] = points[j];
       const g = groupOf(i), c = color(g === groupOf(j) ? g : -1);
-      if (size === 2) svg += `<line x1="${x}" y1="${y + (i ? 7 : -7)}" x2="${xx}" y2="${yy + (i ? 7 : -7)}" stroke="${c}" stroke-width="3"/>`;
-      else svg += `<line x1="${x}" y1="${y}" x2="${xx}" y2="${yy}" stroke="${c}" stroke-width="3"/>`;
+      svg += `<line x1="${x}" y1="${y}" x2="${xx}" y2="${yy}" stroke="${c}" stroke-width="3"/>`;
       if (size > 3 && g >= 0 && g === groupOf(j) && sorted[g].arc.length > 2) {
         const mx = (x + xx) / 2, my = (y + yy) / 2;
         svg += `<path d="M${mx} ${my - 4}l4 4 -4 4 -4 -4Z" fill="var(--relay)"/>`;
+        relays = true;
       }
     }
     points.forEach(([x, y], i) => {
@@ -37,7 +39,7 @@ const SparkRingFigure = (() => {
     svg += '</svg><p class="eyebrow" style="text-align:center">Spark allocation</p><div class="allocation">';
     for (let i = 0; i < size; i++) svg += `<span style="border-color:${color(groupOf(i))};background:${color(groupOf(i))};color:${groupOf(i) < 0 ? 'var(--muted)' : 'var(--bg)'}">${i}</span>`;
     svg += '</div><ul class="ring-legend">' + sorted.map((g, i) => `<li style="color:${color(i)}">${escape(g.profile.model_name)} · TP${g.arc.length} · Sparks ${g.arc.join(', ')}</li>`).join('') + '</ul>';
-    return svg + '<p class="hint">Positions follow cable order from Node A. Amber diamonds mark relay-capable links.</p>'
+    return svg + '<p class="hint">Positions follow cable order from Node A.' + (relays ? ' Amber diamonds mark relay-capable links.' : '') + '</p>'
       + (measurements.length ? '<p class="hint">Shown speeds: one stream at 32K, release defaults. See the speed table for conditions.</p>' : '');
   }
   return { draw };
