@@ -73,7 +73,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
         assert f"│ {label:<10} " in text or f"└ {label:<10} " in text, label
     assert "GLM-5.3-Flash-NVFP4-Spark-TP2" in text and f"http://{NODE_A_LAN}:8000/v1" in text
     assert "TP2 pair · profile · spark0, spark1 · workers 2/2" in text
-    assert "positions 0–1 · spark0 → spark1 · from deployment record" in text
+    assert "positions 0–1 · spark0 → spark1" in text and "deployment record" not in text
     assert [line.rstrip() for line in lines if " transport " in line][0].endswith("transport  SIRCL 0.3.2")
     assert "tp2-prepared" not in text and "RoCEnante" not in text and "bundle" not in text
     assert "spark0:8000 · container sr-0-r0" in text

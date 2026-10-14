@@ -700,7 +700,7 @@ function legendHtml(rings, members) {
       t1 = `<span class="mono">${esc(m.name)}</span>`;
       t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
       model = `<span title="${esc(m.model || (m.gpu_job ? gpuSummary(m) : m.name))}">${esc(m.gpu_job ? "GPU in use" : m.model_short || m.model || "—")}</span>`;
-      src = m.gpu_job ? esc(gpuSummary(m)) : `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
+      src = m.gpu_job ? esc(gpuSummary(m)) : `<span title="${esc((a.inferred ? "inferred from " : "from ") + (a.source_label || "?"))}">${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""}</span>${a.inferred ? ' · <span style="color:var(--warn)">positions guessed</span>' : ""}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.startup ? startupLabel(m) : m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
