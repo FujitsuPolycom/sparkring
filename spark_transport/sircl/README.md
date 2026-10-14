@@ -719,9 +719,12 @@ fabric; that evidence comes from the ring harness on Sparks
 
 - Relay plans do not persist: `sircl-fabric up` installs a plan and
   `sircl-fabric down` removes it, and nothing restores a plan after a reboot.
-- The SparkRing installer does not configure ring sessions, relay plans or
-  tuning tables, and has no `sparkring fabric tune` command; tables come from
-  the ring harness's `tune` command.
+- Tuning tables come from the ring harness's `tune` command. In SparkRing,
+  `sudo sparkring setup` installs the fabric's relay table from SIRCL's relay
+  plan, and each deployment takes its ring-session settings from the
+  release's default tuning table or the one `sudo sparkring fabric tune`
+  measures
+  ([install reference](../../docs/operations/install-reference.md#measure-the-tuning-table)).
 - Further limits of layouts, relays and serving:
   [STATUS.md, Limitations](STATUS.md#limitations).
 

@@ -16,7 +16,7 @@ decode by context and the coding peak are in the
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp4
+curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile swift15-qwen38-flash-next-tp4
 ```
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,

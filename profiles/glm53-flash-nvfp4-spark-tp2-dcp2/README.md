@@ -57,12 +57,15 @@ the API Spark preprocesses every image and video.
 
 ## Install
 
-The profile installs on an image whose lock lists it;
-`sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2` shows which:
+The profile installs on an image whose lock lists it, such as the default
+image of release 2026.10.4; `glm53-flash-tp2-dcp2` is its other name:
 
 ```bash
-sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2-dcp2 --image NAME
+sudo sparkring install --profile glm53-flash-tp2-dcp2
 ```
+
+`sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2` lists every
+image that runs it, and `--image NAME` selects another.
 
 Such an image is built from the
 [source composition](../../runtime/images/compositions/dcp2-prefill/README.md):
@@ -103,4 +106,3 @@ differences, not a `sparkring install` of this profile.
 produce bit-identical KDA outputs and retained states for coalesced/split
 prefill, and bit-identical mHC outputs for full/owned rows with the serving
 plan geometry. See the [test scope](../../integrations/vllm/dcp2_prefill/README.md).
-No DGX serving run of the enabled configuration has been performed.

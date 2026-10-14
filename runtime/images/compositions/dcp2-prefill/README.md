@@ -1,8 +1,11 @@
 # TP2/DCP2 prefill source-derived image
 
-Status: **Experimental**; CPU-tested composition, no image build or DGX
-serving qualification. This layer derives from installer image
-`sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b`.
+Status: **Experimental**; no DGX serving qualification. This layer derives
+from installer image
+`sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b`,
+release 2026.10.2's. Release 2026.10.4's default image,
+`dev-20261013-dcp2prefill-status038-sircl-tp6`, carries it
+([release record](../../../releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#layers)).
 
 **Source-read:** [sources.json](sources.json) pins the exact preimage and
 result of four Python files: vLLM's KDA checkpoint admission, both mHC

@@ -2381,7 +2381,7 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The serving image `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` is a
+The default serving image `dev-20261013-dcp2prefill-status038-sircl-tp6` is a
 14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
 image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
 figure: the need of a Spark holding neither the image nor a checkpoint file,

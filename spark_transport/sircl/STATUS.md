@@ -2,7 +2,7 @@
 
 SIRCL ring sessions (`spark_transport/sircl`, Python package
 `sparkring_sircl`) carry tensor-parallel and decode-context-parallel
-collectives between 2 to 8 DGX Sparks over RoCE without a switch: pairs,
+collectives between 2 and 8 DGX Sparks over RoCE without a switch: pairs,
 paths, cycles, several independent groups on one fabric, and subgroups whose
 members share no cable. Members that share no cable reach each other through
 ConnectX-7 hardware relays. This page holds the package's one status table;

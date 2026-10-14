@@ -28,6 +28,12 @@ It does not change published image selections or serving deployments.
 
 ## Container images
 
+`sparkring install` runs every installer profile on release 2026.10.4's image,
+`dev-20261013-dcp2prefill-status038-sircl-tp6`, unless `--image` selects
+another; `--image 2026.10.2` selects the rollback image, release 2026.10.2's
+([serving image and profiles](../../docs/operations/install-reference.md#serving-image-and-profiles),
+[builders](installer-images.md)).
+
 [Shared runtime 2026.09.3](../releases/shared-2026.09.3/README.md) is selected by
 the Qwen SparkCache profiles and the GLM TP2/TP4 DCP1 profiles that
 [release selections](../releases/README.md#shared-serving-versions) list.

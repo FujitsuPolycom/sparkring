@@ -62,10 +62,10 @@ size or a different vLLM composition is a different cache namespace.
 ## Installation
 
 `sparkring install --profile glm53-flash-nvfp4-sparkcache-tp4` installs the
-variant only on an image whose lock lists it. No lock in this package does: the
-only one is the lock that
+variant only on an image whose lock lists it. No lock in this package lists
+it; the lock that
 [runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/](../../runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/README.md)
-records when a Spark builds the derived layer. On every other image, including
+records when a Spark builds the derived layer does. On every other image, including
 the default image of release 2026.10.4, the installer refuses the profile. The
 variant has no Compose exports: a Compose deployment runs the default image,
 whose lock does not list the profile.
@@ -78,8 +78,8 @@ deployment.
 Stage 1 of the hardware test plan, on four Sparks of a ring of eight: steps 1-7
 and 9 passed on every rank; step 8 and the two-start A/B did not run
 ([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md)).
-The hardware test plan is in the
-[gap analysis section 7.2](../../docs/operations/install-reference.md). CPU
+The hardware test plan is in
+[sparkcache-flash-csf-hardware-test-plan.md](../../performance/sparkcache-flash-csf-hardware-test-plan.md). CPU
 conformance of the lease contract against the release image's vLLM is in the
 external SparkCache repository
 (`sparkcache/runtime_patches/test_gab86b70_contract.py`).

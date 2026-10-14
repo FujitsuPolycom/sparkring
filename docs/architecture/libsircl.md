@@ -268,8 +268,10 @@ It runs where all of these hold, and refuses with the reason otherwise:
 Supported shapes, from libsircl's STATUS: a communicator of 1 to 8 ranks;
 pairs; paths, whose ends reach each other through relays, with the routing
 settings of `tools/site_routes.py`; cycles of up to eight, the whole ring
-included. On Sparks only a cabled pair has run (positions 0-1); paths and
-cycles ran in GPU emulation and SIRCL's emulation harness.
+included. STATUS records a cabled pair on Sparks (positions 0-1) and paths
+and cycles in GPU emulation and SIRCL's emulation harness; the cycle plan has
+also run on Sparks on the cycle of eight and on two rings of four
+([source placement](#source-placement)).
 
 ### Fail-stop
 

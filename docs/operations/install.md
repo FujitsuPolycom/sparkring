@@ -22,8 +22,9 @@ and runs models on lines and rings of up to eight Sparks
   `sudo sparkring cabling` checks them, prints which port leads to which
   Spark and names any cable to move.
 - Node A on your network with outbound HTTPS to `github.com`,
-  `raw.githubusercontent.com`, `ghcr.io`, `huggingface.co` and your Ubuntu
-  mirror. Workers need no network cable.
+  `fujitsupolycom.github.io` or `raw.githubusercontent.com` (for
+  `install.sh`), `ghcr.io`, `huggingface.co` and your Ubuntu mirror.
+  Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
   163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift,
   505 GiB for GLM-5.3 or 547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
@@ -51,7 +52,7 @@ Pick the `--profile` value for your model and number of Sparks from the
 [profile table](../../README.md#profiles), then run on Node A:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
+curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE
 ```
 
 - It asks before it installs the SparkRing package, before it changes any

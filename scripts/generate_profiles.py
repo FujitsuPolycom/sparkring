@@ -299,8 +299,8 @@ def profile_catalog_table(rows, names, root, quant_labels=None):
              'capacity depends on enabled features. Expand a deployment below for each option’s own status and guide.',
              'Switched support is a separate network configuration and has no switched-hardware qualification.', '',
              '## Configuration variants', '',
-             'Network names the cabling: a pair is two Sparks cabled to each other, and a ring of 4 or 8 connects',
-             'each Spark to the next ([requirements](docs/operations/install.md#requirements)).', '',
+             'Network names the cabling: a pair is two Sparks cabled to each other, a ring connects each Spark',
+             'to the next, and a path is a ring without its last cable ([requirements](docs/operations/install.md#requirements)).', '',
              'Profile IDs identify saved configurations. Guide status describes the primary quickstart;',
              'record links preserve configuration evidence when the guide selects a different release.', '']
     groups, retired = {}, []
@@ -337,7 +337,7 @@ def profile_catalog_table(rows, names, root, quant_labels=None):
     for p, r in sorted(retired, key=lambda item: item[0]['id']):
         lines.append(f"- [{p['id']}]({quickstart_path(p)}) — {names[r['model']['repository']]}; {STATUS_LABELS[p['status']]}")
     lines += ['', '[Additional historical variants](docs/history/deployment-variants.md)', '', '</details>', '',
-              'Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-node deployments remain experimental and are outside this catalog.', '', END]
+              'Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-Spark deployments are experimental.', '', END]
     text = '\n'.join(lines)
     return re.sub(r'\]\((?!https?://|#)([^)]+)\)', lambda m: '](' + ('../' + m[1]) + ')', text)
 

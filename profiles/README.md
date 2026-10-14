@@ -86,8 +86,8 @@ Switched support is a separate network configuration and has no switched-hardwar
 
 ## Configuration variants
 
-Network names the cabling: a pair is two Sparks cabled to each other, and a ring of 4 or 8 connects
-each Spark to the next ([requirements](../docs/operations/install.md#requirements)).
+Network names the cabling: a pair is two Sparks cabled to each other, a ring connects each Spark
+to the next, and a path is a ring without its last cable ([requirements](../docs/operations/install.md#requirements)).
 
 Profile IDs identify saved configurations. Guide status describes the primary quickstart;
 record links preserve configuration evidence when the guide selects a different release.
@@ -333,7 +333,7 @@ Retained for compatibility and historical evidence; use an active deployment abo
 
 </details>
 
-Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-node deployments remain experimental and are outside this catalog.
+Qwen Flash Next TP2 offers optional SparkCache with bounded text/media persistence validation. Six-Spark deployments are experimental.
 
 <!-- END GENERATED PROFILES -->
 

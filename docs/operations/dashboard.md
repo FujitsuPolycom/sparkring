@@ -17,7 +17,7 @@ http://API_HOST:PORT/v1/sparkring/status/view
   ([profile table](../../README.md#profiles)), or the port that `--api-port`
   sets ([API endpoint](install-reference.md#api-endpoint)).
 
-The page refreshes every 5 seconds. It only reads status: it runs no
+The page refreshes every 2 seconds. It only reads status: it runs no
 benchmark and changes no setting.
 
 ![Dashboard summary and draft acceptance](assets/dashboard-overview.png)

@@ -23,7 +23,7 @@ Development.
 On the Spark connected to your network:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile qwen38-flash-next-tp2
+curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile qwen38-flash-next-tp2
 ```
 
 Add `--checkpoint qad-step5500-ple1000` to install step 5500 on any image, or
@@ -59,7 +59,7 @@ logs and recovery. To run step 5500's containers with Docker Compose, see
 | Loading / speculation | Managed B12X / MTP3; the CSF checkpoint's NVFP4 draft experts run on B12X, while step 5500's MXFP8 draft experts run on the `humming` MoE backend; drafts sampled from the draft distribution (`"draft_sample_method": "probabilistic"`); the draft's KV cache in the model's dtype (`"kv_cache_dtype": "auto"`) | Managed B12X / MTP3; the draft's NVFP4 experts run on B12X; greedy drafts |
 | Decode weights | Target LM head quantized to MXFP8 at load; MXFP8 hyper-connection down/injection projections for batches of at most 16 rows; fused rotary-embedding op, which runs because vLLM turns on breakable CUDA graphs for this model and so leaves torch.compile off and every custom op on: `--compilation-config`'s `custom_ops` and `pass_config` change nothing | BF16 LM head and hyper-connection projections |
 | Prefill | Hyper-connection token-row ownership (`VLLM_QWEN3_8_HC_PREFILL_MODE=shard`) with the image's `qwen-collectives` and `qwen4-prefill` features | Hyper-connection row sharding off |
-| Decode collectives | All-reduces of up to 64 rows on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`) | No Qwen dispatch setting |
+| Decode collectives | SIRCL ring sessions, the default transport, carry every collective; on the `prepared` transport, all-reduces of up to 64 rows run on RoCEnante (`QWEN_DISPATCH_AR_BYTES=327680`) | No Qwen dispatch setting |
 | Media | Three images, one video; 16 configured video frames | Same |
 | Caching | vLLM native prefix cache; SparkCache off | 4 GiB disk per rank, reclaim toward 3 GiB; about 1.25 GiB data buffers per rank |
 | API | Port 8000, no API key; model `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2` with the CSF checkpoint, `Qwen3.8-Flash-Next-NVFP4-QAD-TP2` with step 5500 | Port 8000, model `Qwen3.8-Flash-Next-NVFP4-QAD-TP2`, no API key |

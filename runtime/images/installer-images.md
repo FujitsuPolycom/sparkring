@@ -6,10 +6,11 @@ a builder in [builders.json](builders.json); the entry's `releases` field names
 it. The [repository layout check](../../scripts/check_repository_layout.py)
 requires a builder for every release that has an `installer-image.json` lock.
 
-Release 2026.10.1's image, `dev-20261004-kraken-cuda1342-nccl2323-status034`,
-which release 2026.10.2's image, the parent of release 2026.10.4's default image, is built on
-([release record](../releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)),
-is built in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
+Release 2026.10.4's default image is built on release 2026.10.2's image, the
+rollback image, which is built on release 2026.10.1's image,
+`dev-20261004-kraken-cuda1342-nccl2323-status034`
+([release record](../releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
+Release 2026.10.1's image is built in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
 that [external_context.py](external_context.py) prepares from SparkRing's merges
 of Local Inference Lab's Karmic Kraken beta vLLM and B12X branches and from the
 integration assets of `dev-20261001-statusrows-cuda1342-nccl2323-status034`,
@@ -17,9 +18,9 @@ then the CUDA 13.4.2 and NCCL 2.32.3 layer of
 [toolchain_assembly.py](toolchain_assembly.py). Its
 [composition record](compositions/external-kraken-20261004/README.md) lists the
 source commits and merge decisions and refers to the rebuild steps of
-`dev-20261001-kraken-cuda1342-nccl2323-status034`
-([composition record](compositions/external-kraken-20261001/README.md)), the
-rollback image, which is built the same way from other vLLM and B12X commits.
+release 2026.10.0's image, `dev-20261001-kraken-cuda1342-nccl2323-status034`
+([composition record](compositions/external-kraken-20261001/README.md)),
+which is built the same way from other vLLM and B12X commits.
 Neither image's `publication.json` has a `derivation`, so the install plan
 counts each one's whole download.
 
@@ -248,9 +249,10 @@ directory that holds both files. The
 descriptor pins the version 0.3.8 wheel and source archive, which carry both
 the CPU stat-logger plugin and the TP6 resident quantization facts, built from
 Git tree `ae8b68dd7114fc68e3485186e26c810118085aa8` with archive time
-`1791927655`. It names the image with ID `sha256:d52737a109e0` as its parent and
-is a development composition; `prepare --parent-lock` stacks it on an image
-derived from that parent.
+`1791927655`. It names the image with ID `sha256:d52737a109e0`, release
+2026.10.2's, as its parent; `prepare --parent-lock` stacks it on an image
+derived from that parent. Release 2026.10.4's default image carries its layer
+([release record](../releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#layers)).
 
 ### Commands
 
@@ -388,7 +390,9 @@ libsircl, SIRCL's NCCL-compatible C library
 ([design](../../docs/architecture/libsircl.md)), to a kraken-line image with a
 v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
 `libsircl` among its `transports` and a `libsircl` block. Status:
-**research-only**; no release lists it. The layer holds:
+**research-only**. No release is this layer's own output; release 2026.10.2's
+image and release 2026.10.4's default image carry it below their own layers
+(libsircl 0.6.0, `--transport libsircl`). The layer holds:
 
 - `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, built by libsircl's
   own Makefile from its committed [source](../../spark_transport/libsircl/README.md)

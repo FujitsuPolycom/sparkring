@@ -112,7 +112,8 @@ algorithms and CUDA-graph support, and the plugin supplies the transport
 between directly cabled Sparks, including peers reached through the relays.
 It is published separately at
 [FujitsuPolycom/net-sircl](https://github.com/FujitsuPolycom/net-sircl);
-version 0.1.0 is research-only and tested with NCCL 2.32.3. Its source is not
+version 0.1.1 is research-only and tested with NCCL 2.32.3, and recommends
+`NCCL_MAX_NCHANNELS=8` for jobs through relays. Its source is not
 in this repository, and `sparkring install` does not use it.
 
 ## Profile composition
