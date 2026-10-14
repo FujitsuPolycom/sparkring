@@ -60,7 +60,7 @@ def main():
     with open(os.environ["STUB_LOG"], "a", encoding="utf-8") as log:
         log.write("extracted sparkring " + " ".join(sys.argv[1:]) + "\\n")
     Path(os.environ["STUB_PLANNER"]).write_text(json.dumps(
-        {"root": str(Path(__file__).resolve().parents[1]), "path": sys.path}), encoding="utf-8")
+        {"root": str(Path(__file__).resolve().parents[1]), "path": sys.path, "argv": sys.argv}), encoding="utf-8")
     state = os.environ["STUB_PLAN"]
     if state == "crash":
         raise RuntimeError("the payload failed")
@@ -246,14 +246,15 @@ def test_plan_installs_nothing_and_plans_with_the_matching_package(tmp_path):
 def test_plan_of_another_version_runs_the_built_package_without_installing_it(tmp_path, installed):
     """An upgrade or a downgrade is planned by the extracted payload; apt and /usr/bin/sparkring do not run."""
     requires_system_python()
-    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--yes", "--json",
+    result, calls = run_script(tmp_path, "--profile", "qwen38-flash-next-tp2", "--plan", "--yes", "--json", "--display-name", "Draupnir Lab",
                                installed=installed)
     assert result.returncode == 0, result.stderr
     assert only_document(result.stdout)["state"] == "planned"
-    assert calls == ["extracted sparkring install --profile qwen38-flash-next-tp2 --plan --yes --json"]
+    assert calls == ["extracted sparkring install --profile qwen38-flash-next-tp2 --plan --yes --json --display-name Draupnir Lab"]
     assert f"This Spark has SparkRing {installed}; planning with the built package {BUILT}" in result.stderr
     work = work_directory(tmp_path)
     planner = json.loads((tmp_path / "planner.json").read_text())
+    assert planner["argv"][-2:] == ["--display-name", "Draupnir Lab"]
     root = str(work / "package/usr/lib/sparkring")
     # The payload imports itself: it heads the import path, and neither the
     # installed payload nor the working directory is on it.

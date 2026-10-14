@@ -184,7 +184,10 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
     busy = sum(1 for p in positions if p.get("member") or p.get("run"))
     down = sum(1 for p in positions if p.get("up") is False)
     sep = (" · ", style(dim=True))
-    segs = [(" " + (snapshot.get("title") or "SparkRing"), style(bold=True)), sep]
+    title = snapshot.get("title") or "SparkRing"
+    # Status documents are data: terminal controls must never reach curses or --once output.
+    title = "".join(c if c.isprintable() else c.encode("unicode_escape").decode("ascii") for c in title)
+    segs = [(" " + title, style(bold=True)), sep]
     if len(rings) > 1:
         segs += [(f"{len(rings)} rings", style(dim=True)), sep]
     segs += [(f"{len(serving)} serving", style(GOOD, bold=True) if serving else style(WARN, bold=True)), sep,

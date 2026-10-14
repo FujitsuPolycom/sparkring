@@ -167,6 +167,7 @@ def _parser() -> argparse.ArgumentParser:
     # directly to deploy_suite so that module owns subcommand help and parsing.
     subcommands.add_parser("deploy", help="standalone deployment discovery and preparation")
     subcommands.add_parser("compose", help="generate and coordinate profile-owned Compose deployments")
+    subcommands.add_parser("name", help="read, set or clear the ring display name")
     subcommands.add_parser("setup", help="guided Linux setup of a pair, line or ring of up to eight Sparks; "
                                          "show/storage retain profile planning")
     subcommands.add_parser("node", help="Linux node services and observations")
@@ -245,6 +246,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "host-load":
         from runtime.host.host_load import main as host_load_main
         return host_load_main(raw[1:])
+    if raw and raw[0] == "name":
+        from runtime.host.ring_name import main as name_main
+        return name_main(raw[1:])
     if raw and raw[0] == "dashboard":
         from runtime.host.dashboard import main as dashboard_main
         return dashboard_main(raw[1:])

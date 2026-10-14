@@ -1308,11 +1308,14 @@ def summary_lines(result):
     api = result.get("api_url")
     if api and result.get("model"):
         api += f'   (model "{result["model"]}")'
+    ring_dashboard = result.get("sparkring_dashboard_url")
+    if ring_dashboard and result.get("ring_name"):
+        ring_dashboard = result["ring_name"] + " · " + ring_dashboard
     rows = [("Profile", profile_text),
             ("Capacity", _capacity_text(result)),
             ("API", api),
             ("Model status", result.get("dashboard_url")),
-            ("Ring dashboard", result.get("sparkring_dashboard_url")),
+            ("Ring dashboard", ring_dashboard),
             ("Thinking", thinking.deployment_text(result["thinking"]) if result.get("thinking") else None)]
     lines = [f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}" for name, value in rows if value]
 
@@ -1405,7 +1408,8 @@ def execute(args):
                 raise NeedsInput("Run sparkring setup --plan to discover this unconfigured cluster.", field="setup")
             from runtime.host import single_uplink
             options = ((["--env", str(args.env)] if args.env else []) + (["--yes"] if args.yes else [])
-                       + (["--stop-workloads"] if args.stop_workloads else []))
+                       + (["--stop-workloads"] if args.stop_workloads else [])
+                       + (["--display-name", args.display_name] if getattr(args, "display_name", None) is not None else []))
             follow = "then install " + (args.profile or "the model profile you choose") + " and start it"
             if not args.yes and not interactive:
                 raise NeedsInput("First installation requires setup approval. Review sparkring setup --plan, then use --yes.",
@@ -1417,6 +1421,9 @@ def execute(args):
             args.yes = True
         setup_only = args.yes and not command_line
         cluster = installer.read(state_root / "cluster.json")
+        display_name = getattr(args, "display_name", None)
+        shown_name = display_name or controller.ring_name.effective(state_root, cluster)
+        print("Ring name: " + shown_name)
         check_access(cluster)
         cluster = refresh_cluster(cluster)
         if args.plan:
@@ -1532,7 +1539,7 @@ def execute(args):
         if needs_hairpin:
             steps.insert(steps.index("update-workers") + 1, "apply-hairpin-setting")
         plan = {"schema": "sparkring-install-result/v1", "state": "planned", "deployment": str(directory),
-                "activity": args.activity,
+                "activity": args.activity, "ring_name": shown_name,
                 "profile": lock["selection"]["profile"], "image_id": lock["selection"]["image_id"],
                 "nodes": len(lock["site"]["ranks"]), "replaces": replaces, "steps": steps,
                 "serving": lock.get("serving") or {},
@@ -1598,6 +1605,10 @@ def execute(args):
             plan["checkpoint"]["reviewed"] = True
         elif approval != "reviewed-plan":
             save_plan(directory, checkpoint)
+        if display_name is not None:
+            controller.ring_name.save(state_root, display_name)
+            from runtime.host import dashboard_admin
+            dashboard_admin.refresh_site(reload=False)
         # The address shown for the model is the one this installation names,
         # or none; status and the summary read it from the deployment.
         api_endpoint.record(directory, getattr(args, "api_address", None))
@@ -1729,7 +1740,8 @@ def execute(args):
                                                              for position in group["positions"]]},
                      "elapsed_seconds": round(time.monotonic() - started, 1),
                      **summary(lock, plan, replaces, displaced=displaced),
-                     "sparkring_dashboard_url": dashboard_admin.page_url()}
+                     "sparkring_dashboard_url": dashboard_admin.page_url(),
+                     "ring_name": controller.ring_name.effective(state_root, cluster)}
         save_result(directory, completed)
         return completed
 
@@ -1749,6 +1761,8 @@ def main(argv=None):
                              "(REF, with / or :) instead plans a stock vLLM image with --transport libsircl --plan "
                              "and the vLLM arguments after -- (research-only)")
     images.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
+    parser.add_argument("--display-name", type=controller.ring_name.validate,
+                        help="set the ring display name (1 to 40 printable characters)")
     parser.add_argument("--model-path", action="append", metavar="[N=]PATH",
                         help="a local copy of the checkpoint; PATH for every Spark or N=PATH for Node N (repeatable); "
                              "SparkRing links or copies its files into its own directory, or serves an exact copy on "

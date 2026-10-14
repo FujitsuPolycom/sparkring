@@ -41,7 +41,7 @@ def completed_card(sircl, monkeypatch, capsys):  # noqa: F811
     ticks = iter((100.0, 460.0))
     monkeypatch.setattr(flow, "time", SimpleNamespace(monotonic=lambda: next(ticks)))
     monkeypatch.setattr(dashboard_admin, "page_url", lambda: "http://192.0.2.50:8090/")
-    assert install(lock, "--no-auto-recover") == 0
+    assert install(lock, "--no-auto-recover", "--display-name", "Draupnir") == 0
     result = json.loads(capsys.readouterr().out)
     return result, ["Model ready: " + flow.model_ready_line(result), *flow.summary_lines(result)]
 
@@ -54,7 +54,7 @@ def test_card_uses_install_facts_and_smoke_observations(completed_card):
     assert lines[2] == "  Capacity:        1,048,576 context · 13M KV tokens · up to 8 requests"
     assert lines[3] == f'  API:             {result["api_url"]}   (model "{result["model"]}")'
     assert lines[4] == f"  Model status:    {result['dashboard_url']}"
-    assert lines[5] == "  Ring dashboard:  http://192.0.2.50:8090/"
+    assert lines[5] == "  Ring dashboard:  Draupnir · http://192.0.2.50:8090/"
     assert f"  Start again:     {result['checkpoint']['command']}" in lines
     assert "  Recovery:        off → sudo sparkring recover on" in lines
     assert result["commands"]["switch_back"] is None

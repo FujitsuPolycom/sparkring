@@ -36,6 +36,7 @@ from runtime.host import (
     operator_view,
     privilege,
     relays,
+    ring_name,
     topology,
 )
 from scripts import (
@@ -110,8 +111,9 @@ def detail_lines(details):
     return lines
 
 
-def summarize(plan, *, observe_only=False, api_address=None):
+def summarize(plan, *, observe_only=False, api_address=None, display_name=None):
     layout = topology.layout_of(plan)
+    print("Ring name: " + (display_name or ring_name.effective(STATE, {"name": plan["spec"]["owner"]})))
     print(f"{len(plan['nodes'])} Sparks: " + {"pair": "p0 pair", "cycle": "p0-to-p1 ring",
                                                "path": "p0-to-p1 line"}[layout["shape"]])
     document, relay_plan = fabric.prepare(plan, cluster=plan["spec"]["owner"], api_address=api_address,
@@ -293,6 +295,7 @@ def setup(argv=None):
                                      "Sparks, review its fabric, then save persistent host setup.")
     parser.add_argument("--node", action="append", help="USER@management-IP (include this head); bypass mDNS")
     parser.add_argument("--name", default="sparkring")
+    parser.add_argument("--display-name", type=ring_name.validate, help="ring display name (1 to 40 printable characters)")
     parser.add_argument("--fabric-cidr", default=None,
                         help="fabric supernet (default: 198.18.0.0/21 for up to four cables, 198.18.0.0/20 above)")
     parser.add_argument("--plan", action="store_true", help="read existing SSH access only; no enrollment or host changes")
@@ -348,7 +351,7 @@ def setup(argv=None):
         if any(n.get("revision") != expected for n in nodes):
             raise ValueError("Install the same SparkRing package revision on all selected nodes")
     plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr)
-    summarize(plan, observe_only=args.adopt)
+    summarize(plan, observe_only=args.adopt, display_name=args.display_name)
     directory = args.output or Path.home() / ".local/state/sparkring/setups" / str(time.time_ns())
     installer.write(directory / "plan.json", plan)
     print("Full plan: " + str(directory / "plan.json"))
@@ -368,7 +371,7 @@ def setup(argv=None):
         confirm("Apply this network configuration and enable fabric/agent services?", args.yes)
 
     def review(value):
-        summarize(value)
+        summarize(value, display_name=args.display_name)
         confirm("Apply the refreshed plan after configuration discovery?", args.yes)
 
     def rebuild(found):
@@ -428,6 +431,8 @@ def setup(argv=None):
     if path.exists() and installer.read(path)["plan"]["id"] != plan["id"]:
         raise ValueError("Controller already records another cluster; inspect " + str(path))
     node.save(STATE, "cluster.json", cluster, mode=0o600)
+    if args.display_name is not None:
+        ring_name.save(STATE, args.display_name)
     from runtime.host import fabric_bandwidth
     # A degraded cable is a warning with its repair steps; setup never fails here.
     bandwidth = fabric_bandwidth.after_setup(STATE, cluster)
@@ -718,6 +723,7 @@ def _lifecycle(argv, *, output, locks):
         plan_id = size = layout = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
+            result["ring_name"] = ring_name.effective(STATE, cluster)
             plan_id = cluster["plan"].get("id")
             from runtime.host import placement as placements
             layout = placements.layout_of(cluster)
@@ -772,6 +778,8 @@ def _lifecycle(argv, *, output, locks):
                                         + colour.action(model["next_action"]), sys.stdout))
                     for line in model["details"]:
                         print("  " + line)
+            if result.get("ring_name"):
+                print("Ring: " + result["ring_name"])
             # Node A's own state; each Spark's line follows.
             print(colour.render(result["state"] + " | next: "
                                 + colour.action(result.get("next_action", "sparkring status")), sys.stdout))

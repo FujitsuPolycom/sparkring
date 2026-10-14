@@ -27,7 +27,8 @@ body { margin: 0; background: var(--bg); color: var(--fg);
 .mono, code { font-family: var(--mono); }
 .wrap { max-width: 1360px; margin: 0 auto; display: grid; gap: 20px; min-width: 0; }
 .top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
-h1 { margin: 0; font-size: 1.45rem; font-weight: 650; letter-spacing: -0.01em; }
+h1 { margin: 0; font-size: 1.45rem; font-weight: 650; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+#ringtitle { text-transform: none; letter-spacing: normal; overflow-wrap: anywhere; }
 .summary { margin: 2px 0 0; color: var(--muted); }
 .live { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 0.85rem; }
 .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--idle); flex: none; }
@@ -319,7 +320,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 <div class="wrap">
   <header class="top">
     <div>
-      <h1>SparkRing</h1>
+      <h1 id="ring-name">SparkRing</h1>
       <p class="summary" id="summary">Connecting to the dashboard…</p>
     </div>
     <div class="live" id="live"><span class="dot"></span><span id="fresh">Connecting</span></div>
@@ -656,7 +657,10 @@ function renderRings(rings, members, now) {
   patch($("legend"), legendHtml(rings, members));
   patch($("ringnote"), ringNote(rings, data.topology));
   const disc = rings[0].discovery || {}, total = rings.reduce((a, r) => a + (r.size || 0), 0);
-  text($("ringtitle"), rings.length > 1 ? "Groups on the rings" : "Groups on the ring");
+  const name = rings.length === 1 ? rings[0].name : "SparkRing";
+  text($("ring-name"), name);
+  document.title = name;
+  text($("ringtitle"), rings.length === 1 ? `${name} · ${rings[0].closed === false ? "line" : "ring"} of ${rings[0].size}` : "Groups on the rings");
   patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${sparkCount(total)}` : `${esc(rings[0].name)} · ${sparkCount(rings[0].size)}`)
     + (disc.at ? ` · checked <span data-age="${disc.at}">${dur(now - disc.at)}</span> ago` : ""));
 }
