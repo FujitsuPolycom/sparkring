@@ -360,6 +360,7 @@ OPTION_VARIABLES = {
     "SIRCL_NCCL": "--nccl",
     "SIRCL_LARGE_ALLREDUCE": "--large-allreduce",
     "SIRCL_GID_INDEX": "--gid-index",
+    "SIRCL_SUBSET_RING": "--subset-ring",
     **{variable: "--" + attribute.replace("_", "-") for attribute, variable in SCHEDULE_VARIABLES},
     CHAIN_MIN_VARIABLE: "--chain-min",
     RING_MIN_VARIABLE: "--ring-min",
@@ -413,6 +414,7 @@ class Options:
     ring_min: int | None = None              # SIRCL_RING_MIN_BYTES; None: the session's defaults
     link_sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)  # LinkSize.attribute -> bytes
     link_slots: int | None = None            # SIRCL_LINK_SLOTS; None: the session's default
+    subset_ring: bool = False
     ring_gather_stagger: int | None = None   # SIRCL_RING_GATHER_STAGGER; None: the session's default
     tuning_tables: tuple[str, ...] = ()      # --tuning-table PATH (SIRCL_TUNING_TABLE)
     extra_env: Mapping[str, str] = dataclasses.field(default_factory=dict)  # --env KEY=VALUE, every rank
@@ -562,6 +564,7 @@ class ServePlan:
     serving_wait: float = DEFAULT_SERVING_WAIT_S
     link_sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)   # the LinkSize values set
     link_slots: int | None = None            # --link-slots; None: the session's default
+    subset_ring: bool = False
     ring_gather_stagger: int | None = None   # --ring-gather-stagger; None: the session's default
     schedules: Mapping[str, str] = dataclasses.field(default_factory=dict)   # the schedules set, by attribute
     tuning: TuningPlan = dataclasses.field(default_factory=lambda: TuningPlan())   # --tuning-table
@@ -597,7 +600,8 @@ class ServePlan:
         above 1, one per decode-context-parallel group (with the session defaults, as SIRCL's adapter builds
         them)."""
         rows = [session_settings(self.group, name="tp", groups=f"one group of ranks 0-{len(self.ranks) - 1}",
-                                 scoped=True, schedules=self.schedules, link_sizes=self.link_sizes,
+                                 scoped=True, subset_ring=self.subset_ring, schedules=self.schedules,
+                                 link_sizes=self.link_sizes,
                                  link_slots=self.link_slots, chain_min=self.chain_min, ring_min=self.ring_min,
                                  ring_gather_stagger=self.ring_gather_stagger,
                                  table_settings=self.tuning.settings_of("tp"))]
@@ -967,6 +971,8 @@ def relay_conflicts(arguments: Sequence[str], environment: Mapping[str, str]) ->
 
 def add_schedule_arguments(command: object) -> None:
     """``--large-schedule``, ``--gather-schedule`` and ``--scatter-schedule`` on an argparse (sub)parser."""
+    command.add_argument("--subset-ring", action="store_true",
+                         help="experimental subset chain/ring with isolated relay queues")
     for flag, what in (("--large-schedule", "all-reduces above the dispatch ceiling (all_reduce_large)"),
                        ("--gather-schedule", "all-gathers above the gather op size (all_gather_large)"),
                        ("--scatter-schedule", "reduce-scatters")):
@@ -977,7 +983,7 @@ def add_schedule_arguments(command: object) -> None:
 
 def schedule_environment(options: object) -> dict[str, str]:
     """``SIRCL_*_SCHEDULE`` settings for the schedules ``options`` name (attributes of :data:`SCHEDULE_VARIABLES`)."""
-    result = {}
+    result = {"SIRCL_SUBSET_RING": "1", "SIRCL_ROUTE_SCOPE": "fabric"} if getattr(options, "subset_ring", False) else {}
     for attribute, variable in SCHEDULE_VARIABLES:
         value = getattr(options, attribute, None)
         if value is None:
@@ -2091,6 +2097,7 @@ class SessionSettings:
 
 
 def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, scoped: bool,
+                     subset_ring: bool = False,
                      schedules: Mapping[str, str] | None = None, link_sizes: Mapping[str, int] | None = None,
                      link_slots: int | None = None, chain_min: int | None = None,
                      ring_min: int | None = None, ring_gather_stagger: int | None = None,
@@ -2099,7 +2106,7 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
 
     The rules of oneshot/runtime.py for a session built with the layout the adapter passes
     (``GroupTopology.session_layout``), the default thread count and hairpin queue: chain and ring ops need
-    every Spark of the session's fabric to host one of its ranks; a chain schedule needs the ranks to form a
+    full coverage or an explicitly admitted subset; a chain schedule needs the ranks to form a
     chain of cable neighbors (``routes.chain_order``); a ring schedule needs a ring no relay queue carries
     twice (``routes.ring_window``); the link geometry must be valid (``protocol.LinkLayout``) whether or not
     the session reserves a link area, and a ring stagger the launcher sets needs ``stagger x (ranks - 1) +
@@ -2115,20 +2122,31 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
     maps = [group.route_map(rank) for rank in range(len(group.members))]
     hosted = len(set(layout.positions)), len(layout.fabric.positions)
     covers = sorted(layout.positions) == list(layout.fabric.positions)
-    order = routes_mod.chain_order(layout, maps) if covers else None
+    subset_ring = subset_ring and not covers
+    subset_problems = []
+    if subset_ring:
+        from ... import subset
+        try:
+            subset.validate(layout, maps)
+            routes_mod.forward_windows(layout, maps, 0, chunk=subset.FORWARD_CHUNK, subset_ring=True)
+            covers = True
+        except routes_mod.RouteError as error:
+            subset_problems.append(str(error))
+    order = routes_mod.chain_order(layout, maps, subset_ring=subset_ring) if covers else None
     large, gather, scatter = (effective[key] for key in DEFAULT_SCHEDULES)
     chain_area = covers and large != "pieces"
     # A tuning table that chooses a link schedule gives the session a link area; a table the tune command
     # built records the link slots exactly when it chooses one (tuning.table_settings).
     link_area = covers and (gather != "pieces" or scatter != "pieces" or large == "ring"
                             or LINK_SLOTS_VARIABLE in table)
-    problems = []
+    problems = subset_problems
     flags = {key: "--" + key.replace("_", "-") for key in DEFAULT_SCHEDULES}
     ring_problems: list[str] = []
     window = 0
     if link_area and order is not None:
         window, ring_problems = routes_mod.ring_window(layout, maps, order, chunk=protocol.LINK_WINDOW_CHUNK,
-                                                       queue_bytes=routes_mod.DEFAULT_HAIRPIN_QUEUE)
+                                                       queue_bytes=routes_mod.DEFAULT_HAIRPIN_QUEUE,
+                                                       subset_ring=subset_ring)
     for key, value in effective.items():
         if value not in ("chain", "ring"):
             continue
@@ -2497,7 +2515,8 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         raise ServePlanError(f"positions {list(positions)} must be distinct Sparks of the {ring.size}-Spark ring")
     layout = fabric.Layout.ring(ring.size)
     try:
-        group = fabric.describe_group(layout, positions)
+        group = fabric.describe_group(layout, positions,
+                                      route_scope="fabric" if options.subset_ring else "group")
     except fabric.FabricError as error:
         raise ServePlanError(str(error)) from None
     run_id = _run_id(options.run_id, positions)
@@ -2727,7 +2746,8 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         raise ServePlanError(f"the profile's ranks disagree on {HC_PREFILL}")
     given_schedules = {attribute: getattr(options, attribute) for attribute, _ in SCHEDULE_VARIABLES
                        if getattr(options, attribute) is not None}
-    rows = [session_settings(group, name="tp", groups="", scoped=True, schedules=given_schedules,
+    rows = [session_settings(group, name="tp", groups="", scoped=True, subset_ring=options.subset_ring,
+                             schedules=given_schedules,
                              link_sizes=options.link_sizes, link_slots=options.link_slots,
                              ring_gather_stagger=options.ring_gather_stagger, table_settings=tuning.settings_of("tp"))]
     if dcp > 1:
@@ -2743,7 +2763,7 @@ def build_plan(site: ServeSite | Site, profile: ServingProfile, options: Options
         large_allreduce=options.large_allreduce, mhc_prefill_shard=shards.pop(),
         startup_wait=float(options.startup_wait), serving_wait=float(options.serving_wait),
         link_sizes=dict(options.link_sizes), link_slots=options.link_slots, schedules=given_schedules,
-        ring_gather_stagger=options.ring_gather_stagger,
+        ring_gather_stagger=options.ring_gather_stagger, subset_ring=options.subset_ring,
         tuning=tuning,
         oneshot_max=options.oneshot_max, ring_min=options.ring_min,
         chain_min=options.chain_min, large_blocks=options.large_blocks, reasoning_effort=options.reasoning_effort,

@@ -53,6 +53,7 @@ DEFAULT_P2P_MODULE = "sparkring_sircl.p2p"
 # runtime runs chain and ring ops only where every Spark of a session's fabric hosts one of its ranks, so
 # a DCP session keeps the session defaults.
 TP_SESSION_VARIABLES = (
+    "SIRCL_SUBSET_RING",
     "SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE",
     "SIRCL_CHAIN_MIN_BYTES", "SIRCL_RING_MIN_BYTES",
     "SIRCL_CHAIN_SLOTS", "SIRCL_CHAIN_SLOT_BYTES", "SIRCL_CHAIN_BLOCKS", "SIRCL_CHAIN_UNROLL",

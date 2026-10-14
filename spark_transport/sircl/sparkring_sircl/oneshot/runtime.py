@@ -99,6 +99,8 @@ setup error. Phase tracing (``SIRCL_TRACE``) and the direct posting mode
 
 from __future__ import annotations
 
+from .. import subset as subset_mod
+
 import contextlib
 import functools
 import logging
@@ -506,7 +508,8 @@ class RoceOneshotAllReduce:
         if error is None:
             try:
                 self._allocate()
-                with _environment(SIRCL_POST_ORDER=self._post_order_text):
+                with _environment(SIRCL_POST_ORDER=self._post_order_text,
+                                  **({"SIRCL_FORWARD_PROOF": "0"} if self.subset_ring else {})):
                     self._proxy = Proxy(
                         world_size=self.world_size, rank=self.rank, hca_names=self.hca_names,
                         peer_lane_devices=self._lane_devices, lane_count=self.lane_count,
@@ -767,9 +770,17 @@ class RoceOneshotAllReduce:
             raise ValueError("SIRCL_SWING_ABOVE_BYTES needs the Swing all-reduce, which is unavailable")
         self._slot_bytes = slot_bytes
 
+        # Subset admission precedes arena allocation and joins setup agreement only when enabled.
+        self.subset_ring = subset_mod.enabled() and not own_fabric
+        if self.subset_ring:
+            if layout is None:
+                raise ValueError("SIRCL_SUBSET_RING needs a layout")
+            subset_mod.order(layout)
+
         # Large messages and forward windows of relayed lanes.
         self.forward_window_bytes = _env_int("SIRCL_FORWARD_WINDOW_BYTES", default=DEFAULT_FORWARD_WINDOW_BYTES)
-        self.forward_chunk_bytes = _env_int("SIRCL_FORWARD_CHUNK_BYTES", default=DEFAULT_FORWARD_CHUNK_BYTES)
+        self.forward_chunk_bytes = _env_int("SIRCL_FORWARD_CHUNK_BYTES", default=(
+            subset_mod.FORWARD_CHUNK if self.subset_ring else DEFAULT_FORWARD_CHUNK_BYTES))
         self.hairpin_queue_bytes = _env_int("SIRCL_HAIRPIN_QUEUE_BYTES", default=DEFAULT_HAIRPIN_QUEUE_BYTES)
         if self.forward_window_bytes < 0:
             raise ValueError("SIRCL_FORWARD_WINDOW_BYTES must not be negative (0 turns forward windows off)")
@@ -807,6 +818,7 @@ class RoceOneshotAllReduce:
         self._check_chain_chunk(chunk)
         self.chain_chunk_bytes = chunk
         fabric_full = layout is not None and sorted(layout.positions) == list(layout.fabric.positions)
+        fabric_full = fabric_full or self.subset_ring
         # The chain kernel runs its send-slot wait in a warp apart from the lane waits.
         chain_threads = self._threads >= 64
         self._chain_region = self.large_schedule != "pieces" and fabric_full and chain_threads
@@ -1359,6 +1371,7 @@ class RoceOneshotAllReduce:
             "forward_window_bytes": self.forward_window_bytes,
             "forward_chunk_bytes": self.forward_chunk_bytes,
             "hairpin_queue_bytes": self.hairpin_queue_bytes,
+            **({"subset_ring": True} if getattr(self, "subset_ring", False) else {}),
             "large_schedule": self.large_schedule,
             "chain_region": self._chain_region,
             "chain_slots": self.chain_slots,
@@ -1400,10 +1413,11 @@ class RoceOneshotAllReduce:
         self.relay_safe_bytes = None
         if layout is None:
             return
+        subset_ring = getattr(self, "subset_ring", False)
         self._forward_table = routes_mod.forward_windows(
             layout, route_maps, self.rank, max_window=self.forward_window_bytes,
             chunk=self.forward_chunk_bytes or DEFAULT_FORWARD_CHUNK_BYTES,
-            queue_bytes=self.hairpin_queue_bytes)
+            queue_bytes=self.hairpin_queue_bytes, subset_ring=subset_ring)
         if self.forward_window_bytes:
             return
         queues = routes_mod.relay_queues(layout, route_maps)
@@ -1425,7 +1439,8 @@ class RoceOneshotAllReduce:
         self.link_available = False
         if not (self._chain_region or self._link_region):
             return
-        order = routes_mod.chain_order(self._layout_identity_object, route_maps)
+        order = routes_mod.chain_order(self._layout_identity_object, route_maps,
+                                       subset_ring=getattr(self, "subset_ring", False))
         if order is None:
             for name, schedule in (("SIRCL_LARGE_SCHEDULE", self.large_schedule),
                                    ("SIRCL_GATHER_SCHEDULE", self.gather_schedule)):
@@ -1459,14 +1474,16 @@ class RoceOneshotAllReduce:
         relays. During a ring op the ring's lanes are the only relayed traffic, and relays forward
         each function's lanes through that function's own hairpin queue, so the ring runs when no
         relay queue carries two ring lanes (``routes.ring_window``); each relayed ring lane then keeps
-        at most 75 % of a queue unacknowledged. Every rank decides the same: the decision follows the
+        at most 75 % of a queue unacknowledged; subset mode uses its smaller
+        packet envelope and excludes external relayed traffic by admission. Every rank decides the same: the decision follows the
         agreed layout and route maps. A ring schedule named at construction makes a ring that cannot
         run a setup error.
         """
         world = len(order)
         window, problems = routes_mod.ring_window(self._layout_identity_object, route_maps, order,
                                                   chunk=proto.LINK_WINDOW_CHUNK,
-                                                  queue_bytes=self.hairpin_queue_bytes)
+                                                  queue_bytes=self.hairpin_queue_bytes,
+                                                  subset_ring=getattr(self, "subset_ring", False))
         if problems:
             self.ring_problem = "; ".join(problems)
             for name, schedule in (("SIRCL_LARGE_SCHEDULE", self.large_schedule),
@@ -2772,6 +2789,7 @@ class RoceOneshotAllReduce:
             "link_available": self.link_available,
             "ring_available": self.ring_available,
             "ring_window_bytes": self.ring_window_bytes,
+            **({"subset_ring": True} if getattr(self, "subset_ring", False) else {}),
             "ring_problem": self.ring_problem,
             "link_slots": self.link_slots,
             "link_slot_bytes": self.link_slot_bytes,

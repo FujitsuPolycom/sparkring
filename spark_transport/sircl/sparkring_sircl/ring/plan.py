@@ -352,13 +352,13 @@ def site_layout(site: Site, members: Sequence[int]) -> routes_mod.Layout:
     return group_layout(site.size, members, None if site.cabling == "ring" else site.fabric())
 
 
-def ring_text(layout: routes_mod.Layout, maps) -> str:
+def ring_text(layout: routes_mod.Layout, maps, *, subset_ring: bool = False) -> str:
     """The ring that closes a group's chain: closed by cables, or through relays with one ring lane
     per relay hairpin queue (the sessions' check, ``routes.ring_window``), or why it cannot run."""
-    order = routes_mod.chain_order(layout, maps)
+    order = routes_mod.chain_order(layout, maps, subset_ring=subset_ring)
     if order is None:
         return "no ring: the ranks do not form a chain of cable neighbors"
-    window, problems = routes_mod.ring_window(layout, maps, order)
+    window, problems = routes_mod.ring_window(layout, maps, order, subset_ring=subset_ring)
     if problems:
         return "no ring: " + "; ".join(problems)
     queues = routes_mod.ring_queues(layout, maps, order)
@@ -508,7 +508,7 @@ class Options:
             raise PlanError("wait limits must satisfy 0 < serving <= startup <= 4294 seconds")
         if not self.large_schedules or any(name not in LARGE_SCHEDULES for name in self.large_schedules):
             raise PlanError(f"large-message schedules are drawn from {', '.join(LARGE_SCHEDULES)}")
-        known = {variable.name for variable in env_mod.VARIABLES}
+        known = {variable.name for variable in env_mod.VARIABLES} | {"SIRCL_ROUTE_SCOPE"}
         for name, value in self.session_env:
             if name in HARNESS_SESSION_VARIABLES:
                 raise PlanError(f"{name} is set by {HARNESS_SESSION_VARIABLES[name]}, not --session-env")
@@ -805,7 +805,16 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
     used = [p for group in chosen for p in group]
     if len(used) != len(set(used)):
         raise PlanError(f"configuration {name}: a Spark belongs to two groups")
-    layouts = [site_layout(site, members) for members in chosen]
+    from .. import subset
+    settings = dict(options.session_env)
+    scope = settings.get("SIRCL_ROUTE_SCOPE", "group")
+    if scope not in ("group", "fabric"):
+        raise PlanError("SIRCL_ROUTE_SCOPE must be group or fabric")
+    subset_ring = subset.enabled(settings)
+    if subset_ring and scope != "fabric":
+        raise PlanError("subset ring harness needs --session-env SIRCL_ROUTE_SCOPE=fabric")
+    layouts = ([routes_mod.Layout(site.fabric(), tuple(members)) for members in chosen] if scope == "fabric"
+               else [site_layout(site, members) for members in chosen])
     derived = [routes_mod.derive_routes(layout, 2) for layout in layouts]
     problems = routes_mod.isolation_problems(derived)
     if problems:
@@ -828,7 +837,12 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
         limit = RELAY_QUEUE_SHARE * HAIRPIN_QUEUE_BYTES
         window = routes_mod.DEFAULT_FORWARD_WINDOW if options.forward_window is None else options.forward_window
         maps = [routes.route_map(rank) for rank in range(layout.world)]
-        windows = [routes_mod.forward_windows(layout, maps, rank, max_window=window) for rank in range(layout.world)]
+        active_subset = subset_ring and layout.world < len(layout.fabric.positions)
+        chunk = int(settings.get("SIRCL_FORWARD_CHUNK_BYTES", subset.FORWARD_CHUNK if active_subset
+                                 else routes_mod.DEFAULT_FORWARD_CHUNK))
+        windows = [routes_mod.forward_windows(layout, maps, rank, max_window=window,
+                                              chunk=chunk, subset_ring=active_subset)
+                   for rank in range(layout.world)]
         paced = sorted({w for table in windows for row in table for w in row if w})
         for label, sizes in (("all-reduce", options.allreduce_sizes), ("all-gather", options.allgather_sizes)):
             over = [size for size in sizes if load * size > limit]
@@ -846,7 +860,7 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
         ranks_of_group = tuple(range(global_rank, global_rank + layout.world))
         group_plans.append(GroupPlan(index, tuple(members), ranks_of_group, layout_text(layout), 2, relays,
                                      busiest, load, tuple(routes.route_text(r) for r in range(layout.world)),
-                                     tuple(details), tuple(warnings), ring_text(layout, maps)))
+                                     tuple(details), tuple(warnings), ring_text(layout, maps, subset_ring=active_subset)))
         for group_rank, position in enumerate(members):
             host = site.host(position)
             rank_plans.append(RankPlan(
@@ -950,8 +964,10 @@ def tune_families_text(plan: ConfigurationPlan) -> list[str]:
     for group in plan.groups:
         layout = routes_mod.Layout.parse(group.layout)
         maps = [routes_mod.derive_routes(layout, group.lanes).route_map(rank) for rank in range(layout.world)]
-        order = routes_mod.chain_order(layout, maps)
-        problems = routes_mod.ring_window(layout, maps, order)[1] if order is not None else ["no chain"]
+        from .. import subset
+        active_subset = subset.enabled(dict(options.session_env)) and layout.world < len(layout.fabric.positions)
+        order = routes_mod.chain_order(layout, maps, subset_ring=active_subset)
+        problems = routes_mod.ring_window(layout, maps, order, subset_ring=active_subset)[1] if order is not None else ["no chain"]
         links = (", chain" if order is not None else "") + (", ring" if order is not None and not problems else "")
         lines.append(f"  tune families, group {group.index}: all_reduce: one-shot, two-shot, pieces{links}{nccl}; "
                      f"all_gather: tiles{links}{nccl}; reduce_scatter: scatter ops{links}; all_to_all: scatter ops")
