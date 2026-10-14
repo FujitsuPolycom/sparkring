@@ -2,6 +2,7 @@
 import math
 
 
+
 def number(value):
     return type(value) in (int, float) and math.isfinite(value)
 
@@ -110,10 +111,12 @@ class ViewerRates:
             if number(x) and number(y) and x > y:
                 prefill = (x - y) / (a["clock"] - b["clock"])
         acceptance = ratio("accepted", "drafts")
+        # No running or waiting request means no decode, whatever the last counter interval averaged.
+        idle = fresh and values.get("running") == 0 and values.get("waiting") == 0
         member["live"] = {**(member.get("live") or {}),
                           **{k: values.get(k) for k in ("running", "waiting", "kv")},
                           "source": source, "read_at": sample["at"], "prefill_tps": prefill,
-                          "prompt_tps": prefill, "output_tps": rate("gen"), "output_tps_5m": rate("gen", 300),
+                          "prompt_tps": prefill, "output_tps": 0 if idle else rate("gen"), "output_tps_5m": rate("gen", 300),
                           "steps_ps": rate("steps") if use and values.get("step_timing") else None,
                           "acceptance": ratio("accepted", "draft_tokens"),
                           "accept_length_5m": 1 + acceptance if acceptance is not None else None,
@@ -127,7 +130,7 @@ class ViewerRates:
             fallback_view.member(other, now, quiet)
             member["live"]["prefix_hit_5m"] = other["live"].get("prefix_hit_5m")
         if added:
-            history.append([sample["at"], rate("gen"), values.get("running"), values.get("waiting"),
+            history.append([sample["at"], 0 if idle else rate("gen"), values.get("running"), values.get("waiting"),
                             values.get("kv"), prefill, source])
         state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
 

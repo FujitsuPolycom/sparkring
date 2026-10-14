@@ -92,7 +92,9 @@ class ViewerRates {
     }
     const acceptance = ratio("accepted", "drafts");
     m.live = { ...m.live, running: v.running, waiting: v.waiting, kv: v.kv, source, read_at: sample.at,
-      prefill_tps: prefill, prompt_tps: prefill, output_tps: rate("gen"), output_tps_5m: rate("gen", 300),
+      prefill_tps: prefill, prompt_tps: prefill,
+      // No running request means no decode, whatever the last counter interval averaged.
+      output_tps: fresh && v.running === 0 && v.waiting === 0 ? 0 : rate("gen"), output_tps_5m: rate("gen", 300),
       steps_ps: use && v.step_timing ? rate("steps") : null, acceptance: ratio("accepted", "draft_tokens"),
       accept_length_5m: acceptance === null ? null : 1 + acceptance,
       ttft_5m: ratio("ttft_sum", "ttft_count"), prefix_hit_5m: ratio("pc_hits", "pc_queries") };
@@ -105,7 +107,7 @@ class ViewerRates {
       state.fallback.member(other, now, quiet);
       m.live.prefix_hit_5m = other.live.prefix_hit_5m;
     }
-    if (added) state.history.push([sample.at, rate("gen"), v.running, v.waiting, v.kv, prefill, source]);
+    if (added) state.history.push([sample.at, v.running === 0 && v.waiting === 0 ? 0 : rate("gen"), v.running, v.waiting, v.kv, prefill, source]);
     state.history = state.history.filter(h => now - h[0] <= 21600).slice(-4321);
     m.history = state.history;
   }
