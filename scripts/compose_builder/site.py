@@ -176,7 +176,7 @@ def nav():
 def document(title, body, scripts=""):
     return ('<!doctype html><html lang="en"><head><meta charset="utf-8">'
             '<meta name="viewport" content="width=device-width, initial-scale=1">'
-            f'<title>{escape(title)} · SparkRing</title><link rel="stylesheet" href="tokens.css">'
+            f'<title>{escape(title)}</title><link rel="stylesheet" href="tokens.css">'
             '<link rel="stylesheet" href="site.css"><script src="theme.js"></script></head><body>'
             + nav() + body + '<footer class="site-footer site-wrap">SparkRing · Directly cabled DGX Sparks. '
             '<a href="builder.html">Build an installation</a> · <a href="commands.html">Commands</a></footer>'
@@ -224,18 +224,18 @@ def landing(value):
       <div class="ring-controls" id="ring-examples" role="group" aria-label="Example setups"></div>
       <ul id="example-list" aria-live="polite"></ul><p><a class="button" id="load-example" href="builder.html">Load into builder →</a></p></div></div>
       <div class="notice">{prose(license_notice, 'README.md', meta)}</div>
-      <section class="site-section" id="profiles"><h2>Profiles</h2><p class="muted">Every installer profile in the catalog. Thinking shows the default and level. Research profiles retain their research status.</p>
+      <section class="site-section" id="profiles"><h2>Profiles</h2>
       {table(['Model', 'Variant', 'Sparks', '--profile', 'Port', 'Thinking', 'Status'], profile_rows, 'profile-table')}</section>
       <section class="site-section" id="speed"><h2>Speed</h2>{prose(conditions, 'README.md', meta)}
       {table(['Model', 'Sparks', 'Layout', '1 stream', '4 streams', '8 streams', 'Prefill 32K', 'Coding peak'], speed, 'speed-table')}
       <details><summary>Measurement conditions and records</summary>{prose('Records:' + records, 'README.md', meta)}</details></section>
       <section class="site-section" id="sircl"><h2>SIRCL and net-sircl</h2>{prose(section(read('README.md'), 'SIRCL'), 'README.md', meta)}</section></main>'''
-    return document("Large language models on DGX Sparks", body,
+    return document("SparkRing Builder", body,
                     json_script("site-data", value) + '<script src="ring.js"></script><script src="landing.js"></script>')
 
 
 def commands(meta):
-    return document("Command guide", '<main class="site-wrap guide">' + prose(read("docs/operations/commands.md"),
+    return document("Commands · SparkRing Builder", '<main class="site-wrap guide">' + prose(read("docs/operations/commands.md"),
                                                                                "docs/operations/commands.md", meta) + '</main>')
 
 

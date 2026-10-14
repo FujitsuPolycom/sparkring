@@ -15,7 +15,9 @@ h1 { font-size: clamp(24px, 3vw, 32px); letter-spacing: -.02em; }
 h2 { font-size: 23px; } h3 { font-size: 18px; }
 p { max-width: 76ch; }
 .site-wrap { max-width: 1160px; padding: 0 24px; margin: auto; }
-.site-nav { border-bottom: 1px solid var(--line); }
+.site-nav { border-bottom: 1px solid var(--line); position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20;
+  background: color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter: blur(6px); }
+.site-nav + * :target, [id] { scroll-margin-top: 72px; }
 .site-nav .site-wrap { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; padding-block: 14px; }
 .site-nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
 .site-nav .brand { font-weight: 650; font-size: 18px; color: var(--ink); margin-right: auto; }
