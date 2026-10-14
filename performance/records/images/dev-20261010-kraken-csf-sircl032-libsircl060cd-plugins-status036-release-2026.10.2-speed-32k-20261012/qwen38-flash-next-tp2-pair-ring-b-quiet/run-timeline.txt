@@ -1,0 +1,3 @@
+2026-10-12T20:58:14Z ring4b-qwen-tp2-quiet bench start host=<spark-lan-c> port=8000 concurrency=1,2,4,8
+2026-10-12T21:12:34Z ring4b-qwen-tp2-quiet bench end rc=0
+2026-10-12T21:12:42Z ring4b-qwen-tp2-quiet done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

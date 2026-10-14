@@ -1,0 +1,169 @@
+╭──────────────────────────── NVIDIA P2P Override ─────────────────────────────╮
+│ Effective: no                                                                │
+│ Configured file: no (/etc/modprobe.d/nvidia-p2p-override.conf)               │
+│ Runtime: ForceP2P=; RMForceP2PType=; RMPcieP2PType=;                         │
+│ GrdmaPciTopoCheckOverride=; EnableResizableBar=; DmaRemapPeerMmio=           │
+│ Suggested modprobe line:                                                     │
+│ options nvidia                                                               │
+│ NVreg_RegistryDwords="ForceP2P=0x11;RMForceP2PType=1;RMPcieP2PType=2;GrdmaPc │
+│ iTopoCheckOverride=1;EnableResizableBar=1"                                   │
+│ Apply requires NVIDIA module reload or reboot after stopping GPU workloads.  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────── Configuration ────────────────────────────────╮
+│ LLM Inference Benchmark                                                      │
+│ Model: Qwen3.8-Flash-Next-NVFP4-QAD-TP4 @ <spark-lan-a>:8015                 │
+│ Decode concurrency: [1, 2, 4, 8]                                             │
+│ Decode contexts: ['8k', '16k', '32k', '64k', '128k']                         │
+│ Duration: 20.0s per decode test | Max tokens: 2048                           │
+│ Pre-decode warmup: C=1 max-runnable context for 3s                           │
+│ Exact-loop guard: enabled | Output preview: unavailable in plain mode        │
+│ Prefill: integrated decode scouts | Sustained decode: 20 cells               │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Engine: vLLM 0.1.dev21553+gab86b7073.d20261001  Models: 
+['Qwen3.8-Flash-Next-NVFP4-QAD-TP4']
+KV cache budget (vLLM metrics): 2,831,661 tokens (kv_cache_size_tokens)
+Model context length: 262,144 tokens
+Prefill tests: integrated from decode scout requests ['8k', '16k', '32k', '64k',
+'128k']
+Calibrating padding text (run=ziyjgbirleeo, up to 128k)...
+  Token targeting: single-point estimate from 8k (use --token-targeting exact 
+for /tokenize binary search)
+  Calibrated: 6.17 chars/token (from 8k probe)
+  8k: 50,524 chars (~8,191 tokens)
+  16k: 101,048 chars (~16,383 tokens)
+  32k: 202,096 chars (~32,767 tokens)
+  64k: 404,192 chars (~65,535 tokens)
+  128k: 808,385 chars (~131,071 tokens)
+Done.
+
+
+
+llm-decode-bench v0.7.6
+Prefill Speed (scout requests, client ISL / TTFT)                               
+                                                                                
+                                                                PCIe rx/tx      
+  Context    Tokens   TTFT (s)   Client tok/s   Server tok/s           avg   N  
+ ────────────────────────────────────────────────────────────────────────────── 
+  8k          8,197       1.79          4,573      4,804 (1)             —   1  
+  16k        16,174       3.46          4,673      4,891 (1)             —   1  
+  32k        32,159       7.06          4,553      4,751 (1)             —   1  
+  64k        64,123      14.73          4,352      4,540 (1)             —   1  
+  128k      128,059      32.70          3,916      4,081 (1)             —   1  
+                                                                                
+Client tok/s = prompt_tokens / TTFT. Integrated scout rows come from the 
+prefix-cache scout request that decode needs anyway. Server tok/s is optional 
+Prometheus validation when the engine exports prefill counters and the exact 
+counter delta is uncontaminated; for vLLM this uses newly computed KV tokens, 
+not request prompt tokens.
+
+╭────────────────────────────────── Phase 2 ───────────────────────────────────╮
+│ Sustained Decode                                                             │
+│ Steady-state decode throughput after the engine has admitted the requested   │
+│ concurrency and passed warmup. Use this as the main tuning/regression signal │
+│ for kernels, NCCL, DCP, MTP, and scheduler changes.                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Aggregate tok/s  + TTFT/ITL                     
+╭────────────┬────────┬────────┬───────┬───────╮
+│ ctx \ conc │      1 │      2 │     4 │     8 │
+├────────────┼────────┼────────┼───────┼───────┤
+│ 8k         │   79.0 │  128.1 │ 199.6 │ 291.1 │
+│            │ 684/13 │  1k/15 │ 3k/20 │ 4k/27 │
+│ 16k        │   87.3 │  131.7 │ 200.2 │ 289.3 │
+│            │ 604/10 │ 907/15 │ 2k/20 │ 4k/27 │
+│ 32k        │   73.0 │  137.3 │ 203.6 │ 288.1 │
+│            │ 690/13 │  1k/15 │ 2k/19 │ 4k/27 │
+│ 64k        │   74.9 │  126.2 │ 197.7 │ 283.6 │
+│            │ 871/13 │  1k/16 │ 3k/20 │ 5k/29 │
+│ 128k       │   82.3 │  123.4 │ 191.3 │ 278.0 │
+│            │  1k/12 │  2k/16 │ 4k/21 │ 6k/31 │
+╰────────────┴────────┴────────┴───────┴───────╯
+Sustained Decode: aggregate tok/s uses OpenAI stream usage by default 
+(continuous completion_tokens when the server supports it). Prometheus is kept 
+as validation/scheduler data.
+Aggregate source(s): openai_continuous_usage
+Per-Request tok/s                         
+╭────────────┬──────┬──────┬──────┬──────╮
+│ ctx \ conc │    1 │    2 │    4 │    8 │
+├────────────┼──────┼──────┼──────┼──────┤
+│ 8k         │ 79.0 │ 64.1 │ 49.9 │ 36.4 │
+│ 16k        │ 87.3 │ 65.9 │ 50.1 │ 36.2 │
+│ 32k        │ 73.0 │ 68.7 │ 50.9 │ 36.0 │
+│ 64k        │ 74.9 │ 63.1 │ 49.4 │ 35.4 │
+│ 128k       │ 82.3 │ 61.7 │ 47.8 │ 34.8 │
+╰────────────┴──────┴──────┴──────┴──────╯
+Client request latency: p50 / p90 ms          
+╭────────────┬─────────────┬─────┬─────┬─────╮
+│ ctx \ conc │           1 │   2 │   4 │   8 │
+├────────────┼─────────────┼─────┼─────┼─────┤
+│ 8k         │         —/— │ —/— │ —/— │ —/— │
+│ 16k        │ 23.5k/23.5k │ —/— │ —/— │ —/— │
+│ 32k        │         —/— │ —/— │ —/— │ —/— │
+│ 64k        │         —/— │ —/— │ —/— │ —/— │
+│ 128k       │         —/— │ —/— │ —/— │ —/— │
+╰────────────┴─────────────┴─────┴─────┴─────╯
+Aggregate cells show dim detail as TTFT ms / ITL ms for the same ctx/conc 
+coordinate. ITL is computed from observed generated tokens, including streams 
+stopped at the measurement boundary; a missing ITL means no stream produced at 
+least two measured output tokens. Per-request tok/s and request latency are 
+shown in separate per-cell matrices. Completion/sample counts and full 
+request-level distributions remain in JSON under request_samples.
+Sustained mode: client latency metrics explain request UX variance; aggregate 
+tok/s remains the primary throughput signal. 
+ITL=(last_token_time-first_token_time)/(output_tokens-1), user tok/s=1/ITL.
+
+╭────────────────────────────────── Phase 3 ───────────────────────────────────╮
+│ Burst / E2E Decode                                                           │
+│ Not run. Re-run with --run-burst to append a finite client-facing request    │
+│ burst after Sustained Decode. This is intentionally disabled by default      │
+│ because it adds another full decode matrix.                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭────────────────────────────── Primary Summary ───────────────────────────────╮
+│ Primary matrices repeated last so the important numbers are visible without  │
+│ scrolling back through diagnostics.                                          │
+╰──────────────────────────────────────────────────────────────────────────────╯
+Prefill tok/s                          
+╭──────┬─────────┬────────┬───────┬───╮
+│ ctx  │  tokens │ TTFT s │ tok/s │ N │
+├──────┼─────────┼────────┼───────┼───┤
+│ 8k   │   8,197 │   1.79 │ 4,573 │ 1 │
+│ 16k  │  16,174 │   3.46 │ 4,673 │ 1 │
+│ 32k  │  32,159 │   7.06 │ 4,553 │ 1 │
+│ 64k  │  64,123 │  14.73 │ 4,352 │ 1 │
+│ 128k │ 128,059 │  32.70 │ 3,916 │ 1 │
+╰──────┴─────────┴────────┴───────┴───╯
+Aggregate decode tok/s                       
+╭────────────┬──────┬───────┬───────┬───────╮
+│ ctx \ conc │    1 │     2 │     4 │     8 │
+├────────────┼──────┼───────┼───────┼───────┤
+│ 8k         │ 79.0 │ 128.1 │ 199.6 │ 291.1 │
+│ 16k        │ 87.3 │ 131.7 │ 200.2 │ 289.3 │
+│ 32k        │ 73.0 │ 137.3 │ 203.6 │ 288.1 │
+│ 64k        │ 74.9 │ 126.2 │ 197.7 │ 283.6 │
+│ 128k       │ 82.3 │ 123.4 │ 191.3 │ 278.0 │
+╰────────────┴──────┴───────┴───────┴───────╯
+MTP-normalized decode steps/s (accept len)                             
+╭────────────┬─────────────┬─────────────┬─────────────┬──────────────╮
+│ ctx \ conc │           1 │           2 │           4 │            8 │
+├────────────┼─────────────┼─────────────┼─────────────┼──────────────┤
+│ 8k         │ 33.7 (2.34) │ 55.1 (2.32) │ 83.5 (2.39) │ 118.0 (2.47) │
+│ 16k        │ 32.3 (2.70) │ 55.1 (2.39) │ 84.0 (2.38) │ 118.6 (2.44) │
+│ 32k        │ 33.2 (2.20) │ 54.3 (2.53) │ 83.0 (2.45) │ 115.6 (2.49) │
+│ 64k        │ 32.6 (2.30) │ 54.0 (2.34) │ 82.5 (2.40) │ 113.4 (2.50) │
+│ 128k       │ 31.3 (2.63) │ 50.6 (2.44) │ 79.9 (2.39) │ 110.5 (2.52) │
+╰────────────┴─────────────┴─────────────┴─────────────┴──────────────╯
+steps/s = tok/s ÷ accept_len: engine forward passes per second, independent of 
+MTP acceptance, so runs with different acceptance are directly comparable. 
+(accept len) = tokens emitted per engine step.
+
+Running coding peak cc1 probe...
+                        Coding Peak                        
+                                                           
+  runs   median tok/s   mean tok/s   max tok/s   CJK runs  
+ ───────────────────────────────────────────────────────── 
+  5/5           111.5        107.4       113.2          0  
+                                                           
+
+Results saved to 
+<archive>/research/rc-qual-20261012/runs/ring4a-
+qwen-tp4/tester.json

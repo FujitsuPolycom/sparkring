@@ -75,7 +75,7 @@ def test_a_checkpoint_only_some_vllm_builds_read_is_offered_on_an_image_that_rea
     profile = export.profile_data("glm53-flash-nvfp4-spark-tp2", image_lock.v2_view(pinned), "csf-image", pinned)
     named = {checkpoint["name"]: checkpoint for checkpoint in profile["checkpoints"]}
     assert list(named) == ["nvfp4-spark", "csf", "nvfp4-qad"]
-    assert named["csf"]["status"] == "research-only" and named["csf"]["served_model_name"] == "GLM-5.3-Flash-CSF-TP2"
+    assert named["csf"]["status"] == "implemented" and named["csf"]["served_model_name"] == "GLM-5.3-Flash-CSF-TP2"
     assert "--quantization nvfp4_csf" in named["csf"]["changes"]
 
 

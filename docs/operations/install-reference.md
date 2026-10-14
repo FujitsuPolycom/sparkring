@@ -2766,7 +2766,7 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
   Humming. Draft experts change how fast drafting runs, not the output
   distribution, so the card's MMLU-Pro result also describes the derived
   checkpoint's target weights. No installation has run on Sparks.
-- The Qwen `csf` entry is **research-only**, and `qwen38-flash-next-tp2`
+- The Qwen `csf` entry is **implemented**, and `qwen38-flash-next-tp2`
   installs it without `--checkpoint` on an image whose vLLM reads it. On a
   pair of the ring of eight with release 2026.10.2's image, one installation
   of it loaded, served and answered the fingerprint prompts in a single

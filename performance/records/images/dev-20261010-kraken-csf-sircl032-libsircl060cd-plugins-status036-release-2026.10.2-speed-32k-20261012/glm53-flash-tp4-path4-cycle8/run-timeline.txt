@@ -1,0 +1,7 @@
+2026-10-13T00:00:03Z ring8-slice-glm-tp4 install start: --profile glm53-flash-nvfp4-spark-tp4 --checkpoint csf --on 0-3 --no-auto-recover 
+2026-10-13T00:15:34Z ring8-slice-glm-tp4 install state=complete
+2026-10-13T00:15:34Z ring8-slice-glm-tp4 api=http://<spark-lan-a>:8015/v1 model=GLM-5.3-Flash-CSF-TP4
+2026-10-13T00:15:48Z ring8-slice-glm-tp4 receipt-before rc=0 digest sha256:5fb6009dff16355adcef13eef07f645e68d1d1472797aff59a2bb185aa5c9f55
+2026-10-13T00:15:48Z ring8-slice-glm-tp4 bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8
+2026-10-13T00:29:54Z ring8-slice-glm-tp4 bench end rc=0
+2026-10-13T00:30:09Z ring8-slice-glm-tp4 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

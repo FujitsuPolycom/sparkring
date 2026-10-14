@@ -1,0 +1,8 @@
+2026-10-12T09:03:11Z final-qwen-tp2 install start: --profile qwen38-flash-next-tp2 --checkpoint csf --on 6\,7 
+2026-10-12T09:11:32Z final-qwen-tp2 install state=complete
+2026-10-12T09:11:32Z final-qwen-tp2 api=http://<spark-lan-c>:8000/v1 model=Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2
+2026-10-12T09:11:41Z final-qwen-tp2 receipt-before rc=0 digest sha256:f7ddf670a6532853c84fb129ca09b312687d4e1db2fc408e57224eb76b3f54f6
+2026-10-12T09:11:41Z final-qwen-tp2 installed (MODE=install)
+2026-10-12T09:12:05Z final-qwen-tp2 bench start host=<spark-lan-c> port=8000 concurrency=1,2,4,8
+2026-10-12T09:25:54Z final-qwen-tp2 bench end rc=0
+2026-10-12T09:26:04Z final-qwen-tp2 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

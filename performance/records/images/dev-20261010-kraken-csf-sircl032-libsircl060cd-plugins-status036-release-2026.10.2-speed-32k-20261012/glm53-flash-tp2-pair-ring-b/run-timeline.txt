@@ -1,0 +1,8 @@
+2026-10-12T18:58:37Z ring4b-glm-tp2 install start: --profile glm53-flash-nvfp4-spark-tp2 --checkpoint csf --on 0\,1 
+2026-10-12T19:15:48Z ring4b-glm-tp2 install state=complete
+2026-10-12T19:15:48Z ring4b-glm-tp2 api=http://<spark-lan-b>:8000/v1 model=GLM-5.3-Flash-CSF-TP2
+2026-10-12T19:15:55Z ring4b-glm-tp2 receipt-before rc=0 digest sha256:e672894ac66aad1f7620945f5d33e9f9872ed7bab2be8dbe695fbd24c9eb87ba
+2026-10-12T19:15:55Z ring4b-glm-tp2 installed (MODE=install)
+2026-10-12T19:34:24Z ring4b-glm-tp2 bench start host=<spark-lan-b> port=8000 concurrency=1,2,4,8
+2026-10-12T19:51:49Z ring4b-glm-tp2 bench end rc=0
+2026-10-12T19:51:57Z ring4b-glm-tp2 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

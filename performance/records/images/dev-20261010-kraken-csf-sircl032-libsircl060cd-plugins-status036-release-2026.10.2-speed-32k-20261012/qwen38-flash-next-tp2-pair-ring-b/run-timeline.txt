@@ -1,0 +1,8 @@
+2026-10-12T19:15:56Z ring4b-qwen-tp2 install start: --profile qwen38-flash-next-tp2 --checkpoint csf --on 2\,3 
+2026-10-12T19:34:17Z ring4b-qwen-tp2 install state=complete
+2026-10-12T19:34:17Z ring4b-qwen-tp2 api=http://<spark-lan-c>:8000/v1 model=Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2
+2026-10-12T19:34:24Z ring4b-qwen-tp2 receipt-before rc=0 digest sha256:6cb7f4e4f553633e7ac1ece8d710911766bd52077a455e7cd4c09d616096399b
+2026-10-12T19:34:24Z ring4b-qwen-tp2 installed (MODE=install)
+2026-10-12T19:51:57Z ring4b-qwen-tp2 bench start host=<spark-lan-c> port=8000 concurrency=1,2,4,8
+2026-10-12T20:05:44Z ring4b-qwen-tp2 bench end rc=0
+2026-10-12T20:05:54Z ring4b-qwen-tp2 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

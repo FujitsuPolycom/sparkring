@@ -1,0 +1,7 @@
+2026-10-12T07:46:48Z tp8-deepseek install start: --profile deepseek-v41-flash-tp8 --no-auto-recover 
+2026-10-12T08:06:19Z tp8-deepseek install state=complete
+2026-10-12T08:06:20Z tp8-deepseek api=http://<spark-lan-a>:8015/v1 model=DeepSeek-V4.1-Flash-TP8
+2026-10-12T08:06:25Z tp8-deepseek receipt-before rc=2 
+2026-10-12T08:06:25Z tp8-deepseek bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8,16
+2026-10-12T08:20:23Z tp8-deepseek bench end rc=0
+2026-10-12T08:20:44Z tp8-deepseek done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

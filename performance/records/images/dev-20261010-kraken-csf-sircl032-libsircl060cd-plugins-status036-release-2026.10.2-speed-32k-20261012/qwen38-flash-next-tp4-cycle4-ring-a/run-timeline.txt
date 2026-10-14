@@ -1,0 +1,7 @@
+2026-10-12T23:07:40Z ring4a-qwen-tp4 install start: --profile qwen38-flash-next-qad-tp4 --no-auto-recover 
+2026-10-12T23:19:21Z ring4a-qwen-tp4 install state=complete
+2026-10-12T23:19:21Z ring4a-qwen-tp4 api=http://<spark-lan-a>:8015/v1 model=Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+2026-10-12T23:19:32Z ring4a-qwen-tp4 receipt-before rc=0 digest sha256:b50f422eca91ab7167f6a417c243067ac4bee71ec99f9426761cbeeefaa678b9
+2026-10-12T23:19:32Z ring4a-qwen-tp4 bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8
+2026-10-12T23:31:54Z ring4a-qwen-tp4 bench end rc=0
+2026-10-12T23:32:05Z ring4a-qwen-tp4 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

@@ -1,0 +1,177 @@
+{
+ "schema": "sparkring-readme-speed-cells/v1",
+ "rows": [
+  {
+   "model": "DeepSeek-V4.1-Flash",
+   "profile": "deepseek-v41-flash-tp8",
+   "sparks": 8,
+   "layout": "ring of eight",
+   "decode_32k_tok_s": {
+    "1": 73.69463316133034,
+    "4": 174.2020075312714,
+    "8": 258.8591377203575,
+    "source": "deepseek-v41-flash-tp8-cycle8/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 4851.0,
+   "prefill_32k_prompt_tokens": 32254,
+   "prefill_source": "deepseek-v41-flash-tp8-cycle8/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 133.797194760258,
+   "coding_peak_source": "deepseek-v41-flash-tp8-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "DeepSeek-V4.1-Flash",
+   "profile": "deepseek-v41-flash-tp4",
+   "sparks": 4,
+   "layout": "ring of four",
+   "decode_32k_tok_s": {
+    "1": 70.55353760728755,
+    "4": 136.69188503857615,
+    "8": 194.34938593219334,
+    "source": "deepseek-v41-flash-tp4-cycle4-ring-a/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 4388.0,
+   "prefill_32k_prompt_tokens": 32260,
+   "prefill_source": "deepseek-v41-flash-tp4-cycle4-ring-a/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 102.43505867010512,
+   "coding_peak_source": "deepseek-v41-flash-tp4-cycle4-ring-a/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "DeepSeek-V4.1-Flash",
+   "profile": "deepseek-v41-flash-tp4",
+   "sparks": 4,
+   "layout": "path of four",
+   "decode_32k_tok_s": {
+    "1": 70.38437371511829,
+    "4": 139.07896707465775,
+    "8": 198.0388783008608,
+    "source": "deepseek-v41-flash-tp4-path4-cycle8/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 4426.0,
+   "prefill_32k_prompt_tokens": 32258,
+   "prefill_source": "deepseek-v41-flash-tp4-path4-cycle8/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 101.72763200447032,
+   "coding_peak_source": "deepseek-v41-flash-tp4-path4-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "GLM-5.3",
+   "profile": "glm53-nvfp4-tp8",
+   "sparks": 8,
+   "layout": "ring of eight",
+   "decode_32k_tok_s": {
+    "1": 45.807245515276634,
+    "4": 93.68090246243952,
+    "8": 129.06586561551438,
+    "source": "glm53-nvfp4-tp8-cycle8/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 1387.0,
+   "prefill_32k_prompt_tokens": 32319,
+   "prefill_source": "glm53-nvfp4-tp8-cycle8/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 51.44256358775176,
+   "coding_peak_source": "glm53-nvfp4-tp8-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "GLM-5.3-Flash",
+   "profile": "glm53-flash-tp4",
+   "sparks": 4,
+   "layout": "path of four",
+   "decode_32k_tok_s": {
+    "1": 68.07042069737736,
+    "4": 135.34377065457926,
+    "8": 203.45050476241306,
+    "source": "glm53-flash-tp4-path4-cycle8/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 3165.0,
+   "prefill_32k_prompt_tokens": 32319,
+   "prefill_source": "glm53-flash-tp4-path4-cycle8/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 79.70484283155068,
+   "coding_peak_source": "glm53-flash-tp4-path4-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "GLM-5.3-Flash",
+   "profile": "glm53-flash-tp2",
+   "sparks": 2,
+   "layout": "pair",
+   "decode_32k_tok_s": {
+    "1": 37.75458039806845,
+    "4": 83.10656306609546,
+    "8": 112.87214350546624,
+    "source": "glm53-flash-tp2-pair-ring-b/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 2420.0,
+   "prefill_32k_prompt_tokens": 32313,
+   "prefill_source": "glm53-flash-tp2-pair-ring-b/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 48.97626639342073,
+   "coding_peak_source": "glm53-flash-tp2-pair-ring-b/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "Qwen3.8-Flash-Next",
+   "profile": "qwen38-flash-next-tp4",
+   "sparks": 4,
+   "layout": "ring of four",
+   "decode_32k_tok_s": {
+    "1": 72.97304016075172,
+    "4": 203.6356166705404,
+    "8": 288.14357455728936,
+    "source": "qwen38-flash-next-tp4-cycle4-ring-a/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 4553.0,
+   "prefill_32k_prompt_tokens": 32159,
+   "prefill_source": "qwen38-flash-next-tp4-cycle4-ring-a/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 111.53347745258334,
+   "coding_peak_source": "qwen38-flash-next-tp4-cycle4-ring-a/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "Qwen3.8-Flash-Next",
+   "profile": "qwen38-flash-next-tp4",
+   "sparks": 4,
+   "layout": "path of four",
+   "decode_32k_tok_s": {
+    "1": 77.93608723356118,
+    "4": 209.51722094242257,
+    "8": 274.2781289323683,
+    "source": "qwen38-flash-next-tp4-path4-cycle8/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 4377.0,
+   "prefill_32k_prompt_tokens": 32159,
+   "prefill_source": "qwen38-flash-next-tp4-path4-cycle8/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 111.27184617112427,
+   "coding_peak_source": "qwen38-flash-next-tp4-path4-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  },
+  {
+   "model": "Qwen3.8-Flash-Next",
+   "profile": "qwen38-flash-next-tp2",
+   "sparks": 2,
+   "layout": "pair",
+   "decode_32k_tok_s": {
+    "1": 68.10122348956664,
+    "4": 149.67277511092118,
+    "8": 219.00053787110397,
+    "source": "qwen38-flash-next-tp2-pair-ring-b-quiet/bench-result.json summary_table.32768"
+   },
+   "prefill_32k_tok_s": 3716.0,
+   "prefill_32k_prompt_tokens": 32157,
+   "prefill_source": "qwen38-flash-next-tp2-pair-ring-b-quiet/bench-result.json prefill.32768.client_tok_per_sec",
+   "coding_peak_median_tok_s": 94.76296959656177,
+   "coding_peak_source": "qwen38-flash-next-tp2-pair-cycle8/bench-result.json coding_peak.summary.median_generation_tok_s",
+   "bench_version": "0.7.6",
+   "temperature": 1.0
+  }
+ ],
+ "note": "Values are copied from the named bench-result.json fields at full precision; the README rounds them to whole numbers."
+}

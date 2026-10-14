@@ -1,0 +1,20 @@
+2026-10-13T00:01:03Z ring8-slice-qwen-tp4 install start: --profile qwen38-flash-next-qad-tp4 --on 4-7 --no-auto-recover 
+2026-10-13T00:01:13Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 1)
+2026-10-13T00:02:24Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 2)
+2026-10-13T00:03:35Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 3)
+2026-10-13T00:04:45Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 4)
+2026-10-13T00:05:56Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 5)
+2026-10-13T00:07:06Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 6)
+2026-10-13T00:08:16Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 7)
+2026-10-13T00:09:27Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 8)
+2026-10-13T00:10:37Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 9)
+2026-10-13T00:11:48Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 10)
+2026-10-13T00:12:58Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 11)
+2026-10-13T00:14:09Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 12)
+2026-10-13T00:15:19Z ring8-slice-qwen-tp4 waits for Node A's install lock (try 13)
+2026-10-13T00:27:20Z ring8-slice-qwen-tp4 install state=complete
+2026-10-13T00:27:21Z ring8-slice-qwen-tp4 api=http://<spark-lan-b>:8015/v1 model=Qwen3.8-Flash-Next-NVFP4-QAD-TP4
+2026-10-13T00:27:35Z ring8-slice-qwen-tp4 receipt-before rc=0 digest sha256:c8bc029837241a3c5c9487ddac94f6d767ecf54996d75a2cdd4062a5252e0ff8
+2026-10-13T00:27:35Z ring8-slice-qwen-tp4 bench start host=<spark-lan-b> port=8015 concurrency=1,2,4,8
+2026-10-13T00:39:38Z ring8-slice-qwen-tp4 bench end rc=0
+2026-10-13T00:39:52Z ring8-slice-qwen-tp4 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

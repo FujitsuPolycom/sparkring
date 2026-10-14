@@ -21,9 +21,9 @@
           "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
         },
         "csf": {
-          "status": "research-only",
+          "status": "implemented",
           "purpose": "Local Inference Lab's CSF QAD weights, two Sparks only",
-          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+          "evidence": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-qwen38-flash-next-tp2-csf-pair-20261011.md"
         }
       }
     },
@@ -53,9 +53,9 @@
       "checkpoints": {
         "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
         "csf": {
-          "status": "research-only",
+          "status": "implemented",
           "purpose": "Local Inference Lab's CSF QAD weights; the default on an image that reads them",
-          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+          "evidence": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md"
         },
         "nvfp4-qad": {
           "status": "implemented",
@@ -69,9 +69,9 @@
       "checkpoints": {
         "nvfp4-spark": {"purpose": "Default NVFP4-Spark checkpoint"},
         "csf": {
-          "status": "research-only",
+          "status": "implemented",
           "purpose": "Local Inference Lab's CSF QAD weights; the default on an image that reads them",
-          "evidence": "docs/operations/install-reference.md#another-checkpoint-of-a-profile"
+          "evidence": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md"
         },
         "nvfp4-qad": {
           "status": "implemented",

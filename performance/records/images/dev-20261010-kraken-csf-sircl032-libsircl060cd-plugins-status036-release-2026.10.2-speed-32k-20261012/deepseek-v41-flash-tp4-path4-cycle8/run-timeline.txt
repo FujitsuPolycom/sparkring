@@ -1,0 +1,8 @@
+2026-10-12T08:47:47Z final-deepseek-tp4 install start: --profile deepseek-v41-flash-tp4 --on 0-3 
+2026-10-12T08:54:08Z final-deepseek-tp4 install state=complete
+2026-10-12T08:54:08Z final-deepseek-tp4 api=http://<spark-lan-a>:8015/v1 model=DeepSeek-V4.1-Flash-TP4
+2026-10-12T08:54:20Z final-deepseek-tp4 receipt-before rc=0 digest sha256:94a1a64cce9684c8b0eb3066d78a534d05f746334f6cfac74b83c4f75d96dd0d
+2026-10-12T08:54:21Z final-deepseek-tp4 installed (MODE=install)
+2026-10-12T09:12:05Z final-deepseek-tp4 bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8,16
+2026-10-12T09:26:42Z final-deepseek-tp4 bench end rc=0
+2026-10-12T09:26:56Z final-deepseek-tp4 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

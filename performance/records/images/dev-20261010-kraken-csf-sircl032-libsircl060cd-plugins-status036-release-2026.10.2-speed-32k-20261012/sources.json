@@ -1,0 +1,199 @@
+{
+ "schema": "sparkring-raw-sources/v1",
+ "redaction": {
+  "<spark-lan-a>": "LAN address of a Spark whose API the benchmark called; one placeholder stands for one address in every file",
+  "<spark-lan-b>": "LAN address of a second such Spark",
+  "<spark-lan-c>": "LAN address of a third such Spark",
+  "<workstation>": "host name of the benchmark workstation",
+  "<archive>/": "local path of the operator's research archive, which is not part of this repository"
+ },
+ "note": "archive_sha256 is the SHA-256 of the file before redaction; a redacted copy differs only in the placeholders listed under redaction.",
+ "files": [
+  {
+   "file": "deepseek-v41-flash-tp8-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-deepseek/tester.json",
+   "archive_sha256": "a41ba1becfec5b0cbeab30e3c62c5d05929bf4e65a1185490dccab70a7c12360",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp8-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-deepseek/tester.log",
+   "archive_sha256": "9c62ddacbab440de9f363058b1e2a62958a0de8fb96c00f4ac6ab7a39d4f4b11",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp8-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-deepseek/arm.log",
+   "archive_sha256": "515088f4860e5f9543e4404af65e585a5506de6020c365ab7cc861ca7ca03fdf",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-cycle4-ring-a/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-deepseek-tp4/tester.json",
+   "archive_sha256": "206090ed3ecfc7f2bf8397bc8e06e6d31478a6e97468f8d55370dcc2c1b217f6",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-cycle4-ring-a/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-deepseek-tp4/tester.log",
+   "archive_sha256": "68f45dd2e53ff37167e3380d075c06927a2b3808dfbf13fabcbe80c1a0a2531e",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-cycle4-ring-a/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-deepseek-tp4/arm.log",
+   "archive_sha256": "79c5303c147e41e6f0a36b15a9ab9c0e27978c083adc1cbbb56fe8ffcd13180c",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-path4-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/final-deepseek-tp4/tester.json",
+   "archive_sha256": "ec18e4868cb03f7863a14e57d05dc8bb4a8fe281c1d3f777cfa2d635d6a10a67",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-path4-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/final-deepseek-tp4/tester.log",
+   "archive_sha256": "2aab4e9843fc53f4613382adf5796fbf7a928ca0d2f458a0653077faa2519b01",
+   "redacted": true
+  },
+  {
+   "file": "deepseek-v41-flash-tp4-path4-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/final-deepseek-tp4/arm.log",
+   "archive_sha256": "fdf1f2c4619214bf29bb91a786fe5e6040267aade525a535ae1cbbfb768cac08",
+   "redacted": true
+  },
+  {
+   "file": "glm53-nvfp4-tp8-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-glm53/tester.json",
+   "archive_sha256": "9f10c58c1900612fa2628e7b5e2df3f2d0ed04ca58ca8ac43d0e44c7f2348298",
+   "redacted": true
+  },
+  {
+   "file": "glm53-nvfp4-tp8-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-glm53/tester.log",
+   "archive_sha256": "4c77a5793029832a2c4f8be56b45a3c78f7eae5728f88bf9fbeb7d10a5ae1dc7",
+   "redacted": true
+  },
+  {
+   "file": "glm53-nvfp4-tp8-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/tp8-glm53/arm.log",
+   "archive_sha256": "1073efdfdd40ae000cbbccaca210a61720811649cdac48fd3bc4e5f786a59b23",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp4-path4-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-glm-tp4/tester.json",
+   "archive_sha256": "7db094bd1de99df41073d460a9a886fc871e2495c8aa308d5767cbcc840dda45",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp4-path4-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-glm-tp4/tester.log",
+   "archive_sha256": "b80a9fbce20472a1897c59cb180a9b9ae404df3e787b710310752c1650bcaf39",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp4-path4-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-glm-tp4/arm.log",
+   "archive_sha256": "2bdadb1c6cce04164fef7b866eb96f1a28a13c44848a6018a285bcf131ffe2e3",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp2-pair-ring-b/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-glm-tp2/tester.json",
+   "archive_sha256": "a21c00dc6bdff55cbc9c2bb66631d7cda6bff6040a81fe0881d35082641a22f8",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp2-pair-ring-b/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-glm-tp2/tester.log",
+   "archive_sha256": "417be2357eabe02bf8d1806a969589f47597add9695c75d0b88c8bd15ac736e2",
+   "redacted": true
+  },
+  {
+   "file": "glm53-flash-tp2-pair-ring-b/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-glm-tp2/arm.log",
+   "archive_sha256": "1860cc38716a07cf8477c6242fc532ee4fc6ee795a1af60cf5b5809f836b64f3",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-cycle4-ring-a/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-qwen-tp4/tester.json",
+   "archive_sha256": "a8e82793bbcbf802583e4673ccfdfaeccc7dcdb2cea66843c21cebc1c80d4be8",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-cycle4-ring-a/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-qwen-tp4/tester.log",
+   "archive_sha256": "f34428bde54ff369d4de55fec0498c06f645bce06ada071056f4c88c2c39ba5c",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-cycle4-ring-a/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4a-qwen-tp4/arm.log",
+   "archive_sha256": "ea73720625f0fe8ed56a06a013aa99f690dac25e1b252cf9bae7abdbe4932744",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-path4-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-qwen-tp4/tester.json",
+   "archive_sha256": "86204cc489b32019f25de9fee2fddf3458c27ab513e13258282a016606cc76f7",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-path4-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-qwen-tp4/tester.log",
+   "archive_sha256": "67bdafd962be0e3abe0a4c8048e34a598f6ae0f507048bd414785abdd4847569",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp4-path4-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring8-slice-qwen-tp4/arm.log",
+   "archive_sha256": "3332c858a4ae14263fe131a7104afc05fb4253645282f9ba0b5319ce491f2900",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-ring-b/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-qwen-tp2/arm.log",
+   "archive_sha256": "3fd7503c664ffd99e3f6eceb3287b621717cc5cb3ac7d9523406315c89484699",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-ring-b-quiet/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-qwen-tp2-quiet/tester.json",
+   "archive_sha256": "cdc9e79c538ce0d533dc12b27c4d48953d1c813822ac025f9d8bf805f2a49ef0",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-ring-b-quiet/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-qwen-tp2-quiet/tester.log",
+   "archive_sha256": "2bf1e7d7da504b3483e3340284a471daad3b3ccef13452cdd507e0d457edf4ea",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-ring-b-quiet/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/ring4b-qwen-tp2-quiet/arm.log",
+   "archive_sha256": "1f4d52968b91b120086cc1ea2021dcf605ece82d4bfe67d95a93eef97770a3fc",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-cycle8/bench-result.json",
+   "archive_path": "research/rc-qual-20261012/runs/final-qwen-tp2/tester.json",
+   "archive_sha256": "b78c69a0a5760b279583b8fa02315ec847eb539d4ed2f2136b149f6fc07cc26b",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-cycle8/bench-output.txt",
+   "archive_path": "research/rc-qual-20261012/runs/final-qwen-tp2/tester.log",
+   "archive_sha256": "9008d5405bfe465e6e319857d7866fce17d085b4989620b432bf3b584ba624a7",
+   "redacted": true
+  },
+  {
+   "file": "qwen38-flash-next-tp2-pair-cycle8/run-timeline.txt",
+   "archive_path": "research/rc-qual-20261012/runs/final-qwen-tp2/arm.log",
+   "archive_sha256": "8448adeed3edf584d69549547aabde411cc293f5f51068902881cd8f5c87cbc3",
+   "redacted": true
+  }
+ ]
+}

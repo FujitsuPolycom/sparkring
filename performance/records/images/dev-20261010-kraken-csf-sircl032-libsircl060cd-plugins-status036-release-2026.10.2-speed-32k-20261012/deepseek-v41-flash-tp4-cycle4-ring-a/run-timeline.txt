@@ -1,0 +1,7 @@
+2026-10-12T18:53:56Z ring4a-deepseek-tp4 install start: --profile deepseek-v41-flash-tp4 
+2026-10-12T19:16:38Z ring4a-deepseek-tp4 install state=complete
+2026-10-12T19:16:38Z ring4a-deepseek-tp4 api=http://<spark-lan-a>:8015/v1 model=DeepSeek-V4.1-Flash-TP4
+2026-10-12T19:16:48Z ring4a-deepseek-tp4 receipt-before rc=0 digest sha256:738cfb1b6ef0e09b30edc700620605ee3554a034702474c0b2dd5ae582e48ed8
+2026-10-12T19:16:48Z ring4a-deepseek-tp4 bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8,16
+2026-10-12T19:30:48Z ring4a-deepseek-tp4 bench end rc=0
+2026-10-12T19:30:58Z ring4a-deepseek-tp4 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 

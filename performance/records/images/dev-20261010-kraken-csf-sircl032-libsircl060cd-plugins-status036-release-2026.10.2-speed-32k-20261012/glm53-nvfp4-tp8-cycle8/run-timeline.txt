@@ -1,0 +1,7 @@
+2026-10-12T08:21:15Z tp8-glm53 install start: --profile glm53-nvfp4-tp8 --no-auto-recover 
+2026-10-12T08:27:56Z tp8-glm53 install state=complete
+2026-10-12T08:27:56Z tp8-glm53 api=http://<spark-lan-a>:8015/v1 model=GLM-5.3-NVFP4-TP8
+2026-10-12T08:28:17Z tp8-glm53 receipt-before rc=0 digest sha256:d3d1ad561f09f8f2257eaea36c5eb0df277ff89001a45b8779b2056cae2048f7
+2026-10-12T08:28:17Z tp8-glm53 bench start host=<spark-lan-a> port=8015 concurrency=1,2,4,8
+2026-10-12T08:46:52Z tp8-glm53 bench end rc=0
+2026-10-12T08:47:16Z tp8-glm53 done; receipt diff: settings: 0 difference(s) derived: 0 difference(s) observed: 1 difference(s) 
