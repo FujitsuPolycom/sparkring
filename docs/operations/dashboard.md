@@ -96,6 +96,15 @@ Amber diamonds mark cable segments on topology-derived shortest routes with
 an intermediate Spark, rather than measured traffic. The page uses system
 fonts and follows the browser's dark or light theme without fetching assets.
 
+Each ring figure shows total output tok/s, running requests and queued requests.
+The compact block sits in the polygon's empty centre when the group labels
+leave room, or directly below the Spark allocation strip. It sums the same
+live snapshots as the model cards, once per serving group, and rounds the
+sum to whole numbers. Stopped and starting groups contribute zero; when
+nothing serves, all three totals are zero. The summary tiles use the same
+calculation across all rings. The header shows group and Spark counts without
+repeating the request and output totals.
+
 Node A also serves one page for the whole ring (Experimental):
 
 ```text

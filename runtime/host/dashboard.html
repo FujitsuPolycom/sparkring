@@ -95,6 +95,12 @@ svg .center { font: 12px var(--mono); fill: var(--muted); text-anchor: middle; }
 .allocation .slot.outline { background: transparent; color: var(--muted); border-style: dashed; }
 .configuration { text-align: center; font: 11px var(--mono); color: var(--muted); }
 .configuration b { color: var(--ink); font-weight: 500; }
+.ring-totals { color: var(--muted); font: 11px var(--mono); text-align: center; margin: 8px 0; }
+.ring-totals b { color: var(--ink); font-weight: 600; }
+svg .ring-totals { text-anchor: middle; }
+svg .ring-totals rect { fill: var(--surface); stroke: var(--line); }
+svg .ring-total-rate { font: 600 12px var(--mono); fill: var(--ink); }
+svg .ring-total-requests { font: 10px var(--mono); fill: var(--muted); }
 .ringfig figcaption, .tile .v, .legend .rate, .chart .k, .axis { font-family: var(--mono); }
 .ringside { display: grid; gap: 14px; min-width: 0; align-content: start; }
 .strip { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line);
@@ -558,7 +564,37 @@ function ringLabels(groups, N, cx, cy) {
   }
   return placed;
 }
-function ringSvg(ring, members, now) {
+// Sum the card snapshots once per serving group, never once per Spark/rank.
+function servingTotals(members) {
+  const serving = [...new Map(members.map(m => [m.id, m])).values()].filter(m => m.state === "serving");
+  const sum = key => serving.reduce((total, m) => total + (m.live?.[key] || 0), 0);
+  return {serving, tps: sum("output_tps"), tps5: sum("output_tps_5m"), running: sum("running"), waiting: sum("waiting")};
+}
+function ringTotalsLayout(ring, members, labels) {
+  const t = servingTotals(onRing(ring, members));
+  const output = `${rate(t.tps)} tok/s`, requests = `${int(t.running)} running · ${int(t.waiting)} queued`;
+  const mono = getComputedStyle(document.documentElement).getPropertyValue("--mono");
+  ringLabelMeasure.font = `600 12px ${mono}`;
+  const outputWidth = ringLabelMeasure.measureText(output).width;
+  ringLabelMeasure.font = `10px ${mono}`;
+  const width = Math.max(outputWidth, ringLabelMeasure.measureText(requests).width) + 16, height = 44;
+  // The inscribed circle keeps the block clear of every cable and node. Label
+  // boxes use the same centres as ringLabels, including its collision nudges.
+  const room = 140 * Math.cos(Math.PI / ring.size) - 18;
+  const center = ring.size > 2 && Math.hypot(width / 2, height / 2) < room && !labels.some(p => {
+    const g = p.g, compact = labels.length > 4;
+    ringLabelMeasure.font = `9px ${mono}`;
+    const subtitle = `${g.m?.layout?.tp ? 'TP' + g.m.layout.tp : 'Unmanaged'} · Sparks ${span(g.positions)}`;
+    const detailWidth = Math.max(ringLabelMeasure.measureText(subtitle).width,
+      ringLabelMeasure.measureText(ringStartupLabel(g.m)).width);
+    ringLabelMeasure.font = `650 ${compact ? 14 : 18}px ${mono}`;
+    const rateWidth = ringLabelMeasure.measureText(`${g.state === 'serving' ? rate(g.m?.live?.output_tps) : '–'} tok/s`).width;
+    const labelWidth = Math.max(p.width, detailWidth, rateWidth);
+    return Math.abs(p.x - 200) < (width + labelWidth) / 2 + 6 && Math.abs(p.y - 190) < height / 2 + 30;
+  });
+  return {output, requests, width, height, center};
+}
+function ringSvg(ring, members, now, labels, totals) {
   const N = ring.size, cx = 200, cy = 190, R = 140;
   const ang = p => -Math.PI / 2 + p * 2 * Math.PI / N;
   const pt = p => N === 2 ? [100 + p * 200, 130] : [cx + R * Math.cos(ang(p)), cy + R * Math.sin(ang(p))];
@@ -581,7 +617,7 @@ function ringSvg(ring, members, now) {
       s += `<path class="relay" data-segment="${p}" d="M${x},${y - 4} l4,4 -4,4 -4,-4 Z"><title>Relayed route through a Spark · from cable topology</title></path>`;
     }
   }
-  for (const position of ringLabels(groups, N, cx, cy)) {
+  for (const position of labels) {
     const {g, x, size} = position, compact = groups.length > 4, y = position.y - (compact ? 11 : 13);
     const tp = g.m?.gpu_job ? "" : g.outline ? (g.m?.layout?.tp ? "TP" + g.m.layout.tp : "Unmanaged") : "TP" + (g.m?.layout?.tp || g.size);
     const phase = ringStartupLabel(g.m);
@@ -592,7 +628,10 @@ function ringSvg(ring, members, now) {
         : `<text class="lrate" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${compact ? 14 : 18}px">${g.state === "serving" ? rate(g.m?.live?.output_tps) : "–"}<tspan class="unit"> tok/s</tspan></text>`) + `</g>`;
     s += `<g class="band k-${g.kind} ${groupStyle(g)}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${label}</g>`;
   }
-  if (!groups.length) s += `<text class="center" x="${cx}" y="${cy}">No serving group</text>`;
+  if (totals.center) s += `<g class="ring-totals" role="group" aria-label="Ring totals">
+    <rect x="${cx - totals.width / 2}" y="${cy - totals.height / 2}" width="${totals.width}" height="${totals.height}" rx="6"/>
+    <text class="ring-total-rate" x="${cx}" y="${cy - 4}">${esc(totals.output)}</text>
+    <text class="ring-total-requests" x="${cx}" y="${cy + 12}">${esc(totals.requests)}</text></g>`;
   for (let p = 0; p < N; p++) {
     const sp = ring.positions[p] || {}, g = owner[p], [x, y] = pt(p);
     const dx = N === 2 ? (p ? 1 : -1) : Math.cos(ang(p)), dy = N === 2 ? 0 : Math.sin(ang(p));
@@ -608,7 +647,7 @@ function ringSvg(ring, members, now) {
   }
   return s + "</svg>";
 }
-function allocationHtml(ring, members) {
+function allocationHtml(ring, members, totals) {
   const groups = ringGroups(ring, members), owner = ringOwners(groups);
   const slots = Array.from({length: ring.size}, (_, p) => {
     const g = owner[p];
@@ -617,6 +656,7 @@ function allocationHtml(ring, members) {
   const serving = groups.filter(g => g.state === "serving" && !g.outline), sizes = [...new Set(serving.map(g => g.size))];
   const count = sizes.length === 1 ? `${serving.length} × TP${sizes[0]}` : serving.map(g => `TP${g.size}`).join(" + ");
   return `<div class="allocation"><span class="allocation-label">SPARK ALLOCATION</span>${slots}</div>`
+    + (totals.center ? "" : `<div class="ring-totals" role="group" aria-label="Ring totals"><b>${esc(totals.output)}</b> · ${esc(totals.requests)}</div>`)
     + `<div class="configuration"><b>${esc(count || "No managed group serving")}</b> · ${ring.size === 2 ? "A pair" : "A ring of " + ring.size}</div>`;
 }
 
@@ -633,9 +673,7 @@ function groupTitle(g) {
 
 // Totals across every ring; with more than one ring each serving size names its ring.
 function stripHtml(rings, members) {
-  const serving = members.filter((m) => m.state === "serving");
-  const sum = (f) => serving.reduce((a, m) => a + ((m.live && m.live[f]) || 0), 0);
-  const tps = sum("output_tps"), tps5 = sum("output_tps_5m"), running = sum("running"), waiting = sum("waiting");
+  const {serving, tps, tps5, running, waiting} = servingTotals(members);
   const {size, up, busy, idle, down, unknown} = ringCounts(rings, members);
   let kv = null, kvName = "";
   for (const m of serving) if (m.live && has(m.live.kv) && (kv === null || m.live.kv > kv)) { kv = m.live.kv; kvName = m.name; }
@@ -701,7 +739,10 @@ function renderRings(rings, members, now) {
   const viz = $("ringviz");
   const columns = String(Math.min(rings.length, 2));
   if (viz.style.getPropertyValue("--rings") !== columns) viz.style.setProperty("--rings", columns);
-  const svg = rings.map((r) => `<figure class="ringfig" data-ring="${esc(r.id)}">${ringCaption(r)}${ringSvg(r, members, now)}${allocationHtml(r, members)}</figure>`).join("");
+  const svg = rings.map(r => {
+    const labels = ringLabels(ringGroups(r, members), r.size, 200, 190), totals = ringTotalsLayout(r, members, labels);
+    return `<figure class="ringfig" data-ring="${esc(r.id)}">${ringCaption(r)}${ringSvg(r, members, now, labels, totals)}${allocationHtml(r, members, totals)}</figure>`;
+  }).join("");
   patch(viz, svg);
   patch($("strip"), stripHtml(rings, members));
   patch($("legend"), legendHtml(rings, members));
@@ -1226,9 +1267,6 @@ function render() {
   const ringMembers = groups.filter((g) => g.kind === "ring").flatMap((g) => g.members || []);
   const fixedMembers = groups.filter((g) => g.kind !== "ring").flatMap((g) => g.members || []);
   const stacks = ringMembers.concat(fixedMembers);
-  const serving = stacks.filter((s) => s.state === "serving");
-  const running = serving.reduce((a, s) => a + ((s.live && s.live.running) || 0), 0);
-  const tps = serving.reduce((a, s) => a + ((s.live && s.live.output_tps) || 0), 0);
   const parts = [];
   const rings = ringsOf(data);
   if (rings.length) {
@@ -1239,7 +1277,10 @@ function render() {
                `${busy} of ${sparkCount(size)} busy`);
   }
   if (fixedMembers.length) parts.push(`${fixedMembers.filter((s) => s.state === "serving").length} of ${fixedMembers.length} profiles serving`);
-  parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
+  if (!rings.length) {
+    const {running, tps} = servingTotals(stacks);
+    parts.push(`${int(running)} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
+  }
   text($("summary"), parts.join(" · "));
   renderRings(rings, ringMembers, now);
   refreshSpark();
