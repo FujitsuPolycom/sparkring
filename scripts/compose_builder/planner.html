@@ -1,0 +1,27 @@
+<main class="site-wrap planner" id="planner">
+  <p class="eyebrow">Directly cabled DGX Sparks</p><h1>Install Builder</h1>
+  <p class="muted">Choose your Sparks, then place one or more models. Run the commands in order on Node A.</p>
+  <div class="planner-grid"><div>
+    <section class="planner-card"><h2>1 · Sparks</h2><label for="spark-count">Spark count</label><select id="spark-count"></select>
+      <p class="hint">Two Sparks form a pair; three to eight form a ring. Position 0 is Node A. The cables number the others.</p></section>
+    <section><h2>2 · Models and where they run</h2>
+      <label><input type="checkbox" id="setup-only"> No model: set up the Sparks only</label>
+      <div id="model-slots"></div><button type="button" id="add-model">+ Add model</button>
+      <p class="hint">Automatic selects the first free aligned group from Node A after reserving explicit groups. The command pins that choice with <code>--on</code>. Overlapping groups block all commands.</p></section>
+    <section class="planner-card"><h2>3 · Installation</h2>
+      <label for="plan-image">Installer image</label><select id="plan-image"></select>
+      <label for="plan-form">SparkRing on Node A</label><select id="plan-form"><option value="script">New installation</option><option value="installed">Already installed</option></select>
+      <label for="plan-source">Package source</label><select id="plan-source"><option value="checkout">This page's source</option><option value="main">Main branch</option></select>
+      <p class="hint" id="plan-source-note"></p>
+      <label for="plan-approval">Before making changes</label><select id="plan-approval"><option value="ask">Ask</option><option value="plan">Plan only (installed package)</option><option value="yes">Approve with --yes</option></select>
+      <label for="plan-order">Spark order</label><select id="plan-order"><option value="auto">Discover from cables</option><option value="ask">Ask during install</option><option value="fill">Name the Sparks here</option></select>
+      <div id="plan-sparks" hidden></div>
+      <label for="plan-limit">Download limit (optional)</label><input id="plan-limit" placeholder="850Mbit, 2Gbit or none">
+      <p class="hint">A new installation asks before changes. Plan only requires SparkRing to be installed already.</p></section>
+  </div><div class="planner-output">
+    <div class="ring-panel" id="plan-ring"></div><div id="plan-problems" role="alert"></div>
+    <h2>Your commands</h2><p class="hint">Run on Node A, one command at a time. Existing workloads are checked by the installer; review its plan before applying it.</p>
+    <div id="plan-commands"></div><button type="button" id="plan-share">Copy builder link</button>
+    <p class="hint">Checkpoint, serving and API settings belong to each model. Docker Compose downloads and YAML import are in the detailed editor below.</p>
+  </div></div>
+</main>

@@ -1,4 +1,6 @@
 *.sh text eol=lf
+# Public browser assets include a vendored file with an integrity digest.
+scripts/compose_builder/*.js text eol=lf
 *.patch text eol=lf
 integrations/sparkcache/*.patch whitespace=-trailing-space
 integrations/vllm/patches/**/*.patch whitespace=-trailing-space

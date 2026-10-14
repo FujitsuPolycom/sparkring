@@ -1,0 +1,20 @@
+/* Shared SparkRing tokens. Public pages and offline dashboards use system fonts. */
+:root {
+  color-scheme: dark;
+  --bg: #0f171c; --surface: #152129; --ink: #e3eaed; --muted: #93a3ac; --line: #2a3943;
+  --g1: #3fc3cf; --g2: #74d494; --g3: #ac8ef6; --g4: #7aa6f6; --relay: #e3a246;
+  --ok: #74d494; --warn: #e3a246; --bad: #f08a80;
+  --sans: system-ui, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #eef1f2; --surface: #f8fafa; --ink: #142028; --muted: #55636c; --line: #cfd7db;
+  --g1: #0b7f8a; --g2: #2f8a4a; --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
+  --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530;
+}
+:root {
+  --panel: var(--surface); --text: var(--ink); --sunk: var(--bg); --accent: var(--g1);
+  --accent-soft: var(--surface); --on-accent: var(--bg);
+  --warn-soft: var(--surface); --bad-soft: var(--surface);
+}

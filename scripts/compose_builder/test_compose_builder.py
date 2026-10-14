@@ -180,12 +180,17 @@ def test_features_record_the_command_options_the_source_defines(data, tmp_path):
 def test_image_catalog_lists_the_default_first_with_options_install_accepts(data):
     rows = data["images"]
     assert rows[0]["default"] and rows[0]["file"] is None and sum(row["default"] for row in rows) == 1
+    # Only the default image and published releases are offered; development images are not.
+    assert all(row["default"] or row["tags"] for row in rows)
     for row in rows:
         assert set(row["profiles"]) <= set(export.profile_ids())
         path = installer_image.lock_path(row["option"])
         assert path is None if row["default"] else path.parent.name == row["name"]
         assert row["default"] or row["file"] == f"images/{row['name']}.json"
-    assert {row["name"]: row["option"] for row in rows}["dev-20261001-statusrows-cuda1342-nccl2323-status034"] == "statusrows"
+    catalog = installer_image.catalog()
+    names = [row["name"] for row in catalog]
+    statusrows = next(row for row in catalog if row["name"] == "dev-20261001-statusrows-cuda1342-nccl2323-status034")
+    assert export._image_option(statusrows, names) == "statusrows"
 
 
 def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, monkeypatch):
@@ -756,7 +761,7 @@ def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     monkeypatch.setattr(export, "image_catalog", lambda: [row for row in catalog() if row["default"] or "2026.09.5" in row["tags"]])
     output = tmp_path / "site"
     assert generate_compose_builder.main(["--output", str(output), "--commit", COMMIT, "--verify", "--cases", "1"]) == 0
-    html = (output / "index.html").read_text(encoding="utf-8")
+    html = (output / "builder.html").read_text(encoding="utf-8")
     embedded = json.loads(html.split('<script type="application/json" id="data">', 1)[1].split("</script>", 1)[0])
     assert embedded["verification"]["archives"] > 0
     other = next(row for row in embedded["images"] if not row["default"])

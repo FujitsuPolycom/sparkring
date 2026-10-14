@@ -1,4 +1,4 @@
-"""Write the Install Builder page for this checkout.
+"""Write the SparkRing landing page, Install Builder and command guide for this checkout.
 
 The page (docs/operations/compose-builder.md) writes `sparkring install`
 commands and `sparkring compose render` deployments for the profiles of the
@@ -6,7 +6,8 @@ checkout it is built from:
 
     python scripts/generate_compose_builder.py --output DIRECTORY [--verify]
 
-The page's directory also receives images/NAME.json for every other installer
+The output contains index.html, builder.html and commands.html, shared local
+assets, and images/NAME.json for every other installer
 image, which the page loads when that image is selected. --verify first
 compares the page's engine with compose.build under Node.js
 (scripts/compose_builder/verify.py) on every image and writes nothing if any
@@ -23,12 +24,12 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.compose_builder import export, verify  # noqa: E402
+from scripts.compose_builder import export, site, verify  # noqa: E402
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--output", type=Path, required=True, help="directory that receives index.html")
+    parser.add_argument("--output", type=Path, required=True, help="directory that receives the public site")
     parser.add_argument("--tag", help="release tag the page names and pins; default: the checkout's exact tag")
     parser.add_argument("--commit", help="commit the page names; default: the checkout's HEAD")
     parser.add_argument("--repository", default=export.REPOSITORY, help="GitHub repository that serves install.sh")
@@ -64,7 +65,7 @@ def main(argv=None):
             return 1
     args.output.mkdir(parents=True, exist_ok=True)
     path = args.output / "index.html"
-    path.write_text(export.page(data, summary), encoding="utf-8", newline="\n")
+    site.write(args.output, export.page(data, summary), meta)
     for file, image in images.items():
         (args.output / file).parent.mkdir(parents=True, exist_ok=True)
         (args.output / file).write_text(json.dumps(image, separators=(",", ":")), encoding="utf-8", newline="\n")

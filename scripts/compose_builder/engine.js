@@ -1096,7 +1096,82 @@ const SparkRingEngine = (() => {
     return { filename: site.name + '.zip', bytes: zip(entries, when), names: entries.filter(e => !e.dir).map(e => e.name) };
   }
 
-  return { render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
+  // General installer placements. Automatic considers the groups that tile the fabric
+  // from Node A, like placement.aligned. Explicit groups reserve their positions first.
+  function arcs(size, count) {
+    if (!Number.isInteger(size) || size < 2 || size > 8 || !Number.isInteger(count) || count < 2 || count > size) return [];
+    if (count === size) return [Array.from({ length: size }, (_, i) => i)];
+    // A partial group is a path: six or more ranks exceed SIRCL's three-relay limit.
+    if (count > 5) return [];
+    return Array.from({ length: size }, (_, start) => Array.from({ length: count }, (_, i) => (start + i) % size));
+  }
+  function resolveSlices(size, slots) {
+    const used = new Set(), groups = Array(slots.length).fill(null), problems = [];
+    if (!Number.isInteger(size) || size < 2 || size > 8) problems.push('Choose from two to eight Sparks.');
+    const reserve = (arc, i) => {
+      if (arc.some(n => used.has(n))) problems.push(`Model ${i + 1} overlaps another model.`);
+      arc.forEach(n => used.add(n)); groups[i] = arc;
+    };
+    slots.forEach((slot, i) => {
+      if (!slot.profile) { problems.push(`Choose model ${i + 1}.`); return; }
+      if (!slot.where || slot.where === 'auto') return;
+      const arc = arcs(size, slot.profile.nodes).find(a => a.join(',') === slot.where);
+      if (!arc) problems.push(`Model ${i + 1} needs a supported consecutive group of ${slot.profile.nodes} Sparks.`);
+      else reserve(arc, i);
+    });
+    slots.forEach((slot, i) => {
+      if (!slot.profile || (slot.where && slot.where !== 'auto')) return;
+      const k = slot.profile.nodes;
+      const arc = arcs(size, k).find(a => a[0] % k === 0 && a[0] + k <= size && a.every(n => !used.has(n)));
+      if (!arc) problems.push(`No free group of ${k} Sparks for model ${i + 1}.`);
+      else reserve(arc, i);
+    });
+    return { groups, problems, used: [...used] };
+  }
+  function slicePack(size, slots, meta, opts) {
+    const allocation = resolveSlices(size, slots), problems = [...allocation.problems], commands = [];
+    const limit = readDownloadLimit(opts.downloadLimit);
+    if (limit.problem) problems.push(limit.problem);
+    if (opts.order === 'fill') problems.push(...sparkProblems(opts.sparks || []).map(p => p.message));
+    const approval = opts.order === 'ask' || (opts.form === 'script' && opts.approval === 'plan') ? 'ask' : opts.approval;
+    const names = sparkNames(size, opts.order === 'fill' ? opts.sparks : null);
+    if (opts.setupOnly) {
+      if (slots.length) problems.push('Setup only cannot include models.');
+      if (opts.form === 'script') {
+        const ref = opts.pin ? meta.ref : 'main';
+        commands.push({ what: 'Install SparkRing on Node A', command: `curl -fsSL https://raw.githubusercontent.com/${meta.repository}/${ref}/install.sh | bash -s -- ${opts.pin ? `--ref ${ref} ` : ''}--package-only` });
+      }
+      commands.push({ what: 'Set up the Sparks without a model', command: 'sudo sparkring setup' + (approval === 'plan' ? ' --plan' : '') });
+    } else {
+      if (!slots.length) problems.push('Choose at least one model or setup only.');
+      slots.forEach((slot, i) => {
+        if (!slot.profile) return;
+        if (slot.profile.installable === false) problems.push(`Model ${i + 1} is not admitted by this image. Select another image or follow its profile guide.`);
+        const check = servingCheck(slot.profile, slot.settings || {}, slot.checkpoint);
+        if (!check.ok) { problems.push(`Model ${i + 1}: ${check.error}`); return; }
+        problems.push(...(slot.problems || []).map(p => `Model ${i + 1}: ${p.message}`));
+        const arc = allocation.groups[i];
+        if (!arc) return;
+        if (slot.profile.sircl === false && !(size === 2 || (size === 4 && (arc.length === 4 || ['0,1', '2,3'].includes(arc.join(',')))))) {
+          problems.push(`Model ${i + 1}: this group needs an image with SIRCL ring sessions.`);
+        }
+        let address = null;
+        try { if (slot.endpoint?.address) address = apiAddress(slot.endpoint.address); }
+        catch (error) { problems.push(error.message); }
+        const on = arc.length === size ? null : arc.join(',');
+        commands.push({ what: `${slot.profile.model_name} · Sparks ${arc.join(', ')}${!slot.where || slot.where === 'auto' ? ' (automatic)' : ''}`,
+          command: installCommand(slot.profile, check.checkpoint, check.settings, meta,
+            { ...opts, form: i === 0 ? opts.form : 'installed', on, downloadLimit: limit.value,
+              approval: slot.endpoint?.ask && approval === 'yes' ? 'ask' : approval, apiAddress: address }),
+          endpoint: apiUrl(check.checkpoint, check.settings, names[arc[0]].address, address) });
+      });
+    }
+    commands.push({ what: 'Check the Sparks', command: 'sudo sparkring status' });
+    if (problems.length) commands.forEach(c => { c.command = ''; });
+    return { ...allocation, problems, commands, ready: !problems.length };
+  }
+
+  return { arcs, resolveSlices, slicePack, render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, installDefault, installDefaultName, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
     layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText,
     readSetting, readAddress, readDownloadLimit, readSelection, offered };
