@@ -7,7 +7,7 @@ licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
 (`glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
-(`qwen38-flash-next-tp2`).
+(`qwen38-flash-next-tp2`). https://local-inference-lab.ai/
 
 SparkRing serves large language models on two or more NVIDIA DGX Sparks cabled
 directly over ConnectX-7, with no switch, and installs them with one command.
