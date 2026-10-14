@@ -46,7 +46,8 @@ def test_plugin_choice_deduplication_and_stale_local_remote_fallback(tmp_path):
     plugin = member(document(clock.now, 100, 200, plugin=True))["plugin_counters"]
     found.node_status = {"telemetry": {"one": plugin}}
     found.remember(model, clock.now)
-    assert rows(found)[-1]["plugin_counters"] == plugin
+    assert rows(found)[-1]["source"] == "plugin"
+    assert rows(found)[-1]["counters"] == {**plugin, "source": "plugin"}
     count = len(rows(found))
     run_for(found, clock, 100, viewer=True)
     assert len(rows(found)) == count  # repeated plugin delivery and metrics reads add no plugin point
@@ -54,10 +55,45 @@ def test_plugin_choice_deduplication_and_stale_local_remote_fallback(tmp_path):
     found.node_status["telemetry"]["one"] = {**plugin, "at": clock.now - 181}
     found.recovery = {model.row["id"]: {"telemetry": remote}}
     found.remember(model, clock.now)
-    assert rows(found)[-1]["plugin_counters"]["at"] == clock.now
+    assert rows(found)[-1]["counters"]["at"] == clock.now
     clock.now += 181
     found.cycle()
-    assert rows(found)[-1]["plugin_counters"] is None
+    assert rows(found)[-1]["source"] == "metrics"
+    assert "values" in rows(found)[-1]["counters"]
+
+
+def test_plugin_row_stores_no_metrics_values_and_windows_never_mix(tmp_path):
+    """A plugin sample carries plugin counters only; the /metrics read of the same
+    cycle is either absent or lives in its own metrics-labeled sample."""
+    found, _, clock = collector(tmp_path, rows=PAIRS[:1])
+    found.cycle()
+    model = next(iter(found.models.values()))
+    model.row["deployment_id"] = "one"
+    model.observe_metrics({"gen": 4000, "prompt": 993889, "running": 1, "started": 7}, clock.now)
+    plugin = member(document(clock.now, 522849, 100, plugin=True))["plugin_counters"]
+    found.node_status = {"telemetry": {"one": plugin}}
+    found.remember(model, clock.now)
+    row = rows(found)[-1]
+    assert row["source"] == "plugin"
+    assert row["counters"]["prompt"] == 522849
+    assert "values" not in row["counters"] and "plugin_counters" not in row
+    viewer = ViewerRates()
+    viewer.ingest(model.id, row)
+    state = viewer.members[model.id]
+    assert state["key"] == ("plugin", plugin["run_id"])
+    assert all(sample["source"] == "plugin" for sample in state["samples"])
+    clock.now += 10
+    found.node_status = {}
+    model.observe_metrics({"gen": 4010, "prompt": 993899, "running": 1, "started": 7}, clock.now)
+    found.remember(model, clock.now)
+    row = rows(found)[-1]
+    assert row["source"] == "metrics"
+    assert row["counters"]["values"]["prompt"] == 993899
+    viewer.ingest(model.id, row)
+    state = viewer.members[model.id]
+    assert state["key"] == ("metrics", 7)
+    assert all(sample["source"] == "metrics" for sample in state["samples"])
+    assert state["history"][-2][1:] == [None] * 6  # the source switch closes the rate window
 
 
 def test_unviewed_plugin_keeps_minute_metrics_and_fallback_switches_to_ten_seconds(tmp_path):

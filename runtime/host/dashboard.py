@@ -1120,14 +1120,20 @@ class Collector:
                 del self.history[model_id]
                 continue
             rows = self.history[model_id]
-            while rows and (rows[0].get("plugin_counters") or rows[0]["counters"])["at"] < now - HISTORY_SECONDS:
+            while rows and rows[0]["counters"]["at"] < now - HISTORY_SECONDS:
                 rows.popleft()
             while rows and rows[-1]["observed_at"] > now:
                 rows.pop()
         self.history_gaps.intersection_update(self.models)
 
     def remember(self, model, now):
-        """Retain only bounded raw numeric fields, never rates or mutable source documents."""
+        """Retain only bounded raw numeric fields, never rates or mutable source documents.
+
+        Each sample carries exactly one source. A fresh stat-logger snapshot is
+        stored as the plugin payload alone; only a cycle without one stores the
+        /metrics read, so the label and the values can never diverge and no
+        sample mixes plugin and /metrics counters.
+        """
         if model.id not in self.history:
             if len(self.history) >= HISTORY_DEPLOYMENTS:
                 return
@@ -1138,26 +1144,26 @@ class Collector:
             self.history_gaps.add(model.id)
             return
         metrics = model.metrics or {}
-        counters = {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
-                    "values": {k: metrics[k] for k in HISTORY_VALUES if number(metrics.get(k))}}
         if plugin:
-            plugin = {k: plugin[k] for k in (*HISTORY_VALUES, "at", "monotonic") if number(plugin.get(k))} | {
-                "schema": "sparkring-stats/v1", "run_id": plugin["run_id"],
+            sample = {k: plugin[k] for k in (*HISTORY_VALUES, "at", "monotonic") if number(plugin.get(k))} | {
+                "source": "plugin", "schema": "sparkring-stats/v1", "run_id": plugin["run_id"],
                 "step_timing": bool(plugin.get("step_timing"))}
-        sample = plugin or counters
+        else:
+            sample = {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
+                      "values": {k: metrics[k] for k in HISTORY_VALUES if number(metrics.get(k))}}
         at = sample["at"]
         if not number(at) or now - at > (180 if plugin else 125):
             self.history_gaps.add(model.id)
             return
         # Snapshot identity is independent of the collector's read time and fallback reads.
-        previous = (rows[-1].get("plugin_counters") or rows[-1]["counters"]) if rows else None
-        if previous and (bool(rows[-1].get("plugin_counters")), previous["run_id"],
+        previous = rows[-1]["counters"] if rows else None
+        if previous and (rows[-1]["source"], previous["run_id"],
                          previous.get("monotonic", previous["at"])) == (
-                             bool(plugin), sample["run_id"], sample.get("monotonic", at)):
+                             sample["source"], sample["run_id"], sample.get("monotonic", at)):
             return
         self.history_seq += 1
-        rows.append({"seq": self.history_seq, "observed_at": now, "source": "plugin" if plugin else "metrics", "counters": counters,
-                     "plugin_counters": plugin, "boundary": model.id in self.history_gaps})
+        rows.append({"seq": self.history_seq, "observed_at": now, "source": sample["source"],
+                     "counters": sample, "boundary": model.id in self.history_gaps})
         self.history_gaps.discard(model.id)
 
     def history_snapshot(self, now=None):

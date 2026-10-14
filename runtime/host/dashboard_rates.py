@@ -40,16 +40,24 @@ class ViewerRates:
         for row in member.get("counter_samples", []):
             self.ingest(member["id"], row)
         fallback = member.get("counters")
-        if not fallback:  # An older service can still supply derived values.
-            state = self.members.get(member["id"])
-            if state:
-                state["samples"] = []
-                history = state["history"]
-                if history and history[-1][1:] != [None] * 6:
-                    history.append([now, *([None] * 6)])
-                state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
-            return
         plugin = member.get("plugin_counters")
+        # A history row carries exactly one source's payload under "counters"
+        # and its label names that payload. A plugin row must never fall back
+        # to the /metrics read of the same cycle: none is stored beside it.
+        if isinstance(fallback, dict) and fallback.get("source") == "plugin":
+            plugin, fallback = fallback, None
+        if not fallback:
+            if not (member.get("source") == "plugin" and plugin_fresh(plugin, None, now)):
+                # An older service can still supply derived values.
+                state = self.members.get(member["id"])
+                if state:
+                    state["samples"] = []
+                    history = state["history"]
+                    if history and history[-1][1:] != [None] * 6:
+                        history.append([now, *([None] * 6)])
+                    state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
+                return
+            fallback = {}
         use = plugin_fresh(plugin, fallback, now)
         sample = ({"source": "plugin", "at": plugin["at"], "run_id": plugin["run_id"],
                    "clock": plugin["monotonic"], "values": plugin} if use else
@@ -110,7 +118,10 @@ class ViewerRates:
                           "acceptance": ratio("accepted", "draft_tokens"),
                           "accept_length_5m": 1 + acceptance if acceptance is not None else None,
                           "ttft_5m": ratio("ttft_sum", "ttft_count"), "prefix_hit_5m": ratio("pc_hits", "pc_queries")}
-        if use:
+        # The prefix-cache ratio needs /metrics counters the plugin lacks; feed the
+        # metrics-only side window only from a genuine /metrics payload, never from
+        # a replayed plugin row, so the two sources never share one rate window.
+        if use and isinstance(member.get("counters"), dict) and member["counters"].get("source") == "metrics":
             fallback_view = state.setdefault("fallback", ViewerRates())
             other = {**member, "plugin_counters": None, "counter_samples": []}
             fallback_view.member(other, now, quiet)

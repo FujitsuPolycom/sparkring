@@ -27,23 +27,30 @@ class ViewerRates {
   }
   member(m, now, quiet) {
     for (const row of m.counter_samples || []) this.ingest(m.id, row);
-    const fallback = m.counters;
+    let fallback = m.counters, p = m.plugin_counters, num = Number.isFinite;
+    // A history row carries exactly one source's payload under "counters" and
+    // its label names that payload. A plugin row never falls back to /metrics.
+    if (fallback && fallback.source === "plugin") { p = fallback; fallback = null; }
+    const pluginFresh = (cand, fb) => !!cand && cand.schema === "sparkring-stats/v1" && num(cand.at)
+      && now - cand.at >= -5 && now - cand.at <= 180 && num(cand.monotonic)
+      && typeof cand.run_id === "string" && cand.run_id.length > 0 && cand.run_id.length <= 128
+      && ["prompt", "gen", "running", "waiting", "kv"].every(k => num(cand[k]) && cand[k] >= 0)
+      && (!fb || !num(fb.run_id) || cand.at >= fb.run_id);
     if (!fallback) {
-      const state = this.members.get(m.id);
-      if (state) {
-        state.samples = [];
-        if (state.history.length && state.history.at(-1).slice(1).some(v => v !== null))
-          state.history.push([now, null, null, null, null, null, null]);
-        state.history = state.history.filter(h => now - h[0] <= 21600).slice(-4321);
-        m.history = state.history;
+      if (!(m.source === "plugin" && pluginFresh(p, null))) {
+        const state = this.members.get(m.id);
+        if (state) {
+          state.samples = [];
+          if (state.history.length && state.history.at(-1).slice(1).some(v => v !== null))
+            state.history.push([now, null, null, null, null, null, null]);
+          state.history = state.history.filter(h => now - h[0] <= 21600).slice(-4321);
+          m.history = state.history;
+        }
+        return;
       }
-      return;
+      fallback = {};
     }
-    const p = m.plugin_counters, num = Number.isFinite;
-    const use = p && p.schema === "sparkring-stats/v1" && num(p.at) && now - p.at >= -5
-      && now - p.at <= 180 && num(p.monotonic) && typeof p.run_id === "string" && p.run_id.length > 0 && p.run_id.length <= 128
-      && ["prompt", "gen", "running", "waiting", "kv"].every(k => num(p[k]) && p[k] >= 0)
-      && (!num(fallback.run_id) || p.at >= fallback.run_id);
+    const use = pluginFresh(p, fallback);
     const sample = use ? { source: "plugin", at: p.at, run_id: p.run_id, clock: p.monotonic, values: p }
       : { ...fallback, clock: fallback.at };
     const { source, values: v, clock: stamp } = sample;
@@ -89,7 +96,10 @@ class ViewerRates {
       steps_ps: use && v.step_timing ? rate("steps") : null, acceptance: ratio("accepted", "draft_tokens"),
       accept_length_5m: acceptance === null ? null : 1 + acceptance,
       ttft_5m: ratio("ttft_sum", "ttft_count"), prefix_hit_5m: ratio("pc_hits", "pc_queries") };
-    if (use) {
+    // The prefix-cache ratio needs /metrics counters the plugin lacks; feed the
+    // metrics-only side window only from a genuine /metrics payload, never from
+    // a replayed plugin row, so the two sources never share one rate window.
+    if (use && m.counters && m.counters.source === "metrics") {
       state.fallback ||= new ViewerRates();
       const other = { ...m, plugin_counters: null, counter_samples: [] };
       state.fallback.member(other, now, quiet);
