@@ -29,6 +29,11 @@ size for its token estimate, with the measurement's record, conditions and
 KV-size evidence, which the page names beside the estimate
 (kv_measurement), or None when the profile has no usable measurement.
 
+A profile without Compose exports that `sparkring install` installs on a
+published image (INSTALL_ONLY) is listed for its install command only: its
+data has ``compose`` false and no rendered files, it is rendered on the
+newest such image, and only images whose lock lists it offer it.
+
 Each profile and checkpoint carries ``status`` and ``purpose``, which the page
 shows beside it. A profile's status is its profile.json ``status``; its
 purpose, and each other checkpoint's status, purpose and evidence, come from
@@ -54,6 +59,10 @@ REPOSITORY = "FujitsuPolycom/sparkring"
 STATUSES = ("qualified", "implemented", "research-only", "unsupported")
 # Compose-supported profiles the builder does not list.
 EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
+# Installer profiles without Compose exports (installer_image.DCP_VARIANTS) that the builder lists with
+# their `sparkring install` command only, on the images whose lock lists them. Each maps to the
+# Compose profile whose example site gives its example paths.
+INSTALL_ONLY = {"glm53-flash-nvfp4-spark-tp2-dcp2": "glm53-flash-nvfp4-spark-tp2"}
 
 # Lines on which a substituted site value may appear: these YAML keys, or a list item ("-").
 SITE_KEYS = {"name", "container_name", "VLLM_HOST_IP", "GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME",
@@ -89,7 +98,8 @@ def profile_ids():
 
 
 def example_site(profile_id):
-    return compose.read_site(ROOT / "profiles" / profile_id / "compose" / "site.example.yaml")
+    owner = INSTALL_ONLY.get(profile_id, profile_id)
+    return compose.read_site(ROOT / "profiles" / owner / "compose" / "site.example.yaml")
 
 
 def _argument(command, flag):
@@ -311,7 +321,8 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     and `sparkring compose render --checkpoint` refuse it elsewhere. Each
     checkpoint says whether it is the profile's own (``default``) and whether
     `sparkring install` installs it without --checkpoint on this image
-    (``install_default``).
+    (``install_default``). A profile of INSTALL_ONLY has ``compose`` false and
+    no rendered ``variants``.
     """
     metadata, _ = profiles.load(profile_id)
     configuration = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
@@ -337,6 +348,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     for checkpoint in checkpoints:
         checkpoint["install_default"] = (checkpoint["name"] == preferred if preferred is not None
                                          else checkpoint["default"])
+    install_only = profile_id in INSTALL_ONLY
     site = sentinel_site(example)
     release = (runtime or {}).get("name") or Path(metadata["release"]).parent.name
     capabilities = list(installer_image.capabilities(release))
@@ -348,6 +360,8 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
         checkpoint["serving_default_lines"] = {
             key: serving_settings.describe({key: value}, (), model=(profile_id, name))[0]
             for key, value in checkpoint["serving_defaults"].items()}
+        if install_only:
+            continue
         variants = {}
         for variant, serving in renders:
             manifest, files = compose.build(profile_id, site, checkpoint=name, serving=serving, image_runtime=runtime)
@@ -368,6 +382,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
         "model_name": names.get(checkpoints[0]["model_repository"], metadata.get("title", profile_id)),
         **status,
         "nodes": len(example["ranks"]),
+        "compose": not install_only,
         "installable": profile_id in (runtime or {}).get("profiles", []),
         "image": image,
         "image_id": specs[0].image_id,
@@ -455,10 +470,17 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
             since_tag, commits_since = release_distance(_git("describe", "--tags", "--long", "HEAD"))
     if not commit:
         raise ValueError("The builder needs the checkout's commit; pass --commit outside Git")
+    images = image_catalog()
+    listed = [profile_data(profile_id) for profile_id in profile_ids()]
+    # A profile of INSTALL_ONLY is listed when an offered image runs it, rendered on the first such image:
+    # the default, else the newest.
+    for profile_id in INSTALL_ONLY:
+        row = next((row for row in images if profile_id in row["profiles"]), None)
+        if row is not None:
+            listed.append(profile_data(profile_id) if row["default"] else _on_image(profile_id, row["name"]))
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
             "since_tag": since_tag, "commits_since": commits_since, "features": features(),
-            "image": None, "images": image_catalog(),
-            "profiles": [profile_data(profile_id) for profile_id in profile_ids()]}
+            "image": None, "images": images, "profiles": listed}
 
 
 def image_catalog():
@@ -473,7 +495,7 @@ def image_catalog():
     data file of a non-default image, which the page loads when the image is
     selected.
     """
-    listed = set(profile_ids())
+    listed = {*profile_ids(), *INSTALL_ONLY}
     catalog = installer_image.catalog()
     names = [row["name"] for row in catalog]
     rows = []
@@ -499,16 +521,21 @@ def _image_option(row, names):
     return row["name"]
 
 
-def image_data(name):
-    """The profiles a non-default installer image runs, rendered on it, for its data file."""
+def _on_image(profile_id, name):
+    """Profile ``profile_id`` rendered on the non-default installer image ``name``."""
     catalog = installer_image.catalog()
     row = next(row for row in catalog if row["name"] == name)
     option = _image_option(row, [row["name"] for row in catalog])
-    runs = [profile_id for profile_id in profile_ids() if profile_id in installer_image.profiles_of(row["lock"])]
-    return {"schema": SCHEMA, "image": name,
-            # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
-            "profiles": [profile_data(profile_id, image_lock.v2_view(row["lock"]), option, row["lock"])
-                         for profile_id in runs]}
+    # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
+    return profile_data(profile_id, image_lock.v2_view(row["lock"]), option, row["lock"])
+
+
+def image_data(name):
+    """The profiles a non-default installer image runs, rendered on it, for its data file."""
+    row = next(row for row in installer_image.catalog() if row["name"] == name)
+    runs = [profile_id for profile_id in (*profile_ids(), *INSTALL_ONLY)
+            if profile_id in installer_image.profiles_of(row["lock"])]
+    return {"schema": SCHEMA, "image": name, "profiles": [_on_image(profile_id, name) for profile_id in runs]}
 
 
 def engine_source():

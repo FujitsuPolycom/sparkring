@@ -193,11 +193,14 @@ STRICTER = (
 def cases(data, *, per_checkpoint, seed, archive_every=5):
     """Valid, invalid and stricter cases for every profile and checkpoint of ``data``.
 
-    Every case carries ``data``'s installer image: None for the default image.
+    Every case carries ``data``'s installer image: None for the default image. A profile without
+    Compose files (``compose`` false, export.INSTALL_ONLY) has no case.
     """
     sites = Sites(seed)
     found = []
     for profile in data["profiles"]:
+        if profile.get("compose") is False:
+            continue
         nodes = profile["nodes"]
         found.append({"profile": profile["id"], "site": profile["example_site"], "settings": {}, "checkpoint": None,
                       "kind": "valid", "archive": True})

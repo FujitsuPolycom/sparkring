@@ -3,7 +3,7 @@
 SparkRing's profiles run three models created by Local Inference Lab, Inc. and
 licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)
-(`glm53-flash-tp2`, `glm53-flash-tp4`),
+(`glm53-flash-tp2`, `glm53-flash-tp4`, `glm53-flash-tp2-dcp2`),
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
 (`glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
@@ -57,6 +57,7 @@ Version 0.1.0 is research-only and tested with NCCL 2.32.3.
 | Qwen3.8-Flash-Next | [CSF (NVFP4/MXFP8), Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD) | 2 | `qwen38-flash-next-tp2` | 8000 | on · xhigh |
 | Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | `qwen38-flash-next-tp4` | 8015 | on · xhigh |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 2 | `glm53-flash-tp2` | 8000 | always · high |
+| GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD), DCP2, research | 2 | `glm53-flash-tp2-dcp2` | 8000 | always · high |
 | GLM-5.3-Flash | [CSF (NVFP4/MXFP8)](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD) | 4 | `glm53-flash-tp4` | 8015 | always · high |
 | GLM-5.3 | [NVFP4, Local Inference Lab](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4) | 8 | `glm53-nvfp4-tp8` | 8015 | always · high |
 | MiMo-V2.6-Flash-MOPD | [Xiaomi MiMo](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD) | 2 | `mimo-v26-flash-mopd-tp2` | 8020 | on |
@@ -67,7 +68,11 @@ Version 0.1.0 is research-only and tested with NCCL 2.32.3.
 
 `glm53-flash-tp2` and `glm53-flash-tp4` are short names of the profile IDs
 `glm53-flash-nvfp4-spark-tp2` and `glm53-flash-nvfp4-spark-tp4`; both names
-install the CSF checkpoint on this image. `qwen38-flash-next-tp2` installs the
+install the CSF checkpoint on this image. `glm53-flash-tp2-dcp2` is the short
+name of `glm53-flash-nvfp4-spark-tp2-dcp2`, an Experimental profile whose two
+Sparks split the KV cache (decode-context parallelism 2); it installs on an
+image whose lock lists it (`sparkring images --profile glm53-flash-tp2-dcp2`).
+`qwen38-flash-next-tp2` installs the
 Qwen CSF checkpoint on this image and serves it as
 `Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD-TP2`; `--checkpoint qad-step5500-ple1000`
 installs step 5500 instead. `qwen38-flash-next-tp4` is the short

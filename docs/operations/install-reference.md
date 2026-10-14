@@ -572,10 +572,13 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   `glm53-flash-nvfp4-spark-tp2` that serves the CSF checkpoint with
   decode-context parallelism 2: the pair splits the KV cache, which holds
   about twice the tokens of the same memory at decode-context parallelism 1
-  ([guide](../../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)). No
-  image lock of this package lists it, so `sparkring install` refuses it
-  except with a development image lock (`--image-lock`) that lists it and
-  whose vLLM reads CSF. It keeps no Compose export.
+  ([guide](../../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)). It
+  installs on an image whose lock lists it, with `--image NAME`;
+  `sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2` shows which.
+  That image's vLLM is the pinned TP2/DCP2 prefill build
+  `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads CSF; the
+  installer refuses the profile on any other image. It keeps no Compose
+  export. `glm53-flash-tp2-dcp2` is its other name.
 - `glm53-nvfp4-tp8` loads the vLLM plugins `glm_dsa_indexer_split`,
   `glm53full_speedups` and `glm_dcp_decode_comm` (the last with its items
   off), which the GLM-5.3 plugin layer

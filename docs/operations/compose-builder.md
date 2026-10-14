@@ -142,6 +142,12 @@ repeats the status of each model it installs. Statuses use the labels of the
   render` renders the profile's own checkpoint without `--checkpoint`, so on
   such an image the page's install command for the **Default** card has no
   `--checkpoint`, while its render command and the Compose files name `csf`.
+- A profile without Compose files, such as the research-only
+  `glm53-flash-nvfp4-spark-tp2-dcp2`, is listed when an offered image's lock
+  lists it (`export.INSTALL_ONLY`). Its card says **Install command only**,
+  step 1 offers only images that run it, and the output is its
+  `sparkring install` command with `--image NAME`; the Docker Compose tab is
+  off for it.
 
 ## Commands
 

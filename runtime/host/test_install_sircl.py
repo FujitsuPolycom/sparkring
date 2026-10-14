@@ -201,3 +201,26 @@ def test_an_installation_after_fabric_tune_runs_on_the_measured_table(sircl, mon
     assert deployment(json.loads(out.out))["transport"]["tuning"]["source"] == "defaults"
     assert ("Note: the measured tuning table no longer applies: the GPU driver of position 0 changed from 580.95.05 "
             "to 590.10.01") in out.err
+
+
+def test_the_dcp2_variant_plans_by_its_alias_on_a_lock_that_lists_it_with_the_tp2_dcp2_prefill_build(sircl, capsys,
+                                                                                                    tmp_path):
+    # The decode-context-parallel variant installs on a v3 lock that lists it and pins the TP2/DCP2 prefill vLLM
+    # build, which reads its CSF checkpoint; it gives the decode-context-parallel group a SIRCL session.
+    from runtime.common.test_image_lock import CSF_PINS, sircl_block
+    variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
+    value = sircl_lock(profiles=sorted({*sircl_lock()["profiles"], variant}),
+                       sircl=dict(sircl_block(), vllm_pins=["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]))
+    lock = tmp_path / "dcp2-image.json"
+    lock.write_text(json.dumps(value))
+    command = ["install", "--profile", "glm53-flash-tp2-dcp2", "--plan", "--yes", "--json", "--image-lock", str(lock)]
+    assert sparkring.main(command) == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["state"] == "planned" and result["profile"] == variant
+    recorded = deployment(result)
+    assert recorded["selection"]["profile"] == variant and recorded["transport"]["group"]["dcp"] == 2
+    # A lock whose vLLM reads CSF but is not that build is refused, though it lists the variant.
+    lock.write_text(json.dumps(dict(value, sircl=dict(sircl_block(), vllm_pins=CSF_PINS))))
+    assert sparkring.main(command) != 0
+    assert "source-pinned vLLM build" in capsys.readouterr().out

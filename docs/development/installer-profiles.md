@@ -224,6 +224,15 @@ A checkpoint that only some vLLM builds read, such as GLM-5.3-Flash's CSF checkp
 them in `sircl.vllm_pins`, `sparkring compose render` refuses it on its image lock, and the Install
 Builder does not offer it there.
 
+A profile that only an image built for it runs is in `installer_image.NOT_SHARED`, outside the profile
+list of the shared installer images. It has no Compose export; `compose.specifications` renders it for
+`sparkring install` on a lock that lists it. Two groups exist:
+
+- `UNLISTED`, the SparkCache variants: no image lock of this package lists them.
+- `DCP_VARIANTS`, the decode-context-parallel variants of the GLM-5.3-Flash pair profile: a lock,
+  a published release's included, may list them only when it is a v3 lock whose vLLM is the TP2/DCP2
+  prefill build, which reads CSF (`image_lock.prefill_source_problem`, `image_lock.checkpoint_problem`).
+
 ## Invariants the tests enforce
 
 | Invariant | Enforced by |
@@ -235,6 +244,7 @@ Builder does not offer it there.
 | Each rank's Compose export equals the installer container except runtime binding and labels | `runtime/common/test_compose_installer.py`: `test_compose_export_matches_installer_container_for_each_rank`, `test_rendered_service_differs_from_installer_export_only_by_binding_and_labels` |
 | Pin manifest and `SHA256SUMS` are generator output; config and index hashes match `config.json`; one checkpoint directory per cluster and revision | `scripts/test_pin_checkpoint.py`: `test_committed_manifests_and_sums_are_generator_output`, `test_every_installer_profile_revision_has_a_committed_manifest`; `runtime/common/test_installer.py`: `test_checkpoint_pins_agree_with_every_installer_profile`, `test_checkpoint_directory_is_per_cluster_and_revision_and_disjoint` |
 | A four-Spark profile adopts the running mesh on the default lock | `runtime/host/test_install_workflow.py`: `test_tp4_command_adopts_the_discovered_mesh_without_network_changes` |
+| No image lock of this package lists an `UNLISTED` profile; a lock that lists a `DCP_VARIANTS` profile is v3, its vLLM reads CSF and the installer admits the profile on it | `runtime/host/test_images.py`: `test_no_image_of_this_package_lists_an_unlisted_profile`, `test_an_image_that_lists_a_dcp_variant_has_the_tp2_dcp2_prefill_vllm_that_reads_csf` |
 | Generated catalog and Compose files equal their generators' output; release inputs match their digests | `scripts/check_repository_layout.py`; `scripts/generate_compose_examples.py --check` |
 
 ## Pull request contents

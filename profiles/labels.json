@@ -85,6 +85,7 @@
         }
       }
     },
+    "glm53-flash-nvfp4-spark-tp2-dcp2": {"purpose": "The pair splits the KV cache: twice the context tokens (DCP2)", "checkpoints": {}},
     "mimo-v26-flash-mopd-tp2": {"purpose": "Xiaomi MiMo's MXFP8/BF16 weights, 262K context", "checkpoints": {}},
     "mimo-v26-flash-mopd-tp4": {"purpose": "Xiaomi MiMo's MXFP8/BF16 weights, 262K context", "checkpoints": {}},
     "swift15-qwen38-flash-next-tp2": {"purpose": "UkisAI's NVFP4 fine-tune of Qwen3.8-Flash-Next, 262K context", "checkpoints": {}},

@@ -322,6 +322,7 @@ footer p { margin: 0; max-width: 110ch; }
         <span class="chip" id="out-state">Ready</span>
       </div>
       <p class="hint" id="mode-note" hidden>Docker Compose can't set up two pairs on a ring, so this layout has install commands only.</p>
+      <p class="hint" id="install-only-note" hidden>This research profile has no Docker Compose files: install it with <code>sparkring install</code> on an image whose lock lists it.</p>
       <dl class="facts" id="facts"></dl>
       <div class="messages" id="messages"></div>
       <div class="row-actions" id="share-bar" hidden>
@@ -567,8 +568,10 @@ __ENGINE__
     return state.layout === 'ring' && FEATURES.ring_halves ? [MAIN, ...switchHalves()] : [MAIN];
   }
   const sparkCount = () => E.LAYOUT_SPARKS[state.layout];
-  // Docker Compose renders a pair or a ring serving one model, not a ring split into two pairs.
-  const composeOffered = () => state.layout !== 'halves';
+  // Docker Compose renders a pair or a ring serving one model, not a ring split into two pairs, and
+  // not a profile without Compose files (export.INSTALL_ONLY: data with `compose` false).
+  const installOnly = () => BY_ID[active().profile].compose === false;
+  const composeOffered = () => state.layout !== 'halves' && !installOnly();
   const outputMode = () => composeOffered() ? state.mode : 'install';
 
   const base = () => BY_ID[active().profile];
@@ -812,7 +815,8 @@ __ENGINE__
         input,
         el('span', { class: 'choice-body' }, el('strong', {}, p.model_name + ' · ' + p.nodes + ' Sparks'),
           p.purpose ? el('span', { class: 'meta' }, p.purpose) : null, el('span', { class: 'meta mono' }, p.id)),
-        el('span', { class: 'chips' }, statusChip(p.status), p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
+        el('span', { class: 'chips' }, statusChip(p.status), p.compose === false ? chip('Install command only') : null,
+          p.checkpoints.length > 1 ? chip(p.checkpoints.length + ' checkpoints') : null)));
     }
     if (!list.children.length) list.append(el('p', { class: 'hint' }, 'No model runs on that many Sparks.'));
   }
@@ -825,11 +829,18 @@ __ENGINE__
 
   // The images that run a model the layout installs, as `sparkring images` lists them. The selected
   // image applies to every command whose model it runs.
+  // A model without Compose files runs only on an image whose lock lists it, so while one is deployed the
+  // default image is offered only when it runs every such model; that model's data is already rendered
+  // on an image that runs it (export.export), which the list then shows first.
   function renderImages() {
     const ids = deployed().map(d => d.slot.profile), select = $('image');
-    select.replaceChildren(...IMAGES.filter(r => r.default || ids.some(id => r.profiles.includes(id)))
-      .map(r => el('option', { value: r.name }, r.option + (r.default ? ' (default)' : ''))));
-    if (DEFAULT_IMAGE) select.value = (layoutImage() || DEFAULT_IMAGE).name;
+    const only = ids.filter(id => BY_ID[id].compose === false);
+    const offered = IMAGES.filter(r => r.default ? only.every(id => r.profiles.includes(id)) : ids.some(id => r.profiles.includes(id)));
+    select.replaceChildren(...offered.map(r => el('option', { value: r.name }, r.option + (r.default ? ' (default)' : ''))));
+    const fallback = offered.find(r => r.default) || offered.find(r => only.every(id => r.profiles.includes(id))) || offered[0];
+    // Without the default, the selection becomes the image shown, so every command uses it.
+    if (fallback && !fallback.default && !layoutImage()) state.image = fallback.name;
+    if (fallback) select.value = (layoutImage() || fallback).name;
     for (const slot of packSlots()) {
       const row = imageRow(BY_ID[slot.profile]);
       if (row) loadImage(row);
@@ -1133,7 +1144,8 @@ __ENGINE__
   function renderMode() {
     const install = outputMode() === 'install';
     $('mode-compose').disabled = !composeOffered();
-    $('mode-note').hidden = composeOffered();
+    $('mode-note').hidden = state.layout !== 'halves';
+    $('install-only-note').hidden = state.layout === 'halves' || !installOnly();
     $('mode-install').setAttribute('aria-selected', String(install));
     $('mode-compose').setAttribute('aria-selected', String(!install));
     $('install-panel').hidden = !install;

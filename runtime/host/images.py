@@ -45,10 +45,10 @@ def main(argv=None):
         marks = [*row["tags"], *(["default"] if row["default"] else []), *(["archived"] if row["archived"] else [])]
         print(row["name"] + (f"  ({', '.join(marks)})" if marks else ""))
         size = f"{row['download_bytes'] / 2**30:.1f} GiB download" if row["download_bytes"] else "download size not recorded"
-        # The unlisted profiles run only on a lock that names them, which no image here carries; naming
-        # them on every image would hide what the image itself lacks.
+        # Profiles outside the shared images' list run only on an image built for them; naming them on
+        # every other image would hide what the image itself lacks.
         missing = [name for name in installer_image.SUPPORTED
-                   if name not in row["profiles"] and name not in installer_image.UNLISTED]
+                   if name not in row["profiles"] and name not in installer_image.NOT_SHARED]
         if not missing:
             runs = "every installer profile"
         elif len(missing) < len(row["profiles"]):

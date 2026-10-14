@@ -10,10 +10,12 @@ generator importing the installer.
 # of the GLM-5.3-Flash profiles of two and four Sparks name their NVFP4-Spark checkpoint, which they
 # install only on an image whose vLLM cannot read their CSF checkpoint
 # (profiles/glm53-checkpoints.md#default-checkpoint-by-profile); an alias names the model and the
-# number of Sparks alone. The IDs of the Qwen3.8-Flash-Next profiles of four and eight Sparks name
-# the QAD checkpoint, which the two-Spark profile qwen38-flash-next-tp2 installs too; their aliases
-# follow that profile's ID.
+# number of Sparks alone; the alias of the pair profile's decode-context-parallel variant adds its
+# parallelism. The IDs of the Qwen3.8-Flash-Next profiles of four and eight Sparks name the QAD
+# checkpoint, which the two-Spark profile qwen38-flash-next-tp2 installs too; their aliases follow that
+# profile's ID.
 ALIASES = {"glm53-flash-tp2": "glm53-flash-nvfp4-spark-tp2", "glm53-flash-tp4": "glm53-flash-nvfp4-spark-tp4",
+           "glm53-flash-tp2-dcp2": "glm53-flash-nvfp4-spark-tp2-dcp2",
            "qwen38-flash-next-tp4": "qwen38-flash-next-qad-tp4", "qwen38-flash-next-tp8": "qwen38-flash-next-qad-tp8"}
 
 

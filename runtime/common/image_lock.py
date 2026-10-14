@@ -383,11 +383,17 @@ def plugin_problem(value, profile, environment=None):
 
 
 def prefill_source_problem(value, profile):
-    """The DCP2 research profile requires both source-patched admissions."""
-    if profile == "glm53-flash-nvfp4-spark-tp2-dcp2" and "sparkring-kraken-bc9ea774-tp2-dcp2-prefill" not in (
-            (sircl(value) or {}).get("vllm_pins") or []):
-        return (f"{profile} enables KDA coalescing and mHC row ownership at TP2/DCP2; "
-                "use the source-pinned runtime/images/compositions/dcp2-prefill image lock")
+    """Why the image of lock ``value`` cannot run a TP2/DCP2 variant (``installer_image.DCP_VARIANTS``), or None.
+
+    The variants run only on the vLLM build whose source admits mHC prefill row ownership and KDA prefill
+    coalescing at TP2/DCP2 (runtime/images/compositions/dcp2-prefill); only a v3 lock's ``sircl.vllm_pins``
+    records it.
+    """
+    build = "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"
+    if profile in installer_image.DCP_VARIANTS and build not in ((sircl(value) or {}).get("vllm_pins") or []):
+        return (f"{profile} needs the source-pinned vLLM build {build}, which admits its prefill settings at "
+                f"TP2/DCP2; image {value.get('name')} does not record it. sparkring images --profile {profile} "
+                "lists the images that run it")
     return None
 
 
@@ -470,7 +476,8 @@ def lock_path(name):
 def for_profile(profile, explicit=None):
     """The image lock (any schema) for one installer profile: ``explicit``, else the install default.
 
-    A lock whose image lacks a vLLM plugin the profile loads is refused (``plugin_problem``).
+    A lock whose image lacks a vLLM plugin the profile loads is refused (``plugin_problem``). The refusal of
+    a v3 lock, or of an explicit v2 lock, that does not list the profile names the images that list it.
     """
     replaced = profiles.replacement_message(profile)
     if replaced:
@@ -492,8 +499,9 @@ def for_profile(profile, explicit=None):
     try:
         selected = validate(value, profile)
     except ValueError as error:
-        if explicit is None or schema(value) not in (installer_image.SCHEMA, SCHEMA_V3) \
-                or profile in value.get("profiles", ()):
+        # A well-formed lock that does not list the profile, the install default included: name the images that
+        # run it, which `--image NAME` selects.
+        if schema(value) not in (installer_image.SCHEMA, SCHEMA_V3) or profile in value.get("profiles", ()):
             raise
         others = [row["name"] for row in catalog() if profile in profiles_of(row["lock"])]
         raise ValueError(f"{error}; images that run it: {', '.join(others) or 'none'}") from None

@@ -356,7 +356,7 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
     """
     from runtime.common import installer_image as image_locks
     if (profile_id not in SUPPORTED and profile_id not in FABRIC_PROFILES
-            and profile_id not in image_locks.UNLISTED):
+            and profile_id not in image_locks.NOT_SHARED):
         raise ValueError(
             "Compose adapter unsupported for "
             + str(profile_id)

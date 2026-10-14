@@ -60,6 +60,7 @@ def test_no_alias_is_a_profile_id_of_any_profile_directory_or_release_lock():
 def test_an_alias_selects_its_profile_id():
     assert models.select("glm53-flash-tp4", 4) == "glm53-flash-nvfp4-spark-tp4"
     assert models.select("glm53-flash-tp2", 2) == "glm53-flash-nvfp4-spark-tp2"
+    assert models.select("glm53-flash-tp2-dcp2", 2) == "glm53-flash-nvfp4-spark-tp2-dcp2"
     assert models.select("qwen38-flash-next-tp4", 4) == "qwen38-flash-next-qad-tp4"
     assert models.select("qwen38-flash-next-tp8", 8) == "qwen38-flash-next-qad-tp8"
     assert models.canonical("qwen38-flash-next-tp2") == "qwen38-flash-next-tp2"

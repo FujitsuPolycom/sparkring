@@ -846,9 +846,9 @@ def test_every_installer_profile_renders_on_sircl_on_its_layouts(profile, nccl):
     cases = ([("cycle", 4, [0, 1, 2, 3])] if profile.endswith("-tp4") else
              [("pair", 2, [0, 1]), ("cycle", 4, [0, 1]), ("cycle", 4, [2, 3])])
     image = None
-    if profile in installer.installer_image.UNLISTED:
-        # An unlisted profile runs only on a lock that lists it, such as a SparkCache variant's derived
-        # layer's, whose vLLM reads CSF.
+    if profile in installer.installer_image.NOT_SHARED:
+        # A profile outside the shared images' list runs only on a lock that lists it, such as a SparkCache
+        # variant's derived layer's, whose vLLM reads CSF.
         from runtime.common.test_image_lock import CSF_PINS, sircl_block
         default = sircl_lock()
         image = sircl_lock(profiles=sorted({*default["profiles"], profile}),

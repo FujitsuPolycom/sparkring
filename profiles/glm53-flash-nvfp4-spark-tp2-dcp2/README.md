@@ -57,11 +57,21 @@ the API Spark preprocesses every image and video.
 
 ## Install
 
-No published image lock lists this configuration. Build and record the
-[source composition](../../runtime/images/compositions/dcp2-prefill/README.md),
-then use its development lock with `--image-lock PATH`. The installer rejects
-an unpatched image even if its lock lists this profile. The profile has no
-Compose exports. Building the image does not qualify its serving behavior.
+The profile installs on an image whose lock lists it;
+`sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2` shows which:
+
+```bash
+sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2-dcp2 --image NAME
+```
+
+Such an image is built from the
+[source composition](../../runtime/images/compositions/dcp2-prefill/README.md):
+its vLLM is the pinned build `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`,
+which reads the CSF checkpoint and admits mHC row ownership at TP2/DCP2. The
+installer refuses the profile on any other image, even one whose lock lists
+it. A lock recorded from a local build of the composition is selected with
+`--image-lock PATH`. The profile has no Compose exports. Building or
+publishing the image does not qualify its serving behavior.
 
 `VLLM_GLM53_MHC_PREFILL_SHARD=0` on both ranks turns mHC row ownership off.
 Keep the 8192-token budget: mHC owner rows use vLLM's full-ceiling prepared

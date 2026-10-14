@@ -31,13 +31,20 @@ def node():
 
 
 def test_data_lists_every_offered_profile_and_checkpoint(data):
-    assert [profile["id"] for profile in data["profiles"]] == export.profile_ids()
+    # The Compose profiles first, then the install-only profiles that an offered image runs.
+    composed = [profile["id"] for profile in data["profiles"] if profile["compose"]]
+    assert composed == export.profile_ids()
+    assert [profile["id"] for profile in data["profiles"]][len(composed):] == [
+        profile_id for profile_id in export.INSTALL_ONLY if any(profile_id in row["profiles"] for row in data["images"])]
     assert not export.EXCLUDED & {profile["id"] for profile in data["profiles"]}
     assert data["ref"] == COMMIT and data["tag"] is None
     for profile in data["profiles"]:
         assert profile["checkpoints"][0]["default"]
         assert sum(checkpoint["default"] for checkpoint in profile["checkpoints"]) == 1
         for checkpoint in profile["checkpoints"]:
+            if not profile["compose"]:
+                assert "variants" not in checkpoint
+                continue
             assert set(checkpoint["variants"]) == {"off", "on"}
             assert all(len(variant["ranks"]) == profile["nodes"] for variant in checkpoint["variants"].values())
     qwen = next(profile for profile in data["profiles"] if profile["id"] == "qwen38-flash-next-tp2")
@@ -52,7 +59,7 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
                 assert checkpoint["serving_defaults"] == {"reasoning_effort": "high"}
     # The CSF checkpoint needs a vLLM build the default image lacks: the page does not offer it there.
     assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
-            if profile["id"].startswith("glm53-flash-nvfp4-spark-")} == {
+            if profile["id"].startswith("glm53-flash-nvfp4-spark-") and profile["compose"]} == {
         "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "nvfp4-qad"],
         "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4"]}
 
@@ -183,7 +190,7 @@ def test_image_catalog_lists_the_default_first_with_options_install_accepts(data
     # Only the default image and published releases are offered; development images are not.
     assert all(row["default"] or row["tags"] for row in rows)
     for row in rows:
-        assert set(row["profiles"]) <= set(export.profile_ids())
+        assert set(row["profiles"]) <= set(export.profile_ids()) | set(export.INSTALL_ONLY)
         path = installer_image.lock_path(row["option"])
         assert path is None if row["default"] else path.parent.name == row["name"]
         assert row["default"] or row["file"] == f"images/{row['name']}.json"
@@ -197,7 +204,7 @@ def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, m
     from runtime.common import serving
     older = "dev-20260928-plainstatus-cuda1342-nccl2323-status033"
     # The Builder and the installer read the same capability: the default image has the reader window.
-    for profile in data["profiles"]:
+    for profile in [profile for profile in data["profiles"] if profile["image_option"] is None]:
         assert profile["image_capabilities"] == list(installer_image.capabilities(profile["image_release"])) == ["shm_reader_window"]
         assert next(r for r in profile["checkpoints"][0]["settings"] if r["name"] == "save_cpu")["needs"] == "shm_reader_window"
     monkeypatch.setattr(export, "profile_ids", lambda: [TP2])
@@ -781,3 +788,34 @@ def test_a_new_installation_is_never_plan_only(data, node):
                                         f"sudo sparkring install --profile {GLM2} --on 2,3 --checkpoint nvfp4-qad"]
     assert not any("--plan" in c for c in commands(new))
     assert all(c.endswith("--plan") for c in commands(installed, "install") + commands(installed, "switch"))
+
+
+def test_an_install_only_profile_is_offered_with_its_install_command_on_an_image_that_lists_it(monkeypatch, node):
+    # The decode-context-parallel variant has no Compose files. The Builder lists it with its install command,
+    # rendered on a published image whose lock lists it and pins the TP2/DCP2 prefill vLLM build.
+    from runtime.common.test_image_lock import sircl_block, sircl_lock
+    assert set(export.INSTALL_ONLY) == set(installer_image.DCP_VARIANTS)
+    variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
+    value = sircl_lock(name="dev-20261013-dcp2prefill-example", profiles=sorted({*sircl_lock()["profiles"], variant}),
+                       sircl=dict(sircl_block(), vllm_pins=["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]))
+    rows = [row for row in installer_image.catalog() if row["default"]]
+    rows.append({"name": value["name"], "path": "v3.json", "lock": value, "tags": ["2026.10.9"], "default": False})
+    monkeypatch.setattr(installer_image, "catalog", lambda: rows)
+    monkeypatch.setattr(export, "profile_ids", lambda: ["glm53-flash-nvfp4-spark-tp2"])
+    images = export.image_catalog()
+    assert [row["profiles"] for row in images] == [["glm53-flash-nvfp4-spark-tp2"],
+                                                   ["glm53-flash-nvfp4-spark-tp2", variant]]
+    document = export.export(commit=COMMIT)
+    profile = document["profiles"][-1]
+    assert profile["id"] == variant and profile["compose"] is False and profile["status"] == "research-only"
+    assert profile["image_option"] == "2026.10.9" and profile["installable"] and profile["nodes"] == 2
+    assert all("variants" not in checkpoint for checkpoint in profile["checkpoints"])
+    assert export.image_data(value["name"])["profiles"][-1] == profile
+    # A Compose verification has no case for it.
+    assert not [case for case in verify.cases(document, per_checkpoint=1, seed=1) if case["profile"] == variant]
+    meta = {key: document[key] for key in ("repository", "tag", "commit", "ref", "since_tag", "commits_since")}
+    install = run_engine(node, """
+const { profile, meta } = value, checkpoint = E.checkpointOf(profile, null);
+console.log(JSON.stringify(E.installCommand(profile, checkpoint, {}, meta, { form: 'installed', approval: 'ask' })));""",
+                         {"profile": profile, "meta": meta})
+    assert install == f"sudo sparkring install --profile {variant} --image 2026.10.9"

@@ -62,13 +62,18 @@ SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-s
 # records lists them, and every other image refuses the profile.
 SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4")
 # Research-only variants of the GLM-5.3-Flash pair profile that serve the CSF checkpoint with
-# decode-context parallelism above 1. Only an image whose vLLM reads CSF runs them, and no published
-# image lock lists them: they install only with a development image lock (--image-lock) that lists them.
+# decode-context parallelism above 1. They run only on an image whose vLLM is the TP2/DCP2 prefill build,
+# which reads CSF; only an image lock v3 records that build (sircl.vllm_pins), and the installer refuses
+# the variants on any other lock (image_lock.prefill_source_problem, image_lock.checkpoint_problem). A
+# published release's lock may list them; `sparkring images --profile` names the images that run them.
 DCP_VARIANTS = ("glm53-flash-nvfp4-spark-tp2-dcp2",)
-# Installer profiles that no image lock of this package lists; every image of the package refuses them,
-# and they have no Compose exports.
-UNLISTED = (*SPARKCACHE_VARIANTS, *DCP_VARIANTS)
-SUPPORTED = (*SUPPORTED, *UNLISTED)
+# Installer profiles that no image lock of this package lists; every image of the package refuses them.
+UNLISTED = SPARKCACHE_VARIANTS
+# Installer profiles outside the profile list of the shared installer images: only the lock of an image
+# built for them lists them. They have no Compose exports; `sparkring install` renders them through the
+# Compose adapter on such a lock.
+NOT_SHARED = (*UNLISTED, *DCP_VARIANTS)
+SUPPORTED = (*SUPPORTED, *NOT_SHARED)
 # Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
 # runtime/common/image_lock.py): the research-only profiles whose ranks reach each other through
 # relays (profiles.relayed_research). A lock's profile list may name them beside SUPPORTED; only

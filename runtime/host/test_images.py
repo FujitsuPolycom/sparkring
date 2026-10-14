@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from runtime.common import installer_image
+from runtime.common import image_lock, installer_image, setup
 from runtime.host import images
 
 MIMO = ("mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
@@ -31,6 +31,48 @@ def test_no_image_of_this_package_lists_an_unlisted_profile(capsys, variant):
     # records, so no listed image runs them.
     assert images.main(["--profile", variant, "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == []
+
+
+@pytest.mark.parametrize("variant", installer_image.DCP_VARIANTS)
+def test_an_image_that_lists_a_dcp_variant_has_the_tp2_dcp2_prefill_vllm_that_reads_csf(variant):
+    # A published lock may list a decode-context-parallel variant only when it is a v3 lock whose vLLM is the
+    # TP2/DCP2 prefill build, which reads the CSF checkpoint the variant serves.
+    card = setup.selection(variant)
+    for row in image_lock.catalog():
+        if variant in image_lock.profiles_of(row["lock"]):
+            assert image_lock.schema(row["lock"]) == image_lock.SCHEMA_V3, row["name"]
+            assert image_lock.checkpoint_problem(row["lock"], card) is None, row["name"]
+            assert image_lock.for_profile(variant, row["lock"]) == row["lock"], row["name"]
+
+
+def test_an_image_that_lists_the_dcp_variant_runs_it_and_the_default_names_it(capsys, monkeypatch):
+    from runtime.common.test_image_lock import CSF_PINS, sircl_block, sircl_lock
+    variant = installer_image.DCP_VARIANTS[0]
+    listed = sorted({*sircl_lock()["profiles"], variant})
+    value = sircl_lock(name="dev-20261013-dcp2prefill-example", profiles=listed,
+                       sircl=dict(sircl_block(), vllm_pins=["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]))
+    # The v2 default of this package, a published v3 image that does not list the variant, the install default,
+    # and the image that lists it.
+    default = installer_image.default_lock()
+    published = sircl_lock()
+    rows = [{"name": default["name"], "path": installer_image.DEFAULT_LOCK, "lock": default, "tags": ["2026.10.1"],
+             "default": True},
+            {"name": published["name"], "path": "published.json", "lock": published, "tags": ["2026.10.2"],
+             "default": False},
+            {"name": value["name"], "path": "v3.json", "lock": value, "tags": [], "default": False}]
+    monkeypatch.setattr(installer_image, "catalog", lambda: rows)
+    monkeypatch.setattr(installer_image, "release_tags", lambda: {"2026.10.1": default["name"],
+                                                                  "2026.10.2": published["name"]})
+    assert image_lock.default() == published
+    assert images.main(["--profile", variant, "--json"]) == 0
+    assert [row["name"] for row in json.loads(capsys.readouterr().out)] == [value["name"]]
+    assert image_lock.for_profile(variant, value) == value
+    # The install default does not list it; its refusal names the image that does.
+    with pytest.raises(ValueError, match=f"images that run it: {value['name']}"):
+        image_lock.for_profile(variant)
+    # A lock whose vLLM reads CSF but is not the TP2/DCP2 prefill build is refused even when it lists the variant.
+    with pytest.raises(ValueError, match="source-pinned vLLM build"):
+        image_lock.for_profile(variant, dict(value, sircl=dict(sircl_block(), vllm_pins=CSF_PINS)))
 
 
 def test_images_for_a_profile_lists_only_images_that_run_it(capsys):
