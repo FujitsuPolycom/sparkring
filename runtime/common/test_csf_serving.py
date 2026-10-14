@@ -173,7 +173,7 @@ def test_rendered_containers_mount_the_serving_directory_where_its_config_names_
 
 def test_the_checkpoint_needs_the_vllm_build_that_reads_csf():
     card = setup.selection(PROFILE)
-    assert image_lock.CHECKPOINT_BUILDS[f"{REPOSITORY}@{REVISION}"] == (BUILD,)
+    assert image_lock.CHECKPOINT_BUILDS[f"{REPOSITORY}@{REVISION}"] == (BUILD, "sparkring-kraken-bc9ea774-tp2-dcp2-prefill")
     reads = sircl_lock(profiles=sorted({*installer.installer_image.default_lock()["profiles"], PROFILE}))
     reads["sircl"]["vllm_pins"] = [BUILD]
     assert image_lock.checkpoint_problem(reads, card) is None

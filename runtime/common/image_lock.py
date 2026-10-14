@@ -232,14 +232,19 @@ def validate_v3(value, profile):
 # Qwen's 640-channel expert width only into steps of 64 channels per rank, so it reads the Qwen
 # checkpoint on two Sparks and refuses it on four; it names GLM-5.3's family, glm53_744b_nvfp4, and
 # reads its NVFP4-CSF container layout. A derived checkpoint's selection names its base, so the
-# GLM-5.3 container's entry also gates its serving directory.
+# GLM-5.3 container's entry also gates its serving directory. The TP2/DCP2 prefill build
+# (sparkring-kraken-bc9ea774-tp2-dcp2-prefill) is the 2026-10-07 build with two files changed,
+# mhc_prefill_sharding.py and recurrent_prefill_checkpoint.py, which widen parallel-size allowlists
+# behind VLLM_GLM53_MHC_PREFILL_SHARD and VLLM_B12X_KDA_PREFILL_COALESCING (both off unless a profile
+# sets them; integrations/vllm/dcp2_prefill/README.md). Its CSF quantization and loader files are the
+# 2026-10-07 build's, so it reads every checkpoint that build reads.
 CHECKPOINT_BUILDS = {
     "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be":
         ("sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD@dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2":
-        ("sparkring-kraken-beta-20261007-bc9ea774",),
+        ("sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
     "local-inference-lab/GLM-5.3-NVFP4-CSF@a4d406932f2db96db8e852867c7939f448e0cd6f":
-        ("sparkring-kraken-beta-20261007-bc9ea774",),
+        ("sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill"),
 }
 
 
