@@ -87,16 +87,16 @@ starts' receipts, which differ only in layout and SIRCL fabric fields.
 
 ### Raw files
 
-The [raw directory](dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.2-speed-32k-20261012/)
+The [raw directory](release-2026.10.2-speed-32k-20261012/)
 holds one subdirectory per run directory named above, each with:
 
 - `bench-result.json`: llm-inference-bench's result file, including per-request samples;
 - `bench-output.txt`: its console output;
 - `run-timeline.txt`: the install, receipt and benchmark times of the run.
 
-[`cells.json`](dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.2-speed-32k-20261012/cells.json)
+[`cells.json`](release-2026.10.2-speed-32k-20261012/cells.json)
 lists every README cell at full precision with its file and field.
-[`sources.json`](dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.2-speed-32k-20261012/sources.json)
+[`sources.json`](release-2026.10.2-speed-32k-20261012/sources.json)
 gives each file's path and SHA-256 in the operator's research archive, which is not part of this
 repository. The copies replace three LAN addresses, the workstation's host name and the archive's local
 path with the placeholders `sources.json` lists; no measured value is changed.
