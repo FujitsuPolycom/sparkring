@@ -53,7 +53,7 @@ To contribute a profile that `sparkring install` sets up, see
 
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
-| **[DeepSeek-V4.1-Flash](../docs/operations/install.md)**<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)<br>by DeepSeek | 1 | 1M / [11.3M](../performance/records/deepseek-v41-flash/tp4-kv-pool-ring4-20261012.md) | No | Development |
+| **[DeepSeek-V4.1-Flash](../docs/operations/install.md)**<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)<br>by DeepSeek | 1 | 1M / [12.8M](../performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-kv-ring8-20261014.md) | No | Development |
 | **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [6.1M](../performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [2.3M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / [2.2M](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Development |

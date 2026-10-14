@@ -201,10 +201,10 @@
       "kv_evidence": "--kv-cache-memory-bytes 21474836480 in profiles/mimo-v26-flash-mopd-tp4/config.json, unchanged in its KV settings since the measurement."
     },
     "deepseek-v41-flash-tp4": {
-      "tokens": 11308216,
-      "source": "performance/records/deepseek-v41-flash/tp4-kv-pool-ring4-20261012.md",
-      "witness": "GPU KV cache size: 11,308,216 tokens",
-      "conditions": "DeepSeek-V4.1-Flash TP4 installed without options on SIRCL ring sessions, image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, a ring of four, one start. The profile sets no KV size, so vLLM sizes the pool from free memory and it differs between starts. Engine-reported capacity; not proof that concurrent full-context requests fit."
+      "tokens": 12751634,
+      "source": "performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-kv-ring8-20261014.md",
+      "witness": "GPU KV cache size: 12,751,634 tokens",
+      "conditions": "DeepSeek-V4.1-Flash TP4 installed with sudo sparkring install --profile deepseek-v41-flash-tp4 --on 0-3 and no other options from source 4026296ae905 on image dev-20261013-dcp2prefill-status038-sircl-tp6, positions 0-3 of an eight-Spark ring, one start. The profile sets no KV size, so vLLM sizes the pool from free memory and it differs between starts (12,654,354 to 12,751,634 tokens in three starts on this image). Engine-reported capacity; not proof that concurrent full-context requests fit."
     },
     "glm53-nvfp4-tp8-dcp1": {
       "tokens": 843584,

@@ -1,9 +1,10 @@
 # DeepSeek-V4.1-Flash on four Sparks: KV pool of an installation without options
 
 Status: **research-only**; one start. This record gives the KV pool that the
-profile `deepseek-v41-flash-tp4` reported when installed without options. The
-website's and README's profile tables show it
-([profile-capacity.json](../../profile-capacity.json)).
+profile `deepseek-v41-flash-tp4` reported when installed without options on
+the image of releases 2026.10.2 and 2026.10.3. The profile tables show the
+pool on release 2026.10.4's image
+([record](../images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-kv-ring8-20261014.md)).
 
 ## Conditions
 
