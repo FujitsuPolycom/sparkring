@@ -216,7 +216,6 @@ def landing(value):
               f'{r["prefill"]:,}', str(r["coding"])] for r in value["speed"]]
     speed_section = section(read("README.md"), "Speed")
     conditions = speed_section.split('\n| Model', 1)[0]
-    records = speed_section.split('Records:', 1)[1]
     body = f'''<main class="site-wrap">
       <div class="hero"><div><p class="eyebrow">DGX Spark · ConnectX-7 · no switch</p>
       <h1>Large language models on two or more directly cabled DGX Sparks</h1>
@@ -233,8 +232,7 @@ def landing(value):
       <section class="site-section" id="profiles"><h2>Profiles</h2>
       {table(['Model', 'Variant', 'Sparks', '--profile', 'Port', 'Thinking', 'Status'], profile_rows, 'profile-table')}</section>
       <section class="site-section" id="speed"><h2>Speed</h2>{prose(conditions, 'README.md', meta)}
-      {table(['Model', 'Sparks', 'Layout', '1 stream', '4 streams', '8 streams', 'Prefill 32K', 'Coding peak'], speed, 'speed-table')}
-      <details><summary>Measurement conditions and records</summary>{prose('Records:' + records, 'README.md', meta)}</details></section>
+      {table(['Model', 'Sparks', 'Layout', '1 stream', '4 streams', '8 streams', 'Prefill 32K', 'Coding peak'], speed, 'speed-table')}</section>
       <section class="site-section" id="sircl"><h2>SIRCL and net-sircl</h2>{prose(section(read('README.md'), 'SIRCL'), 'README.md', meta)}</section></main>'''
     return document("SparkRing Builder", body,
                     json_script("site-data", value) + '<script src="ring.js"></script><script src="landing.js"></script>')
