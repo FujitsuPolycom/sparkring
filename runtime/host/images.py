@@ -2,7 +2,7 @@
 import argparse
 import json
 
-from runtime.common import image_lock, installer_image, profiles
+from runtime.common import image_lock, installer, profiles
 
 
 def rows(profile=None):
@@ -34,7 +34,7 @@ def main(argv=None):
     if args.profile is not None:
         from runtime.host import models
         args.profile = models.canonical(args.profile)
-    if args.profile is not None and args.profile not in installer_image.SUPPORTED:
+    if args.profile is not None and args.profile not in installer.INSTALLABLE:
         replaced = profiles.replacement_message(args.profile)
         parser.error(replaced if replaced else f"{args.profile} is not an installer profile; sparkring models lists them")
     listed = rows(args.profile)
@@ -45,10 +45,7 @@ def main(argv=None):
         marks = [*row["tags"], *(["default"] if row["default"] else []), *(["archived"] if row["archived"] else [])]
         print(row["name"] + (f"  ({', '.join(marks)})" if marks else ""))
         size = f"{row['download_bytes'] / 2**30:.1f} GiB download" if row["download_bytes"] else "download size not recorded"
-        # Profiles outside the shared images' list run only on an image built for them; naming them on
-        # every other image would hide what the image itself lacks.
-        missing = [name for name in installer_image.SUPPORTED
-                   if name not in row["profiles"] and name not in installer_image.NOT_SHARED]
+        missing = sorted(installer.INSTALLABLE - set(row["profiles"]))
         if not missing:
             runs = "every installer profile"
         elif len(missing) < len(row["profiles"]):

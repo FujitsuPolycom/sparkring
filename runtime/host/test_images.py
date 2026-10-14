@@ -13,16 +13,20 @@ def test_images_lists_the_default_first_and_each_image_s_release_tag(capsys):
     lines = capsys.readouterr().out.splitlines()
     assert lines[0] == "dev-20261013-dcp2prefill-status038-sircl-tp6  (2026.10.4, default)"
     assert "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036  (2026.10.2)" in lines
-    assert lines[1].endswith("GiB download; transports libsircl, prepared, sircl; kraken line; "
-                             "runs every installer profile")
-    assert "dev-20261001-kraken-cuda1342-nccl2323-status034  (2026.10.0)" in lines
-    # The images published before 2026.10.2 carry the prepared transport only and name no image line.
-    rollback = lines.index(installer_image.DEFAULT_LOCK.parent.name + "  (2026.10.1)")
-    assert lines[rollback + 1].endswith("GiB download; transports prepared; runs every installer profile")
-    mimovision = lines.index("dev-20260927-mimovision-cuda1342-nccl2323-status032  (2026.09.5)")
-    assert lines[mimovision + 1].endswith("GiB download; transports prepared; runs every installer profile")
-    assert any(line.endswith("runs every installer profile except swift15-qwen38-flash-next-tp2, "
-                             "swift15-qwen38-flash-next-tp4, deepseek-v41-flash-tp4") for line in lines)
+    from runtime.common import installer
+    for row in images.rows():
+        heading = next(i for i, line in enumerate(lines) if line.split("  (")[0] == row["name"])
+        claim = lines[heading + 1].split("; runs ", 1)[1]
+        if claim == "every installer profile":
+            claimed = set(installer.INSTALLABLE)
+        elif claim.startswith("every installer profile except "):
+            claimed = set(installer.INSTALLABLE) - set(claim.removeprefix("every installer profile except ").split(", "))
+        else:
+            claimed = set(claim.split(", "))
+        assert claimed == set(row["profiles"]), row["tags"]
+    releases = {tag: set(row["profiles"]) for row in images.rows() for tag in row["tags"]}
+    assert not {"glm53-nvfp4-csf-tp6", "glm53-flash-nvfp4-spark-tp2-dcp2"} & releases["2026.10.2"]
+    assert not set(installer_image.SIRCL_ONLY) & releases["2026.10.1"]
     assert lines[-1] == "Install a profile on one of them: sudo sparkring install --profile PROFILE --image NAME"
 
 
