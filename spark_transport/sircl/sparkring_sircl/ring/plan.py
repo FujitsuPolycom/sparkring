@@ -356,6 +356,8 @@ def ring_text(layout: routes_mod.Layout, maps, *, subset_ring: bool = False) -> 
     """The ring that closes a group's chain: closed by cables, or through relays with one ring lane
     per relay hairpin queue (the sessions' check, ``routes.ring_window``), or why it cannot run."""
     order = routes_mod.chain_order(layout, maps, subset_ring=subset_ring)
+    if subset_ring:
+        return f"no ring: subset mode permits only flat all-gather on direct chain {list(order)}"
     if order is None:
         return "no ring: the ranks do not form a chain of cable neighbors"
     window, problems = routes_mod.ring_window(layout, maps, order, subset_ring=subset_ring)
@@ -838,10 +840,11 @@ def build_plan(site: Site, name: str, run_id: str, *, groups: Sequence[Sequence[
         window = routes_mod.DEFAULT_FORWARD_WINDOW if options.forward_window is None else options.forward_window
         maps = [routes.route_map(rank) for rank in range(layout.world)]
         active_subset = subset_ring and layout.world < len(layout.fabric.positions)
-        chunk = int(settings.get("SIRCL_FORWARD_CHUNK_BYTES", subset.FORWARD_CHUNK if active_subset
-                                 else routes_mod.DEFAULT_FORWARD_CHUNK))
+        if active_subset:
+            subset.validate(layout, maps)
+        chunk = int(settings.get("SIRCL_FORWARD_CHUNK_BYTES", routes_mod.DEFAULT_FORWARD_CHUNK))
         windows = [routes_mod.forward_windows(layout, maps, rank, max_window=window,
-                                              chunk=chunk, subset_ring=active_subset)
+                                              chunk=chunk)
                    for rank in range(layout.world)]
         paced = sorted({w for table in windows for row in table for w in row if w})
         for label, sizes in (("all-reduce", options.allreduce_sizes), ("all-gather", options.allgather_sizes)):
@@ -967,6 +970,11 @@ def tune_families_text(plan: ConfigurationPlan) -> list[str]:
         from .. import subset
         active_subset = subset.enabled(dict(options.session_env)) and layout.world < len(layout.fabric.positions)
         order = routes_mod.chain_order(layout, maps, subset_ring=active_subset)
+        if active_subset:
+            lines.append(f"  tune families, group {group.index}: all_reduce: one-shot, two-shot, pieces{nccl}; "
+                         f"all_gather: tiles, flat chain (shards >= 4 MiB){nccl}; "
+                         "reduce_scatter: scatter ops; all_to_all: scatter ops; no ring candidates")
+            continue
         problems = routes_mod.ring_window(layout, maps, order, subset_ring=active_subset)[1] if order is not None else ["no chain"]
         links = (", chain" if order is not None else "") + (", ring" if order is not None and not problems else "")
         lines.append(f"  tune families, group {group.index}: all_reduce: one-shot, two-shot, pieces{links}{nccl}; "

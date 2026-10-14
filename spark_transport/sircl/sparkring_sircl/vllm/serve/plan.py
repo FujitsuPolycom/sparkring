@@ -972,7 +972,7 @@ def relay_conflicts(arguments: Sequence[str], environment: Mapping[str, str]) ->
 def add_schedule_arguments(command: object) -> None:
     """``--large-schedule``, ``--gather-schedule`` and ``--scatter-schedule`` on an argparse (sub)parser."""
     command.add_argument("--subset-ring", action="store_true",
-                         help="experimental subset chain/ring with isolated relay queues")
+                         help="experimental subset chain for flat all-gather; pieces for other operations")
     for flag, what in (("--large-schedule", "all-reduces above the dispatch ceiling (all_reduce_large)"),
                        ("--gather-schedule", "all-gathers above the gather op size (all_gather_large)"),
                        ("--scatter-schedule", "reduce-scatters")):
@@ -2128,10 +2128,12 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
         from ... import subset
         try:
             subset.validate(layout, maps)
-            routes_mod.forward_windows(layout, maps, 0, chunk=subset.FORWARD_CHUNK, subset_ring=True)
             covers = True
         except routes_mod.RouteError as error:
             subset_problems.append(str(error))
+        for key, collective in (("large_schedule", "reduce"), ("gather_schedule", "gather"),
+                                ("scatter_schedule", "scatter")):
+            effective[key] = subset.schedule(effective[key], collective)
     order = routes_mod.chain_order(layout, maps, subset_ring=subset_ring) if covers else None
     large, gather, scatter = (effective[key] for key in DEFAULT_SCHEDULES)
     chain_area = covers and large != "pieces"
@@ -2143,7 +2145,7 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
     flags = {key: "--" + key.replace("_", "-") for key in DEFAULT_SCHEDULES}
     ring_problems: list[str] = []
     window = 0
-    if link_area and order is not None:
+    if link_area and order is not None and not subset_ring:
         window, ring_problems = routes_mod.ring_window(layout, maps, order, chunk=protocol.LINK_WINDOW_CHUNK,
                                                        queue_bytes=routes_mod.DEFAULT_HAIRPIN_QUEUE,
                                                        subset_ring=subset_ring)
@@ -2181,7 +2183,9 @@ def session_settings(group: fabric.GroupTopology, *, name: str, groups: str, sco
             problems.append(f"--ring-gather-stagger {ring_gather_stagger}: the {name} session's {world} ranks need "
                             f"{protocol.ring_stagger_slots(world, ring_gather_stagger)} link slots for it, and it "
                             f"has {slots} (--link-slots)")
-    if not link_area:
+    if subset_ring:
+        ring = "disabled (subset mode uses direct chain all-gather only)"
+    elif not link_area:
         ring = "none (no link area)"
     elif order is None or ring_problems:
         ring = "cannot run: " + ("; ".join(ring_problems) or "the ranks form no chain of cable neighbors")

@@ -508,8 +508,7 @@ class RoceOneshotAllReduce:
         if error is None:
             try:
                 self._allocate()
-                with _environment(SIRCL_POST_ORDER=self._post_order_text,
-                                  **({"SIRCL_FORWARD_PROOF": "0"} if self.subset_ring else {})):
+                with _environment(SIRCL_POST_ORDER=self._post_order_text):
                     self._proxy = Proxy(
                         world_size=self.world_size, rank=self.rank, hca_names=self.hca_names,
                         peer_lane_devices=self._lane_devices, lane_count=self.lane_count,
@@ -779,8 +778,7 @@ class RoceOneshotAllReduce:
 
         # Large messages and forward windows of relayed lanes.
         self.forward_window_bytes = _env_int("SIRCL_FORWARD_WINDOW_BYTES", default=DEFAULT_FORWARD_WINDOW_BYTES)
-        self.forward_chunk_bytes = _env_int("SIRCL_FORWARD_CHUNK_BYTES", default=(
-            subset_mod.FORWARD_CHUNK if self.subset_ring else DEFAULT_FORWARD_CHUNK_BYTES))
+        self.forward_chunk_bytes = _env_int("SIRCL_FORWARD_CHUNK_BYTES", default=DEFAULT_FORWARD_CHUNK_BYTES)
         self.hairpin_queue_bytes = _env_int("SIRCL_HAIRPIN_QUEUE_BYTES", default=DEFAULT_HAIRPIN_QUEUE_BYTES)
         if self.forward_window_bytes < 0:
             raise ValueError("SIRCL_FORWARD_WINDOW_BYTES must not be negative (0 turns forward windows off)")
@@ -800,6 +798,8 @@ class RoceOneshotAllReduce:
         self.large_schedule = _env_text("SIRCL_LARGE_SCHEDULE", default="auto")
         if self.large_schedule not in LARGE_SCHEDULES:
             raise ValueError(f"SIRCL_LARGE_SCHEDULE {self.large_schedule!r} is not one of {LARGE_SCHEDULES}")
+        if self.subset_ring:
+            self.large_schedule = subset_mod.schedule(self.large_schedule, "reduce")
         self.chain_slots = _env_int("SIRCL_CHAIN_SLOTS", default=DEFAULT_CHAIN_SLOTS)
         self.chain_slot_bytes = _env_int("SIRCL_CHAIN_SLOT_BYTES", default=self._table_settings.get(
             "SIRCL_CHAIN_SLOT_BYTES", DEFAULT_CHAIN_SLOT_BYTES))
@@ -833,6 +833,8 @@ class RoceOneshotAllReduce:
         self.gather_schedule = _env_text("SIRCL_GATHER_SCHEDULE", default="auto")
         if self.gather_schedule not in GATHER_SCHEDULES:
             raise ValueError(f"SIRCL_GATHER_SCHEDULE {self.gather_schedule!r} is not one of {GATHER_SCHEDULES}")
+        if self.subset_ring:
+            self.gather_schedule = subset_mod.schedule(self.gather_schedule, "gather")
         self.link_slots = _env_int("SIRCL_LINK_SLOTS", default=self._table_settings.get(
             "SIRCL_LINK_SLOTS", proto.default_link_slots(self.world_size)))
         configured = {name: _env_int(name, default=0)
@@ -872,6 +874,8 @@ class RoceOneshotAllReduce:
         self.scatter_schedule = _env_text("SIRCL_SCATTER_SCHEDULE", default="pieces")
         if self.scatter_schedule not in SCATTER_SCHEDULES:
             raise ValueError(f"SIRCL_SCATTER_SCHEDULE {self.scatter_schedule!r} is not one of {SCATTER_SCHEDULES}")
+        if self.subset_ring:
+            self.scatter_schedule = subset_mod.schedule(self.scatter_schedule, "scatter")
         # The schedules the session was configured with: a built-in plan decides a collective's ops only
         # while it keeps this schedule, so a schedule a caller sets at run time wins over the plan.
         self._configured_schedules = {"all_reduce": self.large_schedule, "all_gather": self.gather_schedule,
@@ -1120,6 +1124,9 @@ class RoceOneshotAllReduce:
         hold, a grid above its counters, an all-reduce algorithm for a message above the capacity, which
         those algorithms run in one op). Every rank has the same settings, so every rank decides alike."""
         kind = {"all_reduce": "reduce", "all_gather": "gather", "reduce_scatter": "scatter"}.get(collective)
+        if getattr(self, "subset_ring", False) and choice.schedule in ("chain", "ring"):
+            if choice.schedule == "ring" or kind != "gather" or nbytes < subset_mod.GATHER_MIN_BYTES:
+                return False
         if choice.grid is not None and choice.grid > self._counter_layout.blocks:
             return False
         if collective == "all_reduce" and choice.algorithm is not None and nbytes > self.max_size:
@@ -1413,11 +1420,12 @@ class RoceOneshotAllReduce:
         self.relay_safe_bytes = None
         if layout is None:
             return
-        subset_ring = getattr(self, "subset_ring", False)
+        if getattr(self, "subset_ring", False):
+            subset_mod.validate(layout, route_maps, queue_bytes=self.hairpin_queue_bytes)
         self._forward_table = routes_mod.forward_windows(
             layout, route_maps, self.rank, max_window=self.forward_window_bytes,
             chunk=self.forward_chunk_bytes or DEFAULT_FORWARD_CHUNK_BYTES,
-            queue_bytes=self.hairpin_queue_bytes, subset_ring=subset_ring)
+            queue_bytes=self.hairpin_queue_bytes)
         if self.forward_window_bytes:
             return
         queues = routes_mod.relay_queues(layout, route_maps)
@@ -1474,16 +1482,18 @@ class RoceOneshotAllReduce:
         relays. During a ring op the ring's lanes are the only relayed traffic, and relays forward
         each function's lanes through that function's own hairpin queue, so the ring runs when no
         relay queue carries two ring lanes (``routes.ring_window``); each relayed ring lane then keeps
-        at most 75 % of a queue unacknowledged; subset mode uses its smaller
-        packet envelope and excludes external relayed traffic by admission. Every rank decides the same: the decision follows the
+        at most 75 % of a queue unacknowledged. Subsets never configure a ring.
+        Every rank decides the same: the decision follows the
         agreed layout and route maps. A ring schedule named at construction makes a ring that cannot
         run a setup error.
         """
+        if getattr(self, "subset_ring", False):
+            self.ring_problem = "subset mode permits only direct chain all-gather links"
+            return -1, -1, 0
         world = len(order)
         window, problems = routes_mod.ring_window(self._layout_identity_object, route_maps, order,
                                                   chunk=proto.LINK_WINDOW_CHUNK,
-                                                  queue_bytes=self.hairpin_queue_bytes,
-                                                  subset_ring=getattr(self, "subset_ring", False))
+                                                  queue_bytes=self.hairpin_queue_bytes)
         if problems:
             self.ring_problem = "; ".join(problems)
             for name, schedule in (("SIRCL_LARGE_SCHEDULE", self.large_schedule),
@@ -2043,6 +2053,9 @@ class RoceOneshotAllReduce:
             return self._gather_uses_chain(inp, dim)
 
     def _gather_uses_chain(self, inp: torch.Tensor, dim: int) -> bool:
+        if getattr(self, "subset_ring", False) and (
+                inp.dim() != 1 or inp.numel() * inp.element_size() < subset_mod.GATHER_MIN_BYTES):
+            return False
         if not self.link_available or not self._gather_shape(inp, dim):
             return False
         shard = inp.numel() * inp.element_size()
@@ -2118,6 +2131,8 @@ class RoceOneshotAllReduce:
         """A schedule as it runs for ``collective`` of ``nbytes`` (the all-reduce's message, the
         all-gather's output, the reduce-scatter's input): ``ring`` runs as ``auto`` without a ring and below
         ``ring_min_for(collective)``. The same on every rank for the same sizes."""
+        if getattr(self, "subset_ring", False):
+            return subset_mod.schedule(schedule, collective)
         if schedule == "ring" and (not self.ring_available or nbytes < self.ring_min_for(collective)):
             return "auto"
         return schedule

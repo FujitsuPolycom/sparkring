@@ -1,4 +1,4 @@
-"""Subset admission, universal lanes, queue envelopes and native progress."""
+"""Active subset chain policy plus retained, inactive ring budget/progress helpers."""
 
 import json
 import os
@@ -95,7 +95,7 @@ def test_wrapped_and_permuted_rank_order():
     assert routes.chain_order(layout, maps, subset_ring=True) == (4, 5, 1, 3, 0, 2)
 
 
-def test_unsafe_overrides_fail_closed():
+def test_retained_budget_helpers_reject_unsafe_overrides():
     layout, maps = layout_maps(8, range(6))
     with pytest.raises(routes.RouteError, match="forward windows"):
         routes.forward_windows(layout, maps, 0, max_window=0, subset_ring=True)
@@ -116,8 +116,9 @@ def test_planner_and_p2p_reservation():
     on = plan.session_settings(group, name="tp", groups="", scoped=True, subset_ring=True,
                                schedules={"large_schedule": "ring", "gather_schedule": "ring"})
     assert not off.chain_area and not off.link_area
-    assert on.chain_area and on.link_area and not on.problems
-    assert on.chain_order == tuple(range(6)) and "65,536" in on.ring
+    assert not on.chain_area and on.link_area and not on.problems
+    assert on.chain_order == tuple(range(6)) and "disabled" in on.ring
+    assert on.schedules == {"large_schedule": "pieces", "gather_schedule": "auto", "scatter_schedule": "pieces"}
     layout, _ = layout_maps(8, range(6))
     lanes = budget.LaneSet.of("tp", layout)
     reserved = budget.session_reservation(lanes, budget.SessionSettings.from_env({subset.VARIABLE: "1"}))
@@ -150,7 +151,68 @@ def test_harness_on_and_off_share_the_universal_fabric():
     assert records[0].groups[0].layout == records[1].groups[0].layout
     assert records[0].groups[0].route_texts == records[1].groups[0].route_texts
     assert "no ring" in records[0].groups[0].ring
-    assert "65536" in records[1].groups[0].ring
+    assert "no ring" in records[1].groups[0].ring
+    assert "direct chain" in records[1].groups[0].ring
+    assert records[0].groups[0].lanes_detail == records[1].groups[0].lanes_detail
+
+
+def test_subset_chain_runtime_selection_and_pieces_parity():
+    pytest.importorskip("torch")
+    env = {k: v for k, v in os.environ.items() if not k.startswith("SIRCL_")}
+    env["PYTHONPATH"] = str(Path(__file__).parents[1])
+    result = subprocess.run([sys.executable, str(Path(__file__).with_name("subset_chain_driver.py"))],
+                            env=env, capture_output=True, text=True, timeout=120, check=False)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+@pytest.mark.parametrize("large", ("auto", "pieces", "chain", "ring"))
+@pytest.mark.parametrize("gather", ("auto", "pieces", "chain", "ring"))
+def test_subset_planner_limits_explicit_schedules(large, gather):
+    group = fabric.describe_group(fabric.Layout.ring(8), list(range(6)), parent=list(range(8)))
+    settings = plan.session_settings(group, name="tp", groups="", scoped=True, subset_ring=True,
+                                     schedules={"large_schedule": large, "gather_schedule": gather,
+                                                "scatter_schedule": large})
+    assert not settings.problems and not settings.chain_area
+    assert settings.link_area == (gather != "pieces")
+    assert settings.schedules == {"large_schedule": "pieces", "scatter_schedule": "pieces",
+                                  "gather_schedule": "auto" if gather == "ring" else gather}
+    assert "disabled" in settings.ring
+
+
+def test_subset_tuner_only_offers_measurable_chain_gathers():
+    from test_op_blocks import harness
+
+    built = harness()
+    built.world = 6
+    built.session.subset_ring = True
+    built.session.chain_available = built.session.ring_available = False
+    for collective, size, expected in (("all_reduce", 8 << 20, {"pieces"}),
+                                       ("reduce_scatter", 6 << 20, {"pieces"}),
+                                       ("all_gather", 1 << 20, {"pieces"}),
+                                       ("all_gather", 4 << 20, {"pieces", "chain"})):
+        assert {choice.get("schedule") for choice, *_ in built.tune_candidates(collective, size)} == expected
+
+
+@pytest.mark.parametrize("n", range(4, 9))
+@pytest.mark.parametrize("lanes", (1, 2))
+def test_active_chain_adds_zero_relay_bytes_to_legacy_pieces_bound(n, lanes):
+    for k in range(max(3, n - 2), n):
+        for start in range(n):
+            positions = tuple((start + i) % n for i in range(k))
+            layout, maps = layout_maps(n, positions, lanes)
+            order = subset.validate(layout, maps)
+            derived = routes.derive_routes(layout, lanes)
+            # Both directions include data and returning ACKs. No closing link exists.
+            for a, b in zip(order, order[1:]):
+                assert all(not lane.relays for lane in (*derived.lanes_to(a, b), *derived.lanes_to(b, a)))
+            outside = sorted(set(range(n)) - set(positions))
+            if len(outside) == 2:
+                other_layout, other_maps = layout_maps(n, outside, lanes)
+                assert not routes.relay_queues(other_layout, other_maps)
+            tables = [routes.forward_windows(layout, maps, r) for r in range(k)]
+            for members in routes.relay_queues(layout, maps).values():
+                payload = sum(tables[r][peer][lane] for r, peer, lane in members)
+                assert payload <= int(routes.RELAY_QUEUE_SHARE * routes.DEFAULT_HAIRPIN_QUEUE)
 
 
 def test_subset_setting_must_agree_even_when_rank_zero_omits_it():
@@ -178,7 +240,7 @@ def test_off_plan_and_setup_record_bytes_match_origin_main(value):
 
 @pytest.mark.parametrize("active", (False, True))
 @pytest.mark.parametrize("n,k", [(n, k) for n in range(4, 9) for k in range(max(3, n - 2), n)])
-def test_admitted_subset_native_progress(simulator_library, n, k, active):
+def test_retained_subset_ring_helper_native_progress(simulator_library, n, k, active):
     from sparkring_sircl.testing import fabric as sim
 
     layout, _ = layout_maps(n, range(k))

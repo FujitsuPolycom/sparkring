@@ -1,9 +1,11 @@
-"""Admission and conservative queue budgets for independent subset sessions.
+"""Admission and schedule policy for independent subset chain sessions.
 
 Only a cable-connected arc leaving at most two adjacent non-members is admitted.
 Those non-members have no relayed traffic in the universal shortest-path table,
 including when TP and DCP sessions run concurrently. No shared-queue reservation
 protocol is implemented; larger complements are refused even when idle.
+The conservative ring/arena budget helper is retained for isolated tests;
+the active chain policy adds no relayed links and preserves OFF arena pacing.
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ from . import routes
 
 VARIABLE = "SIRCL_SUBSET_RING"
 FORWARD_CHUNK = 4096
+# Small flat gathers have no measured gain. Sizes are per-rank input bytes.
+GATHER_MIN_BYTES = 4 << 20
 # RC's smallest path MTU is 256. Allow 128 bytes per packet for framing,
 # transport headers, CRC and queue accounting. A signaled credit may cover
 # two WRs; each QP has at most 64 such credits (_roce_proxy.c).
@@ -28,6 +32,17 @@ def enabled(environ: Mapping[str, str] | None = None) -> bool:
     if raw not in ("0", "1"):
         raise routes.RouteError(f"{VARIABLE} must be 0 or 1, got {raw!r}")
     return raw == "1"
+
+
+def schedule(requested: str, collective: str) -> str:
+    """Subset links serve only flat all-gather; shape and size are checked by the runtime.
+
+    A ring request becomes automatic chain selection, retaining the small-message
+    pieces fallback. Explicit pieces remains a way to disable chain all-gather.
+    """
+    if collective != "gather":
+        return "pieces"
+    return "auto" if requested == "ring" else requested
 
 
 def order(layout: routes.Layout) -> tuple[int, ...]:
@@ -68,7 +83,7 @@ def validate(layout, maps, *, queue_bytes=routes.DEFAULT_HAIRPIN_QUEUE):
 
 
 def payload_budget(layout, maps, *, queue_bytes=routes.DEFAULT_HAIRPIN_QUEUE) -> int:
-    """One common payload allowance for each direction of every relay queue.
+    """Retained, inactive ring/arena allowance for each direction of every relay queue.
 
     Let n count all session lanes through q and its reverse. Reserve n*16384
     bytes for short writes, short final packets and their ACKs. The remaining
