@@ -1,10 +1,11 @@
 {
- "generated_at": "codex/ring-preview-followups: short thinking display",
+ "generated_at": "d1457a2b",
  "plans": {
   "prepared": {
    "printed": [
     "SparkRing install. Progress: <tmp>/logs/operation-<id>.log",
     "Follow from another terminal: sudo sparkring logs --follow",
+    "Ring name: test",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
     "Transport: RoCEnante (b12x) (--transport prepared)",
@@ -135,6 +136,7 @@
     "profile": "qwen38-flash-next-tp2",
     "replaces": "<tmp>/state/deployments/previous",
     "review": "<review>",
+    "ring_name": "test",
     "schema": "sparkring-install-result/v1",
     "serving": {},
     "spread": {
@@ -185,6 +187,7 @@
    "printed": [
     "SparkRing install. Progress: <tmp>/logs/operation-<id>.log",
     "Follow from another terminal: sudo sparkring logs --follow",
+    "Ring name: test",
     "Looking for existing copies of local-inference-lab/Qwen3.8-Flash-Next-NVFP4 at 60215d26cf5e on 2 Sparks (up to 20 s each; up to 75 s on a Spark whose search needs a second pass).",
     "Install qwen38-flash-next-tp2 on 2 Sparks.",
     "Transport: sircl on every collective, NCCL off (default table, pair)",
@@ -318,6 +321,7 @@
     "profile": "qwen38-flash-next-tp2",
     "replaces": "<tmp>/state/deployments/previous",
     "review": "<review>",
+    "ring_name": "test",
     "schema": "sparkring-install-result/v1",
     "serving": {},
     "spread": {

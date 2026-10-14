@@ -162,6 +162,7 @@
     }
   ],
   "github_release": {
-    "tag": "2026.10.4"
+    "tag": "2026.10.4",
+    "prerelease": false
   }
 }

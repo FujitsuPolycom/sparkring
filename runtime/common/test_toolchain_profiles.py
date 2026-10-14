@@ -181,7 +181,7 @@ def test_the_qwen_csf_checkpoint_runs_the_csf_quantization_and_loader_with_its_d
         "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", 21, 33)
     assert all(name.startswith("tensors/") for name in pins["weights"])
     assert f"{card['model_repository']}@{card['model_revision']}" == QWEN_CSF
-    assert image_lock.CHECKPOINT_BUILDS[QWEN_CSF] == ("sparkring-kraken-beta-20261007-bc9ea774",)
+    assert image_lock.CHECKPOINT_BUILDS[QWEN_CSF] == ("sparkring-kraken-beta-20261007-bc9ea774", "sparkring-kraken-bc9ea774-tp2-dcp2-prefill")
     # An installation of it passed the installer's checks, so plans that install it state no status.
     assert QWEN_CSF not in image_lock.CHECKPOINT_STATUS
     # It is the two-Spark profile's preferred checkpoint, which an image whose vLLM reads it installs without

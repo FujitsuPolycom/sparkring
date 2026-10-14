@@ -581,8 +581,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   decode-context parallelism 2: the pair splits the KV cache, which holds
   about twice the tokens of the same memory at decode-context parallelism 1
   ([guide](../../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)). It
-  installs on an image whose lock lists it, with `--image NAME`;
-  `sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2` shows which.
+  installs on an image whose lock lists it, such as the default image of
+  release 2026.10.4; `sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2`
+  shows which, and `--image NAME` selects another.
   That image's vLLM is the pinned TP2/DCP2 prefill build
   `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads CSF; the
   installer refuses the profile on any other image. It keeps no Compose
