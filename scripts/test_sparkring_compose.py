@@ -494,4 +494,5 @@ def test_render_selects_another_installer_image(tmp_path):
     assert manifest["image_runtime"] == image_lock.v2_view(other["lock"])
     assert other["lock"]["image_reference"] in files["rank0/compose.yaml"]
     assert compose.named_image(None) is None
-    assert compose.named_image(installer_image.catalog()[0]["name"]) is None
+    # The install default, which Compose shares, selects no other image.
+    assert compose.named_image(image_lock.default()["name"]) is None
