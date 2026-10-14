@@ -8,8 +8,8 @@ opens no SSH session. Without ``--url`` it reads ``http://127.0.0.1:8090`` (the 
 loopback beside Node A's LAN address) and, when nothing answers there, the service's own LAN
 address from the fabric document (``default_urls``). A URL whose host is not this Spark is refused before any
 socket opens (``require_local``), so the view cannot become a second collector. Like the web page,
-an open view counts as a viewer and the service reads each model's ``/metrics`` every 5 s instead
-of every 60 s; ``--passive`` leaves the service's reads as they are.
+an open view counts as a viewer and the service reads each model's ``/metrics`` every 5 s.
+Without a viewer it sends no model API reads; ``--passive`` does not count as a viewer.
 
 The screen, top to bottom:
 
@@ -197,7 +197,7 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
     segs += [sep, (f"{round(running)} reqs", style(WARN, bold=True) if running else style(dim=True)),
              sep, (f"{tps:,.0f} tok/s", style(GOOD, bold=True) if tps >= 0.05 else style(dim=True))]
     # `age` is the time since this view's last read of the service, `period` how often the service
-    # reads each model's /metrics (5 s while viewed, 60 s otherwise).
+    # reads each model's /metrics (5 s while viewed, no API reads without a viewer).
     collector = snapshot.get("collector") or {}
     period = collector.get("metrics_seconds") or interval
     stale = age is not None and age > max(15.0, 2 * interval)
@@ -635,8 +635,8 @@ class Reader:
     the next, and the one that answered is read from then on. An HTTP error is an answer.
 
     A read counts as a viewer, as the web page's does: the service then reads each model's
-    /metrics every 5 s instead of every 60 s. A `passive` reader asks the service not to count it,
-    so the view changes nothing the service sends."""
+    /metrics every 5 s. Without a viewer the service sends no model API reads. A `passive` reader
+    does not count as a viewer, so it leaves the service's reads unchanged."""
 
     def __init__(self, base, *, password=None, opener=None, passive=False):
         self.bases = [base] if isinstance(base, str) else list(base)
@@ -812,7 +812,7 @@ def add_parser(commands) -> None:
     tui.add_argument("--events", action="store_true", help="with --once: add the most recent events")
     tui.add_argument("--width", type=int, help="with --once: columns (default: the terminal's)")
     tui.add_argument("--passive", action="store_true",
-                     help="do not count as a viewer: the service keeps reading /metrics once a minute")
+                     help="do not count as a viewer: without another viewer the service sends no model API reads")
     tui.add_argument("--url", help="the dashboard service on this Spark (default: http://127.0.0.1:8090, then the "
                                    "service's LAN address)")
     tui.add_argument("--password-file", help="the dashboard's Basic-authentication password, if it has one")
