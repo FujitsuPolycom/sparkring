@@ -235,3 +235,50 @@ def test_the_package_file_and_its_checksum_line_keep_their_name_as_a_github_rele
     assert package.name == "sparkring_0.1.0.dev.1790000000+gitaaaaaaaaaaaa_arm64.deb"
     checksum = package.with_name(package.name + ".sha256").read_text(encoding="utf-8")
     assert checksum == f"{sha(b'deb')}  {package.name}\n" and "~" not in checksum
+
+
+def test_checksum_files_survive_github_release_asset_renaming(tmp_path, monkeypatch):
+    """The package and relay-marker checksum files name themselves correctly after GitHub renames ~ to . in asset names."""
+    import tarfile
+    source = tmp_path / "source.tar"
+    unpublished = tmp_path / "relay-marker-artifact.json"
+    unpublished.write_text(json.dumps({**json.loads((ROOT / build_deb.MARKER_RECORD).read_text(encoding="utf-8")),
+                                       "binary_sha256": None, "download_url": None}), encoding="utf-8")
+    with tarfile.open(source, "w") as tar:
+        for relative in ("packaging/debian", build_deb.MARKER_SOURCE):
+            tar.add(ROOT / relative, arcname=relative)
+        tar.add(unpublished, arcname=build_deb.MARKER_RECORD)
+    binary = tmp_path / "marker"
+    binary.write_bytes(MARKER)
+
+    def run(argv, **kwargs):
+        if argv[:2] == ["git", "archive"]:
+            shutil.copyfile(source, argv[argv.index("-o") + 1])
+        elif "bundle" in argv:
+            Path(argv[argv.index("create") + 1]).write_bytes(b"bundle")
+        elif argv[0] == "dpkg-deb":
+            Path(argv[-1]).write_bytes(b"package-content")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(build_deb.distribution, "identity", lambda root: "a" * 40)
+    monkeypatch.setattr(build_deb, "subprocess", SimpleNamespace(run=run, check_output=lambda *a, **k: "1790000000\n"))
+    result = build_deb.build(tmp_path, tmp_path / "dist", version="2.0~dev+marker", marker_binary=binary)
+
+    # Verify package checksum file can be verified
+    package = Path(result["path"])
+    checksum_file = package.with_suffix(".deb.sha256")
+    content = checksum_file.read_text(encoding="utf-8").strip()
+    hash_value, filename = content.split("  ")
+    assert filename == package.name
+    assert filename.count(".") >= 2  # At least package name and extension separated by dots
+    assert "~" not in filename, "Package filename should not contain ~"
+    assert "~" not in content.split("\n")[-1], "Checksum line should not reference ~ in filename"
+
+    # Verify relay marker checksum file can be verified
+    if result.get("relay_marker") and result["relay_marker"].get("asset"):
+        asset_path = Path(result["relay_marker"]["asset"])
+        asset_checksum = asset_path.with_suffix(".sha256" if asset_path.suffix != ".sha256" else ".sha256")
+        asset_checksum_content = asset_checksum.read_text(encoding="utf-8").strip()
+        asset_hash, asset_filename = asset_checksum_content.split("  ")
+        assert asset_filename == asset_path.name
+        assert "~" not in asset_filename, "Relay marker filename should not contain ~"
