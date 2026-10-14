@@ -9,6 +9,8 @@ import json
 import socket
 import threading
 
+import pytest
+
 from runtime.host import helper
 from scripts import sparkring
 
@@ -169,3 +171,16 @@ def test_request_keeps_every_line_of_a_reply_that_arrives_in_one_read(tmp_path, 
             connection.close()
         server.close()
     assert capsys.readouterr().out == "done\n"
+
+
+@pytest.mark.parametrize("argv", [["restart", "glm53"], ["install", "--profile", "glm53"],
+                                  ["up", "--help"], ["down", "-h"]])
+def test_commands_outside_helper_allowlist_use_the_normal_cli(argv, monkeypatch):
+    monkeypatch.setenv("SPARKRING_HELPER_SOCKET", "/run/sparkring/helper.sock")
+    monkeypatch.delenv("SPARKRING_LOG_DIR", raising=False)
+    monkeypatch.setattr("runtime.host.privilege.running_as_root", lambda: False)
+    monkeypatch.setattr(helper, "request", lambda *a, **k: pytest.fail("unexpected helper request"))
+    calls = []
+    monkeypatch.setattr(sparkring, "_main", lambda args: calls.append(args) or 7)
+    assert sparkring.main(argv) == 7
+    assert calls == [argv]
