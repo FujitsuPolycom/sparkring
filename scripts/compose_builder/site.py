@@ -8,8 +8,9 @@ from urllib.parse import urlsplit
 
 import markdown
 
-from runtime.common import image_lock, installer_image, profiles, serving, setup, thinking, toolchain_profiles
+from runtime.common import image_lock, installer_image, profiles, setup, toolchain_profiles
 from runtime.host import models
+from scripts import generate_profiles
 from scripts.compose_builder import export
 
 HERE, ROOT = export.HERE, export.ROOT
@@ -108,17 +109,17 @@ def variant_label(repository, names):
     return names.get("short_labels", {}).get(repository) or names["quant_labels"].get(repository, repository.split("/")[-1])
 
 
-def thinking_default(profile_id, checkpoint):
-    """What the installed model does with thinking when a request does not choose, such as ``always · high``.
+def checkpoint_defaults(profile_id, checkpoint):
+    """What ``checkpoint`` of ``profile_id`` serves without install options, as the README's installer table states it.
 
-    The checkpoint's recorded behaviour (thinking.of) with the profile's
-    serving defaults (serving.defaults) applied, as `sparkring install` sets
-    them without --reasoning-effort or --thinking.
+    ``thinking`` (generate_profiles.thinking_default), ``context``, the
+    configured context limit in tokens, and ``kv``, the recorded KV pool as
+    ``{"tokens", "source"}`` or None (generate_profiles.recorded_kv).
     """
-    state = thinking.deployment_default(thinking.of(profile_id, checkpoint), serving.defaults(profile_id, checkpoint))
-    if state is None:
-        return thinking.summary(None)
-    return thinking.summary({"default": state["thinking"], "level": None if state["thinking"] == "off" else state["level"]})
+    kv = generate_profiles.recorded_kv(profile_id, checkpoint)
+    return {"thinking": generate_profiles.thinking_default(profile_id, checkpoint),
+            "context": generate_profiles.configured_context(profile_id, checkpoint),
+            "kv": {"tokens": kv["tokens"], "source": kv["source"]} if kv else None}
 
 
 def installer_catalog():
@@ -140,7 +141,7 @@ def installer_catalog():
                                 "port": export._argument(args, "--port"),
                                 "served_model_name": selected.get("served_model_name", row["profile"]),
                                 "model_repository": repository, "variant": variant_label(repository, names),
-                                "thinking": thinking_default(row["profile"], name)})
+                                **checkpoint_defaults(row["profile"], name)})
         repository = row["model"]["repository"]
         result.append({"id": row["profile"], "model_name": names["models"].get(repository, row["title"]),
                        "variant": variant_label(repository, names),
@@ -203,15 +204,15 @@ def data(meta):
     catalog = installer_catalog()
     release = release_record(meta)
     images = planner_images(catalog)
-    # The planner starts on the install default; each profile's port, variant and thinking are its install
-    # default's there. ``offered`` marks a profile that an offered image runs; the landing page lists only those.
+    # The planner starts on the install default; each profile's port, variant, thinking, context and KV pool
+    # are its install default's there. ``offered`` marks a profile that an offered image runs; the landing page lists only those.
     default_image = next(image for image in images if image["default"])
     for profile in catalog:
         preferred = default_image["profiles"].get(profile["id"], {}).get("preferred")
         checkpoint = next((c for c in profile["checkpoints"] if c["name"] == preferred), profile["checkpoints"][0])
         profile["variant"] = checkpoint["variant"]
         profile["port"] = checkpoint["port"]
-        profile["thinking"] = checkpoint["thinking"]
+        profile.update({key: checkpoint[key] for key in ("thinking", "context", "kv")})
         profile["offered"] = any(profile["id"] in image["profiles"] for image in images)
     return {"profiles": catalog, "images": images, "speed": speed_rows(),
             "release": release["release"], "release_label": release_label(meta, release["release"]),
@@ -274,6 +275,13 @@ def table(headers, rows, ident):
                       for row in rows) + '</tbody></table></div>')
 
 
+def installed_cells(profile):
+    """The landing table's Context and KV tokens cells, written as the README's installer table writes them."""
+    context = generate_profiles.compact_tokens(profile["context"]) if profile["context"] else "—"
+    kv = generate_profiles.compact_tokens(profile["kv"]["tokens"]) if profile["kv"] else "—"
+    return [escape(context), escape(kv)]
+
+
 def landing(value):
     meta = value["meta"]
     license_notice = read("README.md").split("\n## Quick start", 1)[0].split("\n\n")[1]
@@ -289,9 +297,9 @@ def landing(value):
         profile_rows.append([escape(p["model_name"]), escape(p["variant"]), str(p["nodes"]),
                              f'<a href="{escape(short_link(p["id"], value["aliases"]))}">'
                              f'<code>{escape(short_name(p["id"], value["aliases"]))}</code></a>',
-                             escape(str(p["port"])), escape(p["thinking"]), f'<span class="pill {status}">{status}</span>'])
+                             *installed_cells(p), escape(p["thinking"]), f'<span class="pill {status}">{status}</span>'])
     profile_rows.append(['No model · setup only', 'Set up the network and dashboard', '2–8',
-                         '<a href="builder.html?setup=1">No model: set up the Sparks only</a>', '—', '—', '—'])
+                         '<a href="builder.html?setup=1">No model: set up the Sparks only</a>', '—', '—', '—', '—'])
     speed = [[escape(r["model"]), str(r["nodes"]), escape(r["layout"]), *map(str, r["decode"]),
               f'{r["prefill"]:,}', str(r["coding"])] for r in value["speed"]]
     speed_section = section(read("README.md"), "Speed")
@@ -310,7 +318,7 @@ def landing(value):
       <ul id="example-list" aria-live="polite"></ul><p><a class="button" id="load-example" href="builder.html">Load into builder →</a></p></div></div>
       <div class="notice">{prose(license_notice, 'README.md', meta)}</div>
       <section class="site-section" id="profiles"><h2>Profiles</h2>
-      {table(['Model', 'Variant', 'Sparks', '--profile', 'Port', 'Thinking', 'Status'], profile_rows, 'profile-table')}</section>
+      {table(['Model', 'Variant', 'Sparks', '--profile', 'Context', 'KV tokens', 'Thinking', 'Status'], profile_rows, 'profile-table')}</section>
       <section class="site-section" id="speed"><h2>Speed</h2>{prose(conditions, 'README.md', meta)}
       {table(['Model', 'Sparks', 'Layout', '1 stream', '4 streams', '8 streams', 'Prefill 32K', 'Coding peak'], speed, 'speed-table')}</section>
       <section class="site-section" id="sircl"><h2>SIRCL and net-sircl</h2>{prose(section(read('README.md'), 'SIRCL'), 'README.md', meta)}</section></main>'''

@@ -2,8 +2,11 @@
 
 This experimental profile serves Z.ai's GLM-5.3 using Local Inference Lab's
 [`local-inference-lab/GLM-5.3-NVFP4-CSF`](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
-checkpoint. It has CPU configuration tests and RTX 5090 collective emulation. No TP6
-model-serving, correctness, memory or performance result is claimed.
+checkpoint. It has CPU configuration tests and RTX 5090 collective emulation.
+One installation on release 2026.10.4's image served requests with a KV pool
+of 1,255,552 tokens, but the installer did not record it as complete
+([record](../../performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-glm53-nvfp4-csf-tp6-ring8-20261014.md)).
+No correctness or performance result is claimed.
 
 The six ranks occupy positions 0-5 of an eight-Spark cycle. SIRCL carries the
 collectives with NCCL off. The installer selects `SIRCL_ROUTE_SCOPE=fabric`:
@@ -100,8 +103,9 @@ rules apply until a bounded latency sweep supplies one.
 The research catalog and `direct-path-6` relayed topology provide automatic
 installer, toolchain and fabric-adapter registration. There are no Compose
 exports. Existing checkpoint pins, thinking records, display names, publisher
-credit and storage planning apply unchanged. No measured capacity record or
-recommended public install row is added.
+credit and storage planning apply unchanged. Its capacity record in
+[profile-capacity.json](../../performance/profile-capacity.json) is the KV pool
+of that installation. No recommended public install row is added.
 
 ## Hardware entry gates
 

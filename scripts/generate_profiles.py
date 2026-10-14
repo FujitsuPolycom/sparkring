@@ -343,18 +343,107 @@ def profile_catalog_table(rows, names, root, quant_labels=None):
 
 
 INSTALLER_TABLE = '| Model | Checkpoint | Sparks | `--profile` value |'
-THINKING = 'Thinking'
+# The installer table's generated columns (installer_columns).
+CONTEXT, KV_TOKENS, THINKING = 'Context', 'KV tokens', 'Thinking'
+CAPACITY = 'performance/profile-capacity.json'
 
 
-def thinking_column(text, root=ROOT):
-    """``text`` with the Thinking cell of each installer-table row set from its profile's thinking record.
+def _serving_configuration(profile_id, root=ROOT):
+    """The serving configuration of an installer profile, or None for a profile of another format."""
+    source = read_json(catalog(root)[profile_id]).get('configuration') or {}
+    return read_json(local_path(source['path'], root)) if source.get('format') == 'serving-profile' else None
+
+
+def _argument(arguments, flag):
+    return arguments[arguments.index(flag) + 1] if flag in arguments else None
+
+
+def install_checkpoint(profile_id):
+    """The checkpoint `sparkring install --profile PROFILE` installs without --checkpoint on the default image.
+
+    The profile's preferred checkpoint where that image's vLLM reads it
+    (image_lock.preferred_checkpoint), else None for the profile's own default.
+    """
+    from runtime.common import image_lock
+    return image_lock.preferred_checkpoint(image_lock.default(), profile_id)
+
+
+def configured_context(profile_id, checkpoint=None, root=ROOT):
+    """The context limit, in tokens, that ``checkpoint`` of ``profile_id`` serves with: its --max-model-len, or None."""
+    from runtime.common import toolchain_profiles
+    configuration = _serving_configuration(profile_id, root)
+    if configuration is None:
+        return None
+    value = _argument(toolchain_profiles.checkpoint_settings(configuration, checkpoint)['vllm_args'], '--max-model-len')
+    return int(value) if value is not None else None
+
+
+def recorded_kv(profile_id, checkpoint=None, root=ROOT):
+    """The recorded KV pool of ``checkpoint`` of ``profile_id`` as the profile configures it, or None.
+
+    The measurement comes from CAPACITY: the record's ``checkpoints`` entry of
+    that checkpoint, else the record itself when it measured that checkpoint
+    (its ``checkpoint``, by default the profile's default). When the
+    checkpoint's settings fix the KV size (--kv-cache-memory-bytes), the
+    measurement counts only at that size. Nothing is scaled or estimated.
+    """
+    from runtime.common import toolchain_profiles
+    record = read_json(root/CAPACITY)['profiles'].get(profile_id)
+    configuration = _serving_configuration(profile_id, root)
+    if record is None or configuration is None:
+        return None
+    default, _ = toolchain_profiles.checkpoint_names(configuration)
+    name = checkpoint or default
+    measured = (record.get('checkpoints') or {}).get(name) if name else None
+    if measured is None and (record.get('checkpoint') or default) == name:
+        measured = record
+    if measured is None:
+        return None
+    size = _argument(toolchain_profiles.checkpoint_settings(configuration, checkpoint)['vllm_args'], '--kv-cache-memory-bytes')
+    if size is not None and measured.get('kv_bytes_per_rank') != int(size):
+        return None
+    return measured
+
+
+def thinking_default(profile_id, checkpoint=None, root=ROOT):
+    """The thinking default ``checkpoint`` of ``profile_id`` installs with, such as ``always · high``.
+
+    The checkpoint's recorded behaviour (thinking.of) with the profile's
+    serving defaults (serving.defaults) applied, as `sparkring install` sets
+    them without --reasoning-effort or --thinking; ``not recorded`` without a
+    behaviour.
+    """
+    state = thinking.deployment_default(thinking.of(profile_id, checkpoint, root=root),
+                                        serving.defaults(profile_id, checkpoint, root=root))
+    if state is None:
+        return thinking.summary(None)
+    return thinking.summary({"default": state["thinking"], "level": None if state["thinking"] == "off" else state["level"]})
+
+
+def installed_defaults(profile_id, root=ROOT):
+    """What `sparkring install --profile PROFILE` serves without options: thinking, context and recorded KV pool.
+
+    ``{"checkpoint", "thinking", "context", "kv"}`` for install_checkpoint's
+    checkpoint: thinking_default, configured_context and recorded_kv. The
+    repository README's installer table and the website's landing table show
+    these.
+    """
+    checkpoint = install_checkpoint(profile_id)
+    return {"checkpoint": checkpoint, "thinking": thinking_default(profile_id, checkpoint, root),
+            "context": configured_context(profile_id, checkpoint, root), "kv": recorded_kv(profile_id, checkpoint, root)}
+
+
+def installer_columns(text, root=ROOT):
+    """``text`` with the Context, KV tokens and Thinking cells of each installer-table row set from its profile.
 
     The repository README's installer table, whose header starts with
-    INSTALLER_TABLE, is maintained by hand except this column: each row's
-    cell is the effective thinking default of the profile in its `--profile` value column,
-    such as ``on · xhigh``. That column may name a profile by an alias of
-    runtime.common.profile_aliases.ALIASES, which selects the profile it stands for. A
-    table without the column, or a row whose profile has no record, is refused.
+    INSTALLER_TABLE, is maintained by hand except these columns, which
+    installed_defaults fills for the profile in the row's `--profile` value
+    column: ``1M``; ``[1.5M](RECORD)``, or ``—`` without a recorded pool; and
+    ``on · xhigh``. That column may name a profile by an alias of
+    runtime.common.profile_aliases.ALIASES, which selects the profile it
+    stands for. A table without these columns, or a row whose profile has no
+    thinking record, is refused.
     """
     from runtime.common.profile_aliases import canonical
     lines = text.split('\n')
@@ -362,20 +451,24 @@ def thinking_column(text, root=ROOT):
     if header is None:
         raise ValueError('README.md requires the installer profile table')
     names = [cell.strip() for cell in lines[header].strip().strip('|').split('|')]
-    if THINKING not in names:
-        raise ValueError('README.md installer profile table requires a Thinking column')
-    column, profile_column = names.index(THINKING), names.index('`--profile` value')
+    for column in (CONTEXT, KV_TOKENS, THINKING):
+        if column not in names:
+            raise ValueError(f'README.md installer profile table requires a {column} column')
+    profile_column = names.index('`--profile` value')
     number = header + 2
     while number < len(lines) and lines[number].startswith('|'):
         cells = [cell.strip() for cell in lines[number].strip().strip('|').split('|')]
         if len(cells) != len(names):
             raise ValueError('README.md installer profile table rows require every column')
-        profile = cells[profile_column].strip('`')
-        record = thinking.of(canonical(profile), root=root)
-        if record is None:
-            raise ValueError(f'README.md installer profile {profile} has no thinking record in {thinking.CATALOG}')
-        state = thinking.deployment_default(record, serving.defaults(canonical(profile), root=root))
-        cells[column] = thinking.summary({"default": state["thinking"], "level": state["level"]})
+        named = cells[profile_column].strip('`')
+        profile = canonical(named)
+        facts = installed_defaults(profile, root)
+        if facts['thinking'] == thinking.summary(None):
+            raise ValueError(f'README.md installer profile {named} has no thinking record in {thinking.CATALOG}')
+        cells[names.index(THINKING)] = facts['thinking']
+        cells[names.index(CONTEXT)] = compact_tokens(facts['context']) if facts['context'] else '—'
+        kv = facts['kv']
+        cells[names.index(KV_TOKENS)] = f"[{compact_tokens(kv['tokens'])}]({kv['source']})" if kv else '—'
         lines[number] = '| ' + ' | '.join(cells) + ' |'
         number += 1
     return '\n'.join(lines)
@@ -410,7 +503,7 @@ def generate(check=False, root=ROOT):
             raise ValueError('Environment exports must have unique destinations within the checkout')
         expected[target] = render_environment(row['profile'], root=root, template_only=True).encode('utf-8')
     # The repository README lists only the installer's profiles, maintained by
-    # hand except their Thinking column (thinking_column); every catalog
+    # hand except the columns installer_columns fills; every catalog
     # profile appears in the generated catalog page.
     readme = root/'profiles/README.md'
     text = readme.read_text(encoding='utf-8-sig')
@@ -420,7 +513,7 @@ def generate(check=False, root=ROOT):
     _, after = tail.split(END, 1)
     expected[readme] = (before+profile_table(root)+after).encode()
     installer_readme = root/'README.md'
-    expected[installer_readme] = thinking_column(installer_readme.read_text(encoding='utf-8-sig'), root).encode()
+    expected[installer_readme] = installer_columns(installer_readme.read_text(encoding='utf-8-sig'), root).encode()
     stale = []
     for path, content in expected.items():
         if not path.exists() or path.read_bytes().replace(b'\r\n', b'\n') != content.replace(b'\r\n', b'\n'):

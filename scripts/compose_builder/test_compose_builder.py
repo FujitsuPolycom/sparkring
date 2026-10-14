@@ -690,7 +690,9 @@ def test_checkpoints_carry_the_measurement_of_their_own_profile(data):
     qwen = capacity[(TP2, "qad-step5500-ple1000")]
     assert qwen["checkpoint"] == "qad-step-4000" and qwen["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
     assert "SparkRing 2026.09.3" in qwen["conditions"] and "sparkcache.json" in qwen["kv_evidence"]
-    assert capacity[(MIMO2, None)] is None
+    assert measured(capacity[(MIMO2, None)]) == {"tokens": 655772, "kv_bytes_per_rank": 12 * GIB, "checkpoint": None}
+    # A measurement without its KV size sizes nothing: DeepSeek's pool depends on the memory free at start.
+    assert capacity[("deepseek-v41-flash-tp4", None)] is None
 
 
 def test_kv_estimate_scales_the_measured_pool_to_the_chosen_size(data, node):
@@ -726,8 +728,10 @@ console.log(JSON.stringify(value.cases.map(([id, name, settings]) => {
     # The JMNI hybrid on four Sparks is sized by step 4000's four-Spark measurement.
     assert jmni_text["line"] == "About 3.1 million tokens · " + room.format("11.9")
     assert jmni_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
-    assert mimo == {"gib": 12, "measured": False}
-    assert mimo_text == {"gib": 12, "line": "Not measured for this model", "basis": "", "source": None, "conditions": None}
+    # MiMo's pair has its own record: 655,772 tokens at 12 GiB in a 262,144-token window.
+    assert (mimo["tokens"], mimo["requests"], mimo["measured_gib"]) == (660000, 2.5, 12)
+    assert (mimo_text["basis"], mimo_text["source"]) == (
+        "Estimated from a measurement at 12 GiB", export.capacity_records()[MIMO2]["source"])
     assert deepseek is None and deepseek_text is None
 
 

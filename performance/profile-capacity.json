@@ -37,6 +37,13 @@
           "witness": "GPU KV cache size: 736,274 tokens",
           "kv_bytes_per_rank": 5368709120,
           "conditions": "GLM-5.3-Flash nvfp4-qad TP2/DCP1 installer profile on image dev-20261001-kraken-cuda1342-nccl2323-status034, on one half of a four-Spark ring, 5 GiB FP8 KV per rank in 2,048-token pages and 524288 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit."
+        },
+        "csf": {
+          "tokens": 1472548,
+          "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md",
+          "witness": "| KV tokens | 1,472,548 | 4,126,165 |",
+          "kv_bytes_per_rank": 10737418240,
+          "conditions": "GLM-5.3-Flash csf TP2/DCP1 installed with sudo sparkring install --checkpoint csf and otherwise the profile's settings on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, positions 6 and 7 of an eight-Spark ring, 10 GiB FP8 KV per rank and 1048576 configured context (the DCP1 column of the record). Engine-reported capacity; not full-context qualification."
         }
       }
     },
@@ -52,7 +59,17 @@
       "source": "performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md",
       "witness": "GPU KV cache size: 6,128,169 tokens",
       "conditions": "GLM-5.3-Flash NVFP4-Spark TP4/DCP1 installer profile on image dev-20260928-plainstatus-cuda1342-nccl2323-status033, 40 GiB KV per rank in 1,024-token pages and 1048576 configured context. Engine-reported capacity; not full-context qualification.",
-      "kv_bytes_per_rank": 42949672960
+      "kv_bytes_per_rank": 42949672960,
+      "checkpoints": {
+        "csf": {
+          "tokens": 5668802,
+          "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md",
+          "witness": "5,668,802 tokens for GLM on the path",
+          "kv_bytes_per_rank": 39728447488,
+          "conditions": "GLM-5.3-Flash csf TP4/DCP1 installed without research options from release 2026.10.3's package on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, positions 0-3 of an eight-Spark ring used as a path of four. Engine-reported capacity; not full-context qualification.",
+          "kv_evidence": "--kv-cache-memory-bytes 39728447488 in the csf checkpoint's settings of profiles/glm53-flash-nvfp4-spark-tp4/config.json, which the record's installation used unchanged."
+        }
+      }
     },
     "glm52-exl3-r7-3.5bpw": {
       "tokens": 1156864,
@@ -146,7 +163,54 @@
       "conditions": "Qwen QAD TP4/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit.",
       "kv_bytes_per_rank": 25769803776,
       "checkpoint": "qad-step-4000",
-      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-qad-tp4/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000)."
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-qad-tp4/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000).",
+      "checkpoints": {
+        "qad-step5500-ple1000": {
+          "tokens": 2831661,
+          "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md",
+          "witness": "The KV cache held 2,831,661 tokens for Qwen on each ring of four",
+          "kv_bytes_per_rank": 25769803776,
+          "conditions": "Qwen3.8-Flash-Next qad-step5500-ple1000 TP4/DCP1 installed without research options from release 2026.10.3's package on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, two rings of four: FP8 target KV in 32-token blocks and a BF16 MTP draft KV cache. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+          "kv_evidence": "--kv-cache-memory-bytes 25769803776 in profiles/qwen38-flash-next-qad-tp4/config.json, which the record's installations used unchanged."
+        }
+      }
+    },
+    "mimo-v26-flash-mopd-tp2": {
+      "tokens": 655772,
+      "source": "performance/records/images/dev-20261004-kraken-matrix-20261004.md",
+      "witness": "KV cache 655,772 tokens",
+      "conditions": "MiMo-V2.6-Flash-MOPD TP2/DCP1 installed with sudo sparkring install and the profile's settings on image dev-20261004-kraken-cuda1342-nccl2323-status034. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_bytes_per_rank": 12884901888,
+      "kv_evidence": "--kv-cache-memory-bytes 12884901888 in profiles/mimo-v26-flash-mopd-tp2/config.json, unchanged in its KV settings since the measurement."
+    },
+    "mimo-v26-flash-mopd-tp4": {
+      "tokens": 2185934,
+      "source": "performance/records/images/dev-20261004-kraken-matrix-20261004.md",
+      "witness": "KV cache 2,185,934 tokens",
+      "conditions": "MiMo-V2.6-Flash-MOPD TP4/DCP1 installed with sudo sparkring install and the profile's settings on image dev-20261004-kraken-cuda1342-nccl2323-status034. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_bytes_per_rank": 21474836480,
+      "kv_evidence": "--kv-cache-memory-bytes 21474836480 in profiles/mimo-v26-flash-mopd-tp4/config.json, unchanged in its KV settings since the measurement."
+    },
+    "deepseek-v41-flash-tp4": {
+      "tokens": 11308216,
+      "source": "performance/records/deepseek-v41-flash/tp4-kv-pool-ring4-20261012.md",
+      "witness": "GPU KV cache size: 11,308,216 tokens",
+      "conditions": "DeepSeek-V4.1-Flash TP4 installed without options on SIRCL ring sessions, image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, a ring of four, one start. The profile sets no KV size, so vLLM sizes the pool from free memory and it differs between starts. Engine-reported capacity; not proof that concurrent full-context requests fit."
+    },
+    "glm53-nvfp4-tp8-dcp1": {
+      "tokens": 843584,
+      "source": "profiles/glm53-nvfp4-tp8-dcp1/README.md",
+      "witness": "vLLM reported a KV pool of 843,584 tokens",
+      "conditions": "GLM-5.3 TP8/DCP1 with the profile's settings and 8 sequences on image af06e272, outside sparkring install, one eight-Spark ring, one start. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_bytes_per_rank": 46170898432,
+      "kv_evidence": "--kv-cache-memory-bytes 46170898432 in profiles/glm53-nvfp4-tp8-dcp1/config.json, the settings the README's evidence names."
+    },
+    "glm53-nvfp4-csf-tp6": {
+      "tokens": 1255552,
+      "source": "performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-glm53-nvfp4-csf-tp6-ring8-20261014.md",
+      "witness": "`GPU KV cache size: 1,255,552 tokens`",
+      "conditions": "GLM-5.3 NVFP4-CSF TP6/DCP2 installed with the profile's settings on image dev-20261013-dcp2prefill-status038-sircl-tp6, positions 0-5 of an eight-Spark ring, 32 GiB KV per rank and 135168 configured context, one start. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_bytes_per_rank": 34359738368
     }
   }
 }

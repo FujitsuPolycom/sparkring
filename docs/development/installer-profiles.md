@@ -82,7 +82,7 @@ Hand-maintained pages, which no check compares with the code:
 
 - `docs/operations/install-reference.md`: the profile table in [Serving image and profiles](../operations/install-reference.md#serving-image-and-profiles), the ring list in Four-Spark rings, API ports in Security and host exposure, and checkpoint sizes, files and headroom, and blank-Spark totals in Downloads, storage and outbound hosts.
 - In `docs/operations/`: `install.md` (free disk), `images.md` (profile count), `compose.md` (profile list), `compose-files.md` (rank files).
-- [`README.md` Profiles](../../README.md#profiles): model, checkpoint link and publisher, Sparks, `--profile` value and API port. `generate_profiles.py` fills the Thinking column from `profiles/thinking.json`.
+- [`README.md` Profiles](../../README.md#profiles): model, checkpoint link and publisher, Sparks and `--profile` value. `generate_profiles.py` fills the Context, KV tokens and Thinking columns for the checkpoint `sparkring install` installs: the configured `--max-model-len`, a KV pool from `performance/profile-capacity.json` measured at the profile's KV size (otherwise `—`), and the thinking default. The website's profile table shows the same values.
 - `docs/operations/install-reference.md`: the table in [Thinking](../operations/install-reference.md#thinking).
 
 ## Steps

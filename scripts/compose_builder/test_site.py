@@ -397,3 +397,30 @@ def test_command_guide_is_short_and_takes_its_table_from_the_reference():
                    "exit with 0", "viewer lease"):
         assert detail not in main, detail
     assert len(re.sub(r"<[^>]+>", "", main)) < 6000
+
+
+def test_landing_context_and_kv_match_the_readme_installer_table(public):
+    from runtime.common.profile_aliases import canonical
+    from scripts.generate_profiles import INSTALLER_TABLE
+    html = site.landing(public)
+    head = html.split('id="profile-table"', 1)[1].split('</thead>', 1)[0]
+    assert re.findall(r'<th scope="col">(.*?)</th>', head) == [
+        "Model", "Variant", "Sparks", "--profile", "Context", "KV tokens", "Thinking", "Status"]
+    table = html.split('id="profile-table"', 1)[1].split('</table>', 1)[0]
+    cells = {re.search(r"<code>(.*?)</code>", row)[1]: re.findall(r'<td data-label="([^"]+)">(.*?)</td>', row)
+             for row in table.split("<tr>")[2:] if "<code>" in row}
+    lines = site.read("README.md").splitlines()
+    header = next(n for n, line in enumerate(lines) if line.startswith(INSTALLER_TABLE))
+    readme = [[c.strip() for c in line.strip().strip("|").split("|")] for line in lines[header + 2:]
+              if line.startswith("| ")]
+    readme = readme[:next((i for i, row in enumerate(readme) if len(row) != 7), len(readme))]
+    assert len(readme) >= 10
+    for row in readme:
+        profile = next(p for p in public["profiles"] if p["id"] == canonical(row[3].strip("`")))
+        landing = dict(cells[site.short_name(profile["id"], public["aliases"])])
+        assert landing["Context"] == row[4]
+        assert landing["KV tokens"] == (re.sub(r"\]\(.*\)$", "", row[5]).lstrip("[") if row[5] != "—" else "—")
+        assert landing["Thinking"] == row[6] == profile["thinking"]
+    # A profile without a recorded pool for its installed checkpoint shows a dash, never an estimate.
+    pair = next(p for p in public["profiles"] if p["id"] == "qwen38-flash-next-tp2")
+    assert pair["kv"] is None and dict(cells["qwen38-flash-next-tp2"])["KV tokens"] == "—"

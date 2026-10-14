@@ -156,55 +156,82 @@ def test_cross_release_cache_pair_requires_matching_model_and_layout():
     assert cells[ids[1]] == 'Included'
 
 
-def test_readme_thinking_column_follows_each_profiles_thinking_record():
-    import pytest
-    from runtime.common.profiles import ROOT
-    from scripts.generate_profiles import thinking_column
-    text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
-    assert thinking_column(text) == text
+def installer_rows(text):
+    """The README installer table's rows as cell lists: it starts at its header and ends at the first line outside it."""
     from scripts.generate_profiles import INSTALLER_TABLE
-    # The installer profile table only: it starts at its header and ends at the first line outside it.
     lines = text.splitlines()
     header = next(number for number, line in enumerate(lines) if line.startswith(INSTALLER_TABLE))
-    table = []
+    rows = []
     for line in lines[header + 2:]:
         if not line.startswith('| '):
             break
-        table.append(line)
-    rows = {line.split('|')[4].strip().strip('`'): line.split('|')[6].strip() for line in table}
-    assert rows == {'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-tp4': 'on · xhigh',
-                    'glm53-flash-tp2': 'always · high', 'glm53-flash-tp2-dcp2': 'always · high',
-                    'glm53-flash-tp4': 'always · high',
-                    'glm53-nvfp4-tp8': 'always · high',
-                    'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on', 'deepseek-v41-flash-tp4': 'on · high',
-                    'swift15-qwen38-flash-next-tp2': 'on · xhigh', 'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
+        rows.append([cell.strip() for cell in line.strip().strip('|').split('|')])
+    return rows
+
+
+def test_readme_installer_columns_follow_each_profiles_installed_defaults():
+    import pytest
+    from runtime.common.profiles import ROOT
+    from scripts.generate_profiles import installer_columns
+    text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
+    assert installer_columns(text) == text
+    assert '| Model | Checkpoint | Sparks | `--profile` value | Context | KV tokens | Thinking |' in text
+    rows = {cells[3].strip('`'): cells[4:] for cells in installer_rows(text)}
+    assert {name: cells[2] for name, cells in rows.items()} == {
+        'qwen38-flash-next-tp2': 'on · xhigh', 'qwen38-flash-next-tp4': 'on · xhigh',
+        'glm53-flash-tp2': 'always · high', 'glm53-flash-tp2-dcp2': 'always · high', 'glm53-flash-tp4': 'always · high',
+        'glm53-nvfp4-tp8': 'always · high', 'mimo-v26-flash-mopd-tp2': 'on', 'mimo-v26-flash-mopd-tp4': 'on',
+        'deepseek-v41-flash-tp4': 'on · high', 'swift15-qwen38-flash-next-tp2': 'on · xhigh',
+        'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
+    assert rows['glm53-flash-tp2'][0] == '1M' and rows['qwen38-flash-next-tp2'][0] == '262K'
+    # A recorded pool links its record; a profile without one shows a dash.
+    assert rows['glm53-flash-tp2'][1].startswith('[1.5M](performance/records/') and rows['qwen38-flash-next-tp2'][1] == '—'
     # A stale cell is rewritten; the hand-maintained cells stay as written.
-    stale = text.replace('`qwen38-flash-next-tp2` | 8000 | on · xhigh |', '`qwen38-flash-next-tp2` | 8000 | off |')
-    assert stale != text and thinking_column(stale) == text
-    with pytest.raises(ValueError, match='requires a Thinking column'):
-        thinking_column(text.replace('| API port | Thinking |', '| API port | Effort |'))
+    stale = text.replace('`qwen38-flash-next-tp2` | 262K | — | on · xhigh |', '`qwen38-flash-next-tp2` | 8K | 9M | off |')
+    assert stale != text and installer_columns(stale) == text
+    for column in ('Context', 'KV tokens', 'Thinking'):
+        with pytest.raises(ValueError, match=f'requires a {column} column'):
+            installer_columns(text.replace(f'| {column} |', '| Other |', 1))
     with pytest.raises(ValueError, match='qwen38-flash-next-tp2-sparkcache has no thinking record'):
-        thinking_column(text.replace('`qwen38-flash-next-tp2` |', '`qwen38-flash-next-tp2-sparkcache` |'))
+        installer_columns(text.replace('`qwen38-flash-next-tp2` |', '`qwen38-flash-next-tp2-sparkcache` |'))
 
 
-def test_readme_thinking_column_reads_the_record_of_the_profile_an_alias_selects():
-    from runtime.common import serving, thinking
+def test_recorded_kv_counts_only_a_measurement_of_the_configured_checkpoint_and_kv_size(tmp_path):
+    import json
+    import shutil
+    from runtime.common.profiles import ROOT
+    from scripts.generate_profiles import CAPACITY, recorded_kv
+    # glm53-flash-tp2's record measured its own nvfp4-spark checkpoint and, separately, csf; Qwen's pair has none of csf.
+    assert recorded_kv('glm53-flash-nvfp4-spark-tp2')['tokens'] == 1530566
+    assert recorded_kv('glm53-flash-nvfp4-spark-tp2', 'csf')['tokens'] == 1472548
+    assert recorded_kv('qwen38-flash-next-tp2', 'csf') is None
+    assert recorded_kv('qwen38-flash-next-tp2', 'qad-step5500-ple1000') is None
+    # A measurement at another KV size than the profile configures is not shown.
+    root = tmp_path / 'checkout'
+    shutil.copytree(ROOT / 'profiles', root / 'profiles')
+    capacity = json.loads((ROOT / CAPACITY).read_text(encoding='utf-8'))
+    capacity['profiles']['glm53-flash-nvfp4-spark-tp2']['checkpoints']['csf']['kv_bytes_per_rank'] = 5368709120
+    (root / 'performance').mkdir()
+    (root / CAPACITY).write_text(json.dumps(capacity), encoding='utf-8')
+    assert recorded_kv('glm53-flash-nvfp4-spark-tp2', 'csf', root) is None
+
+
+def test_readme_installer_columns_read_the_profile_an_alias_selects():
     from runtime.common.profiles import ROOT
     from runtime.host.models import ALIASES
-    from scripts.generate_profiles import thinking_column
+    from scripts.generate_profiles import compact_tokens, installed_defaults, installer_columns
     text = (ROOT / 'README.md').read_text(encoding='utf-8-sig')
     assert {'glm53-flash-tp2', 'glm53-flash-tp4', 'qwen38-flash-next-tp4', 'qwen38-flash-next-tp8'} <= set(ALIASES)
-    # Each alias and its profile ID give the same deployment default.
+    original = next('| ' + ' | '.join(cells) + ' |' for cells in installer_rows(text) if cells[3] == '`qwen38-flash-next-tp4`')
+    # Each alias and its profile ID give the same cells.
     for alias, ident in ALIASES.items():
-        state = thinking.deployment_default(thinking.of(ident), serving.defaults(ident))
-        summary = thinking.summary({"default": state["thinking"], "level": state["level"]})
+        facts = installed_defaults(ident)
         for name in (alias, ident):
-            row = f'| Model | Checkpoint | 4 | `{name}` | 8015 | stale |'
-            edited = text.replace('| Qwen3.8-Flash-Next | [NVFP4 QAD, Local Inference Lab]'
-                                  '(https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4) | 4 | '
-                                  '`qwen38-flash-next-tp4` | 8015 | on · xhigh |', row)
+            edited = text.replace(original, f'| Model | Checkpoint | 4 | `{name}` | stale | stale | stale |')
             assert edited != text
-            assert f'| Model | Checkpoint | 4 | `{name}` | 8015 | {summary} |' in thinking_column(edited)
+            kv = f'[{compact_tokens(facts["kv"]["tokens"])}]({facts["kv"]["source"]})' if facts['kv'] else '—'
+            row = f'| Model | Checkpoint | 4 | `{name}` | {compact_tokens(facts["context"])} | {kv} | {facts["thinking"]} |'
+            assert row in installer_columns(edited)
 
 
 def test_the_network_column_names_each_topology_in_plain_words():
