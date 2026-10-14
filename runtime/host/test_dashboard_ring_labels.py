@@ -97,8 +97,9 @@ def test_stopped_activity_and_visibility(smooth_page):
     assert page.locator(".cable-band").count() == 5
     assert page.locator(".node.serving").count() == 2
     assert page.locator(".node.serving rect").first.evaluate("e => getComputedStyle(e).filter !== 'none'")
-    assert page.locator(".traffic").count() == 1
-    dot = page.locator(".traffic")
+    assert page.locator(".traffic").count() == 2          # one dot each way on the serving ring cable
+    assert page.locator(".traffic.rev").count() == 1
+    dot = page.locator(".traffic").first
     assert dot.evaluate("e => getComputedStyle(e).animationName") != "none"
     page.emulate_media(reduced_motion="reduce")
     assert dot.evaluate("e => getComputedStyle(e).animationName") == "none"

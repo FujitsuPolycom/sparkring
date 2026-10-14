@@ -68,7 +68,7 @@ def main(argv=None):
             document = operator_view.load() if privilege.member() else None
             value = ((document or {}).get("cluster") or {}).get("name")
             if not value:
-                raise ValueError("Reading the ring name needs " + privilege.reader_request()) from None
+                raise ValueError("To read the ring name, " + privilege.reader_request()) from None
         print(value)
         return 0
     except (OSError, ValueError) as error:

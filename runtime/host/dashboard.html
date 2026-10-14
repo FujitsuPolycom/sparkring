@@ -64,6 +64,7 @@ svg .cable-band { fill: none; stroke: var(--gc); stroke-width: 18; stroke-lineca
 svg .cable-band.dim { opacity: .07; }
 svg .traffic { fill: var(--ink); offset-distance: 50%; animation: cable-traffic 3s linear infinite; pointer-events: none; }
 @keyframes cable-traffic { from { offset-distance: 15%; } to { offset-distance: 85%; } }
+svg .traffic.rev { animation-direction: reverse; animation-delay: -1.5s; }
 @media (prefers-reduced-motion: reduce) { svg .traffic { animation: none; } }
 svg .relay { fill: var(--relay); stroke: var(--surface); stroke-width: 1; }
 svg .band, svg .node { cursor: pointer; }
@@ -528,7 +529,11 @@ function ringSvg(ring, members, now) {
     const d = `M${x1},${y1 + offset} L${x2},${y2 + offset}`;
     if (same) s += `<path class="cable-band ${groupStyle(g)}" data-key="cable-band-${p}" data-member="${esc(g.id)}" style="--gc:${g.color}" d="${d}"/>`;
     s += `<path class="cable${same ? " in " + groupStyle(g) : ""}" data-key="cable-${p}" data-segment="${p}"${same ? ` data-member="${esc(g.id)}" style="--gc:${g.color}"` : ""} d="${d}"/>`;
-    if (same && g.state === "serving") s += `<circle class="traffic" data-key="traffic-${p}" r="2" style="offset-path:path('${d}')"><title>Serving cable · activity indicator</title></circle>`;
+    if (same && g.state === "serving") {
+      // One dot each way: a pair's two cables carry one direction each; a ring cable carries both.
+      const dots = N === 2 ? [p ? "traffic rev" : "traffic"] : ["traffic", "traffic rev"];
+      for (const [i, cls] of dots.entries()) s += `<circle class="${cls}" data-key="traffic-${p}-${i}" r="2" style="offset-path:path('${d}')"><title>Serving cable · activity indicator</title></circle>`;
+    }
     if (relays.has(p)) {
       const x = (x1 + x2) / 2, y = (y1 + y2) / 2;
       s += `<path class="relay" data-segment="${p}" d="M${x},${y - 4} l4,4 -4,4 -4,-4 Z"><title>Relayed route through a Spark · from cable topology</title></path>`;
