@@ -1,0 +1,75 @@
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 2: Prepare checkpoint and verify all shards
+Node 3: Prepare checkpoint and verify all shards
+Node 0: Link and verify local checkpoint files
+Node 1: Link and verify local checkpoint files
+Node 2: Link and verify local checkpoint files
+Node 3: Link and verify local checkpoint files
+Done: Node 1: Link and verify local checkpoint files (0.6s)
+Done: Node 3: Link and verify local checkpoint files (0.6s)
+Done: Node 2: Link and verify local checkpoint files (0.6s)
+Done: Node 0: Link and verify local checkpoint files (0.7s)
+Done: Node 0: Prepare checkpoint and verify all shards (3.3s)
+Node 0: Verify checkpoint receipt
+Done: Node 2: Prepare checkpoint and verify all shards (3.3s)
+Node 2: Verify checkpoint receipt
+Done: Node 1: Prepare checkpoint and verify all shards (3.3s)
+Node 1: Verify checkpoint receipt
+Done: Node 3: Prepare checkpoint and verify all shards (3.4s)
+Node 3: Verify checkpoint receipt
+Done: Node 0: Verify checkpoint receipt (0.5s)
+Done: Node 2: Verify checkpoint receipt (0.5s)
+Done: Node 1: Verify checkpoint receipt (0.5s)
+Done: Node 3: Verify checkpoint receipt (0.6s)
+Node 0: Prepare checkpoint and verify all shards
+Node 1: Prepare checkpoint and verify all shards
+Node 2: Prepare checkpoint and verify all shards
+Node 3: Prepare checkpoint and verify all shards
+Done: Node 1: Prepare checkpoint and verify all shards (0.6s)
+Node 1: Verify checkpoint receipt
+Done: Node 0: Prepare checkpoint and verify all shards (0.6s)
+Node 0: Verify checkpoint receipt
+Done: Node 2: Prepare checkpoint and verify all shards (0.7s)
+Node 2: Verify checkpoint receipt
+Done: Node 3: Prepare checkpoint and verify all shards (0.7s)
+Node 3: Verify checkpoint receipt
+Done: Node 1: Verify checkpoint receipt (0.5s)
+Done: Node 0: Verify checkpoint receipt (0.5s)
+Done: Node 2: Verify checkpoint receipt (0.5s)
+Done: Node 3: Verify checkpoint receipt (0.6s)
+Node 1: Start model
+Node 2: Start model
+Node 3: Start model
+Done: Node 2: Start model (1.6s)
+Done: Node 3: Start model (1.7s)
+Done: Node 1: Start model (1.8s)
+Node 0: Start model
+Done: Node 0: Start model (1.7s)
+Node 1: Wait for API readiness
+Node 2: Wait for API readiness
+Node 0: Wait for API readiness
+Node 3: Wait for API readiness
+Done: Node 2: Wait for API readiness (0.6s)
+Done: Node 3: Wait for API readiness (0.6s)
+Done: Node 1: Wait for API readiness (0.6s)
+Still working: Node 0: Wait for API readiness (30s)
+Still working: Node 0: Wait for API readiness (60s)
+Still working: Node 0: Wait for API readiness (90s)
+Still working: Node 0: Wait for API readiness (121s) - weights loaded
+Still working: Node 0: Wait for API readiness (151s) - weights loaded
+Still working: Node 0: Wait for API readiness (182s) - weights loaded
+Still working: Node 0: Wait for API readiness (212s) - weights loaded
+Still working: Node 0: Wait for API readiness (243s) - weights loaded
+Still working: Node 0: Wait for API readiness (273s) - weights loaded
+Still working: Node 0: Wait for API readiness (304s) - compiling kernels
+Still working: Node 0: Wait for API readiness (334s) - compiling kernels
+Still working: Node 0: Wait for API readiness (365s) - compiling kernels
+Still working: Node 0: Wait for API readiness (395s) - compiling kernels
+Still working: Node 0: Wait for API readiness (426s) - compiling kernels
+Still working: Node 0: Wait for API readiness (456s) - compiling kernels
+Still working: Node 0: Wait for API readiness (487s) - compiling kernels
+Still working: Node 0: Wait for API readiness (517s) - warming up
+Still working: Node 0: Wait for API readiness (548s) - warming up
+Still working: Node 0: Wait for API readiness (578s) - starting the API server
+Done: Node 0: Wait for API readiness (580.2s)

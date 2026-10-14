@@ -126,6 +126,42 @@ host agent forwards plugin snapshots through the existing authenticated SSH
 path while a viewer is present. The
 [command reference](commands.md#dashboard) lists what it reads and how often.
 
+### Startup progress
+
+The ring and each group card show startup phases before the API is ready:
+checkpoint check, download or copy, image load, derivation, starting, loading
+weights, compiling, B12X tuning and CUDA graph capture. Counts appear when
+the logs report them, for example `Loading weights 12/43`. Transfer progress
+appears as a whole percentage. The card shows elapsed time since the operation
+or container started, and Spark details when ranks differ. An exited container
+or failed health check shows **Failed** with the last available error line.
+An answering model API becomes **Serving** unless a fresh container observation
+reports failure; a frontend can still answer while a worker has failed.
+
+Node A's agent reads the installer's existing operation log and forwards
+container observations over the existing authenticated telemetry channels,
+at most one channel per managed Spark and eight channels per ring. The web
+service opens no Docker socket and no extra port. Reads run only while the
+six-second viewer lease is renewed; quiet mode and dashboard disable stop
+them. A pending installation appears before its final site export.
+
+Each local sample lists at most 32 managed containers and has a 1.5-second
+admission budget. Each Docker GET has a 0.4-second deadline and a 64 KiB
+response cap; an in-flight request can finish after the admission budget.
+Container logs use `tail=200`, restricted to the container's current start.
+Healthy containers need no log tail. Installer reads are capped at eight
+slice records and 64 KiB per operation log; command detail logs are excluded.
+Only known messages change phase. Unknown output leaves the previous phase
+unchanged within the same container run. A restart resets it; missing or
+expired observations fall back to API status without inventing progress.
+
+Startup observations require the host-agent package on the participating
+Sparks. They cover managed containers with deployment and rank labels.
+Unavailable ranks remain unobserved; an observed rank's phase does not assert
+that every Spark reached it. Log recognition is covered by archived vLLM,
+B12X and installer excerpts and offline browser tests, not live hardware
+qualification.
+
 The same status shows in a terminal on Node A, for example over SSH:
 
 ```bash

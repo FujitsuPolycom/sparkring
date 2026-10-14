@@ -307,6 +307,13 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .legend .rate { white-space: nowrap; }
 .totals { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
 .totals > span { height: 3.5em; overflow: auto; font-variant-numeric: tabular-nums; }
+.p-installing, .p-starting, .p-loading, .p-compiling, .p-tuning, .p-graphs { color: var(--warn); }
+.p-failed, .startup-error { color: var(--bad); }
+.lstartup { fill: var(--warn); font-family: var(--mono); text-anchor: middle; }
+.lstartup.failed { fill: var(--bad); }
+.startup-detail { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); }
+.startup-detail:empty { display: none; }
+.startup-error { flex-basis: 100%; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -468,7 +475,7 @@ function ringOwners(groups) {
     for (const p of g.positions) if (!(p in owner)) owner[p] = g;
   return owner;
 }
-const groupActive = g => !!g && ["serving", "busy", "not_ready", "starting"].includes(g.state);
+const groupActive = g => !!g && ["serving", "busy", "not_ready", "installing", "starting", "loading", "compiling", "tuning", "graphs"].includes(g.state);
 const groupStyle = g => [g?.outline ? "outline" : "", g && !groupActive(g) ? "dim" : ""].filter(Boolean).join(" ");
 
 // Host availability includes the local controller; allocation records alone do not mean busy.
@@ -487,6 +494,24 @@ function ringCounts(rings, members) {
   return {size, up, busy, idle: up - busy, down, unknown: size - up - down};
 }
 
+function startupLabel(s) {
+  const p = s?.startup;
+  return p ? (p.label || s.state_label || "Starting") + (has(p.done) && has(p.total) ? (p.unit === "%" ? ` ${Math.round(p.done)}%` : ` ${Math.round(p.done)}/${Math.round(p.total)}`) : "") : s?.state_label || "";
+}
+function ringStartupLabel(s) {
+  if (!s?.startup) return "";
+  const labels = {loading: "Weights", graphs: "CUDA graphs", installing: "Installing", tuning: "Tuning"};
+  return startupLabel({...s, startup: {...s.startup, label: labels[s.startup.phase] || s.startup.label}});
+}
+function startupDetails(s) {
+  if (!s.startup) return "";
+  const p = s.startup;
+  const differing = (p.ranks || []).filter(r => r.phase !== p.phase || r.done !== p.done || r.total !== p.total || r.error);
+  return `<div class="startup-detail mono">${differing.map(r => `<span>Spark ${esc(r.position)} · ${esc(startupLabel({startup:r}))}</span>`).join("")}
+    ${p.unobserved?.length ? `<span>${p.unobserved.length === 1 ? "Spark" : "Sparks"} ${esc(span(p.unobserved))} · Unobserved</span>` : ""}
+    ${p.error ? `<span class="startup-error">${esc(p.error)}</span>` : ""}</div>`;
+}
+
 const ringLabelMeasure = document.createElement("canvas").getContext("2d");
 function ringLabels(groups, N, cx, cy) {
   const placed = [], compact = groups.length > 4;
@@ -497,7 +522,7 @@ function ringLabels(groups, N, cx, cy) {
     let x = full ? cx : cx + radius * Math.cos(angle);
     const baseY = N === 2 ? 233 : full ? cy : cy + radius * Math.sin(angle);
     const name = g.m ? (g.m.gpu_job ? "GPU in use" : g.m.model_short || g.m.model || g.m.name) : g.r.label;
-    const size = groups.length > 1 ? 10 : 12, label = clip(name, groups.length > 1 ? 22 : 28);
+    const size = groups.length > 1 ? 10 : 12, label = clip(name, groups.length > 2 ? 16 : groups.length > 1 ? 22 : 28);
     ringLabelMeasure.font = `650 ${size}px system-ui, sans-serif`;
     const width = Math.max(ringLabelMeasure.measureText(label).width, g.size === 1 ? 64 : 86);
     // Keep the whole label inside the polygon's inner edge so it never sits on a cable or relay marker.
@@ -548,9 +573,12 @@ function ringSvg(ring, members, now) {
   for (const position of ringLabels(groups, N, cx, cy)) {
     const {g, x, size} = position, compact = groups.length > 4, y = position.y - (compact ? 11 : 13);
     const tp = g.m?.gpu_job ? "" : g.outline ? (g.m?.layout?.tp ? "TP" + g.m.layout.tp : "Unmanaged") : "TP" + (g.m?.layout?.tp || g.size);
+    const phase = ringStartupLabel(g.m);
+    const phaseSize = 9;
     const label = `<g class="lbl"><text class="l1" x="${x}" y="${y}" style="font-size:${size}px">${esc(position.label)}</text>`
       + `<text class="l2" x="${x}" y="${y + 14}">${tp ? esc(tp) + " · " : ""}${g.size === 1 ? "Spark" : "Sparks"} ${esc(span(g.positions))}</text>`
-      + `<text class="lrate" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${compact ? 14 : 18}px">${g.state === "serving" ? rate(g.m?.live?.output_tps) : "–"}<tspan class="unit"> tok/s</tspan></text></g>`;
+      + (phase ? `<text class="lstartup${g.state === "failed" ? " failed" : ""}" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${phaseSize}px">${esc(phase)}</text>`
+        : `<text class="lrate" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${compact ? 14 : 18}px">${g.state === "serving" ? rate(g.m?.live?.output_tps) : "–"}<tspan class="unit"> tok/s</tspan></text>`) + `</g>`;
     s += `<g class="band k-${g.kind} ${groupStyle(g)}" data-member="${esc(g.id)}" style="--gc:${g.color}"><title>${esc(groupTitle(g))}</title>${label}</g>`;
   }
   if (!groups.length) s += `<text class="center" x="${cx}" y="${cy}">No serving group</text>`;
@@ -625,7 +653,7 @@ function legendHtml(rings, members) {
       t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
       model = `<span title="${esc(m.model || (m.gpu_job ? gpuSummary(m) : m.name))}">${esc(m.gpu_job ? "GPU in use" : m.model_short || m.model || "—")}</span>`;
       src = m.gpu_job ? esc(gpuSummary(m)) : `${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""} · ${a.inferred ? '<span style="color:var(--warn)">inferred</span> from ' : ""}${esc(a.source_label || "")}`;
-      right = `<span class="pill p-${esc(m.state || "")}">${esc(m.state_label || "")}</span>`
+      right = `<span class="pill p-${esc(m.state || "")}">${esc(m.startup ? startupLabel(m) : m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
       t1 = `<span class="mono">${esc(g.r.label)}</span>`;
@@ -998,7 +1026,7 @@ function card(s, now) {
   if (s.gpu_job) model = esc("GPU in use · " + gpuSummary(s));
   else if (!s.model) model = '<span class="muted">No model seen yet</span>';
   else if (serving || s.unmanaged) model = esc(s.model);
-  else model = `<span class="muted">Last served:</span> ${esc(s.model)}`;
+  else model = `<span class="muted">${s.startup ? "Model:" : "Last served:"}</span> ${esc(s.model)}`;
   const note = (arc ? {
     not_ready: "The API port is open but the model isn't answering yet. It is probably still starting.",
     stopped: "Nothing listens on this deployment's API port: its model is stopped or still loading.",
@@ -1020,7 +1048,7 @@ function card(s, now) {
   }
   const sizes = s.unmanaged ? layout.label : parallelism({tp: s.settings?.tensor_parallel_size || layout.tp, dcp: s.settings?.decode_context_parallel_size || layout.dcp}) || layout.label;
   const endpoint = serving && s.endpoint ? `<span class="endpoint"><code>${esc(s.endpoint)}</code><button class="copy" type="button" data-copy="${esc(s.endpoint)}">Copy</button></span>` : "";
-  const start = !serving && !s.unmanaged && s.start_command
+  const start = !serving && !s.startup && !s.unmanaged && s.start_command
     ? `<span class="endpoint start-command"><code>${esc(s.start_command)}</code><button class="copy" type="button" data-copy="${esc(s.start_command)}" aria-label="Copy start command for ${esc(s.name)}">Copy</button></span>` : "";
   const r = s.recovery, recovery = !r ? "" : r.enabled === false ? "recovery off" : r.state === "serving" ? "recovery ok" : "recovery " + (r.state || "unknown");
   const recoveryChip = recovery ? `<span class="tag recovery-chip" title="${esc(r.summary || recovery)}">${esc(recovery)}${has(r.checked_at) ? " · " + esc(dur(now - r.checked_at).split(" ").slice(0, 2).join(" ")) + " ago" : ""}</span>` : "";
@@ -1031,9 +1059,10 @@ function card(s, now) {
       <span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
       ${tags.join("")}
-      <span class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
+      <span class="state"><span class="pill p-${esc(st)}">${esc(s.startup ? startupLabel(s) : s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
       ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
     </div>
+    ${startupDetails(s)}
     ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${acceptancePct(s.live?.acceptance)} draft acceptance${has(s.live?.accepted_per_step) ? ` · ${acceptedStep(s.live.accepted_per_step)} accepted tok/step` : ""} · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${sub}</div>

@@ -33,6 +33,9 @@ _details = None
 _console = None
 _events = None
 _operation_id = None
+_operation_started = None
+_operation_failed = False
+_bound = {}
 _lock = threading.RLock()
 
 
@@ -51,6 +54,9 @@ def emit(state, label, *, node=None, phase=None, elapsed=None, **fields):
     ``bytes_done``, ``bytes_total``, ``rate_bps``, ``percent``, ``eta_s`` or
     ``message``; keys whose value is None are left out.
     """
+    global _operation_failed
+    if state in ("error", "failed"):
+        _operation_failed = True
     if _events is None:
         return
     document = {"schema": EVENT_SCHEMA, "time": _now(), "state": state, "label": colour.plain(label), "node": node,
@@ -112,8 +118,28 @@ def bind_slice(positions):
     from runtime.host import node
     key = "ring" if positions is None else "-".join(map(str, sorted(positions)))
     root = directory()
-    node.save(root, "slice-" + key + ".json", {"operation": _operation_id}, mode=0o640)
+    marker = {"operation": _operation_id, "pid": os.getpid(), "started_at": _operation_started, "positions": positions,
+              "complete": False}
+    name = "slice-" + key + ".json"
+    _bound[name] = marker
+    node.save(root, name, marker, mode=0o640)
     share(root / ("slice-" + key + ".json"), 0o640)
+
+
+def bind_deployment(deployment, positions=None):
+    """Attach the public group identity to this operation's existing slice marker."""
+    if _operation_id is None:
+        return
+    from runtime.host import dashboard_admin, node
+    key = "ring" if positions is None else "-".join(map(str, sorted(positions)))
+    name = "slice-" + key + ".json"
+    if name not in _bound:
+        bind_slice(positions)
+    row = dashboard_admin.deployment_row(deployment, positions)
+    row["stopped"] = False
+    _bound[name]["deployment"] = row
+    node.save(directory_path := directory(), name, _bound[name], mode=0o640)
+    share(directory_path / name, 0o640)
 
 
 def operation_log():
@@ -170,13 +196,16 @@ class Tee:
 @contextlib.contextmanager
 def run(operation, *, events=None, json_output=False):
     """Log progress of ``operation``; ``events`` is a path that receives the event stream, replacing its content."""
-    global _log, _details, _console, _events, _operation_id
+    global _log, _details, _console, _events, _operation_id, _operation_started, _operation_failed
     root = directory()
     if any(p.is_symlink() for p in (root, *root.parents)):
         raise ValueError("Installation log directory contains a symlink")
     root.mkdir(parents=True, exist_ok=True, mode=0o750)
     share_directory(root, 0o750)
     _operation_id = uuid.uuid4().hex
+    _operation_started = time.time()
+    _operation_failed = False
+    _bound.clear()
     paths = [root / "install.log", root / "install-details.log",
              operation_log(), root / f"operation-{_operation_id}-details.log"]
     if any(p.is_symlink() for p in paths):
@@ -202,7 +231,21 @@ def run(operation, *, events=None, json_output=False):
                     print("Follow from another terminal: " + colour.cmd("sudo sparkring logs --follow"), flush=True, file=output)
                     emit("start", "SparkRing " + operation, phase=operation)
                     yield
+        except BaseException as error:
+            _operation_failed = True
+            lines = str(error).splitlines()
+            if lines:
+                record("Error: " + lines[-1][:500])
+            raise
         finally:
+            from runtime.host import node
+            for name, marker in _bound.items():
+                try:
+                    node.save(root, name, {**marker, "complete": True, "failed": _operation_failed}, mode=0o640)
+                    share(root / name, 0o640)
+                except OSError:
+                    pass  # Progress publication cannot fail an installation.
+            _bound.clear()
             _log = _details = _console = _events = _operation_id = None
 
 

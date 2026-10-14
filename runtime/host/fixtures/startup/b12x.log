@@ -1,0 +1,1 @@
+(Worker_TP0_DCP0 pid=295) INFO 10-08 15:40:34 [b12x_prepare.py:644] b12x autotuning uses 34 temporary KV blocks before allocating 1090 serving blocks

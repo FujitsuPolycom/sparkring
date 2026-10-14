@@ -1056,6 +1056,8 @@ def _lifecycle(argv, *, output, locks):
         recovery.forget_attempt(path)
     if restarting:
         retained_source.apply(directory, "down", cache=cache)
+    if args.operation == "up":
+        progress.bind_deployment(directory, slot)
     result = retained_source.apply(directory, args.operation, cache=cache)
     result["activity"] = assessment
     from runtime.host import api_endpoint

@@ -1612,6 +1612,7 @@ def execute(args):
         # The address shown for the model is the one this installation names,
         # or none; status and the summary read it from the deployment.
         api_endpoint.record(directory, getattr(args, "api_address", None))
+        progress.bind_deployment(directory, placement)
         _, receipts = retained_deployments(state_root, directory, lock["site"]["ranks"])
 
         def approve_stop(host, names):

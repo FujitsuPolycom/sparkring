@@ -59,7 +59,8 @@ Invariants
   ``/v1/completions`` are refused before a connection is opened.
 - The module starts no process: no SSH, no ``docker``, no ``ping``. Log
   viewing is on demand by the operator: the page shows the command that
-  prints a model's log, and the operator runs it.
+  prints a model's log, and the operator runs it. Startup progress comes from
+  bounded log reads in the viewer-leased host-agent channel, never this service.
 - While quiet mode is held, no request is sent at all, from the next
   one-second cycle on, for measurements that must see no outside traffic. An
   operator holds it with the quiet file (QUIET_PATH, ``sparkring dashboard quiet
@@ -106,6 +107,7 @@ import urllib.request
 from runtime.common.transport_names import collective_name
 from runtime.common import serving, thinking
 from runtime.host.dashboard_rates import number, plugin_fresh
+from runtime.host import startup
 
 SCHEMA = "sparkring-dashboard/v1"
 SITE_SCHEMA = "sparkring-dashboard-site/v1"
@@ -169,7 +171,9 @@ SETTING_KEYS = (
     "kv_cache_memory_bytes", "prefix_caching_enabled",
 )
 LABELS = {"busy": "Busy: API unavailable", "serving": "Serving", "not_ready": "Not ready", "stopped": "No model running",
-          "offline": "Offline", "idle": "Idle", None: "Checking"}
+          "offline": "Offline", "idle": "Idle", None: "Checking",
+          "installing": "Installing", "starting": "Starting", "loading": "Loading weights",
+          "compiling": "Compiling", "tuning": "Tuning B12X", "graphs": "Capturing CUDA graphs", "failed": "Failed"}
 MODEL_TAIL_WORDS = {"csf", "nvfp4", "fp8", "fp4", "mxfp8", "mxfp4", "int4", "int8", "awq", "gptq", "bf16",
                     "fp16", "qad", "spark", "attention", "gguf", "nf3", "exl3"}
 LABEL_RE = re.compile(r'([A-Za-z_][A-Za-z0-9_]*)="((?:[^"\\]|\\.)*)"')
@@ -853,6 +857,7 @@ class Collector:
         self.node_reports = []
         self.live_path, self.viewer_path = live_path, viewer_path
         self.live_telemetry = {}
+        self.live_startup, self.operations = {}, []
         self.next_lease = 0
         self.recovery: dict = {}      # deployment directory name -> the recovery timer's latest finding
         self.clock, self.cpu_clock = clock, cpu_clock
@@ -934,7 +939,11 @@ class Collector:
             unmanaged = unmanaged_groups(source.fabric, [*self.node_reports, self.node_status], source.deployments,
                                          self.last_cycle if self.last_cycle is not None else self.clock()) if source.fabric else []
             hidden = {r["id"] for group in unmanaged for r in group["stopped_records"]}
-            for row in [r for r in source.deployments if r["id"] not in hidden] + unmanaged:
+            pending = deployments_from_site({"schema": SITE_SCHEMA, "deployments": [op["deployment"] for op in self.operations]},
+                                            len(source.fabric["positions"])) if source is self.sources[0] and source.fabric else []
+            occupied = {p for row in pending for p in row["positions"]}
+            rows = [r for r in source.deployments if r["id"] not in hidden and not occupied.intersection(r["positions"])]
+            for row in rows + pending + [r for r in unmanaged if not occupied.intersection(r["positions"])]:
                 if row["api_host"]:
                     hosts.add(row["api_host"])
                 wanted[(source.ring_id(), row["id"])] = (source, row)
@@ -991,6 +1000,7 @@ class Collector:
         if forced or now >= self.next_files:
             self.read_status_files()
             self.next_files = now + FILES_SECONDS
+        self.read_live(now)
         self.reload_sources(forced)
         # Quiet mode is checked on every cycle (a stat and a small directory listing a second), so a
         # hold takes effect before a measurement that starts right after it.
@@ -1006,14 +1016,6 @@ class Collector:
         with self.lock:
             models = list(self.models.values())
             viewed = self.viewed(now)
-        self.live_telemetry = {}
-        if viewed and self.live_path:
-            try:
-                live = read_json(self.live_path)
-                if number(live.get("at")) and -5 <= now - live["at"] <= 6:
-                    self.live_telemetry = live.get("telemetry", {})
-            except (OSError, ValueError, AttributeError):
-                pass
         # One outstanding request per group, at most eight workers. Independent
         # heads cannot serialize healthy samples behind a slow head's timeout.
         if len(models) > 1 and viewed:
@@ -1031,6 +1033,34 @@ class Collector:
         if sent:
             self.cycle_cpu.append(self.cpu_clock() - before)
             self.cycles += 1
+
+    def read_live(self, now):
+        self.live_telemetry, self.live_startup, self.operations = {}, {}, []
+        if not self.viewed(now) or not self.live_path or (self.quiet_path and quiet_state(self.quiet_path, now)["quiet"]):
+            return
+        try:
+            live = read_json(self.live_path)
+            if number(live.get("at")) and -5 <= now - live["at"] <= 6:
+                self.live_telemetry = live.get("telemetry", {})
+                raw = live.get("startup", {})
+                self.live_startup = startup.project(raw, list(raw)[:8], now)
+                self.operations = [op for op in live.get("operations", [])[:8]
+                                   if isinstance(op, dict) and isinstance(op.get("deployment"), dict)
+                                   and op.get("phase") in startup.PHASES and number(op.get("started_at"))
+                                   and number(op.get("at")) and -5 <= now - op["at"] <= 6]
+        except (OSError, ValueError, AttributeError, TypeError):
+            pass
+
+    def startup_status(self, model):
+        deployment = model.row.get("deployment_id")
+        ranks = startup.group(self.live_startup.get(deployment, []), model.row["positions"])
+        operation = next((op for op in self.operations if op["deployment"].get("deployment_id") == deployment), None)
+        if operation:
+            # A previous run's containers must not hide checkpoint preparation.
+            if not ranks or ranks["started_at"] < operation["started_at"] or ranks["phase"] == "starting":
+                return {k: v for k, v in operation.items() if k != "deployment"}
+            ranks["started_at"] = min(operation["started_at"], ranks["started_at"])
+        return ranks
 
     def poll(self, model: Model, now: float, viewed: bool) -> bool:
         """Send the reads that are due for one model; True when any request was sent.
@@ -1051,6 +1081,9 @@ class Collector:
             return False
         if not viewed:
             return False
+        starting = self.startup_status(model)
+        if starting and (starting["phase"] == "failed" or starting["started_at"] > (model.metrics_at or 0)) and model.state == "serving":
+            model.next_metrics = min(model.next_metrics, now)
         sent = False
         cadence = METRICS_VIEWED_SECONDS
         if model.state == "serving" and model.metrics_at is not None:
@@ -1093,7 +1126,11 @@ class Collector:
                     model.metrics = None
                     model.metrics_at = None
                 model.next_metrics = now + max(cadence, FAILED_SECONDS)
-            self.set_state(model, state, now)
+            model.api_state = state
+        state = getattr(model, "api_state", model.state)
+        if starting and (state != "serving" or starting["phase"] in ("installing", "failed")):
+            state = "starting" if starting["phase"] == "ready" else starting["phase"]
+        self.set_state(model, state, now)
         if model.state == "serving" and now >= model.next_models:
             sent = True
             model.next_models = now + MODELS_SECONDS
@@ -1309,7 +1346,9 @@ class Collector:
         endpoint = row.get("display_url") or f"http://{row['api_host']}:{port}/v1"
         if not row["api_host"] or not port:
             endpoint = None
-        since = runtime.get("started_at") if serving and runtime.get("started_at") else model.state_since
+        starting = self.startup_status(model) if not serving and not row["stopped"] else None
+        since = (starting["started_at"] if starting else
+                 runtime.get("started_at") if serving and runtime.get("started_at") else model.state_since)
         capacity = dict(model.capacity) if model.capacity else None
         if capacity and runtime.get("settings"):
             capacity["max_num_seqs"] = runtime["settings"].get("max_num_seqs")
@@ -1332,6 +1371,7 @@ class Collector:
             "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record" if row.get("unmanaged") else None,
             "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
             "stopped_records": row.get("stopped_records", []),
+            "startup": starting,
             "state": model.state, "state_label": "GPU in use" if gpu_job else LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
             "endpoint": endpoint,

@@ -154,6 +154,33 @@ def cached_node_rows(state_root, output, documents, checked_at):
     return list(public.values())
 
 
+def deployment_row(directory, slot=None, size=None):
+    """Public deployment fields shared by site export and active installation progress."""
+    from runtime.common import installer
+    from runtime.host import api_endpoint
+    from runtime.host import placement as placements
+    lock = installer.read(Path(directory) / "deployment.lock.json")
+    connection = installer.connection(lock)
+    host = urllib.parse.urlsplit(connection["api_url"]).hostname
+    positions = list(slot) if slot else list(range(size or len(lock["site"]["ranks"])))
+    shown = api_endpoint.recorded(directory)
+    containers = []
+    try:
+        for row in installer.containers(lock):
+            if CONTAINER_RE.fullmatch(row["name"]):
+                containers.append({"position": positions[row["rank"]], "name": row["name"]})
+    except (ValueError, KeyError, TypeError, IndexError):
+        containers = []
+    return {"id": Path(directory).name, "deployment_id": lock["id"], "profile": placements.profile_of(directory),
+                 "checkpoint": lock["selection"].get("target_variant"),
+                 "serving": {k: v for k, v in (lock.get("serving") or {}).items()
+                             if k in ("reasoning_effort", "thinking")},
+                 "model": connection["model"], "positions": positions, "api_host": host,
+                 "api_port": connection["port"],
+                 "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,
+                 "stopped": placements.stopped(directory), "containers": containers}
+
+
 def site_from_records(state_root: Path) -> dict:
     """The sparkring-dashboard-site/v1 document of every slot's active deployment on this controller.
 
@@ -162,8 +189,7 @@ def site_from_records(state_root: Path) -> dict:
     the display URL when one is recorded, whether its last operation stopped it, and each rank's
     model container name (``installer.containers``). Checkpoint selection and the public
     thinking settings let the reader resolve defaults from the shipped thinking records."""
-    from runtime.common import installer
-    from runtime.host import api_endpoint, controller
+    from runtime.host import controller
     from runtime.host import placement as placements
     rows = []
     size = None
@@ -175,26 +201,7 @@ def site_from_records(state_root: Path) -> dict:
         directory = placements.recorded(state_root, slot)
         if not placements.exists(directory):
             continue
-        lock = installer.read(Path(directory) / "deployment.lock.json")
-        connection = installer.connection(lock)
-        host = urllib.parse.urlsplit(connection["api_url"]).hostname
-        positions = list(slot) if slot else list(range(size or len(lock["site"]["ranks"])))
-        shown = api_endpoint.recorded(directory)
-        containers = []
-        try:
-            for row in installer.containers(lock):
-                if CONTAINER_RE.fullmatch(row["name"]):
-                    containers.append({"position": positions[row["rank"]], "name": row["name"]})
-        except (ValueError, KeyError, TypeError, IndexError):
-            containers = []
-        rows.append({"id": Path(directory).name, "deployment_id": lock["id"], "profile": placements.profile_of(directory),
-                     "checkpoint": lock["selection"].get("target_variant"),
-                     "serving": {k: v for k, v in (lock.get("serving") or {}).items()
-                                 if k in ("reasoning_effort", "thinking")},
-                     "model": connection["model"], "positions": positions, "api_host": host,
-                     "api_port": connection["port"],
-                     "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,
-                     "stopped": placements.stopped(directory), "containers": containers})
+        rows.append(deployment_row(directory, slot, size))
     from runtime.host import ring_name
     return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows,
             "display_name": ring_name.read(state_root)}

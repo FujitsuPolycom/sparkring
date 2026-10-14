@@ -13,7 +13,7 @@ def snapshot(at=1000):
     return member(document(at, 10, 30, plugin=True))["plugin_counters"]
 
 
-def test_only_configured_heads_once_per_group(tmp_path):
+def test_only_configured_sparks_once_per_group(tmp_path):
     controller = tmp_path / "controller"
     controller.mkdir()
     (tmp_path / "dashboard").mkdir()
@@ -23,7 +23,7 @@ def test_only_configured_heads_once_per_group(tmp_path):
             {"positions": [2, 3], "deployment_id": "dcp2"},
             {"positions": [4, 5], "deployment_id": "stopped", "stopped": True}]
     (tmp_path / "dashboard/site.json").write_text(json.dumps({"deployments": rows}))
-    assert live.heads(controller) == ({hosts[0]["host"]: ["tp2"], hosts[2]["host"]: ["dcp2"]}, hosts[0]["host"])
+    assert live.heads(controller) == ({hosts[n]["host"]: ["tp2" if n < 2 else "dcp2"] for n in range(4)}, hosts[0]["host"])
 
 
 def test_lease_quiet_disable_expiry_and_future(tmp_path):
