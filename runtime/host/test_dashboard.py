@@ -228,15 +228,15 @@ def test_collection_sends_only_get_requests_to_read_paths_and_starts_no_process(
     assert found.snapshot()["collector"]["requests"] == {p: paths_of(api).count(p) for p in set(paths_of(api))}
 
 
-def test_metrics_are_read_every_five_seconds_while_viewed_and_every_ten_seconds_otherwise(tmp_path):
+def test_metrics_are_read_every_two_seconds_only_while_viewed(tmp_path):
     found, api, clock = collector(tmp_path, rows=PAIRS[:1])
     run_for(found, clock, 600, viewer=True)
     viewed = paths_of(api).count("/metrics")
-    assert 118 <= viewed <= 122                       # 600 s / 5 s
+    assert viewed == 300                             # 600 s / 2 s
     api.requests.clear()
     clock.now += dashboard.VIEWER_SECONDS             # the browser went away
     run_for(found, clock, 600)
-    assert 59 <= paths_of(api).count("/metrics") <= 61  # 600 s / 10 s
+    assert api.requests == []
     assert paths_of(api).count("/v1/models") <= 11
     api.requests.clear()
     found.mark_viewed()                               # a viewer comes back: the next cycle reads at once
@@ -288,7 +288,7 @@ def test_reads_continue_after_the_clock_steps_back(tmp_path, capsys):
     clock.now -= 3600
     api.requests.clear()
     run_for(found, clock, 30, viewer=True)
-    assert paths_of(api).count("/metrics") == 4 * 6                  # every 5 s, as before the step
+    assert paths_of(api).count("/metrics") == 4 * 15                 # every 2 s, as before the step
     assert "the clock went back by 3599 s" in capsys.readouterr().err   # from the last cycle, 1 s before the step
     member = found.snapshot()["groups"][0]["members"][0]
     assert all(row[0] <= clock.now for row in member["history"])
@@ -451,6 +451,7 @@ def export_to(site, rows=PAIRS):
 def test_a_site_file_written_after_the_start_is_read_at_the_next_cycle(tmp_path):
     found, api, clock, site = started_without_a_site_file(tmp_path)
     export_to(site)
+    found.mark_viewed()
     clock.now += 1
     found.cycle()
     assert len(found.models) == 4 and found.snapshot()["topology"]["detail"] is None
@@ -465,7 +466,7 @@ def test_a_site_file_written_in_quiet_mode_is_read_and_polled_once_quiet_ends(tm
     run_for(found, clock, 5)
     assert len(found.models) == 4 and api.requests == []       # files are local; no request in quiet mode
     quiet.unlink()
-    run_for(found, clock, 1)
+    run_for(found, clock, 1, viewer=True)
     assert paths_of(api).count("/metrics") == 4
 
 

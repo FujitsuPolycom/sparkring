@@ -49,6 +49,9 @@ class ViewerRates:
             plugin, fallback = fallback, None
         if not fallback:
             if not (member.get("source") == "plugin" and plugin_fresh(plugin, None, now)):
+                if (quiet or member.get("state") != "serving") and isinstance(member.get("live"), dict):
+                    member["live"].update({k: None for k in ("output_tps", "prefill_tps", "prompt_tps", "steps_ps",
+                                                          "accepted_per_step", "acceptance")})
                 # An older service can still supply derived values.
                 state = self.members.get(member["id"])
                 if state:
@@ -56,7 +59,7 @@ class ViewerRates:
                     history = state["history"]
                     if history and history[-1][1:] != [None] * 6:
                         history.append([now, *([None] * 6)])
-                    state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
+                    state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-10801:]
                 return
             fallback = {}
         use = plugin_fresh(plugin, fallback, now)
@@ -68,8 +71,8 @@ class ViewerRates:
         samples, history = state["samples"], state["history"]
         key = (source, sample["run_id"])
         keys = ("gen", "prompt", "accepted", "drafts", "draft_tokens", "steps", "ttft_sum", "ttft_count",
-                "pc_hits", "pc_queries", "step_seconds")
-        if quiet or member.get("boundary") or state["key"] != key or (samples and (
+                "pc_hits", "pc_queries", "step_seconds", "step_accepted")
+        if quiet or member.get("state") != "serving" or member.get("boundary") or state["key"] != key or (samples and (
                 not number(sample["at"]) or sample["at"] - samples[-1]["at"] > 185
                 or stamp is None or stamp < samples[-1]["clock"] or any(
                 number(values.get(k)) and number(samples[-1]["values"].get(k))
@@ -83,7 +86,7 @@ class ViewerRates:
         added = fresh and (not samples or stamp > samples[-1]["clock"])
         if added:
             samples.append(sample)
-            state["samples"] = samples = [s for s in samples if stamp - s["clock"] <= 360][-100:]
+            state["samples"] = samples = [s for s in samples if stamp - s["clock"] <= 360][-181:]
 
         def delta(k, seconds):
             if not fresh or len(samples) < 2:
@@ -96,12 +99,12 @@ class ViewerRates:
             dt = newest["clock"] - base["clock"]
             return (a - b, dt) if number(a) and number(b) and a >= b and dt > 0 else None
 
-        def rate(k, seconds=15):
+        def rate(k, seconds=6):
             d = delta(k, seconds)
             return d[0] / d[1] if d else None
 
-        def ratio(a, b):
-            x, y = delta(a, 300), delta(b, 300)
+        def ratio(a, b, seconds=300):
+            x, y = delta(a, seconds), delta(b, seconds)
             return x[0] / y[0] if x and y and y[0] > 0 else None
 
         prefill = None
@@ -109,7 +112,7 @@ class ViewerRates:
             a, b = samples[-1], samples[-2]
             x, y = a["values"].get("prompt"), b["values"].get("prompt")
             if number(x) and number(y) and x > y:
-                prefill = (x - y) / (a["clock"] - b["clock"])
+                prefill = rate("prompt")
         acceptance = ratio("accepted", "drafts")
         # No running or waiting request means no decode, whatever the last counter interval averaged.
         idle = fresh and values.get("running") == 0 and values.get("waiting") == 0
@@ -117,8 +120,9 @@ class ViewerRates:
                           **{k: values.get(k) for k in ("running", "waiting", "kv")},
                           "source": source, "read_at": sample["at"], "prefill_tps": prefill,
                           "prompt_tps": prefill, "output_tps": 0 if idle else rate("gen"), "output_tps_5m": rate("gen", 300),
-                          "steps_ps": rate("steps") if use and values.get("step_timing") else None,
-                          "acceptance": ratio("accepted", "draft_tokens"),
+                          "steps_ps": (0 if idle else rate("steps")) if use and values.get("step_timing") else None,
+                          "accepted_per_step": ratio("step_accepted", "steps", 6) if use and values.get("step_timing") and not idle else None,
+                          "acceptance": ratio("accepted", "draft_tokens", 6),
                           "accept_length_5m": 1 + acceptance if acceptance is not None else None,
                           "ttft_5m": ratio("ttft_sum", "ttft_count"), "prefix_hit_5m": ratio("pc_hits", "pc_queries")}
         # The prefix-cache ratio needs /metrics counters the plugin lacks; feed the
@@ -132,7 +136,7 @@ class ViewerRates:
         if added:
             history.append([sample["at"], 0 if idle else rate("gen"), values.get("running"), values.get("waiting"),
                             values.get("kv"), prefill, source])
-        state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-4321:]
+        state["history"] = member["history"] = [h for h in history if now - h[0] <= 21600][-10801:]
 
     def ingest(self, model_id, row):
         state = self.members.get(model_id)

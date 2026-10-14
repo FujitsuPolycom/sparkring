@@ -385,6 +385,10 @@ def model_details(member: dict, now: float, width: int = 100) -> list:
             (f"{prompt_tps:,.0f} t/s" if prompt_tps is not None else "\u2014", GOOD),
             (" \u00b7 " + ("plugin" if live.get("source") == "plugin" else "approx /metrics"), style(dim=True)))
         add(lbl("steps"), (f"{live['steps_ps']:.0f} steps/s" if live.get("steps_ps") is not None else "\u2014", INFO))
+        if live.get("acceptance") is not None:
+            add(lbl("acceptance"), (f"{live['acceptance'] * 100:.1f}%", INFO))
+        if live.get("accepted_per_step") is not None:
+            add(lbl("accepted"), (f"{live['accepted_per_step']:.1f} tok/step", INFO))
         history = member.get("history") or []
         if len(history) > 1:
             span = dur_short(history[-1][0] - history[0][0])

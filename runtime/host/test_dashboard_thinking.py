@@ -50,6 +50,7 @@ def test_collector_and_terminal_defaults(tmp_path, profile, kwargs, expected, en
     runtime["effective"]["default_chat_template_kwargs"] = {
         "state": "known", "value": json.dumps(kwargs) if encoded and kwargs is not None else kwargs}
     api.bodies[(row["api_host"], row["api_port"], "/v1/sparkring/status")] = json.dumps(runtime).encode()
+    found.mark_viewed()
     found.cycle()
     requests = list(api.requests)
     member = found.snapshot()["groups"][0]["members"][0]
@@ -97,5 +98,6 @@ def test_unmanaged_observed_defaults(tmp_path, kwargs, expected, source):
     host = found.sources[0].fabric["positions"][0]["address"]
     api.bodies[(host, 9123, "/v1/sparkring/status")] = json.dumps(runtime).encode()
     install_reports(found, docs, tmp_path)
+    found.mark_viewed()
     found.cycle()
     assert found.snapshot()["groups"][0]["members"][0]["thinking"] == expected

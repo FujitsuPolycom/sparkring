@@ -25,7 +25,7 @@ class SparkRingStatLogger(StatLoggerBase):
         self.next_write = 0.0
         self.last_step = None
         self.values = dict(prompt=0, gen=0, accepted=0, drafts=0, draft_tokens=0,
-                           steps=0, step_seconds=0.0, ttft_sum=0.0, ttft_count=0,
+                           steps=0, step_accepted=0, step_seconds=0.0, ttft_sum=0.0, ttft_count=0,
                            running=0, waiting=0, kv=0.0)
         self.identity = dict(schema="sparkring-stats/v1", run_id=uuid.uuid4().hex,
                              deployment_id=os.environ.get("SPARKRING_STATS_DEPLOYMENT", ""))
@@ -46,7 +46,7 @@ class SparkRingStatLogger(StatLoggerBase):
                 pass
 
     def record(self, scheduler_stats, iteration_stats, mm_cache_stats=None, engine_idx=0):
-        if not self.enabled:
+        if not self.enabled or engine_idx != 0:
             return
         try:
             self._record(scheduler_stats, iteration_stats)
@@ -66,13 +66,16 @@ class SparkRingStatLogger(StatLoggerBase):
         if scheduler is not None:
             v.update(running=scheduler.num_running_reqs, waiting=scheduler.num_waiting_reqs,
                      kv=scheduler.kv_cache_usage)
-            details = scheduler.iteration_details
-            if details is not None and details.iteration_index != self.last_step and not details.is_dummy:
+            details = getattr(scheduler, "iteration_details", None)
+            spec = getattr(scheduler, "spec_decoding_stats", None)
+            new_step = details is not None and details.iteration_index != self.last_step and not details.is_dummy
+            if new_step:
                 self.last_step = details.iteration_index
                 v["steps"] += 1
                 v["step_seconds"] += details.elapsed_ms / 1000
-            spec = scheduler.spec_decoding_stats
-            if spec is not None:
+                if spec is not None:
+                    v["step_accepted"] += spec.num_accepted_tokens
+            if spec is not None and (details is None or new_step):
                 v["accepted"] += spec.num_accepted_tokens
                 v["drafts"] += spec.num_drafts
                 v["draft_tokens"] += spec.num_draft_tokens

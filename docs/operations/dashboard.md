@@ -121,7 +121,9 @@ http://NODE_A_LAN_ADDRESS:8090/
   commands rewrite its site file and run `systemctl reload sparkring-dashboard`,
   and the service also notices a changed site file by itself.
 
-It sends no inference request and opens no SSH session. The
+It sends no inference request. The web service opens no SSH session; Node A's
+host agent forwards plugin snapshots through the existing authenticated SSH
+path while a viewer is present. The
 [command reference](commands.md#dashboard) lists what it reads and how often.
 
 The same status shows in a terminal on Node A, for example over SSH:
@@ -134,8 +136,8 @@ sparkring dashboard tui --once     # one frame as plain text
 It reads the page's service on Node A at `http://127.0.0.1:8090`, or at
 `NODE_A_LAN_ADDRESS` when nothing answers on loopback, and refuses any other
 host. It sends nothing to any other Spark itself. Like an open page, it makes the service read each model's metrics
-every 5 s instead of every 10 s (every minute with fresh plugin snapshots); `--passive` leaves the service's reads
-unchanged. Each model's card ends with its Sparks' rank, LAN address, memory
+every 2 s; reads stop six seconds after the last viewer poll. `--passive`
+does not renew that viewer lease. Each model's card ends with its Sparks' rank, LAN address, memory
 and free disk, which is red below 2 % of the disk.
 
 Each card's **Thinking** line shows what applies when a request does not
@@ -186,7 +188,9 @@ a level. This display adds no model API requests.
 
 Serving cards show four tiles (output, prefill, running/max requests and KV
 in use as a percentage of tokens), then three compact graphs and node chips.
-Steps and draft acceptance share a secondary line. Empty graphs show a baseline
+Steps/s, draft acceptance (one decimal), and accepted draft tokens per engine
+step share a secondary line. Steps require iteration details; missing details
+show a dash. Empty graphs show a baseline
 and **no data yet**. Stopped deployments show their state, last model and a
 copyable start command. **Details** expands settings, recovery, totals, logs
 and container facts; node chips for stopped deployments are there too.
@@ -195,10 +199,24 @@ The ring page and terminal show prefill tokens/s during intervals with
 prompt activity. Idle shows a dash. `/metrics` prefill is labelled
 **approximate**; compatible images can supply computed-token counters through
 the SparkRing stat logger. Each card names its source and observation time.
-Plugin updates follow the existing host-agent and node-cache cadence, even
-when automatic recovery is off. Reading the cache adds no remote requests;
-quiet mode suspends its collection. Snapshots older than 180 seconds fall
-back to `/metrics`, as do missing snapshots.
+While a viewer is present, each group is sampled every 2 seconds. Output and
+steps/s use about six seconds of samples. Idle output and steps/s are zero;
+stopped groups retain no live rate. A restart or counter reset starts a fresh
+window.
+
+The host agent forwards head snapshots every 2 seconds, independently of the
+minute node cache and automatic recovery. Node A reads its own head locally;
+remote heads use one persistent channel on the existing SSH path and credentials.
+No listening port is added. The six-second viewer lease expires after the last
+page or terminal poll; forwarding stops at the next two-second agent tick.
+Quiet mode also stops forwarding. Plugin snapshots older than 12 seconds fall
+back to `/metrics` while viewed, so the minute cache cannot hold rates back.
+
+Iteration details are opt-in: add `--enable-logging-iteration-details` to a
+vLLM serving profile's `vllm_args` (or the equivalent direct vLLM serve command).
+It enables vLLM's CPU iteration bookkeeping and per-iteration log output, which
+can add log I/O. Spark serving overhead has not been measured. The dashboard
+does not enable it automatically. See the [cost and counter contract](../development/dashboard-counters.md#plugin-packaging-and-delivery).
 
 Hover a graph for its value and timestamp. **Window** selects Auto, 5 min,
 15 min, 1 h or 3 h for all cards' graphs from the page header. Auto fills

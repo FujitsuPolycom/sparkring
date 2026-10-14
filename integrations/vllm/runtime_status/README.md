@@ -466,6 +466,20 @@ path; without that path the logger is inactive. It adds no endpoint or model
 request. The writer drops failed writes and retains at most one pending
 snapshot. Multi-engine data parallelism is disabled.
 
+Real steps use distinct, non-dummy `SchedulerIterationDetails` records. The
+optional `step_accepted` counter includes only accepted speculative tokens
+associated with those records; dividing its delta by the step delta gives
+accepted draft tokens per engine step without inferring scheduler activity
+from generation counters. Enable vLLM's `--enable-logging-iteration-details`
+serving setting to supply details. It adds CPU bookkeeping and per-iteration
+log I/O; Spark serving overhead is unmeasured. Without it, steps remain
+unavailable. Existing wheels without `step_accepted` continue to supply token
+rates and acceptance; the per-step value requires rebuilding the plugin.
+
+While a ring viewer is present, Node A's agent forwards snapshots from each
+head over the existing authenticated agent path every two seconds. This does
+not change the logger's publication rate or enable iteration logging.
+
 The [counter contract and verification plan](../../../docs/development/dashboard-counters.md)
 describe fields, rate precision, image composition, host delivery, CPU tests
 and the required DeepSeek on/off hardware comparison. The package remains

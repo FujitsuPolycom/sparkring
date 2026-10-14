@@ -71,6 +71,7 @@ def main(argv=None):
     facts.add_argument("--interface", metavar="NAME", help="also print this interface's IPv4 address")
     commands.add_parser("sircl-tuning", help="write the measured SIRCL tuning tables that Node A sends on stdin as "
                                              "this Spark's copies (sparkring fabric tune)")
+    commands.add_parser("telemetry", help="stream public stat snapshots on the authenticated agent channel")
     status = commands.add_parser("status")
     status.add_argument("--refresh", action="store_true")
     hairpin = commands.add_parser("hairpin", help="ConnectX hairpin setting of a four-Spark ring member")
@@ -93,12 +94,16 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.action == "hairpin" and args.hairpin_action == "apply" and args.boot and not args.dry_run:
         parser.error("--boot requires --dry-run")
-    unprivileged = ((args.action == "status" and not args.refresh)
+    unprivileged = (args.action == "telemetry" or (args.action == "status" and not args.refresh)
                     or (args.action == "host-load" and args.host_load_args[:1] == ["show"])
                     or (args.action == "hairpin" and args.hairpin_action == "status" and not args.busy))
     try:
         if not unprivileged and (not hasattr(os, "geteuid") or os.geteuid() != 0):
             raise ValueError("This local administrative action requires sudo")
+        if args.action == "telemetry":
+            from runtime.host.telemetry_live import stream
+            stream()
+            return 0
         if args.action == "initialize":
             result = node.initialize()
         elif args.action.startswith("control-"):

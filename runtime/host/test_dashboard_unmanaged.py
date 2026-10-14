@@ -78,6 +78,7 @@ def test_grouping_head_endpoint_incomplete_and_single(tmp_path, positions, size)
     found, api, clock = collector(tmp_path, rows=())
     documents = reports(found, clock, positions, size)
     install_reports(found, documents, tmp_path)
+    found.mark_viewed()
     found.cycle()
     member = found.snapshot()["groups"][0]["members"][0]
     assert member["arc"]["positions"] == positions
@@ -111,9 +112,11 @@ def test_stopped_record_is_retained_in_live_card_details_and_quiet_blocks_all_re
     site.write_text(json.dumps(value))
     install_reports(found, reports(found, clock), tmp_path)
     found.quiet_path.write_text("")
+    found.mark_viewed()
     found.cycle()
     assert api.requests == []
     found.quiet_path.unlink()
+    found.mark_viewed()
     found.cycle()
     members = found.snapshot()["groups"][0]["members"]
     assert len(members) == 1 and members[0]["stopped_records"][0]["model"] == "Prior"
@@ -142,6 +145,7 @@ def test_no_discovery_scans_and_busy_without_api(tmp_path, case):
     elif case == "refused":
         api.behaviour[(found.sources[0].fabric["positions"][0]["address"], 9123)] = "refused"
     install_reports(found, docs, tmp_path)
+    found.mark_viewed()
     found.cycle()
     if case != "refused":
         assert api.requests == []
@@ -156,9 +160,10 @@ def test_no_discovery_scans_and_busy_without_api(tmp_path, case):
 def test_facts_expire_and_polled_api_uses_shared_cadence(tmp_path):
     found, api, clock = collector(tmp_path, rows=())
     install_reports(found, reports(found, clock), tmp_path)
-    run_for(found, clock, 21)
-    assert [urlparse(r.full_url).path for r in api.requests].count("/metrics") == 3
+    run_for(found, clock, 21, viewer=True)
+    assert [urlparse(r.full_url).path for r in api.requests].count("/metrics") == 11
     clock.now += 100
+    found.mark_viewed()
     found.cycle()
     assert not found.models
 
@@ -237,10 +242,12 @@ def test_api_without_metrics_is_serving_with_unknown_counters(tmp_path):
             raise HTTPError(request.full_url, 404, "metrics disabled", {}, None)
         return original(request, **kwargs)
     api.open = no_metrics
+    found.mark_viewed()
     found.cycle()
     member = found.snapshot()["groups"][0]["members"][0]
     assert member["state"] == "serving" and member["counters"] is None
     clock.now += 20
+    found.mark_viewed()
     found.cycle()
     assert found.snapshot()["groups"][0]["members"][0]["state"] == "serving"
 
@@ -268,6 +275,7 @@ def test_remote_cache_projects_only_public_facts_without_active_deployments(tmp_
     assert dashboard_admin.refresh_nodes(**arguments) == dict(zip(hosts, docs))
     assert calls == [hosts] and "PRIVATE" not in output.read_text()
     found.node_reports_path = output
+    found.mark_viewed()
     found.cycle()
     assert len(found.models) == 1
     assert found.snapshot()["groups"][0]["members"][0]["thinking"] == "on · high"
@@ -307,6 +315,7 @@ def test_api_bind_must_belong_to_head_spark_not_rendezvous(tmp_path, bind, allow
     docs[0]["model_containers"][0]["master_addr"] = "203.0.113.99"
     docs[1]["model_containers"][0]["master_addr"] = "203.0.113.99"
     install_reports(found, docs, tmp_path)
+    found.mark_viewed()
     found.cycle()
     assert bool(api.requests) == allowed
     assert not any("203.0.113.99" in r.full_url for r in api.requests)

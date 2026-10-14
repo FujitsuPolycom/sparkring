@@ -136,6 +136,7 @@ def test_muted_unmanaged_and_dim_stopped(smooth_page):
 
 def test_collector_colors_follow_lowest_position_and_terminal_palette(tmp_path):
     found, _, _ = collector(tmp_path, rows=tuple(reversed(PAIRS)))
+    found.mark_viewed()
     found.cycle()
     members = found.snapshot()["groups"][0]["members"]
     assert [(min(m["arc"]["positions"]), m["arc"]["color"]) for m in members] == [(0, 0), (2, 1), (4, 2), (6, 3)]

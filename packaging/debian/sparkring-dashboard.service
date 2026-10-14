@@ -19,6 +19,8 @@ RestartSec=30
 # Unprivileged: the fabric document, the site file, the host-agent status and the recovery
 # record it reads are mode 0644. It holds no SSH key and starts no process.
 DynamicUser=yes
+RuntimeDirectory=sparkring-dashboard
+RuntimeDirectoryMode=0755
 CapabilityBoundingSet=
 AmbientCapabilities=
 NoNewPrivileges=yes

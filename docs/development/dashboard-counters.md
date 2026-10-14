@@ -24,7 +24,12 @@ also runs during quiet mode. Only fixed numeric counter/gauge fields, a
 bounded run identity, source timestamps, a sequence number and a gap flag
 are retained. Each retained sample explicitly labels its selected source as `plugin` or
 `metrics`.
-No derived rate is stored.
+No derived rate is stored. The live envelope updates every two seconds;
+archive rows are retained at least five seconds apart (normally six seconds
+at the two-second sample cadence). Source/run changes and counter resets
+bypass thinning and insert boundaries. Every live sample is checked for a
+reset before thinning, so a reset between archive rows cannot create a spike.
+The browser merges live envelopes into its own two-second session history.
 
 ### Unmanaged model observations
 
@@ -111,9 +116,9 @@ merges by sequence, then by source/run/timestamp, so the initial fetch and
 live polling cannot duplicate observations. A service restart resets rate
 baselines while preserving the open browser's graph history.
 
-The browser keeps up to six hours, capped at 4,321 graph points per
+The browser keeps up to six hours, capped at 10,801 graph points per
 deployment, including gap markers; its five-minute counter window is
-capped at 100 samples. Reloading replaces its session history with the
+capped at 181 samples. Reloading replaces its session history with the
 available server history. Expanded graphs include both stored history and
 samples acquired during that browser session. The terminal consumes the
 latest sample in its existing status request and keeps its own bounded
@@ -129,11 +134,12 @@ before computing the Content Security Policy hash; no asset request is added.
 
 | Value | Computation in the viewer |
 |---|---|
-| Prefill | Increase in prompt tokens divided by elapsed time between the last two distinct samples |
-| Output / decode | Increase in generated tokens over a 15-second window; if observations are farther apart, the last two observations |
+| Prefill | Increase in prompt tokens over about six seconds, shown only when the latest distinct interval has prompt activity |
+| Output / decode | Increase in generated tokens over a six-second window; if observations are farther apart, the last two observations |
 | Five-minute output | Increase in generated tokens over the available five-minute window |
 | Steps | Increase in observed, non-dummy iteration-detail records divided by elapsed time; unavailable without vLLM iteration details |
-| Accepted drafts | Increase in accepted draft tokens divided by increase in verified draft tokens |
+| Accepted drafts | Increase in accepted draft tokens divided by increase in verified draft tokens over six seconds |
+| Accepted tokens per step | Increase in `step_accepted` divided by observed non-dummy steps over six seconds; excludes bonus tokens and is unavailable without matching iteration details |
 | Draft length | One bonus token plus accepted draft tokens divided by draft rounds over five minutes |
 | First token | Increase in first-token latency sum divided by increase in count over five minutes |
 | Prefix hits | Increase in `/metrics` cache hits divided by queries over five minutes, even when token counters come from the plugin |
@@ -154,10 +160,13 @@ appear when vLLM reports them to its frontend. Source labels distinguish
 `plugin` from `/metrics`; read timestamps expose observation age. Prefix
 hits always retain the `/metrics` source.
 
+Idle output and steps/s are zero when both running and waiting gauges are zero.
+Stopped groups clear their live rate window, including when stale counters are still present.
 Duplicate timestamps add no history. A source or run identity change, a
 backward timestamp, or a decreasing counter clears that source's rate
-window and inserts a graph boundary, preserving earlier graph history. Missing counters remain unavailable. Plugin data older
-than 180 seconds, more than five seconds in the future, or dated before
+window and inserts a graph boundary, preserving earlier graph history. Missing counters remain unavailable. Live plugin data older than 12 seconds falls back to the fresh metrics read;
+archived observations are validated at their observation time with the compatibility
+180-second limit. Data more than five seconds in the future, or dated before
 the `/metrics` process start falls back to `/metrics`. Cross-host wall
 clocks therefore need synchronization for freshness checks; plugin rate
 division uses monotonic time. A source transition needs two samples before
@@ -179,7 +188,8 @@ catch-up. A hovered plot resolves the sample at the pointer again after redraw.
 
 Status updates are applied in one animation frame. A separate one-second
 timer schedules only age-label updates. Hidden documents defer DOM work and
-catch up in one frame on visibility return; status request cadence is unchanged.
+catch up in one frame on visibility return; their two-second status polling
+continues and renews the viewer lease until the page is closed.
 Fixed tile/value/readout slots and responsive SVG view boxes prevent changing
 numbers from moving neighbouring controls. Missing values retain their slots.
 
@@ -204,7 +214,8 @@ The fractional display exceptions are:
 
 | Measurement | Precision | Reason |
 |---|---|---|
-| Draft acceptance length | 2 places | A fractional token per draft step distinguishes draft effectiveness |
+| Draft acceptance | 1 place | Small acceptance changes remain visible |
+| Accepted draft tokens per engine step | 1 place | A fractional token distinguishes draft effectiveness |
 | KV concurrency below 10× | 2 places | Fractions show whether another full-context request fits |
 | Memory below 10 TB (TiB in the terminal) | 1 place | Whole terabytes hide substantial capacity differences |
 | First-token latency below 10 s | 1 place | Whole seconds hide interactive latency differences |
@@ -216,7 +227,7 @@ precision for drawing; they are not displayed numeric text.
 ## Plugin packaging and delivery
 
 [SparkRingStatLogger](../../integrations/vllm/runtime_status/sparkring_runtime_status/stat_logger.py)
-ships in `sparkring-runtime-status` 0.3.7 through the
+ships in `sparkring-runtime-status` 0.3.7 and later through the
 `vllm.stat_logger_plugins` entry point `sparkring_stats`. The existing
 [status wheel composition](../../runtime/images/installer-images.md#replacing-the-runtime-status-package)
 accepts its wheel/source pins, records the added entry point and leaves
@@ -249,68 +260,79 @@ A changed statistics interface disables the logger rather than failing
 serving. Data-parallel configurations with more than one engine are disabled
 to avoid presenting partial totals as deployment totals.
 
+To opt in, append `--enable-logging-iteration-details` to the serving profile's
+`vllm_args`, or to a direct vLLM serve command. Keep it absent to avoid its CPU
+bookkeeping and per-iteration log I/O. The dashboard does not change this
+serving setting. [vLLM's observability reference](https://docs.vllm.ai/en/v0.15.0/api/vllm/config/observability/)
+describes the fields and opt-in flag. The logger's CPU regression budget is
+25 microseconds per `record()` call with blocked storage; this is a test-machine
+budget, not measured Spark serving overhead. No DGX performance claim is made.
+
 Step duration uses `SchedulerIterationDetails.elapsed_ms`. These details
 exist only when vLLM's `enable_logging_iteration_details` is already enabled;
 the plugin does not enable it. Absent details make steps/s and duration
 unavailable. First-token durations are the existing frontend latency list.
 The plugin provides no isolated prefill kernel duration.
 
-The host agent includes bounded regular-file snapshots in its existing
-status document. The recovery checker copies only the deployment head's
-snapshot from its existing `node status` response into the recovery finding.
-The dashboard reads that finding and its local agent status at the existing
-30-second file cadence. The local path uses the lock's deployment ID, not
-the controller directory name. Remote delivery depends on the existing
-recovery checker being enabled and eligible to observe the deployment.
-Its roughly one-minute interval, and any slower host-agent serving interval,
-limit plugin freshness. There is no added SSH call, endpoint, polling loop
-or websocket for plugin delivery. Dashboard quiet
-mode suppresses its requests and rate updates; it does not disable the
-independent vLLM logger or change the host-agent/recovery schedules.
+The host agent retains the ordinary minute-cache path for inventory. For live
+statistics, the unprivileged web service touches `/run/sparkring-dashboard/viewer`
+at most once per two seconds after an authenticated, non-passive status request.
+The root agent trusts only this file's modification time, never its contents.
+It derives heads and deployment IDs from the root-owned controller cluster and
+dashboard site records. A missing, future-dated or older-than-six-second lease,
+quiet hold, or dashboard-disable marker closes forwarding on its next two-second
+tick. A controller installed after the agent starts is detected at its normal
+observation cycle. Worker agents start no forwarding monitor.
+
+`telemetry_live.py` uses recovery's `discovery.ssh_argv` transport and its existing
+SSH configuration and host-key checks. At most eight head channels are open.
+Each remote `sparkring node telemetry` command reads the existing local stat
+files when renewed on that persistent channel, at most once per two seconds.
+There is no SSH process launch or authentication handshake per sample, Docker
+inspection, worker RPC, inference request, or new port. EOF or six seconds with
+no renewal ends the remote command. Node A's head is read in process. Failed
+channels back off for 15 seconds while healthy heads and metrics keep working.
+The existing reader caps enumeration at 128 files and each regular file at
+4 KiB. Stream frames are capped at 512 KiB and projected to finite numeric fields
+and bounded run IDs; only snapshots for the selected head's deployments survive.
+
+The agent atomically replaces `/run/sparkring/dashboard-live.json` on tmpfs;
+the collector reads it during its normal viewed cycle. It prefers the newest
+eligible snapshot, and rejects a live-forwarding envelope older than six seconds.
+While viewed, snapshots older than 12 seconds fall back to `/metrics`. This
+permits vLLM's idle logger tick without allowing the minute cache to displace
+fresh metrics. Quiet mode suspends forwarding and dashboard requests; the
+independent stat logger and ordinary recovery/agent schedules are unchanged.
+
+The collector requests `/metrics` every two seconds only while viewed, with
+one request per group API, independent of TP or DCP rank count. Up to eight
+workers prevent a slow head from serializing the others. Each HTTP request
+retains the two-second socket timeout and 8 MiB response bound. A body-read
+deadline checked between single socket reads also bounds slow-drip responses
+(two seconds plus at most one pending socket timeout). Initial model
+metadata reads and failed-endpoint backoff retain their existing schedules.
+After the viewer lease lapses, API reads stop and the next viewer starts a
+history boundary. Two new samples are needed to establish a live rate.
 
 ## Collection cadence and local cost
 
-**Source-read:** A serving deployment without a fresh plugin snapshot gets
-one `/metrics` GET every 10 seconds while unviewed, or every 5 seconds while
-viewed. `/v1/models` remains every 60 seconds: respectively 7 or 13 GETs per
-minute per head in steady state (0.117 or 0.217 GET/s), plus one runtime-status
-GET per model run and explicit refreshes. A fresh plugin uses the existing
-60-second unviewed metrics schedule for auxiliary gauges/prefix statistics:
-2 GETs/minute per head unviewed, 13 viewed. Plugin snapshots themselves add
-no requests; file reads remain every 30 seconds and remote resolution is
-limited by recovery delivery. A fresh recovery copy is used when the local plugin snapshot is stale.
-If neither is valid and fresh, collection falls back to metrics.
-Stopped deployments retain 60-second reads; failed active reads retry no
-faster than every 15 seconds. Quiet mode and measurement holds send zero
-upstream requests. Browser requests only read collector memory.
+**Source-read:** A viewed serving group sends 30 metrics GETs and one model-list
+GET per minute in steady state, plus the runtime-status read once per run and
+explicit refreshes. The web service sends no API reads without viewers or during
+quiet holds. Failed endpoints retry no faster than every 15 seconds; stopped
+records are not probed. One persistent agent channel per remote head forwards
+bounded snapshots every two seconds while leased. A newer idle metrics observation
+wins over an older busy plugin snapshot.
 
-**Source-read:** The service retains idle CPU scheduling, nice 19,
-efficiency-core placement, `MemoryHigh=96M`, `MemoryMax=128M` and no swap.
-
-**Measured, local Windows Python 3.12.10:** Three synthetic deployments,
-2,161 samples each over three hours at the viewed cadence, occupied
-50,724,864 resident bytes (48.4 MiB), versus 45,416,448 bytes before filling.
-Holding the encoded history response raised RSS to 53,288,960 bytes
-(50.8 MiB). Compact JSON was 1,873,890 bytes; gzip level 1 was 180,251 bytes
-(176.0 KiB). Payload size depends on counters, timestamp precision and source.
-
-The measurement uses the repeated-batch method of the stat-logger cost
-measurement: nine batches, here of 1,000 full three-deployment collection
-cycles each. Median process CPU was 140.625 microseconds/cycle, maximum
-batch mean 156.250; median wall time was 141.903 microseconds/cycle. CPU
-accounting granularity can make a batch's CPU estimate exceed wall time.
-These cycles include real local file checks and parsing synthetic HTTP
-responses through the read-only client, with network waits excluded.
-The process also includes test-fixture imports. RSS is the Windows working
-set, not a Linux cgroup measurement. Browser rendering and history encoding
-are outside collection-cycle timing. The run does not measure Spark serving
-impact; that remains **unknown** until hardware comparison.
-
-**Measured:** Filling all eight history slots with 2,161 samples containing
-both plugin and auxiliary metrics fields used 74,448,896 resident bytes
-(71.0 MiB), or 92,094,464 bytes (87.8 MiB) while holding the compact and
-gzip response bodies. This local synthetic bound check does not certify
-Linux memory use or concurrent-client peaks.
+The service retains idle CPU scheduling, nice 19, efficiency-core placement,
+`MemoryHigh=96M`, `MemoryMax=128M` and no swap. With eight groups and 2,161 raw
+metrics samples each, a local Windows Python 3.12 fixture process used 77,766,656
+resident bytes (74.2 MiB), versus 55,308,288 bytes before filling. Holding the
+JSON and gzip bodies raised RSS to 86,867,968 bytes (82.8 MiB). JSON occupied
+7,520,440 bytes; gzip level 1 occupied 808,346 bytes. This synthetic fixture
+measurement includes browser-test imports and does not certify Linux cgroup
+usage, concurrent history requests or Spark serving overhead. The source-selected
+history cap is 17,288 samples across eight groups; no persistent history is written.
 
 ## Coordinator browser checklist
 

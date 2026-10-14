@@ -111,3 +111,35 @@ def test_missing_path_or_dp_disables_writer(logger_module, monkeypatch):
     log.record(object(), object())
     monkeypatch.setenv("SPARKRING_STATS_PATH", "/unused")
     assert not logger_module.SparkRingStatLogger(NS(parallel_config=NS(data_parallel_size=2))).enabled
+
+
+def test_steps_are_real_distinct_iterations_not_generation_counts(logger_module, monkeypatch, tmp_path):
+    log = make(logger_module, monkeypatch, tmp_path)
+    scheduler, iteration = stats()
+    log.record(scheduler, iteration)
+    assert log.values["steps"] == 1 and log.values["step_accepted"] == 2
+    log.record(scheduler, None)  # duplicate scheduler report
+    assert log.values["steps"] == 1 and log.values["step_accepted"] == 2
+    assert log.values["accepted"] == 2 and log.values["draft_tokens"] == 3
+    scheduler.iteration_details.iteration_index = 2
+    scheduler.iteration_details.is_dummy = True
+    log.record(scheduler, None)
+    assert log.values["steps"] == 1
+    scheduler.iteration_details = None
+    iteration.num_generation_tokens = 10000
+    log.record(scheduler, iteration)
+    assert log.values["steps"] == 1 and log.values["step_accepted"] == 2
+    # The logger is per API engine, never per TP/DCP rank.
+    before = dict(log.values)
+    log.record(scheduler, iteration, engine_idx=1)
+    assert log.values == before
+
+
+def test_absent_optional_iteration_fields_keep_token_logger_enabled(logger_module, monkeypatch, tmp_path):
+    log = make(logger_module, monkeypatch, tmp_path)
+    scheduler, iteration = stats()
+    del scheduler.iteration_details
+    del scheduler.spec_decoding_stats
+    log.record(scheduler, iteration)
+    assert log.enabled and log.values["gen"] == 3
+    assert not log.pending["step_timing"]

@@ -38,9 +38,7 @@ Where its data comes from
 
   - ``/metrics`` every METRICS_VIEWED_SECONDS while a browser or the terminal
     view shows the status (it fetched ``/api/status`` within VIEWER_SECONDS;
-    ``/api/status?viewer=passive`` does not count), else every
-    METRICS_UNVIEWED_SECONDS (METRICS_PLUGIN_UNVIEWED_SECONDS when a fresh
-    stat-logger snapshot is available). The vllm:cache_config_info gauge gives the
+    ``/api/status?viewer=passive`` does not count); no API reads otherwise. The vllm:cache_config_info gauge gives the
     KV cache budget;
   - ``/v1/models`` every MODELS_SECONDS while the model serves, for its served
     name and context length. A failed metrics read tells the states apart: a
@@ -85,6 +83,7 @@ from __future__ import annotations
 import argparse
 import base64
 import collections
+from concurrent.futures import ThreadPoolExecutor
 from functools import lru_cache
 import gzip
 import hashlib
@@ -126,17 +125,16 @@ PAGE = Path(__file__).with_name("dashboard.html")
 # The only paths the collector requests: the model list, vLLM's Prometheus metrics and the
 # runtime-status plugin's JSON report. Each is a GET that runs no model.
 READ_PATHS = frozenset({"/metrics", "/v1/models", "/v1/sparkring/status"})
-METRICS_VIEWED_SECONDS = 5.0
-METRICS_UNVIEWED_SECONDS = 10.0
-METRICS_PLUGIN_UNVIEWED_SECONDS = 60.0
+METRICS_VIEWED_SECONDS = 2.0
 HISTORY_SECONDS = 3 * 3600
 HISTORY_SAMPLES = 2161
+HISTORY_SPACING = 5.0
 HISTORY_DEPLOYMENTS = 8
 HISTORY_DELTA_SAMPLES = 120
 HISTORY_VALUES = ("gen", "prompt", "accepted", "drafts", "draft_tokens", "steps", "ttft_sum", "ttft_count",
-                  "pc_hits", "pc_queries", "step_seconds", "running", "waiting", "kv")
+                  "pc_hits", "pc_queries", "step_seconds", "step_accepted", "running", "waiting", "kv")
 MODELS_SECONDS = 60.0
-VIEWER_SECONDS = 60.0
+VIEWER_SECONDS = 6.0
 FILES_SECONDS = 30.0
 RUNTIME_REFRESH_SECONDS = 300.0
 HTTP_TIMEOUT = 2.0
@@ -246,7 +244,19 @@ class ReadOnlyClient:
             self.requests[path] += 1
         try:
             with self.opener.open(request, timeout=self.timeout) as response:
-                body = response.read(MAX_RESPONSE_BYTES + 1)
+                deadline = time.monotonic() + self.timeout
+                chunks, size = [], 0
+                # read1 performs at most one underlying socket read. A peer that
+                # drips bytes cannot keep an unbounded read() alive indefinitely.
+                while size <= MAX_RESPONSE_BYTES:
+                    if time.monotonic() >= deadline:
+                        raise TimeoutError("metrics response deadline exceeded")
+                    chunk = response.read1(min(65536, MAX_RESPONSE_BYTES + 1 - size))
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    size += len(chunk)
+                body = b"".join(chunks)
         except urllib.error.HTTPError as error:
             return Fetched(failure="http", code=error.code)
         except urllib.error.URLError as error:
@@ -810,6 +820,7 @@ class Model:
         self.last_ok = None
         self.models_ok_at = None
         self.metrics_at = None
+        self.history_sample = None
 
     def observe_metrics(self, metrics: dict, now: float) -> None:
         self.metrics = metrics
@@ -830,7 +841,9 @@ class Collector:
     def __init__(self, sources, client: ReadOnlyClient, *, quiet_path: Path = QUIET_PATH,
                  node_status_path: Path | None = NODE_STATUS_PATH, recovery_path: Path | None = RECOVERY_PATH,
                  node_reports_path: Path | None = NODE_REPORTS_PATH,
-                 clock=time.time, cpu_clock=time.thread_time):
+                 live_path=Path("/run/sparkring/dashboard-live.json"),
+                 viewer_path=Path("/run/sparkring-dashboard/viewer"),
+                 clock=time.time, cpu_clock=time.process_time):
         self.sources = list(sources)
         self.client = client
         self.quiet_path = Path(quiet_path) if quiet_path else None
@@ -838,6 +851,9 @@ class Collector:
         self.recovery_path = Path(recovery_path) if recovery_path else None
         self.node_reports_path = Path(node_reports_path) if node_reports_path else None
         self.node_reports = []
+        self.live_path, self.viewer_path = live_path, viewer_path
+        self.live_telemetry = {}
+        self.next_lease = 0
         self.recovery: dict = {}      # deployment directory name -> the recovery timer's latest finding
         self.clock, self.cpu_clock = clock, cpu_clock
         self.lock = threading.Lock()
@@ -866,6 +882,12 @@ class Collector:
         with self.lock:
             was = self.viewed(now)
             self.last_view = now
+            if self.viewer_path and now >= self.next_lease:
+                try:
+                    self.viewer_path.touch()
+                except OSError:
+                    pass
+                self.next_lease = now + METRICS_VIEWED_SECONDS
             if not was:
                 for model in self.models.values():
                     model.next_metrics = min(model.next_metrics, now)
@@ -943,6 +965,7 @@ class Collector:
         print(f"sparkring dashboard: the clock went back by {self.last_cycle - now:.0f} s; reads rescheduled",
               file=sys.stderr, flush=True)
         self.next_files = now
+        self.next_lease = now
         with self.lock:
             self.history_gaps.update(self.models)
             if self.last_view is not None and self.last_view > now:
@@ -983,10 +1006,28 @@ class Collector:
         with self.lock:
             models = list(self.models.values())
             viewed = self.viewed(now)
-        for model in models:
-            sent = self.poll(model, now, viewed) or sent
-            with self.lock:
-                self.remember(model, now)
+        self.live_telemetry = {}
+        if viewed and self.live_path:
+            try:
+                live = read_json(self.live_path)
+                if number(live.get("at")) and -5 <= now - live["at"] <= 6:
+                    self.live_telemetry = live.get("telemetry", {})
+            except (OSError, ValueError, AttributeError):
+                pass
+        # One outstanding request per group, at most eight workers. Independent
+        # heads cannot serialize healthy samples behind a slow head's timeout.
+        if len(models) > 1 and viewed:
+            with ThreadPoolExecutor(max_workers=8, thread_name_prefix="dashboard-metrics") as pool:
+                sent = any(list(pool.map(lambda model: self.poll(model, now, viewed), models)))
+        else:
+            for model in models:
+                sent = self.poll(model, now, viewed) or sent
+        with self.lock:
+            for model in models:
+                if viewed:
+                    self.remember(model, now)
+                else:
+                    self.history_gaps.add(model.id)
         if sent:
             self.cycle_cpu.append(self.cpu_clock() - before)
             self.cycles += 1
@@ -1004,10 +1045,14 @@ class Collector:
         if row.get("unmanaged") and (host is None or port is None):
             self.set_state(model, "busy", now)
             return False
+        if row["stopped"]:
+            self.set_state(model, "stopped", now)
+            model.metrics = model.metrics_at = None
+            return False
+        if not viewed:
+            return False
         sent = False
-        plugin = self.plugin_snapshot(model, now)
-        cadence = (METRICS_VIEWED_SECONDS if viewed and not row["stopped"] else
-                   METRICS_PLUGIN_UNVIEWED_SECONDS if plugin or row["stopped"] else METRICS_UNVIEWED_SECONDS)
+        cadence = METRICS_VIEWED_SECONDS
         if model.state == "serving" and model.metrics_at is not None:
             model.next_metrics = min(model.next_metrics, model.metrics_at + cadence)
         if now >= model.next_metrics:
@@ -1096,23 +1141,32 @@ class Collector:
 
     def run(self, stop: threading.Event) -> None:
         while not stop.is_set():
+            cycle_started = time.monotonic()
             try:
                 self.cycle()
             except Exception as error:  # one bad response must not stop the page
                 print(f"sparkring dashboard: collection failed: {error!r}", file=sys.stderr, flush=True)
-            stop.wait(1.0)
+            stop.wait(max(0.05, 1.0 - (time.monotonic() - cycle_started)))
 
     # -- the status document -----------------------------------------------------------------
     def plugin_snapshot(self, model, now):
         fallback = {"run_id": (model.metrics or {}).get("started")}
         deployment = model.row.get("deployment_id")
-        # The recovery timer also exports node reports with recovery disabled.
-        # Read that local cache only; quiet mode must never trigger a remote read.
+        # The root agent forwards head snapshots through the existing SSH path.
+        # This service reads only its local projection and the inventory cache.
         reports = [self.node_status, *self.node_reports]
-        candidates = [report["telemetry"].get(deployment) for report in reports
+        candidates = [self.live_telemetry.get(deployment)] + [report["telemetry"].get(deployment) for report in reports
                       if isinstance(report, dict) and isinstance(report.get("telemetry"), dict)]
         candidates.append((self.recovery.get(model.row["id"]) or {}).get("telemetry"))
-        return next((p for p in candidates if plugin_fresh(p, fallback, now)), None)
+        fresh = [p for p in candidates if plugin_fresh(p, fallback, now)
+                 and (not self.viewed(now) or now - p["at"] <= 12)]
+        chosen = max(fresh, key=lambda p: p["at"], default=None)
+        metrics = model.metrics or {}
+        if (chosen and number(model.metrics_at) and model.metrics_at > chosen["at"]
+                and metrics.get("running") == 0 and metrics.get("waiting") == 0
+                and (chosen["running"] != 0 or chosen["waiting"] != 0)):
+            return None  # a newer idle observation must not inherit a busy plugin interval
+        return chosen
 
     def prune_history(self, now):
         for model_id in list(self.history):
@@ -1140,7 +1194,7 @@ class Collector:
             self.history[model.id] = collections.deque(maxlen=HISTORY_SAMPLES)
         rows = self.history[model.id]
         plugin = self.plugin_snapshot(model, now)
-        if not plugin and (model.state != "serving" or not number(model.metrics_at)):
+        if model.state != "serving" or (not plugin and not number(model.metrics_at)):
             self.history_gaps.add(model.id)
             return
         metrics = model.metrics or {}
@@ -1155,11 +1209,26 @@ class Collector:
         if not number(at) or now - at > (180 if plugin else 125):
             self.history_gaps.add(model.id)
             return
+        # Inspect every live observation before thinning the archive. A reset
+        # between retained rows still creates a boundary, even if its counters
+        # have already exceeded the last archived value by the next archive tick.
+        last = model.history_sample
+        if last:
+            before = last.get("values", last)
+            values = sample.get("values", sample)
+            if ((last["source"], last["run_id"]) != (sample["source"], sample["run_id"])
+                    or sample.get("monotonic", at) < last.get("monotonic", last["at"])
+                    or any(number(values.get(k)) and number(before.get(k)) and values[k] < before[k]
+                           for k in HISTORY_VALUES if k not in ("running", "waiting", "kv"))):
+                self.history_gaps.add(model.id)
+        model.history_sample = sample
         # Snapshot identity is independent of the collector's read time and fallback reads.
         previous = rows[-1]["counters"] if rows else None
         if previous and (rows[-1]["source"], previous["run_id"],
                          previous.get("monotonic", previous["at"])) == (
                              sample["source"], sample["run_id"], sample.get("monotonic", at)):
+            return
+        if previous and model.id not in self.history_gaps and 0 <= at - previous["at"] < HISTORY_SPACING:
             return
         self.history_seq += 1
         rows.append({"seq": self.history_seq, "observed_at": now, "source": sample["source"],
@@ -1214,7 +1283,7 @@ class Collector:
                 "ring": rings[0] if len(rings) == 1 else None, "topology": topology, "events": events,
                 "node": self.node_summary(),
                 "collector": {"quiet": quiet, "viewed": viewed, "cycles": self.cycles,
-                              "metrics_seconds": METRICS_VIEWED_SECONDS if viewed else METRICS_UNVIEWED_SECONDS,
+                              "metrics_seconds": METRICS_VIEWED_SECONDS if viewed else None,
                               "models_seconds": MODELS_SECONDS,
                               "cpu_ms_per_cycle": round(sum(cpu) / len(cpu) * 1000, 2) if cpu else None,
                               "requests": counters["requests"], "received_bytes": counters["received_bytes"],
@@ -1323,7 +1392,7 @@ class Collector:
                 "positions": positions, "runs": [],
                 "discovery": {"ports": sorted({m["head"]["port"] for m in members if m["head"]["port"]}),
                               "every_seconds": METRICS_VIEWED_SECONDS if self.last_view and self.viewed(now)
-                              else METRICS_UNVIEWED_SECONDS, "at": now}}
+                              else None, "at": now}}
 
     def node_summary(self) -> dict | None:
         status = self.node_status

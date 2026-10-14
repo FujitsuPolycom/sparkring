@@ -62,7 +62,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     rows, lines = render(snapshot, 140)
     text = "\n".join(lines)
     header = lines[0]
-    for part in ("test", "4 serving", "8/8 Sparks busy", "reqs", "tok/s", "live 1s ago", "poll 5s"):
+    for part in ("test", "4 serving", "8/8 Sparks busy", "reqs", "tok/s", "live 1s ago", "poll 2s"):
         assert part in header
     assert lines[2].startswith(" ●0 spark0 ━ ●1 spark1 ─ ●2 spark2 ━ ●3 spark3") and lines[2].endswith("─ ↺")
     card = next(line for line in lines if line.startswith(" ▾ tp2-0-1"))

@@ -531,8 +531,8 @@ sparkring-dashboard`); a failed refresh prints one line and never stops them.
 The service also compares the site file's inode and modification time every
 second, so a site file written any other way shows within a second as well.
 
-It reads files on Node A and sends only GET requests: `/metrics` every 5 s
-while a browser shows the page and every 10 s otherwise (60 s with fresh stat-logger snapshots), `/v1/models` every
+It reads files on Node A and sends only GET requests: `/metrics` every 2 s
+while a viewer renews its six-second lease, and no API reads otherwise, `/v1/models` every
 60 s, and the model's [status report](dashboard.md) once per model start. It
 sends no inference request, opens no SSH session, starts no process and runs
 at idle priority on the efficiency cores. Each card shows the command that
@@ -574,7 +574,7 @@ else, at `http://127.0.0.1:8090` or, when nothing answers there, at the
 service's LAN address: it sends no request to any model and opens no SSH
 session, and an address of another host is refused before a connection opens. While it is
 open it counts as a viewer, as the page does, so the service reads `/metrics`
-every 5 s; `--passive` leaves the service at its unviewed cadence. The view needs
+every 2 s; `--passive` does not renew the viewer lease. The view needs
 Python's `curses` module, which Linux has; `--once` prints one frame as text
 anywhere.
 
@@ -592,7 +592,7 @@ anywhere.
 | `quiet hold --label NAME`, `quiet release ID`, `quiet status` | A measurement's own pause, its end, and every pause held |
 | `tui` | The status in this terminal. Keys: up and down (or `j`, `k`) select a model, `d` or space expands its card, `e` shows events, `r` reads at once, `-` and `=` lengthen or shorten the read period, `q` quits |
 | `tui --once`, `--details`, `--events`, `--width N` | Print one frame as text and exit; `--details` expands every card, `--events` adds recent events |
-| `tui --passive` | Do not count as a viewer: the service keeps reading each model's `/metrics` once a minute |
+| `tui --passive` | Do not count as a viewer; without another viewer the service stops API reads |
 | `tui --url URL`, `tui --password-file FILE` | The service's address on this Spark (default `http://127.0.0.1:8090`, then the service's LAN address), and its password when it has one |
 
 Like the model API, the page has no key unless `--password-file` gives one. It

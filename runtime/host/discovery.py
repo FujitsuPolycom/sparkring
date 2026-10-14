@@ -34,10 +34,15 @@ def target(value):
     return value
 
 
+def ssh_argv(node, args, *, options=()):
+    """The authenticated agent transport, shared by commands and telemetry streams."""
+    return ["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", *options, target(node), shlex.join(args)]
+
+
 def ssh(node, args, *, data=None, run=subprocess.run, timeout=180, options=()):
     """Run ``args`` on ``node``; ``options`` are extra ssh options, such as a master connection's
     (runtime.host.host_load.mux_options)."""
-    result = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", *options, target(node), shlex.join(args)],
+    result = run(ssh_argv(node, args, options=options),
                  input=data, capture_output=True, text=True, encoding="utf-8", timeout=timeout)
     if result.returncode:
         raise RuntimeError(f"{node}: {result.stderr.strip()}")

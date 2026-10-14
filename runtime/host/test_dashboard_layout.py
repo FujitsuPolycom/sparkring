@@ -32,6 +32,7 @@ def layout_fixture(tmp_path):
                                                 "image": "net-sircl/nccl-tests:20261013",
                                                 "image_id": "abcdef123456"}]})
     install_reports(found, documents, tmp_path)
+    found.mark_viewed()
     found.cycle()
     value = json.loads(json.dumps(found.snapshot()))
     value.update(generated_at=time.time(), poll_seconds=3600)
@@ -190,6 +191,7 @@ def test_gpu_job_grouping_requires_shared_facts_without_api_reads(tmp_path, rend
             c.update(master_addr="192.0.2.10", master_port=port)
         c["api_port"] = 9123  # Unknown engines never become API probe targets.
     install_reports(found, documents, tmp_path)
+    found.mark_viewed()
     found.cycle()
     members = found.snapshot()["groups"][0]["members"]
     assert [m["arc"]["positions"] for m in members] == expected

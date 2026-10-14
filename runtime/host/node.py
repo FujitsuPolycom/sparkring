@@ -1194,6 +1194,9 @@ def agent(*, root="/", once=False, sleep=time.sleep):
     """
     from runtime.host import host_load
     while True:
+        if not once and str(root) == "/":
+            from runtime.host import telemetry_live
+            telemetry_live.start()
         document = snapshot(root=root, repair=True)
         interval = host_load.agent_interval(document, root=root)
         if interval != AGENT_INTERVAL:

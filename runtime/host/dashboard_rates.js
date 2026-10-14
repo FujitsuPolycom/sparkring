@@ -38,12 +38,14 @@ class ViewerRates {
       && (!fb || !num(fb.run_id) || cand.at >= fb.run_id);
     if (!fallback) {
       if (!(m.source === "plugin" && pluginFresh(p, null))) {
+        if ((quiet || m.state !== "serving") && m.live)
+          for (const k of ["output_tps", "prefill_tps", "prompt_tps", "steps_ps", "accepted_per_step", "acceptance"]) m.live[k] = null;
         const state = this.members.get(m.id);
         if (state) {
           state.samples = [];
           if (state.history.length && state.history.at(-1).slice(1).some(v => v !== null))
             state.history.push([now, null, null, null, null, null, null]);
-          state.history = state.history.filter(h => now - h[0] <= 21600).slice(-4321);
+          state.history = state.history.filter(h => now - h[0] <= 21600).slice(-10801);
           m.history = state.history;
         }
         return;
@@ -57,9 +59,9 @@ class ViewerRates {
     if (!this.members.has(m.id)) this.members.set(m.id, { samples: [], history: [], key: null });
     const state = this.members.get(m.id), key = JSON.stringify([source, sample.run_id]);
     const keys = ["gen", "prompt", "accepted", "drafts", "draft_tokens", "steps", "ttft_sum", "ttft_count",
-      "pc_hits", "pc_queries", "step_seconds"];
+      "pc_hits", "pc_queries", "step_seconds", "step_accepted"];
     const last = state.samples.at(-1);
-    if (quiet || m.boundary || key !== state.key || (last && (sample.at - last.at > 185 || !num(stamp) || stamp < last.clock
+    if (quiet || m.state !== "serving" || m.boundary || key !== state.key || (last && (sample.at - last.at > 185 || !num(stamp) || stamp < last.clock
       || keys.some(k => num(v[k]) && num(last.values[k]) && v[k] < last.values[k])))) {
       state.samples = []; state.key = key;
       if (state.history.length && state.history.at(-1).slice(1).some(v => v !== null))
@@ -70,7 +72,7 @@ class ViewerRates {
     const added = fresh && (!state.samples.length || stamp > state.samples.at(-1).clock);
     if (added) {
       state.samples.push(sample);
-      state.samples = state.samples.filter(s => stamp - s.clock <= 360).slice(-100);
+      state.samples = state.samples.filter(s => stamp - s.clock <= 360).slice(-181);
     }
     const samples = state.samples;
     const delta = (k, seconds) => {
@@ -81,21 +83,23 @@ class ViewerRates {
       const a = newest.values[k], b = base.values[k], dt = newest.clock - base.clock;
       return num(a) && num(b) && a >= b && dt > 0 ? [a - b, dt] : null;
     };
-    const rate = (k, seconds = 15) => { const d = delta(k, seconds); return d ? d[0] / d[1] : null; };
-    const ratio = (a, b) => {
-      const x = delta(a, 300), y = delta(b, 300); return x && y && y[0] > 0 ? x[0] / y[0] : null;
+    const rate = (k, seconds = 6) => { const d = delta(k, seconds); return d ? d[0] / d[1] : null; };
+    const ratio = (a, b, seconds = 300) => {
+      const x = delta(a, seconds), y = delta(b, seconds); return x && y && y[0] > 0 ? x[0] / y[0] : null;
     };
     let prefill = null;
     if (fresh && v.running > 0 && samples.length >= 2) {
       const a = samples.at(-1), b = samples.at(-2), x = a.values.prompt, y = b.values.prompt;
-      if (num(x) && num(y) && x > y) prefill = (x - y) / (a.clock - b.clock);
+      if (num(x) && num(y) && x > y) prefill = rate("prompt");
     }
     const acceptance = ratio("accepted", "drafts");
     m.live = { ...m.live, running: v.running, waiting: v.waiting, kv: v.kv, source, read_at: sample.at,
       prefill_tps: prefill, prompt_tps: prefill,
       // No running request means no decode, whatever the last counter interval averaged.
       output_tps: fresh && v.running === 0 && v.waiting === 0 ? 0 : rate("gen"), output_tps_5m: rate("gen", 300),
-      steps_ps: use && v.step_timing ? rate("steps") : null, acceptance: ratio("accepted", "draft_tokens"),
+      steps_ps: use && v.step_timing ? (fresh && v.running === 0 && v.waiting === 0 ? 0 : rate("steps")) : null,
+      accepted_per_step: use && v.step_timing && !(fresh && v.running === 0 && v.waiting === 0) ? ratio("step_accepted", "steps", 6) : null,
+      acceptance: ratio("accepted", "draft_tokens", 6),
       accept_length_5m: acceptance === null ? null : 1 + acceptance,
       ttft_5m: ratio("ttft_sum", "ttft_count"), prefix_hit_5m: ratio("pc_hits", "pc_queries") };
     // The prefix-cache ratio needs /metrics counters the plugin lacks; feed the
@@ -108,7 +112,7 @@ class ViewerRates {
       m.live.prefix_hit_5m = other.live.prefix_hit_5m;
     }
     if (added) state.history.push([sample.at, v.running === 0 && v.waiting === 0 ? 0 : rate("gen"), v.running, v.waiting, v.kv, prefill, source]);
-    state.history = state.history.filter(h => now - h[0] <= 21600).slice(-4321);
+    state.history = state.history.filter(h => now - h[0] <= 21600).slice(-10801);
     m.history = state.history;
   }
 }

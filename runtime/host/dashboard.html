@@ -366,7 +366,6 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 const viewerRates = new ViewerRates();
 "use strict";
 let data = null, receivedAt = 0, failing = false;
-const METRICS_VIEWED = 5, METRICS_IDLE = 60;
 
 let hoverId = null, selectedId = null;
 const $ = (id) => document.getElementById(id);
@@ -375,6 +374,8 @@ const esc = (v) => String(v == null ? "" : v).replace(/[&<>"']/g, (c) =>
 const has = (v) => v !== null && v !== undefined;
 const int = (n) => has(n) ? Math.round(n).toLocaleString() : "–";
 const one = int;
+const acceptancePct = f => has(f) ? (f * 100).toFixed(1) + "%" : "\u2013";
+const acceptedStep = f => has(f) ? f.toFixed(1) : "\u2013";
 const small = (n, places = 2) => !has(n) ? "–" : n < 10 ? n.toFixed(places) : int(n);
 const rate = (n) => has(n) ? Math.round(n).toLocaleString() : "–";   // token rates: whole tokens per second
 const pct = (f) => has(f) ? Math.round(f * 100) + "%" : "–";
@@ -732,7 +733,7 @@ function tiles(s) {
 }
 function metricDetails(s) {
   const l = s.live || {};
-  return `<p>Output ${rate(l.output_tps)} tok/s · Prefill ${rate(l.prefill_tps)} tok/s · ${one(l.steps_ps)} steps/s · ${pct(l.acceptance)} draft acceptance · Requests ${int(l.running)} running · KV ${pct(l.kv)} of tokens in use</p><p>Output 5 min avg ${rate(l.output_tps_5m)} tok/s · Prefill interval ${l.source === "plugin" ? "exact" : "approximate"} · ${int(l.waiting)} requests waiting · Draft ${one(l.accept_length_5m)} tok/step (last 5 min) ? Sample time ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</p>`;
+  return `<p>Output ${rate(l.output_tps)} tok/s · Prefill ${rate(l.prefill_tps)} tok/s · ${one(l.steps_ps)} steps/s · ${acceptancePct(l.acceptance)} draft acceptance · Requests ${int(l.running)} running · KV ${pct(l.kv)} of tokens in use</p><p>Output 5 min avg ${rate(l.output_tps_5m)} tok/s · Prefill interval ${l.source === "plugin" ? "exact" : "approximate"} · ${int(l.waiting)} requests waiting · Draft ${one(l.accept_length_5m)} tok/step (last 5 min) ? Sample time ${has(l.read_at) ? esc(clock(l.read_at)) : "unknown"}</p>`;
 }
 function sampleSource(s, now) {
   const l = s.live || {};
@@ -1033,7 +1034,7 @@ function card(s, now) {
       <span class="state"><span class="pill p-${esc(st)}">${esc(s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
       ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
     </div>
-    ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${pct(s.live?.acceptance)} draft acceptance · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
+    ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${acceptancePct(s.live?.acceptance)} draft acceptance${has(s.live?.accepted_per_step) ? ` · ${acceptedStep(s.live.accepted_per_step)} accepted tok/step` : ""} · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${sub}</div>
       ${!serving ? thinking + sparks(s) : ""}
@@ -1093,13 +1094,8 @@ function render() {
     <span class="ev"><span class="dot"></span><span><b>${esc(e.stack)}</b> ${esc(e.text)}</span></span></li>`).join("")
     || '<li><span class="empty">No changes since the service started.</span></li>';
   patch($("events"), ev);
-  const c = data.collector || {}, req = c.requests || {}, up = Math.max(1, c.uptime_seconds || 1);
-  const sent = Object.values(req).reduce((a, n) => a + n, 0);
-  text($("footer"), (c.quiet ? "Paused: no request is sent. "
-      : `Reads /metrics every ${c.metrics_seconds} s (${METRICS_VIEWED} s while this page is open, ${METRICS_IDLE} s otherwise) and /v1/models every ${c.models_seconds} s; settings once per model start. `)
-    + `Sent ${int(sent)} GET requests in ${dur(up)} (${int(sent / up)}/s, ${int((c.received_bytes || 0) / up / 1024)} KiB/s)`
-    + (has(c.cpu_ms_per_cycle) ? `, ${int(c.cpu_ms_per_cycle)} ms CPU per collection` : "")
-    + ". No inference request, no SSH.");
+  const c = data.collector || {};
+  text($("footer"), c.quiet ? "Paused" : c.viewed ? "2 s samples \u00b7 6 s rates" : "No active viewer");
 }
 
 // Text writes keep existing nodes, so unchanged selections and focus survive.

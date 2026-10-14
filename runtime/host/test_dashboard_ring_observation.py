@@ -80,6 +80,7 @@ def test_server_entrypoints(command):
 @pytest.mark.parametrize("shared", [False, True])
 def test_four_pairs_have_distinct_heads_apis_and_stopped_record_details(tmp_path, shared):
     found, api, _, fabric, _ = ring_observation(tmp_path, shared)
+    found.mark_viewed()
     found.cycle()
     members = found.snapshot()["groups"][0]["members"]
     assert len(members) == 4

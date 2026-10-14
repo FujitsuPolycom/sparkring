@@ -53,7 +53,8 @@ def test_compact_cards_density_details_and_accessibility(smooth_page, tmp_path, 
             plugin = rate_member(document(at, 100 + step * 6252, 100 + step * 212,
                                           plugin=True))["plugin_counters"]
             plugin.update(running=2, kv=.256, steps=100 + step * 62,
-                          accepted=100 + step * 72, draft_tokens=100 + step * 100)
+                          accepted=100 + step * 72, draft_tokens=100 + step * 100,
+                          step_accepted=100 + step * 72)
             remote = {"node_id": "remote-head", "observed_at": at,
                       "telemetry": {"remote-deployment": plugin}}
             found.node_reports = dashboard_admin.cached_node_rows(
@@ -73,9 +74,10 @@ def test_compact_cards_density_details_and_accessibility(smooth_page, tmp_path, 
     assert "TP2 / DCP2" in serving.locator(".head").inner_text()
     assert serving.locator(".source").inner_text().startswith(
         ("plugin" if source == "plugin" else "/metrics") + " · sample")
-    assert "12 steps/s · 72% draft acceptance" in serving.inner_text()
+    assert "12 steps/s · 72.0% draft acceptance" in serving.inner_text()
     assert serving.inner_text().count("/metrics") == (0 if source == "plugin" else 1)
     if source == "plugin":
+        assert "1.2 accepted tok/step" in serving.inner_text()
         assert serving.locator(".tile .v").all_inner_texts() == ["42", "1,250", "2 / 16", "26%"]
     assert serving.inner_text().count(members[0]["model"]) == 1
     assert "recovery ok · 5 h ago" in serving.inner_text()

@@ -97,15 +97,17 @@ def test_idle_manage_mode_adds_no_threads_helper_calls_or_model_requests(tmp_pat
     (tmp_path / "manage").mkdir()
     first, api1, clock1 = collector(tmp_path / "readonly")
     second, api2, clock2 = collector(tmp_path / "manage")
-    def refuse(*args, **kwargs):
-        pytest.fail("management started a background thread")
+    start = threading.Thread.start
+    def refuse(thread):
+        assert thread.name.startswith("dashboard-metrics"), "management started a background thread"
+        return start(thread)
     monkeypatch.setattr(threading.Thread, "start", refuse)
     value, _, calls = manager()
     dashboard.make_handler(second, *dashboard.page_bytes(), manager=value)
     run_for(first, clock1, 300, viewer=True)
     run_for(second, clock2, 300, viewer=True)
     assert len(api1.requests) == len(api2.requests)
-    assert [r.full_url for r in api1.requests] == [r.full_url for r in api2.requests]
+    assert sorted(r.full_url for r in api1.requests) == sorted(r.full_url for r in api2.requests)
     assert calls == []
     script = Path(dashboard.PAGE).read_text(encoding="utf-8")
     actions = script.split("let manageTicket", 1)[1].split("// Hovering", 1)[0]

@@ -15,12 +15,13 @@ def rows(found):
 
 def test_sample_and_deployment_bounds_eviction_and_departure(tmp_path):
     found, _, clock = collector(tmp_path, rows=PAIRS[:1])
+    found.mark_viewed()
     found.cycle()
     model = next(iter(found.models.values()))
     start = clock.now
     for i in range(dashboard.HISTORY_SAMPLES + 100):
-        model.observe_metrics({"gen": i, "prompt": i, "running": 1}, start + i)
-        found.remember(model, start + i)
+        model.observe_metrics({"gen": i, "prompt": i, "running": 1}, start + i * 5)
+        found.remember(model, start + i * 5)
     assert len(rows(found)) == dashboard.HISTORY_SAMPLES
     assert "output_tps" not in rows(found)[-1]["counters"]["values"]
     for i in range(dashboard.HISTORY_DEPLOYMENTS + 5):
@@ -40,6 +41,7 @@ def test_sample_and_deployment_bounds_eviction_and_departure(tmp_path):
 
 def test_plugin_choice_deduplication_and_stale_local_remote_fallback(tmp_path):
     found, _, clock = collector(tmp_path, rows=PAIRS[:1])
+    found.mark_viewed()
     found.cycle()
     model = next(iter(found.models.values()))
     model.row["deployment_id"] = "one"
@@ -49,7 +51,7 @@ def test_plugin_choice_deduplication_and_stale_local_remote_fallback(tmp_path):
     assert rows(found)[-1]["source"] == "plugin"
     assert rows(found)[-1]["counters"] == {**plugin, "source": "plugin"}
     count = len(rows(found))
-    run_for(found, clock, 100, viewer=True)
+    run_for(found, clock, 10, viewer=True)
     assert len(rows(found)) == count  # repeated plugin delivery and metrics reads add no plugin point
     remote = {**plugin, "at": clock.now, "monotonic": plugin["monotonic"] + 100}
     found.node_status["telemetry"]["one"] = {**plugin, "at": clock.now - 181}
@@ -57,6 +59,7 @@ def test_plugin_choice_deduplication_and_stale_local_remote_fallback(tmp_path):
     found.remember(model, clock.now)
     assert rows(found)[-1]["counters"]["at"] == clock.now
     clock.now += 181
+    found.mark_viewed()
     found.cycle()
     assert rows(found)[-1]["source"] == "metrics"
     assert "values" in rows(found)[-1]["counters"]
@@ -66,6 +69,7 @@ def test_plugin_row_stores_no_metrics_values_and_windows_never_mix(tmp_path):
     """A plugin sample carries plugin counters only; the /metrics read of the same
     cycle is either absent or lives in its own metrics-labeled sample."""
     found, _, clock = collector(tmp_path, rows=PAIRS[:1])
+    found.mark_viewed()
     found.cycle()
     model = next(iter(found.models.values()))
     model.row["deployment_id"] = "one"
@@ -96,17 +100,17 @@ def test_plugin_row_stores_no_metrics_values_and_windows_never_mix(tmp_path):
     assert state["history"][-2][1:] == [None] * 6  # the source switch closes the rate window
 
 
-def test_unviewed_plugin_keeps_minute_metrics_and_fallback_switches_to_ten_seconds(tmp_path):
+def test_unviewed_plugin_and_expired_plugin_make_no_requests(tmp_path):
     found, api, clock = collector(tmp_path, rows=PAIRS[:1])
     found.reload_sources()
     model = next(iter(found.models.values()))
     model.row["deployment_id"] = "one"
     found.node_status = {"telemetry": {"one": member(document(clock.now, 10, 10, plugin=True))["plugin_counters"]}}
     run_for(found, clock, 180)
-    assert paths_of(api).count("/metrics") == 3
+    assert api.requests == []
     api.requests.clear()
     run_for(found, clock, 61)
-    assert 6 <= paths_of(api).count("/metrics") <= 7
+    assert api.requests == []
 
 
 def test_quiet_and_measurement_holds_preserve_a_gap_and_stop_requests(tmp_path):
@@ -128,15 +132,18 @@ def test_quiet_and_measurement_holds_preserve_a_gap_and_stop_requests(tmp_path):
         viewer.ingest("one", row)
     history = viewer.members["one"]["history"]
     assert any(row[1:] == [None] * 6 for row in history)
-    assert history[-2][1] is None and history[-1][1] == 30
+    assert history[-1][1] == 30
+    assert history[-2][1] is None
     clock.now += dashboard.HISTORY_SECONDS + 1
     found.quiet_path.write_text("pause")
+    found.mark_viewed()
     found.cycle()
     assert not rows(found)
 
 
 def test_restart_decrease_and_source_boundaries_survive_replay(tmp_path):
     found, _, clock = collector(tmp_path, rows=PAIRS[:1])
+    found.mark_viewed()
     found.cycle()
     model = next(iter(found.models.values()))
     model.row["deployment_id"] = "one"
@@ -168,6 +175,7 @@ def test_history_http_compression_cursor_and_no_extra_upstream_request(request):
         assert all(not m["counter_samples"] for g in json.loads(body)["groups"] for m in g["members"])
     assert found.client.counters()["requests"] == before
     found.clock.now += 5
+    found.mark_viewed()
     found.cycle()
     response, body = call(port, "GET", f"/api/status?since={cursor}")
     assert all(len(m["counter_samples"]) == 1 for g in json.loads(body)["groups"] for m in g["members"])
@@ -187,9 +195,11 @@ def test_backward_wall_clock_drops_future_records_and_marks_boundary(tmp_path):
     found, _, clock = collector(tmp_path, rows=PAIRS[:1])
     run_for(found, clock, 100, viewer=True)
     clock.now -= 40
+    found.mark_viewed()
     found.cycle()
     assert all(row["observed_at"] <= clock.now for row in rows(found))
     clock.now += 5
+    found.mark_viewed()
     found.cycle()
     assert rows(found)[-1]["boundary"]
 
@@ -208,6 +218,7 @@ def test_remote_plugin_cache_with_recovery_off_and_quiet_mode(tmp_path):
     found.node_reports_path.write_text(json.dumps({"schema": "sparkring-dashboard-nodes/v1", "nodes": cached}))
     assert "not public" not in found.node_reports_path.read_text()
     assert found.recovery == {}
+    found.mark_viewed()
     found.cycle()
     assert member(found.snapshot())["plugin_counters"] == plugin
     assert rows(found)[-1]["source"] == "plugin"
@@ -218,11 +229,13 @@ def test_remote_plugin_cache_with_recovery_off_and_quiet_mode(tmp_path):
     found.quiet_path.write_text("operator pause")
     run_for(found, clock, 60, viewer=True)
     assert api.requests == [] and len(rows(found)) == count
-    assert member(found.snapshot())["plugin_counters"] == plugin
+    assert member(found.snapshot())["plugin_counters"] is None
     clock.now = plugin["at"] + 181
+    found.mark_viewed()
     found.cycle()
     assert member(found.snapshot())["plugin_counters"] is None
     assert api.requests == []
     found.quiet_path.unlink()
+    found.mark_viewed()
     found.cycle()
     assert rows(found)[-1]["source"] == "metrics"
