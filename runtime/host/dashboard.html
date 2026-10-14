@@ -314,6 +314,16 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .startup-detail { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); }
 .startup-detail:empty { display: none; }
 .startup-error { flex-basis: 100%; overflow-wrap: anywhere; }
+.spark-details { position: fixed; z-index: 20; width: 320px; max-width: calc(100vw - 16px);
+  max-height: calc(100dvh - 16px); overflow: auto; padding: 12px; border: 1px solid var(--line);
+  border-top: 2px solid var(--gc, var(--line)); border-radius: 8px; background: var(--surface);
+  color: var(--ink); font-size: 12px; overflow-wrap: anywhere; }
+.spark-details h3 { margin: 0 0 8px; font: 600 13px var(--mono); }
+.spark-details dl { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: 4px 8px; margin: 0; }
+.spark-details dt { color: var(--muted); text-transform: none; letter-spacing: normal; }
+.spark-details dd { margin: 0; font-family: var(--mono); font-weight: 400; white-space: pre-wrap; }
+svg .node:focus-visible { outline: none; }
+svg .node:focus-visible rect { stroke: var(--g1); stroke-width: 3; }
 </style>
 </head>
 <body>
@@ -368,6 +378,7 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
   </section>
   <footer id="footer"></footer>
 </div>
+<aside id="spark-details" class="spark-details" role="tooltip" aria-labelledby="spark-details-title" hidden></aside>
 <script>
 // VIEWER_RATES
 const viewerRates = new ViewerRates();
@@ -552,7 +563,7 @@ function ringSvg(ring, members, now) {
   const ang = p => -Math.PI / 2 + p * 2 * Math.PI / N;
   const pt = p => N === 2 ? [100 + p * 200, 130] : [cx + R * Math.cos(ang(p)), cy + R * Math.sin(ang(p))];
   const groups = ringGroups(ring, members), owner = ringOwners(groups), relays = relaySegments(ring, groups);
-  let s = `<svg viewBox="0 0 400 380" role="img" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
+  let s = `<svg viewBox="0 0 400 380" role="group" aria-label="${esc(ring.name)}: ${sparkCount(N)} in cable order">`;
   for (let p = 0; p < N; p++) {
     if (N < 2 || (N !== 2 && p === N - 1 && ring.closed === false)) continue;
     const q = (p + 1) % N, g = owner[p], same = g && owner[q] === g;
@@ -588,8 +599,7 @@ function ringSvg(ring, members, now) {
     const side = Math.abs(dy) < .25;
     const hx = x + dx * (side ? 26 : 34), hy = y + dy * 26;
     const cls = ["node", g ? (groupActive(g) ? "busy" : "inactive") + " k-" + g.kind : "idle", g?.state === "serving" ? "serving" : "", groupStyle(g), sp.up === false ? "down" : "", has(sp.up) ? "" : "unknown"].filter(Boolean).join(" ");
-    const tip = [`${p} · ${sp.name} · ${sp.address}`, g ? groupTitle(g) : "idle", has(sp.up) ? (sp.up ? "up" : "API unavailable") : "not observed"].join("\n");
-    s += `<g class="${cls}" data-position="${p}" data-member="${g ? esc(g.id) : ""}"${g ? ` style="--gc:${g.color}"` : ""}><title>${esc(tip)}</title>`
+    s += `<g class="${cls}" tabindex="0" role="button" aria-label="${esc(`Spark ${p}${sp.name ? ' · ' + sp.name : ''} details`)}" data-position="${p}" data-member="${g ? esc(g.id) : ""}"${g ? ` style="--gc:${g.color}"` : ""}>`
       + `<rect x="${x - 19}" y="${y - 12}" width="38" height="24" rx="4"/>`
       + `<circle class="node-dot" cx="${x - 9}" cy="${y}" r="2.5"/>`
       + `<text class="num" x="${x + 5}" y="${y + 4}">${p}</text>`
@@ -704,6 +714,130 @@ function renderRings(rings, members, now) {
   patch($("ringmeta"), (rings.length > 1 ? `${rings.length} rings · ${sparkCount(total)}` : `${esc(rings[0].name)} · ${sparkCount(rings[0].size)}`)
     + (disc.at ? ` · checked <span data-age="${disc.at}">${dur(now - disc.at)}</span> ago` : ""));
 }
+
+// One card reads the same status snapshot as the ring; interaction never fetches.
+let sparkAnchor = null, sparkPinned = false, sparkLeave = null;
+function sparkDetails(ring, position, member) {
+  const sp = ring.positions.find(p => p.position === position) || {};
+  const startup = member?.spark_startup || member?.startup;
+  const rank = startup?.ranks?.find(r => r.position === position);
+  const worker = member?.nodes?.find(n => n.node === sp.name);
+  const container = member?.containers?.find(c => c.position === position);
+  const name = member?.sparks?.find(p => p.position === position)?.container || container?.name;
+  const cached = sp.containers?.find(c => c.name === name);
+  const rows = [];
+  const known = v => has(v) && v !== "" && String(v).toLowerCase() !== "unknown";
+  const add = (label, value) => { if (known(value)) rows.push(`<dt>${esc(label)}</dt><dd>${esc(value)}</dd>`); };
+  add("Address", sp.address);
+  add("Position", position);
+  add("Group", member?.name);
+  add("Model", member?.model);
+  add("Rank", rank?.rank ?? worker?.rank ?? container?.node_rank);
+  const tp = member?.layout?.tp ?? member?.settings?.tensor_parallel_size;
+  const dcp = member?.layout?.dcp ?? member?.settings?.decode_context_parallel_size;
+  add("Parallel", [known(tp) ? `TP${Math.round(tp)}` : "", known(dcp) ? `DCP${Math.round(dcp)}` : ""].filter(Boolean).join(" / "));
+  add("State", rank?.phase === "failed" ? startupLabel({startup: rank}) : member?.state === "serving" ? "Serving"
+    : rank ? startupLabel({startup: rank}) : null);
+  add("Container", (rank ? [rank.container_state, rank.health] : [cached?.state, cached?.health]).filter(known).join(" · "));
+  if (rank?.phase === "failed") add("Error", rank.error?.trim().split(/\r?\n/).pop());
+  const gpu = sp.gpu || {};
+  if (Number.isFinite(gpu.memory_used_bytes) && Number.isFinite(gpu.memory_total_bytes))
+    add("GPU memory", `${Math.round(gpu.memory_used_bytes / 1e9)} / ${Math.round(gpu.memory_total_bytes / 1e9)} GB`);
+  if (Number.isFinite(gpu.temperature_c)) add("GPU temp", `${Math.round(gpu.temperature_c)} °C`);
+  for (const id of ["0", "1"]) {
+    const port = sp.ports?.[id];
+    if (!port) continue;
+    const peer = port.peer, bits = [];
+    if (has(port.cable)) bits.push(`Cable ${port.cable}${has(peer?.position) ? ` → Spark ${peer.position} port ${peer.port}` : ""}`);
+    else if (port.cable === null) bits.push("Uncabled");
+    for (const nic of Object.values(port.functions || {})) {
+      const link = sp.links?.find(l => l.netdev === nic.netdev);
+      const state = [typeof link?.carrier === "boolean" ? `carrier ${link.carrier ? "up" : "down"}` : "",
+        known(link?.operstate) ? link.operstate : ""].filter(Boolean).join(" · ");
+      if (state) bits.push(`${nic.netdev}: ${state}`);
+    }
+    add(`Port ${id}`, bits.join("\n"));
+  }
+  // Cache age is independent of the viewer's faster API and startup samples.
+  const updated = [rank?.at || (rank && startup?.at), member?.live?.read_at].filter(Number.isFinite);
+  const at = updated.length ? Math.max(...updated) : data?.generated_at;
+  if (Number.isFinite(at)) add("Updated", new Date(at * 1000).toLocaleString());
+  if (Number.isFinite(sp.observed_at)) add("Node cache", new Date(sp.observed_at * 1000).toLocaleString());
+  return `<h3 id="spark-details-title">${esc(known(sp.name) ? sp.name : `Spark ${position}`)}</h3><dl>${rows.join("")}</dl>`;
+}
+function closeSpark() {
+  clearTimeout(sparkLeave);
+  sparkAnchor?.removeAttribute("aria-describedby");
+  sparkAnchor = null; sparkPinned = false;
+  setHidden($("spark-details"), true);
+}
+function positionSpark() {
+  if (!sparkAnchor?.isConnected) { closeSpark(); return; }
+  const card = $("spark-details"), box = sparkAnchor.getBoundingClientRect();
+  const viewport = window.visualViewport;
+  const left = viewport?.offsetLeft || 0, top = viewport?.offsetTop || 0;
+  const width = viewport?.width || innerWidth, height = viewport?.height || innerHeight;
+  const above = Math.max(0, Math.min(height - 16, box.top - top - 16));
+  const below = Math.max(0, Math.min(height - 16, top + height - box.bottom - 16));
+  card.style.maxWidth = `${width - 16}px`;
+  // Keep the trigger exposed so a second tap can close the card, even in landscape.
+  card.style.maxHeight = `${Math.max(above, below, 80)}px`;
+  const size = card.getBoundingClientRect();
+  card.style.left = `${Math.max(left + 8, Math.min(box.right + 10, left + width - size.width - 8))}px`;
+  const y = box.bottom + 8 + size.height <= top + height - 8 ? box.bottom + 8 : box.top - size.height - 8;
+  card.style.top = `${Math.max(top + 8, Math.min(y, top + height - size.height - 8))}px`;
+}
+function refreshSpark() {
+  if (!sparkAnchor) return;
+  if (!sparkAnchor.isConnected) { closeSpark(); return; }
+  const ring = ringsOf(data).find(r => String(r.id) === sparkAnchor.closest("[data-ring]").dataset.ring);
+  if (!ring) { closeSpark(); return; }
+  const members = (data.groups || []).flatMap(g => g.members || []);
+  const member = members.find(m => m.id === sparkAnchor.dataset.member);
+  const card = $("spark-details");
+  card.style.setProperty("--gc", member ? memberColor(member) : "var(--line)");
+  patch(card, sparkDetails(ring, Number(sparkAnchor.dataset.position), member));
+  attr(sparkAnchor, "aria-describedby", "spark-details");
+  setHidden(card, false); positionSpark();
+}
+function openSpark(node, pin = false) {
+  clearTimeout(sparkLeave);
+  if (sparkAnchor !== node) { sparkAnchor?.removeAttribute("aria-describedby"); sparkPinned = false; }
+  sparkAnchor = node; sparkPinned ||= pin; refreshSpark();
+}
+function leaveSpark() {
+  clearTimeout(sparkLeave);
+  sparkLeave = setTimeout(() => {
+    if (!sparkPinned && document.activeElement !== sparkAnchor && !$("spark-details").matches(":hover")) closeSpark();
+  }, 150);
+}
+$("ringviz").addEventListener("pointerover", e => {
+  const node = e.target.closest(".node");
+  if (node && e.pointerType !== "touch" && !node.contains(e.relatedTarget)) openSpark(node);
+});
+$("ringviz").addEventListener("pointerout", e => {
+  const node = e.target.closest(".node");
+  if (node && !node.contains(e.relatedTarget)) leaveSpark();
+});
+$("ringviz").addEventListener("focusin", e => { const node = e.target.closest(".node"); if (node) openSpark(node); });
+$("ringviz").addEventListener("focusout", leaveSpark);
+$("spark-details").addEventListener("pointerenter", () => clearTimeout(sparkLeave));
+$("spark-details").addEventListener("pointerleave", leaveSpark);
+$("ringviz").addEventListener("click", e => {
+  const node = e.target.closest(".node");
+  if (node) { if (sparkAnchor === node && sparkPinned) closeSpark(); else openSpark(node, true); }
+});
+$("ringviz").addEventListener("keydown", e => {
+  const node = e.target.closest(".node");
+  if (node && ["Enter", " "].includes(e.key)) { e.preventDefault(); node.dispatchEvent(new MouseEvent("click", {bubbles: true})); }
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape") closeSpark(); });
+document.addEventListener("pointerdown", e => {
+  if (!e.target.closest("#spark-details, #ringviz .node")) closeSpark();
+});
+window.addEventListener("resize", () => { if (sparkAnchor) positionSpark(); });
+window.addEventListener("scroll", () => { if (sparkAnchor) positionSpark(); }, true);
+window.visualViewport?.addEventListener("resize", () => { if (sparkAnchor) positionSpark(); });
 
 function applyHighlight() {
   for (const el of document.querySelectorAll("[data-member]")) {
@@ -1108,6 +1242,7 @@ function render() {
   parts.push(`${running} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
   text($("summary"), parts.join(" · "));
   renderRings(rings, ringMembers, now);
+  refreshSpark();
   // Preserve arrival order even if discovery changes its ordering.
   const incoming = new Map(stacks.map(s => [s.id, s]));
   for (const card of [...$("stacks").children]) {
@@ -1345,6 +1480,7 @@ for (const id of ["ringviz", "legend", "stacks"]) {
 }
 for (const id of ["ringviz", "legend"]) {
   $(id).addEventListener("click", (e) => {
+    if (e.target.closest(".node")) return;
     const el = e.target.closest("[data-member]");
     if (el && el.dataset.member) selectGroup(el.dataset.member);
   });

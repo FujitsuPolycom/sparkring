@@ -519,7 +519,7 @@ def fabric_from_document(document: dict) -> dict:
                 if _ip(remote_address):
                     neighbors.append({"position": remote_position, "address": remote_address})
         rows.append({"position": index, "hostname": hostname, "node_id": row.get("node_id"),
-                     "neighbors": neighbors,
+                     "neighbors": neighbors, "ports": row.get("ports") or {},
                      "addresses": [a for a in addresses if _ip(a)],
                      "address": address if _ip(address) else None,
                      "lan_address": row.get("lan_address") if _ip(row.get("lan_address")) else None})
@@ -528,6 +528,23 @@ def fabric_from_document(document: dict) -> dict:
             "cluster": document.get("cluster") if isinstance(document.get("cluster"), str) else None,
             "shape": shape, "closed": shape == "cycle", "size": size, "positions": rows,
             "verified": verified.get("result") if isinstance(verified, dict) else None}
+
+
+def spark_cached_details(document):
+    """Allow-listed optional node facts; never collect hardware data for the viewer."""
+    gpu = document.get("gpu") or {}
+    gpu = {k: gpu[k] for k in ("memory_used_bytes", "memory_total_bytes", "temperature_c")
+           if isinstance(gpu, dict) and number(gpu.get(k)) and gpu[k] >= 0}
+    control = document.get("control")
+    links = document.get("links", control.get("peers", []) if isinstance(control, dict) else [])
+    links = links if isinstance(links, list) else []
+    links = [{k: row[k][:128] if isinstance(row[k], str) else row[k] for k in ("netdev", "carrier", "operstate")
+              if isinstance(row.get(k), (str, bool))} for row in links[:16] if isinstance(row, dict)]
+    containers = document.get("containers") or []
+    containers = containers if isinstance(containers, list) else []
+    containers = [{k: row[k][:128] for k in ("name", "state", "health") if isinstance(row.get(k), str)}
+                  for row in containers[:32] if isinstance(row, dict)]
+    return {"gpu": gpu, "links": links, "containers": containers}
 
 
 def _ip(value) -> bool:
@@ -1346,7 +1363,8 @@ class Collector:
         endpoint = row.get("display_url") or f"http://{row['api_host']}:{port}/v1"
         if not row["api_host"] or not port:
             endpoint = None
-        starting = self.startup_status(model) if not serving and not row["stopped"] else None
+        spark_starting = self.startup_status(model) if not row["stopped"] else None
+        starting = spark_starting if not serving else None
         since = (starting["started_at"] if starting else
                  runtime.get("started_at") if serving and runtime.get("started_at") else model.state_since)
         capacity = dict(model.capacity) if model.capacity else None
@@ -1360,7 +1378,8 @@ class Collector:
             spark = hostnames.get(position, {})
             up = True if serving else (False if model.state == "offline" and position == positions[0] else None)
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
-                           "lan_address": spark.get("lan_address"), "up": up, "position": position})
+                           "lan_address": spark.get("lan_address"), "up": up, "position": position,
+                           "container": next((c["name"] for c in row["containers"] if c["position"] == position), None)})
         thought = None if gpu_job else thinking_state(row, runtime.get("settings"))
         return {
             "id": model.id, "name": ("Spark " if len(positions) == 1 else "Sparks ") + ", ".join(map(str, positions))
@@ -1372,6 +1391,7 @@ class Collector:
             "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
             "stopped_records": row.get("stopped_records", []),
             "startup": starting,
+            "spark_startup": spark_starting,
             "state": model.state, "state_label": "GPU in use" if gpu_job else LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
             "endpoint": endpoint,
@@ -1379,7 +1399,9 @@ class Collector:
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
             "layout": {"label": parallelism(launch)
                        if row.get("unmanaged") else layout_label(len(positions)) if serving else None, "count": len(positions),
-                       "tp": launch.get("tp") if row.get("unmanaged") else runtime.get("tp")},
+                       "tp": launch.get("tp") if row.get("unmanaged") else runtime.get("tp"),
+                       "dcp": launch.get("dcp") if row.get("unmanaged") else
+                       (runtime.get("settings") or {}).get("decode_context_parallel_size")},
             "live": {key: metrics.get(key) for key in ("running", "waiting", "kv")} if model.metrics else None,
             "counters": {"source": "metrics", "at": model.metrics_at, "run_id": metrics.get("started"),
                          "values": {key: value for key, value in metrics.items()
@@ -1416,13 +1438,19 @@ class Collector:
         local = socket.gethostname()
         positions = []
         for row in fabric["positions"]:
+            reports = [d for d in [self.node_status, *self.node_reports] if isinstance(d, dict)
+                       and row.get("node_id") and d.get("node_id") == row["node_id"]
+                       and number(d.get("observed_at"))]
+            cached = max(reports, key=lambda d: d["observed_at"], default={})
             busy = owners.get(row["position"]) or []
             serving = any(m["state"] == "serving" and m["id"] in busy for m in members)
             up = True if serving or row["hostname"] == local else None
             positions.append({"position": row["position"], "name": row["hostname"],
                               "short": row["hostname"].removeprefix("spark-"), "address": row["address"],
                               "up": up, "since": None, "member": busy[0] if busy else None, "members": busy,
-                              "run": None})
+                              "run": None, "ports": row.get("ports", {}),
+                              "observed_at": cached.get("observed_at"),
+                              **spark_cached_details(cached)})
         first = fabric["positions"][0]["hostname"]
         return {"id": source.ring_id(), "name": self.ring_name(source), "node_a": first,
                 "short": first.removeprefix("spark-"), "size": fabric["size"], "closed": fabric["closed"],

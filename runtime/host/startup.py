@@ -166,7 +166,9 @@ class Reader:
                     value.update(phase="failed", label="Failed", error=error or fallback)
                 elif health == "healthy":
                     value = {"phase": "ready", "label": "Starting"}
-                value.update(schema=SCHEMA, at=now, started_at=started, run_id=identity + ":" + str(state.get("StartedAt")), rank=int(rank))
+                value.update(container_state=state.get("Status"), health=health,
+                             schema=SCHEMA, at=now, started_at=started,
+                             run_id=identity + ":" + str(state.get("StartedAt")), rank=int(rank))
                 retained[key] = value
                 found.setdefault(deployment, []).append(value)
         except (OSError, ValueError, TypeError, KeyError, http.client.HTTPException):
@@ -277,7 +279,7 @@ def project(values, ids, now):
                     or type(row.get("rank")) is not int or not 0 <= row["rank"] < 8):
                 continue
             clean_row = {k: row[k] for k in ("phase", "at", "started_at", "rank")}
-            for name in ("label", "error", "run_id"):
+            for name in ("label", "error", "run_id", "container_state", "health"):
                 if isinstance(row.get(name), str):
                     clean_row[name] = clean(row[name])[:500]
             if row.get("unit") == "%":

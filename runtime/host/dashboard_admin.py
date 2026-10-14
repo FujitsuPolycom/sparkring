@@ -99,8 +99,10 @@ def cached_node_rows(state_root, output, documents, checked_at):
     public = {}
 
     def project(document):
+        from runtime.host.dashboard import spark_cached_details
         row = {k: document[k] for k in ("node_id", "hostname", "observed_at", "interval_seconds", "gpu_compute")
                if k in document and isinstance(document[k], (str, int, float, bool))}
+        row.update(spark_cached_details(document))
         # Publish only bounded counters; agent documents can contain private fields.
         from runtime.host.dashboard_rates import number, plugin_fresh
         telemetry = document.get("telemetry")

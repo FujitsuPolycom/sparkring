@@ -126,6 +126,28 @@ host agent forwards plugin snapshots through the existing authenticated SSH
 path while a viewer is present. The
 [command reference](commands.md#dashboard) lists what it reads and how often.
 
+### Spark details
+
+Hover a numbered Spark in the ring, focus it with Tab, or tap it to open its
+details card. Tap the same Spark again or tap outside to close; Escape also
+closes it. Enter or Space pins or closes the focused card. The card fits the
+viewport on phone widths and scrolls when the screen is short.
+
+The card shows the hostname, management address, ring position, serving group
+and model, reported rank and TP/DCP, and that Spark's startup progress or
+serving state. Container state and health appear when observed; a failed
+Spark includes its last error line. Cable peers come from the configured
+fabric. NIC carrier and link state appear only for cached observations of
+that interface. GPU memory used/total and temperature appear only when the
+node cache supplies them; agents that do not publish these fields leave
+them out. Missing values are omitted.
+
+**Updated** dates the startup/API observation, or the status snapshot when no
+such observation is available. **Node cache** separately dates the hardware,
+link and cached container facts, which can be older. Opening the card sends
+no request. It updates from the page's normal status refresh and does not
+start hardware probes, log reads or additional polling.
+
 ### Startup progress
 
 The ring and each group card show startup phases before the API is ready:
