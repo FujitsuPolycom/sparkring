@@ -60,14 +60,13 @@ kernel library for GB10 (SM121) GPUs. Each profile's `profiles/<id>/config.json`
 selects the model, the vLLM arguments and the transport limits; the
 [install reference](../operations/install-reference.md) explains them.
 
-The default installer image is the image of release 2026.10.2,
-`dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`. Above
-release 2026.10.1's image it adds the vLLM and B12X sources that read the CSF
-checkpoints, SIRCL 0.3.2, libsircl 0.6.0, three GLM-5.3 vLLM plugins and the
-runtime-status dashboard 0.3.6
+The default installer image is the image of release 2026.10.4,
+`dev-20261013-dcp2prefill-status038-sircl-tp6`. It carries the vLLM and B12X sources that read the CSF checkpoints,
+with GLM-5.3-Flash's prefill admitted at TP2/DCP2, SIRCL 0.3.2, libsircl
+0.6.0, three GLM-5.3 vLLM plugins and the runtime-status dashboard 0.3.8
 ([images](../operations/images.md#installer-image)). Its
-[image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
-lists the transports it carries and the 13 profiles admitted to it.
+[image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
+lists the transports it carries and the 15 profiles admitted to it.
 
 ## Collective path
 

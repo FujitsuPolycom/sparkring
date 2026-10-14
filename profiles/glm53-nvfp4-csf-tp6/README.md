@@ -71,28 +71,24 @@ acceptance, every rank's weights, graph pools and allocated cache capacity.
 
 ## Image admission and installation
 
-No shipped image lock admits this profile. Build a separate source-recorded
-image carrying this checkout's SIRCL adapter and runtime-status collector,
-plus `glm_dsa_indexer_split`, on the CSF-capable
-`sparkring-kraken-beta-20261007-bc9ea774` vLLM build. The extracted d52737 image
-has neither the universal route-scope setting nor the new resident check.
-Merely adding this profile to that image's admission list is insufficient.
+The default image of release 2026.10.4,
+`dev-20261013-dcp2prefill-status038-sircl-tp6`, admits this profile
+([release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)).
+It carries what the profile needs:
 
-Use the updated [SIRCL layer builder](../../runtime/images/sircl_layer.py) to
-package the current wheel and rebuild its native libraries against the chosen
-parent. Its `prepare` action records all installed source and native bytes and
-its `record --profiles glm53-nvfp4-csf-tp6` action admits only the newly built
-image. Package version 0.3.7 of the [runtime-status source](../../integrations/vllm/runtime_status/README.md)
-as a wheel and matching source archive, then use a new
-[runtime-status derived-layer descriptor](../../runtime/images/derived_layer.py)
-to compose it before the SIRCL layer. Keep the existing model plugin layer.
-Do not overwrite published receipts or change their hashes. The new image
-needs a distinct digest, installation verification and an explicit v3 lock.
+- a SIRCL 0.3.2 layer built with the universal route-scope setting
+  (`SIRCL_ROUTE_SCOPE`);
+- runtime-status 0.3.8, whose collector reports the resident quantization
+  facts that the `glm53-tp6-resident-quantization` start check reads;
+- the vLLM plugin `glm_dsa_indexer_split`;
+- vLLM build `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads the
+  GLM-5.3-NVFP4-CSF checkpoint.
 
-Only after those blockers are resolved, with that lock and this local package staged by the operator:
+Release 2026.10.2's image has neither the route-scope setting nor the
+resident check, and its lock does not list the profile.
 
 ```bash
-sudo sparkring install --profile glm53-nvfp4-csf-tp6 --on 0-5 --image-lock /path/to/tp6-image-lock.json --no-auto-recover
+sudo sparkring install --profile glm53-nvfp4-csf-tp6 --on 0-5 --no-auto-recover
 ```
 
 The command is a future hardware procedure. Stop if the plan would displace a

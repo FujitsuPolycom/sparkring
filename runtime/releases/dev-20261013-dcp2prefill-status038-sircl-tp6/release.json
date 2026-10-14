@@ -1,0 +1,16 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261013-dcp2prefill-status038-sircl-tp6",
+ "selection": "published-immutable-reference",
+ "image": "ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f",
+ "inputs": [
+  {
+   "path": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/publication.json",
+   "sha256": "314e4aa2cc61209b093d9fcac935d0a372c6ac49b455bd66c1d4ff55fd8019d5"
+  },
+  {
+   "path": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
+   "sha256": "b20a347028c13da94855397d26b94360184441266e23d0bfbf36636f28c319ef"
+  }
+ ]
+}

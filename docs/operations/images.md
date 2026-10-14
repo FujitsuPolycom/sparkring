@@ -7,7 +7,8 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image | The `sparkring install` profiles, the 13 its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| Installer image | The `sparkring install` profiles, the 15 its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f` | `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502` |
+| 2026.10.2 installer image | `sparkring install --image 2026.10.2`, the rollback | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
 | 2026.10.1 installer image | `sparkring install --image 2026.10.1`, and [Compose](compose.md) exports | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles and others on release `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
@@ -16,8 +17,37 @@ other releases.
 
 ## Installer image
 
+Development image of release 2026.10.4, tag
+`dev-20261013-dcp2prefill-status038-sircl-tp6`, built in four layers on
+the [2026.10.2 installer image](#2026102-installer-image). The download is
+14.2 GiB and the unpacked image 29.7 GiB; a Spark that holds
+2026.10.2's image downloads the 6 layers it adds, 2.6 MiB.
+
+| Layer | Adds |
+|---|---|
+| TP2/DCP2 prefill admission | vLLM sources that let GLM-5.3-Flash prefill on two Sparks with decode-context parallelism 2 ([composition](../../runtime/images/compositions/dcp2-prefill/README.md)) |
+| runtime-status 0.3.7 | The dashboard's vLLM statistics logger ([derived_layer.py](../../runtime/images/derived_layer.py)) |
+| runtime-status 0.3.8 | The statistics logger and the resident quantization facts of GLM-5.3 on six Sparks ([derived_layer.py](../../runtime/images/derived_layer.py)) |
+| SIRCL 0.3.2 | SIRCL ring sessions that admit GLM-5.3 on six Sparks; native libraries unchanged ([SIRCL layer](../../runtime/images/installer-images.md#sircl-layer)) |
+
+- The [installer image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
+  (`sparkring-installer-image/v3`) lists its 15 profiles and pins the
+  image's identity.
+- The [release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)
+  states its layers, evidence and limitations.
+
+On a fabric that `sudo sparkring setup` recorded, `sparkring install` runs
+profiles on this image with SIRCL ring sessions and NCCL off
+([transport and receipts](install-reference.md#transport-and-receipts)), and
+on the prepared transport elsewhere. Its GLM-5.3-Flash profiles and
+`qwen38-flash-next-tp2` install their CSF checkpoints by default
+([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+
+## 2026.10.2 installer image
+
 Development image of release 2026.10.2, tag
-`dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, built in five layers on
+`dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`: the parent and rollback image of 2026.10.4
+(`--image 2026.10.2`). It is built in five layers on
 the [2026.10.1 installer image](#2026101-installer-image). The download is
 14.2 GiB and the unpacked image 29.7 GiB; a Spark that holds
 2026.10.1's image downloads the 6 layers it adds, 8.3 MiB.
@@ -36,12 +66,7 @@ the [2026.10.1 installer image](#2026101-installer-image). The download is
 - The [release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)
   states its layers, evidence and limitations.
 
-On a fabric that `sudo sparkring setup` recorded, `sparkring install` runs
-profiles on this image with SIRCL ring sessions and NCCL off
-([transport and receipts](install-reference.md#transport-and-receipts)), and
-on the prepared transport elsewhere. Its GLM-5.3-Flash profiles install the
-CSF checkpoint by default
-([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
+It runs profiles on the same transports as the 2026.10.4 image.
 
 ## 2026.10.1 installer image
 

@@ -15,8 +15,10 @@ The CSF checkpoint stores its routed experts' NVFP4 block scales losslessly
 compressed. Only vLLM's `nvfp4_csf` quantization and loader in the sources
 above read it, so a profile can make it the default only where its image
 carries them: an installer image whose lock lists SIRCL's pinned vLLM build
-`sparkring-kraken-beta-20261007-bc9ea774` in `sircl.vllm_pins`, such as the
-default installer image of release 2026.10.2 and the image of the
+`sparkring-kraken-beta-20261007-bc9ea774` or the TP2/DCP2 prefill build
+derived from it, `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, in
+`sircl.vllm_pins`, such as the default installer image of release 2026.10.4
+(the TP2/DCP2 prefill build), release 2026.10.2's image and the image of the
 [`dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034` recipe](../runtime/releases/dev-20261007-kraken-csf-sircl-cuda1342-nccl2323-status034/README.md).
 
 | Profiles | Default checkpoint | Reason |

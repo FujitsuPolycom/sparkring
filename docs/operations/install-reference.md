@@ -459,30 +459,38 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Without `--image`, every installer profile runs on one shared ARM64 serving
-image, the image of release 2026.10.2, pinned by its
-[installer image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
+image, the image of release 2026.10.4, pinned by its
+[installer image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
 (`sparkring-installer-image/v3`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` |
-| Tag | `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` |
-| Configuration | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
-| Parent image | Release 2026.10.1's `dev-20261004-kraken-cuda1342-nccl2323-status034`, configuration `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f` |
+| Tag | `dev-20261013-dcp2prefill-status038-sircl-tp6` |
+| Configuration | `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502` |
+| Parent image | Release 2026.10.2's `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, configuration `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
 | Transports | `sircl` (SIRCL 0.3.2, ABI 9), `prepared` and `libsircl` (libsircl 0.6.0) |
+| vLLM build | `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads the CSF checkpoints and admits GLM-5.3-Flash at TP2/DCP2 |
 | vLLM plugins | `glm53full_speedups` 1.1.0, `glm_dcp_decode_comm` 2.0.1, `glm_dsa_indexer_split` 1.1.0 |
-| Runtime-status dashboard | 0.3.6 |
-| Size recorded in the lock | 15,280,315,686 bytes to download, 31,884,969,464 bytes unpacked |
+| Runtime-status dashboard | 0.3.8 |
+| Size recorded in the lock | 15,283,036,575 bytes to download, 31,895,394,449 bytes unpacked |
 
-The image adds layers to its parent: the vLLM and B12X sources that read the
-CSF checkpoints, the SIRCL layer, the libsircl layer, the GLM-5.3 plugins and
-runtime-status 0.3.6 ([images](images.md#installer-image)). The
-[release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md) states its layers, evidence and limitations.
+The image adds layers to its parent: the TP2/DCP2 prefill admission,
+runtime-status 0.3.7 and 0.3.8, and a SIRCL layer whose ring sessions admit
+GLM-5.3 on six Sparks. The
+[release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md) states its layers, evidence and limitations.
 `sparkring install` picks the newest published, unarchived v3 image that
 carries SIRCL (`default_row` in
 [image_lock.py](../../runtime/common/image_lock.py)); without one it falls
 back to `installer_image.DEFAULT_LOCK`, release 2026.10.1's lock, which is
 also the image of Compose exports.
+
+Release 2026.10.2's image, `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` (`--image 2026.10.2`), is the rollback
+image. It carries the same transports and plugins, the vLLM build
+`sparkring-kraken-beta-20261007-bc9ea774` and runtime-status 0.3.6, and
+admits every profile of the default image except
+`glm53-flash-nvfp4-spark-tp2-dcp2` and `glm53-nvfp4-csf-tp6`
+([release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
 
 Release 2026.10.1's image, `dev-20261004-kraken-cuda1342-nccl2323-status034`
 (`--image 2026.10.1`), carries the prepared transport only. It adds two layers
@@ -598,7 +606,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
   eight-Spark ring and only on SIRCL ring sessions. They install on an image
   lock (`sparkring-installer-image/v3`) whose image carries the SIRCL layer
-  and lists them: the default image's, release 2026.10.2's, lists every one
+  and lists them: the default image's, release 2026.10.4's, lists every one
   except `qwen38-flash-next-qad-tp8` and `glm53-nvfp4-csf-tp8`; a
   development lock is selected with `--image-lock FILE`. They are listed in the research catalog,
   [research-catalog.json](../../profiles/research-catalog.json), outside every
@@ -2319,9 +2327,9 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. The default image, `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`,
-    derives from 2026.10.1's: a Spark that holds 2026.10.1's image loads at
-    most 36.7 MiB of layers and needs 4.1 GiB;
+    download-size differences. The default image, `dev-20261013-dcp2prefill-status038-sircl-tp6`,
+    derives from 2026.10.2's: a Spark that holds 2026.10.2's image loads at
+    most 9.9 MiB of layers and needs 4.0 GiB;
   - no image it derives from: the unpacked size plus the download size plus
     8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
     same applies on Docker's containerd image store, into which SparkRing

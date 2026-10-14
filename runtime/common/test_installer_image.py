@@ -247,7 +247,8 @@ def test_capabilities_follow_each_image_s_own_layer_and_its_parents():
     assert {name for name, capabilities in found.items() if "shm_reader_window" in capabilities} == {
         "dev-20260930-spinwait-cuda1342-nccl2323-status033", "dev-20261001-portgid-cuda1342-nccl2323-status033",
         "dev-20261001-statusrows-cuda1342-nccl2323-status034", "dev-20261001-kraken-cuda1342-nccl2323-status034",
-        "dev-20261004-kraken-cuda1342-nccl2323-status034", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"}
+        "dev-20261004-kraken-cuda1342-nccl2323-status034", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+        "dev-20261013-dcp2prefill-status038-sircl-tp6"}
     assert found[installer_image.default_lock()["name"]] == ("shm_reader_window",)
     for name in ("shared-2026.09.3", "unrecorded-release", "../escape", None):
         assert installer_image.capabilities(name) == ()

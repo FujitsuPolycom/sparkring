@@ -1,8 +1,8 @@
 # Reconciled B12X tuning selections on multi-rank starts
 
 Status: **implemented**. Installer image
-`dev-20261004-kraken-cuda1342-nccl2323-status034`, release 2026.10.1's and the
-parent of release 2026.10.2's default image, and its rollback image,
+`dev-20261004-kraken-cuda1342-nccl2323-status034`, release 2026.10.1's and an
+ancestor of release 2026.10.4's default image, and its rollback image,
 `dev-20261001-kraken-cuda1342-nccl2323-status034`, implement the same
 condition in B12X itself: their `b12x/preparation/session.py`, from SparkRing's
 B12X branches

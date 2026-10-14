@@ -11,7 +11,8 @@ MIMO = ("mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
 def test_images_lists_the_default_first_and_each_image_s_release_tag(capsys):
     assert images.main([]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036  (2026.10.2, default)"
+    assert lines[0] == "dev-20261013-dcp2prefill-status038-sircl-tp6  (2026.10.4, default)"
+    assert "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036  (2026.10.2)" in lines
     assert lines[1].endswith("GiB download; transports libsircl, prepared, sircl; kraken line; "
                              "runs every installer profile")
     assert "dev-20261001-kraken-cuda1342-nccl2323-status034  (2026.10.0)" in lines
@@ -82,7 +83,9 @@ def test_images_for_a_profile_lists_only_images_that_run_it(capsys):
     assert "dev-20260927-mimovision-cuda1342-nccl2323-status032" in [row["name"] for row in listed]
     assert not any(name.startswith("mimo-v26-flash-rl") for row in listed for name in row["profiles"])
     assert listed[0]["transports"] == ["libsircl", "prepared", "sircl"] and listed[0]["line"] == "kraken"
-    assert all(row["transports"] == ["prepared"] and row["line"] is None for row in listed[1:])
+    # Release 2026.10.2's image, the default image's parent, also carries SIRCL; the older images do not.
+    assert listed[1]["name"] == "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036" and listed[1]["transports"] == listed[0]["transports"]
+    assert all(row["transports"] == ["prepared"] and row["line"] is None for row in listed[2:])
     assert not any(row["archived"] for row in listed)
 
 

@@ -5,7 +5,7 @@ collective transport between DGX Sparks over RoCE without a switch. It
 carries tensor-parallel and decode-context-parallel collectives for groups of
 2 to 8 Sparks cabled as a pair, a path or a cycle. `sparkring install` uses
 SIRCL ring sessions by default on an image that carries the SIRCL layer, such
-as the default image of release 2026.10.2; the `prepared` RoCEnante transport
+as the default image of release 2026.10.4; the `prepared` RoCEnante transport
 and patched NCCL serve images without that layer and the retained images.
 SIRCL has two session generations:
 

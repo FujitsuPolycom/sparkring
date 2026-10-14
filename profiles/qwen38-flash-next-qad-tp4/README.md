@@ -33,7 +33,7 @@ covers requirements, logs and recovery. Per-rank Compose files:
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
-| Image | `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` (release 2026.10.2, the `sparkring install` default); `--image 2026.10.1` selects `dev-20261004-kraken-cuda1342-nccl2323-status034` | `shared-2026.09.3` |
+| Image | `dev-20261013-dcp2prefill-status038-sircl-tp6` (release 2026.10.4, the `sparkring install` default); `--image 2026.10.2` selects `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` | `shared-2026.09.3` |
 | Checkpoint | Step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP4/DCP1 on a four-node ring with hardware-forwarded mesh paths | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |

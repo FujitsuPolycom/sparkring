@@ -151,7 +151,7 @@ def test_without_a_published_sircl_image_the_installer_default_is_unchanged(monk
 
 def test_the_installer_default_is_the_newest_published_sircl_release():
     row = image_lock.default_row()
-    assert row["name"] == "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036" and row["tags"] == ["2026.10.2"]
+    assert row["name"] == "dev-20261013-dcp2prefill-status038-sircl-tp6" and row["tags"] == ["2026.10.4"]
     value = image_lock.default()
     assert image_lock.schema(value) == image_lock.SCHEMA_V3 and "sircl" in value["transports"]
     assert value["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
@@ -201,7 +201,7 @@ def test_only_a_v3_lock_whose_image_carries_sircl_lists_eight_spark_profiles(mon
     assert image_lock.for_profile(TP8) == image_lock.default()
     without_published_sircl_images(monkeypatch)
     with pytest.raises(ValueError, match=f"{TP8} runs only on SIRCL ring sessions, and image .* carries no SIRCL "
-                                         "layer; images that run it: dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"):
+                                         "layer; images that run it: dev-20261013-dcp2prefill-status038-sircl-tp6, dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"):
         image_lock.for_profile(TP8)
 
 

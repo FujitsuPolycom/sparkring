@@ -4,7 +4,7 @@
 model on all of them, or several models on separate groups of them. Run it on
 Node A, the Spark connected to your network. On an image without SIRCL ring
 sessions, such as 2026.10.1's, a model runs on a pair, a four-Spark ring or
-half of that ring; the default image, 2026.10.2's, has SIRCL ring sessions
+half of that ring; the default image, 2026.10.4's, has SIRCL ring sessions
 and runs models on lines and rings of up to eight Sparks
 ([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)).
 

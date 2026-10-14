@@ -1,0 +1,28 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261013-dcp2prefill-status038-sircl-tp6",
+  "image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+  "image_config_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261013-dcp2prefill-status038-sircl-tp6",
+  "registry_manifest_digest": "sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x@sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.8",
+  "derivation": {
+    "parent_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+    "parent_image_id": "sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b",
+    "layers": [
+      "TP2/DCP2 prefill admission: vLLM's KDA prefill checkpoint admission (v1/core/recurrent_prefill_checkpoint.py) and both mHC row-ownership gates (models/glm5next/nvidia/mhc_prefill_sharding.py) admit tensor parallelism 2 with decode-context parallelism 2, and SIRCL's pins and hook inventory name the vLLM build sparkring-kraken-bc9ea774-tp2-dcp2-prefill (runtime/images/derive_dcp2_prefill.py, runtime/images/compositions/dcp2-prefill/sources.json)",
+      "runtime-status 0.3.7 in place of 0.3.6: the dashboard's vLLM stat-logger plugin sparkring_stats (runtime/images/derived_layer.py, runtime/images/compositions/installer-dashboard-status037/descriptor.json)",
+      "runtime-status 0.3.8 in place of 0.3.7: the stat logger and the resident quantization facts that GLM-5.3 at tensor parallelism 6 reports, built from integrations/vllm/runtime_status tree ae8b68dd7114fc68e3485186e26c810118085aa8 (runtime/images/derived_layer.py, runtime/images/compositions/installer-status038/descriptor.json)",
+      "SIRCL 0.3.2, native ABI 9, rebuilt from commit 32c41e7f03218762a59bd43e2b47f85bb85407ac: wheel sparkring_sircl-0.3.2-py3-none-any.whl (SHA-256 2ab69d936890c4a66c6de0bf6258f1391f090a9368111dd5774d77b2d9457d09) with the universal routes that admit GLM-5.3 at tensor parallelism 6 and the TP2/DCP2 prefill build identity, and the prebuilt roce_proxy-09db871538819191.so and p2p_proxy-c8ccfcb93ffa2d6a.so, byte-identical to the parent's (runtime/images/sircl_layer.py)"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

@@ -17,8 +17,8 @@ Experimental.
 The eight ranks reach each other through ConnectX relays, so only SIRCL ring
 sessions carry the model's collectives, with NCCL off. It installs on an
 image whose lock (schema v3) carries the SIRCL layer and lists
-`glm53-flash-csf-tp8`, such as the default image, release 2026.10.2's
-([release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)):
+`glm53-flash-csf-tp8`, such as the default image, release 2026.10.4's
+([release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)):
 
 ```bash
 sudo sparkring install --profile glm53-flash-csf-tp8

@@ -1,0 +1,167 @@
+{
+  "schema": "sparkring-release-status/v1",
+  "release": "2026.10.4",
+  "image_release": "dev-20261013-dcp2prefill-status038-sircl-tp6",
+  "status": "implemented",
+  "maturity": "candidate",
+  "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md",
+  "notes": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/RELEASE_NOTES.md",
+  "image": {
+    "image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+    "build_tag": "sparkring:dev-20261013-dcp2prefill-status038-sircl-tp6",
+    "build_commit": "32c41e7f03218762a59bd43e2b47f85bb85407ac",
+    "recorded_lock_sha256": "1f313ef7b7bb9fa6c3d7f85373da537f4ab0e4b233aa6025cf1d5cd318015716",
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f",
+    "image_bytes": 31895394449,
+    "delta_download_bytes_from_rollback": 2720889,
+    "download_bytes": 15283036575
+  },
+  "rollback": {
+    "release": "2026.10.2",
+    "image_release": "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911",
+    "command": "sudo sparkring install --profile PROFILE --image 2026.10.2"
+  },
+  "profiles": [
+    {
+      "id": "deepseek-v41-flash-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "deepseek-v41-flash-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2-dcp2",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf"
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp6",
+      "status": "research-only",
+      "note": "no installation has run"
+    },
+    {
+      "id": "glm53-nvfp4-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "status": "research-only"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (no serving record on this image's vLLM build)"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp4",
+      "status": "research-only"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ring8-install-deepseek-v41-flash-tp4",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, GPU clocks not locked",
+      "image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+      "scope": "sparkring install with the recorded lock (--image-lock) on four Sparks, 2026-10-13; one installation",
+      "result": "installed and served requests; no performance measured",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#evidence"
+    },
+    {
+      "id": "ring8-install-glm53-flash-nvfp4-spark-tp2",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, GPU clocks not locked",
+      "image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+      "scope": "sparkring install with the recorded lock (--image-lock) on two Sparks, CSF checkpoint, decode-context parallelism 1, 2026-10-13; one installation",
+      "result": "installed and served requests; no performance measured",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#evidence"
+    },
+    {
+      "id": "ring8-install-glm53-flash-nvfp4-spark-tp2-dcp2",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, GPU clocks not locked",
+      "image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+      "scope": "sparkring install with the recorded lock (--image-lock) on two Sparks, 2026-10-13; one installation",
+      "result": "API ready after 546 s; KV cache 4,126,165 tokens; SIRCL mhc_prefill_shard shim installed on both ranks; served requests; no performance measured",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#evidence"
+    }
+  ],
+  "gates": [
+    {
+      "id": "image-lock",
+      "result": "passed",
+      "scope": "image 3cc9a81fd344 built, external-base verify passed (6,326 files), its lock recorded for 15 profiles by the installer's admission and isolated verify",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json"
+    },
+    {
+      "id": "ring8-installs",
+      "result": "passed",
+      "scope": "deepseek-v41-flash-tp4, glm53-flash-nvfp4-spark-tp2 (CSF, DCP1) and glm53-flash-nvfp4-spark-tp2-dcp2 installed with sparkring install and served requests (research-only); the other 12 profiles were not started on this image",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#evidence"
+    },
+    {
+      "id": "relay-marker",
+      "result": "passed",
+      "scope": "relay marker source c64c74535c06 unchanged since release 2026.10.2; its recorded binary applies",
+      "record": "spark_transport/fabric/relay-marker-artifact.json"
+    },
+    {
+      "id": "publication",
+      "result": "passed",
+      "scope": "registry push and anonymous manifest and configuration check of sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f; configuration is the image ID; 57 layers, the first 51 release 2026.10.2's",
+      "record": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/publication.json"
+    },
+    {
+      "id": "glm53-tp6-hardware",
+      "result": "not-run",
+      "scope": "an installation of glm53-nvfp4-csf-tp6 on six Sparks",
+      "record": "profiles/glm53-nvfp4-csf-tp6/README.md"
+    },
+    {
+      "id": "compose-v3",
+      "result": "not-run",
+      "scope": "python scripts/generate_compose_builder.py --verify with this release's lock",
+      "record": "docs/operations/compose-builder.md"
+    }
+  ],
+  "github_release": {
+    "tag": "2026.10.4"
+  }
+}
