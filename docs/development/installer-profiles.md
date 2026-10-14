@@ -1,13 +1,15 @@
 # Contributing an installer profile
 
-An installer profile is a profile that `sparkring install` sets up end to end on its group of cabled
-Sparks: two, four or eight, on all Sparks of the fabric or on some of them
+An installer profile is a profile that `sparkring install` sets up end to end on its group of 2 to 8
+cabled Sparks, on all Sparks of the fabric or on some of them
 ([models on part of the fabric](../operations/install-reference.md#models-on-part-of-the-fabric)). It is
-one pinned checkpoint and its serving settings, on the shared serving image of an installer image lock.
-The default installer image lock, `runtime/releases/<release>/installer-image.json`
-(`installer_image.DEFAULT_LOCK`), pins that image and lists the admitted profiles;
-`python -c "from runtime.common.installer_image import DEFAULT_LOCK as L; print(L.parent.name)"` prints
-`<release>`. Examples: [`deepseek-v41-flash-tp4`](../../profiles/deepseek-v41-flash-tp4/profile.json)
+one pinned checkpoint and its serving settings, on the shared serving image of an installer image lock,
+`runtime/releases/<release>/installer-image.json`, which pins that image and lists the admitted profiles.
+Without `--image`, `sparkring install` uses the lock of the newest kraken-line v3 image that carries
+SIRCL, is not archived and is published by a GitHub release (`image_lock.default_row`);
+`python -c "from runtime.common import image_lock; print(image_lock.default_row()['name'])"` prints
+its `<release>`. `installer_image.DEFAULT_LOCK` is the lock that `sparkring compose render` uses without
+`--image`, and the install fallback when no such image exists. Examples: [`deepseek-v41-flash-tp4`](../../profiles/deepseek-v41-flash-tp4/profile.json)
 (four Sparks, guide `install.md`) and the Qwen profiles `qwen38-flash-next-tp2` and
 `qwen38-flash-next-qad-tp4` (own guides and a `--checkpoint` table). Users install a profile with:
 

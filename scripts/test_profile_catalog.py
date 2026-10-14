@@ -26,7 +26,10 @@ def test_qad_quant_link_identifies_the_pinned_checkpoint_for_tp2_and_tp4():
     summary = profile_table().split('## Configuration variants', 1)[0]
     ring, pair = summary.split('### Two Sparks', 1)
     link = '[NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)'
-    assert link in ring and link in pair
+    assert link in ring
+    # On the install default image the two-Spark profile installs its preferred CSF checkpoint.
+    pair_row = next(line for line in pair.splitlines() if '](../profiles/qwen38-flash-next-tp2/README.md)' in line)
+    assert '[NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)' in pair_row
     assert '[NVFP4](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4)' not in pair
     qad = next(line for line in ring.splitlines() if '| [Qwen3.8-Flash-Next](' in line.replace('**', ''))
     # The SparkCache profile is a standalone catalog entry, so the installer row
@@ -34,6 +37,24 @@ def test_qad_quant_link_identifies_the_pinned_checkpoint_for_tp2_and_tp4():
     assert '[Optional](' not in qad
     assert resolve('qwen38-flash-next-qad-tp4')['serving']['sparkcache'] is False
     assert resolve('qwen38-flash-next-qad-tp4-sparkcache')['serving']['sparkcache'] is True
+
+
+def test_installer_rows_show_the_checkpoint_installed_on_the_install_default_image():
+    from scripts.generate_profiles import install_checkpoints, installed_defaults
+    installs = install_checkpoints()
+    # On release 2026.10.4's image the GLM-5.3-Flash pair and ring and the Qwen pair install CSF.
+    assert {profile for profile, checkpoint in installs.items() if checkpoint} == {
+        'glm53-flash-nvfp4-spark-tp2', 'glm53-flash-nvfp4-spark-tp4', 'qwen38-flash-next-tp2'}
+    summary = profile_table(compact=True)
+    rows = {'glm53-flash-nvfp4-spark-tp2': ('Two Sparks', 'docs/operations/install.md'),
+            'glm53-flash-nvfp4-spark-tp4': ('Four Sparks', 'docs/operations/install.md'),
+            'qwen38-flash-next-tp2': ('Two Sparks', 'profiles/qwen38-flash-next-tp2/README.md')}
+    for profile, (section, guide) in rows.items():
+        part = summary.split('### ' + section, 1)[1].split('###', 1)[0]
+        row = next(line for line in part.splitlines() if line.startswith('| **[') and f']({guide})' in line
+                   and 'CSF' in line)
+        facts = installed_defaults(profile)
+        assert '-CSF-QAD)' in row and f"]({facts['kv']['source']})" in row
 
 
 def test_catalog_groups_glm_choices_and_preserves_every_profile_link():

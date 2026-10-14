@@ -12,6 +12,7 @@
     "deepseek-ai/DeepSeek-V4.1-Flash": "DeepSeek-V4.1-Flash",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "Qwen3.8-27B",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "Qwen3.8-Flash-Next",
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD": "Qwen3.8-Flash-Next",
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "Swift-1.5-Qwen3.8-Flash-Next",
     "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": "MiMo-V2.6-Flash-MOPD"
   },
@@ -27,6 +28,7 @@
     "deepseek-ai/DeepSeek-V4.1-Flash": "FP8/MXFP4",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "EXL3 K5/K6",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "NVFP4",
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD": "NVFP4/MXFP8 CSF",
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "NVFP4 experts/BF16",
     "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": "MXFP8/BF16"
   },

@@ -219,6 +219,7 @@ def profile_table(root=ROOT, *, compact=False):
                 if existing is None or rank > existing[0]:
                     dcp_capacity[(key, dcp)] = (rank, capacity[profile['id']])
         rows, cache_cells = compact_profile_rows(rows, root)
+        installs = install_checkpoints()
         lines = [START, '']
     for title, predicate in (
         ('Four Sparks', lambda p, r: p['recommendation'] != 'retired' and r['serving']['node_count'] == 4),
@@ -236,12 +237,19 @@ def profile_table(root=ROOT, *, compact=False):
             s = r['serving']
             engine = r['runtime'].get('engine', 'vllm')
             engine_title = {'vllm': 'vLLM', 'sglang': 'SGLang'}[engine]
-            repository = r['model']['repository']
+            # An installer profile's row shows the checkpoint `sparkring install` installs on the install
+            # default image, with that checkpoint's context and recorded KV pool.
+            checkpoint = installs.get(p['id']) if compact else None
+            model = r['model']
+            if checkpoint:
+                from runtime.common import toolchain_profiles
+                model = toolchain_profiles.checkpoint_settings(_serving_configuration(p['id'], root), checkpoint)['model']
+            repository = model['repository']
             model_name = names[repository]
-            variant = model_labels.get('quant_variants', {}).get(repository + '@' + r['model'].get('revision', ''))
+            variant = model_labels.get('quant_variants', {}).get(repository + '@' + model.get('revision', ''))
             quant_url = f"https://huggingface.co/{repository}"
             if variant:
-                quant_url += '/tree/' + r['model']['revision']
+                quant_url += '/tree/' + model['revision']
             # The checkpoint's publisher is credited under its link.
             publisher = model_labels['publishers'][repository.split('/')[0]]
             quant = f"[{variant or quant_labels[repository]}]({quant_url})<br>by {publisher}"
@@ -251,7 +259,7 @@ def profile_table(root=ROOT, *, compact=False):
             if r['topology'] == 'switched':
                 layout += ' · switched'
             context = f"{s['max_model_len']:,}" if 'max_model_len' in s else '—'
-            record = capacity.get(p['id'])
+            record = recorded_kv(p['id'], checkpoint, root) if checkpoint else capacity.get(p['id'])
             kv = f"[{record['tokens']:,}]({record['source']})" if record else '—'
             if compact:
                 key = deployment_family(r)
@@ -261,6 +269,9 @@ def profile_table(root=ROOT, *, compact=False):
                 if engine == 'sglang':
                     layout = '—'
                 context = compact_tokens(s['max_model_len']) if 'max_model_len' in s else '—'
+                if checkpoint:
+                    configured = configured_context(p['id'], checkpoint, root)
+                    context = compact_tokens(configured) if configured else '—'
                 kv = f"[{compact_tokens(record['tokens'])}]({record['source']})" if record else '—'
             if record and not compact:
                 kv = f"[{record['tokens']:,}](../{record['source']})"
@@ -366,6 +377,16 @@ def install_checkpoint(profile_id):
     """
     from runtime.common import image_lock
     return image_lock.preferred_checkpoint(image_lock.default(), profile_id)
+
+
+def install_checkpoints():
+    """``{profile: checkpoint}`` for every profile the install default image runs (image_lock.default).
+
+    Each value is install_checkpoint's: the checkpoint `sparkring install --profile PROFILE` installs on that
+    image without --checkpoint, or None for the profile's own default.
+    """
+    from runtime.common import image_lock
+    return {profile: install_checkpoint(profile) for profile in image_lock.profiles_of(image_lock.default())}
 
 
 def configured_context(profile_id, checkpoint=None, root=ROOT):

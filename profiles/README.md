@@ -28,18 +28,20 @@ NVIDIA and Local Inference Lab NVFP4 QAD checkpoints with `--checkpoint`
 ([names and status](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 The GLM installer profiles of two and four Sparks install Local Inference
 Lab's CSF checkpoint by default on an image whose vLLM reads it, and the
-NVFP4-Spark checkpoint the GLM rows below name on every other image
+NVFP4-Spark checkpoint on every other image
 ([default checkpoint by profile](glm53-checkpoints.md#default-checkpoint-by-profile)).
 The two-Spark Qwen installer profile, `qwen38-flash-next-tp2`, likewise
 installs Local Inference Lab's Qwen3.8-Flash-Next CSF checkpoint by default on
 an image whose vLLM reads it, and step 5500 on every other image
 ([checkpoints](../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
+The rows of installer profiles show the checkpoint, context and recorded KV
+pool that `sparkring install` installs on its default image.
 
 The Qwen3.8-Flash-Next rows link the installer profiles, which `sparkring install`
 runs by default on release 2026.10.4's image
 `dev-20261013-dcp2prefill-status038-sircl-tp6`
-([Install SparkRing](../docs/operations/install.md)). Their KV links point to
-the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
+([Install SparkRing](../docs/operations/install.md)). The four-Spark row's KV
+link points to the shared-2026.09.3 [correctness summary](../runtime/releases/shared-2026.09.3/correctness.json),
 whose figures were measured on the shared-2026.09.3 image with checkpoint step
 4000 (revision `629bc3218833`), not on the installer image with step 5500. On the installer image, the TP4 profile's KV cache
 held 3,131,214 tokens ([installer tuning record](../performance/records/qwen38-flash-next/installer-tuning-20260925.md)).
@@ -54,7 +56,7 @@ To contribute a profile that `sparkring install` sets up, see
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
 | **[DeepSeek-V4.1-Flash](../docs/operations/install.md)**<br>vLLM | [FP8/MXFP4](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash)<br>by DeepSeek | 1 | 1M / [12.8M](../performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-kv-ring8-20261014.md) | No | Development |
-| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [6.1M](../performance/records/images/dev-20260928-plainstatus-glm53-flash-tp4-20260929.md) | No | Development |
+| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 1M / [5.7M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [2.3M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / [2.2M](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Development |
 | **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-qad-tp4/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [3.1M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
@@ -69,10 +71,10 @@ To contribute a profile that `sparkring install` sets up, see
 
 | Model | Quant | DCP | Context / KV* | SparkCache | Status |
 |---|---|---|---|---|---|
-| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [1.5M](../performance/records/images/dev-20260928-plainstatus-glm53-flash-tp2-20260929.md) | No | Development |
+| **[GLM-5.3-Flash](../docs/operations/install.md)**<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 1M / [1.5M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md) | No | Development |
 | **[GLM-5.3-Flash](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md)**<br>vLLM | [NVFP4-Spark](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-Spark)<br>by Local Inference Lab | 1 | 1M / [1.1M](../runtime/releases/shared-2026.09.3/correctness.json) | [Optional](../profiles/glm53-flash-spark-tp2-dcp1-sparkcache/README.md) | Validated |
 | **[MiMo-V2.6-Flash-MOPD](../docs/operations/install.md)**<br>vLLM | [MXFP8/BF16](https://huggingface.co/XiaomiMiMo/MiMo-V2.6-Flash-MOPD)<br>by Xiaomi MiMo | 1 | 262K / [656K](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Development |
-| **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 QAD step 5500 PLE](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4/tree/60215d26cf5e42c2db6128774032d57fc62678da)<br>by Local Inference Lab | 1 | 262K / [2.9M](../runtime/releases/shared-2026.09.3/correctness.json) | No | Development |
+| **[Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 262K / [2.5M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md) | No | Development |
 | **[Swift-1.5-Qwen3.8-Flash-Next](../profiles/swift15-qwen38-flash-next-tp2/README.md)**<br>vLLM | [NVFP4 experts/BF16](https://huggingface.co/ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4)<br>by UkisAI | 1 | 262K / [2.9M](../performance/records/images/dev-20261004-kraken-matrix-20261004.md) | No | Development |
 | [DeepSeek-V4-Flash-0731](../profiles/deepseek-v4-flash-0731-pair/README.md)<br>vLLM | [Stock](https://huggingface.co/deepseek-ai/DeepSeek-V4-Flash-0731)<br>by DeepSeek | 1 | 1M / [2.2M](../performance/records/deepseek-v4-flash/image827a8e8c-tp2.json) | [Optional](../profiles/sparkcache-deepseek-v4-flash-0731-sparkcache-tp2-dcp1/README.md) | Development |
 | [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 2/1 | 1M / ([4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)/—) | No | Experimental |
