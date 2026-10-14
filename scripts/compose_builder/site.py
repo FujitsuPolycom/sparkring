@@ -104,9 +104,15 @@ def installer_catalog():
 
 
 def planner_images(catalog):
+    """The images the planner offers for ``catalog``'s profiles, the install default first (export.offered_images).
+
+    ``default`` marks the image `sparkring install` uses without --image, and
+    ``profiles`` maps each profile the image runs to its install-default
+    checkpoint (``preferred``) and the checkpoints the image reads.
+    """
     result = []
-    images = installer_image.catalog()
-    for row in images:
+    names = [row["name"] for row in installer_image.catalog()]
+    for row in export.offered_images([profile["id"] for profile in catalog]):
         offered = {}
         for profile in catalog:
             ident = profile["id"]
@@ -117,7 +123,7 @@ def planner_images(catalog):
                 "checkpoints": [c["name"] for c in profile["checkpoints"]
                                 if not image_lock.checkpoint_problem(row["lock"], setup.selection(ident, c["name"]))],
             }
-        result.append({"name": row["name"], "option": export._image_option(row, [r["name"] for r in images]),
+        result.append({"name": row["name"], "option": export._image_option(row, names),
                        "default": row["default"], "profiles": offered,
                        "sircl": row["lock"].get("schema", "").endswith("/v3"),
                        "capabilities": sorted(installer_image.capabilities(row["name"]))})
@@ -150,14 +156,15 @@ def data(meta):
     catalog = installer_catalog()
     release = release_record(meta)
     images = planner_images(catalog)
-    release_image = next((image for image in images if image["name"] == release["image_release"]), images[0])
+    # The planner starts on the install default; each profile's port and variant are its install default's there.
+    default_image = next(image for image in images if image["default"])
     for profile in catalog:
-        preferred = release_image["profiles"].get(profile["id"], {}).get("preferred")
+        preferred = default_image["profiles"].get(profile["id"], {}).get("preferred")
         checkpoint = next((c for c in profile["checkpoints"] if c["name"] == preferred), profile["checkpoints"][0])
         profile["variant"] = checkpoint["variant"]
         profile["port"] = checkpoint["port"]
     return {"profiles": catalog, "images": images, "speed": speed_rows(),
-            "release": release["release"], "release_image": release["image_release"],
+            "release": release["release"],
             "release_record": release["record"], "meta": meta}
 
 

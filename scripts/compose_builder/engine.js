@@ -734,11 +734,16 @@ const SparkRingEngine = (() => {
     const found = profile.checkpoints.find(installDefault);
     return found && !found.default ? found.name : null;
   }
-  // A profile rendered on a non-default installer image carries the `--image` value that selects it.
+  // A profile carries the `--image` value that selects its installer image for each command:
+  // `image_option` for `sparkring install`, whose default is the install default
+  // (image_lock.default_row), and `render_image_option` for `sparkring compose render`, whose
+  // default is installer_image.DEFAULT_LOCK (export.profile_data). Each is null for that command's
+  // default; a profile without `render_image_option` uses `image_option` for both.
   // `install` gives the words of `sparkring install`, else those of `sparkring compose render`.
   function selectionWords(profile, checkpoint, settings, install = false) {
     const words = [];
-    if (profile.image_option) words.push('--image', profile.image_option);
+    const image = install || profile.render_image_option === undefined ? profile.image_option : profile.render_image_option;
+    if (image) words.push('--image', image);
     if (!(install ? installDefault(checkpoint) : checkpoint.default)) words.push('--checkpoint', checkpoint.name);
     for (const name of Object.keys(settings).sort()) {
       words.push(...(settings[name] === true ? [option(name)] : [option(name), String(settings[name])]));

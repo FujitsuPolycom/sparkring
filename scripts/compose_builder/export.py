@@ -29,10 +29,21 @@ size for its token estimate, with the measurement's record, conditions and
 KV-size evidence, which the page names beside the estimate
 (kv_measurement), or None when the profile has no usable measurement.
 
+The Builder offers two installer images (offered_images): the one `sparkring
+install` uses without --image (image_lock.default_row) and that image's
+rollback image. The page's own data renders every profile on the install
+default, a v3 lock through its v2 view as a Compose deployment runs it; the
+rollback image's profiles are in its data file (image_data). `sparkring compose
+render` without --image renders on installer_image.DEFAULT_LOCK instead, so
+each profile carries both `--image` values: ``image_option`` for install
+(None on the install default) and ``render_image_option`` for render (None on
+DEFAULT_LOCK's image).
+
 A profile without Compose exports that `sparkring install` installs on a
 published image (INSTALL_ONLY) is listed for its install command only: its
 data has ``compose`` false and no rendered files, it is rendered on the
-newest such image, and only images whose lock lists it offer it.
+first offered image that runs it, and only images whose lock lists it offer
+it.
 
 Each profile and checkpoint carries ``status`` and ``purpose``, which the page
 shows beside it. A profile's status is its profile.json ``status``; its
@@ -310,12 +321,14 @@ def _check_template(text, site, n, identity, key_of, label):
             raise ValueError(f"{label}: GID line without the GID sentinel: {line.strip()}")
 
 
-def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_value=None):
-    """One profile's facts, checkpoints and sentinel templates, on the default or the given installer image.
+def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_value=None, render_image_option=None):
+    """One profile's facts, checkpoints and sentinel templates, on the Compose default or the given installer image.
 
-    ``image_option`` is the `--image` value that selects ``image_runtime``; the
-    page's commands pass it when it is set. ``image_lock_value`` is the
-    image's own lock when ``image_runtime`` is its v2 view. A checkpoint that
+    ``image_option`` is the `sparkring install --image` value that selects
+    ``image_runtime`` and ``render_image_option`` the `sparkring compose render
+    --image` value; the page's commands pass each when it is set.
+    ``image_lock_value`` is the image's own lock when ``image_runtime`` is its
+    v2 view. A checkpoint that
     only some vLLM builds read is offered only where that image reads it
     (image_lock.checkpoint_problem), since `sparkring install --checkpoint`
     and `sparkring compose render --checkpoint` refuse it elsewhere. Each
@@ -389,6 +402,7 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
         "image_release": release,
         "image_capabilities": capabilities,
         "image_option": image_option,
+        "render_image_option": render_image_option,
         "checkpoints": checkpoints,
         "example_site": example,
         "inputs": inputs,
@@ -460,7 +474,8 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
     install command fetches install.sh from it and passes it as --ref. For a
     checkout between releases, ``since_tag`` and ``commits_since`` name the
     release before it and how many commits it is ahead. ``features`` is
-    features() of the checkout.
+    features() of the checkout. ``image`` is the release name of the install
+    default, on which the profiles are rendered.
     """
     since_tag = commits_since = None
     if commit is None:
@@ -471,37 +486,78 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
     if not commit:
         raise ValueError("The builder needs the checkout's commit; pass --commit outside Git")
     images = image_catalog()
-    listed = [profile_data(profile_id) for profile_id in profile_ids()]
-    # A profile of INSTALL_ONLY is listed when an offered image runs it, rendered on the first such image:
-    # the default, else the newest.
-    for profile_id in INSTALL_ONLY:
+    # Each profile is rendered on the first offered image that runs it: the install default, else the
+    # rollback image, else the image offered for it. A profile no offered image runs is not listed.
+    listed = []
+    for profile_id in (*profile_ids(), *INSTALL_ONLY):
         row = next((row for row in images if profile_id in row["profiles"]), None)
         if row is not None:
-            listed.append(profile_data(profile_id) if row["default"] else _on_image(profile_id, row["name"]))
+            listed.append(_on_image(profile_id, row["name"]))
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
             "since_tag": since_tag, "commits_since": commits_since, "features": features(),
-            "image": None, "images": images, "profiles": listed}
+            "image": images[0]["name"] if images else None, "images": images, "profiles": listed}
+
+
+def rollback_row(rows):
+    """The catalog row (image_lock.catalog) of the install default's rollback image, or None.
+
+    The install default's release record (runtime/releases/NAME/status.json)
+    names the release that rolls it back in ``rollback.release``, a GitHub
+    release tag. Without that record, or when its tag publishes no lock this
+    package carries, the newest published, non-archived v3 SIRCL image older
+    than the default rolls it back.
+    """
+    default = next(row for row in rows if row["default"])
+    by_name = {row["name"]: row for row in rows}
+    tags = installer_image.release_tags()
+    try:
+        record = json.loads((installer_image.RELEASES / default["name"] / "status.json").read_text(encoding="utf-8"))
+        named = tags.get(record["rollback"]["release"])
+    except (OSError, ValueError, KeyError, TypeError):
+        named = None
+    if named in by_name and named != default["name"]:
+        return by_name[named]
+    published = set(tags.values())
+    older = [row for row in rows if row["name"] < default["name"] and row["name"] in published
+             and "sircl" in row["transports"] and not row["archived"]]
+    return max(older, key=lambda row: row["name"], default=None)
+
+
+def offered_images(listed):
+    """The catalog rows (image_lock.catalog) offered for the profiles ``listed``, in order.
+
+    The install default (image_lock.default_row), then its rollback image
+    (rollback_row), then for each listed profile neither runs, the newest image
+    a GitHub release published that runs it. Development images, which
+    `sparkring images` also lists, stay installable with `--image NAME` but are
+    not offered.
+    """
+    rows = image_lock.catalog()
+    chosen = [row for row in (rows[0], rollback_row(rows)) if row is not None]
+    for profile_id in listed:
+        if any(profile_id in installer_image.profiles_of(row["lock"]) for row in chosen):
+            continue
+        row = next((row for row in rows if row["tags"] and profile_id in installer_image.profiles_of(row["lock"])), None)
+        if row is not None:
+            chosen.append(row)
+    return chosen
 
 
 def image_catalog():
-    """The default installer image and the published release images, default first, with the listed profiles each runs.
+    """The images the Builder offers (offered_images), default first, with the listed profiles each runs.
 
-    Development images that `sparkring images` also lists are left out: they
-    remain installable with `--image NAME`, but the Builder offers only images a
-    release published. ``option`` is the value `--image` takes: the release tag that published the
+    ``default`` marks the image `sparkring install` uses without --image.
+    ``option`` is the value `--image` takes: the release tag that published the
     image when there is one, else the first part of its release name that
     contains a letter and names no other image (``statusrows``), else its
     release name; installer_image.lock_path resolves each form. ``file`` is the
     data file of a non-default image, which the page loads when the image is
     selected.
     """
-    listed = {*profile_ids(), *INSTALL_ONLY}
-    catalog = installer_image.catalog()
-    names = [row["name"] for row in catalog]
+    listed = [*profile_ids(), *INSTALL_ONLY]
+    names = [row["name"] for row in installer_image.catalog()]
     rows = []
-    for row in catalog:
-        if not (row["default"] or row["tags"]):
-            continue
+    for row in offered_images(listed):
         runs = [profile_id for profile_id in installer_image.profiles_of(row["lock"]) if profile_id in listed]
         if not runs:
             continue
@@ -522,16 +578,21 @@ def _image_option(row, names):
 
 
 def _on_image(profile_id, name):
-    """Profile ``profile_id`` rendered on the non-default installer image ``name``."""
-    catalog = installer_image.catalog()
+    """Profile ``profile_id`` rendered on the installer image ``name``, with the `--image` values that select it.
+
+    `sparkring install` needs no --image for the install default, and
+    `sparkring compose render` none for installer_image.DEFAULT_LOCK's image.
+    """
+    catalog = image_lock.catalog()
     row = next(row for row in catalog if row["name"] == name)
     option = _image_option(row, [row["name"] for row in catalog])
     # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
-    return profile_data(profile_id, image_lock.v2_view(row["lock"]), option, row["lock"])
+    return profile_data(profile_id, image_lock.v2_view(row["lock"]), None if row["default"] else option, row["lock"],
+                        None if row["path"] == installer_image.DEFAULT_LOCK else option)
 
 
 def image_data(name):
-    """The profiles a non-default installer image runs, rendered on it, for its data file."""
+    """The profiles installer image ``name`` runs, rendered on it, for its data file."""
     row = next(row for row in installer_image.catalog() if row["name"] == name)
     runs = [profile_id for profile_id in (*profile_ids(), *INSTALL_ONLY)
             if profile_id in installer_image.profiles_of(row["lock"])]

@@ -68,21 +68,31 @@ revision. Browser assets are local, including the vendored MIT-licensed YAML par
 
 ## Installer image
 
-Step 1 offers the installer images that run the profiles the layout installs,
-as [`sparkring images`](commands.md#images) lists them, the default first.
-Another image adds `--image NAME` to every install command whose profile it
-runs, and to the `render` command in the zip's README, and the Compose files
-use that image's digest. A command whose profile the image does not run uses
-the default image, and the page says so. `NAME` is the release tag that
-published the image, such as `2026.09.5`, or the part of its name that only it
-has, such as `statusrows`
-([another image](install-reference.md#another-image)).
+**Installer image**, above the models and in step 1 of the detailed editor,
+offers two images:
+
+| Image | Install commands | `render` command in the zip's README |
+|---|---|---|
+| Default: what `sparkring install` uses without `--image` | No `--image` | `--image NAME` of the default, because `sparkring compose render` without `--image` renders on another image |
+| Rollback: the release that the default release's record names in `rollback.release` (`runtime/releases/NAME/status.json`), else the newest earlier published SIRCL image | `--image NAME` for every model the image runs | `--image NAME` |
+
+- The Compose files, the deployment's README and the Docker Compose tab use
+  the selected image's reference and digest.
+- A command whose model the rollback image does not run uses the default
+  image, and the page says so.
+- A model that neither image runs is offered the newest published image that
+  runs it.
+- `NAME` is the release tag that published the image, such as `2026.10.2`.
+  The other images that [`sparkring images`](commands.md#images) lists remain
+  installable with `--image NAME`
+  ([another image](install-reference.md#another-image)); the page does not
+  offer them.
 
 Step 4 offers **Save CPU between decode steps** only for a model whose image
 reads its variable, as the page's data records for each image
-([serving settings](install-reference.md#serving-settings)). On another
-image, such as `plainstatus`, step 4 says the image can't, and the commands
-and files leave the switch out.
+([serving settings](install-reference.md#serving-settings)). On an image
+that does not, step 4 says the image can't, and the commands and files leave
+the switch out.
 
 ## Layout
 
@@ -146,8 +156,8 @@ repeats the status of each model it installs. Statuses use the labels of the
   `glm53-flash-nvfp4-spark-tp2-dcp2`, is listed when an offered image's lock
   lists it (`export.INSTALL_ONLY`). Its card says **Install command only**,
   step 1 offers only images that run it, and the output is its
-  `sparkring install` command with `--image NAME`; the Docker Compose tab is
-  off for it.
+  `sparkring install` command, with `--image NAME` on an image other than the
+  default; the Docker Compose tab is off for it.
 
 ## Commands
 

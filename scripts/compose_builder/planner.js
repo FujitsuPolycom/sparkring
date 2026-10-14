@@ -7,7 +7,7 @@
   const query = new URLSearchParams(location.search);
   let size = Number(query.get('sparks')) || 2;
   if (size < 2 || size > 8 || !Number.isInteger(size)) size = 2;
-  let image = data.images.find(r => r.name === data.release_image) || data.images[0];
+  let image = data.images.find(r => r.default) || data.images[0];
   const freshSlot = id => ({ id, where: 'auto', checkpoint: null, entries: {}, endpoint: '' });
   const first = data.profiles.find(p => p.nodes <= size && image.profiles[p.id]) || data.profiles[0];
   let slots = [freshSlot(first.id)], setupOnly = query.get('setup') === '1', names = Array.from({ length: 8 }, () => ({ host: '', host_ip: '' }));
@@ -91,7 +91,7 @@
     $('plan-sparks').innerHTML = names.slice(0, size).map((n, i) => `<label for="plan-host-${i}">${i === 0 ? 'Node A' : 'Spark ' + i} · SSH name</label><input id="plan-host-${i}" data-rank="${i}" data-key="host" value="${esc(n.host)}"><label for="plan-ip-${i}">IP address (optional)</label><input id="plan-ip-${i}" data-rank="${i}" data-key="host_ip" value="${esc(n.host_ip)}">`).join('');
   }
   $('spark-count').innerHTML = Array.from({ length: 7 }, (_, i) => option(i + 2, `${i + 2} Sparks`, i + 2 === size)).join('');
-  $('plan-image').innerHTML = data.images.map(row => option(row.name, row.option + (row.name === data.release_image ? ` · release ${data.release}` : '') + (row.default ? ' · source default' : ''), row === image)).join('');
+  $('plan-image').innerHTML = data.images.map(row => option(row.name, row.option + (row.default ? ' (default)' : ''), row === image)).join('');
   $('spark-count').addEventListener('change', () => { size = Number($('spark-count').value); renderSlots(); renderNames(); renderOutput(); });
   $('setup-only').addEventListener('change', () => { setupOnly = $('setup-only').checked; renderSlots(); renderOutput(); });
   $('plan-image').addEventListener('change', () => { image = data.images.find(r => r.name === $('plan-image').value); slots.forEach(s => { s.checkpoint = null; s.entries = {}; }); renderSlots(); renderOutput(); });

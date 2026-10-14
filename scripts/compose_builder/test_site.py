@@ -38,6 +38,13 @@ def test_landing_profiles_match_installer_catalog_and_thinking(public):
     assert f"--ref {public['release']} --profile PROFILE" in html
 
 
+def test_planner_offers_the_install_default_then_its_rollback_image(public):
+    from runtime.common import image_lock
+    rows = image_lock.catalog()
+    assert [(row["name"], row["default"]) for row in public["images"]] == [
+        (image_lock.default_row()["name"], True), (export.rollback_row(rows)["name"], False)]
+
+
 def test_speed_table_matches_consolidated_release_record(public):
     source = site.section(site.read("README.md"), "Speed")
     raw = [line for line in source.splitlines() if line.startswith('| ') and re.search(r'\| [248] \|', line)]

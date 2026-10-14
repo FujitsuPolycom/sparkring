@@ -57,11 +57,14 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
         for checkpoint in profile["checkpoints"]:
             if profile["id"].startswith("glm53-flash-nvfp4-spark-"):
                 assert checkpoint["serving_defaults"] == {"reasoning_effort": "high"}
-    # The CSF checkpoint needs a vLLM build the default image lacks: the page does not offer it there.
+    # The CSF checkpoint needs a pinned vLLM build. The install default pins it, so the page offers it there;
+    # the Compose default image (installer_image.DEFAULT_LOCK) lacks it, so a profile rendered there does not.
     assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
             if profile["id"].startswith("glm53-flash-nvfp4-spark-") and profile["compose"]} == {
-        "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "nvfp4-qad"],
-        "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "nvfp4-qad", "nvidia-nvfp4"]}
+        "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "csf", "nvfp4-qad"],
+        "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "csf", "nvfp4-qad", "nvidia-nvfp4"]}
+    assert [checkpoint["name"] for checkpoint in export.profile_data("glm53-flash-nvfp4-spark-tp2")["checkpoints"]] == [
+        "nvfp4-spark", "nvfp4-qad"]
 
 
 def test_a_checkpoint_only_some_vllm_builds_read_is_offered_on_an_image_that_reads_it():
@@ -82,15 +85,18 @@ def csf_image_profile(profile_id="glm53-flash-nvfp4-spark-tp2"):
     from runtime.common.test_image_lock import sircl_block, sircl_lock
     pinned = sircl_lock(sircl=dict(sircl_block(), vllm_pins=["lil-image-aba309e4610c",
                                                              "sparkring-kraken-beta-20261007-bc9ea774"]))
-    return export.profile_data(profile_id, image_lock.v2_view(pinned), "csf-image", pinned)
+    return export.profile_data(profile_id, image_lock.v2_view(pinned), "csf-image", pinned, "csf-image")
 
 
 def test_the_default_card_is_the_checkpoint_install_installs_on_the_image(data):
     """``install_default`` marks the checkpoint `sparkring install` installs without --checkpoint: the profile's
     preferred checkpoint on an image that reads it (image_lock.preferred_checkpoint), else its own (``default``)."""
+    from runtime.common import image_lock
+    lock = image_lock.default()
     for profile in data["profiles"]:
+        preferred = image_lock.preferred_checkpoint(lock, profile["id"])
         assert [checkpoint["install_default"] for checkpoint in profile["checkpoints"]] == [
-            checkpoint["default"] for checkpoint in profile["checkpoints"]]
+            checkpoint["name"] == preferred if preferred else checkpoint["default"] for checkpoint in profile["checkpoints"]]
     marks = {checkpoint["name"]: (checkpoint["default"], checkpoint["install_default"])
              for checkpoint in csf_image_profile()["checkpoints"]}
     assert marks == {"nvfp4-spark": (True, False), "csf": (False, True), "nvfp4-qad": (False, False)}
@@ -109,9 +115,9 @@ console.log(JSON.stringify([name, ...[name, 'nvfp4-spark'].map(n => {
     install = "sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image csf-image"
     render = "sparkring compose render glm53-flash-nvfp4-spark-tp2 --site pair.site.yaml --output pair --image csf-image"
     assert found == ["csf", [install, render + " --checkpoint csf"], [install + " --checkpoint nvfp4-spark", render]]
-    # On the default image the profile's own checkpoint is both defaults.
-    default = next(profile for profile in data["profiles"] if profile["id"] == "glm53-flash-nvfp4-spark-tp2")
-    assert run_engine(node, "console.log(JSON.stringify(E.installDefaultName(value)))", default) is None
+    # On an image without the CSF build, such as the Compose default, the profile's own checkpoint is both defaults.
+    own = export.profile_data("glm53-flash-nvfp4-spark-tp2")
+    assert run_engine(node, "console.log(JSON.stringify(E.installDefaultName(value)))", own) is None
 
 
 def test_profiles_and_checkpoints_carry_their_status_and_purpose(data):
@@ -184,20 +190,45 @@ def test_features_record_the_command_options_the_source_defines(data, tmp_path):
     assert export.features(tmp_path)["api_address"] is True
 
 
-def test_image_catalog_lists_the_default_first_with_options_install_accepts(data):
+def test_image_catalog_offers_the_install_default_then_its_rollback_image(data):
+    from runtime.common import image_lock
     rows = data["images"]
-    assert rows[0]["default"] and rows[0]["file"] is None and sum(row["default"] for row in rows) == 1
-    # Only the default image and published releases are offered; development images are not.
-    assert all(row["default"] or row["tags"] for row in rows)
+    # The Builder's default is the image `sparkring install` uses without --image; the other is its rollback image.
+    assert [(row["name"], row["default"]) for row in rows] == [(image_lock.default_row()["name"], True),
+                                                               (export.rollback_row(image_lock.catalog())["name"], False)]
+    assert rows[0]["file"] is None and data["image"] == rows[0]["name"]
     for row in rows:
         assert set(row["profiles"]) <= set(export.profile_ids()) | set(export.INSTALL_ONLY)
-        path = installer_image.lock_path(row["option"])
+        # The option selects the row's image; the install default needs none.
+        path = image_lock.lock_path(row["option"])
         assert path is None if row["default"] else path.parent.name == row["name"]
         assert row["default"] or row["file"] == f"images/{row['name']}.json"
     catalog = installer_image.catalog()
     names = [row["name"] for row in catalog]
     statusrows = next(row for row in catalog if row["name"] == "dev-20261001-statusrows-cuda1342-nccl2323-status034")
     assert export._image_option(statusrows, names) == "statusrows"
+
+
+def test_the_rollback_image_is_the_default_release_s_record_else_the_next_newest_sircl_release():
+    from runtime.common import image_lock
+    rows = image_lock.catalog()
+    status = (installer_image.RELEASES / rows[0]["name"] / "status.json").read_text(encoding="utf-8")
+    tag = json.loads(status)["rollback"]["release"]
+    assert export.rollback_row(rows)["name"] == installer_image.release_tags()[tag]
+    # A default without a release record rolls back to the newest older published SIRCL image.
+    unrecorded = [{**rows[0], "name": "dev-20991231-example"}, {**rows[0], "default": False}, *rows[1:]]
+    assert export.rollback_row(unrecorded)["name"] == rows[0]["name"]
+
+
+def test_a_profile_only_an_older_image_runs_offers_that_image(monkeypatch):
+    from runtime.common import image_lock
+    rows = image_lock.catalog()
+    older = next(row for row in rows if "2026.09.5" in row["tags"])
+    profiles_of = installer_image.profiles_of
+    monkeypatch.setattr(installer_image, "profiles_of",
+                        lambda lock: [*profiles_of(lock), "only-older"] if lock["name"] == older["name"] else profiles_of(lock))
+    assert [row["name"] for row in export.offered_images(["mimo-v26-flash-mopd-tp2", "only-older"])] == [
+        rows[0]["name"], export.rollback_row(rows)["name"], older["name"]]
 
 
 def test_save_cpu_is_offered_only_on_images_that_read_its_variable(data, node, monkeypatch):
@@ -223,13 +254,16 @@ console.log(JSON.stringify({ check: E.servingCheck(profile, { save_cpu: true }, 
 
 def test_image_data_renders_profiles_on_that_image(monkeypatch, data):
     monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
-    row = next(row for row in data["images"] if "2026.09.5" in row["tags"])
+    row = next(row for row in data["images"] if not row["default"])
     document = export.image_data(row["name"])
     profile, = document["profiles"]
     default = next(p for p in data["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2")
-    assert document["image"] == row["name"] and profile["image_option"] == "2026.09.5"
+    assert document["image"] == row["name"] and profile["image_option"] == profile["render_image_option"] == row["option"]
     assert profile["image_release"] == row["name"] and profile["image_id"] != default["image_id"]
-    assert default["image_option"] is None
+    # The page's own data is rendered on the install default, which the Compose tab and README name.
+    assert default["image_release"] == data["images"][0]["name"] and default["image_option"] is None
+    lock = next(r for r in installer_image.catalog() if r["name"] == data["images"][0]["name"])["lock"]
+    assert default["image_id"] == lock["image_id"] and default["image"] == lock["image_reference"]
 
 
 def run_engine(node, script, value):
@@ -241,17 +275,27 @@ def run_engine(node, script, value):
     return json.loads(result.stdout)
 
 
-def test_commands_select_a_non_default_image(data, node):
-    profile = {**next(p for p in data["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2"), "image_option": "2026.09.5"}
-    meta = {key: data[key] for key in ("repository", "tag", "commit", "ref", "since_tag", "commits_since")}
-    install, render = run_engine(node, """
-const { profile, meta } = value, checkpoint = E.checkpointOf(profile, null);
-console.log(JSON.stringify([
-  E.installCommand(profile, checkpoint, {}, meta, { form: 'installed', approval: 'ask' }),
-  E.renderCommand(profile, checkpoint, {}, { name: 'ring' }),
-]));""", {"profile": profile, "meta": meta})
-    assert install == "sudo sparkring install --profile mimo-v26-flash-mopd-tp2 --image 2026.09.5"
-    assert render == "sparkring compose render mimo-v26-flash-mopd-tp2 --site ring.site.yaml --output ring --image 2026.09.5"
+def test_commands_select_the_image_each_command_defaults_to_otherwise(data, node):
+    """The install default needs no --image for `sparkring install`; `sparkring compose render` defaults to
+    installer_image.DEFAULT_LOCK's image, so its command names any other image. Every other image needs --image."""
+    from runtime.common import image_lock
+    mimo = "mimo-v26-flash-mopd-tp2"
+    rollback = next(row for row in data["images"] if not row["default"])
+    compose_default = next(row["name"] for row in installer_image.catalog() if row["path"] == installer_image.DEFAULT_LOCK)
+    profiles = [next(p for p in data["profiles"] if p["id"] == mimo), export._on_image(mimo, rollback["name"]),
+                export._on_image(mimo, compose_default)]
+    found = run_engine(node, """
+const { profiles, meta } = value;
+console.log(JSON.stringify(profiles.map(profile => {
+  const checkpoint = E.checkpointOf(profile, null);
+  return [E.installCommand(profile, checkpoint, {}, meta, { form: 'installed', approval: 'ask' }),
+          E.renderCommand(profile, checkpoint, {}, { name: 'ring' })];
+})));""", {"profiles": profiles, "meta": meta_of(data)})
+    install, render = f"sudo sparkring install --profile {mimo}", f"sparkring compose render {mimo} --site ring.site.yaml --output ring"
+    assert data["images"][0]["name"] == image_lock.default_row()["name"]
+    assert found == [[install, render + " --image 2026.10.4"],
+                     [install + " --image 2026.10.2", render + " --image 2026.10.2"],
+                     [install + " --image 2026.10.1", render]]
 
 
 def meta_of(data):
@@ -268,11 +312,15 @@ def packs(node, data, cases):
     """The command pack of each case: {layout, features, main, halves, opts}, a selection being
     {profile, checkpoint, settings} with a profile ID."""
     used = {selection["profile"] for case in cases for selection in [case["main"], *case.get("halves", [])]}
-    # A selection's image_option stands for its profile rendered on that installer image.
+    # A selection's image_option stands for its profile rendered on that installer image. A selection
+    # without a checkpoint selects the one `sparkring install` installs on the image, as the page does.
     script = """
 const byId = Object.fromEntries(value.profiles.map(p => [p.id, p]));
-const sel = s => ({ profile: { ...byId[s.profile], image_option: s.image_option || null }, checkpoint: s.checkpoint || null,
-  settings: s.settings || {}, endpoint: s.endpoint || null, problems: s.problems || [] });
+const sel = s => {
+  const profile = { ...byId[s.profile], image_option: s.image_option || null };
+  return { profile, checkpoint: s.checkpoint || E.installDefaultName(profile), settings: s.settings || {},
+    endpoint: s.endpoint || null, problems: s.problems || [] };
+};
 console.log(JSON.stringify(value.cases.map(c => E.commandPack({ layout: c.layout, features: c.features, main: sel(c.main),
   halves: (c.halves || [c.main, c.main]).map(sel) }, value.meta, c.opts))));"""
     return run_engine(node, script, {"profiles": [p for p in data["profiles"] if p["id"] in used], "cases": cases,
@@ -764,8 +812,6 @@ def test_engine_matches_compose_build(data, node, tmp_path):
 
 def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     monkeypatch.setattr(export, "profile_ids", lambda: ["qwen38-flash-next-tp2", "mimo-v26-flash-mopd-tp2"])
-    catalog = export.image_catalog
-    monkeypatch.setattr(export, "image_catalog", lambda: [row for row in catalog() if row["default"] or "2026.09.5" in row["tags"]])
     output = tmp_path / "site"
     assert generate_compose_builder.main(["--output", str(output), "--commit", COMMIT, "--verify", "--cases", "1"]) == 0
     html = (output / "builder.html").read_text(encoding="utf-8")
