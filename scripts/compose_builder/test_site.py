@@ -11,7 +11,8 @@ from scripts.compose_builder import export, site
 from scripts.compose_builder.test_compose_builder import run_engine, NODE
 
 META = {"repository": export.REPOSITORY, "ref": "a" * 40, "commit": "a" * 40,
-        "tag": None, "since_tag": None, "commits_since": None}
+        "tag": None, "since_tag": None, "commits_since": None, "site_url": export.site_url()}
+DCP2, DCP2_SHORT = "glm53-flash-nvfp4-spark-tp2-dcp2", "glm53-flash-tp2-dcp2"
 
 
 @pytest.fixture(scope="module")
@@ -35,7 +36,11 @@ def test_landing_profiles_match_installer_catalog_and_thinking(public):
         assert p["status"] == profiles.load(p["id"])[0]["status"]
     assert "No model · setup only" in html
     assert "Local Inference Lab License, Version 1.0" in html
-    assert f"--ref {public['release']} --profile PROFILE" in html
+    # The quick start pins the page's source; on the site, landing.js shows the site's own install.sh.
+    assert f"install.sh | bash -s -- --ref {META['ref']} --profile PROFILE" in html
+    assert 'data-hosted="curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE"' in html
+    # Each profile links to the builder by its short link.
+    assert f'href="builder.html?p={DCP2_SHORT}"' in html and 'href="builder.html?p=qwen38-flash-next-tp2"' in html
 
 
 def test_planner_offers_the_install_default_then_its_rollback_image(public):
@@ -170,3 +175,60 @@ def test_vendored_yaml_matches_existing_integrity():
     import hashlib
     digest = base64.b64encode(hashlib.sha512((site.HERE / 'js-yaml.min.js').read_bytes()).digest()).decode()
     assert digest == 'CSBhVREyzHAjAFfBlIBakjoRUKp5h7VSweP0InR/pAJyptH7peuhCsqAI/snV+TwZmXZqoUklpXp6R6wMnYf5Q=='
+
+
+def test_the_site_s_install_sh_defaults_to_the_page_s_source(tmp_path):
+    hosted = site.hosted_installer("2026.10.4", META["site_url"])
+    assert '\nREF="2026.10.4"\n' in hosted and hosted.count("REF=\"") == 1
+    import shutil
+    import subprocess
+    bash = shutil.which("bash")
+    if bash:
+        path = tmp_path / "install.sh"
+        path.write_text(hosted, encoding="utf-8", newline="\n")
+        subprocess.run([bash, "-n", str(path)], check=True)
+    for ref in ("", "main; rm -rf /", "$(id)", "-x"):
+        with pytest.raises(ValueError):
+            site.hosted_installer(ref, META["site_url"])
+
+
+def test_planner_links_select_their_model_sparks_and_image(public):
+    by_id = {p["id"]: p for p in public["profiles"]}
+    rollback = next(row for row in public["images"] if not row["default"])
+    searches = [f"p={DCP2_SHORT}", f"profile={DCP2}&sparks=8", f"p={DCP2_SHORT}&image={rollback['option']}",
+                f"profile={DCP2}&checkpoint=nonexistent&max_concurrency=4", "p=glm53-flash-tp4&layout=halves&first="
+                + DCP2 + "&second=qwen38-flash-next-tp2&second.max_concurrency=2", "p=unknown", "models=qwen38-flash-next-tp2"]
+    found = engine("""
+const { byId, images, aliases, searches } = value;
+console.log(JSON.stringify(searches.map(search => E.planLink(search, byId, images, aliases))));""",
+                   {"byId": by_id, "images": public["images"], "aliases": public["aliases"], "searches": searches})
+    default = public["images"][0]["name"]
+    assert [(plan["size"], [(s["id"], s["where"]) for s in plan["slots"]], plan["image"]) for plan in found[:5]] == [
+        (2, [(DCP2, "auto")], default), (8, [(DCP2, "auto")], default), (2, [(DCP2, "auto")], rollback["name"]),
+        (2, [(DCP2, "auto")], default), (4, [(DCP2, "0,1"), ("qwen38-flash-next-tp2", "2,3")], default)]
+    assert found[3]["slots"][0]["entries"] == {"max_concurrency": "4"} and found[3]["slots"][0]["checkpoint"] is None
+    assert found[4]["slots"][1]["entries"] == {"max_concurrency": "2"}
+    assert found[5:] == [None, None]
+
+
+def test_planner_shares_the_short_link_for_the_plan_it_starts_with(public):
+    by_id = {p["id"]: p for p in public["profiles"]}
+    default, rollback = public["images"][0]["name"], public["images"][1]["name"]
+
+    def slot(**changes):
+        return {"id": DCP2, "where": "auto", "checkpoint": None, "entries": {}, "endpoint": "", **changes}
+    plans = [{"size": 2, "slots": [slot()], "image": default, "setupOnly": False},
+             {"size": 2, "slots": [slot(entries={"max_concurrency": ""})], "image": default, "setupOnly": False},
+             {"size": 4, "slots": [slot()], "image": default, "setupOnly": False},
+             {"size": 2, "slots": [slot()], "image": rollback, "setupOnly": False},
+             {"size": 2, "slots": [slot(entries={"max_concurrency": "4", "api_bind": "10.0.0.5"})], "image": default, "setupOnly": False},
+             {"size": 2, "slots": [slot(where="0,1")], "image": default, "setupOnly": False},
+             {"size": 2, "slots": [], "image": default, "setupOnly": True}]
+    found = engine("""
+const { byId, images, aliases, plans } = value;
+console.log(JSON.stringify(plans.map(plan => E.planQuery(plan, byId, images, aliases))));""",
+                   {"byId": by_id, "images": public["images"], "aliases": public["aliases"], "plans": plans})
+    assert found[:2] == [f"p={DCP2_SHORT}"] * 2
+    assert all(query.startswith("plan=") for query in found[2:])
+    # A plan link never carries the listen address.
+    assert "api_bind" not in found[4] and "max_concurrency" in found[4]

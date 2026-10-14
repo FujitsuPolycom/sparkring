@@ -750,9 +750,25 @@ const SparkRingEngine = (() => {
     }
     return words;
   }
+  // The address of the install.sh copy published beside a page served at `href`, or null.
+  // generate_compose_builder.py writes that copy into the site with meta.ref as its default --ref,
+  // so it is used only on the page's own site, meta.site_url; a page served elsewhere, such as a
+  // local preview, fetches install.sh from the repository.
+  function hostedInstaller(meta, href) {
+    return meta.site_url && typeof href === 'string' && href.startsWith(meta.site_url) ? meta.site_url + 'install.sh' : null;
+  }
+  // The start of the one-command installer: `pin` builds meta.ref, from the published copy
+  // (meta.installer, hostedInstaller) when there is one, else from install.sh at meta.ref with
+  // --ref; without `pin`, install.sh at main builds main.
+  function installerWords(meta, pin) {
+    if (pin && meta.installer) return `curl -fsSL ${meta.installer} | bash -s -- `;
+    const ref = pin ? meta.ref : 'main';
+    return `curl -fsSL https://raw.githubusercontent.com/${meta.repository}/${ref}/install.sh | bash -s -- `
+      + (pin ? `--ref ${ref} ` : '');
+  }
   // `form` "script" is the one-command installer for a Spark without SparkRing (install.sh,
   // which passes every other option to `sparkring install`); "installed" runs the installed
-  // package. `pin` fetches install.sh from meta.ref and builds that source instead of main.
+  // package. `pin` builds the page's source, meta.ref, instead of main (installerWords).
   // `approval` is "ask" (no flag), "plan" or "yes". `downloadLimit` uses the syntax of
   // runtime/host/settings.py download_limit. `on` ("0,1" or "2,3") places a two-Spark
   // profile on that half of a four-Spark ring. `apiAddress` is the address shown for the
@@ -764,9 +780,7 @@ const SparkRingEngine = (() => {
     if (opts.approval === 'plan') words.push('--plan');
     if (opts.approval === 'yes') words.push('--yes');
     if (opts.form === 'installed') return 'sudo sparkring install ' + words.join(' ');
-    const ref = opts.pin ? meta.ref : 'main';
-    return `curl -fsSL https://raw.githubusercontent.com/${meta.repository}/${ref}/install.sh | bash -s -- `
-      + (opts.pin ? `--ref ${ref} ` : '') + words.join(' ');
+    return installerWords(meta, opts.pin) + words.join(' ');
   }
   // The `sparkring compose render` command that writes the same deployment.
   function renderCommand(profile, checkpoint, settings, site) {
@@ -969,9 +983,43 @@ const SparkRingEngine = (() => {
   // when set, `api_address`; its port and listen address are settings.
   // `choices` is {layout, mode, image, main, halves, install}, a selection being
   // {profile: id, checkpoint: name or null, settings} with an optional endpoint {mode, address}.
+  // A link may name the pair's or the ring's model with `p` instead of `profile`, and by a short
+  // name of `aliases` (runtime/common/profile_aliases.py ALIASES: short name -> profile ID).
   const LINK_HALVES = ['first', 'second'];
   const INSTALL_CHOICES = { form: ['script', 'installed'], source: ['release', 'main'], approval: ['ask', 'plan', 'yes'],
     order: ['auto', 'ask', 'fill'] };
+  // The install options a page starts with and a link without them selects.
+  const INSTALL_DEFAULTS = { form: 'script', source: 'release', approval: 'ask', order: 'auto', limit: '' };
+  // The layout a model takes without a `layout` choice: a ring for a four-Spark model, else a pair.
+  const defaultLayout = nodes => nodes === 4 ? 'ring' : 'pair';
+  // The profile ID a link's `profile`, else `p`, names, by ID or short name; null for neither.
+  function linkProfile(query, byId, aliases = {}) {
+    for (const key of ['profile', 'p']) {
+      const value = query.get(key);
+      const id = value !== null && !byId[value] ? aliases[value] : value;
+      if (id && byId[id]) return id;
+    }
+    return null;
+  }
+  // The short link query `p=NAME` of a profile: its short name when it has one, else its ID.
+  function shortQuery(id, aliases = {}) {
+    const name = Object.keys(aliases).sort().find(alias => aliases[alias] === id);
+    return new URLSearchParams({ p: name || id }).toString();
+  }
+  // The query of a link to `choices`: shortQuery when they name one model and nothing the page
+  // does not choose by itself for it (the layout of its size, the checkpoint `sparkring install`
+  // installs, the profile's serving settings, the automatic API endpoint, the default image, the
+  // install options of INSTALL_DEFAULTS and the install commands), else linkQuery.
+  function shareQuery(choices, byId, aliases = {}) {
+    const main = choices.main, p = byId[main.profile];
+    const checkpoint = main.checkpoint ? p.checkpoints.find(c => c.name === main.checkpoint) : null;
+    const plain = (!main.checkpoint || (checkpoint && installDefault(checkpoint))) && !Object.keys(main.settings || {}).length
+      && !(main.endpoint && ENDPOINT_MODES.includes(main.endpoint.mode));
+    const install = { ...INSTALL_DEFAULTS, ...choices.install };
+    const short = plain && choices.layout === defaultLayout(p.nodes) && !choices.image && choices.mode === 'install'
+      && Object.keys(INSTALL_DEFAULTS).every(key => (install[key] || '') === INSTALL_DEFAULTS[key]);
+    return short ? shortQuery(p.id, aliases) : linkQuery(choices);
+  }
   const ENDPOINT_MODES = ['ask', 'set'];
   function linkQuery(choices) {
     const query = new URLSearchParams();
@@ -994,13 +1042,60 @@ const SparkRingEngine = (() => {
     for (const [key, value] of Object.entries(choices.install)) if (value) query.set(key, value);
     return query.toString();
   }
+  // ---- Planner links ---------------------------------------------------------------------
+  // A plan is the planner's choices: {size, slots, image, setupOnly}, a slot being
+  // {id, where, checkpoint, entries, endpoint}; `byId` holds the planner's profiles and `images`
+  // its images (site.planner_images), each with `profiles`: profile ID -> {preferred, checkpoints}.
+  const planSlot = (id, where = 'auto') => ({ id, where, checkpoint: null, entries: {}, endpoint: '' });
+  // The plan a builder link names (linkChoices' parameters), or null without a known `profile`
+  // or `p`: that model on the Sparks of its size, or of `sparks` when it is larger, with its
+  // `checkpoint` and serving settings; with `layout=halves`, `first` and `second` on the two pairs
+  // of a ring of four. The image is the one `image` names, else the install default.
+  function planLink(search, byId, images, aliases = {}) {
+    const query = new URLSearchParams(search), id = linkProfile(query, byId, aliases);
+    if (!id) return null;
+    const slot = (key, prefix, where) => {
+      const p = byId[key], result = planSlot(key, where), name = query.get(prefix + 'checkpoint');
+      if (p.checkpoints.some(c => c.name === name)) result.checkpoint = name;
+      const chosen = p.checkpoints.find(c => c.name === result.checkpoint) || p.checkpoints[0];
+      for (const row of (chosen && chosen.settings) || []) {
+        const text = query.get(prefix + row.name);
+        if (text !== null) result.entries[row.name] = row.switch ? text === '1' : text;
+      }
+      return result;
+    };
+    const halves = LINK_HALVES.map(key => byId[query.get(key)]), nodes = byId[id].nodes, sparks = Number(query.get('sparks'));
+    const image = images.find(r => [r.option, r.name].includes(query.get('image'))) || images.find(r => r.default) || images[0];
+    if (query.get('layout') === 'halves' && nodes === 4 && halves.every(p => p && p.nodes === 2)) {
+      return { size: 4, slots: halves.map((p, i) => slot(p.id, LINK_HALVES[i] + '.', i ? '2,3' : '0,1')), image: image.name, setupOnly: false };
+    }
+    const size = Number.isInteger(sparks) && sparks >= nodes && sparks <= 8 ? sparks : nodes;
+    return { size, slots: [slot(id, '', 'auto')], image: image.name, setupOnly: false };
+  }
+  // The planner's link query: shortQuery for one model on the Sparks of its size with the choices
+  // the planner starts with (automatic placement, the checkpoint `sparkring install` installs on
+  // the install default image, no serving setting and no API address), else `plan`, the JSON of the
+  // plan's public choices; it never carries a listen address, a Spark name or an address.
+  function planQuery(plan, byId, images, aliases = {}) {
+    const [slot] = plan.slots, image = images.find(r => r.name === plan.image), p = slot && byId[slot.id];
+    if (!plan.setupOnly && plan.slots.length === 1 && p && image && image.default && plan.size === p.nodes && slot.where === 'auto'
+        && !slot.endpoint && Object.values(slot.entries || {}).every(value => value === '' || value === false || value == null)) {
+      const own = p.checkpoints.find(c => c.default) || p.checkpoints[0];
+      const preferred = (image.profiles[slot.id] || {}).preferred || (own && own.name) || null;
+      if (slot.checkpoint === null || slot.checkpoint === preferred) return shortQuery(slot.id, aliases);
+    }
+    const slots = plan.slots.map(s => ({ id: s.id, where: s.where, checkpoint: s.checkpoint,
+      entries: Object.fromEntries(Object.entries(s.entries || {}).filter(([key]) => key !== 'api_bind')) }));
+    return new URLSearchParams({ plan: JSON.stringify({ size: plan.size, slots, setupOnly: plan.setupOnly, image: plan.image }) }).toString();
+  }
+
   // The choices a link's query names, against `byId` (profile ID -> profile) and the layouts that
   // `features` offers; null without a known `profile`. A value the page does not offer is left
   // out (null for a half, mode and image); a layout that does not fit `profile` follows its size.
-  function linkChoices(search, byId, features) {
+  function linkChoices(search, byId, features, aliases = {}) {
     const query = new URLSearchParams(search);
     const selection = (key, nodes) => {
-      const p = byId[query.get(key)];
+      const p = byId[key === 'profile' ? linkProfile(query, byId, aliases) : query.get(key)];
       if (!p || (nodes && p.nodes !== nodes)) return null;
       const prefix = key === 'profile' ? '' : key + '.', name = query.get(prefix + 'checkpoint');
       const checkpoint = p.checkpoints.some(c => c.name === name && !installDefault(c)) ? name : null;
@@ -1020,7 +1115,7 @@ const SparkRingEngine = (() => {
     const main = selection('profile');
     if (!main) return null;
     const nodes = byId[main.profile].nodes, wanted = query.get('layout');
-    const layout = layouts(features).includes(wanted) && LAYOUT_SPARKS[wanted] === nodes ? wanted : nodes === 4 ? 'ring' : 'pair';
+    const layout = layouts(features).includes(wanted) && LAYOUT_SPARKS[wanted] === nodes ? wanted : defaultLayout(nodes);
     const install = {};
     for (const [key, values] of Object.entries(INSTALL_CHOICES)) if (values.includes(query.get(key))) install[key] = query.get(key);
     install.limit = query.get('limit') || '';
@@ -1143,8 +1238,7 @@ const SparkRingEngine = (() => {
     if (opts.setupOnly) {
       if (slots.length) problems.push('Setup only cannot include models.');
       if (opts.form === 'script') {
-        const ref = opts.pin ? meta.ref : 'main';
-        commands.push({ what: 'Install SparkRing on Node A', command: `curl -fsSL https://raw.githubusercontent.com/${meta.repository}/${ref}/install.sh | bash -s -- ${opts.pin ? `--ref ${ref} ` : ''}--package-only` });
+        commands.push({ what: 'Install SparkRing on Node A', command: installerWords(meta, opts.pin) + '--package-only' });
       }
       commands.push({ what: 'Set up the Sparks without a model', command: 'sudo sparkring setup' + (approval === 'plan' ? ' --plan' : '') });
     } else {
@@ -1179,6 +1273,7 @@ const SparkRingEngine = (() => {
   return { arcs, resolveSlices, slicePack, render, archive, installCommand, renderCommand, derivedDirectory, sourceName, validDownloadLimit, servingCheck,
     checkpointOf, installDefault, installDefaultName, option, yamlScalar, resolves, encoded, siteYaml, validateSite, fieldProblems, apiAddress, apiUrl, listenable,
     layouts, LAYOUT_SPARKS, sparkNames, sparkProblems, commandPack, linkQuery, linkChoices, kvEstimate, kvText,
+    INSTALL_DEFAULTS, linkProfile, shortQuery, shareQuery, hostedInstaller, installerWords, planSlot, planLink, planQuery,
     readSetting, readAddress, readDownloadLimit, readSelection, offered };
 })();
 if (typeof module !== 'undefined') module.exports = SparkRingEngine;

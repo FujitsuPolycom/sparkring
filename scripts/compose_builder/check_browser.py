@@ -69,7 +69,7 @@ def main():
             checks.append('12 page/theme/width combinations: no horizontal page overflow')
             page.set_viewport_size({'width': 1400, 'height': 1000})
             page.goto(base + '/index.html')
-            page.get_by_role('button', name='Ring of eight', exact=True).click()
+            page.get_by_role('button', name='8 Sparks', exact=True).click()
             page.get_by_role('button', name='Two halves', exact=True).click()
             page.locator('#load-example').click()
             page.wait_for_load_state('networkidle')
@@ -132,6 +132,19 @@ def main():
             assert page.locator('#advanced').get_attribute('open') is not None
             assert page.locator('#compose-panel').is_visible()
             checks.append('Previously published builder links still open the detailed editor')
+            # A short link wins over the choices the browser saved, at the top and in the detailed editor.
+            page.evaluate('localStorage.setItem("sparkring-compose-builder/v1", JSON.stringify({profile: "qwen38-flash-next-tp2", '
+                          'layout: "pair", install: {approval: "yes"}}))')
+            page.goto(base + '/?p=glm53-flash-tp2-dcp2', wait_until='networkidle')
+            assert '/builder.html?p=glm53-flash-tp2-dcp2' in page.url
+            assert page.locator('#model-0').input_value() == 'glm53-flash-nvfp4-spark-tp2-dcp2'
+            assert page.locator('#spark-count').input_value() == '2'
+            assert page.locator('#plan-image option:checked').inner_text().endswith('(default)')
+            assert '--profile glm53-flash-nvfp4-spark-tp2-dcp2' in page.locator('#plan-command-0').inner_text()
+            page.locator('#advanced > summary').click()
+            assert '--yes' not in page.locator('#pack').inner_text()
+            assert 'glm53-flash-nvfp4-spark-tp2-dcp2' in page.locator('#pack').inner_text()
+            checks.append('A short link selects its profile over saved choices')
             assert not errors, errors
             assert not external, external
             (args.output / 'browser-checks.json').write_text(json.dumps({'checks': checks, 'screenshots': shots,

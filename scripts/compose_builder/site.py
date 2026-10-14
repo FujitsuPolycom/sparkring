@@ -13,6 +13,10 @@ from runtime.host import models
 from scripts.compose_builder import export
 
 HERE, ROOT = export.HERE, export.ROOT
+# The default --ref of install.sh, with the comment that explains it (hosted_installer).
+INSTALLER_REF = ('# The branch that publishes this script. A copy fetched from another branch,\n'
+                 '# tag or commit must be run with a matching --ref.\n'
+                 'REF="main"\n')
 
 
 def read(path):
@@ -165,7 +169,30 @@ def data(meta):
         profile["port"] = checkpoint["port"]
     return {"profiles": catalog, "images": images, "speed": speed_rows(),
             "release": release["release"],
-            "release_record": release["record"], "meta": meta}
+            "release_record": release["record"], "meta": meta,
+            "aliases": export.aliases({profile["id"] for profile in catalog})}
+
+
+def short_link(profile_id, aliases):
+    """``builder.html?p=NAME``: the planner's short link to a profile, by its short name when it has one."""
+    name = min((alias for alias, target in aliases.items() if target == profile_id), default=profile_id)
+    return f"builder.html?p={name}"
+
+
+def hosted_installer(ref, site_url):
+    """install.sh as the site publishes it: the checkout's script with ``ref`` as its default --ref.
+
+    `curl -fsSL SITE/install.sh | bash -s -- --profile PROFILE` then builds the
+    source the site's pages describe without --ref. ``ref`` is a tag or a commit.
+    """
+    if not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z._-]*", ref or ""):
+        raise ValueError(f"install.sh cannot take {ref!r} as its default --ref")
+    text = read("install.sh")
+    if text.count(INSTALLER_REF) != 1:
+        raise ValueError("install.sh must set its default REF once, after the comment hosted_installer replaces")
+    return text.replace(INSTALLER_REF, f"# The source that the Install Builder at {site_url} describes; this copy of\n"
+                                       "# install.sh is published there (scripts/compose_builder/site.py).\n"
+                                       f'REF="{ref}"\n')
 
 
 def json_script(ident, value):
@@ -202,13 +229,15 @@ def landing(value):
     intro = read("README.md").split("\n## Quick start", 1)[0].split("\n\n")
     license_notice, description = intro[1], intro[2]
     description = description.replace("two to eight NVIDIA DGX Sparks\ncabled directly", "two or more directly cabled DGX Sparks\nconnected")
-    cmd = (f"curl -fsSL https://raw.githubusercontent.com/{meta['repository']}/{value['release']}/install.sh "
-           f"| bash -s -- --ref {value['release']} --profile PROFILE")
+    # The site's own install.sh copy (hosted_installer) on the site; landing.js shows it there.
+    cmd = (f"curl -fsSL https://raw.githubusercontent.com/{meta['repository']}/{meta['ref']}/install.sh "
+           f"| bash -s -- --ref {meta['ref']} --profile PROFILE")
+    hosted = f"curl -fsSL {meta['site_url']}install.sh | bash -s -- --profile PROFILE"
     profile_rows = []
     for p in value["profiles"]:
         status = "research" if p["status"] in ("research-only", "unsupported") else "tested"
         profile_rows.append([escape(p["model_name"]), escape(p["variant"]), str(p["nodes"]),
-                             f'<a href="builder.html?model={p["id"]}&amp;sparks={p["nodes"]}"><code>{p["id"]}</code></a>',
+                             f'<a href="{escape(short_link(p["id"], value["aliases"]))}"><code>{p["id"]}</code></a>',
                              escape(str(p["port"])), escape(p["thinking"]), f'<span class="pill {status}">{status}</span>'])
     profile_rows.append(['No model · setup only', 'Set up the network and dashboard', '2–8',
                          '<a href="builder.html?setup=1">No model: set up the Sparks only</a>', '—', '—', '—'])
@@ -219,7 +248,7 @@ def landing(value):
     body = f'''<main class="site-wrap">
       <div class="hero"><div><p class="eyebrow">DGX Spark · ConnectX-7 · no switch</p>
       <h1>Large language models on two or more directly cabled DGX Sparks</h1>
-      <div class="command-box"><pre id="install-command">{escape(cmd)}</pre><button data-copy="install-command">Copy command</button></div>
+      <div class="command-box"><pre id="install-command" data-hosted="{escape(hosted)}">{escape(cmd)}</pre><button data-copy="install-command">Copy command</button></div>
       <p class="hint">Choose <code>PROFILE</code> below or use the <a href="builder.html">Install Builder</a>.</p>
       <p>The installer asks before making changes. Use <code>--plan</code> to see what a deployment would do on your stack. <a href="commands.html">Command guide</a></p>
       <p class="mono muted">Release {escape(value['release'])} · {len(value['profiles'])} installer profiles</p></div>
@@ -263,5 +292,6 @@ def write(output, builder_html, meta):
     for name, content in {"index.html": landing(value), "builder.html": builder(builder_html, value),
                           "commands.html": commands(meta)}.items():
         (output / name).write_text(content, encoding="utf-8", newline="\n")
+    (output / "install.sh").write_text(hosted_installer(meta["ref"], meta["site_url"]), encoding="utf-8", newline="\n")
     for name in ("tokens.css", "site.css", "theme.js", "site.js", "ring.js", "landing.js", "planner.js", "js-yaml.min.js"):
         (output / name).write_bytes((HERE / name).read_bytes())

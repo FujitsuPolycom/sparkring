@@ -21,8 +21,12 @@ directly over ConnectX-7, with no switch, and installs them with one command.
 3. On the Spark connected to your network, run:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/FujitsuPolycom/sparkring/main/install.sh | bash -s -- --profile PROFILE
+curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE
 ```
+
+This installs the release the [Install Builder](https://fujitsupolycom.github.io/sparkring/)
+describes; the [pinned install command](docs/operations/install-reference.md#get-the-package)
+installs `main` or another commit.
 
 The installer asks before it changes anything: `--plan` previews and `--yes`
 approves, and running it again updates or switches models.

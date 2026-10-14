@@ -820,6 +820,14 @@ def test_generator_writes_a_verified_page(node, tmp_path, monkeypatch):
     other = next(row for row in embedded["images"] if not row["default"])
     image = json.loads((output / other["file"]).read_text(encoding="utf-8"))
     assert image["image"] == other["name"] and {p["id"] for p in image["profiles"]} == set(other["profiles"])
+    # The site publishes install.sh with the page's source as its default --ref, and nothing else changed.
+    hosted = (output / "install.sh").read_text(encoding="utf-8")
+    source = (export.ROOT / "install.sh").read_text(encoding="utf-8")
+    assert f'\nREF="{COMMIT}"\n' in hosted and '\nREF="main"\n' not in hosted
+    assert [line for line in hosted.splitlines() if line not in source.splitlines()] == [
+        "# The source that the Install Builder at https://fujitsupolycom.github.io/sparkring/ describes; this copy of",
+        "# install.sh is published there (scripts/compose_builder/site.py).", f'REF="{COMMIT}"']
+    assert embedded["site_url"] == "https://fujitsupolycom.github.io/sparkring/"
 
 
 def test_a_new_installation_is_never_plan_only(data, node):
@@ -865,3 +873,67 @@ const { profile, meta } = value, checkpoint = E.checkpointOf(profile, null);
 console.log(JSON.stringify(E.installCommand(profile, checkpoint, {}, meta, { form: 'installed', approval: 'ask' })));""",
                          {"profile": profile, "meta": meta})
     assert install == f"sudo sparkring install --profile {variant} --image 2026.10.9"
+
+
+DCP2, DCP2_SHORT = "glm53-flash-nvfp4-spark-tp2-dcp2", "glm53-flash-tp2-dcp2"
+
+
+def test_the_page_data_carries_the_short_names_of_its_profiles(data):
+    from runtime.common import profile_aliases
+    listed = {profile["id"] for profile in data["profiles"]}
+    assert data["aliases"] == {alias: target for alias, target in profile_aliases.ALIASES.items() if target in listed}
+    assert data["aliases"][DCP2_SHORT] == DCP2
+
+
+def test_links_name_the_profile_by_p_and_by_its_short_name(data, node):
+    found = run_engine(node, """
+const { byId, aliases, searches } = value;
+console.log(JSON.stringify(searches.map(search => E.linkChoices(search, byId, { ring_halves: true }, aliases))));""",
+                       {"byId": {p["id"]: p for p in data["profiles"]}, "aliases": data["aliases"],
+                        "searches": [f"p={DCP2_SHORT}", f"p={DCP2}", f"profile={DCP2_SHORT}", f"profile={DCP2}",
+                                     "p=glm53-flash-tp4", "p=unknown", f"profile=unknown&p={DCP2_SHORT}"]})
+    assert [None if choices is None else (choices["main"]["profile"], choices["layout"]) for choices in found] == [
+        (DCP2, "pair"), (DCP2, "pair"), (DCP2, "pair"), (DCP2, "pair"), (GLM2.replace("tp2", "tp4"), "ring"), None, (DCP2, "pair")]
+
+
+def test_shared_links_take_the_short_form_only_for_the_choices_the_page_starts_with(data, node):
+    half = {"profile": TP2, "checkpoint": None, "settings": {}}
+    plain = {"layout": "pair", "mode": "install", "image": None, "halves": [half, half],
+             "install": {"form": "script", "source": "release", "approval": "ask", "order": "auto", "limit": ""}}
+    cases = [
+        {**plain, "main": {"profile": DCP2, "checkpoint": None, "settings": {}}},
+        {**plain, "main": {"profile": TP2, "checkpoint": None, "settings": {}}},
+        # The checkpoint `sparkring install` installs, named: still the page's own choice.
+        {**plain, "main": {"profile": TP2, "checkpoint": "csf", "settings": {}}},
+        {**plain, "main": {"profile": TP2, "checkpoint": "qad-step-4000", "settings": {}}},
+        {**plain, "main": {"profile": TP2, "checkpoint": None, "settings": {"max_concurrency": 4}}},
+        {**plain, "main": {"profile": TP2, "checkpoint": None, "settings": {}, "endpoint": {"mode": "ask", "address": ""}}},
+        {**plain, "image": "2026.10.2", "main": {"profile": TP2, "checkpoint": None, "settings": {}}},
+        {**plain, "mode": "compose", "main": {"profile": TP2, "checkpoint": None, "settings": {}}},
+        {**plain, "install": {**plain["install"], "approval": "yes"}, "main": {"profile": TP2, "checkpoint": None, "settings": {}}},
+        {**plain, "layout": "halves", "main": {"profile": TP4, "checkpoint": None, "settings": {}}},
+    ]
+    found = run_engine(node, """
+const { byId, aliases, cases } = value;
+console.log(JSON.stringify(cases.map(choices => E.shareQuery(choices, byId, aliases))));""",
+                       {"byId": {p["id"]: p for p in data["profiles"]}, "aliases": data["aliases"], "cases": cases})
+    assert found[:3] == [f"p={DCP2_SHORT}", f"p={TP2}", f"p={TP2}"]
+    assert all(query.startswith(f"profile={TP2}&") for query in found[3:9]) and found[9].startswith(f"profile={TP4}&")
+
+
+def test_commands_fetch_the_install_sh_the_site_publishes_only_on_that_site(data, node):
+    meta = {**meta_of(data), "site_url": data["site_url"]}
+    found = run_engine(node, """
+const { meta, profile } = value, checkpoint = E.checkpointOf(profile, E.installDefaultName(profile));
+const command = (m, pin) => E.installCommand(profile, checkpoint, {}, m, { form: 'script', pin, approval: 'ask' });
+const site = { ...meta, installer: E.hostedInstaller(meta, meta.site_url + 'builder.html?p=x') };
+const local = { ...meta, installer: E.hostedInstaller(meta, 'http://localhost:8765/builder.html') };
+console.log(JSON.stringify([site.installer, local.installer, command(site, true), command(site, false), command(local, true),
+  E.slicePack(2, [], site, { form: 'script', pin: true, approval: 'ask', setupOnly: true }).commands[0].command]));""",
+                       {"meta": meta, "profile": next(p for p in data["profiles"] if p["id"] == DCP2)})
+    hosted = "https://fujitsupolycom.github.io/sparkring/install.sh"
+    raw = f"https://raw.githubusercontent.com/{data['repository']}"
+    assert found == [hosted, None, f"curl -fsSL {hosted} | bash -s -- --profile {DCP2}",
+                     f"curl -fsSL {raw}/main/install.sh | bash -s -- --profile {DCP2}",
+                     f"curl -fsSL {raw}/{COMMIT}/install.sh | bash -s -- --ref {COMMIT} --profile {DCP2}",
+                     f"curl -fsSL {hosted} | bash -s -- --package-only"]

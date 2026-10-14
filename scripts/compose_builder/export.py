@@ -59,7 +59,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, image_lock, installer_image, profiles, toolchain_profiles, setup
+from runtime.common import compose, image_lock, installer_image, profile_aliases, profiles, toolchain_profiles, setup
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -467,6 +467,21 @@ def release_distance(description):
     return (match.group(1), int(match.group(2))) if match else (None, None)
 
 
+def site_url(repository=REPOSITORY):
+    """The address of the repository's GitHub Pages site, where the Pages workflow publishes the pages and install.sh."""
+    owner, name = repository.split("/", 1)
+    return f"https://{owner.lower()}.github.io/{name}/"
+
+
+def aliases(listed):
+    """The short names of profile_aliases.ALIASES that select a profile of ``listed``: short name -> profile ID.
+
+    A link may name a profile by one (``builder.html?p=glm53-flash-tp2-dcp2``),
+    and the page's short links use it.
+    """
+    return {alias: target for alias, target in sorted(profile_aliases.ALIASES.items()) if target in listed}
+
+
 def export(*, tag=None, commit=None, repository=REPOSITORY):
     """The page's data: every listed profile, the source the install command pins and its command features.
 
@@ -475,7 +490,9 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
     checkout between releases, ``since_tag`` and ``commits_since`` name the
     release before it and how many commits it is ahead. ``features`` is
     features() of the checkout. ``image`` is the release name of the install
-    default, on which the profiles are rendered.
+    default, on which the profiles are rendered. ``site_url`` is the Pages
+    site (site_url()) and ``aliases`` the listed profiles' short names
+    (aliases()).
     """
     since_tag = commits_since = None
     if commit is None:
@@ -495,6 +512,7 @@ def export(*, tag=None, commit=None, repository=REPOSITORY):
             listed.append(_on_image(profile_id, row["name"]))
     return {"schema": SCHEMA, "repository": repository, "tag": tag, "commit": commit, "ref": tag or commit,
             "since_tag": since_tag, "commits_since": commits_since, "features": features(),
+            "site_url": site_url(repository), "aliases": aliases({profile["id"] for profile in listed}),
             "image": images[0]["name"] if images else None, "images": images, "profiles": listed}
 
 

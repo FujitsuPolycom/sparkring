@@ -51,7 +51,11 @@ Serve that directory over HTTP, for example with
 generated from `docs/operations/commands.md`. Opened as a local file, the detailed editor offers only the default
 installer image: each other image's data is a file beside the page,
 `images/NAME.json`, which a browser loads only over HTTP.
-`--default-image-only` writes no image files. `--verify` first compares the
+`--default-image-only` writes no image files. The directory also holds
+`install.sh`: the checkout's script with the page's source, its release tag or
+commit, as its default `--ref`. On the Pages site,
+`curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE`
+therefore installs the source the pages describe. `--verify` first compares the
 page's file generator with SparkRing's own and needs Node.js
 ([how the page is checked](#how-the-page-is-checked)).
 
@@ -188,7 +192,7 @@ The options above the commands apply to every install command:
 
 | Option | Commands |
 |---|---|
-| New installation | The first command is the [one-command installer](install-reference.md#get-the-package) on Node A, pinned to the page's source with `--ref`, or from `main`. It passes `--on` and every other option to `sparkring install`. Later commands run the `sudo sparkring install` it installed. |
+| New installation | The first command is the [one-command installer](install-reference.md#get-the-package) on Node A for the page's source, or from `main`. On the Pages site it fetches the site's own `install.sh`, whose default `--ref` is the page's source; elsewhere, such as a local preview, it fetches `install.sh` from the repository at that source with `--ref`. It passes `--on` and every other option to `sparkring install`. Later commands run the `sudo sparkring install` it installed. |
 | SparkRing already installed | Every command is `sudo sparkring install …` |
 | Approval | No flag (asks before changes), `--plan` or `--yes`. A new installation offers no `--plan`: `install.sh --plan` stops on a Spark without the SparkRing package |
 | Spark order | Automatic, Ask during install or Fill in my Sparks ([below](#spark-order)) |
@@ -304,11 +308,29 @@ With **Fill in my Sparks** it uses the names and addresses from step 5.
 
 ## Share the choices
 
-On a page served over HTTP, **Copy link to these choices** copies the page's
-address with the layout, each selection's profile, checkpoint, changed
-serving settings and API endpoint choice, the installer image, the install
-options, the Spark order and the output. The link carries no name, address or path from step 5. A link
-without a layout opens the layout that fits its profile's size. Where the
+A link can name one profile: `builder.html?p=NAME`, where `NAME` is the
+profile's ID or its short name, such as `glm53-flash-tp2-dcp2` for
+`glm53-flash-nvfp4-spark-tp2-dcp2`
+([short names](../../runtime/common/profile_aliases.py)). `profile=NAME` works
+the same way. The link opens that profile on the Sparks of its size, in the
+models at the top and in the detailed editor, with the default image and the
+page's default choices; it replaces any choices the browser saved.
+
+**Copy builder link** at the top and, on a page served over HTTP, **Copy link
+to these choices** in the detailed editor copy:
+
+- the short link `builder.html?p=NAME`, by the short name when the profile has
+  one, when the choices are one profile with the checkpoint `sparkring
+  install` installs, its own serving settings, the automatic API endpoint, the
+  default image and the default install options;
+- otherwise the page's address with every choice: at the top, the Sparks,
+  each model's placement, checkpoint and settings and the image; in the
+  detailed editor, the layout, each selection's profile, checkpoint, changed
+  serving settings and API endpoint choice, the installer image, the install
+  options, the Spark order and the output.
+
+A link carries no name, address or path from step 5 and no listen address. A
+link without a layout opens the layout that fits its profile's size. Where the
 browser does not let the page write to the clipboard, the link appears in a
 field beside the button, selected, to copy by hand.
 

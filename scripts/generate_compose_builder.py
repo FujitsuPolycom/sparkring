@@ -7,8 +7,9 @@ checkout it is built from:
     python scripts/generate_compose_builder.py --output DIRECTORY [--verify]
 
 The output contains index.html, builder.html and commands.html, shared local
-assets, and images/NAME.json for every other installer
-image, which the page loads when that image is selected. --verify first
+assets, images/NAME.json for every other installer image, which the page loads
+when that image is selected, and install.sh with the page's source as its
+default --ref (site.hosted_installer). --verify first
 compares the page's engine with compose.build under Node.js
 (scripts/compose_builder/verify.py) on every image and writes nothing if any
 case differs; the page's data records the comparison's counts.
@@ -44,7 +45,7 @@ def main(argv=None):
     data = export.export(tag=args.tag, commit=args.commit, repository=args.repository)
     if args.default_image_only:
         data["images"] = [row for row in data["images"] if row["default"]]
-    meta = {key: data[key] for key in ("repository", "tag", "commit", "ref", "since_tag", "commits_since")}
+    meta = {key: data[key] for key in ("repository", "tag", "commit", "ref", "since_tag", "commits_since", "site_url")}
     images = {row["file"]: export.image_data(row["name"]) for row in data["images"] if row["file"]}
     summary = None
     if args.verify:

@@ -434,8 +434,12 @@ __ENGINE__
   const IMAGES = DATA.images || [];
   const DEFAULT_IMAGE = IMAGES.find(row => row.default) || null;
   const imageData = {};
+  // `installer` is the install.sh copy published beside the page on its own site (E.hostedInstaller).
   const META = { repository: DATA.repository, tag: DATA.tag, commit: DATA.commit, ref: DATA.ref,
-    since_tag: DATA.since_tag, commits_since: DATA.commits_since };
+    since_tag: DATA.since_tag, commits_since: DATA.commits_since, site_url: DATA.site_url || null };
+  META.installer = SparkRingEngine.hostedInstaller(META, location.href);
+  // Short profile names a link may use (runtime/common/profile_aliases.py): short name -> profile ID.
+  const ALIASES = DATA.aliases || {};
   // The command options of the page's source (export.features): the ring-split layout and the cable check.
   const FEATURES = DATA.features || {};
   // A page framed by a claude.ai viewer saves files through its downloads capability; a
@@ -529,7 +533,7 @@ __ENGINE__
     // Each half of a ring split into two pairs: its model, and its checkpoint and serving settings
     // by model. `half` is the pair that the model and settings steps show.
     halves: [half(), half()], half: 0,
-    install: { form: 'script', source: 'release', approval: 'ask', order: 'auto', limit: '' },
+    install: { ...E.INSTALL_DEFAULTS },
     // Every step opens collapsed on each page load.
     collapsed: { release: true, layout: true, model: true, settings: true, sparks: true },
   };
@@ -1708,8 +1712,8 @@ __ENGINE__
         ...(mode === 'auto' ? {} : { endpoint: { mode, address: mode === 'set' ? slotEndpoint(slot, slot.profile).address : '' } }) };
     };
     const row = IMAGES.find(r => r.name === state.image && !r.default && packSlots().some(slot => r.profiles.includes(slot.profile)));
-    return location.origin + location.pathname + '?' + E.linkQuery({ layout: state.layout, mode: state.mode,
-      image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install });
+    return location.origin + location.pathname + '?' + E.shareQuery({ layout: state.layout, mode: state.mode,
+      image: row ? row.option : null, main: pick(MAIN), halves: state.halves.map(pick), install: state.install }, BY_ID, ALIASES);
   }
   // Copies the link; where the clipboard refuses, shows it in a field, selected, to copy by hand.
   async function copyLink() {
@@ -1729,7 +1733,7 @@ __ENGINE__
   }
   function fromLink() {
     let choices;
-    try { choices = E.linkChoices(location.search, BY_ID, FEATURES); } catch (_) { return; }
+    try { choices = E.linkChoices(location.search, BY_ID, FEATURES, ALIASES); } catch (_) { return; }
     if (!choices) return;
     const take = (slot, chosen) => {
       slot.profile = chosen.profile;
@@ -1743,8 +1747,9 @@ __ENGINE__
     const ids = [choices.main.profile, ...choices.halves.filter(Boolean).map(chosen => chosen.profile)];
     const image = IMAGES.find(row => !row.default && ids.some(id => row.profiles.includes(id)) && [row.option, row.name].includes(choices.image));
     state.image = image ? image.name : null;
-    if (choices.mode) state.mode = choices.mode;
-    Object.assign(state.install, choices.install);
+    // A link names every choice it carries; what it leaves out takes the page's default, not the saved state.
+    state.mode = choices.mode || 'install';
+    state.install = { ...E.INSTALL_DEFAULTS, ...choices.install };
   }
 
   // ---- Start ---------------------------------------------------------------

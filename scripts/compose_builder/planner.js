@@ -4,13 +4,17 @@
   const $ = id => document.getElementById(id), byId = Object.fromEntries(data.profiles.map(p => [p.id, p]));
   const esc = text => String(text ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const option = (value, text, selected) => `<option value="${esc(value)}"${selected ? ' selected' : ''}>${esc(text)}</option>`;
-  const query = new URLSearchParams(location.search);
+  const query = new URLSearchParams(location.search), aliases = data.aliases || {};
+  data.meta.installer = E.hostedInstaller(data.meta, location.href);
   let size = Number(query.get('sparks')) || 2;
   if (size < 2 || size > 8 || !Number.isInteger(size)) size = 2;
+  // The planner keeps no saved state: it starts on the install default image unless a link names another.
   let image = data.images.find(r => r.default) || data.images[0];
-  const freshSlot = id => ({ id, where: 'auto', checkpoint: null, entries: {}, endpoint: '' });
+  const freshSlot = id => E.planSlot(id);
   const first = data.profiles.find(p => p.nodes <= size && image.profiles[p.id]) || data.profiles[0];
   let slots = [freshSlot(first.id)], setupOnly = query.get('setup') === '1', names = Array.from({ length: 8 }, () => ({ host: '', host_ip: '' }));
+  // A builder link (`profile` or `p`, by ID or short name) selects its model, Sparks and image (E.planLink).
+  const linked = query.has('plan') ? null : E.planLink(location.search, byId, data.images, aliases);
   // Shareable plans contain only public choices, never machine names or addresses.
   if (query.has('plan')) {
     try {
@@ -23,6 +27,9 @@
       image = data.images.find(r => r.name === saved.image) || image;
       setupOnly = saved.setupOnly === true;
     } catch (_) { /* Invalid links leave the usable default. */ }
+  } else if (linked) {
+    ({ size, slots } = linked);
+    image = data.images.find(r => r.name === linked.image);
   } else {
     const ids = (query.get('models') || query.get('model') || '').split(';'), where = (query.get('where') || '').split(';');
     if (ids.length <= 4 && ids.every(id => byId[id])) slots = ids.map((id, i) => ({ ...freshSlot(id), where: where[i] || 'auto' }));
@@ -117,10 +124,9 @@
   $('plan-sparks').addEventListener('input', e => { if (e.target.dataset.rank) { names[Number(e.target.dataset.rank)][e.target.dataset.key] = e.target.value; renderOutput(); } });
   ['plan-form', 'plan-source', 'plan-approval', 'plan-order'].forEach(id => $(id).addEventListener('change', () => { renderNames(); renderOutput(); }));
   $('plan-limit').addEventListener('input', renderOutput);
+  // One model with the choices the planner starts with shares the short link `p=NAME` (E.planQuery).
   $('plan-share').addEventListener('click', async () => {
-    const publicSlots = slots.map(s => ({ id: s.id, where: s.where, checkpoint: s.checkpoint,
-      entries: Object.fromEntries(Object.entries(s.entries).filter(([key]) => !['api_bind'].includes(key))) }));
-    const query = new URLSearchParams({ plan: JSON.stringify({ size, slots: publicSlots, setupOnly, image: image.name }) });
+    const query = E.planQuery({ size, slots, image: image.name, setupOnly }, byId, data.images, aliases);
     const url = location.origin + location.pathname + '?' + query;
     try { await navigator.clipboard.writeText(url); $('plan-share').textContent = 'Copied builder link'; }
     catch (_) { $('plan-share').textContent = 'Copy link from address bar'; history.replaceState(null, '', '?' + query); }

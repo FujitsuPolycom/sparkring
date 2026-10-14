@@ -1,11 +1,15 @@
 (() => {
   // Preserve links created before the landing page occupied the site root.
   const incoming = new URLSearchParams(location.search);
-  if (incoming.has('profile') || incoming.get('mode') === 'compose') {
+  if (incoming.has('profile') || incoming.has('p') || incoming.get('mode') === 'compose') {
     location.replace('builder.html' + location.search + location.hash);
     return;
   }
   const data = JSON.parse(document.getElementById('site-data').textContent);
+  // On its own site the quick start fetches the install.sh copy published there, whose default --ref is
+  // the page's source (site.py hosted_installer); elsewhere it fetches install.sh at that ref.
+  const command = document.getElementById('install-command');
+  if (command && data.meta.site_url && location.href.startsWith(data.meta.site_url)) command.textContent = command.dataset.hosted;
   const profiles = data.profiles, byId = Object.fromEntries(profiles.map(p => [p.id, p]));
   const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const color = i => i < 0 ? 'var(--muted)' : `var(--g${i % 4 + 1})`;
