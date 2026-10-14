@@ -32,14 +32,14 @@ and runs models on lines and rings of up to eight Sparks
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)
 
-<details>
+
 <summary>Cabling diagrams for a pair and a four-Spark ring</summary>
 
 ![A pair: one cable from Spark 0's p0 to Spark 1's p0](assets/spark-pair-cabling.svg)
 
 ![A four-Spark ring: each Spark's p0 to the next Spark's p1](assets/spark-ring-cabling.svg)
 
-</details>
+
 
 Not supported: one model on a line of six or more Sparks, a model on other
 than a pair, a four-Spark ring or its halves without an image that carries
