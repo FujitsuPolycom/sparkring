@@ -51,7 +51,7 @@ logs and recovery. To run step 5500's containers with Docker Compose, see
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
-| Image | `dev-20261004-kraken-cuda1342-nccl2323-status034` | `shared-2026.09.3` |
+| Image | `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` (release 2026.10.2, the `sparkring install` default); `--image 2026.10.1` selects `dev-20261004-kraken-cuda1342-nccl2323-status034` | `shared-2026.09.3` |
 | Checkpoint | CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it; otherwise step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |

@@ -458,26 +458,42 @@ sudo sparkring logs --follow
 
 ## Serving image and profiles
 
-Every installer profile of two or four Sparks runs on one shared ARM64
-serving image, pinned by the
-[installer image lock](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json)
-(`sparkring-installer-image/v2`):
+Without `--image`, every installer profile runs on one shared ARM64 serving
+image, the image of release 2026.10.2, pinned by its
+[installer image lock](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/installer-image.json)
+(`sparkring-installer-image/v3`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` |
-| Tag | `dev-20261004-kraken-cuda1342-nccl2323-status034` |
-| Configuration | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
-| Base image | `eugr/spark-vllm-b12x` nightly-20261001, `sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052` |
-| vLLM and B12X (Local Inference Lab's GB10 kernel library) | Local Inference Lab's Karmic Kraken beta branches with SparkRing's changes, branches `sparkring/kraken-beta-20261004` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` |
+| Tag | `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` |
+| Configuration | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| Parent image | Release 2026.10.1's `dev-20261004-kraken-cuda1342-nccl2323-status034`, configuration `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
+| Transports | `sircl` (SIRCL 0.3.2, ABI 9), `prepared` and `libsircl` (libsircl 0.6.0) |
+| vLLM plugins | `glm53full_speedups` 1.1.0, `glm_dcp_decode_comm` 2.0.1, `glm_dsa_indexer_split` 1.1.0 |
+| Runtime-status dashboard | 0.3.6 |
+| Size recorded in the lock | 15,280,315,686 bytes to download, 31,884,969,464 bytes unpacked |
 
-The image adds two layers to that base: SparkRing's vLLM and B12X sources
-with its transports, features, SparkCache assets and runtime-status dashboard
-0.3.4, then the CUDA 13.4.2 and NCCL 2.32.3 toolchain. The
+The image adds layers to its parent: the vLLM and B12X sources that read the
+CSF checkpoints, the SIRCL layer, the libsircl layer, the GLM-5.3 plugins and
+runtime-status 0.3.6 ([images](images.md#installer-image)). The
+[release record](../../runtime/releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md) states its layers, evidence and limitations.
+`sparkring install` picks the newest published, unarchived v3 image that
+carries SIRCL (`default_row` in
+[image_lock.py](../../runtime/common/image_lock.py)); without one it falls
+back to `installer_image.DEFAULT_LOCK`, release 2026.10.1's lock, which is
+also the image of Compose exports.
+
+Release 2026.10.1's image, `dev-20261004-kraken-cuda1342-nccl2323-status034`
+(`--image 2026.10.1`), carries the prepared transport only. It adds two layers
+to `eugr/spark-vllm-b12x` nightly-20261001: SparkRing's merges of Local
+Inference Lab's Karmic Kraken beta vLLM and B12X branches (branches
+`sparkring/kraken-beta-20261004`) with its transports, features and
+runtime-status 0.3.4, then the CUDA 13.4.2 and NCCL 2.32.3 toolchain. The
 [composition record](../../runtime/images/compositions/external-kraken-20261004/README.md)
 lists the source commits and pinned inputs; the image's
 [publication record](../../runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/publication.json)
-describes both layers. The rollback image,
+describes both layers. The image of release 2026.10.0,
 `dev-20261001-kraken-cuda1342-nccl2323-status034`, has the same base,
 integration assets and toolchain, and the vLLM and B12X sources of branches
 `sparkring/kraken-beta-20261001`; `--image 2026.10.0` selects it

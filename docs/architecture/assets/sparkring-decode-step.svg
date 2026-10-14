@@ -1,208 +1,114 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
-<title id="title">One decode step across tensor-parallel ranks</title>
-<desc id="desc">In each decode step every rank processes the same verification rows: for each running sequence, its newest token and three draft tokens. In every decoder layer each rank computes a partial attention output and a partial mixture-of-experts output from the weights it holds, and an all-reduce on RoCEnante sums them; hyper-connection mixing runs on every rank. The LM head is split by vocabulary and its logits are all-gathered. Rejection sampling keeps the accepted drafts and adds one target token, and the one-layer MTP head drafts three tokens for the next step. Decode-size collectives use RoCEnante; larger ones, mostly prefill, use NCCL 2.32.3. On four Sparks, traffic between opposite Sparks is forwarded in hardware by the Spark between them.</desc>
+<title id="title">One decode step on SIRCL ring sessions</title>
+<desc id="desc">A four-Spark tensor-parallel group runs one decode step. Every rank holds the same input rows: each running sequence&#x27;s newest token and the draft tokens from the previous step. In every layer, attention and the MLP or expert block each produce a partial result per rank that a SIRCL all-reduce sums. The LM head&#x27;s vocabulary slices are joined by a SIRCL all-gather, the drafts are verified, and the draft model proposes the next step&#x27;s tokens. A SIRCL all-reduce is one kernel launch: the kernel stages the input in a pinned host arena and rings a doorbell, the progress thread writes each peer&#x27;s stripe and flag over RDMA, relays forward to Sparks that share no cable, and the kernel sums every rank&#x27;s values in rank order once all flags arrive, so every rank holds identical bits. NCCL is off.</desc>
 <rect x="1" y="1" width="1398" height="898" rx="12" fill="#f6f8fa" stroke="#d0d7de" stroke-width="1.5"/>
-<text x="40" y="52" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" fill="#1f2328" text-anchor="start">One decode step across tensor-parallel ranks</text>
-<rect x="776.0" y="34" width="16" height="16" rx="4" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="799.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Computed on each rank</text>
-<rect x="970.0" y="34" width="16" height="16" rx="4" fill="#e1f4ec" stroke="#009E73" stroke-width="1.5"/>
-<text x="993.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">RoCEnante</text>
-<rect x="1080.0" y="34" width="16" height="16" rx="4" fill="#fdf1d6" stroke="#E69F00" stroke-width="1.5"/>
-<text x="1103.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">NCCL</text>
-<rect x="1155.0" y="34" width="16" height="16" rx="4" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
-<text x="1178.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">MTP draft</text>
-<line x1="1265.0" y1="42" x2="1289.0" y2="42" stroke="#CC79A7" stroke-width="2.5" stroke-linecap="butt" stroke-dasharray="6 4"/>
-<text x="1297.0" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Forwarded</text>
-<text x="44" y="115" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Tensor-parallel ranks</text>
-<rect x="270" y="94" width="150" height="30" rx="15" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
-<text x="345.0" y="114" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 0 · Node A</text>
-<rect x="432" y="94" width="150" height="30" rx="15" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
-<text x="507.0" y="114" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 1</text>
-<rect x="594" y="94" width="150" height="30" rx="15" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
-<text x="669.0" y="114" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 2</text>
-<rect x="756" y="94" width="150" height="30" rx="15" fill="#ffffff" stroke="#57606a" stroke-width="1.5"/>
-<text x="831.0" y="114" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 3</text>
-<text x="750.0" y="86" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="middle">four Sparks only</text>
-<text x="44" y="162.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Step input</text>
-<text x="44" y="179.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">same rows on every rank</text>
-<rect x="270" y="138" width="636" height="54" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="284" y="160" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Each running sequence adds 4 rows: its newest token and the</text>
-<text x="284" y="177" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">3 draft tokens from the previous step. Up to 16 sequences, 64 rows.</text>
-<rect x="814" y="158" width="14" height="14" rx="3" fill="#8c959f" stroke="#57606a" stroke-width="1"/>
-<rect x="833" y="158" width="14" height="14" rx="3" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
-<rect x="852" y="158" width="14" height="14" rx="3" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
-<rect x="871" y="158" width="14" height="14" rx="3" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
-<line x1="345.0" y1="192" x2="345.0" y2="242" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="192" x2="507.0" y2="242" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="192" x2="669.0" y2="242" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="192" x2="831.0" y2="242" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<rect x="30" y="208" width="888" height="340" rx="12" fill="none" stroke="#57606a" stroke-width="1.5" stroke-dasharray="6 5"/>
-<text x="44" y="229" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Each decoder layer</tspan><tspan fill="#57606a">   48 in Qwen, 45 in GLM</tspan></text>
-<text x="44" y="258.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Hyper-connections</text>
-<text x="44" y="275.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">mix the 4 streams</text>
-<rect x="270" y="242" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="345.0" y="265.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="432" y="242" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="507.0" y="265.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="594" y="242" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="669.0" y="265.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="756" y="242" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="831.0" y="265.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<line x1="345.0" y1="280" x2="345.0" y2="296" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="280" x2="507.0" y2="296" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="280" x2="669.0" y2="296" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="280" x2="831.0" y2="296" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="312.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Attention</text>
-<text x="44" y="329.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">heads split across ranks</text>
-<rect x="270" y="296" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="345.0" y="319.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="432" y="296" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="507.0" y="319.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="594" y="296" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="669.0" y="319.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="756" y="296" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="831.0" y="319.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<line x1="345.0" y1="334" x2="345.0" y2="350" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="334" x2="507.0" y2="350" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="334" x2="669.0" y2="350" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="334" x2="831.0" y2="350" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="370.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">All-reduce</text>
-<rect x="270" y="350" width="636" height="30" rx="6" fill="#e1f4ec" stroke="#009E73" stroke-width="2"/>
-<text x="284" y="369.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">all-reduce</tspan>  sums the partial outputs</text>
-<text x="892" y="369.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#00664a" text-anchor="end">RoCEnante</text>
-<line x1="345.0" y1="380" x2="345.0" y2="396" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="380" x2="507.0" y2="396" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="380" x2="669.0" y2="396" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="380" x2="831.0" y2="396" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="412.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Hyper-connections</text>
-<text x="44" y="429.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">add output, mix again</text>
-<rect x="270" y="396" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="345.0" y="419.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="432" y="396" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="507.0" y="419.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="594" y="396" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="669.0" y="419.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<rect x="756" y="396" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="831.0" y="419.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">mix streams</text>
-<line x1="345.0" y1="434" x2="345.0" y2="450" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="434" x2="507.0" y2="450" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="434" x2="669.0" y2="450" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="434" x2="831.0" y2="450" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="466.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">MoE</text>
-<text x="44" y="483.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">expert weights split</text>
-<rect x="270" y="450" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="345.0" y="473.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="432" y="450" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="507.0" y="473.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="594" y="450" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="669.0" y="473.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<rect x="756" y="450" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="831.0" y="473.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">partial output</text>
-<line x1="345.0" y1="488" x2="345.0" y2="504" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="488" x2="507.0" y2="504" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="488" x2="669.0" y2="504" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="488" x2="831.0" y2="504" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="524.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">All-reduce</text>
-<rect x="270" y="504" width="636" height="30" rx="6" fill="#e1f4ec" stroke="#009E73" stroke-width="2"/>
-<text x="284" y="523.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">all-reduce</tspan>  sums the partial outputs</text>
-<text x="892" y="523.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#00664a" text-anchor="end">RoCEnante</text>
-<line x1="345.0" y1="534" x2="345.0" y2="566" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="534" x2="507.0" y2="566" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="534" x2="669.0" y2="566" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="534" x2="831.0" y2="566" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="582.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">LM head</text>
-<text x="44" y="599.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">vocabulary split by rank</text>
-<rect x="270" y="566" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="345.0" y="589.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">own vocabulary slice</text>
-<rect x="432" y="566" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="507.0" y="589.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">own vocabulary slice</text>
-<rect x="594" y="566" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="669.0" y="589.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">own vocabulary slice</text>
-<rect x="756" y="566" width="150" height="38" rx="6" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="831.0" y="589.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="middle">own vocabulary slice</text>
-<line x1="345.0" y1="604" x2="345.0" y2="620" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="604" x2="507.0" y2="620" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="604" x2="669.0" y2="620" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="604" x2="831.0" y2="620" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="640.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">All-gather</text>
-<rect x="270" y="620" width="636" height="30" rx="6" fill="#ffffff" stroke="#d0d7de" stroke-width="2"/>
-<text x="284" y="639.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">all-gather</tspan>  joins the logits</text>
-<text x="892" y="639.5" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="600" fill="#57606a" text-anchor="end">RoCEnante or NCCL, by size</text>
-<line x1="345.0" y1="650" x2="345.0" y2="668" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="507.0" y1="650" x2="507.0" y2="668" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="669.0" y1="650" x2="669.0" y2="668" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<line x1="831.0" y1="650" x2="831.0" y2="668" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<text x="44" y="690.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">Verify</text>
-<text x="44" y="707.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">rejection sampling</text>
-<rect x="270" y="668" width="636" height="50" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
-<text x="284" y="689" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">The rejection test compares draft and target probabilities; accepted drafts</text>
-<text x="284" y="706" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">plus one token from the target model give 1 to 4 new tokens per sequence.</text>
-<line x1="588" y1="718" x2="588" y2="728" stroke="#8c959f" stroke-width="1.5" stroke-linecap="butt"/>
-<polygon points="584.4,728.1 591.6,728.1 588,734" fill="#8c959f"/>
-<text x="44" y="756.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13.5" font-weight="600" fill="#1f2328" text-anchor="start">MTP draft</text>
-<text x="44" y="773.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">3 tokens for the next step</text>
-<rect x="270" y="734" width="636" height="50" rx="8" fill="#fcebe0" stroke="#D55E00" stroke-width="1.5"/>
-<text x="284" y="755" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">The one-layer MTP head runs three passes, tensor-parallel on the same ranks,</text>
-<text x="284" y="772" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">and proposes the 3 draft tokens that the next step verifies.</text>
-<path d="M906,759 L934,759 L934,165 L914,165" fill="none" stroke="#57606a" stroke-width="2" stroke-linejoin="round" stroke-linecap="butt"/>
-<polygon points="914.8,160.2 914.8,169.8 907,165" fill="#57606a"/>
-<text x="948" y="462" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#57606a" text-anchor="middle" transform="rotate(-90 948 462)">next step</text>
-<text x="968" y="104" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="15" font-weight="600" fill="#1f2328" text-anchor="start">Where each collective goes</text>
-<rect x="968" y="118" width="392" height="196" rx="10" fill="#e1f4ec" stroke="#009E73" stroke-width="1.5"/>
-<text x="984" y="141" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">RoCEnante</tspan><tspan fill="#57606a">   paced RDMA transport</tspan></text>
-<text x="984" y="162" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Sends each rank&#x27;s data straight to every other rank;</text>
-<text x="984" y="179" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">works inside CUDA graphs.</text>
-<text x="984" y="196" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Takes all-reduces up to 2 MiB and all-gathers up to</text>
-<text x="984" y="213" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">16 MiB per shard.</text>
-<text x="984" y="238" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">Qwen</tspan> decode: all-reduces up to 320 KiB, which holds</text>
-<text x="984" y="255" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">64 rows of 2,560 BF16 values.</text>
-<text x="984" y="272" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">GLM</tspan> decode: up to 64 rows of 4,096 BF16 values,</text>
-<text x="984" y="289" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">512 KiB.</text>
-<rect x="968" y="326" width="392" height="146" rx="10" fill="#fdf1d6" stroke="#E69F00" stroke-width="1.5"/>
-<text x="984" y="349" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="400" fill="#1f2328" text-anchor="start"><tspan font-weight="600">NCCL 2.32.3</tspan><tspan fill="#57606a">   everything larger</tspan></text>
-<text x="984" y="370" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Mostly prefill: chunks of up to 8,192 tokens, and</text>
-<text x="984" y="387" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Qwen&#x27;s hyper-connection row exchange</text>
-<text x="984" y="404" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">(reduce-scatter and all-gather).</text>
-<text x="984" y="421" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Four Sparks: ring algorithm, four channels along</text>
-<text x="984" y="438" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">the cable cycle; Qwen uses all four NIC functions.</text>
-<rect x="968" y="484" width="392" height="360" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
-<text x="984" y="507" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">Paths between Sparks</text>
-<rect x="990" y="526" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1008.0" y="549.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">0</text>
-<rect x="1100" y="526" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1118.0" y="549.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">1</text>
-<path d="M1026,544 L1100,544" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1026,544 L1100,544" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
-<text x="1156" y="534" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Two Sparks: one cable;</text>
-<text x="1156" y="551" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">two RDMA paths, one per</text>
-<text x="1156" y="568" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">PCIe function of p0.</text>
-<line x1="984" y1="598" x2="1344" y2="598" stroke="#d0d7de" stroke-width="1" stroke-linecap="butt"/>
-<path d="M1026,636 L1100,636" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1026,636 L1100,636" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1124,660 L1124,734" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1124,660 L1124,734" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1100,758 L1026,758" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1100,758 L1026,758" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1002,734 L1002,660" fill="none" stroke="#ffffff" stroke-width="9" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1002,734 L1002,660" fill="none" stroke="#424a53" stroke-width="5" stroke-linejoin="round" stroke-linecap="butt"/>
-<path d="M1026,650 L1110,650 L1110,734" fill="none" stroke="#CC79A7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="butt" stroke-dasharray="7 5"/>
-<path d="M1016,660 L1016,744 L1100,744" fill="none" stroke="#CC79A7" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="butt" stroke-dasharray="7 5"/>
-<rect x="990" y="624" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1008.0" y="647.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">0</text>
-<rect x="1100" y="624" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1118.0" y="647.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">1</text>
-<rect x="1100" y="734" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1118.0" y="757.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">2</text>
-<rect x="990" y="734" width="36" height="36" rx="7" fill="#ffffff" stroke="#8c959f" stroke-width="1.5"/>
-<text x="1008.0" y="757.0" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="middle">3</text>
-<text x="1156" y="632" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Four Sparks: neighbours are</text>
-<text x="1156" y="649" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">direct, two paths per peer.</text>
-<text x="1156" y="666" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Opposite Sparks get one path</text>
-<text x="1156" y="683" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">each way round the ring; the</text>
-<text x="1156" y="700" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">Spark between forwards it in</text>
-<text x="1156" y="717" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">hardware. A send window</text>
-<text x="1156" y="734" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#1f2328" text-anchor="start">paces forwarded traffic.</text>
-<text x="984" y="800" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#57606a" text-anchor="start">NCCL&#x27;s ring follows the cable cycle; RoCEnante uses</text>
-<text x="984" y="817" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12.5" font-weight="400" fill="#57606a" text-anchor="start">direct and forwarded paths.</text>
-<text x="700" y="874" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#57606a" text-anchor="middle">Each step verifies three draft tokens and drafts three more; decode-size collectives use RoCEnante, larger ones NCCL.</text>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#57606a"/></marker></defs>
+<text x="40" y="52" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="22" font-weight="700" fill="#1f2328" text-anchor="start">One decode step on SIRCL ring sessions</text>
+<rect x="560" y="34" width="16" height="16" rx="4" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="583" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Computed on each rank</text>
+<rect x="779.5" y="34" width="16" height="16" rx="4" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="802.5" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">SIRCL collective</text>
+<rect x="961.5" y="34" width="16" height="16" rx="4" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<text x="984.5" y="47" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Speculative decoding</text>
+<text x="40" y="100" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#57606a" text-anchor="start">Tensor-parallel ranks</text>
+<text x="270" y="100" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 0 · API</text>
+<text x="430" y="100" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 1</text>
+<text x="590" y="100" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 2</text>
+<text x="750" y="100" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="middle">rank 3</text>
+<text x="40" y="138" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Step input</text>
+<text x="40" y="154" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">same rows on every rank</text>
+<rect x="200" y="120" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="360" y="120" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="520" y="120" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="680" y="120" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="40" y="194" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Attention</text>
+<text x="40" y="210" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">heads split across ranks</text>
+<rect x="200" y="176" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="360" y="176" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="520" y="176" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="680" y="176" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="40" y="250" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">All-reduce</text>
+<text x="40" y="266" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">sum of partial outputs</text>
+<rect x="200" y="232" width="620" height="38" rx="8" fill="#e6f1f9" stroke="#0072B2" stroke-width="2"/>
+<text x="510.0" y="256" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">SIRCL session of the tensor-parallel group</text>
+<text x="40" y="306" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">MLP or experts</text>
+<text x="40" y="322" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">weights split across ranks</text>
+<rect x="200" y="288" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="360" y="288" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="520" y="288" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="680" y="288" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="40" y="362" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">All-reduce</text>
+<text x="40" y="378" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">sum of partial outputs</text>
+<rect x="200" y="344" width="620" height="38" rx="8" fill="#e6f1f9" stroke="#0072B2" stroke-width="2"/>
+<text x="510.0" y="368" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">SIRCL session of the tensor-parallel group</text>
+<text x="40" y="418" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">LM head</text>
+<text x="40" y="434" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">vocabulary slice per rank</text>
+<rect x="200" y="400" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="360" y="400" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="520" y="400" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<rect x="680" y="400" width="140" height="38" rx="8" fill="#eef1f4" stroke="#8c959f" stroke-width="1.5"/>
+<text x="40" y="474" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">All-gather</text>
+<text x="40" y="490" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">every rank gets all logits</text>
+<rect x="200" y="456" width="620" height="38" rx="8" fill="#e6f1f9" stroke="#0072B2" stroke-width="2"/>
+<text x="510.0" y="480" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">SIRCL session of the tensor-parallel group</text>
+<text x="40" y="530" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Verify drafts</text>
+<text x="40" y="546" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">accept or reject draft tokens</text>
+<rect x="200" y="512" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="360" y="512" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="520" y="512" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="680" y="512" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<text x="40" y="586" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="600" fill="#1f2328" text-anchor="start">Draft</text>
+<text x="40" y="602" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="11" font-weight="400" fill="#57606a" text-anchor="start">propose the next step&#x27;s tokens</text>
+<rect x="200" y="568" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="360" y="568" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="520" y="568" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<rect x="680" y="568" width="140" height="38" rx="8" fill="#e3f4ee" stroke="#009E73" stroke-width="1.5"/>
+<text x="40" y="640" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">Attention, all-reduce, MLP or experts, all-reduce: repeated for every layer.</text>
+<text x="40" y="660" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">With decode-context parallelism, DCP groups add their own SIRCL sessions.</text>
+<rect x="860" y="84" width="500" height="560" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="878" y="110" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">One SIRCL all-reduce</text>
+<rect x="878" y="124" width="24" height="24" rx="12" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="890" y="141" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2328" text-anchor="middle">1</text>
+<text x="914" y="140" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">The kernel copies the rank&#x27;s input into</text>
+<text x="914" y="158" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">a pinned host arena and rings a doorbell.</text>
+<rect x="878" y="186" width="24" height="24" rx="12" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="890" y="203" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2328" text-anchor="middle">2</text>
+<text x="914" y="202" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">The progress thread writes the payload</text>
+<text x="914" y="220" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">to every peer, striped over one or two</text>
+<text x="914" y="238" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">lanes, then a 4-byte sequence flag.</text>
+<rect x="878" y="266" width="24" height="24" rx="12" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="890" y="283" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2328" text-anchor="middle">3</text>
+<text x="914" y="282" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Lanes to Sparks that share no cable cross</text>
+<text x="914" y="300" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">relays; a forward window bounds the</text>
+<text x="914" y="318" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">bytes a relay&#x27;s hairpin queue holds.</text>
+<rect x="878" y="346" width="24" height="24" rx="12" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="890" y="363" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2328" text-anchor="middle">4</text>
+<text x="914" y="362" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">The kernel waits for every peer&#x27;s flags,</text>
+<text x="914" y="380" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">then adds all ranks&#x27; values in float32 in</text>
+<text x="914" y="398" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">rank order: identical bits on every rank.</text>
+<rect x="878" y="426" width="24" height="24" rx="12" fill="#e6f1f9" stroke="#0072B2" stroke-width="1.5"/>
+<text x="890" y="443" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="700" fill="#1f2328" text-anchor="middle">5</text>
+<text x="914" y="442" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">A flag later than the wait limit poisons</text>
+<text x="914" y="460" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">the session; the next worker step fails</text>
+<text x="914" y="478" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">on every rank instead of serving wrong output.</text>
+<text x="878" y="620" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="start">Small decode messages run one-shot: one kernel launch.</text>
+<rect x="40" y="690" width="1320" height="180" rx="10" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="58" y="716" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="14" font-weight="600" fill="#1f2328" text-anchor="start">Paths between the ranks of a group of four consecutive Sparks</text>
+<rect x="120" y="740" width="120" height="50" rx="8" fill="#ffffff" stroke="#0072B2" stroke-width="1.5"/>
+<text x="180" y="770" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">rank 0</text>
+<rect x="300" y="740" width="120" height="50" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="360" y="770" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">rank 1</text>
+<rect x="480" y="740" width="120" height="50" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="540" y="770" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">rank 2</text>
+<rect x="660" y="740" width="120" height="50" rx="8" fill="#ffffff" stroke="#d0d7de" stroke-width="1.5"/>
+<text x="720" y="770" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="middle">rank 3</text>
+<line x1="240" y1="765" x2="300" y2="765" stroke="#424a53" stroke-width="5" stroke-linecap="round"/>
+<line x1="420" y1="765" x2="480" y2="765" stroke="#424a53" stroke-width="5" stroke-linecap="round"/>
+<line x1="600" y1="765" x2="660" y2="765" stroke="#424a53" stroke-width="5" stroke-linecap="round"/>
+<path d="M 220 790 C 320 850, 580 850, 680 790" fill="none" stroke="#CC79A7" stroke-width="2.5" stroke-dasharray="6 4"/>
+<text x="390" y="856" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="12" font-weight="400" fill="#57606a" text-anchor="middle">rank 0 to rank 3: two relays, forwarded in hardware</text>
+<text x="840" y="750" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Neighbours: direct lanes, one per PCI function of the cable.</text>
+<text x="840" y="770" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">Others: lanes through the Sparks between, at most three relays.</text>
+<text x="840" y="790" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">NCCL is off; it runs only with --nccl auto where the cabling</text>
+<text x="840" y="810" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif" font-size="13" font-weight="400" fill="#1f2328" text-anchor="start">allows it, never across relays.</text>
 </svg>

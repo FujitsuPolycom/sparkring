@@ -9,6 +9,8 @@ sets up; the [profile catalog](../../profiles/README.md) lists every profile.
 
 ## Topology
 
+![A ring of eight DGX Sparks serving two four-Spark models on positions 0-3 and 4-7; Node A serves the API and dashboards, and traffic between Sparks that share no cable is forwarded in hardware by the ConnectX-7 of the Sparks between them](assets/sparkring-cluster.svg)
+
 Setup forms one of three layouts ([cabling](../operations/install-reference.md#cabling)):
 
 | Layout | Cabling |
@@ -49,6 +51,8 @@ that carries SSH and package copies, and image and checkpoint copies.
 
 ## Serving container
 
+![One serving container per Spark: the API server, vLLM with B12X kernels, SparkRing's runtime-status plugin, SIRCL ring sessions as the default collective path and the prepared RoCEnante and NCCL transport for images without SIRCL, over the four ConnectX-7 RDMA functions](assets/sparkring-serving-stack.svg)
+
 Every Spark of a model runs one container of the same image, one
 tensor-parallel rank. Its kernels come from
 [B12X](https://github.com/local-inference-lab/b12x), Local Inference Lab's
@@ -66,6 +70,8 @@ runtime-status dashboard 0.3.6
 lists the transports it carries and the 13 profiles admitted to it.
 
 ## Collective path
+
+![One decode step on four ranks: two SIRCL all-reduces per layer, a SIRCL all-gather of the LM head's vocabulary slices, draft verification and the next draft; one SIRCL all-reduce stages its input in a pinned arena, writes stripes and flags over RDMA through hardware relays where needed, and sums in rank order](assets/sparkring-decode-step.svg)
 
 Tensor-parallel ranks combine their results with collectives: all-reduce,
 all-gather, reduce-scatter and all-to-all. `sparkring install` runs them on
