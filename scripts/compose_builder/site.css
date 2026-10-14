@@ -22,7 +22,9 @@ p { max-width: 76ch; }
 .site-nav a { color: var(--muted); text-decoration: none; font-size: 14px; }
 .site-nav .brand { font-weight: 650; font-size: 18px; color: var(--ink); margin-right: auto; }
 .site-nav button { font-size: 13px; }
-.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; padding-block: 36px; align-items: center; }
+.hero { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 48px; padding-block: 36px; align-items: start; }
+.hero > div:first-child { display: grid; gap: 18px; align-content: start; padding-top: 12px; }
+.hero > div:first-child > * { margin: 0; }
 .hero h1 { max-width: 24ch; } .hero .lede, .muted, .hint { color: var(--muted); }
 .eyebrow { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .notice { padding: 14px 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 12px; color: var(--muted); }
@@ -41,7 +43,9 @@ p { max-width: 76ch; }
 .ring-panel .hint { text-align: center; font-size: 12px; }
 .ring-controls { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
 .ring-controls button { font-size: 12px; }
-.hero #install-command { white-space: pre; overflow-wrap: normal; overflow-x: auto; padding-bottom: 6px; }
+.hero #install-command { white-space: pre; overflow-wrap: normal; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.hero #install-command::-webkit-scrollbar { height: 6px; }
+.hero #install-command::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
 .landing-ring svg { max-height: 360px; }
 .landing-ring .cable-legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 16px; font-size: 11px; color: var(--muted); }
 .landing-ring .cable-legend span::before { content: ''; display: inline-block; width: 22px; border-top: 2px solid var(--g1); margin-right: 7px; vertical-align: middle; }
@@ -98,3 +102,12 @@ tr:last-child td { border-bottom: 0; }
   .responsive-table td .pill { justify-self: start; }
   .guide td { font-size: 13px; }
 }
+
+/* Spark-count picker: one uniform segmented control, the layout name beside it. */
+#ring-choices { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+#ring-choices .seg-label { font: 500 12px var(--mono, ui-monospace, monospace); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#ring-choices .seg { display: inline-flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 999px; }
+#ring-choices .seg button { min-width: 34px; padding: 6px 10px; border: 0; border-radius: 999px; background: transparent;
+  color: var(--muted); font: 600 14px var(--mono, ui-monospace, monospace); cursor: pointer; }
+#ring-choices .seg button[aria-pressed="true"] { background: var(--line); color: var(--ink); }
+#ring-choices .seg-name { font-size: 14px; color: var(--ink); min-width: 9ch; }

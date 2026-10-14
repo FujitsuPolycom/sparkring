@@ -68,8 +68,10 @@
   }
   function render() {
     const choices = examples(size), selected = choices[example];
-    const labels = { 2: 'Pair', 3: '3', 4: 'Ring of four', 5: '5', 6: '6', 8: 'Ring of eight' };
-    document.getElementById('ring-choices').innerHTML = [2, 3, 4, 5, 6, 8].map(n => `<button data-size="${n}" aria-label="${n === 3 || n === 5 || n === 6 ? n + ' Sparks' : labels[n]}" aria-pressed="${n === size}">${labels[n]}</button>`).join('');
+    const names = { 2: 'Pair', 3: 'Ring of three', 4: 'Ring of four', 5: 'Ring of five', 6: 'Ring of six', 8: 'Ring of eight' };
+    document.getElementById('ring-choices').innerHTML = '<span class="seg-label">Sparks</span><span class="seg">'
+      + [2, 3, 4, 5, 6, 8].map(n => `<button data-size="${n}" aria-label="${n} Sparks" aria-pressed="${n === size}">${n}</button>`).join('')
+      + `</span><span class="seg-name">${names[size]}</span>`;
     document.getElementById('ring-examples').innerHTML = choices.map((e, i) => `<button data-example="${i}" aria-pressed="${i === example}">${e.name}</button>`).join('');
     document.getElementById('ring-figure').innerHTML = drawRing(size, selected.groups);
     document.getElementById('ring-caption').textContent = size === 2 ? 'Two Sparks, two direct ConnectX-7 cables.'
