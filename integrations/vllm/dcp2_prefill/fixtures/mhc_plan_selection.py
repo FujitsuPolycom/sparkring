@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 # Unmodified method excerpt from image d52737a109e0; enclosing indentation removed.
-# ruff: noqa: F821 -- Plan is a name of the image module this method comes from; test_patch.py supplies it.
+# ruff: noqa: F821 -- Plan is a name of the image module this method comes from; test_dcp2_prefill_patch.py supplies it.
 def _plan_for(self, operation: str, tokens: int) -> Plan:
     tokens = int(tokens)
     exact = self._plans.get((operation, tokens))

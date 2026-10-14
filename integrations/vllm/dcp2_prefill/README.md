@@ -54,7 +54,7 @@ checkpoint metadata and physical-page alias refusal, and exercises the
 derived-layer receipt/lock machinery with synthetic receipts:
 
 ```bash
-python -m pytest integrations/vllm/dcp2_prefill/test_patch.py -q
+python -m pytest integrations/vllm/dcp2_prefill/test_dcp2_prefill_patch.py -q
 ```
 
 **Unknown:** full-model logits, distributed all-reduce versus reduce-scatter
