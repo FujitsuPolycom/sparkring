@@ -581,7 +581,9 @@ def deployments_from_site(site: dict, size: int) -> list:
                      "settings": row.get("settings"),
                      "model": row.get("model"), "positions": positions, "api_host": row["api_host"],
                      "api_port": port, "display_url": row.get("display_url"),
-                     "stopped": bool(row.get("stopped")), "containers": containers})
+                     "stopped": bool(row.get("stopped")), "containers": containers,
+                     **{key: row[key] for key in ("stopped_at", "serving_at")
+                        if number(row.get(key)) and row[key] > 0}})
     return rows
 
 
@@ -1365,8 +1367,21 @@ class Collector:
             endpoint = None
         spark_starting = self.startup_status(model) if not row["stopped"] else None
         starting = spark_starting if not serving else None
-        since = (starting["started_at"] if starting else
-                 runtime.get("started_at") if serving and runtime.get("started_at") else model.state_since)
+        if starting:
+            since = starting.get("started_at")
+            since = since if number(since) and since > 0 else None
+        elif serving:
+            # Runtime startup and process start are recorded events. An older
+            # runtime snapshot must not carry a prior run's age across a restart.
+            starts = [t for t in (runtime.get("started_at"), metrics.get("started"))
+                      if number(t) and t > 0]
+            since = max(starts) if starts else row.get("serving_at")
+        elif model.state == "stopped":
+            since = row.get("stopped_at") if row["stopped"] else None
+        elif model.state in startup.PHASES or model.state == "not_ready":
+            since = None
+        else:
+            since = model.state_since
         capacity = dict(model.capacity) if model.capacity else None
         if capacity and runtime.get("settings"):
             capacity["max_num_seqs"] = runtime["settings"].get("max_num_seqs")

@@ -156,6 +156,29 @@ def cached_node_rows(state_root, output, documents, checked_at):
     return list(public.values())
 
 
+def operation_times(directory: Path) -> dict:
+    """Project completed lifecycle events, never record modification/check times."""
+    from runtime.common import installer
+    from runtime.host.dashboard_rates import number
+    try:
+        state = installer.read(directory / "state.json")
+        operation = state.get("operation")
+        if not state.get("complete") or operation not in ("up", "down"):
+            return {}
+        completed = state.get("completed_at")
+        if completed is None and isinstance(state.get("receipt"), str):
+            receipt_path = (directory / state["receipt"]).resolve()
+            if not receipt_path.is_relative_to(directory.resolve() / "operations"):
+                return {}
+            receipt = installer.read(receipt_path)
+            completed = receipt.get("completed_at") if receipt.get("complete") else None
+        if number(completed) and completed > 0:
+            return {"stopped_at" if operation == "down" else "serving_at": completed}
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    return {}
+
+
 def deployment_row(directory, slot=None, size=None):
     """Public deployment fields shared by site export and active installation progress."""
     from runtime.common import installer
@@ -180,7 +203,8 @@ def deployment_row(directory, slot=None, size=None):
                  "model": connection["model"], "positions": positions, "api_host": host,
                  "api_port": connection["port"],
                  "display_url": api_endpoint.url(connection["api_url"], shown) if shown else None,
-                 "stopped": placements.stopped(directory), "containers": containers}
+                 "stopped": placements.stopped(directory), "containers": containers,
+                 **operation_times(Path(directory))}
 
 
 def site_from_records(state_root: Path) -> dict:

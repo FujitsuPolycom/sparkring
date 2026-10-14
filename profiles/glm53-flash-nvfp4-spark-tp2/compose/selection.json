@@ -3,5 +3,5 @@
   "profile": "glm53-flash-nvfp4-spark-tp2",
   "checkpoint": "csf",
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "b8c2594e9684ad17306e75a518347644abcf08c68ee38fb5d0a0f9f81a5b9fc9"
+  "deployment": "f4323b21a23b3519b411b76d20d8491d10bf9e17bfc7a9b3ce6af342a6bb3f99"
 }

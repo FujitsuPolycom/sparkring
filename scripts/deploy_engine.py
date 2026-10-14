@@ -204,6 +204,10 @@ def _execute_plan(
             "actions": {},
             "complete": False,
         }
+    # Retain an explicitly unknown time for legacy completions, including when
+    # a verification fails and a later invocation resumes that failed recheck.
+    if receipt.get("complete"):
+        receipt.setdefault("completed_at", None)
     # A resumed receipt describes an in-progress recheck until every phase passes.
     receipt["complete"] = False
     save_receipt(receipt_path, receipt)
@@ -298,6 +302,9 @@ def _execute_plan(
                 f"{phase['id']}: phase failed; later phases were not started"
             )
     receipt["complete"] = True
+    # Verification of a completed operation is not another lifecycle event.
+    # Legacy completed receipts have no known completion time to backfill.
+    receipt.setdefault("completed_at", time.time())
     receipt.pop("failure", None)
     save_receipt(receipt_path, receipt)
     return receipt
