@@ -1,0 +1,7 @@
+{
+  "schema": "sparkring-compose-selection/v1",
+  "profile": "qwen38-flash-next-qad-tp4",
+  "checkpoint": "qad-step5500-ple1000",
+  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
+  "deployment": "7bd6c0a27f8b74946d665b1eb31c18696a44688f7bf415c618544cd4d28e5323"
+}

@@ -298,6 +298,98 @@ def test_the_profile_is_read_with_its_pins_and_request_settings(repository):
     assert (pair.tensor_parallel, pair.api_port, pair.master_port, pair.topology) == (2, 8000, 29500, "direct-pair-2")
 
 
+@pytest.fixture
+def selected_repository(repository):
+    """A generated export selects a second checkpoint and a newer image than profile.json."""
+    base = repository / f"profiles/{PROFILE}"
+    config = json.loads((base / "config.json").read_text())
+    model = {**config["model"], "repository": "example/other", "revision": "b" * 40}
+    config.update(checkpoint="original", checkpoints={
+        "original": {"model": config["model"]},
+        "other": {"model": model, "served_model_name": "Other-TP4",
+                  "arguments": {"--max-model-len": "4096"},
+                  "environment": {"VLLM_B12X_MOE_FP4_FORCE_A16": "1"},
+                  "speculative": {"moe_backend": "marlin"}},
+    })
+    (base / "config.json").write_text(json.dumps(config))
+    manifest = json.loads((repository / f"profiles/checkpoints/{SLUG}/{REVISION}.json").read_text())
+    manifest["repository"], manifest["revision"] = model["repository"], model["revision"]
+    _put(repository, f"profiles/checkpoints/example--other/{model['revision']}.json", json.dumps(manifest))
+    (base / "compose/SHA256SUMS").write_bytes((base / "SHA256SUMS").read_bytes())
+    lock_path = "runtime/releases/newer/installer-image.json"
+    lock = {"name": "newer", "image_reference": "ghcr.io/example/new@sha256:" + "2" * 64,
+            "image_id": "sha256:" + "b" * 64, "profiles": [PROFILE]}
+    _put(repository, lock_path, json.dumps(lock))
+    _put(repository, f"profiles/{PROFILE}/compose/selection.json", json.dumps({
+        "schema": "sparkring-compose-selection/v1", "profile": PROFILE, "checkpoint": "other",
+        "image_lock": lock_path, "deployment": "d" * 64}))
+    for rank in range(TP4.tp):
+        def change(service):
+            service["image"] = lock["image_reference"]
+            service["command"][3] = "Other-TP4"
+            args = service["command"]
+            args[args.index("--max-model-len") + 1] = "4096"
+            at = args.index("--speculative-config") + 1
+            args[at] = json.dumps({**json.loads(args[at]), "moe_backend": "marlin"}, separators=(",", ":"))
+            service["environment"]["VLLM_B12X_MOE_FP4_FORCE_A16"] = "1"
+        edit_compose(repository, rank, change)
+    return repository
+
+
+def test_generated_selection_uses_its_checkpoint_recipe_and_image(selected_repository):
+    profile = profile_mod.load(selected_repository, PROFILE)
+    assert profile.model_repository == "example/other" and profile.model_revision == "b" * 40
+    assert profile.image_id == "sha256:" + "b" * 64 and profile.release == "newer"
+    assert profile.served_model_name == "Other-TP4"
+    assert profile.recipe_environment["VLLM_B12X_MOE_FP4_FORCE_A16"] == "1"
+    assert profile_mod.argument(profile.recipe_arguments, "--max-model-len") == "4096"
+    assert json.loads(profile_mod.argument(profile.recipe_arguments, "--speculative-config"))["moe_backend"] == "marlin"
+    assert f"profiles/{PROFILE}/compose/selection.json" in profile.sources
+    assert f"profiles/{PROFILE}/compose/SHA256SUMS" in profile.sources
+
+
+@pytest.mark.parametrize("change, message", [
+    (lambda service: service["command"].__setitem__(3, SERVED), "command starts"),
+    (lambda service: service["command"].remove("--headless"), "arguments differ"),
+    (lambda service: service["environment"].update(VLLM_B12X_MOE_FP4_FORCE_A16="0"), "recipe has '1'"),
+    (lambda service: service.update(image=IMAGE_REFERENCE), "differs from the release"),
+    (lambda service: service["labels"].update({"io.sparkring.deployment": "e" * 64}), "selection.json"),
+])
+def test_selected_checkpoint_still_rejects_rank_drift(selected_repository, change, message):
+    edit_compose(selected_repository, 1, change)
+    with pytest.raises(ProfileError, match=message):
+        profile_mod.load(selected_repository, PROFILE)
+
+
+@pytest.mark.parametrize("damage", ["sums", "missing_shard", "manifest", "pin", "checkpoint", "lock"])
+def test_selected_checkpoint_rejects_pin_and_selection_drift(selected_repository, damage):
+    base = selected_repository / f"profiles/{PROFILE}"
+    if damage == "sums":
+        path = base / "compose/SHA256SUMS"
+        path.write_text("0" * 64 + "  config.json\n")
+    elif damage == "missing_shard":
+        path = base / "compose/SHA256SUMS"
+        path.write_text("\n".join(line for line in path.read_text().splitlines()
+                                  if "model-00001" not in line) + "\n")
+    elif damage == "manifest":
+        path = selected_repository / f"profiles/checkpoints/example--other/{'b' * 40}.json"
+        value = json.loads(path.read_text())
+        del value["files"]["model-00001-of-00002.safetensors"]
+        path.write_text(json.dumps(value))
+    elif damage == "pin":
+        path = base / "config.json"
+        value = json.loads(path.read_text())
+        value["checkpoints"]["other"]["model"]["index_sha256"] = "0" * 64
+        path.write_text(json.dumps(value))
+    else:
+        path = base / "compose/selection.json"
+        value = json.loads(path.read_text())
+        value["checkpoint" if damage == "checkpoint" else "image_lock"] = "missing"
+        path.write_text(json.dumps(value))
+    with pytest.raises(ProfileError):
+        profile_mod.load(selected_repository, PROFILE)
+
+
 @pytest.mark.parametrize("change, message", [
     (lambda service: service["environment"].update({"NCCL_ALGO": "Tree"}), "NCCL_ALGO is 'Tree'"),
     (lambda service: service.update({"shm_size": "8g"}), "no docker run translation"),
@@ -1198,17 +1290,18 @@ def test_the_repositorys_glm53_flash_profiles_plan_on_the_ring():
     root = CHECKOUT
     profile = profile_mod.load(root)
     assert profile.id == "glm53-flash-nvfp4-spark-tp4" and profile.tensor_parallel == 4
-    assert profile.image_id.startswith("sha256:aba309e4610c")
+    assert_rendered_selection(profile)
     site = ServeSite.from_json(SITE_WITH_PATHS)
     tree = staging.staged_tree()
     plan = plan_mod.build_plan(site, profile, Options((7, 0, 1, 2)), staged_digest=tree.digest,
                                library=staging.library_name())
-    assert plan.prefill().gathers == ((180, 2048, 8192),) and plan.api_port == 8017
-    assert plan.prefill().compute_measured
+    # The CSF selection has no measured prefill model; do not transfer the
+    # original Spark checkpoint's timing qualification to it.
+    assert plan.prefill() is None and plan.api_port == 8017
     assert plan.ranks[0].environment["VLLM_GLM53_MHC_PREFILL_SHARD"] == "1"
     off = plan_mod.build_plan(site, profile, Options((7, 0, 1, 2), mhc_prefill_shard="off"),
                               staged_digest=tree.digest, library=staging.library_name())
-    assert off.prefill().oneshot_ops == 96256 and 8.8 < off.prefill().bound_seconds[0] < 9.0
+    assert off.prefill() is None and not off.mhc_prefill_shard
     pair_profile = profile_mod.load(root, "glm53-flash-nvfp4-spark-tp2")
     plans = plan_mod.build_plans(site, pair_profile, ((0, 1), (2, 3), (4, 5), (6, 7)),
                                  Options((0, 1), nccl_mode="auto"),
@@ -1240,6 +1333,36 @@ ROW_OWNERSHIP_ON_SIRCL = {"qwen38-flash-next-qad-tp4", "swift15-qwen38-flash-nex
 BLOCKERS = ("runs from its own launcher", "switched fabric", "has no installer image lock")
 
 
+def assert_rendered_selection(profile):
+    """Compare the loader with the generator's selection and authored checkpoint table."""
+    base = profile.repository / "profiles" / profile.id
+    selection = json.loads((base / "compose/selection.json").read_text())
+    lock = json.loads((profile.repository / selection["image_lock"]).read_text())
+    assert profile.image_id == lock["image_id"] and profile.image_reference == lock["image_reference"]
+    config = json.loads((base / "config.json").read_text())
+    entry = config["checkpoints"][selection["checkpoint"]] if selection["checkpoint"] else {}
+    model = entry.get("model", config["model"])
+    assert (profile.model_repository, profile.model_revision) == (model["repository"], model["revision"])
+    assert profile.served_model_name == entry.get("served_model_name", config["served_model_name"])
+
+
+@needs_checkout
+def test_checkpoint_recipes_match_the_installers_interpretation(monkeypatch):
+    monkeypatch.syspath_prepend(str(CHECKOUT))
+    from runtime.common import toolchain_profiles
+
+    for profile_id in PLANNED:
+        config = json.loads((Path(CHECKOUT) / "profiles" / profile_id / "config.json").read_text())
+        names = list(config.get("checkpoints", {})) or [None]
+        for name in names:
+            if "derived" in config.get("checkpoints", {}).get(name, {}):
+                with pytest.raises(ProfileError, match="serving-directory preparation"):
+                    profile_mod._checkpoint_config(config, name, profile_id)
+                continue
+            assert profile_mod._checkpoint_config(config, name, profile_id) == (
+                toolchain_profiles.checkpoint_settings(config, name)), (profile_id, name)
+
+
 @needs_checkout
 def test_every_catalog_profile_plans_on_the_ring_or_names_what_blocks_it():
     root = Path(CHECKOUT)
@@ -1253,7 +1376,8 @@ def test_every_catalog_profile_plans_on_the_ring_or_names_what_blocks_it():
         except ProfileError as error:
             outcomes[entry["id"]] = str(error)
             continue
-        assert profile.tensor_parallel in (2, 4) and profile.image_id.startswith("sha256:aba309e4610c")
+        assert profile.tensor_parallel in (2, 4)
+        assert_rendered_selection(profile)
         positions = (0, 1) if profile.tensor_parallel == 2 else (0, 1, 2, 3)
         try:
             plan = plan_mod.build_plan(site, profile, Options(positions), staged_digest=tree.digest,
@@ -2582,22 +2706,22 @@ def test_the_b12x_cache_directory_option_places_b12x_compile_cache(repository):
 def test_the_repositorys_glm53_flash_profile_serves_another_checkpoint_through_an_overlay():
     root = CHECKOUT
     profile = profile_mod.load(root)
-    csf = "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD@dec48abd33efa73c3bb7c95b74eee10cad34f9be"
-    options = Options((0, 1, 2, 3), overlay="/srv/sparkring/overlays/csf-test", checkpoint_id=csf,
-                      vllm_edits=edits(["--quantization=nvfp4_csf", "--load-format=nvfp4_csf"], (),
-                                       ["moe_backend=marlin"]),
+    original = "local-inference-lab/GLM-5.3-Flash-NVFP4-Spark@a608241037e4c2565356bff7ca293f2133888f88"
+    options = Options((0, 1, 2, 3), overlay="/srv/sparkring/overlays/checkpoint-test", checkpoint_id=original,
+                      vllm_edits=edits(["--quantization=modelopt_mixed", "--load-format=b12x"], (),
+                                       ["moe_backend=humming"]),
                       thinking_behaviour="glm53-flash-template", reasoning_effort="high",
-                      extra_env=plan_mod.parse_env(["VLLM_B12X_MOE_FP4_FORCE_A16=1"]), b12x_cache_dir="/cache/b12x-csf")
+                      extra_env=plan_mod.parse_env(["VLLM_B12X_MOE_FP4_FORCE_A16=0"]), b12x_cache_dir="/cache/b12x-original")
     plan = plan_mod.build_plan(ServeSite.from_json(SITE_WITH_PATHS), profile, options,
                                staged_digest=staging.staged_tree().digest, library=staging.library_name())
     command = plan.ranks[0].command
-    assert command[command.index("--quantization") + 1] == "nvfp4_csf"
-    assert command[command.index("--load-format") + 1] == "nvfp4_csf"
-    assert json.loads(command[command.index("--speculative-config") + 1])["moe_backend"] == "marlin"
+    assert command[command.index("--quantization") + 1] == "modelopt_mixed"
+    assert command[command.index("--load-format") + 1] == "b12x"
+    assert json.loads(command[command.index("--speculative-config") + 1])["moe_backend"] == "humming"
     assert command[-2:] == ("--default-chat-template-kwargs", '{"reasoning_effort":"high"}')
     changes = {change.name: change for change in plan.changes}
-    assert (changes["VLLM_B12X_MOE_FP4_FORCE_A16"].before, changes["VLLM_B12X_MOE_FP4_FORCE_A16"].after) == ("0", "1")
-    assert changes["B12X_COMPILE_CACHE_DIR"].before == "/cache/glm53-flash-nvfp4-spark-cuda13.4.2-a608241037e4/b12x"
+    assert (changes["VLLM_B12X_MOE_FP4_FORCE_A16"].before, changes["VLLM_B12X_MOE_FP4_FORCE_A16"].after) == ("1", "0")
+    assert changes["B12X_COMPILE_CACHE_DIR"].before.endswith(f"-{profile.model_revision[:12]}/b12x")
     assert plan.required_shims == ("mhc_prefill_shard",) and plan.foreign_checkpoint
     assert (plan.thinking.id, plan.thinking_source) == ("glm53-flash-template", "--thinking-behaviour")
 

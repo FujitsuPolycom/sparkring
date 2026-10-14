@@ -1,0 +1,7 @@
+{
+  "schema": "sparkring-compose-selection/v1",
+  "profile": "qwen38-flash-next-tp2",
+  "checkpoint": "csf",
+  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
+  "deployment": "53540fc2c09eefa80f2b44435b1b2549137f3fa89b65d9cb3068c6ee36f14dba"
+}

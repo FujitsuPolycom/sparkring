@@ -15,8 +15,14 @@ the checkout given as ``--repository``:
 - ``profiles/<id>/compose/compose.rank<N>.yaml``: the per-rank container the
   repository renders for that installer image (entrypoint, command,
   environment, limits, devices, seccomp policy, health check);
-- the release's ``installer-image.json``: the image reference and image ID;
-- ``profiles/<id>/SHA256SUMS`` and the checkpoint manifest
+- ``compose/selection.json`` when present: the generator's checkpoint name,
+  image-lock path and deployment label. The named entry of the serving
+  configuration's ``checkpoints`` table supplies the model and recipe changes,
+  as it does for the installer (``runtime/common/toolchain_profiles.py``).
+  Older exports without a selection use the configuration's base model and
+  the deployment release's ``installer-image.json``;
+- ``compose/SHA256SUMS`` (or ``profiles/<id>/SHA256SUMS`` for older exports)
+  and the selected checkpoint manifest
   ``profiles/checkpoints/<owner>--<name>/<revision>.json``: the files the
   checkpoint directory must hold, with their sizes;
 - ``runtime/common/loader-seccomp.json``: the seccomp policy that admits the
@@ -52,6 +58,7 @@ configuration disagree). The checks are:
 from __future__ import annotations
 
 import dataclasses
+import copy
 import hashlib
 import json
 import re
@@ -407,6 +414,47 @@ def serving_environment(repository: str | Path, profile_id: str) -> tuple[dict[s
     return {str(key): str(value) for key, value in config["environment"].items()}, sources
 
 
+def _checkpoint_config(config: dict, name: str | None, relative: str) -> dict:
+    """Read the installer's checkpoint-table settings without importing host code.
+
+    The standalone SIRCL package can read another checkout. Its recipe comes
+    from that checkout's data, including argument, environment and speculative
+    overrides; no model name or image preference is embedded here.
+    """
+    if name is None:
+        if config.get("checkpoint") is not None:
+            raise ProfileError(f"{relative}: selection must name the rendered checkpoint")
+        return config
+    table = config.get("checkpoints") or {}
+    if not isinstance(name, str) or name not in table:
+        raise ProfileError(f"{relative}: checkpoint {name!r} is not in config.json's checkpoints table")
+    entry = table[name]
+    if not isinstance(entry, dict) or set(entry) - {
+            "model", "served_model_name", "arguments", "environment", "speculative", "derived"}:
+        raise ProfileError(f"{relative}: checkpoint {name!r} has unsupported settings")
+    if "derived" in entry:
+        raise ProfileError(f"{relative}: derived checkpoint {name!r} needs the installer's serving-directory preparation")
+    result = copy.deepcopy(config)
+    try:
+        result["model"] = dict(entry["model"])
+        result["served_model_name"] = entry.get("served_model_name", config["served_model_name"])
+        args = result["vllm_args"]
+        for flag, value in entry.get("arguments", {}).items():
+            argument(args, flag)
+            args[args.index(flag) + 1] = value
+        environment = entry.get("environment", {})
+        if not set(environment) <= set(result["environment"]):
+            raise ProfileError(f"{relative}: checkpoint {name!r} adds unknown environment variables")
+        result["environment"].update(environment)
+        if entry.get("speculative"):
+            spec = json.loads(argument(args, "--speculative-config"))
+            spec.update(entry["speculative"])
+            args[args.index("--speculative-config") + 1] = json.dumps(spec, separators=(",", ":"))
+    except (KeyError, TypeError, ValueError) as error:
+        raise ProfileError(f"{relative}: invalid checkpoint {name!r}: {error}") from None
+    return result
+
+
 def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingProfile:
     root = Path(repository)
     sources: dict[str, str] = {}
@@ -437,6 +485,18 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
     missing = [key for key in ("vllm_args", "environment", "served_model_name", "model") if key not in config]
     if missing:
         raise ProfileError(f"{config_path} lacks {missing}, which the launcher reads from a serving profile")
+    selection_path = f"{base}/compose/selection.json"
+    selection = None
+    if (root / selection_path).is_file():
+        selection = _json(root, selection_path, sources)
+        if (not isinstance(selection, dict) or selection.get("schema") != "sparkring-compose-selection/v1"
+                or selection.get("profile") != profile_id
+                or not re.fullmatch(r"[0-9a-f]{64}", str(selection.get("deployment", "")))
+                or not re.fullmatch(r"runtime/releases/[a-zA-Z0-9._-]+/installer-image\.json",
+                                    str(selection.get("image_lock", "")))
+                or "checkpoint" not in selection):
+            raise ProfileError(f"{selection_path}: invalid generated Compose selection")
+        config = _checkpoint_config(config, selection["checkpoint"], selection_path)
     arguments = tuple(str(item) for item in config["vllm_args"])
     environment = {str(key): str(value) for key, value in config["environment"].items()}
     tp = int(argument(arguments, "--tensor-parallel-size"))
@@ -453,6 +513,8 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
     model = config["model"]
     release_path = str(deployment["release"])
     lock_path = str(Path(release_path).parent.as_posix()) + "/installer-image.json"
+    if selection is not None:
+        lock_path = selection["image_lock"]
     if not (root / lock_path).is_file():
         raise ProfileError(f"the release {release_path} has no installer image lock ({lock_path}: the image "
                            "reference and local image ID the launcher runs); its profiles run from their own "
@@ -466,7 +528,14 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
     ranks = []
     for rank in range(tp):
         relative = f"{base}/compose/compose.rank{rank}.yaml"
-        container = _rank_container(_yaml(root, relative, sources), rank, relative)
+        document = _yaml(root, relative, sources)
+        container = _rank_container(document, rank, relative)
+        if selection is not None:
+            labels = document["services"]["model"].get("labels", {})
+            if (not isinstance(labels, dict)
+                    or labels.get("io.sparkring.deployment") != selection["deployment"]
+                    or str(labels.get("io.sparkring.rank")) != str(rank)):
+                raise ProfileError(f"{relative}: deployment/rank labels differ from {selection_path}")
         _check_rank(container, rank=rank, served=served, arguments=arguments, environment=environment,
                     image_reference=image_reference, port=port, relative=relative,
                     chat_defaults=bool(config.get("serving_defaults")))
@@ -474,9 +543,13 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
     extra = root / f"{base}/compose/compose.rank{tp}.yaml"
     if extra.exists():
         raise ProfileError(f"{base}/compose holds more rank files than --tensor-parallel-size {tp}")
-    sums = _read(root, f"{base}/SHA256SUMS", sources).decode()
+    sums_path = f"{base}/compose/SHA256SUMS" if selection is not None else f"{base}/SHA256SUMS"
+    sums = _read(root, sums_path, sources).decode()
     manifest_name = f"profiles/checkpoints/{str(model['repository']).replace('/', '--')}/{model['revision']}.json"
     manifest = _json(root, manifest_name, sources)
+    if selection is not None and (manifest.get("repository"), manifest.get("revision")) != (
+            model["repository"], model["revision"]):
+        raise ProfileError(f"{manifest_name}: manifest pins another checkpoint than {selection_path}")
     files = []
     for line in sums.splitlines():
         if not line.strip():
@@ -489,6 +562,10 @@ def load(repository: str | Path, profile_id: str = DEFAULT_PROFILE) -> ServingPr
             raise ProfileError(f"{name}: SHA256SUMS and the checkpoint manifest give different digests")
         files.append(CheckpointFile(name, int(entry["size"]), digest))
     by_name = {item.name: item for item in files}
+    if selection is not None:
+        required = set(manifest.get("files", {})) - set(manifest.get("optional", []))
+        if set(by_name) != required or len(by_name) != len(files):
+            raise ProfileError(f"{sums_path}: expected every required file of {manifest_name} exactly once")
     for name, key in (("config.json", "config_sha256"), ("model.safetensors.index.json", "index_sha256")):
         if name not in by_name or by_name[name].sha256 != model[key]:
             raise ProfileError(f"{name}: the profile pins {model[key]}, SHA256SUMS holds "
