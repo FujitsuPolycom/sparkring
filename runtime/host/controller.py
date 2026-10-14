@@ -1242,7 +1242,7 @@ def main(argv):
                 raise
             finally:
                 # up and down change deployment records, whether they finish or fail.
-                if argv[0] in ("up", "down", "restart"):
+                if argv[0] in ("up", "down", "restart") and not any(flag in argv for flag in ("-h", "--help")):
                     dashboard_admin.refresh_site()
         with _setup_lock(argv):
             if not any(flag in argv for flag in ("--node", "--inventory")):
