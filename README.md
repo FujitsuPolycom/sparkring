@@ -14,7 +14,8 @@ directly over ConnectX-7, with no switch, and installs them with one command.
 
 ## Quick start
 
-1. Cable your Sparks as a pair, a ring of four or a ring of eight
+1. Cable two to eight Sparks directly: a pair from p0 to p0, or a line or
+   ring from each Spark's p0 to the next Spark's p1
    ([requirements](docs/operations/install.md#requirements)).
 2. Pick a `--profile` from the [table below](#profiles), or build the commands
    in the [Install Builder](https://fujitsupolycom.github.io/sparkring/).

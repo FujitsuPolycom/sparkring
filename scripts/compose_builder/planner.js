@@ -69,7 +69,7 @@
         <div class="model-head"><h3>Model ${i + 1}</h3>${slots.length > 1 ? `<button type="button" data-remove="${i}">Remove model ${i + 1}</button>` : ''}</div>
         <label for="model-${i}">Model / profile</label><select id="model-${i}" data-model>${fit.map(q => option(q.id, `${q.model_name} · TP${q.nodes} · ${q.id}${q.status === 'research-only' ? ' (research)' : ''}`, q.id === slot.id)).join('')}</select>
         <label for="where-${i}">Where</label><select id="where-${i}" data-where>${option('auto', 'Automatic — first free group from Node A', slot.where === 'auto')}${where.map(a => option(a.join(','), 'Sparks ' + a.join(', '), slot.where === a.join(','))).join('')}</select>
-        <p class="hint">Thinking ${esc(p.thinking)} · ${esc(cp?.variant || p.variant)}. <a href="https://github.com/${esc(data.meta.repository)}/blob/${esc(data.meta.ref)}/${esc(p.guide)}">Profile guide</a></p>
+        <p class="hint">Thinking ${esc(cp?.thinking || p.thinking)} · ${esc(cp?.variant || p.variant)}. <a href="https://github.com/${esc(data.meta.repository)}/blob/${esc(data.meta.ref)}/${esc(p.guide)}">Profile guide</a></p>
         <details><summary>Checkpoint, serving settings and API</summary>
         <label for="checkpoint-${i}">Checkpoint</label><select id="checkpoint-${i}" data-checkpoint>${p.checkpoints.map(c => option(c.name || '', (c.name || 'Profile default') + (c.install_default ? ' (installer default)' : ''), c === cp)).join('')}</select>
         ${fields}<label for="endpoint-${i}">Address people use (optional)</label><input id="endpoint-${i}" data-endpoint value="${esc(slot.endpoint)}" placeholder="llm.example.net">

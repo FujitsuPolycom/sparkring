@@ -62,20 +62,20 @@ like the recorded operator status.
 | [`install`](#install) | Node A | yes | Set up the Sparks and start one model |
 | [`name`](#name) | Node A | set/clear | Read or change the ring display name |
 | [`setup`](#setup) | Node A | yes | Set up the Sparks without a model |
-| [`cabling`](#cabling) | Node A | yes | Show how the Sparks are cabled, the port map and what to move, or [measure each cable's speed](#cable-speed); changes nothing |
-| [`fabric`](#fabric) | Node A | `verify`, `tune` and `spread-check` | Show or verify the recorded fabric: ports, cables, relay table, boot units; measure SIRCL's tuning table on it; time a spread along the cables |
+| [`cabling`](#cabling) | Node A | yes | Show the cabling and what to move, or [measure cable speed](#cable-speed) |
+| [`fabric`](#fabric) | Node A | `verify`, `tune` and `spread-check` | Show, verify or tune the recorded fabric |
 | [`models`](#models) | any | no | List profiles and mark those `install` supports |
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes | Show each Spark's state and the saved model |
-| [`check`](#check) | Node A | yes | Send functional requests to the running model, check which transport carried its collectives, and write the tester report |
-| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable`, `tui` | Serve a read-only web page of the ring and its models, and show it in a terminal (Experimental) |
-| [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Show or change where and how often the host agent and the recovery timer run |
+| [`check`](#check) | Node A | yes | Test the running model and its transport; write a tester report |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable` | Web page and terminal view of the ring (Experimental) |
+| [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Set where and how often host jobs run |
 | [`logs`](#logs) | Node A | yes | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
 | [`checkpoints`](#checkpoints) | Node A | yes | List or release SparkRing's checkpoint directories |
-| [`storage`](#storage) | Node A | yes | Report disk use; release caches and workspaces no deployment uses |
+| [`storage`](#storage) | Node A | yes | Report disk use; release unused caches |
 | [`up`, `down`](#up-and-down) | Node A | yes | Start or stop a model deployment |
-| [`recover`](#recover) | Node A | yes | Show, or turn on or off, the automatic restart of the model |
+| [`recover`](#recover) | Node A | yes | Show or switch the automatic restart |
 | [`node`](#node) | each Spark | yes, except status reports | Per-Spark services; Node A calls most of them |
 | [`init`, `export`](#init-and-export) | any | no | Save a deployment from hosts or a site file; export it as files |
 | [`compose`](#compose-and-validate-compose) | a checkout | no | Render, check, start or stop profile Compose deployments |

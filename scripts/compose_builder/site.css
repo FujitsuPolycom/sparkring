@@ -67,7 +67,7 @@ tr:last-child td { border-bottom: 0; }
 .two-col { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 32px; }
 .site-footer { border-top: 1px solid var(--line); padding-block: 24px; margin-top: 36px; font-size: 13px; color: var(--muted); }
 .guide { padding-block: 28px; max-width: 1000px; }
-.guide pre { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; }
+.guide pre { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); white-space: pre; overflow-x: auto; font-size: 13px; }
 .guide h2 { margin-top: 40px; scroll-margin-top: 20px; }
 .guide table { table-layout: fixed; }
 .planner { padding-block: 28px; }

@@ -10,7 +10,10 @@
   // the page's source (site.py hosted_installer); elsewhere it fetches install.sh at that ref.
   const command = document.getElementById('install-command');
   if (command && data.meta.site_url && location.href.startsWith(data.meta.site_url)) command.textContent = command.dataset.hosted;
-  const profiles = data.profiles, byId = Object.fromEntries(profiles.map(p => [p.id, p]));
+  // Examples use the profiles the page lists: those an offered image runs (site.py data).
+  const profiles = data.profiles.filter(p => p.offered), byId = Object.fromEntries(profiles.map(p => [p.id, p]));
+  // The name --profile takes: a profile's short name (site.py short_name) when it has one.
+  const shortName = id => Object.keys(data.aliases).filter(a => data.aliases[a] === id).sort()[0] || id;
   const esc = text => String(text).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
   const color = i => i < 0 ? 'var(--muted)' : `var(--g${i % 4 + 1})`;
   const arc = n => Array.from({ length: n }, (_, i) => i);
@@ -23,18 +26,17 @@
     if (n === 5) return [{ name: 'TP4 + one free Spark', groups: [group(four, arc(4))] }];
     const pairs = profiles.filter(p => p.nodes === 2 && p.status !== 'research-only');
     const split = { name: `${n / 2} pairs`, groups: Array.from({ length: n / 2 }, (_, i) => group(pairs[i % pairs.length], [2 * i, 2 * i + 1])) };
-    // Research profile provenance: codex/glm53-tp6 at 438b6189,
-    // profiles/glm53-nvfp4-csf-tp6/profile.json. No shipped image admits it.
-    if (n === 6) return [split, {
-      name: 'GLM-5.3 TP6 · research',
-      groups: [{ id: 'glm53-nvfp4-csf-tp6', arc: arc(6), model_name: 'GLM-5.3', status: 'research-only' }],
-      note: 'Research only: this profile targets Sparks 0–5 of an eight-Spark ring. It is not available in this builder and has no shipped image support.'
-    }];
+    if (n === 6) return [split];
     const whole = n === 2 ? pair : n === 4 ? four : profiles.find(p => p.id === 'glm53-nvfp4-tp8');
     const research = whole.status === 'research-only' ? ' · research' : '';
     const result = [{ name: `One model · TP${n}${research}`, groups: [group(whole, arc(n))] }];
     if (n > 2) result.push(split);
     if (n === 8) result.push({ name: 'Two halves', groups: profiles.filter(p => p.nodes === 4).slice(0, 2).map((p, i) => group(p, arc(4).map(x => x + i * 4))) });
+    // The six-Spark GLM-5.3 profile runs on positions 0-5 of a ring of eight, not on a ring of six. The
+    // planner's placement rules (runtime/host/placement.py) refuse that group, so the example has no builder link.
+    const six = byId['glm53-nvfp4-csf-tp6'];
+    if (n === 8 && six) result.push({ name: 'GLM-5.3 TP6 · research', groups: [group(six, arc(6))],
+      note: 'The Install Builder does not plan this layout.' });
     return result;
   }
   function drawRing(n, groups) {
@@ -46,7 +48,8 @@
     const points = n === 2 ? [[110, 200], [290, 200]] : arc(n).map(i => point(i, r));
     let svg = `<svg viewBox="0 0 400 400" role="img" aria-label="${n} directly cabled Sparks, numbered from 0">`;
     if (n === 2) {
-      svg += '<path d="M140 188 Q200 160 260 188 M140 212 Q200 240 260 212" fill="none" stroke="var(--g1)" stroke-width="3"/>';
+      // A pair is joined by one cable.
+      svg += '<line x1="140" y1="200" x2="260" y2="200" stroke="var(--g1)" stroke-width="3" stroke-linecap="round"/>';
     } else {
       points.forEach(([x, y], i) => {
         const [xx, yy] = points[(i + 1) % n];
@@ -78,14 +81,14 @@
       + `</span><span class="seg-name">${names[size]}</span>`;
     document.getElementById('ring-examples').innerHTML = choices.map((e, i) => `<button data-example="${i}" aria-pressed="${i === example}">${e.name}</button>`).join('');
     document.getElementById('ring-figure').innerHTML = drawRing(size, selected.groups);
-    document.getElementById('ring-caption').textContent = size === 2 ? 'Two Sparks, two direct ConnectX-7 cables.'
+    document.getElementById('ring-caption').textContent = size === 2 ? 'Two Sparks, one direct ConnectX-7 cable.'
       : size === 3 ? 'Three Sparks, each directly connected to the other two.'
       : `${size} Sparks, two neighbours each; a Spark relays to reach across the ring.`;
     const free = arc(size).filter(i => !selected.groups.some(g => g.arc.includes(i)));
     document.getElementById('example-list').innerHTML = selected.groups.map((g, i) => {
-      const p = byId[g.id] || g;
-      return `<li><i style="background:${color(i)}"></i><span><b>${esc(p.model_name)}</b> · Sparks ${g.arc.join(', ')}${p.status === 'research-only' ? ' · research' : ''}<br><code>--profile ${esc(g.id)}</code></span></li>`;
-    }).join('') + (free.length ? `<li class="muted">Spark ${free.join(', ')} stays free.</li>` : '')
+      const p = byId[g.id];
+      return `<li><i style="background:${color(i)}"></i><span><b>${esc(p.model_name)}</b> · Sparks ${g.arc.join(', ')}${p.status === 'research-only' ? ' · research' : ''}<br><code>--profile ${esc(shortName(g.id))}</code></span></li>`;
+    }).join('') + (free.length ? `<li class="muted">${free.length === 1 ? 'Spark' : 'Sparks'} ${free.join(', ')} ${free.length === 1 ? 'stays' : 'stay'} free.</li>` : '')
       + (selected.note ? `<li class="muted">${esc(selected.note)}</li>` : '');
     const query = new URLSearchParams({ sparks: size, models: selected.groups.map(g => g.id).join(';'), where: selected.groups.map(g => g.arc.join(',')).join(';') });
     document.getElementById('load-example').href = 'builder.html?' + query;

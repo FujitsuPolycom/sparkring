@@ -8,11 +8,17 @@ from urllib.parse import urlsplit
 
 import markdown
 
-from runtime.common import image_lock, installer_image, profiles, setup, thinking, toolchain_profiles
+from runtime.common import image_lock, installer_image, profiles, serving, setup, thinking, toolchain_profiles
 from runtime.host import models
 from scripts.compose_builder import export
 
 HERE, ROOT = export.HERE, export.ROOT
+# The command reference, and the website's short command guide that links to it and takes its table from it.
+COMMANDS = "docs/operations/commands.md"
+GUIDE = "scripts/compose_builder/command-guide.md"
+# The guide's marker line that the reference's All commands table replaces (command_guide).
+GUIDE_TABLE = "<!-- The All commands table of docs/operations/commands.md (scripts/compose_builder/site.py). -->"
+RELEASE = re.compile(r"\d+\.\d+\.\d+")
 # The default --ref of install.sh, with the comment that explains it (hosted_installer).
 INSTALLER_REF = ('# The branch that publishes this script. A copy fetched from another branch,\n'
                  '# tag or commit must be run with a matching --ref.\n'
@@ -59,7 +65,8 @@ def prose(text, source, meta):
             nonlocal column
             label = headers[column % len(headers)]
             column += 1
-            return f'<td data-label="{escape(label, quote=True)}">{match[1]}</td>'
+            # One span per cell: a narrow screen lays a cell out as a two-column grid, label and content.
+            return f'<td data-label="{escape(label, quote=True)}"><span>{match[1]}</span></td>'
 
         if headers:
             table = re.sub(r'<td>(.*?)</td>', cell, table, flags=re.S)
@@ -69,13 +76,49 @@ def prose(text, source, meta):
 
 
 def release_record(meta):
-    """Use the named release, or the newest accepted numeric release recorded in this tree."""
-    if meta.get("tag") and (ROOT / "runtime/releases" / meta["tag"] / "status.json").is_file():
-        return json.loads(read(f"runtime/releases/{meta['tag']}/status.json"))
-    records = [json.loads(p.read_text(encoding="utf-8")) for p in (ROOT / "runtime/releases").glob("*/status.json")
-               if re.fullmatch(r"\d+\.\d+\.\d+", p.parent.name)]
-    return max((r for r in records if r.get("maturity") == "accepted"),
-               key=lambda r: tuple(map(int, r["release"].split("."))))
+    """The record (runtime/releases/*/status.json) of the release the page is built for, found by its ``release`` field.
+
+    A tagged checkout is built for its tag, and a checkout between releases for
+    the release before it (``since_tag``). A release's record lives in the
+    directory of its release name or of the installer image it published, so
+    the directory name does not identify it. A release without a record is
+    returned as ``{"release": TAG, "record": None}``; a checkout without a
+    release tag gets the highest-numbered recorded release.
+    """
+    records = [json.loads(p.read_text(encoding="utf-8")) for p in (ROOT / "runtime/releases").glob("*/status.json")]
+    records = [r for r in records if RELEASE.fullmatch(str(r.get("release")))]
+    name = meta.get("tag") or meta.get("since_tag")
+    if name and RELEASE.fullmatch(name):
+        return next((r for r in records if r["release"] == name), {"release": name, "record": None})
+    return max(records, key=lambda r: tuple(map(int, r["release"].split("."))))
+
+
+def release_label(meta, release):
+    """``Release 2026.10.4``, plus the commits since it for a checkout between releases (export.release_distance)."""
+    commits = meta.get("commits_since") if not meta.get("tag") and meta.get("since_tag") == release else None
+    return f"Release {release}" + (f" + {commits} commit{'' if commits == 1 else 's'}" if commits else "")
+
+
+def variant_label(repository, names):
+    """The short variant label of a checkpoint repository for the website's tables, such as ``CSF`` or ``FP8/MXFP4``.
+
+    profiles/model-names.json's ``short_labels`` entry, else its
+    ``quant_labels`` entry, else the repository's name.
+    """
+    return names.get("short_labels", {}).get(repository) or names["quant_labels"].get(repository, repository.split("/")[-1])
+
+
+def thinking_default(profile_id, checkpoint):
+    """What the installed model does with thinking when a request does not choose, such as ``always · high``.
+
+    The checkpoint's recorded behaviour (thinking.of) with the profile's
+    serving defaults (serving.defaults) applied, as `sparkring install` sets
+    them without --reasoning-effort or --thinking.
+    """
+    state = thinking.deployment_default(thinking.of(profile_id, checkpoint), serving.defaults(profile_id, checkpoint))
+    if state is None:
+        return thinking.summary(None)
+    return thinking.summary({"default": state["thinking"], "level": None if state["thinking"] == "off" else state["level"]})
 
 
 def installer_catalog():
@@ -96,13 +139,13 @@ def installer_catalog():
                                 "aliases": [], "settings": export._setting_rows(args),
                                 "port": export._argument(args, "--port"),
                                 "served_model_name": selected.get("served_model_name", row["profile"]),
-                                "model_repository": repository,
-                                "variant": names["quant_labels"].get(repository, repository.split("/")[-1])})
+                                "model_repository": repository, "variant": variant_label(repository, names),
+                                "thinking": thinking_default(row["profile"], name)})
         repository = row["model"]["repository"]
         result.append({"id": row["profile"], "model_name": names["models"].get(repository, row["title"]),
-                       "variant": names["quant_labels"].get(repository, repository.split("/")[-1]),
+                       "variant": variant_label(repository, names),
                        "nodes": row["nodes"], "status": definition["status"],
-                       "thinking": thinking.summary(thinking.of(row["profile"])), "guide": row["guide"],
+                       "thinking": checkpoints[0]["thinking"], "guide": row["guide"],
                        "checkpoints": checkpoints})
     return result
 
@@ -160,23 +203,30 @@ def data(meta):
     catalog = installer_catalog()
     release = release_record(meta)
     images = planner_images(catalog)
-    # The planner starts on the install default; each profile's port and variant are its install default's there.
+    # The planner starts on the install default; each profile's port, variant and thinking are its install
+    # default's there. ``offered`` marks a profile that an offered image runs; the landing page lists only those.
     default_image = next(image for image in images if image["default"])
     for profile in catalog:
         preferred = default_image["profiles"].get(profile["id"], {}).get("preferred")
         checkpoint = next((c for c in profile["checkpoints"] if c["name"] == preferred), profile["checkpoints"][0])
         profile["variant"] = checkpoint["variant"]
         profile["port"] = checkpoint["port"]
+        profile["thinking"] = checkpoint["thinking"]
+        profile["offered"] = any(profile["id"] in image["profiles"] for image in images)
     return {"profiles": catalog, "images": images, "speed": speed_rows(),
-            "release": release["release"],
+            "release": release["release"], "release_label": release_label(meta, release["release"]),
             "release_record": release["record"], "meta": meta,
             "aliases": export.aliases({profile["id"] for profile in catalog})}
 
 
+def short_name(profile_id, aliases):
+    """The name that selects ``profile_id`` in `--profile`: its short name (export.aliases) when it has one."""
+    return min((alias for alias, target in aliases.items() if target == profile_id), default=profile_id)
+
+
 def short_link(profile_id, aliases):
     """``builder.html?p=NAME``: the planner's short link to a profile, by its short name when it has one."""
-    name = min((alias for alias, target in aliases.items() if target == profile_id), default=profile_id)
-    return f"builder.html?p={name}"
+    return f"builder.html?p={short_name(profile_id, aliases)}"
 
 
 def hosted_installer(ref, site_url):
@@ -226,18 +276,19 @@ def table(headers, rows, ident):
 
 def landing(value):
     meta = value["meta"]
-    intro = read("README.md").split("\n## Quick start", 1)[0].split("\n\n")
-    license_notice, description = intro[1], intro[2]
-    description = description.replace("two to eight NVIDIA DGX Sparks\ncabled directly", "two or more directly cabled DGX Sparks\nconnected")
+    license_notice = read("README.md").split("\n## Quick start", 1)[0].split("\n\n")[1]
     # The site's own install.sh copy (hosted_installer) on the site; landing.js shows it there.
     cmd = (f"curl -fsSL https://raw.githubusercontent.com/{meta['repository']}/{meta['ref']}/install.sh "
            f"| bash -s -- --ref {meta['ref']} --profile PROFILE")
     hosted = f"curl -fsSL {meta['site_url']}install.sh | bash -s -- --profile PROFILE"
+    # A profile that no offered image runs cannot be installed with the page's commands; it is not listed.
+    shown = [p for p in value["profiles"] if p["offered"]]
     profile_rows = []
-    for p in value["profiles"]:
+    for p in shown:
         status = "research" if p["status"] in ("research-only", "unsupported") else "tested"
         profile_rows.append([escape(p["model_name"]), escape(p["variant"]), str(p["nodes"]),
-                             f'<a href="{escape(short_link(p["id"], value["aliases"]))}"><code>{p["id"]}</code></a>',
+                             f'<a href="{escape(short_link(p["id"], value["aliases"]))}">'
+                             f'<code>{escape(short_name(p["id"], value["aliases"]))}</code></a>',
                              escape(str(p["port"])), escape(p["thinking"]), f'<span class="pill {status}">{status}</span>'])
     profile_rows.append(['No model · setup only', 'Set up the network and dashboard', '2–8',
                          '<a href="builder.html?setup=1">No model: set up the Sparks only</a>', '—', '—', '—'])
@@ -251,7 +302,7 @@ def landing(value):
       <div class="command-box"><pre id="install-command" data-hosted="{escape(hosted)}">{escape(cmd)}</pre><button data-copy="install-command">Copy command</button></div>
       <p class="hint">Choose <code>PROFILE</code> below or use the <a href="builder.html">Install Builder</a>.</p>
       <p>The installer asks before making changes. Use <code>--plan</code> to see what a deployment would do on your stack. <a href="commands.html">Command guide</a></p>
-      <p class="mono muted">Release {escape(value['release'])} · {len(value['profiles'])} installer profiles</p></div>
+      <p class="mono muted">{escape(value['release_label'])} · {len(shown)} installer profiles</p></div>
       <div class="ring-panel landing-ring"><div class="ring-controls" id="ring-choices" role="group" aria-label="Number of Sparks"></div><div id="ring-figure"></div>
       <div class="cable-legend"><span>Direct cable</span><span>Relayed through a Spark</span></div>
       <p class="hint" id="ring-caption"></p><p class="eyebrow">Example setups</p>
@@ -267,9 +318,31 @@ def landing(value):
                     json_script("site-data", value) + '<script src="ring.js"></script><script src="landing.js"></script>')
 
 
+def reference_url(meta):
+    """The command reference on the repository's main branch, which the command guide links to."""
+    return f"https://github.com/{meta['repository']}/blob/main/{COMMANDS}"
+
+
+def command_guide():
+    """command-guide.md with the reference's All commands table (COMMANDS) in place of GUIDE_TABLE.
+
+    The guide holds the short, curated parts; the table, one row per command,
+    comes from the reference, so a command added there appears here too.
+    """
+    guide = read(GUIDE)
+    if guide.count(GUIDE_TABLE) != 1:
+        raise ValueError(f"{GUIDE} must contain the All commands marker once")
+    rows = [line for line in section(read(COMMANDS), "All commands").splitlines() if line.startswith("|")]
+    if len(rows) < 3:
+        raise ValueError(f"{COMMANDS} All commands must hold a table")
+    return guide.replace(GUIDE_TABLE, "## All commands\n\n" + "\n".join(rows))
+
+
 def commands(meta):
-    return document("Commands · SparkRing Builder", '<main class="site-wrap guide">' + prose(read("docs/operations/commands.md"),
-                                                                               "docs/operations/commands.md", meta) + '</main>')
+    """commands.html: the short command guide (command_guide); its links to the reference open it on GitHub."""
+    reference = reference_url(meta)
+    text = command_guide().replace("](#", f"]({reference}#").replace(f"](../../{COMMANDS})", f"]({reference})")
+    return document("Commands · SparkRing Builder", '<main class="site-wrap guide">' + prose(text, GUIDE, meta) + '</main>')
 
 
 def builder(html, value):

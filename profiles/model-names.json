@@ -30,6 +30,17 @@
     "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "NVFP4 experts/BF16",
     "XiaomiMiMo/MiMo-V2.6-Flash-MOPD": "MXFP8/BF16"
   },
+  "short_labels": {
+    "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD": "CSF",
+    "local-inference-lab/GLM-5.3-NVFP4": "NVFP4/BF16",
+    "local-inference-lab/GLM-5.3-NVFP4-CSF": "CSF",
+    "sparkring-derived/GLM-5.3-NVFP4-CSF-Serving": "CSF",
+    "nvidia/GLM-5.3-Flash-NVFP4": "NVFP4",
+    "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD": "CSF",
+    "JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid": "NVFP4 hybrid",
+    "sparkring-derived/Qwen3.8-Flash-Next-NVFP4-QAD5500-MXFP8-Attention": "NVFP4/MXFP8",
+    "ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4": "NVFP4/BF16"
+  },
   "quant_variants": {
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@629bc3218833a38b475b719f34aa571666f4a03e": "NVFP4 QAD",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4@60215d26cf5e42c2db6128774032d57fc62678da": "NVFP4 QAD step 5500 PLE"

@@ -5,7 +5,7 @@ from urllib.parse import unquote, urlsplit
 
 import pytest
 
-from runtime.common import installer, profiles, thinking
+from runtime.common import installer, installer_image, profiles, serving, thinking
 from runtime.host import placement
 from scripts.compose_builder import export, site
 from scripts.compose_builder.test_compose_builder import run_engine, NODE
@@ -29,11 +29,20 @@ def engine(script, value):
 def test_landing_profiles_match_installer_catalog_and_thinking(public):
     assert {p["id"] for p in public["profiles"]} == set(installer.INSTALLABLE)
     html = site.landing(public)
+    table = html.split('id="profile-table"', 1)[1].split('</table>', 1)[0]
+    offered = {profile for image in public["images"] for profile in image["profiles"]}
     for p in public["profiles"]:
-        table = html.split('id="profile-table"', 1)[1].split('</table>', 1)[0]
-        assert table.count(f'<code>{p["id"]}</code>') == 1
-        assert p["thinking"] == thinking.summary(thinking.of(p["id"]))
+        # The table names a profile by the short name --profile takes, and lists only profiles an offered image runs.
+        name = site.short_name(p["id"], public["aliases"])
+        assert table.count(f'<code>{name}</code>') == (1 if p["id"] in offered else 0)
+        assert p["offered"] == (p["id"] in offered)
         assert p["status"] == profiles.load(p["id"])[0]["status"]
+    for hidden in installer_image.UNLISTED:
+        assert not next(p for p in public["profiles"] if p["id"] == hidden)["offered"]
+        assert hidden not in table
+    assert f'{len([p for p in public["profiles"] if p["offered"]])} installer profiles' in html
+    for alias in ("glm53-flash-tp2", "glm53-flash-tp4", "glm53-flash-tp2-dcp2", "qwen38-flash-next-tp4"):
+        assert f'<code>{alias}</code>' in table
     assert "No model · setup only" in html
     assert "Local Inference Lab License, Version 1.0" in html
     # The quick start pins the page's source; on the site, landing.js shows the site's own install.sh.
@@ -41,6 +50,54 @@ def test_landing_profiles_match_installer_catalog_and_thinking(public):
     assert 'data-hosted="curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE"' in html
     # Each profile links to the builder by its short link.
     assert f'href="builder.html?p={DCP2_SHORT}"' in html and 'href="builder.html?p=qwen38-flash-next-tp2"' in html
+
+
+def test_thinking_shows_the_installed_default_with_the_profile_s_serving_defaults(public):
+    for p in public["profiles"]:
+        for checkpoint in p["checkpoints"]:
+            record = thinking.of(p["id"], checkpoint["name"])
+            effort = serving.defaults(p["id"], checkpoint["name"]).get("reasoning_effort")
+            expected = thinking.summary(record) if effort is None else thinking.summary({**record, "level": effort})
+            assert checkpoint["thinking"] == expected
+    # GLM-5.3's chat template thinks at max without an effort; its profiles install with high.
+    glm = next(p for p in public["profiles"] if p["id"] == "glm53-flash-nvfp4-spark-tp2")
+    assert glm["thinking"] == "always · high" and thinking.summary(thinking.of(glm["id"])) == "always · max"
+    table = site.landing(public).split('id="profile-table"', 1)[1].split('</table>', 1)[0]
+    assert "always · high" in table and "always · max" not in table
+
+
+def test_variant_labels_are_short(public):
+    names = site.json.loads(site.read("profiles/model-names.json"))
+    for p in public["profiles"]:
+        for label in [p["variant"], *(c["variant"] for c in p["checkpoints"])]:
+            assert len(label) <= 12, f"{p['id']}: add a short_labels entry for {label!r}"
+        assert all(c["variant"] == site.variant_label(c["model_repository"], names) for c in p["checkpoints"])
+    pair = next(p for p in public["profiles"] if p["id"] == "glm53-flash-nvfp4-spark-tp2")
+    assert next(c for c in pair["checkpoints"] if c["name"] == "csf")["variant"] == "CSF"
+
+
+def test_release_label_names_the_release_the_page_is_built_for(public):
+    records = [site.json.loads(p.read_text(encoding="utf-8")) for p in (site.ROOT / "runtime/releases").glob("*/status.json")]
+    for record in records:
+        if site.RELEASE.fullmatch(str(record.get("release"))):
+            # A record may live in its installer image's directory; the release field identifies it.
+            assert site.release_record({**META, "tag": record["release"]}) == record
+            assert site.release_record({**META, "since_tag": record["release"], "commits_since": 2}) == record
+    assert site.release_record({**META, "tag": "2026.10.4"})["image_release"] == "dev-20261013-dcp2prefill-status038-sircl-tp6"
+    assert site.release_record({**META, "tag": "2099.1.0"}) == {"release": "2099.1.0", "record": None}
+    assert site.release_label({**META, "tag": "2026.10.4"}, "2026.10.4") == "Release 2026.10.4"
+    assert site.release_label({**META, "since_tag": "2026.10.4", "commits_since": 1}, "2026.10.4") == "Release 2026.10.4 + 1 commit"
+    # Without a release tag, the highest-numbered record, whatever its maturity.
+    newest = max((r["release"] for r in records if site.RELEASE.fullmatch(str(r.get("release")))),
+                 key=lambda name: tuple(map(int, name.split("."))))
+    assert public["release"] == newest and f'>Release {newest} · ' in site.landing(public)
+
+
+def test_landing_pair_is_one_cable():
+    script = (site.HERE / "landing.js").read_text(encoding="utf-8")
+    assert "'Two Sparks, one direct ConnectX-7 cable.'" in script and "two direct" not in script
+    pair = script.split("if (n === 2) {", 1)[1].split("} else {", 1)[0]
+    assert pair.count("<line ") == 1 and "<path" not in pair
 
 
 def test_planner_offers_the_install_default_then_its_rollback_image(public):
@@ -232,3 +289,111 @@ console.log(JSON.stringify(plans.map(plan => E.planQuery(plan, byId, images, ali
     assert all(query.startswith("plan=") for query in found[2:])
     # A plan link never carries the listen address.
     assert "api_bind" not in found[4] and "max_concurrency" in found[4]
+
+
+class Captured(BaseException):
+    """Raised in place of parsing, carrying the parser a command builds and the words it would parse."""
+
+    def __init__(self, parser, words):
+        super().__init__()
+        self.parser, self.words = parser, list(words)
+
+
+def command_parser(words, monkeypatch):
+    """The argparse parser `sparkring WORDS` parses with, and the words it receives, without running the command."""
+    import argparse
+    import sys
+    from runtime.host import controller
+    from scripts import sparkring
+
+    def capture(self, args=None, namespace=None):
+        raise Captured(self, args)
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_args", capture)
+    monkeypatch.setattr(argparse.ArgumentParser, "parse_known_args", capture)
+    try:
+        # On Node A, the installed package routes up, down and status to the controller.
+        if words[0] in ("up", "down", "status", "restart"):
+            controller._lifecycle(words, output=sys.stdout, locks=None)
+        else:
+            sparkring._main(words)
+    except Captured as captured:
+        return captured.parser, captured.words
+    raise AssertionError(f"sparkring {' '.join(words)} parsed no arguments")
+
+
+def assert_real_command(command, monkeypatch):
+    """Every subcommand, positional and --flag of ``command`` (``sudo sparkring ...``) is one its parser accepts."""
+    import argparse
+    import shlex
+    words = shlex.split(command.split("#", 1)[0])
+    words = words[words.index("sparkring") + 1:]
+    parser, words = command_parser(words, monkeypatch)
+    positionals = [a for a in parser._actions if not a.option_strings and not isinstance(a, argparse._SubParsersAction)]
+    skip = False
+    for word in words:
+        if skip:
+            skip = False
+            continue
+        if word.startswith("-"):
+            action = parser._option_string_actions.get(word.split("=", 1)[0])
+            assert action is not None, f"{command}: {word} is not an option of {parser.prog}"
+            skip = action.nargs != 0 and "=" not in word
+            continue
+        sub = next((a for a in parser._actions if isinstance(a, argparse._SubParsersAction)), None)
+        if sub is not None and word in sub.choices:
+            parser = sub.choices[word]
+            positionals = [a for a in parser._actions if not a.option_strings and not isinstance(a, argparse._SubParsersAction)]
+            continue
+        assert positionals, f"{command}: {parser.prog} takes no argument {word}"
+        action = positionals.pop(0)
+        assert action.choices is None or word in action.choices, f"{command}: {word} is not a choice of {parser.prog}"
+
+
+def guide_commands():
+    """Each `sparkring` command the guide shows in code, and each install flag of its flag table as an install command."""
+    text = site.command_guide()
+    commands = re.findall(r"^((?:sudo )?sparkring [^#\n]*)", text, re.M)
+    commands += re.findall(r"`((?:sudo )?sparkring [^`]*)`", text)
+    flags = site.section(text, "Common install flags")
+    for cell in re.findall(r"^\| (`--.*?) \|", flags, re.M):
+        commands += ["sparkring install " + flag for flag in re.findall(r"`([^`]+)`", cell)]
+    return [c.strip() for c in commands]
+
+
+def test_command_guide_shows_only_real_commands_and_flags(monkeypatch):
+    commands = guide_commands()
+    assert len(commands) >= 30
+    for command in commands:
+        assert_real_command(command, monkeypatch)
+    with pytest.raises(AssertionError):
+        assert_real_command("sudo sparkring install --no-such-flag", monkeypatch)
+    with pytest.raises(AssertionError):
+        assert_real_command("sudo sparkring dashboard quiet maybe", monkeypatch)
+
+
+def test_command_guide_is_short_and_takes_its_table_from_the_reference():
+    html = site.commands(META)
+    main = html.split("<main", 1)[1].split("</main>", 1)[0]
+    headings = re.findall(r"<h2[^>]*>(.*?)</h2>", main)
+    assert headings == ["Everyday commands", "All commands", "Common install flags", "Tools", "Dashboard"]
+    assert main.count('>Run these commands on Node A, the Spark connected to your network.<') == 1
+    # Every row of the reference's All commands table, and each command it names, is on the page.
+    reference = site.read(site.COMMANDS)
+    rows = [line for line in site.section(reference, "All commands").splitlines() if line.startswith("| [")]
+    assert len(rows) >= 20 and main.count("<tr>") >= len(rows) + 1
+    for row in rows:
+        for name in re.findall(r"\[`([^`]+)`\]", row.split("|")[1]):
+            assert f"<code>{name}</code>" in main
+    # Links into the reference open it on GitHub's main branch at a heading it has.
+    url = site.reference_url(META)
+    assert url == "https://github.com/FujitsuPolycom/sparkring/blob/main/docs/operations/commands.md"
+    assert main.count(f'href="{url}">Full reference →</a>') == 2
+    anchors = set(re.findall(r'id="([^"]+)"', site.prose(reference, site.COMMANDS, META)))
+    linked = re.findall(rf'href="{re.escape(url)}#([^"]+)"', main)
+    assert linked and all(anchor in anchors for anchor in linked)
+    assert 'href="#' not in main
+    # The reference's details stay there.
+    for detail in ("Command highlighting", "display-name.json", "install.sh", "--control-cidr", "Fabric bandwidth, both directions",
+                   "exit with 0", "viewer lease"):
+        assert detail not in main, detail
+    assert len(re.sub(r"<[^>]+>", "", main)) < 6000
