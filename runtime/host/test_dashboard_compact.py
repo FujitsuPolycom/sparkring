@@ -66,7 +66,7 @@ def test_compact_cards_density_details_and_accessibility(smooth_page, tmp_path, 
     update_page(page)
     cards = page.locator("article.card")
     serving, stopped, unmanaged = cards.nth(0), cards.nth(1), cards.nth(3)
-    assert page.locator("#page-graphs select").count() == 1
+    assert page.locator("#page-graphs [data-window]").count() == 5
     assert page.locator(".card [data-controls], .expand-graph").count() == 0
     assert page.get_by_text("Hover or expand to inspect samples.").count() == 0
     assert serving.locator(".tiles .tile").count() == 4
@@ -131,12 +131,12 @@ def test_compact_cards_density_details_and_accessibility(smooth_page, tmp_path, 
 
 def test_global_window_pause_storage_and_state_transitions(smooth_page):
     page, value, requests = smooth_page
-    selector = page.locator("#page-graphs select")
-    selector.select_option("900")
+    selector = page.locator("#page-graphs [data-window='900']")
+    selector.click()
     page.wait_for_function("() => [...document.querySelectorAll('[data-graph]')].every(e => e.plotSignature.includes('900'))")
     page.reload()
     page.locator("[data-graph]").first.wait_for()
-    assert selector.input_value() == "900"
+    assert selector.get_attribute("aria-pressed") == "true"
     pause = page.locator("[data-pause]")
     pause.click()
     page.wait_for_function("() => graphView.paused !== null && [...document.querySelectorAll('[data-graph]')].every(e => e.plot.now === graphView.paused)")
