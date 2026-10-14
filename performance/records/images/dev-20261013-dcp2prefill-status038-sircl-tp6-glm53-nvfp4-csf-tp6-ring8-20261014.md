@@ -34,9 +34,10 @@ the installer had stopped.
 - The four start checks (`csf-w4a16-a4-prefill`, `csf-scale-prefetch`,
   `w4a16-host-barrier-reset` and `glm53-tp6-resident-quantization`) took effect.
 - Host memory after the start: 113-116 GiB used of 121 GiB per Spark.
-- The installer stopped at its smoke phase. `scripts/installer_host.py`
-  `start_check_names` refuses a check that `runtime.host.start_checks.CHECKS`
-  does not list, and `CHECKS` does not list `glm53-tp6-resident-quantization`.
+- The installer stopped at its smoke phase. In the installed package,
+  `scripts/installer_host.py` `start_check_names` refused a check that
+  `runtime.host.start_checks.CHECKS` did not list, and `CHECKS` did not list
+  `glm53-tp6-resident-quantization`.
   The deployment's state was incomplete, and `sparkring status` showed no group
   for positions 0-5. Packages from commit `12192bdc` validate start checks
   against `start_checks.KNOWN`, which lists this check.
@@ -44,8 +45,8 @@ the installer had stopped.
 ## Conclusion
 
 The profile loads and serves on release 2026.10.4's image with a KV pool of
-1,255,552 tokens. An installation completes only after `CHECKS` lists the
-profile's resident-quantization check.
+1,255,552 tokens. The installation's incomplete state came from the
+installer's start-check validation, not from the model.
 
 ## Limitations
 

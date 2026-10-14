@@ -184,11 +184,18 @@ def test_readme_installer_columns_follow_each_profiles_installed_defaults():
         'deepseek-v41-flash-tp4': 'on · high', 'swift15-qwen38-flash-next-tp2': 'on · xhigh',
         'swift15-qwen38-flash-next-tp4': 'on · xhigh'}
     assert rows['glm53-flash-tp2'][0] == '1M' and rows['qwen38-flash-next-tp2'][0] == '262K'
-    # A recorded pool links its record; a profile without one shows a dash.
-    assert rows['glm53-flash-tp2'][1].startswith('[1.5M](performance/records/') and rows['qwen38-flash-next-tp2'][1] == '—'
+    # Each recorded pool links its record.
+    assert rows['glm53-flash-tp2'][1].startswith('[1.5M](performance/records/')
+    assert rows['qwen38-flash-next-tp2'][1].startswith('[2.5M](performance/records/')
+    assert all(cells[1].startswith('[') for cells in rows.values())
     # A stale cell is rewritten; the hand-maintained cells stay as written.
-    stale = text.replace('`qwen38-flash-next-tp2` | 262K | — | on · xhigh |', '`qwen38-flash-next-tp2` | 8K | 9M | off |')
+    current = next(line for line in text.splitlines() if line.startswith('| Qwen3.8-Flash-Next |') and '`qwen38-flash-next-tp2`' in line)
+    stale = text.replace(current, current.split('`qwen38-flash-next-tp2`')[0] + '`qwen38-flash-next-tp2` | 8K | 9M | off |')
     assert stale != text and installer_columns(stale) == text
+    # A profile without a recorded pool for its installed checkpoint gets a dash.
+    unmeasured = text.replace('`qwen38-flash-next-tp2`', '`glm53-flash-csf-tp8`')
+    row = next(line for line in installer_columns(unmeasured).splitlines() if line.startswith('| ') and '`glm53-flash-csf-tp8`' in line)
+    assert row.endswith('| 1M | — | always · high |')
     for column in ('Context', 'KV tokens', 'Thinking'):
         with pytest.raises(ValueError, match=f'requires a {column} column'):
             installer_columns(text.replace(f'| {column} |', '| Other |', 1))
@@ -201,11 +208,13 @@ def test_recorded_kv_counts_only_a_measurement_of_the_configured_checkpoint_and_
     import shutil
     from runtime.common.profiles import ROOT
     from scripts.generate_profiles import CAPACITY, recorded_kv
-    # glm53-flash-tp2's record measured its own nvfp4-spark checkpoint and, separately, csf; Qwen's pair has none of csf.
+    # glm53-flash-tp2's record measured its own nvfp4-spark checkpoint and, separately, csf.
     assert recorded_kv('glm53-flash-nvfp4-spark-tp2')['tokens'] == 1530566
     assert recorded_kv('glm53-flash-nvfp4-spark-tp2', 'csf')['tokens'] == 1472548
-    assert recorded_kv('qwen38-flash-next-tp2', 'csf') is None
+    # Qwen's pair has a csf measurement; its record's own is of qad-step-4000, which sizes no other checkpoint.
+    assert recorded_kv('qwen38-flash-next-tp2', 'csf')['tokens'] == 2534058
     assert recorded_kv('qwen38-flash-next-tp2', 'qad-step5500-ple1000') is None
+    assert recorded_kv('glm53-flash-csf-tp8') is None
     # A measurement at another KV size than the profile configures is not shown.
     root = tmp_path / 'checkout'
     shutil.copytree(ROOT / 'profiles', root / 'profiles')

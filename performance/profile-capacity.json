@@ -8,7 +8,16 @@
       "conditions": "Qwen QAD TP2/DCP1 with SparkCache on SparkRing 2026.09.3, 24 GiB FP8 KV per rank, 262144 configured context, 16 sequences, 8192 batch and MTP3. Engine-reported capacity, not proof that sixteen full-context requests fit.",
       "kv_bytes_per_rank": 25769803776,
       "checkpoint": "qad-step-4000",
-      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-tp2/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000)."
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in the serving configuration of the measured SparkCache profile, profiles/qwen38-flash-next-tp2/sparkcache.json at tag shared-2026.09.3; correctness.json records the checkpoint revision 629bc3218833 (qad-step-4000).",
+      "checkpoints": {
+        "csf": {
+          "tokens": 2534058,
+          "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md",
+          "witness": "GPU KV cache size: 2,534,058 tokens",
+          "kv_bytes_per_rank": 25769803776,
+          "conditions": "Qwen3.8-Flash-Next csf TP2/DCP1 installed with sudo sparkring install --checkpoint csf and no research options on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, positions 6 and 7 of an eight-Spark ring, 24 GiB FP8 target KV per rank with the MTP draft's KV cache auto, 262144 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit."
+        }
+      }
     },
     "deepseek-v41-flash-sglang-cycle": {
       "tokens": 1499904,
@@ -211,6 +220,35 @@
       "witness": "`GPU KV cache size: 1,255,552 tokens`",
       "conditions": "GLM-5.3 NVFP4-CSF TP6/DCP2 installed with the profile's settings on image dev-20261013-dcp2prefill-status038-sircl-tp6, positions 0-5 of an eight-Spark ring, 32 GiB KV per rank and 135168 configured context, one start. Engine-reported capacity; not proof that concurrent full-context requests fit.",
       "kv_bytes_per_rank": 34359738368
+    },
+    "glm53-nvfp4-tp8": {
+      "tokens": 3374336,
+      "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md",
+      "witness": "GPU KV cache size: 3,374,336 tokens",
+      "kv_bytes_per_rank": 46170898432,
+      "conditions": "GLM-5.3 TP8/DCP4 installed with sudo sparkring install and no research options on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, one eight-Spark ring, 43 GiB fp8_ds_mla KV per rank, 1048576 configured context, one start. Engine-reported capacity; not proof that concurrent full-context requests fit."
+    },
+    "deepseek-v41-flash-tp8": {
+      "tokens": 32677006,
+      "source": "performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-kv-pools-20261012.md",
+      "witness": "GPU KV cache size: 32,677,006 tokens",
+      "conditions": "DeepSeek-V4.1-Flash TP8 installed with sudo sparkring install and no research options on image dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036, one eight-Spark ring, one start. The profile sets no KV size, so vLLM sizes the pool from free memory and it differs between starts. Engine-reported capacity; not proof that concurrent full-context requests fit."
+    },
+    "swift15-qwen38-flash-next-tp2": {
+      "tokens": 2877721,
+      "source": "performance/records/images/dev-20261004-kraken-matrix-20261004.md",
+      "witness": "Swift-1.5-Qwen3.8-Flash-Next NVFP4, two Sparks, on Sparks 2 and 3 of ring 1; KV cache 2,877,721 tokens",
+      "kv_bytes_per_rank": 25769803776,
+      "conditions": "Swift-1.5-Qwen3.8-Flash-Next TP2/DCP1 installed with the profile's settings on image dev-20261004-kraken-cuda1342-nccl2323-status034, Sparks 2 and 3 of a ring of four, 24 GiB FP8 KV per rank, 262144 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in profiles/swift15-qwen38-flash-next-tp2/config.json, whose KV settings have not changed since the measurement."
+    },
+    "swift15-qwen38-flash-next-tp4": {
+      "tokens": 3131214,
+      "source": "performance/records/images/dev-20261004-kraken-matrix-20261004.md",
+      "witness": "Swift-1.5-Qwen3.8-Flash-Next NVFP4, four Sparks, on ring 1; KV cache 3,131,214 tokens",
+      "kv_bytes_per_rank": 25769803776,
+      "conditions": "Swift-1.5-Qwen3.8-Flash-Next TP4/DCP1 installed with the profile's settings on image dev-20261004-kraken-cuda1342-nccl2323-status034, a ring of four, 24 GiB FP8 KV per rank, 262144 configured context. Engine-reported capacity; not proof that concurrent full-context requests fit.",
+      "kv_evidence": "--kv-cache-memory-bytes 25769803776 in profiles/swift15-qwen38-flash-next-tp4/config.json, whose KV settings have not changed since the measurement."
     }
   }
 }

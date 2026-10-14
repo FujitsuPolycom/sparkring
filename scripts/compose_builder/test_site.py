@@ -422,5 +422,5 @@ def test_landing_context_and_kv_match_the_readme_installer_table(public):
         assert landing["KV tokens"] == (re.sub(r"\]\(.*\)$", "", row[5]).lstrip("[") if row[5] != "—" else "—")
         assert landing["Thinking"] == row[6] == profile["thinking"]
     # A profile without a recorded pool for its installed checkpoint shows a dash, never an estimate.
-    pair = next(p for p in public["profiles"] if p["id"] == "qwen38-flash-next-tp2")
-    assert pair["kv"] is None and dict(cells["qwen38-flash-next-tp2"])["KV tokens"] == "—"
+    unmeasured = next(p for p in public["profiles"] if p["id"] == "glm53-flash-csf-tp8")
+    assert unmeasured["kv"] is None and dict(cells["glm53-flash-csf-tp8"])["KV tokens"] == "—"
