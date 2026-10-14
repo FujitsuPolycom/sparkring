@@ -81,12 +81,9 @@ profiles are Experimental ([profile catalog](profiles/README.md)).
 
 ## Speed
 
-Output tok/s of this release's profiles installed with no options, measured
-with llm-inference-bench 0.7.6 at temperature 1 (`--concurrency 1,2,4,8
---contexts 8k,16k,32k,64k,128k --duration 20 --max-tokens 2048 --coding-peak`),
-one start each, on release 2026.10.2's image `d52737a1`. Decode and prefill are
-at 32K context; the coding peak is the median of five single-stream code
-generations.
+Output tok/s measured with llm-inference-bench 0.7.6 at temperature 1, one
+start per profile with no install options; decode and prefill at 32K context
+([benchmarks](performance/benchmarks.md)).
 
 | Model | Checkpoint | Sparks | `--profile` | Decode, 1 / 4 / 8 streams | Prefill, 32K prompt | Coding peak | Layout |
 |---|---|---|---|---|---|---|---|
@@ -99,20 +96,6 @@ generations.
 | Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 73.0 / 203.6 / 288.1 | 4,553 | 111.5 | ring of four |
 | Qwen3.8-Flash-Next | QAD step 5500 | 4 | `qwen38-flash-next-tp4` | 77.9 / 209.5 / 274.3 | 4,377 | 111.3 | path of four: four Sparks of a ring of eight |
 | Qwen3.8-Flash-Next | CSF | 2 | `qwen38-flash-next-tp2` | 68.1 / 149.7 / 219.0 | 3,716 | 90.7 | pair |
-
-Records: [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md), [rings of four and pairs](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md),
-[four-Spark GLM-5.3-Flash and Qwen](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-tp4-20261013.md). The DeepSeek path-of-four row ran
-beside two other deployments measured on the rest of the ring at the same time;
-the GLM-5.3-Flash and Qwen path-of-four rows ran on the two halves of one ring
-of eight, their benchmarks overlapping for two minutes. Speed varies from start
-to start: the same deployment measured twice differed by up to about 10 %, and
-Qwen's four-Spark profile on a second ring of four measured 78.4 / 207.6 / 280.0
-with a 4,569 tok/s prefill and a 110.4 coding peak.
-
-Release 2026.10.3's [record](runtime/releases/2026.10.3/README.md#serving-defaults)
-has these measurements' conditions. On four Sparks,
-`--checkpoint qad-step5500-mxfp8-attention` decodes 6-8 % faster than the
-default checkpoint in the median of two starts on the same ring.
 
 ## Documentation
 
