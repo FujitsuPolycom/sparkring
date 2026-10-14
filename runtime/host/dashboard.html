@@ -493,12 +493,17 @@ function ringLabels(groups, N, cx, cy) {
     const full = g.size === N, step = 2 * Math.PI / N;
     const angle = -Math.PI / 2 + (g.first + (g.size - 1) / 2) * step;
     const radius = groups.length > 2 ? 78 : 66;
-    const x = full ? cx : cx + radius * Math.cos(angle);
+    let x = full ? cx : cx + radius * Math.cos(angle);
     const baseY = N === 2 ? 233 : full ? cy : cy + radius * Math.sin(angle);
     const name = g.m ? (g.m.gpu_job ? "GPU in use" : g.m.model_short || g.m.model || g.m.name) : g.r.label;
     const size = groups.length > 1 ? 10 : 12, label = clip(name, groups.length > 1 ? 22 : 28);
     ringLabelMeasure.font = `650 ${size}px system-ui, sans-serif`;
     const width = Math.max(ringLabelMeasure.measureText(label).width, g.size === 1 ? 64 : 86);
+    // Keep the whole label inside the polygon's inner edge so it never sits on a cable or relay marker.
+    if (!full && N > 2) {
+      const inner = 140 * Math.cos(Math.PI / N) - 18, room = Math.max(0, inner - width / 2);
+      x = Math.min(cx + room, Math.max(cx - room, x));
+    }
     let y = baseY;
     // Try small vertical nudges, retaining the group's sector and inner radius.
     for (let n = 0; n <= 20; n++) {
