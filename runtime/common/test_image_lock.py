@@ -156,7 +156,7 @@ def test_the_installer_default_is_the_newest_published_sircl_release():
     assert image_lock.schema(value) == image_lock.SCHEMA_V3 and "sircl" in value["transports"]
     assert value["image_reference"].startswith("ghcr.io/fujitsupolycom/sparkring@sha256:")
     assert image_lock.for_profile("qwen38-flash-next-tp2") == value
-    # Compose exports keep installer_image's default, the v2 image of 2026.10.1.
+    # The v1/v2 adapter retains 2026.10.1 as its fallback; public defaults use image_lock.
     assert installer_image.default_lock()["name"] == "dev-20261004-kraken-cuda1342-nccl2323-status034"
 
 

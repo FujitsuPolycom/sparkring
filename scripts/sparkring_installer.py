@@ -25,6 +25,7 @@ def main(argv=None):
     initialize.add_argument("--model", choices=("glm53", "mimo26", "qwen38"))
     initialize.add_argument("--profile", choices=sorted(installer.INSTALLABLE))
     initialize.add_argument("--variant", choices=("nvfp4-spark", "nvfp4-qad"))
+    initialize.add_argument("--image", help="installer image release name or tag (sparkring images)")
     initialize.add_argument("--image-lock", type=Path, help="source-recorded external toolchain image selection")
     initialize.add_argument("--name")
     initialize.add_argument("--workspace")
@@ -78,10 +79,14 @@ def main(argv=None):
             output = args.output or Path(".sparkring/deployment")
             from runtime.common import image_lock
             # A deployment made here runs on the prepared transport; a v3 image contributes its v2 fields.
-            image_runtime = image_lock.v2_view(image_lock.for_profile(
-                profile, installer.read(args.image_lock) if args.image_lock else None))
+            if args.image and args.image_lock:
+                raise ValueError("Choose --image or --image-lock, not both")
+            path = image_lock.lock_path(args.image) if args.image else args.image_lock
+            chosen = image_lock.for_profile(profile, installer.read(path) if path else None)
+            image_runtime = image_lock.v2_view(chosen)
+            variant = args.variant or image_lock.preferred_checkpoint(chosen, profile)
             settings = serving.from_arguments(args)
-            installer.init(output, profile, raw, variant=args.variant, image_runtime=image_runtime, settings=settings)
+            installer.init(output, profile, raw, variant=variant, image_runtime=image_runtime, settings=settings)
             print(f"Saved {profile} for {len(raw['hosts'])} ranks in {output}")
             if settings:
                 print("Serving settings: " + ", ".join(serving.label(name, value)

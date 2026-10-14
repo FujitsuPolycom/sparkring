@@ -169,8 +169,8 @@ def site_settings(site, *, nodes=2):
 
 
 def installer_image_lock_path():
-    from runtime.common import installer_image
-    return installer_image.DEFAULT_LOCK.relative_to(ROOT).as_posix()
+    from runtime.common import image_lock
+    return image_lock.default_row()["path"].relative_to(ROOT).as_posix()
 
 
 def source_inventory(profile_id, *, local_source_extension=None):
@@ -208,8 +208,12 @@ def source_inventory(profile_id, *, local_source_extension=None):
         from runtime.common import loader_policy
         # Compose reads the seccomp file named by security_opt on each host,
         # from that host's repository checkout; its hash is checked there.
-        paths.update(("runtime/common/installer_image.py", installer_image_lock_path(),
+        paths.update(("runtime/common/installer_image.py", "runtime/common/image_lock.py", "runtime/common/setup.py",
+                      "runtime/releases/installer-releases.json", installer_image_lock_path(),
                       "runtime/common/loader_policy.py", loader_policy.RELATIVE))
+        # Default selection examines the packaged image catalog; retain it in staged checkouts.
+        paths.update(path.relative_to(ROOT).as_posix()
+                     for path in (ROOT / "runtime/releases").glob("*/installer-image.json"))
     if profile_id in TP4_PROFILES:
         from runtime.common import qwen_mesh
         paths.add("runtime/common/feature_candidate.py")
@@ -289,14 +293,14 @@ def named_image(name):
 
     ``name`` is what `sparkring install --image` takes: a release name, the
     GitHub release tag that published it, or a unique part of a release name
-    (installer_image.lock_path). A v3 lock is returned whole, so render checks
+    (image_lock.lock_path). A v3 lock is returned whole, so render checks
     a checkpoint against its pinned vLLM builds; build and specifications run
     it on its v2 fields (runtime_lock).
     """
     if name is None:
         return None
-    from runtime.common import installer_image
-    path = installer_image.lock_path(name)
+    from runtime.common import image_lock
+    path = image_lock.lock_path(name)
     return None if path is None else json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -328,8 +332,8 @@ def installer_image_runtime(profile_id):
     profile = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
     if toolchain_profiles.image_policy(profile)["kind"] != "toolchain":
         return None
-    from runtime.common import installer_image
-    return installer_image.for_profile(profile_id)
+    from runtime.common import image_lock
+    return image_lock.for_profile(profile_id)
 
 
 def specifications(profile_id, site, *, local_image_id=None, local_source_extension=None,
@@ -562,8 +566,8 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
     ``checkpoint`` and ``serving`` select a checkpoint and serving settings as
     `sparkring install --checkpoint` and its serving-setting flags do. The
     manifest records a checkpoint other than the default (checkpoint_selection)
-    and nonempty serving settings; without them a deployment's manifest and ID
-    are those of the profile's own checkpoint and values.
+    and nonempty serving settings. Without an explicit checkpoint, the full image
+    lock selects the same preferred checkpoint as `sparkring install`.
 
     A v3 ``image_runtime`` is recorded as its v2 fields (runtime_lock).
 
@@ -576,6 +580,9 @@ def build(profile_id, site, *, local_image_id=None, local_source_extension=None,
                          "install it with sudo sparkring install")
     if image_runtime is None and profile_id in SUPPORTED:
         image_runtime = installer_image_runtime(profile_id)
+    from runtime.common import image_lock
+    if checkpoint is None and image_runtime is not None:
+        checkpoint = image_lock.preferred_checkpoint(image_runtime, profile_id)
     image_runtime = runtime_lock(profile_id, image_runtime)
     options = {key: value for key, value in {
         "local_image_id": local_image_id, "local_source_extension": local_source_extension,

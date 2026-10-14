@@ -8,6 +8,8 @@ differ only in:
 - the runtime binding, a file the installer writes per rank with the created
   container's ID and the host's node ID, and its SPARKRING_RUNTIME_BINDING
   variable. Compose exports omit both;
+- installer telemetry: only managed containers mount the deployment's stats
+  directory and load sparkring_stats;
 - labels: each deployment labels its containers with its own identity, and
   the Compose manifest, not a label, records the image lock.
 """
@@ -20,7 +22,7 @@ import sys
 import pytest
 import yaml
 
-from runtime.common import compose, installer, installer_image, loader_policy
+from runtime.common import compose, image_lock, installer, installer_image, loader_policy
 from runtime.common.test_compose import compose_cli  # noqa: F401  (pytest fixture)
 
 # The profiles outside the shared images' list (the opt-in SparkCache variants and the
@@ -45,8 +47,10 @@ def install_site(nodes):
 
 def installer_lock(profile):
     nodes = 4 if profile.endswith("-tp4") else 2
+    chosen = image_lock.for_profile(profile)
     return installer.make_lock(profile, install_site(nodes), "1" * 40, "2" * 64,
-                               image_runtime=installer_image.for_profile(profile))
+                               image_lock.preferred_checkpoint(chosen, profile),
+                               image_runtime=image_lock.v2_view(chosen))
 
 
 def example_site(profile):
@@ -61,7 +65,7 @@ def test_installer_profiles_are_compose_profiles_on_the_default_lock():
     assert set(PROFILES) <= set(compose.SUPPORTED) and not set(installer_image.SIRCL_ONLY) & set(compose.SUPPORTED)
     assert not set(installer_image.NOT_SHARED) & set(compose.SUPPORTED)
     for profile in compose.SUPPORTED:
-        expected = installer_image.default_lock() if profile in PROFILES else None
+        expected = image_lock.default() if profile in PROFILES else None
         assert compose.installer_image_runtime(profile) == expected
 
 
@@ -79,6 +83,11 @@ def test_compose_export_matches_installer_container_for_each_rank(profile):
         assert binding == {"source": installer_image.binding_path(lock, lock["site"]["ranks"][number]),
                            "target": installer_image.BINDING_TARGET, "read_only": True}
         assert expected["environment"].pop(BINDING_ENVIRONMENT) == installer_image.BINDING_TARGET
+        stats = expected["mounts"].pop()
+        assert stats["target"] == "/run/sparkring/stats"
+        assert expected["environment"].pop("SPARKRING_STATS_PATH") == "/run/sparkring/stats/snapshot.json"
+        assert expected["environment"].pop("SPARKRING_STATS_DEPLOYMENT") == lock["id"]
+        expected["environment"]["VLLM_PLUGINS"] = expected["environment"]["VLLM_PLUGINS"].removesuffix(",sparkring_stats")
         assert expected["labels"] == {compose.LABEL: lock["id"], "io.sparkring.rank": str(number),
                                       "io.sparkring.image-lock": lock["image_runtime"]["name"]}
         expected["labels"] = {compose.LABEL: manifest["id"], "io.sparkring.rank": str(number)}
@@ -96,6 +105,10 @@ def test_rendered_service_differs_from_installer_export_only_by_binding_and_labe
         actual = yaml.safe_load(files[name])["services"]["model"]
         assert expected["volumes"].pop()["target"] == installer_image.BINDING_TARGET
         expected["environment"].pop(BINDING_ENVIRONMENT)
+        assert expected["volumes"].pop()["target"] == "/run/sparkring/stats"
+        expected["environment"].pop("SPARKRING_STATS_PATH")
+        expected["environment"].pop("SPARKRING_STATS_DEPLOYMENT")
+        expected["environment"]["VLLM_PLUGINS"] = expected["environment"]["VLLM_PLUGINS"].removesuffix(",sparkring_stats")
         expected["labels"] = actual["labels"]
         assert actual == expected
         # The installer's toolchain, not the profile's inherited NCCL library.
@@ -190,3 +203,19 @@ def test_a_relayed_profile_renders_for_the_installer_and_has_no_compose_export(p
     with pytest.raises(ValueError, match="runs only on SIRCL ring sessions, which a Compose deployment does not use"):
         compose.build(profile, site)
     assert not (compose.ROOT / "profiles" / profile / "compose").exists()
+
+
+@pytest.mark.parametrize("profile", ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"])
+def test_render_defaults_match_install_and_release_selection_keeps_rollback(tmp_path, profile):
+    site = example_site(profile)
+    manifest = compose.render(profile, site, tmp_path / "default")
+    assert manifest["image_id"] == image_lock.default()["image_id"]
+    assert manifest["checkpoint"] == image_lock.preferred_checkpoint(image_lock.default(), profile) == "csf"
+    assert compose.load_deployment(tmp_path / "default")[0] == manifest
+    rollback = compose.named_image("2026.10.1")
+    assert rollback == installer_image.default_lock()
+    older = compose.render(profile, site, tmp_path / "rollback", image_runtime=rollback)
+    assert older["image_id"] == rollback["image_id"] and "checkpoint" not in older
+    assert compose.load_deployment(tmp_path / "rollback")[0] == older
+    explicit, _ = compose.build(profile, site, checkpoint="nvfp4-spark")
+    assert "checkpoint" not in explicit and explicit["id"] != manifest["id"]

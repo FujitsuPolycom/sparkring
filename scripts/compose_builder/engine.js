@@ -592,7 +592,7 @@ const SparkRingEngine = (() => {
   // The profile's checkpoint entry that `name` selects: the default for none, a listed name or an alias.
   function checkpointOf(profile, name) {
     const list = profile.checkpoints;
-    if (name === null || name === undefined) return list[0];
+    if (name === null || name === undefined) return list.find(installDefault) || list[0];
     const found = list.find(c => c.name === name || c.aliases.includes(name));
     if (found) return found;
     if (list.length < 2) throw new Error('This profile offers no checkpoint choice');
@@ -737,14 +737,14 @@ const SparkRingEngine = (() => {
   // A profile carries the `--image` value that selects its installer image for each command:
   // `image_option` for `sparkring install`, whose default is the install default
   // (image_lock.default_row), and `render_image_option` for `sparkring compose render`, whose
-  // default is installer_image.DEFAULT_LOCK (export.profile_data). Each is null for that command's
+  // default is image_lock.default() for both commands (export.profile_data). Each is null for that command's
   // default; a profile without `render_image_option` uses `image_option` for both.
   // `install` gives the words of `sparkring install`, else those of `sparkring compose render`.
   function selectionWords(profile, checkpoint, settings, install = false) {
     const words = [];
     const image = install || profile.render_image_option === undefined ? profile.image_option : profile.render_image_option;
     if (image) words.push('--image', image);
-    if (!(install ? installDefault(checkpoint) : checkpoint.default)) words.push('--checkpoint', checkpoint.name);
+    if (!installDefault(checkpoint)) words.push('--checkpoint', checkpoint.name);
     for (const name of Object.keys(settings).sort()) {
       words.push(...(settings[name] === true ? [option(name)] : [option(name), String(settings[name])]));
     }

@@ -362,9 +362,12 @@ def test_checkpoint_and_serving_settings_are_deployment_selections(tmp_path):
     profile = "qwen38-flash-next-tp2"
     site = example_site(profile)
     default, default_files = compose.build(profile, site)
-    # The default checkpoint, by name or alias, and empty settings select the profile's own deployment.
-    for name in ("qad-step5500-ple1000", "qad-step-5500"):
-        assert compose.build(profile, site, checkpoint=name, serving={}) == (default, default_files)
+    # The image's preferred checkpoint is CSF; the profile's own checkpoint stays selectable by name or alias.
+    assert default["checkpoint"] == "csf"
+    assert compose.build(profile, site, checkpoint="csf", serving={}) == (default, default_files)
+    own = compose.build(profile, site, checkpoint="qad-step5500-ple1000")
+    assert own == compose.build(profile, site, checkpoint="qad-step-5500", serving={})
+    assert own[0]["id"] != default["id"]
     selection = {"checkpoint": "qad-step-4000", "serving": {"save_cpu": True, "max_concurrency": 8}}
     manifest, files = compose.build(profile, site, **selection)
     assert manifest["checkpoint"] == "qad-step-4000"
@@ -394,16 +397,16 @@ def test_unlisted_checkpoints_and_invalid_settings_are_refused(options, message)
 def test_an_export_of_a_checkpoint_its_image_cannot_read_is_refused(tmp_path):
     profile = "glm53-flash-nvfp4-spark-tp2"
     site = example_site(profile)
-    # The CSF checkpoint needs SIRCL's pinned vLLM build, which no Compose image lock records.
+    # Release 2026.10.1 lacks the pinned vLLM build that reads CSF.
     with pytest.raises(ValueError, match="needs an image whose vLLM is the pinned build "
                                          "sparkring-kraken-beta-20261007-bc9ea774"):
-        compose.render(profile, site, tmp_path / "csf", checkpoint="csf")
+        compose.render(profile, site, tmp_path / "csf", checkpoint="csf", image_runtime=compose.named_image("2026.10.1"))
     assert not (tmp_path / "csf").exists()
     assert compose.unreadable_checkpoint(profile, None) is None
     assert compose.unreadable_checkpoint("mimo-v26-flash-mopd-tp2", None) is None
-    # The default export stays the profile's own checkpoint; build serves locks the installer checked.
+    # The default export selects CSF, as the installer does on its default image.
     manifest, files = compose.build(profile, site)
-    assert "checkpoint" not in manifest and "GLM-5.3-Flash-NVFP4-Spark-TP2" in files["rank0/compose.yaml"]
+    assert manifest["checkpoint"] == "csf" and "GLM-5.3-Flash-CSF-TP2" in files["rank0/compose.yaml"]
     assert compose.build(profile, site, checkpoint="csf")[0]["checkpoint"] == "csf"
 
 
@@ -420,7 +423,7 @@ def test_a_v3_lock_renders_on_its_v2_fields_and_render_checks_its_pinned_builds(
     view = image_lock.v2_view(pinned)
     manifest, files = compose.build(profile, site, image_runtime=pinned)
     assert manifest["image_runtime"] == view and manifest["image"] == pinned["image_reference"]
-    assert (manifest, files) == compose.build(profile, site, image_runtime=view)
+    assert (manifest, files) == compose.build(profile, site, image_runtime=view, checkpoint="csf")
     assert compose.runtime_lock(profile, view) is view and compose.runtime_lock(profile, None) is None
     rendered = compose.render(profile, site, tmp_path / "csf", image_runtime=pinned, checkpoint="csf")
     assert rendered["checkpoint"] == "csf" and rendered["image_runtime"] == view

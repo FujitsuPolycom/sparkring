@@ -19,7 +19,7 @@ from scripts import deploy_engine
 
 ROOT = profiles.ROOT
 # Profiles offered by `sparkring install`, `sparkring models` and `init --model`. Those of
-# installer_image.SUPPORTED run on the shared image selected by installer_image.DEFAULT_LOCK;
+# installer_image.SUPPORTED need an image lock that lists them (image_lock.for_profile);
 # those of installer_image.SIRCL_ONLY run only on an image whose lock (v3) carries SIRCL.
 DEFAULTS = {
     ("glm53", 2): "glm53-flash-nvfp4-spark-tp2",

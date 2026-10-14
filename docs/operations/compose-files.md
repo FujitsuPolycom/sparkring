@@ -4,8 +4,7 @@ These Docker Compose files run a profile's model without the installer: one
 file per Spark (rank), and for three two-Spark profiles one standalone file
 that both Sparks share. [`sparkring install`](install.md) is the recommended
 path. It also prepares the network, image and checkpoint that the files
-expect, and it runs a newer image than the published installer-profile files
-([images and checkpoints](#images-and-checkpoints)).
+expect ([images and checkpoints](#images-and-checkpoints)).
 
 [Compose deployments](compose.md) · [`compose` and `validate-compose` commands](commands.md#compose-and-validate-compose) ·
 [Install Builder](compose-builder.md): these files for your own Sparks, checkpoint and settings, as a zip
@@ -37,32 +36,37 @@ expect, and it runs a newer image than the published installer-profile files
   the image's prepared B12X RoCE transport bundle, on two and four Sparks
   alike; the `tp2-` name is kept for compatibility
   ([transport bundle](compose.md#what-each-input-controls)).
-- Each installer-profile rank is the container `sparkring install` would run
-  on the file's image and checkpoint, without the per-rank runtime-binding
-  file. The status plugin then reports worker identity as
-  `binding_not_configured`; serving is unaffected.
-- GLM-5.3-Flash with SparkCache on four Sparks has no published files: its
+- Each installer-profile rank is the container `sparkring install` runs, with
+  the same image and serving settings but no per-rank runtime-binding file or
+  managed telemetry mount.
+  The status plugin then reports worker identity as `binding_not_configured`;
+  serving is unaffected.
+- GLM-5.3-Flash with SparkCache on four Sparks publishes no YAML: its
   [Compose creation guide](../../profiles/glm53-flash-spark-tp4-dcp1-sparkcache/compose/README.md)
   (`implemented`) generates private files through `sparkring deploy`.
 
 ## Images and checkpoints
 
-Files name images by registry digest.
+The nine installer profiles default to release `2026.10.4`'s image and the
+same checkpoints as `sparkring install`. This applies to generated per-rank
+files, `sparkring compose render`, `sparkring init` and its ZIP export, and
+standalone installer-profile exports. GLM-5.3-Flash and two-Spark Qwen use CSF
+by default on that image. The manifest records the selected image and checkpoint.
 
-- **Installer profiles** run release 2026.10.1's image,
-  `dev-20261004-kraken-cuda1342-nccl2323-status034`, which `compose render`
-  selects without `--image` (`DEFAULT_LOCK` in
-  [`installer_image.py`](../../runtime/common/installer_image.py)), with each
-  profile's default checkpoint: NVFP4-Spark for GLM-5.3-Flash and QAD step
-  5500 for Qwen3.8-Flash-Next.
-- **`sparkring install`** runs release 2026.10.4's image,
-  `dev-20261013-dcp2prefill-status038-sircl-tp6`, and on it installs Local
-  Inference Lab's CSF checkpoint for `glm53-flash-nvfp4-spark-tp2`,
-  `glm53-flash-nvfp4-spark-tp4` and `qwen38-flash-next-tp2`. To render that
-  image and checkpoint, add `--image 2026.10.4` and, for those three
-  profiles, `--checkpoint csf` to `compose render`.
-- **SparkCache variants and the GLM-5.3-Flash standalone file** run release
-  `shared-2026.09.3`'s image.
+Use `sparkring compose render PROFILE --image 2026.10.1` or
+`sparkring init --profile PROFILE --image 2026.10.1` with the other required
+arguments to select release `2026.10.1`. Its image uses the profile's own
+checkpoint because it cannot read CSF.
+
+The Qwen and GLM SparkCache exports listed above use their frozen
+`shared-2026.09.3` image and checkpoints; they do not run on `2026.10.4`.
+Installer SparkCache variants (`glm53-flash-nvfp4-sparkcache-tp2` and
+`glm53-flash-nvfp4-sparkcache-tp4`) have no public Compose exports and require an explicit development image
+lock that lists them. Relayed six- and eight-Spark profiles use the
+installer's SIRCL transport and have no public Compose exports. The eight-Spark
+profiles `qwen38-flash-next-qad-tp8` and `glm53-nvfp4-csf-tp8` also require an
+explicit compatible development lock: no packaged image lists them. Use
+`sparkring images --profile PROFILE` to see which packaged images list a profile.
 
 ## How to use them
 

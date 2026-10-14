@@ -34,8 +34,8 @@ PARENT_RECEIPT = "/opt/sparkring/receipts/external-base-installed.json"
 TOOLCHAIN_RECEIPT = "/opt/sparkring/toolchain/installed.json"
 SCHEMA_V1 = "sparkring-installer-image/v1"
 SCHEMA = "sparkring-installer-image/v2"
-# The release whose image every installer profile uses unless an operator
-# supplies an explicit development lock.
+# The v1/v2 adapter's fallback image. Its lock lists the profiles it admits;
+# public install, init and Compose defaults use image_lock.default() instead.
 DEFAULT_LOCK = ROOT / "runtime/releases/dev-20261004-kraken-cuda1342-nccl2323-status034/installer-image.json"
 RELEASES = ROOT / "runtime/releases"
 # GitHub release tag -> the installer image release that release published, so

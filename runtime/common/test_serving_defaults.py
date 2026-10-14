@@ -46,7 +46,8 @@ def test_installer_and_compose_record_and_render_effective_default(choice):
     assert manifest["serving"] == expected
     assert json.loads(files["rank0/container.json"])["command"] == list(
         compose.specifications(profile, example_site(profile), serving=choice,
-                               image_runtime=compose.installer_image_runtime(profile))[0][0].command)
+                               image_runtime=compose.installer_image_runtime(profile),
+                               checkpoint=manifest.get("checkpoint"))[0][0].command)
     assert "--default-chat-template-kwargs" in files["rank0/compose.yaml"]
     assert "--default-chat-template-kwargs" not in files["rank1/compose.yaml"]
 
