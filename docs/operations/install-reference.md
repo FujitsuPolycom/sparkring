@@ -632,6 +632,13 @@ A deployment's collectives run on one of these transports:
 | `nccl`, vLLM's PyNccl alone | Any installer image, on a recorded fabric, on a group NCCL's cabling rule holds for: a cabled pair or a whole cycle; only with `--transport nccl` | Every collective; on a whole cycle with NCCL's ring settings |
 | `libsircl`, vLLM's PyNccl on libsircl (research-only) | An image whose lock lists `libsircl`, on the same fabric as `sircl`; only with `--transport libsircl` | torch's own collectives only ([libsircl](../architecture/libsircl.md#installer-transport)) |
 
+Status: on `sircl`, SIRCL's one-shot all-reduce and all-gather are
+**qualified** on the eight-Spark ring, and serving through vLLM is
+**research-only**: every SIRCL serving record in the repository states that
+it is not serving-qualified
+([status table](../../spark_transport/sircl/STATUS.md#component-status)).
+`libsircl` is research-only in every part.
+
 `sudo sparkring install` chooses `sircl` wherever it can run and says so
 before it asks: `Transport: sircl on every collective, NCCL off (...)`, or
 `Transport: RoCEnante (b12x), because ...` with the reason; RoCEnante (b12x)
@@ -1477,9 +1484,10 @@ ring and the end Sparks on which setup can run instead.
 without setting anything up ([command](commands.md#cabling)). For a loop it
 names the fewest swaps; when two choices tie, it leaves Node A's cables alone.
 
-On the published installer images, whose transport is the prepared one, the
-installer's profiles run on a pair, a four-Spark ring and its halves. On an
-image that carries SIRCL ring sessions they run on every layout setup forms
+On an image without SIRCL ring sessions, such as release 2026.10.1's, whose
+transport is the prepared one, the installer's profiles run on a pair, a
+four-Spark ring and its halves. On an image that carries SIRCL ring sessions,
+such as the default image, they run on every layout setup forms
 ([fabrics of up to eight Sparks](#fabrics-of-up-to-eight-sparks)), on all its
 Sparks or on some ([models on part of the fabric](#models-on-part-of-the-fabric)).
 
@@ -2061,7 +2069,7 @@ sudo sparkring install --profile EIGHT_SPARK_PROFILE           # every Spark, wh
   administration address, which only Node A reaches, when it has no LAN
   connection. The card below `Model ready:` and `sudo sparkring status`
   print each group's URL.
-- **Which transport.** The prepared transport of the published images runs a
+- **Which transport.** The prepared transport runs a
   pair, a four-Spark ring and that ring's [halves](#two-models-on-one-ring),
   `--on 0,1` and `--on 2,3`. Every other group needs [SIRCL ring
   sessions](#transport-and-receipts): two Sparks that share a cable, a line of

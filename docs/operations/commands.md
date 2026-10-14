@@ -97,7 +97,7 @@ serves, it releases what older deployments hold on the Sparks
 | Flag | Meaning |
 |---|---|
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
-| `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)); default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The published images' prepared transport runs only a four-Spark ring's halves, `0,1` and `2,3` |
+| `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)); default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The prepared transport, on images without SIRCL ring sessions, runs only a four-Spark ring's halves, `0,1` and `2,3` |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch; unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
