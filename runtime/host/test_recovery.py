@@ -572,7 +572,7 @@ def test_status_says_the_model_runs_on_one_spark_only(pair, monkeypatch, capsys)
 
 def test_status_of_a_serving_model_keeps_node_a_first(pair, monkeypatch, capsys):
     lines = status(monkeypatch, capsys)
-    assert lines[0] == "network-configured | next: sparkring models"
+    assert lines[:2] == ["Ring: test", "network-configured | next: sparkring models"]
     assert "Model: The model runs on every Spark and its API answers" in lines
     assert controller.lifecycle(["status", "--refresh", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["model"]["state"] == "serving"

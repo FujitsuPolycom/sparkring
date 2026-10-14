@@ -235,7 +235,7 @@ def test_status_text_names_the_sparks_that_need_attention(tmp_path, monkeypatch,
     monkeypatch.setattr(controller.discovery, "ssh", ssh)
     assert controller.lifecycle(["status"]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "network-configured | next: sparkring models"
+    assert lines[:2] == ["Ring: sparkring", "network-configured | next: sparkring models"]
     at = lines.index("  rank 2 (spark2) root@192.0.2.12: needs-attention — " + worker["error"])
     assert "  rank 0 (spark) root@192.0.2.10: network-configured" in lines
     assert lines[at + 1:at + 3] == ["    next: on Node A: sudo sparkring hairpin",
@@ -672,7 +672,8 @@ def test_retained_review_plans_with_the_deployments_source_and_without_progress(
         return subprocess.CompletedProcess(argv, 0, '{"phases": ["up"]}', "")
     assert retained_source.review(directory, "down", cache=tmp_path / "cache", run=run) == {"phases": ["up"]}
     code = replayed[0][4]
-    assert replayed[0][-1] == "review-down" and "if sys.argv[3].startswith('review-')" in code
+    # The arguments end with the operation and the caller's operation log ("" outside a progress session).
+    assert replayed[0][-2:] == ["review-down", ""] and "if sys.argv[3].startswith('review-')" in code
 
 
 def test_up_records_serving_settings_and_keeps_them_for_that_deployment(plain_up, capsys):
