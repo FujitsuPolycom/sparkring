@@ -35,9 +35,9 @@ def test_one_file_has_two_explicit_rank_profiles_and_no_site_secrets(profile):
 
 def test_installer_profile_recipe_runs_the_installer_container():
     from dataclasses import replace
-    from runtime.common import installer_image, loader_policy
+    from runtime.common import image_lock, installer_image, loader_policy
     profile = "qwen38-flash-next-tp2"
-    lock = installer_image.default_lock()
+    lock = image_lock.v2_view(image_lock.default())
     text = standalone_compose.render(profile)
     assert loader_policy.RELATIVE in text.split("\n\n")[0] and "binding_not_configured" in text
     data = yaml.safe_load(text)
@@ -59,7 +59,7 @@ def test_installer_profile_recipe_runs_the_installer_container():
          "hcas": ["rocep1s0f0", "roceP2p1s0f0"], "gid": 3, "model": "/srv/models/selected",
          "cache": "/srv/cache/selected", "repository": "/opt/sparkring", "deployment_root": "/srv/deployments"}
         for number in (0, 1)]}
-    exported, _ = compose.specifications(profile, site, image_runtime=lock)
+    exported, _ = compose.specifications(profile, site, image_runtime=lock, checkpoint="csf")
     for standalone, export in zip(specs, exported, strict=True):
         assert export.security_opt == ("seccomp=/opt/sparkring/" + loader_policy.RELATIVE,)
         assert replace(standalone, name=export.name, security_opt=export.security_opt) == export

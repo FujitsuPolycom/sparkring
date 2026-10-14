@@ -3,7 +3,7 @@ name: sr-glm-tp4-example-r1
 services:
   model:
     container_name: sr-glm-tp4-example-r1
-    image: ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad
+    image: ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f
     platform: linux/arm64
     pull_policy: never
     restart: 'no'
@@ -15,7 +15,7 @@ services:
     - serve
     - /models/target
     - --served-model-name
-    - GLM-5.3-Flash-NVFP4-Spark-TP4
+    - GLM-5.3-Flash-CSF-TP4
     - --node-rank
     - '1'
     - --master-addr
@@ -41,7 +41,7 @@ services:
     - --gpu-memory-utilization
     - '0.80'
     - --kv-cache-memory-bytes
-    - '42949672960'
+    - '39728447488'
     - --mamba-block-size
     - '1024'
     - --limit-mm-per-prompt
@@ -53,7 +53,7 @@ services:
     - --mm-processor-cache-gb
     - '0'
     - --speculative-config
-    - '{"method":"mtp","num_speculative_tokens":3,"attention_backend":"B12X","draft_tensor_parallel_size":4,"kv_cache_dtype":"auto","draft_sample_method":"probabilistic","rejection_sample_method":"standard"}'
+    - '{"method":"mtp","num_speculative_tokens":3,"attention_backend":"B12X","draft_tensor_parallel_size":4,"kv_cache_dtype":"auto","draft_sample_method":"probabilistic","rejection_sample_method":"standard","moe_backend":"marlin"}'
     - --compilation-config
     - '{"cudagraph_mode":"FULL_AND_PIECEWISE","cudagraph_capture_sizes":[4,8,12,16,20,24,28,32,36,40,44,48,52,56,60,64],"custom_ops":["all"],"pass_config":{"fuse_allreduce_rms":false}}'
     - --max-cudagraph-capture-size
@@ -81,7 +81,7 @@ services:
     - --kv-cache-dtype
     - fp8
     - --quantization
-    - modelopt_mixed
+    - nvfp4_csf
     - --attention-backend
     - B12X
     - --block-size
@@ -94,7 +94,7 @@ services:
     - b12x
     - --no-enable-flashinfer-autotune
     - --load-format
-    - b12x
+    - nvfp4_csf
     - --enable-auto-tool-choice
     - --tool-call-parser
     - glm47
@@ -107,7 +107,7 @@ services:
     - --enable-prompt-tokens-details
     - --headless
     environment:
-      B12X_COMPILE_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-cuda13.4.2-a608241037e4/b12x
+      B12X_COMPILE_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-cuda13.4.2-dec48abd33ef/b12x
       B12X_COMPILE_WORKERS: '2'
       B12X_FUSED_INDEXER: '1'
       B12X_NVFP4_DYNAMIC_MATERIALIZED: '0'
@@ -117,12 +117,12 @@ services:
       B12X_ROCE_OPPOSITE_PATHS: '2'
       B12X_ROCE_PEER_HCA_MAP: 0=1/3,2=0/2,3=0/3
       B12X_W4A16_A4_PREFILL_MIN_TOKENS: '1536'
-      B12X_W4A16_SMALL_M_OCCUPANCY: '1'
+      B12X_W4A16_SMALL_M_OCCUPANCY: '2'
       CUDA_HOME: /usr/local/cuda-13.4
       CUDA_PATH: /usr/local/cuda-13.4
       CUDA_VERSION: 13.4.2
-      CUTE_DSL_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/cute
-      FLASHINFER_WORKSPACE_BASE: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/flashinfer
+      CUTE_DSL_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/cute
+      FLASHINFER_WORKSPACE_BASE: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/flashinfer
       GLOO_SOCKET_IFNAME: eth0
       HF_HUB_OFFLINE: '1'
       MALLOC_ARENA_MAX: '4'
@@ -163,17 +163,17 @@ services:
       SPARKRING_TOOL_CHOICE_CONTRACT: '1'
       SPARKRING_TRANSPORT_MANIFEST_SHA256: fee0680b6dc62a6826ee0e4b0ae35af6fb82e5f4404dd3c76428c13997712da4
       SPARKRING_TRANSPORT_PROFILE: tp2-rocenante-adaptive-prepared
-      TILELANG_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/tilelang
-      TORCHINDUCTOR_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/inductor
+      TILELANG_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/tilelang
+      TORCHINDUCTOR_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/inductor
       TRANSFORMERS_OFFLINE: '1'
-      TRITON_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/triton
-      TVM_FFI_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/tvm-ffi
+      TRITON_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/triton
+      TVM_FFI_CACHE_DIR: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/tvm-ffi
       VLLM_ALLREDUCE_USE_FLASHINFER: '0'
       VLLM_ALLREDUCE_USE_SYMM_MEM: '0'
       VLLM_B12X_KDA_PREFILL_COALESCING: '1'
       VLLM_B12X_MLA_CKV_GATHER: '0'
-      VLLM_B12X_MOE_FP4_FORCE_A16: '0'
-      VLLM_CACHE_ROOT: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4/vllm
+      VLLM_B12X_MOE_FP4_FORCE_A16: '1'
+      VLLM_CACHE_ROOT: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef/vllm
       VLLM_ENABLE_PCIE_ALLREDUCE: '0'
       VLLM_ENABLE_ROCE_ALLREDUCE: '1'
       VLLM_GDN_SPEC_DECODE_METADATA_FASTPATH: '1'
@@ -192,9 +192,9 @@ services:
       VLLM_USE_RUST_FRONTEND: '0'
       VLLM_USE_V2_MODEL_RUNNER: '1'
       VLLM_WORKER_MULTIPROC_METHOD: spawn
-      XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-aba309e4610c-a608241037e4
+      XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-3cc9a81fd344-dec48abd33ef
     labels:
-      io.sparkring.deployment: 39c55dea9e2f21998e90dad78c03eb36789e2a2f8d642692713c8485b5128461
+      io.sparkring.deployment: 8970b6136d194d6e65386927efd3f86f33cc1d29805abb829de5e4e27f330d33
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

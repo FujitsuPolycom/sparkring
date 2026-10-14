@@ -58,13 +58,13 @@ def test_data_lists_every_offered_profile_and_checkpoint(data):
             if profile["id"].startswith("glm53-flash-nvfp4-spark-"):
                 assert checkpoint["serving_defaults"] == {"reasoning_effort": "high"}
     # The CSF checkpoint needs a pinned vLLM build. The install default pins it, so the page offers it there;
-    # the Compose default image (installer_image.DEFAULT_LOCK) lacks it, so a profile rendered there does not.
+    # Compose shares that default and offers the same checkpoints.
     assert {profile["id"]: [checkpoint["name"] for checkpoint in profile["checkpoints"]] for profile in data["profiles"]
             if profile["id"].startswith("glm53-flash-nvfp4-spark-") and profile["compose"]} == {
         "glm53-flash-nvfp4-spark-tp2": ["nvfp4-spark", "csf", "nvfp4-qad"],
         "glm53-flash-nvfp4-spark-tp4": ["nvfp4-spark", "csf", "nvfp4-qad", "nvidia-nvfp4"]}
     assert [checkpoint["name"] for checkpoint in export.profile_data("glm53-flash-nvfp4-spark-tp2")["checkpoints"]] == [
-        "nvfp4-spark", "nvfp4-qad"]
+        "nvfp4-spark", "csf", "nvfp4-qad"]
 
 
 def test_a_checkpoint_only_some_vllm_builds_read_is_offered_on_an_image_that_reads_it():
@@ -103,8 +103,8 @@ def test_the_default_card_is_the_checkpoint_install_installs_on_the_image(data):
 
 
 def test_commands_name_the_checkpoint_install_and_render_each_need(data, node):
-    """On an image that reads CSF, install takes CSF without --checkpoint and render needs `--checkpoint csf`;
-    the profile's own checkpoint needs --checkpoint for install only."""
+    """On an image that reads CSF, install and render take CSF without --checkpoint;
+    the profile's own checkpoint needs --checkpoint for both commands."""
     found = run_engine(node, """
 const { profile, meta } = value, name = E.installDefaultName(profile);
 console.log(JSON.stringify([name, ...[name, 'nvfp4-spark'].map(n => {
@@ -114,9 +114,9 @@ console.log(JSON.stringify([name, ...[name, 'nvfp4-spark'].map(n => {
 })]));""", {"profile": csf_image_profile(), "meta": meta_of(data)})
     install = "sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --image csf-image"
     render = "sparkring compose render glm53-flash-nvfp4-spark-tp2 --site pair.site.yaml --output pair --image csf-image"
-    assert found == ["csf", [install, render + " --checkpoint csf"], [install + " --checkpoint nvfp4-spark", render]]
-    # On an image without the CSF build, such as the Compose default, the profile's own checkpoint is both defaults.
-    own = export.profile_data("glm53-flash-nvfp4-spark-tp2")
+    assert found == ["csf", [install, render], [install + " --checkpoint nvfp4-spark", render + " --checkpoint nvfp4-spark"]]
+    # On release 2026.10.1, which lacks the CSF build, the profile's own checkpoint is both defaults.
+    own = export._on_image("glm53-flash-nvfp4-spark-tp2", installer_image.default_lock()["name"])
     assert run_engine(node, "console.log(JSON.stringify(E.installDefaultName(value)))", own) is None
 
 
@@ -277,7 +277,7 @@ def run_engine(node, script, value):
 
 def test_commands_select_the_image_each_command_defaults_to_otherwise(data, node):
     """The install default needs no --image for `sparkring install`; `sparkring compose render` defaults to
-    installer_image.DEFAULT_LOCK's image, so its command names any other image. Every other image needs --image."""
+    the same image, so both commands name every other image with --image."""
     from runtime.common import image_lock
     mimo = "mimo-v26-flash-mopd-tp2"
     rollback = next(row for row in data["images"] if not row["default"])
@@ -293,9 +293,9 @@ console.log(JSON.stringify(profiles.map(profile => {
 })));""", {"profiles": profiles, "meta": meta_of(data)})
     install, render = f"sudo sparkring install --profile {mimo}", f"sparkring compose render {mimo} --site ring.site.yaml --output ring"
     assert data["images"][0]["name"] == image_lock.default_row()["name"]
-    assert found == [[install, render + " --image 2026.10.4"],
+    assert found == [[install, render],
                      [install + " --image 2026.10.2", render + " --image 2026.10.2"],
-                     [install + " --image 2026.10.1", render]]
+                     [install + " --image 2026.10.1", render + " --image 2026.10.1"]]
 
 
 def meta_of(data):
@@ -708,23 +708,24 @@ console.log(JSON.stringify(value.cases.map(([id, name, settings]) => {
      (jmni, jmni_text)) = found
     room = "room for about {} full-length requests by size; not a tested concurrency"
     glm_record = export.capacity_records()[GLM2]
-    # 1,530,566 tokens at 10 GiB in a 1,048,576-token window.
-    assert (glm["gib"], glm["tokens"], glm["requests"]) == (10, 1500000, 1.5)
-    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · " + room.format("1.5"),
-                        "basis": "Estimated from nvfp4-spark at 10 GiB", "source": glm_record["source"],
-                        "conditions": glm_record["conditions"]}
-    # Half the bytes hold half the tokens: 765,283, rounded to two figures.
-    assert (half["tokens"], half["requests"]) == (770000, 0.7)
-    assert half_text["line"] == "About 770,000 tokens · " + room.format("0.7")
+    csf_record = glm_record["checkpoints"]["csf"]
+    # The preferred CSF checkpoint holds 1,472,548 tokens at 10 GiB in a 1,048,576-token window.
+    assert (glm["gib"], glm["tokens"], glm["requests"]) == (10, 1500000, 1.4)
+    assert glm_text == {"gib": 10, "line": "About 1.5 million tokens · " + room.format("1.4"),
+                        "basis": "Estimated from csf at 10 GiB", "source": csf_record["source"],
+                        "conditions": csf_record["conditions"]}
+    # Half the bytes hold half the tokens: 736,274, rounded to two figures.
+    assert (half["tokens"], half["requests"]) == (740000, 0.7)
+    assert half_text["line"] == "About 740,000 tokens · " + room.format("0.7")
     # nvfp4-qad has its own measurement and record: 736,274 tokens at 5 GiB in a 524,288-token window.
     assert (qad["gib"], qad["tokens"], qad["requests"], qad["measured_gib"]) == (5, 740000, 1.4, 5)
     assert (qad_text["basis"], qad_text["source"]) == (
         "Estimated from nvfp4-qad at 5 GiB", glm_record["checkpoints"]["nvfp4-qad"]["source"])
     assert qad_text["source"].startswith("performance/records/")
-    # Qwen's measurement is of qad-step-4000 at 24 GiB, and the basis says so.
-    assert (qwen["tokens"], qwen["requests"]) == (2900000, 22.0)
-    assert qwen_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
-    assert qwen_text["source"] == "runtime/releases/shared-2026.09.3/correctness.json"
+    # Qwen also selects its preferred CSF checkpoint's own 24 GiB measurement.
+    assert (qwen["tokens"], qwen["requests"]) == (2500000, 19.3)
+    assert qwen_text["basis"] == "Estimated from csf at 24 GiB"
+    assert qwen_text["source"] == export.capacity_records()[TP2]["checkpoints"]["csf"]["source"]
     # The JMNI hybrid on four Sparks is sized by step 4000's four-Spark measurement.
     assert jmni_text["line"] == "About 3.1 million tokens · " + room.format("11.9")
     assert jmni_text["basis"] == "Estimated from qad-step-4000 at 24 GiB"
@@ -745,7 +746,7 @@ console.log(JSON.stringify({ choices, lines: choices.halves.map(s => {
 }) }));""", {"byId": by_id, "search": f"profile={TP4}&layout=halves&first={GLM2}&first.kv_cache_gib=5&second={GLM2}&second.checkpoint=nvfp4-qad"})
     assert found["choices"]["halves"][0]["settings"] == {"kv_cache_gib": 5}
     assert found["lines"] == [
-        "About 770,000 tokens · room for about 0.7 full-length requests by size; not a tested concurrency",
+        "About 740,000 tokens · room for about 0.7 full-length requests by size; not a tested concurrency",
         "About 740,000 tokens · room for about 1.4 full-length requests by size; not a tested concurrency"]
 
 

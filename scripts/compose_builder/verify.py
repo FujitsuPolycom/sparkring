@@ -146,7 +146,7 @@ class Sites:
 
     def checkpoint_name(self, checkpoint):
         """The name the page sends: None, the name or an alias for the default, else the name."""
-        if checkpoint["default"]:
+        if checkpoint.get("install_default", checkpoint["default"]):
             return self.rng.choice([None, checkpoint["name"], *checkpoint["aliases"]])
         return checkpoint["name"]
 

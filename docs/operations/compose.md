@@ -20,15 +20,15 @@ any model downtime.
 
 Every other profile is rejected. For the nine installer-image profiles:
 
-- Each rank's container runs the installer image lock's image, release
-  2026.10.1's unless `--image` names another, and the profile's default
-  checkpoint; `sparkring install` defaults to release 2026.10.4's image
-  ([images and checkpoints](compose-files.md#images-and-checkpoints)).
-  `deployment.json` records the image lock.
+- Each rank defaults to the image and checkpoint `sparkring install` selects:
+  release `2026.10.4`, including CSF for GLM-5.3-Flash and two-Spark Qwen.
+  `deployment.json` records both selections. `--image 2026.10.1` selects that release's image
+  and compatible checkpoint ([images and checkpoints](compose-files.md#images-and-checkpoints)).
 - Compose reads the loader seccomp policy from
   `runtime/common/loader-seccomp.json` in each host's checkout.
 - Without the per-rank runtime-binding file, the status plugin reports worker
-  identity as `binding_not_configured`. Serving is unaffected.
+  identity as `binding_not_configured`. Managed telemetry is also omitted;
+  serving is unaffected.
 - `start` stops at image admission:
   `Shared toolchain images are admitted by the installer image lock`.
   Instead, pull the image by its registry digest and run each rank's

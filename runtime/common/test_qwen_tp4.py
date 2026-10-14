@@ -82,7 +82,8 @@ def test_native_profile_refuses_legacy_local_rebuild_selection(site, tmp_path, m
     local_release = adapter.read(adapter.ROOT / metadata["release"])
     monkeypatch.setattr(compose.profiles, "load", lambda *args, **kwargs: (metadata, local_release))
     with pytest.raises(ValueError, match="Local image selection"):
-        compose.build(PROFILE, site, local_image_id="sha256:" + "a" * 64)
+        compose.build(PROFILE, site, local_image_id="sha256:" + "a" * 64,
+                      checkpoint=adapter.read(adapter.TP4_CONFIG)["checkpoint"])
 
 
 @pytest.mark.parametrize("profile_id", ["qwen38-flash-next-tp2", PROFILE, PROFILE + "-sparkcache"])

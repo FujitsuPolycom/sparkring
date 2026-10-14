@@ -31,10 +31,14 @@ def image_runtime(profile_id):
 def specifications(profile_id, variant=None):
     if profile_id not in SUPPORTED:
         raise ValueError("Single-file sharing supports the GLM/Qwen TP2 profiles; TP4 retains its prepared-mesh lifecycle")
-    card = setup.selection(profile_id, variant)
+    from runtime.common import image_lock, installer_image
     lock = image_runtime(profile_id)
-    if lock is not None and (lock["image_id"], lock["image_reference"]) != (card["image_id"], card["image_reference"]):
-        raise ValueError("The installer image lock and the profile release select different images")
+    if lock is not None and variant is None:
+        variant = image_lock.preferred_checkpoint(lock, profile_id)
+    card = setup.selection(profile_id, variant)
+    if lock is not None:
+        lock = image_lock.v2_view(lock)
+        card = installer_image.selection(card, lock)
     specs = []
     for rank in (0, 1):
         values = {"master": "192.0.2.240", "host_ip": f"192.0.2.{240+rank}", "interface": "enp1s0f0np0",
@@ -42,7 +46,7 @@ def specifications(profile_id, variant=None):
         if profile_id in compose.SUPPORTED:
             definition, _ = profiles.load(profile_id)
             profile = profiles.read_json(profiles.local_path(definition["configuration"]["path"]))
-            spec = toolchain_profiles.container_spec(profile, rank=rank, remote=True, **values)
+            spec = toolchain_profiles.container_spec(profile, rank=rank, remote=True, checkpoint=variant, **values)
             if lock is not None:
                 # An installer profile runs the installer's container. Compose
                 # reads the relative seccomp path from the project directory.

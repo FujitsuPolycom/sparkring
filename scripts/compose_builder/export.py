@@ -33,11 +33,9 @@ The Builder offers two installer images (offered_images): the one `sparkring
 install` uses without --image (image_lock.default_row) and that image's
 rollback image. The page's own data renders every profile on the install
 default, a v3 lock through its v2 view as a Compose deployment runs it; the
-rollback image's profiles are in its data file (image_data). `sparkring compose
-render` without --image renders on installer_image.DEFAULT_LOCK instead, so
-each profile carries both `--image` values: ``image_option`` for install
-(None on the install default) and ``render_image_option`` for render (None on
-DEFAULT_LOCK's image).
+rollback image's profiles are in its data file (image_data). Install and
+Compose render share their default image and preferred checkpoints. Both
+``image_option`` and ``render_image_option`` are None on that image.
 
 A profile without Compose exports that `sparkring install` installs on a
 published image (INSTALL_ONLY) is listed for its install command only: its
@@ -340,7 +338,9 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     metadata, _ = profiles.load(profile_id)
     configuration = toolchain_profiles.read(ROOT / metadata["configuration"]["path"])
     example = example_site(profile_id)
-    runtime = image_runtime or compose.installer_image_runtime(profile_id)
+    selected = image_runtime or compose.installer_image_runtime(profile_id)
+    image_lock_value = image_lock_value or selected
+    runtime = image_lock.v2_view(selected) if selected is not None else None
     options = {"image_runtime": runtime} if runtime is not None else {}
     specs, image = compose.specifications(profile_id, example, **options)
     checkpoints = _checkpoints(profile_id, configuration, example, options)
@@ -352,8 +352,8 @@ def profile_data(profile_id, image_runtime=None, image_option=None, image_lock_v
     if readable_by is not None:
         checkpoints = [checkpoint for checkpoint in checkpoints if checkpoint["default"] or not image_lock.checkpoint_problem(
             readable_by, setup.selection(profile_id, checkpoint["name"]))]
-    # ``default`` is the profile's own checkpoint, which `sparkring compose render` renders without
-    # --checkpoint. ``install_default`` is the one `sparkring install` installs without --checkpoint on
+    # ``default`` is the profile's own checkpoint. ``install_default`` is the one both
+    # `sparkring install` and `sparkring compose render` select without --checkpoint on
     # this image: the profile's preferred checkpoint where the image reads it, such as GLM-5.3-Flash's
     # CSF checkpoint on an image whose lock pins the vLLM build that reads it, else its own
     # (image_lock.preferred_checkpoint). The page's default card is the install default.
@@ -598,15 +598,14 @@ def _image_option(row, names):
 def _on_image(profile_id, name):
     """Profile ``profile_id`` rendered on the installer image ``name``, with the `--image` values that select it.
 
-    `sparkring install` needs no --image for the install default, and
-    `sparkring compose render` none for installer_image.DEFAULT_LOCK's image.
+    Install and Compose render need no --image for the install default.
     """
     catalog = image_lock.catalog()
     row = next(row for row in catalog if row["name"] == name)
     option = _image_option(row, [row["name"] for row in catalog])
     # A v3 image runs Compose exports on its v2 fields: SIRCL stays inert without its plugin named.
     return profile_data(profile_id, image_lock.v2_view(row["lock"]), None if row["default"] else option, row["lock"],
-                        None if row["path"] == installer_image.DEFAULT_LOCK else option)
+                        None if row["default"] else option)
 
 
 def image_data(name):
