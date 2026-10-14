@@ -44,7 +44,7 @@ def main():
     with PreparationSession(device=device, autotune=False, compile_workers=1) as session:
         def run_kda(inputs, pool, start, end, capacity, targets=()):
             n = end-start
-            ints = lambda x: torch.tensor(x, device=device, dtype=torch.int32)
+            ints = lambda x: torch.tensor(x, device=device, dtype=torch.int32)  # noqa: E731
             tensors = {key: value[start:end].contiguous() for key, value in inputs.items()
                        if key in ('q', 'k', 'v', 'raw_g', 'raw_beta')}
             tensors.update(A_log=inputs['A_log'], dt_bias=inputs['dt_bias'],
@@ -66,7 +66,7 @@ def main():
                 spec, = state.layout.scratch_specs()
                 binding = state.bind(scratch=torch.empty(spec.shape, dtype=spec.dtype, device=device), **tensors)
                 saved = pool.clone()
-                reset = lambda: pool.copy_(saved)
+                reset = lambda: pool.copy_(saved)  # noqa: E731
                 return PreparedCall(run=lambda: state.run(binding, lower_bound=-5.0),
                                     output=binding.output, reset=reset, restore=reset)
             session.prepare((plan.request(name='dcp2-kda', prepare_call=trial),))

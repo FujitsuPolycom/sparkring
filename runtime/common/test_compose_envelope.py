@@ -10,7 +10,7 @@ from runtime.common.test_compose import compose_cli as compose_cli
     ("inherit", ()), ("disabled", ()),
     ("shell", ('python3 -S -c "print(1)"',)), ("exec", ("python3", "-S", "-c", "print(1)")),
 ])
-def test_managed_envelope_resolves_without_qwen_memory_limits(compose_cli, mode, command):
+def test_managed_envelope_resolves_without_qwen_memory_limits(compose_cli, mode, command):  # noqa: F811
     spec = ContainerSpec(name="glm-envelope", image_id="sha256:" + "a" * 64,
                          entrypoint=("/opt/venv/bin/python",), command=("/serve.py",),
                          environment={}, mounts=(), memory=None, memory_swap=None,

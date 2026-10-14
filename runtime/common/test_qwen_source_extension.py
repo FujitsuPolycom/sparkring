@@ -231,7 +231,7 @@ def test_unchanged_parent_is_not_admitted_as_source_extension(site):
 
 
 @pytest.mark.parametrize("profile_id,kv_gib", [(PROFILE + "-sparkcache", 40), (PAIR + "-sparkcache", 33)])
-def test_candidate_compose_resolves_to_the_same_docker_spec(site, pair, compose_cli, profile_id, kv_gib):
+def test_candidate_compose_resolves_to_the_same_docker_spec(site, pair, compose_cli, profile_id, kv_gib):  # noqa: F811
     selected_site = pair if profile_id.startswith(PAIR) else site
     specs, image = compose.specifications(profile_id, selected_site,
                                          **options(local_kv_cache_gib=kv_gib, local_master_port=29779))

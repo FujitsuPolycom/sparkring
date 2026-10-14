@@ -44,7 +44,7 @@ def feature_inputs(original_feature_inputs):
 
 
 @pytest.fixture
-def document(inputs):
+def document(inputs):  # noqa: F811
     return glm.make_receipt(local_source_extension=source_candidate.IDENTITY, **inputs)
 
 
@@ -211,7 +211,7 @@ def test_managed_tp4_source_contract_and_container_spec(document, tmp_path, monk
 
 
 @pytest.mark.parametrize("cache_trial", [False, True])
-def test_fresh_image_observation_and_tampered_entrypoint(inputs, document, cache_trial):
+def test_fresh_image_observation_and_tampered_entrypoint(inputs, document, cache_trial):  # noqa: F811
     document = glm.validate_receipt(dict(document, allow_sparkcache_trial=cache_trial))
     def run(argv, **kwargs):
         if argv[1:3] == ["image", "inspect"]:

@@ -157,7 +157,7 @@ def inspected(target, *, health="healthy"):
 
 
 @pytest.fixture(params=["r35", "candidate"])
-def registered_launch(request, tmp_path, monkeypatch, inputs):
+def registered_launch(request, tmp_path, monkeypatch, inputs):  # noqa: F811
     from runtime.common import candidate, r35
     from runtime.common.test_candidate import host_receipt
     from runtime.common.test_r35 import receipt

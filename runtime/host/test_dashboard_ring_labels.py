@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from runtime.host.test_dashboard_charts import smooth_page, update_page
+from runtime.host.test_dashboard_charts import smooth_page, update_page  # noqa: F401
 from runtime.host.test_dashboard_layout import GEOMETRY
 from runtime.host.test_dashboard_shared_style import style_fixture
 
@@ -56,7 +56,7 @@ SECTORS = """() => {
 @pytest.mark.parametrize("layout", ["stopped-tp4-tp2", "four-pairs", "two-halves"])
 @pytest.mark.parametrize("theme", ["dark", "light"])
 @pytest.mark.parametrize("width", [1400, 375])
-def test_labels_follow_arc_sectors(smooth_page, layout, theme, width):
+def test_labels_follow_arc_sectors(smooth_page, layout, theme, width):  # noqa: F811
     page, value, requests = smooth_page
     page.set_viewport_size({"width": width, "height": 1000})
     page.emulate_media(color_scheme=theme, reduced_motion="reduce")
@@ -80,7 +80,7 @@ def test_labels_follow_arc_sectors(smooth_page, layout, theme, width):
     assert requests[:-1] == before and "/api/status" in requests[-1]
 
 
-def test_stopped_activity_and_visibility(smooth_page):
+def test_stopped_activity_and_visibility(smooth_page):  # noqa: F811
     page, value, _ = smooth_page
     ring_fixture(value, "stopped-tp4-tp2")
     update_page(page)
@@ -119,7 +119,7 @@ def test_stopped_activity_and_visibility(smooth_page):
     assert "2 busy" in tile.inner_text()
 
 
-def test_full_ring_label_center_and_wrapped_arc(smooth_page):
+def test_full_ring_label_center_and_wrapped_arc(smooth_page):  # noqa: F811
     page, value, _ = smooth_page
     members, ring = ring_fixture(value, "two-halves")
     members[:] = members[:1]
@@ -132,7 +132,7 @@ def test_full_ring_label_center_and_wrapped_arc(smooth_page):
     assert page.evaluate(GEOMETRY) == []
 
 
-def test_active_allocation_wins_over_stopped_record(smooth_page):
+def test_active_allocation_wins_over_stopped_record(smooth_page):  # noqa: F811
     page, value, _ = smooth_page
     members, _ = ring_fixture(value, "stopped-tp4-tp2")
     members[2]["arc"].update(first=0, positions=[0, 1])

@@ -33,7 +33,7 @@ example = module("glm_spec_mesh_example", MESH / "make_example.py")
 
 
 @pytest.fixture(params=["r35", "candidate"])
-def rendered(request, tmp_path, monkeypatch, inputs):
+def rendered(request, tmp_path, monkeypatch, inputs):  # noqa: F811
     """Use existing receipt and topology fixtures; never claim hardware admission."""
     image = r35.validate_receipt(receipt()) if request.param == "r35" else candidate.validate_receipt(host_receipt(inputs, monkeypatch))
     adapter = r35 if request.param == "r35" else candidate

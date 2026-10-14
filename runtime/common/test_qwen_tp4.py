@@ -58,7 +58,7 @@ def test_tp4_settings_and_peer_maps_reach_both_backends(site, rank):
     assert len(spec.mounts) == 2 and spec.mounts[0].read_only
 
 
-def test_tp4_real_compose_resolution(site, compose_cli):
+def test_tp4_real_compose_resolution(site, compose_cli):  # noqa: F811
     specs, image = compose.specifications(PROFILE, site)
     for spec in specs:
         compose.check_equivalence(spec, image, compose.compose_text(spec, image))
@@ -229,7 +229,7 @@ def test_tp4_cache_selection_preserves_compute_transport_and_memory(site, rank):
     assert spec.memory == base.memory and spec.memory_swap == base.memory_swap
 
 
-def test_tp4_cache_compose_has_four_hosts_and_source_bound_feature_admission(site, compose_cli):
+def test_tp4_cache_compose_has_four_hosts_and_source_bound_feature_admission(site, compose_cli):  # noqa: F811
     profile = PROFILE + "-sparkcache"
     specs, image = compose.specifications(profile, site)
     assert len(specs) == 4

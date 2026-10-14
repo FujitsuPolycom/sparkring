@@ -296,7 +296,7 @@ def test_graph_windows_pause_rescale_and_frozen_dialog(smooth_page):
     now = value["generated_at"]
     member["history"] = [[now - 600 + i * 5, 1000 if i == 1 else 20, 1, 0, .25, 50, "metrics"] for i in range(121)]
     update_page(page)
-    choose = lambda v: page.locator(f"[data-controls] [data-window='{v}']").first.click()
+    choose = lambda v: page.locator(f"[data-controls] [data-window='{v}']").first.click()  # noqa: E731
     assert graph.evaluate("el => el.plot.top") > 1000
     for option, seconds in [("300", 300), ("900", 600), ("3600", 600), ("10800", 600), ("auto", 600)]:
         choose(option)

@@ -173,7 +173,7 @@ def test_public_source_defaults_are_taken_from_profile_not_implicit_feature_acti
     assert specs[0].environment["VLLM_QWEN3_8_PREFILL_COALESCE"] == "0"
 
 
-def test_public_source_compose_equivalence(published_repository, compose_cli):
+def test_public_source_compose_equivalence(published_repository, compose_cli):  # noqa: F811
     specs, image = compose.specifications(PROFILE + "-sparkcache", published_repository)
     for spec in specs:
         compose.check_equivalence(spec, image, compose.compose_text(spec, image))
