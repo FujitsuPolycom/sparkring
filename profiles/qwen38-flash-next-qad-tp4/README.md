@@ -24,7 +24,7 @@ and `--checkpoint jmni-qad5500-hybrid`, a third-party build of the same idea
 (research-only)
 ([checkpoints](../../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 
-The installer applies the [ConnectX driver setting](../../docs/operations/install.md#four-spark-rings)
+The installer applies the [ConnectX driver setting](../../docs/operations/install-reference.md#four-spark-rings)
 that four-Spark rings need and repeats it at every boot. [Install SparkRing](../../docs/operations/install.md)
 covers requirements, logs and recovery. Per-rank Compose files:
 [Compose](compose/README.md).

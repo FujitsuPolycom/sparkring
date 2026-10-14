@@ -1,13 +1,10 @@
 # Install SparkRing
 
-`sparkring install` sets up two to eight cabled DGX Sparks and starts a
-model on all of them, or several models on separate groups of them. Run it on
-Node A, the Spark connected to your network. On an image without SIRCL ring
-sessions, such as 2026.10.1's, a model runs on a pair, a four-Spark ring or
-half of that ring; the default image, 2026.10.4's, has SIRCL ring sessions
-and runs models on lines and rings of up to eight Sparks
-([fabrics](install-reference.md#fabrics-of-up-to-eight-sparks)).
+`sparkring install` sets up two to eight cabled DGX Sparks and starts a model
+on all of them, or several models on separate groups of them. Run it on
+Node A, the Spark connected to your network.
 
+[Install Builder](https://fujitsupolycom.github.io/sparkring/) ·
 [All commands and flags](commands.md) · [Reference](install-reference.md)
 
 ## Requirements
@@ -17,39 +14,34 @@ and runs models on lines and rings of up to eight Sparks
   Setup does not install drivers or firmware.
 - Root or sudo on every Spark.
 - Cables: a pair connects port p0 to p0; a ring connects each Spark's p0 to
-  the next Spark's p1, and a line does the same from Node A without the last
-  cable. p0 is the QSFP port next to the 10GbE (RJ45) port.
-  `sudo sparkring cabling` checks them, prints which port leads to which
-  Spark and names any cable to move.
+  the next Spark's p1, and a line does the same without the last cable. p0 is
+  the QSFP port next to the 10GbE (RJ45) port. `sudo sparkring cabling` checks
+  the cables and names any cable to move.
 - Node A on your network with outbound HTTPS to `github.com`,
-  `fujitsupolycom.github.io` or `raw.githubusercontent.com` (for
-  `install.sh`), `ghcr.io`, `huggingface.co` and your Ubuntu mirror.
-  Workers need no network cable.
+  `fujitsupolycom.github.io`, `ghcr.io`, `huggingface.co` and your Ubuntu
+  mirror. Workers need no network cable.
 - Free disk on each Spark that has neither the image nor the model: about
-  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM, 238 GiB for Swift,
-  505 GiB for GLM-5.3 or 547 GiB for DeepSeek, plus 14.2 GiB on Node A. A Spark that kept the image
-  of an earlier `sparkring install` needs about 47 GiB less.
+  163 GiB for Qwen, 233 GiB for MiMo, 236 GiB for GLM-5.3-Flash, 238 GiB for
+  Swift, 505 GiB for GLM-5.3 or 547 GiB for DeepSeek, plus 14.2 GiB on Node A.
+  A Spark that already holds the image needs about 47 GiB less. The plan
+  checks free space before it changes anything.
 
 ![Back of a DGX Spark: p0 is the QSFP port next to the 10GbE port](assets/spark-rear-ports.svg)
-
-
-<summary>Cabling diagrams for a pair and a four-Spark ring</summary>
 
 ![A pair: one cable from Spark 0's p0 to Spark 1's p0](assets/spark-pair-cabling.svg)
 
 ![A four-Spark ring: each Spark's p0 to the next Spark's p1](assets/spark-ring-cabling.svg)
 
-
-
-Not supported: one model on a line of six or more Sparks, a model on other
-than a pair, a four-Spark ring or its halves without an image that carries
-SIRCL ring sessions, other port layouts, and Docker's containerd image store
-([check which one a Spark uses](install-reference.md#image-distribution-and-caches)).
+Not supported: other port layouts, Docker's containerd image store
+([check which one a Spark uses](install-reference.md#check-for-the-containerd-image-store)),
+and one model on a line of six or more Sparks. The six-Spark GLM-5.3 profile
+runs on six positions of an eight-Spark ring (research-only).
 
 ## Install
 
-Pick the `--profile` value for your model and number of Sparks from the
-[profile table](../../README.md#profiles), then run on Node A:
+Pick a `--profile` from the [profile table](../../README.md#profiles), or
+build the commands in the [Install Builder](https://fujitsupolycom.github.io/sparkring/),
+then run on Node A:
 
 ```bash
 curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --profile PROFILE
@@ -57,83 +49,51 @@ curl -fsSL https://fujitsupolycom.github.io/sparkring/install.sh | bash -s -- --
 
 - It asks before it installs the SparkRing package, before it changes any
   Spark and before a model download larger than 1 GiB. `--yes` answers these.
-- Stopping another program's GPU container always needs its own answer, or
-  `--stop-workloads`. An unknown SSH host key always needs its own answer.
-- `--plan` shows what it would change and changes nothing. On a Spark without
-  SparkRing, run with `--package-only` first; it installs only the package.
-- On two Sparks, Qwen installs Local Inference Lab's CSF checkpoint on an
-  image whose vLLM reads it, the default image among them (research-only),
-  and checkpoint step 5500 on every other image; on four Sparks it installs
-  step 5500. Add `--checkpoint qad-step5500-ple1000` for step 5500 on any
-  image, or `--checkpoint qad-step-4000` for step 4000. Two Qwen options
-  trade a little quality for faster decoding:
-  `--checkpoint qad-step5500-mxfp8-attention` builds step 5500 with MXFP8
-  attention on the Sparks (it downloads 2.8 GB of step 4000; implemented),
-  and `--checkpoint jmni-qad5500-hybrid` installs JMNI Labs' third-party
-  hybrid (research-only). GLM profiles install the CSF
-  checkpoint on an image whose vLLM reads it, the default image among
-  them (implemented; installations passed the installer's checks and a
-  256-request correctness screen), and NVFP4-Spark on every other image,
-  2026.10.1's among them; add
-  `--checkpoint nvfp4-spark` for NVFP4-Spark on any image,
-  `--checkpoint nvfp4-qad` for Local Inference Lab's QAD checkpoint, or on
-  four Sparks `--checkpoint nvidia-nvfp4` for NVIDIA's NVFP4 checkpoint. On
-  two Sparks, QAD runs with a shorter context window
+- `--plan` shows what it would change and changes nothing.
+- Stopping another program's GPU container needs its own answer, or
+  `--stop-workloads`.
+- `--checkpoint NAME` installs another checkpoint of the profile
   ([checkpoints](install-reference.md#another-checkpoint-of-a-profile)).
-- `--download-limit 850Mbit` caps the model download from Hugging Face
+- `--download-limit 850Mbit` caps the Hugging Face download
   ([details](install-reference.md#limit-the-download-rate)).
 
-A model that is already running keeps serving while the selected model's image
-and weights are prepared, and runs again if the selected model fails to start.
-A download shows how much is done and the time left. The first start on new
-Sparks can take 10 to 30 minutes; progress names what the model is doing.
+A model that is already running keeps serving while the new model's image and
+weights are prepared. The first start on new Sparks can take 10 to 30 minutes;
+progress names what the model is doing. If the install stops early, run the
+same command again; it continues where it stopped.
 
 The install ends with `Model ready:`, the API and dashboard addresses, a sample
 request and the commands to watch logs, stop, start again or uninstall.
-`Model status` opens this model's runtime page; `Ring dashboard` opens the
-Node A service for every Spark and model. Unknown capacity is omitted.
-If it stops early, run the same command again; it continues where it stopped.
 
-The command installs the newest SparkRing from `main`. To repeat an
-installation exactly, use the
-[pinned command](install-reference.md#get-the-package) with the
-`Source revision:` it printed; that section also covers installing a published
-package.
+This command installs the release the Install Builder describes. To install
+`main` or another commit, use the
+[pinned command](install-reference.md#get-the-package).
 
-## Four-Spark rings
+## Rings and several models
 
-The installer applies a ConnectX driver setting (hairpin) on every Spark and
-repeats it at each boot, which adds about 30 seconds. It also installs the
-fabric's [relay table](install-reference.md#the-relay-table), which the Sparks
-restore at every boot. After a reboot, `sudo sparkring fabric verify` checks
-the fabric; start the model with the same install command. If
-`sudo sparkring status` shows `needs-attention`, run `sudo sparkring hairpin`
-on Node A. [More about the setting](install-reference.md#four-spark-rings).
-
-A ring can also serve two two-Spark models, one on each half:
-`sudo sparkring install --profile PROFILE --on 0,1`, then `--on 2,3`.
-[Two models on one ring](install-reference.md#two-models-on-one-ring).
-
-To tune SIRCL to your own cables, run `sudo sparkring fabric tune --execute`
-while no model serves, then install again. It takes up to half an hour per
-group shape. [Measure the tuning table](install-reference.md#measure-the-tuning-table).
-
-## Several models on one fabric
+On a ring, the installer applies a ConnectX driver setting (hairpin) and the
+fabric's [relay table](install-reference.md#the-relay-table) on every Spark and
+restores both at each boot. After a reboot, `sudo sparkring fabric verify`
+checks the fabric. If `sudo sparkring status` shows `needs-attention`, run
+`sudo sparkring hairpin`.
 
 `--on` puts a model on consecutive Sparks and leaves the others to other
-models. On an eight-Spark ring with an image that carries SIRCL ring
-sessions:
+models. On an eight-Spark ring:
 
 ```bash
 sudo sparkring install --profile FOUR_SPARK_PROFILE --on 0-3
 sudo sparkring install --profile FOUR_SPARK_PROFILE --on 4-7
 ```
 
-Each group serves its API on its first Spark; `sudo sparkring status` prints
-one block per group, and `--on` names the group for `down`, `up` and `check`.
-Four pairs (`--on 0,1` to `--on 6,7`) or a group across the cable to Node A
-(`--on 6-1`) work the same way. [Models on part of the
-fabric](install-reference.md#models-on-part-of-the-fabric).
+Pairs (`--on 0,1` to `--on 6,7`) and groups across the cable to Node A
+(`--on 6-1`) work the same way. Each group serves its API on its first Spark;
+`sudo sparkring status` prints one block per group, and `--on` names the group
+for `down`, `up` and `check`
+([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)).
+
+`sudo sparkring fabric tune --execute`, run while no model serves, measures
+SIRCL's tuning table for your cables; install again afterwards
+([measure the tuning table](install-reference.md#measure-the-tuning-table)).
 
 ## Reuse a model already on disk
 
@@ -143,49 +103,37 @@ hard-links it. It never changes your files. Sparks without a copy get one over
 the cables. If the search misses your copy, name it:
 
 ```bash
-# The same folder on every Spark
 sudo sparkring install --profile PROFILE --model-path /data/models/my-model
-
-# A different folder per Spark (Node 0 is Node A)
-sudo sparkring install --profile PROFILE \
-  --model-path 0=/data/models/my-model --model-path 1=/mnt/nvme/my-model
+sudo sparkring install --profile PROFILE --model-path 0=/data/a --model-path 1=/mnt/nvme/b
 ```
 
 - `--ignore-local-copies` uses only SparkRing's own copies and the paths you
-  name.
-- To keep the search out of a folder: `touch /path/to/folder/.sparkring-ignore`.
+  name; `touch FOLDER/.sparkring-ignore` keeps the search out of a folder.
 - `sudo sparkring checkpoints` lists SparkRing's checkpoint folders and the
-  space releasing each would free.
-- `sudo sparkring checkpoints --release PATH` deletes that folder on every
-  Spark after you confirm. Your own copies it linked from stay untouched, so
-  only files SparkRing downloaded or copied free space. It refuses the folder
-  of the running model.
+  space each would free; `--release PATH` deletes one on every Spark after you
+  confirm. It refuses the running model's folder.
 
-## Logs and status
+## Status, logs and recovery
 
 ```bash
+sudo sparkring status --refresh     # each Spark's state and the running models
 sudo sparkring logs --follow        # installation progress
-sudo sparkring status --refresh     # each Spark's state and the installed model
-sudo docker logs -f $(sudo docker ps -qf label=io.sparkring.rank=0)   # model server output, on API_HOST
 ```
 
-`API_HOST` is the Spark that serves the model's API: Node A, or Spark 2 for a
-model on Sparks 2 and 3. For the running model, open the
-[status dashboard](dashboard.md), read it as text with
-`curl http://API_HOST:PORT/v1/sparkring/status.txt`, or watch live throughput
-with [vllm-top](https://github.com/mratsim/vllm-top). Installer logs are in
-`/var/log/sparkring/`.
+The [ring dashboard](dashboard.md) on Node A, port 8090, shows every Spark and
+model. Installer logs are in `/var/log/sparkring/`.
 
-Scripts and agents can add `--events FILE` to get progress as one JSON object
-per line ([fields](install-reference.md#event-stream)).
+Node A restarts a model that stops serving. `sudo sparkring recover off --on
+GROUP` turns that off for one group, and `--no-auto-recover` installs a model
+without it ([automatic recovery](install-reference.md#automatic-recovery)).
 
 ## Security
 
-The model API has no key and listens on every interface of `API_HOST`: keep
-that Spark on a trusted network or firewall the port. Setup adds a WireGuard
-administration network and an SSH service on port 2222 for Node A's key, and
-shares Node A's Internet connection with the workers.
-[Details](install-reference.md#security-and-host-exposure).
+The model API has no key and listens on every interface of the Spark that
+serves it: keep that Spark on a trusted network or firewall the port. Setup
+adds a WireGuard administration network and an SSH service on port 2222 for
+Node A's key, and shares Node A's Internet connection with the workers
+([details](install-reference.md#security-and-host-exposure)).
 
 ## Troubleshooting
 
@@ -196,8 +144,7 @@ shares Node A's Internet connection with the workers.
 | The plan does not use your copy | `--model-path N=PATH` |
 | `The checkpoint plan differs from the plan reviewed with --plan` | Run with `--plan` again, then `--yes` |
 | `in use. No ConnectX driver was restarted` | Stop what the message lists, then repeat |
-| The model stops answering after a Spark restarts | Run the install command again |
-| A model log shows `NVMLError_Unknown` or `Can't initialize NVML` | Run the install command again; it gives the model its GPU in a way that survives system updates. [Details](install-reference.md#install-a-model) |
+| A model log shows `NVMLError_Unknown` or `Can't initialize NVML` | Run the install command again ([details](install-reference.md#install-a-model)) |
 | Deleting a copy freed no space | `sudo sparkring checkpoints --release PATH` |
 
 ## Uninstall
@@ -208,4 +155,4 @@ sudo apt remove sparkring       # on each Spark
 ```
 
 Removal stops SparkRing's services and keeps models, caches and network
-settings. [What removal keeps](install-reference.md#what-is-installed).
+settings ([what removal keeps](install-reference.md#what-is-installed)).
