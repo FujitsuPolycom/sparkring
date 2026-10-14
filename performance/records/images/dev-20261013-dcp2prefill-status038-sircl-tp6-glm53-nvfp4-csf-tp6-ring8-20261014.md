@@ -37,8 +37,9 @@ the installer had stopped.
 - The installer stopped at its smoke phase. `scripts/installer_host.py`
   `start_check_names` refuses a check that `runtime.host.start_checks.CHECKS`
   does not list, and `CHECKS` does not list `glm53-tp6-resident-quantization`.
-  The deployment's state is incomplete, and `sparkring status` shows no group
-  for positions 0-5.
+  The deployment's state was incomplete, and `sparkring status` showed no group
+  for positions 0-5. Packages from commit `12192bdc` validate start checks
+  against `start_checks.KNOWN`, which lists this check.
 
 ## Conclusion
 
