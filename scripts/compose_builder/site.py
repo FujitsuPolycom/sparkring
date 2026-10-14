@@ -194,6 +194,7 @@ def landing(value):
     meta = value["meta"]
     intro = read("README.md").split("\n## Quick start", 1)[0].split("\n\n")
     license_notice, description = intro[1], intro[2]
+    description = description.replace("two to eight NVIDIA DGX Sparks\ncabled directly", "two or more directly cabled DGX Sparks\nconnected")
     cmd = (f"curl -fsSL https://raw.githubusercontent.com/{meta['repository']}/{value['release']}/install.sh "
            f"| bash -s -- --ref {value['release']} --profile PROFILE")
     profile_rows = []
@@ -217,8 +218,11 @@ def landing(value):
       <p class="hint">Choose <code>PROFILE</code> below or use the <a href="builder.html">Install Builder</a>.</p>
       <p>The installer asks before making changes. Use <code>--plan</code> to see what a deployment would do on your stack. <a href="commands.html">Command guide</a></p>
       <p class="mono muted">Release {escape(value['release'])} · {len(value['profiles'])} installer profiles</p></div>
-      <div class="ring-panel"><div class="ring-controls" id="ring-choices"></div><div id="ring-figure"></div>
-      <div class="ring-controls" id="ring-examples"></div><p><a class="button" id="load-example" href="builder.html">Load into builder →</a></p></div></div>
+      <div class="ring-panel landing-ring"><div class="ring-controls" id="ring-choices" role="group" aria-label="Number of Sparks"></div><div id="ring-figure"></div>
+      <div class="cable-legend"><span>Direct cable</span><span>Relayed through a Spark</span></div>
+      <p class="hint" id="ring-caption"></p><p class="eyebrow">Example setups</p>
+      <div class="ring-controls" id="ring-examples" role="group" aria-label="Example setups"></div>
+      <ul id="example-list" aria-live="polite"></ul><p><a class="button" id="load-example" href="builder.html">Load into builder →</a></p></div></div>
       <div class="notice">{prose(license_notice, 'README.md', meta)}</div>
       <section class="site-section" id="profiles"><h2>Profiles</h2><p class="muted">Every installer profile in the catalog. Thinking shows the default and level. Research profiles retain their research status.</p>
       {table(['Model', 'Variant', 'Sparks', '--profile', 'Port', 'Thinking', 'Status'], profile_rows, 'profile-table')}</section>
