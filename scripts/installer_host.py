@@ -1847,7 +1847,7 @@ def start_check_names(card):
         return ()
     names = profiles.read_json(profiles.local_path(source["path"])).get("start_checks") or ()
     from runtime.host import start_checks
-    unknown = sorted(set(names) - set(start_checks.CHECKS))
+    unknown = sorted(set(names) - set(start_checks.KNOWN))
     if unknown:
         raise ValueError("Unknown start checks: " + ", ".join(unknown))
     return tuple(names)

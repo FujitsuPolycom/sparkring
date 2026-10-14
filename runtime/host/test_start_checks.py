@@ -173,3 +173,15 @@ def test_the_install_result_reads_the_smoke_actions_start_checks(tmp_path):
     assert "  Start checks:" in lines and any(line.startswith("    mxfp8-linears: took effect") for line in lines)
     (tmp_path / "receipt.json").write_text(json.dumps({"actions": {}}))
     assert install_workflow.start_check_result(tmp_path) is None
+
+
+def test_every_profile_start_check_is_known_to_the_installer():
+    from runtime.common import profiles
+    from scripts import installer_host
+    for profile in profiles.catalog():
+        source = profiles.load(profile)[0]["configuration"]
+        if source.get("format") != "serving-profile":
+            continue
+        names = profiles.read_json(profiles.local_path(source["path"])).get("start_checks") or ()
+        assert set(names) <= set(start_checks.KNOWN), profile
+    assert "glm53-tp6-resident-quantization" in installer_host.start_check_names({"profile": "glm53-nvfp4-csf-tp6"})

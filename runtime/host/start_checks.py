@@ -80,6 +80,9 @@ import re
 SCHEMA = "sparkring-start-checks/v1"
 CHECKS = ("mxfp8-linears", "draft-quantization", "column-split-loading", "csf-w4a16-a4-prefill",
           "csf-scale-prefetch", "w4a16-host-barrier-reset")
+# Every check a serving profile may list in ``start_checks``: CHECKS, which judge() runs by default, and the
+# checks only some profiles name, such as the six-rank GLM-5.3 resident-quantization check.
+KNOWN = (*CHECKS, "glm53-tp6-resident-quantization")
 TOOK, NOT, UNKNOWN = "took effect", "did not take effect", "unknown"
 REFERENCE_GIB = 53.07
 BF16_LINEARS_GIB = 55.0
