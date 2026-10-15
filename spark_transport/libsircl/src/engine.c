@@ -2026,7 +2026,28 @@ static ncclResult_t session_error(sccl_engine *e, char *message, size_t len);
 /* The line names the time twice: the wall clock for logs, and CLOCK_MONOTONIC (the clock of the host's own
  * timeouts and of Python's time.monotonic), which a stepped wall clock (a VM's time synchronization) does
  * not move; and what found the error. */
+/* fail_stop's backstop: whatever the steps before _exit wait for (a stalled stderr pipe, a receipt or link
+ * dump on a stalled filesystem, a FIFO without a reader), the process ends FAIL_STOP_BACKSTOP_MS after
+ * fail_stop began, with the fail-stop status. */
+enum { FAIL_STOP_BACKSTOP_MS = 1000 };
+static void *fail_stop_backstop(void *unused) {
+  (void)unused;
+  const struct timespec delay = {FAIL_STOP_BACKSTOP_MS / 1000, (FAIL_STOP_BACKSTOP_MS % 1000) * 1000000L};
+  nanosleep(&delay, NULL);
+  _exit(FAIL_STOP_STATUS);
+  return NULL;
+}
+
 static void fail_stop(sccl_engine *e, const char *found_by, const char *message) {
+  /* The backstop first, before any step that can block. A failure to start it leaves the steps unbounded,
+   * as they are without it. */
+  pthread_t backstop;
+  pthread_attr_t attributes;
+  if (!pthread_attr_init(&attributes)) {
+    pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    (void)pthread_create(&backstop, &attributes, fail_stop_backstop, NULL);
+    pthread_attr_destroy(&attributes);
+  }
   /* Before the process ends, the channels' progress thread posts its abort notices, so the peers' channels
    * stop now instead of at their wait limits (bounded; see p2p_stop_with_notices). */
   p2p_stop_with_notices(e, message);
