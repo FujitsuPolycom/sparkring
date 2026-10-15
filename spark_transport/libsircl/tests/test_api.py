@@ -155,6 +155,8 @@ if pid==0:
     child_uid=U(); assert l.ncclGetUniqueId(C.byref(child_uid))==5
     child_comm=C.c_void_p(); assert l.ncclCommInitRank(C.byref(child_comm),1,uid,0)==5
     assert child_comm.value is None
+    # The fork check comes first, before any argument check.
+    l.ncclCommRevoke.argtypes=[C.c_void_p,C.c_int]; assert l.ncclCommRevoke(None,1)==5
     # libc.exit invokes DSO destructors, unlike os._exit. The inherited wake
     # pipe must not be written, because it would stop the parent's broker.
     libc=C.CDLL(None); libc.exit.argtypes=[C.c_int]; libc.exit(0)

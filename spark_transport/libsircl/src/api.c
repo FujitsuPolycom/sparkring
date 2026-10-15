@@ -1099,6 +1099,7 @@ ncclResult_t ncclCommFinalize(ncclComm_t handle) {
   return transition(handle, FINALIZED);
 }
 ncclResult_t ncclCommRevoke(ncclComm_t comm, int flags) {
+  CHECK_PROCESS();
   if (flags) return fail(ncclInvalidArgument, "revoke flags must be zero");
   return transition(comm, REVOKED);
 }
