@@ -99,6 +99,18 @@ print(json.dumps([before, after, last, l.ncclGetLastError(None).decode()]))
         self.assertEqual(last, 0, message)
         self.assertEqual(after, before)
 
+    def test_failed_initall_leaves_no_handles(self):
+        """An ncclCommInitAll whose communicators fail in session setup aborts them and clears every output."""
+        out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2,(C.c_int*2)(0,0)); "
+                  "print(json.dumps([r,list(c),l.ncclGetLastError(None).decode()]))",
+                  {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus", "FAKE_CUDA_DEVICES": "1",
+                   "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        result, handles, message = json.loads(out.stdout)
+        self.assertNotIn(result, (0, 7))
+        self.assertEqual(handles, [None, None])
+        self.assertIn("group initialization failed", message)
+
     def test_initall_refuses_distinct_cuda_devices(self):
         for devices in ("None", "(C.c_int*2)(0,1)"):
             out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "

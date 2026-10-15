@@ -611,6 +611,7 @@ ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
   ncclUniqueId id;
   ncclResult_t result = ncclGetUniqueId(&id);
   if (result != ncclSuccess) return result;
+  int nested = group_depth != 0;
   result = ncclGroupStart();
   if (result != ncclSuccess) return result;
   for (int i = 0; i < ndev; ++i) {
@@ -619,7 +620,20 @@ ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
     out[i]->device = devlist ? devlist[i] : i;
   }
   ncclResult_t end = ncclGroupEnd();
-  return result != ncclSuccess ? result : end;
+  if (result == ncclSuccess) result = end;
+  /* A failed InitAll leaves no handle: every communicator it created is aborted and its output cleared.
+   * Inside the caller's own group the handles belong to that group until its ncclGroupEnd, which reports
+   * their failure. */
+  if (result != ncclSuccess && result != ncclInProgress && !nested) {
+    char reason[sizeof last_error];
+    snprintf(reason, sizeof reason, "%s", last_error);
+    for (int i = 0; i < ndev; ++i) {
+      if (out[i]) ncclCommAbort(out[i]);
+      out[i] = NULL;
+    }
+    snprintf(last_error, sizeof last_error, "%s", reason);
+  }
+  return result;
 }
 static ncclResult_t query(ncclComm_t handle, int *out, int field) {
   CHECK_PROCESS();
