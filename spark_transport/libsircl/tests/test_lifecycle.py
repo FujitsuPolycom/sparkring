@@ -51,6 +51,28 @@ class LifecycleTests(unittest.TestCase):
                 if handle:
                     self.lib.ncclCommAbort(handle)
 
+    def test_lifecycle_call_on_an_initializing_communicator_is_refused(self):
+        """ncclCommRevoke or ncclCommFinalize on a communicator whose initialization is still in progress is
+        refused with ncclInvalidUsage. ncclInProgress never becomes a group's result, so a group's pending
+        initialization never ends FAILED with ncclInProgress, which would read as still in progress forever."""
+        os.environ["SIRCL_BOOTSTRAP_TIMEOUT_MS"] = "5000"
+        config = api.config()
+        config.blocking = 0
+        pending, grouped = C.c_void_p(), C.c_void_p()
+        first, second = self.uid(), self.uid()
+        self.assertEqual(self.lib.ncclCommInitRankConfig(C.byref(pending), 2, first, 0, C.byref(config)), PROGRESS)
+        try:
+            self.assertEqual(self.lib.ncclGroupStart(), SUCCESS)
+            self.assertEqual(self.lib.ncclCommInitRank(C.byref(grouped), 1, second, 0), SUCCESS)
+            self.assertEqual(self.lib.ncclCommRevoke(pending, 0), USAGE)
+            self.assertEqual(self.lib.ncclCommFinalize(pending), USAGE)
+            self.assertNotEqual(self.lib.ncclGroupEnd(), PROGRESS)
+            self.assertNotEqual(self.asynchronous_error(grouped), PROGRESS)
+        finally:
+            self.lib.ncclCommAbort(pending)
+            if grouped.value:
+                self.lib.ncclCommDestroy(grouped)
+
     def test_split_leader_failure_fails_every_member_at_once(self):
         """The split leader cannot create the new unique id (the process holds all 64 bootstrap roots). It still
         takes part in the unique-id round with a failure record, so both ranks return its result at once

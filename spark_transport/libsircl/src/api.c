@@ -76,9 +76,11 @@ static int debug_errors(void) {
   const char *debug = sccl_env("NCCL_DEBUG");
   return debug && (!strcasecmp(debug, "WARN") || !strcasecmp(debug, "INFO") || !strcasecmp(debug, "TRACE"));
 }
+/* ncclInProgress never becomes a group's result: ncclGroupEnd would record it as the terminal error of the
+ * group's pending initializations, which would then read as in progress forever. */
 static ncclResult_t fail(ncclResult_t result, const char *message) {
   snprintf(last_error, sizeof(last_error), "%s", message);
-  if (group_depth && group_error == ncclSuccess) group_error = result;
+  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) group_error = result;
   if (debug_errors()) fprintf(stderr, "libsircl: %s: %s\n", ncclGetErrorString(result), message);
   return result;
 }
@@ -878,12 +880,17 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   int state = atomic_load(&comm->state);
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
-  if (result == ncclSuccess) {
+  const char *why = "communicator is not ready for this lifecycle operation";
+  if (result == ncclInProgress) {
+    /* As collective_ready refuses an enqueue: the initialization has not finished. */
+    result = ncclInvalidUsage;
+    why = "communicator initialization is still in progress";
+  } else if (result == ncclSuccess) {
     if (state == READY || (state == next)) atomic_store(&comm->state, next);
     else result = ncclInvalidUsage;
   }
   release(comm);
-  return result == ncclSuccess ? result : fail(result, "communicator is not ready for this lifecycle operation");
+  return result == ncclSuccess ? result : fail(result, why);
 }
 /* Teardown of a communicator of two or more ranks, so that no rank frees what a peer still writes. This rank's
  * enqueued work completes; round 1 over the bootstrap carries every rank's status (its wait, then its health:
