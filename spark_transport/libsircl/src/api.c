@@ -571,6 +571,28 @@ static ncclResult_t point_to_point(const char *what, int send, const void *buff,
   }
   sccl_p2p_op op = {send, peer, buff, count * item, stream};
   if (group_depth) {
+    /* The group rules the engine applies at ncclGroupEnd, refused at the call that breaks them: the calls of
+     * one group on one communicator use one stream, and there are at most MAX_GROUP_P2P of them. */
+    enum { MAX_GROUP_P2P = 1024 };
+    unsigned same = 0;
+    const queued_p2p *first = NULL;
+    for (unsigned i = 0; i < p2p_count; ++i)
+      if (p2p_queue[i].comm == comm && p2p_queue[i].serial == comm->serial) {
+        if (!first) first = &p2p_queue[i];
+        ++same;
+      }
+    if (first && first->op.stream != op.stream) {
+      release(comm);
+      snprintf(message, sizeof message, "%s: the point-to-point calls of one group on one communicator must use "
+               "one stream", what);
+      return refuse(ncclInvalidUsage, message);
+    }
+    if (same >= MAX_GROUP_P2P) {
+      release(comm);
+      snprintf(message, sizeof message, "%s: a group carries at most %d point-to-point calls on one communicator",
+               what, MAX_GROUP_P2P);
+      return refuse(ncclInvalidUsage, message);
+    }
     if (p2p_count == p2p_capacity) {
       unsigned capacity = p2p_capacity ? 2 * p2p_capacity : 64;
       queued_p2p *grown = realloc(p2p_queue, sizeof(*grown) * capacity);

@@ -186,7 +186,9 @@ Errors of single calls: a collective or point-to-point call refused with `ncclIn
 and leaves the calling thread's group as it was (the group's other calls still run at `ncclGroupEnd`); other
 errors of a collective, point-to-point or communicator-creation call inside a group become the group's
 result. A failed call that enqueues nothing (a query, a registration, `ncclGetUniqueId`, a lifecycle call, an
-unsupported function) returns its error and leaves the group as it was. A point-to-point call queued in a group holds no reference
+unsupported function) returns its error and leaves the group as it was. Inside a group the point-to-point
+calls on one communicator must use one stream and number at most 1,024; the call that breaks either rule is
+refused with `ncclInvalidUsage`, which becomes the group's result. A point-to-point call queued in a group holds no reference
 on its communicator, so `ncclCommAbort` from another thread returns at once, and that group's
 `ncclGroupEnd` then fails its calls with `ncclInvalidUsage`. `ncclCommSplit` with a NULL config (or a config
 whose `blocking` is undefined) takes the parent's blocking mode.
