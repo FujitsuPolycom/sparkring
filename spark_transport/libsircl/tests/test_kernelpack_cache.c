@@ -5,9 +5,11 @@
  *
  *   LD_LIBRARY_PATH=<directory of the stand-in libcuda.so.1> test_kernelpack_cache
  */
+#define _POSIX_C_SOURCE 200809L
 #include <dlfcn.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "kernelpack.h"
 
@@ -55,6 +57,11 @@ int main(void) {
   CHECK(!loaded(a) && live_modules() == 8);
   sccl_kp_release(b, 1);
   CHECK(!loaded(b));
+  /* A pack the driver cannot load (no cubin for the GPU) is refused, naming the architectures it holds. */
+  setenv("FAKE_CUDA_FAIL_LOAD", "1", 1);
+  CHECK(sccl_kp_load(a) != 0);
+  CHECK(strstr(sccl_kp_error(), "built for sm_120 sm_121") != NULL);
+  unsetenv("FAKE_CUDA_FAIL_LOAD");
   printf("kernel-pack cache: %u checks passed\n", checks);
   return 0;
 }

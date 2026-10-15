@@ -96,6 +96,8 @@ EXPORT void sccl_fake_cuda_stats(int *loaded, int *fewest_cubins, int *looked_up
 
 EXPORT int cuModuleLoadData(void **module, const void *image) {
   const uint8_t *p = image;
+  const char *fail = getenv("FAKE_CUDA_FAIL_LOAD");
+  if (fail && !strcmp(fail, "1")) return 209; /* CUDA_ERROR_NO_BINARY_FOR_GPU */
   int slot = 0;
   while (slot < nmodules && modules[slot].in_use) ++slot;
   if (slot == MAX_MODULES || u32(p) != 0xBA55ED50u) return INVALID_IMAGE;

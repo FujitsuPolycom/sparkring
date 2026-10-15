@@ -28,6 +28,10 @@ foreach(flag ${LIBSIRCL_NVCCFLAGS})
   endif()
 endforeach()
 separate_arguments(LIBSIRCL_NVCC_EXTRA UNIX_COMMAND "${LIBSIRCL_NVCC_EXTRA_FLAGS}")
+# The architectures the packs hold (the code= values), which a pack-load error names.
+string(REGEX MATCHALL "code=[a-z0-9_]+" LIBSIRCL_PACK_CODES "${LIBSIRCL_NVCCFLAGS}")
+string(REPLACE "code=" "" LIBSIRCL_PACK_CODES "${LIBSIRCL_PACK_CODES}")
+string(REPLACE ";" " " LIBSIRCL_PACK_ARCHITECTURES "${LIBSIRCL_PACK_CODES}")
 file(GLOB LIBSIRCL_KERNEL_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/kernels/*.cuh)
 foreach(pack kernels fold links p2p)
   set(FATBIN ${CMAKE_CURRENT_BINARY_DIR}/packs/sircl_${pack}.fatbin)
@@ -79,7 +83,8 @@ add_library(sircl SHARED src/api.c src/bootstrap.c src/stubs.c src/aliases.c src
             ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c $<TARGET_OBJECTS:transport_hw> $<TARGET_OBJECTS:transport_emu>)
 target_compile_features(sircl PRIVATE c_std_11)
 target_compile_definitions(sircl PUBLIC LIBSIRCL_CPU_ONLY NCCL_OS_LINUX
-                           PRIVATE LIBSIRCL_VERSION="${PROJECT_VERSION}")
+                           PRIVATE LIBSIRCL_VERSION="${PROJECT_VERSION}"
+                                   SCCL_PACK_ARCHITECTURES="${LIBSIRCL_PACK_ARCHITECTURES}")
 if(LIBSIRCL_P2P_FEATURES)
   target_compile_definitions(sircl PRIVATE SCCL_P2P_LOCAL_FEATURES)
 endif()

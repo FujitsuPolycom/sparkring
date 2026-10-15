@@ -62,6 +62,10 @@ ifeq ($(P2P_FEATURES),1)
 override CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
 endif
 NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
+# The architectures the packs hold (the code= values), which a pack-load error names.
+comma := ,
+PACK_ARCHITECTURES = $(patsubst code=%,%,$(filter code=%,$(subst $(comma), ,$(NVCCFLAGS))))
+$(BUILD)/kernelpack.o: override CPPFLAGS += -DSCCL_PACK_ARCHITECTURES='"$(PACK_ARCHITECTURES)"'
 
 .PHONY: all check clean generate kernels emulation-tools mpi-shim
 all: $(BUILD)/libsircl.so

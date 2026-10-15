@@ -20,6 +20,11 @@ extern const unsigned char sccl_p2p_fatbin[];
 extern const char sccl_p2p_fatbin_sha256[];
 
 enum { MAX_CONTEXTS = 16 };
+/* The GPU architectures the packs hold cubins for (the build's nvcc -gencode code= values), named when a
+ * pack does not load, for example on a GPU of another architecture. */
+#ifndef SCCL_PACK_ARCHITECTURES
+#define SCCL_PACK_ARCHITECTURES "sm_120 sm_121"
+#endif
 typedef struct {
   sccl_CUcontext ctx;
   int refs;  /* sccl_kp_load calls not yet released (sccl_kp_release) */
@@ -87,7 +92,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   }
   r = cu->ModuleLoadData(&p->module, sccl_kernels_fatbin);
   int failed = r != SCCL_CUDA_SUCCESS;
-  if (failed) snprintf(error_text, sizeof error_text, "loading the kernel pack: %s", sccl_cuda_result_text(r));
+  if (failed) snprintf(error_text, sizeof error_text, "loading the kernel pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                        sccl_cuda_result_text(r));
   for (int k = 0; !failed && k < SCCL_K_COUNT; ++k)
     for (int d = 0; !failed && d < SCCL_DT_COUNT; ++d)
       for (int w = SCCL_KP_MIN_WORLD; !failed && w <= SCCL_KP_MAX_WORLD; ++w) {
@@ -107,7 +113,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->fold_module, sccl_fold_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the fold pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the fold pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                          sccl_cuda_result_text(r));
   }
   for (int d = 0; !failed && d < SCCL_FOLD_DTYPES; ++d)
     for (int o = 0; !failed && o < SCCL_FOLD_OPS; ++o) {
@@ -122,7 +129,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->links_module, sccl_links_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the link pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the link pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                          sccl_cuda_result_text(r));
   }
   for (int d = 0; !failed && d < SCCL_DT_COUNT; ++d)
     for (int u = 1; !failed && u <= SCCL_CHAIN_MAX_UNROLL; ++u) {
@@ -180,7 +188,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->p2p_module, sccl_p2p_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the point-to-point pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the point-to-point pack (built for %s): %s",
+                          SCCL_PACK_ARCHITECTURES, sccl_cuda_result_text(r));
   }
   for (int s = 0; !failed && s < 2; ++s)
     for (int u = 1; !failed && u <= SCCL_P2P_MAX_UNROLL; ++u) {
