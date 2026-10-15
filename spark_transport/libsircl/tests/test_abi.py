@@ -11,6 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = json.loads((ROOT / "tests/api_manifest.json").read_text())
@@ -19,6 +20,20 @@ LIBRARY = ROOT / "build/libsircl.so"
 
 def run(*arguments: str, env: dict | None = None) -> str:
     return subprocess.check_output(arguments, text=True, stderr=subprocess.STDOUT, env=env)
+
+
+def preload_environment() -> dict:
+    """Isolate the SONAME probe from inherited providers, keeping ASan first when requested."""
+    env = os.environ.copy()
+    env.pop("LIBSIRCL_NCCL_API_VERSION", None)
+    # Keep the runtime selected by check-asan, including when CC names a different compiler.
+    preloads = [entry for entry in re.split(r"[:\s]+", env.get("LD_PRELOAD", ""))
+                if re.fullmatch(r"libasan\.so(?:\.\d+)*|libclang_rt\.asan.*\.so", Path(entry).name)]
+    if env.get("LIBSIRCL_TEST_ASAN") and not preloads:
+        raise unittest.SkipTest("LIBSIRCL_TEST_ASAN requires an identifiable ASan runtime in LD_PRELOAD "
+                                "to isolate the SONAME probe from inherited NCCL providers")
+    env["LD_PRELOAD"] = ":".join([*preloads, str(LIBRARY)])
+    return env
 
 
 # Host entry points of NCCL's device API (nccl_device/core.h and its barrier and LL all-to-all headers),
@@ -141,10 +156,11 @@ int main(void) {
             (path / "libnccl.so").symlink_to("libnccl.so.2")
             (path / "preload.c").write_text(source)
             run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(path / "preload.c"), "-L", str(path), "-Wl,-rpath," + str(path), "-lnccl", "-ldl", "-o", str(path / "preload"))
-            env = os.environ.copy()
-            env.pop("LIBSIRCL_NCCL_API_VERSION", None)
-            env["LD_PRELOAD"] = ":".join(filter(None, (env.get("LD_PRELOAD"), str(LIBRARY))))
-            self.assertIn("all 146 symbols", run(str(path / "preload"), env=env))
+            inherited = os.environ.get("LD_PRELOAD", "")
+            for preload in (inherited, f"{path / 'libnccl.so.2'}:{inherited}",
+                            f"{path / 'libnccl.so.2'} {inherited}"):
+                with self.subTest(preload=preload), patch.dict(os.environ, LD_PRELOAD=preload):
+                    self.assertIn("all 146 symbols", run(str(path / "preload"), env=preload_environment()))
 
 
 if __name__ == "__main__":
