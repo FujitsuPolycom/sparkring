@@ -2064,6 +2064,10 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       return ncclRemoteError;
     }
     for (int r = 0; r < nranks; ++r) {
+      if (all[r].position < 0 || all[r].position >= MAX_POSITIONS) {
+        if (!local[0]) put_error(local, sizeof local, "rank %d position %d is outside 0-63", r, all[r].position);
+        continue;
+      }
       e->positions[r] = all[r].position;
       e->relayed[r] = all[r].relayed;
     }
