@@ -138,6 +138,25 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
         self.assertEqual(data["children"], [None, None])
         self.assertEqual(data["again"], [SUCCESS, SUCCESS])
 
+    def test_split_whose_peer_never_arrives_is_a_remote_error(self):
+        """A split whose peer never takes part times out in its first all-gather and returns ncclRemoteError, the
+        result the engine's setup exchanges give a peer that does not arrive, naming the timeout."""
+        handles = (C.c_void_p * 2)()
+        self.assertEqual(self.lib.ncclCommInitAll(handles, 2, None), SUCCESS)
+        saved = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "300"
+        try:
+            child = C.c_void_p()
+            self.assertEqual(self.lib.ncclCommSplit(handles[0], 0, 0, C.byref(child), None), 6)
+            self.assertIn(b"timed out", self.lib.ncclGetLastError(None))
+        finally:
+            if saved is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = saved
+            for handle in handles:
+                self.lib.ncclCommAbort(handle)
+
     def test_split_refuses_short_records_in_both_rounds(self):
         for short_round in (0, 1):
             with self.subTest(round=short_round):

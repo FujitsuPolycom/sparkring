@@ -385,6 +385,17 @@ ncclResult_t ncclCommInitRank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   return ncclCommInitRankConfig(out, nranks, id, rank, NULL);
 }
 
+/* The result of a split whose all-gather failed, as the engine's setup exchanges report theirs: a peer that
+ * did not arrive in time or a lost broker is ncclRemoteError; a cancellation (abort) ncclInvalidUsage; an
+ * invalid setting ncclInvalidArgument; a local socket or allocation failure ncclSystemError. */
+static ncclResult_t split_exchange_result(int bootstrap_result) {
+  switch (bootstrap_result) {
+    case ncclInvalidUsage: return ncclInvalidUsage;
+    case ncclInvalidArgument: return ncclInvalidArgument;
+    case ncclSystemError: return ncclSystemError;
+    default: return ncclRemoteError;
+  }
+}
 /* A failed split: its reason is recorded before the parent's reference is dropped, so that a library unload
  * waiting for the reference finds the call already past its library work. */
 static ncclResult_t split_failed(struct ncclComm *parent, ncclResult_t result, const char *message) {
@@ -411,10 +422,11 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   int32_t mine[2] = {color, key};
   void *all = NULL;
   unsigned lengths[64];
-  if (sccl_bootstrap_allgather(parent->bootstrap, mine, sizeof mine, &all, lengths, &parent->cancelled)) {
+  int gathered = sccl_bootstrap_allgather(parent->bootstrap, mine, sizeof mine, &all, lengths, &parent->cancelled);
+  if (gathered) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging colors: %s", sccl_bootstrap_error());
-    return split_failed(parent, ncclSystemError, message);
+    return split_failed(parent, split_exchange_result(gathered), message);
   }
   for (int r = 0; r < parent->nranks; ++r) {
     if (lengths[r] != sizeof mine) {
@@ -453,10 +465,12 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
       id.internal[10] = (unsigned char)((unsigned)result >> 8); id.internal[11] = (unsigned char)result;
     }
   }
-  if (sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths, &parent->cancelled)) {
+  gathered = sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths,
+                                      &parent->cancelled);
+  if (gathered) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging unique ids: %s", sccl_bootstrap_error());
-    return split_failed(parent, ncclSystemError, message);
+    return split_failed(parent, split_exchange_result(gathered), message);
   }
   for (int r = 0; r < parent->nranks; ++r) {
     if (lengths[r] != sizeof id.internal) {
