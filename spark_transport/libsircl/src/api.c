@@ -1086,9 +1086,16 @@ ncclResult_t ncclCommFinalize(ncclComm_t handle) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   ncclResult_t flushed = comm->engine && atomic_load(&comm->state) == READY ? sccl_engine_finalize(comm->engine)
                                                                              : ncclSuccess;
-  if (flushed == ncclSuccess) flushed = quiesce(comm, "ncclCommFinalize");
+  /* The failure's own text: this rank's wait, else the close's result as the communicator recorded it (a
+   * repeated finalize returns the first close's result and text). Copied before fail() writes the thread's
+   * text, which it must not read from. */
+  char reason[sizeof last_error] = "ncclCommFinalize: waiting for this rank's enqueued work failed";
+  if (flushed == ncclSuccess) {
+    flushed = quiesce(comm, "ncclCommFinalize");
+    if (flushed != ncclSuccess) read_error(comm, reason, sizeof reason);
+  }
   release(comm);
-  if (flushed != ncclSuccess) return fail(flushed, last_error[0] ? last_error : "ncclCommFinalize failed");
+  if (flushed != ncclSuccess) return fail(flushed, reason);
   return transition(handle, FINALIZED);
 }
 ncclResult_t ncclCommRevoke(ncclComm_t comm, int flags) {
