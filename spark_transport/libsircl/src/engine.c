@@ -5,6 +5,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <pthread.h>
@@ -4553,20 +4554,39 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       status == ncclSuccess ? "true" : "false", health_json);
 }
 
+/* A diagnostic file of this library: created by open(2) with O_NOFOLLOW (a symbolic link at the path is
+ * refused, never followed) and close-on-exec; with `fresh`, also O_EXCL (the file must not exist), else
+ * appended to. NULL when the path did not fit its buffer (`fits` 0) or the open failed. */
+static FILE *open_diagnostic(const char *path, int fits, int fresh) {
+  if (!fits) return NULL;
+  int flags = O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | (fresh ? O_EXCL : O_APPEND);
+  int fd = open(path, flags, 0644);
+  if (fd < 0) return NULL;
+  FILE *f = fdopen(fd, fresh ? "w" : "a");
+  if (!f) close(fd);
+  return f;
+}
+
 /* <prefix>.rank<r>.<pid>.c<n>.json, n the communicator's number among the process's communicators, so
  * communicators of one process with the same rank keep files of their own. The file is replaced whole
- * (written beside it, then renamed), so a reader never sees a partial receipt. */
+ * (written beside it under a name of this writer's own, then renamed), so a reader never sees a partial
+ * receipt, and two writers (the fail-stop watcher and a library call) never share a partial file. A path
+ * that does not fit is not written. */
 static void write_receipt(sccl_engine *e) {
+  static atomic_uint writes;
   const char *prefix = sccl_env("LIBSIRCL_RECEIPT");
   if (!prefix || !*prefix) return;
-  char path[600], partial[620];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  snprintf(partial, sizeof partial, "%s.partial", path);
+  char path[600], partial[640];
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  int fits = n > 0 && (size_t)n < sizeof path;
+  n = snprintf(partial, sizeof partial, "%s.partial.%u", path, atomic_fetch_add(&writes, 1));
+  fits = fits && n > 0 && (size_t)n < sizeof partial;
+  if (!fits) return;
   size_t need = sccl_engine_receipt(e, NULL, 0) + 1;
   char *text = malloc(need);
   if (!text) return;
   sccl_engine_receipt(e, text, need);
-  FILE *f = fopen(partial, "w");
+  FILE *f = open_diagnostic(partial, 1, 1);
   if (f) {
     int ok = fprintf(f, "%s\n", text) > 0;
     ok = fclose(f) == 0 && ok;
@@ -4624,8 +4644,8 @@ static void dump_links(sccl_engine *e, const char *why, int device) {
   const char *prefix = sccl_env("LIBSIRCL_LINK_DUMP");
   if (!prefix || !*prefix || !e->link_on || !e->host) return;
   char path[640];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  FILE *f = fopen(path, "a");
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  FILE *f = open_diagnostic(path, n > 0 && (size_t)n < sizeof path, 0);
   if (!f) return;
   enum { LINKS = 4, STRIDE = 128 };
   const uint8_t *area = e->host + e->link_off;
@@ -4691,8 +4711,8 @@ static void dump_teardown(sccl_engine *e, uint64_t stop_ns, uint64_t stopped_ns,
   const char *prefix = sccl_env("LIBSIRCL_LINK_DUMP");
   if (!prefix || !*prefix || !e->link_on || !e->host) return;
   char path[640];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  FILE *f = fopen(path, "a");
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  FILE *f = open_diagnostic(path, n > 0 && (size_t)n < sizeof path, 0);
   if (!f) return;
   fprintf(f, "{\"why\":\"proxy destroyed\",\"ns\":%" PRIu64 ",\"rank\":%d,\"position\":%d,\"stop_ns\":%" PRIu64
              ",\"stopped_ns\":%" PRIu64 ",\"destroyed_ns\":%" PRIu64,

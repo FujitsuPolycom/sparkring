@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -247,6 +248,32 @@ if c.value: l.ncclCommAbort(c)
                 out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", **extra})
                 self.assertEqual(out.returncode, 0, out.stderr)
                 self.assertIn(text, json.loads(out.stdout)["local"])
+
+    def test_receipts_never_follow_a_planted_link(self):
+        """A symbolic link planted where a receipt's partial file was named (<receipt>.partial) is left as it
+        is and the file it names is not written: receipts are written under a name of the writer's own,
+        opened with O_EXCL and O_NOFOLLOW, then renamed over the receipt."""
+        with tempfile.TemporaryDirectory() as directory:
+            out = run('''import os, sys
+directory=sys.argv[2]
+target=os.path.join(directory, "victim"); open(target, "w").write("untouched")
+prefix=os.path.join(directory, "r")
+receipt=f"{prefix}.rank0.{os.getpid()}.c1.json"
+os.symlink(target, receipt + ".partial")
+os.environ["LIBSIRCL_RECEIPT"]=prefix
+u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); assert l.ncclCommInitRank(C.byref(c),1,u,0)==0
+assert l.ncclCommDestroy(c)==0
+print(json.dumps([open(target).read(), os.path.islink(receipt + ".partial"), os.path.isfile(receipt),
+                  sorted(name for name in os.listdir(directory) if ".partial." in name)]))
+'''.replace("sys.argv[2]", repr(directory)), {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs",
+                                                    "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+            self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+            victim, still_link, written, leftovers = json.loads(out.stdout)
+            self.assertEqual(victim, "untouched")
+            self.assertTrue(still_link)
+            self.assertTrue(written)
+            self.assertEqual(leftovers, [])
 
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
