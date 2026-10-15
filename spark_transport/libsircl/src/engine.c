@@ -3594,7 +3594,8 @@ static ncclResult_t reduce_into(sccl_engine *e, const char *what, const void *se
    * ring op for the largest prefix of W equal chunks of whole packs; else under the chain schedule (or auto
    * from the chain minimum) one chain op for the 16-byte-aligned body; the rest in pieces, then the
    * zero-padded tail. Decided from agreed settings and sizes only, for calls that keep their result on
-   * every rank (not ncclReduce); unaligned buffers go through the staging buffer. */
+   * every rank and for ncclReduce alike: off the root its destination is 0 and the link op runs in place in the
+   * staging buffer (reduce_link); unaligned buffers go through the staging buffer. */
   if (body && e->shared.large_schedule != SCHEDULE_PIECES) {
     uint32_t schedule = effective_schedule(e, e->shared.large_schedule, nbytes, COLL_REDUCE);
     uint64_t link_bytes = 0;
