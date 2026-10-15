@@ -1929,6 +1929,9 @@ static ncclResult_t session_error(sccl_engine *e, char *message, size_t len);
  * timeouts and of Python's time.monotonic), which a stepped wall clock (a VM's time synchronization) does
  * not move; and what found the error. */
 static void fail_stop(sccl_engine *e, const char *found_by, const char *message) {
+  /* Before the process ends, the channels' progress thread posts its abort notices, so the peers' channels
+   * stop now instead of at their wait limits (bounded; see p2p_stop_with_notices). */
+  p2p_stop_with_notices(e, message);
   char line[1200];
   uint64_t now = realtime_ns(), mono = monotonic_ns();
   int n = snprintf(line, sizeof line,
