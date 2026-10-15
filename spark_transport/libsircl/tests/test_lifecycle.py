@@ -66,8 +66,8 @@ class LifecycleTests(unittest.TestCase):
             self.assertEqual(self.lib.ncclCommInitRank(C.byref(grouped), 1, second, 0), SUCCESS)
             self.assertEqual(self.lib.ncclCommRevoke(pending, 0), USAGE)
             self.assertEqual(self.lib.ncclCommFinalize(pending), USAGE)
-            self.assertNotEqual(self.lib.ncclGroupEnd(), PROGRESS)
-            self.assertNotEqual(self.asynchronous_error(grouped), PROGRESS)
+            self.assertEqual(self.lib.ncclGroupEnd(), SUCCESS)
+            self.assertEqual(self.asynchronous_error(grouped), SUCCESS)
         finally:
             self.lib.ncclCommAbort(pending)
             if grouped.value:
@@ -270,6 +270,27 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
         self.assertEqual(self.asynchronous_error(handle), USAGE)
         self.assertIn(b"exited before its ncclGroupEnd", self.lib.ncclGetLastError(handle))
         self.assertEqual(self.lib.ncclCommDestroy(handle), SUCCESS)
+
+    def test_calls_that_enqueue_nothing_leave_the_group_as_it_was(self):
+        """Inside a group, failed calls that enqueue nothing (a query of an unknown handle, a NULL output to
+        ncclGetUniqueId, an unsupported function, revoke flags) return their errors and leave the group's
+        initialization and result alone."""
+        value = self.uid()
+        handle = C.c_void_p()
+        count = C.c_int(-1)
+        self.lib.ncclCommShrink.argtypes = [C.c_void_p, C.c_void_p, C.c_int, C.POINTER(C.c_void_p), C.c_void_p,
+                                            C.c_int]
+        self.assertEqual(self.lib.ncclGroupStart(), SUCCESS)
+        self.assertEqual(self.lib.ncclCommInitRank(C.byref(handle), 1, value, 0), SUCCESS)
+        self.assertEqual(self.lib.ncclCommCount(C.c_void_p(16), C.byref(count)), ARGUMENT)
+        self.assertEqual(self.lib.ncclGetUniqueId(None), ARGUMENT)
+        self.assertEqual(self.lib.ncclCommShrink(handle, None, 0, None, None, 0), USAGE)
+        self.assertEqual(self.lib.ncclCommRevoke(handle, 1), ARGUMENT)
+        try:
+            self.assertEqual(self.lib.ncclGroupEnd(), SUCCESS)
+            self.assertEqual(self.asynchronous_error(handle), SUCCESS)
+        finally:
+            self.dispose_all([handle])
 
     def test_pending_group_handle_cannot_be_destroyed_from_another_thread(self):
         value = self.uid()

@@ -266,9 +266,9 @@ assert libc.mprotect(base+p,p,3)==0
         f = LIB.ncclCommGetUniqueId
         f.argtypes = [C.c_void_p, C.c_void_p]
         self.assertEqual(f(None, None), INVALID_USAGE)
-        self.assertEqual(LIB.ncclGroupEnd(), INVALID_USAGE)
-        self.assertEqual(LIB.ncclGroupStart(), SUCCESS)
+        # An unsupported function enqueues nothing, so its refusal leaves the group's result alone.
         self.assertEqual(LIB.ncclGroupEnd(), SUCCESS)
+        self.assertIn(b"unsupported", LIB.ncclGetLastError(None))
 
     def test_unsupported_surface_preserves_every_output(self):
         sentinel = C.create_string_buffer(b"Q" * 256)

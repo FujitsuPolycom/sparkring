@@ -107,20 +107,29 @@ static int debug_errors(void) {
   const char *debug = sccl_env("NCCL_DEBUG");
   return debug && (!strcasecmp(debug, "WARN") || !strcasecmp(debug, "INFO") || !strcasecmp(debug, "TRACE"));
 }
-/* ncclInProgress never becomes a group's result: ncclGroupEnd would record it as the terminal error of the
- * group's pending initializations, which would then read as in progress forever. */
+/* A failed call: its result and text for this thread. A call that enqueues nothing into the thread's group
+ * (a query, a registration, ncclGetUniqueId, a lifecycle call, an unsupported function) fails this way and
+ * leaves the group as it was. */
 static ncclResult_t fail(ncclResult_t result, const char *message) {
   snprintf(last_error, sizeof(last_error), "%s", message);
-  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) group_error = result;
   if (debug_errors()) fprintf(stderr, "libsircl: %s: %s\n", ncclGetErrorString(result), message);
   return result;
+}
+/* A failed call that belongs to the thread's group (a communicator creation, a collective or point-to-point
+ * call refused other than as an invalid argument, the group calls themselves): its result also becomes the
+ * group's, unless the group already has one. ncclInProgress never becomes a group's result: ncclGroupEnd
+ * would record it as the terminal error of the group's pending initializations, which would then read as in
+ * progress forever. */
+static ncclResult_t group_fail(ncclResult_t result, const char *message) {
+  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) group_error = result;
+  return fail(result, message);
 }
 /* A communicator that cannot be created (ncclCommInitRank*, ncclCommSplit): its reason goes to stderr
  * whatever NCCL_DEBUG says, once, because the frameworks that create communicators commonly report only
  * ncclGetErrorString, and the text ncclGetLastError keeps is otherwise lost with the process. */
 static ncclResult_t creation_failed(ncclResult_t result, const char *message) {
   int printed = debug_errors();
-  fail(result, message);
+  group_fail(result, message);
   if (!printed) fprintf(stderr, "libsircl: communicator creation failed (%s): %s\n", ncclGetErrorString(result),
                         message);
   return result;
@@ -129,7 +138,7 @@ static ncclResult_t creation_failed(ncclResult_t result, const char *message) {
  * leaves the calling thread's group as it was (the call did nothing, and the work queued before it still
  * runs at ncclGroupEnd); any other error also becomes the group's result. */
 static ncclResult_t refuse(ncclResult_t result, const char *message) {
-  if (result != ncclInvalidArgument) return fail(result, message);
+  if (result != ncclInvalidArgument) return group_fail(result, message);
   snprintf(last_error, sizeof(last_error), "%s", message);
   return result;
 }
@@ -246,7 +255,7 @@ static ncclResult_t start(struct ncclComm *comm) {
     atomic_store(&comm->state, FAILED);
     snprintf(comm->error_message, sizeof(comm->error_message), "cannot start bootstrap worker");
     atomic_store(&comm->error, ncclSystemError);
-    return fail(ncclSystemError, "cannot start bootstrap worker");
+    return group_fail(ncclSystemError, "cannot start bootstrap worker");
   }
   comm->worker_started = 1;
   return ncclSuccess;
@@ -578,7 +587,7 @@ ncclResult_t ncclRecv(void *recvbuff, size_t count, ncclDataType_t datatype, int
 
 ncclResult_t ncclGroupStart(void) {
   CHECK_PROCESS();
-  if (group_depth == 256) return fail(ncclInvalidUsage, "group nesting exceeds 256");
+  if (group_depth == 256) return group_fail(ncclInvalidUsage, "group nesting exceeds 256");
   if (group_depth++ == 0) { group_error = ncclSuccess; pending_count = 0; }
   group_thread_watch();
   return ncclSuccess;
@@ -621,10 +630,11 @@ ncclResult_t ncclGroupEnd(void) {
 }
 ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
   CHECK_PROCESS();
-  if (!out || ndev < 1 || ndev > 8) return fail(ncclInvalidArgument, "InitAll requires 1 to 8 output handles");
+  if (!out || ndev < 1 || ndev > 8)
+    return group_fail(ncclInvalidArgument, "InitAll requires 1 to 8 output handles");
   for (int i = 0; i < ndev; ++i) out[i] = NULL;
   for (int i = 0; i < ndev; ++i) if (devlist && devlist[i] < 0)
-    return fail(ncclInvalidArgument, "negative device number");
+    return group_fail(ncclInvalidArgument, "negative device number");
   const char *only = sccl_env("LIBSIRCL_BOOTSTRAP_ONLY");
   if (!only || strcmp(only, "1")) {
     int device = devlist ? devlist[0] : 0;
