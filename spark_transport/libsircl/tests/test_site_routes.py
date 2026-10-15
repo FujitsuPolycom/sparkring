@@ -162,6 +162,21 @@ class SiteRoutesP2PTests(unittest.TestCase):
                 self.assertEqual(process.returncode, 2)
                 self.assertIn("--session-share", process.stderr)
 
+    def test_relayed_lanes_are_printed_without_any_window(self):
+        """With --max-window 0 no forward or point-to-point window is printed, and every rank with a relayed
+        lane still gets LIBSIRCL_RELAYED_LANES, marking exactly the lanes SIRCL's routes send through relays."""
+        result = plan("--layout", "path:0-3", "--lanes", "2", "--max-window", "0")
+        group = self.routes.derive_routes(self.routes.Layout.parse("path:0-3"), 2)
+        for row in result["ranks"]:
+            rank, env = row["rank"], row["env"]
+            self.assertNotIn("LIBSIRCL_FORWARD_WINDOWS", env)
+            self.assertNotIn("LIBSIRCL_P2P_WINDOWS", env)
+            want = {peer: [1 if lane.relays else 0 for lane in group.lanes_to(rank, peer)]
+                    for peer in range(4) if peer != rank}
+            want = {peer: flags for peer, flags in want.items() if any(flags)}
+            self.assertTrue(want, rank)
+            self.assertEqual(windows(env.get("LIBSIRCL_RELAYED_LANES", "")), want, rank)
+
     def test_the_data_files_are_the_tools_output(self):
         for name, arguments in (("site_routes_ring8_l2.json", ("--layout", "ring:8")),
                                 ("site_routes_ring8_l2_p2p_alone.json", ("--layout", "ring:8", "--p2p-reserve", "none")),

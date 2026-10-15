@@ -9,8 +9,13 @@ SIRCL's point-to-point budget (``sparkring_sircl.p2p.budget``: ``LaneSet``, ``se
 ``allocate``) the window of every relayed lane of a point-to-point channel. This tool prints them as
 libsircl's environment, one line per rank (rank r of the layout runs at libsircl position r):
 
-  LIBSIRCL_POSITION=r SIRCL_PEER_ROUTES=... LIBSIRCL_CHAIN_ORDER=... LIBSIRCL_FORWARD_WINDOWS=...
-  LIBSIRCL_RING_WINDOW=... LIBSIRCL_P2P_WINDOWS=...
+  LIBSIRCL_POSITION=r SIRCL_PEER_ROUTES=... LIBSIRCL_CHAIN_ORDER=... LIBSIRCL_RELAYED_LANES=...
+  LIBSIRCL_FORWARD_WINDOWS=... LIBSIRCL_RING_WINDOW=... LIBSIRCL_P2P_WINDOWS=...
+
+LIBSIRCL_RELAYED_LANES appears on every rank with a lane that crosses relays: per peer position, 1 for each
+such lane and 0 for a cable. libsircl takes a lane's relay status from it, not from whether a window was
+printed, so a relayed lane without a forward window (``--max-window 0``) still counts as relayed: the
+point-to-point channels refuse it unwindowed, and the cycle plan does not run across it.
 
 LIBSIRCL_RING_WINDOW appears on every rank when the ring can run (no relay hairpin queue carries two of
 its lanes): the bytes each of the rank's lanes toward the next rank of the ring keeps unacknowledged
@@ -122,6 +127,11 @@ def main(argv: list[str] | None = None) -> int:
         }
         if order is not None:
             env["LIBSIRCL_CHAIN_ORDER"] = ",".join(str(r) for r in order)
+        relays = {peer: [1 if lane.relays else 0 for lane in group.lanes_to(rank, peer)]
+                  for peer in range(world) if peer != rank}
+        if any(any(flags) for flags in relays.values()):
+            env["LIBSIRCL_RELAYED_LANES"] = ",".join(f"{peer}={'/'.join(str(f) for f in flags)}"
+                                                     for peer, flags in relays.items() if any(flags))
         windows = [f"{peer}={'/'.join(str(w) for w in table[peer])}" for peer in range(world)
                    if peer != rank and any(table[peer])]
         if windows:

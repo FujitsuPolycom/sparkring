@@ -764,12 +764,52 @@ typedef struct {
   uint64_t relayed;
 } position_record;
 
-/* The positions LIBSIRCL_FORWARD_WINDOWS gives a nonzero window toward (reached through relays), as bits;
- * a malformed entry counts as none here (forward_windows() reports it). */
-static uint64_t relayed_positions(void) {
-  const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
-  uint64_t mask = 0;
+/* LIBSIRCL_RELAYED_LANES, "<position>=<0|1>[/<0|1>],...": 1 for every lane toward that position that crosses
+ * relays, whatever its windows. tools/site_routes.py prints it on every rank of a layout with relays, so a
+ * relayed lane is known as relayed even when no forward or point-to-point window is printed for it (for
+ * example with --max-window 0). Fills `flags` (position by lane); -1 with `err` on a malformed value. */
+static int relayed_lanes(uint8_t flags[MAX_POSITIONS][MAX_LANES], char *err, size_t len) {
+  memset(flags, 0, sizeof(uint8_t[MAX_POSITIONS][MAX_LANES]));
+  const char *text = sccl_env("LIBSIRCL_RELAYED_LANES");
   if (!text || !*text) return 0;
+  if (strlen(text) >= 1024) {
+    put_error(err, len, "LIBSIRCL_RELAYED_LANES is longer than 1023 characters");
+    return -1;
+  }
+  char copy[1024];
+  snprintf(copy, sizeof copy, "%s", text);
+  for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
+    char *equals = strchr(entry, '='), *end;
+    long position = equals ? strtol(entry, &end, 10) : -1;
+    if (!equals || end != equals || position < 0 || position >= MAX_POSITIONS) {
+      put_error(err, len, "LIBSIRCL_RELAYED_LANES entry '%s' is not <position 0-63>=<0|1>[/<0|1>]", entry);
+      return -1;
+    }
+    int lane = 0;
+    for (char *save2 = NULL, *value = strtok_r(equals + 1, "/", &save2); value;
+         value = strtok_r(NULL, "/", &save2), ++lane) {
+      if (lane >= MAX_LANES || (strcmp(value, "0") && strcmp(value, "1"))) {
+        put_error(err, len, "LIBSIRCL_RELAYED_LANES entry for position %ld needs 1 or 2 flags of 0 or 1", position);
+        return -1;
+      }
+      flags[position][lane] = value[0] == '1';
+    }
+  }
+  return 0;
+}
+
+/* The positions reached through relays, as bits: those LIBSIRCL_FORWARD_WINDOWS gives a nonzero window
+ * toward, and those LIBSIRCL_RELAYED_LANES marks. A malformed entry counts as none here (read_settings and
+ * forward_windows() report it). */
+static uint64_t relayed_positions(void) {
+  uint8_t flags[MAX_POSITIONS][MAX_LANES];
+  uint64_t mask = 0;
+  if (relayed_lanes(flags, NULL, 0) == 0)
+    for (int p = 0; p < MAX_POSITIONS; ++p)
+      for (int l = 0; l < MAX_LANES; ++l)
+        if (flags[p][l]) mask |= 1ull << p;
+  const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
+  if (!text || !*text) return mask;
   char copy[1024];
   snprintf(copy, sizeof copy, "%s", text);
   for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
@@ -782,9 +822,15 @@ static uint64_t relayed_positions(void) {
   return mask;
 }
 
-/* Whether LIBSIRCL_FORWARD_WINDOWS gives a nonzero window on some lane toward rank `peer` (the peer is
- * reached through relays). A malformed value counts as none here; forward_windows() reports it. */
+/* Whether rank `peer` is reached through relays: LIBSIRCL_RELAYED_LANES marks a lane toward it, or
+ * LIBSIRCL_FORWARD_WINDOWS gives a lane toward it a nonzero window. A malformed value counts as none here;
+ * read_settings and forward_windows() report it. */
 static int relayed_toward(const sccl_engine *e, int peer) {
+  uint8_t flags[MAX_POSITIONS][MAX_LANES];
+  int position = e->positions[peer];
+  if (relayed_lanes(flags, NULL, 0) == 0 && position >= 0 && position < MAX_POSITIONS)
+    for (int l = 0; l < MAX_LANES; ++l)
+      if (flags[position][l]) return 1;
   const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
   if (!text || !*text) return 0;
   char copy[1024];
@@ -922,6 +968,8 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   e->fail_stop = !stop || !*stop || !strcmp(stop, "0") ? 0 : !strcmp(stop, "1") ? FAIL_STOP_EXIT : FAIL_STOP_ABORT;
+  uint8_t relayed[MAX_POSITIONS][MAX_LANES];
+  if (relayed_lanes(relayed, err, len)) return -1;
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
   const char *one_pass = sccl_env("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH");
   if (v == 1 && (!one_pass || strcmp(one_pass, "1"))) {
@@ -1363,11 +1411,17 @@ static int p2p_windows(sccl_engine *e, char *err, size_t len) {
       }
     }
   }
+  /* A lane is relayed when it has a forward window or LIBSIRCL_RELAYED_LANES marks it; a relayed lane without
+   * a point-to-point window gives its pair no channel (SIRCL's budget refuses unwindowed relayed lanes). */
+  uint8_t relayed[MAX_POSITIONS][MAX_LANES];
+  if (relayed_lanes(relayed, err, len)) return -1;
   e->p2p_out = 0;
   for (int p = 0; p < e->world; ++p) {
-    int ok = p != e->rank;
+    int ok = p != e->rank, position = e->positions[p];
     for (int l = 0; ok && l < e->lanes; ++l)
-      if (e->forward[p][l] && !e->p2p_window[p][l]) ok = 0;
+      if ((e->forward[p][l] || (position >= 0 && position < MAX_POSITIONS && relayed[position][l])) &&
+          !e->p2p_window[p][l])
+        ok = 0;
     if (ok) e->p2p_out |= 1u << p;
   }
   return 0;

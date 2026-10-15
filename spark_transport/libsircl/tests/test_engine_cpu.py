@@ -186,6 +186,50 @@ if c.value: l.ncclCommAbort(c)
                 self.assertIn("rank 1 position", data["local"])
                 self.assertIn("0-63", data["local"])
 
+    def test_relayed_lanes_reach_the_setup_exchange(self):
+        """LIBSIRCL_RELAYED_LANES marks a peer position as relayed in the first setup exchange's record (which
+        the cycle plan reads) without any forward window; a malformed value fails creation naming it."""
+        script = '''import socket, struct, threading
+u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+server=socket.socket(); server.bind(("127.0.0.1", 0)); server.listen()
+u.b[16:18]=struct.pack("!H",server.getsockname()[1])
+records=[]
+def broker():
+    peer,_=server.accept(); peer.settimeout(3)
+    def read(n):
+        data=b""
+        while len(data)<n:
+            part=peer.recv(n-len(data))
+            assert part
+            data+=part
+        return data
+    read(136); peer.sendall(b"SCC1"+struct.pack("!I",0))
+    for number in range(2):
+        h=read(16); size=struct.unpack("!I",h[8:12])[0]; mine=read(size)
+        records.append(mine)
+        other=struct.pack("=iiQ",1,0,0) if number==0 else bytes(size)
+        body=struct.pack("!I",len(mine))+mine+struct.pack("!I",len(other))+other
+        peer.sendall(b"SCR1"+struct.pack("!III",number,2,len(body))+body)
+    peer.close()
+t=threading.Thread(target=broker); t.start()
+c=C.c_void_p(); result=l.ncclCommInitRank(C.byref(c),2,u,0)
+t.join(); server.close()
+print(json.dumps({"result":result,"relayed":struct.unpack("=iIQ", records[0])[2],
+                  "local":records[1][:400].split(bytes([0]))[0].decode()}))
+if c.value: l.ncclCommAbort(c)
+'''
+        base = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus", "NCCL_SOCKET_IFNAME": "lo",
+                "LIBSIRCL_SETUP_TIMEOUT_MS": "1000", "LD_LIBRARY_PATH": str(FAKE_DRIVER)}
+        out = run(script, {**base, "LIBSIRCL_RELAYED_LANES": "1=1/0,5=0/1"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout)["relayed"], (1 << 1) | (1 << 5))
+        # The verbs transport: its refusal comes after the settings, so the settings' own refusal is the first.
+        out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RELAYED_LANES": "1=2"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        self.assertNotEqual(data["result"], 0)
+        self.assertIn("LIBSIRCL_RELAYED_LANES", data["local"])
+
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
         self.assertEqual(out.returncode, 0, out.stderr)
