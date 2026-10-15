@@ -55,6 +55,37 @@ typedef struct {
 static _Thread_local queued_p2p *p2p_queue;
 static _Thread_local unsigned p2p_count, p2p_capacity;
 
+/* A thread that used group state gets a thread-exit hook (a pthread key's destructor): it frees the thread's
+ * point-to-point queue and fails the initializations still pending in the thread's open group, which no
+ * other thread may start or destroy, so their handles can be destroyed. The library destructor deletes the
+ * key, so no hook runs into an unloaded library. */
+static pthread_key_t group_key;
+static pthread_once_t group_key_once = PTHREAD_ONCE_INIT;
+static atomic_int group_key_ready;
+static void group_thread_exit(void *unused) {
+  (void)unused;
+  for (unsigned i = 0; i < pending_count; ++i) {
+    struct ncclComm *comm = pending[i];
+    snprintf(comm->error_message, sizeof(comm->error_message),
+             "the thread that initialized this communicator in a group exited before its ncclGroupEnd");
+    atomic_store(&comm->state, FAILED);
+    atomic_store(&comm->error, ncclInvalidUsage);
+    atomic_store(&comm->grouped, 0);
+  }
+  pending_count = 0;
+  group_depth = 0;
+  free(p2p_queue);
+  p2p_queue = NULL;
+  p2p_count = p2p_capacity = 0;
+}
+static void group_key_create(void) {
+  if (!pthread_key_create(&group_key, group_thread_exit)) atomic_store(&group_key_ready, 1);
+}
+static void group_thread_watch(void) {
+  pthread_once(&group_key_once, group_key_create);
+  if (atomic_load(&group_key_ready) && !pthread_getspecific(group_key)) pthread_setspecific(group_key, &group_key);
+}
+
 /* Make `result` the communicator's terminal error with `message` as its text, unless it already has one;
  * 1 when this call set it. The text is written under the error lock, and readers copy it under the same
  * lock (read_error). */
@@ -549,6 +580,7 @@ ncclResult_t ncclGroupStart(void) {
   CHECK_PROCESS();
   if (group_depth == 256) return fail(ncclInvalidUsage, "group nesting exceeds 256");
   if (group_depth++ == 0) { group_error = ncclSuccess; pending_count = 0; }
+  group_thread_watch();
   return ncclSuccess;
 }
 ncclResult_t ncclGroupEnd(void) {
@@ -1054,6 +1086,7 @@ static int referenced(const struct ncclComm *list) {
 }
 __attribute__((destructor)) static void shutdown_communicators(void) {
   if (!sccl_bootstrap_process_valid()) return;
+  if (atomic_exchange(&group_key_ready, 0)) pthread_key_delete(group_key);
   sccl_engine_fail_stop_shutdown();
   pthread_mutex_lock(&registry_lock);
   struct ncclComm *comm = registry;

@@ -252,6 +252,25 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
         finally:
             self.dispose_all([handle])
 
+    def test_thread_exiting_inside_a_group_releases_its_pending_handles(self):
+        """A thread opens a group, initializes a communicator in it and exits without ncclGroupEnd: the
+        handle fails with ncclInvalidUsage, naming the reason, and another thread can destroy it."""
+        value = self.uid()
+        handle = C.c_void_p()
+        codes = []
+
+        def grouped():
+            codes.append(self.lib.ncclGroupStart())
+            codes.append(self.lib.ncclCommInitRank(C.byref(handle), 1, value, 0))
+        thread = threading.Thread(target=grouped)
+        thread.start()
+        thread.join(timeout=5)
+        self.assertEqual(codes, [SUCCESS, SUCCESS])
+        self.assertTrue(handle.value)
+        self.assertEqual(self.asynchronous_error(handle), USAGE)
+        self.assertIn(b"exited before its ncclGroupEnd", self.lib.ncclGetLastError(handle))
+        self.assertEqual(self.lib.ncclCommDestroy(handle), SUCCESS)
+
     def test_pending_group_handle_cannot_be_destroyed_from_another_thread(self):
         value = self.uid()
         handle = C.c_void_p()
