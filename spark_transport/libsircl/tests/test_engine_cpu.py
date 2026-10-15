@@ -40,6 +40,18 @@ def run(script, env=None):
 
 
 class EngineCpuTests(unittest.TestCase):
+    def test_initall_refuses_distinct_cuda_devices(self):
+        for devices in ("None", "(C.c_int*2)(0,1)"):
+            out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "
+                      "print(json.dumps([r,list(c),l.ncclGetLastError(None).decode()]))",
+                      {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus",
+                       "FAKE_CUDA_DEVICES": "2", "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+            self.assertEqual(out.returncode, 0, out.stderr)
+            result, handles, message = json.loads(out.stdout)
+            self.assertEqual(result, 5)
+            self.assertEqual(handles, [None, None])
+            self.assertIn("distinct devices", message)
+
     def test_setup_refuses_out_of_range_peer_positions(self):
         for position in (-1, 64, 2147483647):
             with self.subTest(position=position):

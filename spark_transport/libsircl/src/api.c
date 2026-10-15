@@ -561,6 +561,21 @@ ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
   for (int i = 0; i < ndev; ++i) out[i] = NULL;
   for (int i = 0; i < ndev; ++i) if (devlist && devlist[i] < 0)
     return fail(ncclInvalidArgument, "negative device number");
+  const char *only = sccl_env("LIBSIRCL_BOOTSTRAP_ONLY");
+  if (!only || strcmp(only, "1")) {
+    int device = devlist ? devlist[0] : 0;
+    for (int i = 1; i < ndev; ++i)
+      if ((devlist ? devlist[i] : i) != device)
+        return creation_failed(ncclInvalidUsage, "InitAll with distinct devices is unsupported; initialize each rank on its device");
+    char why[512];
+    sccl_CUcontext ctx = sccl_engine_current_context();
+    if (!ctx) ctx = sccl_engine_device_context(why, sizeof why);
+    if (!ctx) return creation_failed(ncclInvalidUsage, why);
+    const sccl_cuda *driver = sccl_cuda_get();
+    sccl_CUdevice current = -1;
+    if (!driver || driver->CtxGetDevice(&current) != SCCL_CUDA_SUCCESS || current != device)
+      return creation_failed(ncclInvalidUsage, "InitAll requires the requested device's context to be current");
+  }
   ncclUniqueId id;
   ncclResult_t result = ncclGetUniqueId(&id);
   if (result != ncclSuccess) return result;
