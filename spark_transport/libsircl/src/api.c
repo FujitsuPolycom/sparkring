@@ -228,6 +228,14 @@ const char *ncclGetLastError(ncclComm_t handle) {
   struct ncclComm *comm = acquire(handle);
   if (comm) {
     int error = atomic_load(&comm->error);
+    if (error == ncclSuccess && comm->engine) {
+      /* As ncclCommGetAsyncError: an asynchronous failure the engine found and the communicator has not yet
+       * recorded becomes its terminal error, with its description. */
+      char message[512];
+      ncclResult_t failure = sccl_engine_async_error(comm->engine, message, sizeof message);
+      if (failure != ncclSuccess && publish_error(comm, failure, message)) atomic_store(&comm->state, FAILED);
+      error = atomic_load(&comm->error);
+    }
     if (error != ncclSuccess && error != ncclInProgress) read_error(comm, last_error, sizeof(last_error));
     release(comm);
   }
