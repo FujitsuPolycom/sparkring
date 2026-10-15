@@ -2347,21 +2347,30 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       break;
     }
     e->kp_held = 1;
+    /* Every entry the engine launches, looked up once; a lookup that fails refuses setup here, naming the
+     * entry, instead of leaving a NULL function for the first launch. */
+    int missing = 0;
     for (int a = 0; a < SCCL_ALG_COUNT; ++a)
-      for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_function(ctx, a, d, nranks, &e->fn[a][d]);
+      for (int d = 0; d < SCCL_DT_COUNT; ++d) missing |= sccl_kp_function(ctx, a, d, nranks, &e->fn[a][d]);
     for (int k = SCCL_K_SCATTER; k < SCCL_K_COUNT; ++k)
-      for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_function(ctx, k, d, nranks, &e->fn[k][d]);
+      for (int d = 0; d < SCCL_DT_COUNT; ++d) missing |= sccl_kp_function(ctx, k, d, nranks, &e->fn[k][d]);
     for (int d = 0; d < SCCL_FOLD_DTYPES; ++d)
-      for (int o = 0; o < SCCL_FOLD_OPS; ++o) sccl_kp_fold_function(ctx, d, o, &e->fold[d][o]);
-    for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_chain_function(ctx, d, (int)e->shared.chain_unroll, &e->chain_fn[d]);
+      for (int o = 0; o < SCCL_FOLD_OPS; ++o) missing |= sccl_kp_fold_function(ctx, d, o, &e->fold[d][o]);
+    for (int d = 0; d < SCCL_DT_COUNT; ++d)
+      missing |= sccl_kp_chain_function(ctx, d, (int)e->shared.chain_unroll, &e->chain_fn[d]);
     for (int k = 0; k < SCCL_LINK_KINDS; ++k)
       for (int d = 0; d < SCCL_DT_COUNT; ++d)
-        sccl_kp_link_function(ctx, k, d, (int)e->shared.link_unroll, &e->link_fn[k][d]);
+        missing |= sccl_kp_link_function(ctx, k, d, (int)e->shared.link_unroll, &e->link_fn[k][d]);
     for (int d = 0; e->ring_reduce_passes == 2 && d < SCCL_DT_COUNT; ++d)
-      sccl_kp_ring_reduce_two_pass_function(ctx, d, (int)e->shared.link_unroll, &e->link_fn[SCCL_RING_REDUCE][d]);
-    sccl_kp_ring_exchange_function(ctx, (int)e->shared.link_unroll, &e->exchange_fn);
+      missing |= sccl_kp_ring_reduce_two_pass_function(ctx, d, (int)e->shared.link_unroll,
+                                                       &e->link_fn[SCCL_RING_REDUCE][d]);
+    missing |= sccl_kp_ring_exchange_function(ctx, (int)e->shared.link_unroll, &e->exchange_fn);
     for (int d = 0; d < SCCL_DT_COUNT; ++d)
-      sccl_kp_ring_exchange_reduce_function(ctx, d, (int)e->shared.link_unroll, &e->exchange_reduce_fn[d]);
+      missing |= sccl_kp_ring_exchange_reduce_function(ctx, d, (int)e->shared.link_unroll, &e->exchange_reduce_fn[d]);
+    if (missing) {
+      put_error(local, sizeof local, "kernel pack lookup: %s", sccl_kp_error());
+      break;
+    }
     if (allocate(e, local, sizeof local)) break;
     e->ctrl[CTRL_WAIT_LIMIT_US] = e->serving ? e->shared.serving_wait_us : e->shared.startup_wait_us;
     const char *names[MAX_DEVICES];
