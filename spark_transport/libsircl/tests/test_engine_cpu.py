@@ -275,6 +275,33 @@ print(json.dumps([open(target).read(), os.path.islink(receipt + ".partial"), os.
             self.assertTrue(written)
             self.assertEqual(leftovers, [])
 
+    def test_settings_are_parsed_strictly(self):
+        """Settings that were taken loosely are refused, naming the variable: a signed integer, a traffic class
+        that is not 0-255, a receipt interval that is not a number, and a list variable longer than the
+        1,024-byte buffer it is parsed from."""
+        script = '''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
+print(json.dumps([r, l.ncclGetLastError(None).decode()]))
+if c.value: l.ncclCommDestroy(c)
+'''
+        base = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs", "LD_LIBRARY_PATH": str(FAKE_DRIVER)}
+        cases = [({"LIBSIRCL_LANE_CHECK_MS": "+5000"}, "LIBSIRCL_LANE_CHECK_MS=+5000 must be an integer"),
+                 ({"SIRCL_ONESHOT_MAX_BYTES": " 4096"}, "SIRCL_ONESHOT_MAX_BYTES= 4096 must be an integer"),
+                 ({"SIRCL_TRAFFIC_CLASS": "abc"}, "SIRCL_TRAFFIC_CLASS=abc must be an integer from 0 to 255"),
+                 ({"NCCL_IB_TC": "300"}, "NCCL_IB_TC=300 must be an integer from 0 to 255"),
+                 ({"LIBSIRCL_RECEIPT_INTERVAL_S": "soon"}, "LIBSIRCL_RECEIPT_INTERVAL_S=soon must be a number"),
+                 ({"LIBSIRCL_FORWARD_WINDOWS": ",".join(["1=32768/32768"] * 80)},
+                  "LIBSIRCL_FORWARD_WINDOWS is longer than 1023 characters")]
+        for extra, text in cases:
+            with self.subTest(**{k: v[:20] for k, v in extra.items()}):
+                out = run(script, {**base, **extra})
+                self.assertEqual(out.returncode, 0, out.stderr)
+                result, message = json.loads(out.stdout)
+                self.assertNotEqual(result, 0)
+                self.assertIn(text, message)
+        out = run(script, {**base, "SIRCL_TRAFFIC_CLASS": "106", "LIBSIRCL_RECEIPT_INTERVAL_S": "2.5"})
+        self.assertEqual(json.loads(out.stdout)[0], 0, out.stdout)
+
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
         self.assertEqual(out.returncode, 0, out.stderr)

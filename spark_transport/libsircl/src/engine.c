@@ -446,6 +446,7 @@ struct sccl_engine {
    * when it had stopped (CLOCK_REALTIME nanoseconds). */
   int stopped, closing;
   int lane_check_ms;  /* LIBSIRCL_LANE_CHECK_MS: the lane check's bound */
+  int traffic_class;  /* SIRCL_TRAFFIC_CLASS or NCCL_IB_TC */
   int kp_held;  /* this engine holds a reference on its context's kernel-pack entry (sccl_kp_load) */
   uint64_t stop_ns, stopped_ns;
   int have_last;
@@ -587,8 +588,9 @@ static int env_u64(const char *name, uint64_t fallback, uint64_t lo, uint64_t hi
   }
   char *end;
   errno = 0;
-  unsigned long long value = strtoull(text, &end, 10);
-  if (errno || *end || value < lo || value > hi) {
+  /* Digits only: strtoull would also take a sign ("-1" wraps to a huge value) and leading spaces. */
+  unsigned long long value = text[0] >= '0' && text[0] <= '9' ? strtoull(text, &end, 10) : (end = (char *)text, 0);
+  if (errno || *end || end == text || value < lo || value > hi) {
     put_error(err, len, "%s=%s must be an integer from %" PRIu64 " to %" PRIu64, name, text, lo, hi);
     return -1;
   }
@@ -905,6 +907,7 @@ static int p2p_settings(sccl_engine *e, shared_settings *s, char *err, size_t le
   return 0;
 }
 
+static int traffic_class(int *out, char *err, size_t len);
 static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   shared_settings *s = &e->shared;
   uint64_t v;
@@ -989,6 +992,29 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   /* Read with the other settings, so that a bad value fails the first verdict on every rank. */
   if (env_u64("LIBSIRCL_LANE_CHECK_MS", 10000, 1, 600000, &v, err, len)) return -1;
   e->lane_check_ms = (int)v;
+  if (traffic_class(&e->traffic_class, err, len)) return -1;
+  /* The list variables are parsed from 1,024-byte copies: a longer value is refused, not cut. */
+  static const char *const lists[] = {"SIRCL_PEER_ROUTES", "LIBSIRCL_FORWARD_WINDOWS", "LIBSIRCL_P2P_WINDOWS",
+                                      "LIBSIRCL_RELAYED_LANES", "LIBSIRCL_CHAIN_ORDER", "SIRCL_GID_INDEX",
+                                      "SIRCL_PROGRESS_CPU", "LIBSIRCL_LINK_BLOCKS_CYCLE"};
+  for (size_t i = 0; i < sizeof lists / sizeof lists[0]; ++i) {
+    const char *text = sccl_env(lists[i]);
+    if (text && strlen(text) >= 1024) {
+      put_error(err, len, "%s is longer than 1023 characters", lists[i]);
+      return -1;
+    }
+  }
+  const char *interval = sccl_env("LIBSIRCL_RECEIPT_INTERVAL_S");
+  double seconds = 10.0;
+  if (interval && *interval) {
+    char *end;
+    seconds = strtod(interval, &end);
+    if (*end || !(seconds >= 0 && seconds <= 86400)) {
+      put_error(err, len, "LIBSIRCL_RECEIPT_INTERVAL_S=%s must be a number of seconds from 0 to 86400", interval);
+      return -1;
+    }
+  }
+  e->receipt_interval_ns = (uint64_t)(seconds * 1e9);
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
   const char *one_pass = sccl_env("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH");
   if (v == 1 && (!one_pass || strcmp(one_pass, "1"))) {
@@ -1349,8 +1375,13 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
          value = strtok_r(NULL, "/", &save2), ++lane) {
       char *stop;
       unsigned long bytes = strtoul(value, &stop, 10);
-      if (*stop || lane >= MAX_LANES || bytes > 0xFFFFFFFFul) {
-        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS entry '%s' needs 1 or 2 byte counts", entry);
+      if (*stop || !*value || bytes > 0xFFFFFFFFul) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: '%s' toward position %ld is not a byte count", value, position);
+        return -1;
+      }
+      if (lane >= MAX_LANES) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: the entry for position %ld has more than %d lanes", position,
+                  MAX_LANES);
         return -1;
       }
       if (bytes && (bytes < chunk || bytes / chunk > FORWARD_MAX_CHUNKS)) {
@@ -1428,8 +1459,13 @@ static int p2p_windows(sccl_engine *e, char *err, size_t len) {
            value = strtok_r(NULL, "/", &save2), ++lane) {
         char *stop;
         unsigned long bytes = strtoul(value, &stop, 10);
-        if (*stop || lane >= MAX_LANES || bytes > 0xFFFFFFFFul) {
-          put_error(err, len, "LIBSIRCL_P2P_WINDOWS entry for position %ld needs 1 or 2 byte counts", position);
+        if (*stop || !*value || bytes > 0xFFFFFFFFul) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS: '%s' toward position %ld is not a byte count", value, position);
+          return -1;
+        }
+        if (lane >= MAX_LANES) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS: the entry for position %ld has more than %d lanes", position,
+                    MAX_LANES);
           return -1;
         }
         if (bytes && (bytes % PACK || bytes < chunk || bytes / chunk > P2P_MAX_WINDOW_CHUNKS)) {
@@ -1619,13 +1655,18 @@ static int gid_indices(route_table *t, char *err, size_t len) {
   return 0;
 }
 
-static int traffic_class(void) {
+/* The IB traffic class of the queue pairs: SIRCL_TRAFFIC_CLASS, else NCCL_IB_TC, else 0; a value that is not
+ * an integer from 0 to 255 is refused, naming the variable. */
+static int traffic_class(int *out, char *err, size_t len) {
   const char *names[] = {"SIRCL_TRAFFIC_CLASS", "NCCL_IB_TC"};
+  *out = 0;
   for (int i = 0; i < 2; ++i) {
     const char *text = sccl_env(names[i]);
     if (text && *text) {
-      long value = strtol(text, NULL, 10);
-      return value >= 0 && value <= 255 ? (int)value : 0;
+      uint64_t value;
+      if (env_u64(names[i], 0, 0, 255, &value, err, len)) return -1;
+      *out = (int)value;
+      return 0;
     }
   }
   return 0;
@@ -1918,7 +1959,7 @@ static int p2p_open(sccl_engine *e, const route_table *routes, char *err, size_t
   }
   char native[512] = {0};
   e->p2p = e->p2p_transport->create(e->world, e->rank, names, routes->n_devices, lane_devices, e->lanes,
-                                    routes->gid_index, traffic_class(), channels, e->p2p_host, e->p2p_bytes,
+                                    routes->gid_index, e->traffic_class, channels, e->p2p_host, e->p2p_bytes,
                                     (int)s->p2p_slots, s->p2p_slot_bytes, native, sizeof native);
   if (!e->p2p) {
     put_error(err, len, "point-to-point native setup: %s", native);
@@ -2330,7 +2371,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       for (int l = 0; l < routes.lanes; ++l) lane_devices[p * routes.lanes + l] = routes.lane_device[p][l];
     char proxy_error[512] = {0};
     e->proxy = e->transport->create(nranks, rank, names, routes.n_devices, lane_devices, routes.lanes,
-                                    routes.gid_index, traffic_class(), e->host, e->region_bytes,
+                                    routes.gid_index, e->traffic_class, e->host, e->region_bytes,
                                     e->shared.slot_bytes, proxy_error, sizeof proxy_error);
     if (!e->proxy) {
       put_error(local, sizeof local, "native setup: %s", proxy_error);
@@ -2393,7 +2434,9 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       const char *why = records[r].error[0] ? records[r].error : NULL;
       const char *field = why || any_error ? NULL : settings_difference(&records[r].settings, &records[0].settings);
       if (!why && !field) continue;
-      used += (size_t)snprintf(text + used, used < sizeof text ? sizeof text - used : 0, "%srank %d: %s%s",
+      /* A peer's error field is a fixed 400-byte array from the wire: printed at most 399 bytes, so a
+       * record without a terminating zero is never read past its end. */
+      used += (size_t)snprintf(text + used, used < sizeof text ? sizeof text - used : 0, "%srank %d: %.399s%s",
                                used ? "; " : "", r, why ? why : field, why ? "" : " differs from rank 0");
       if (used >= sizeof text) used = sizeof text - 1;
     }
@@ -4617,9 +4660,7 @@ static void start_receipts(sccl_engine *e) {
   e->receipt_id = atomic_fetch_add(&communicators, 1) + 1;
   const char *prefix = sccl_env("LIBSIRCL_RECEIPT");
   if (!prefix || !*prefix) return;
-  const char *text = sccl_env("LIBSIRCL_RECEIPT_INTERVAL_S");
-  double seconds = text && *text ? strtod(text, NULL) : 10.0;
-  e->receipt_interval_ns = seconds > 0 ? (uint64_t)(seconds * 1e9) : 0;
+  /* e->receipt_interval_ns: LIBSIRCL_RECEIPT_INTERVAL_S, validated by read_settings (0: no refresh). */
   e->receipt_next_ns = monotonic_ns() + e->receipt_interval_ns;
   write_receipt(e);
 }
