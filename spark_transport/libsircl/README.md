@@ -169,7 +169,7 @@ wait for every rank. This rank's enqueued work completes; a first bootstrap roun
 completed, so every item and flag any kernel waits for has landed (a kernel completes once it has its
 inbound items, while its progress thread may still owe a forward or a last item to a peer); the progress
 thread then stops, and a second round proves that every rank's progress thread stopped before any queue
-pair, registration or arena is freed. Each round is bounded by the session's wait limit; a rank that does
+pair, registration or arena is freed. Each round is bounded by the session's wait limit plus 5 s; a rank that does
 not arrive in time makes the call return `ncclRemoteError` after the local teardown. The first round
 also carries each rank's health: a rank whose own work failed (a flag wait that timed out, a failed progress
 thread, an earlier asynchronous error) returns that error, and every other rank returns `ncclRemoteError`

@@ -965,7 +965,7 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
  * rank's work completed, so every item and flag any rank's kernels wait for has landed; this rank's progress
  * thread stops and posts nothing more; round 2 proves every progress thread stopped, so nothing is posted
  * toward this rank's queue pairs or regions any more and destroy may free them. Each round is bounded by the
- * session's wait limit. The close is terminal: from its start the communicator refuses new work, and its
+ * session's wait limit plus 5 s. The close is terminal: from its start the communicator refuses new work, and its
  * result (this rank's own error first, else ncclRemoteError naming the first rank that reported one, or a
  * round that not every rank reached) is kept, becomes the communicator's error when it failed, and is what a
  * repeated ncclCommFinalize or the destroy returns. */
@@ -994,7 +994,11 @@ static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call) {
     snprintf(message, sizeof message, "%s: waiting for this rank's enqueued work failed", call);
   }
   if (result == ncclSuccess) result = sccl_engine_async_error(comm->engine, message, sizeof message);
-  int limit_ms = sccl_engine_wait_limit_ms(comm->engine), arrived = 0;
+  /* The wait limit plus TEARDOWN_SLACK_MS: a rank whose own work ended at its wait limit (a timed-out flag
+   * wait) reaches the round just after its peers began waiting, not before. */
+  enum { TEARDOWN_SLACK_MS = 5000 };
+  int wait_ms = sccl_engine_wait_limit_ms(comm->engine), arrived = 0;
+  int limit_ms = wait_ms > INT_MAX - TEARDOWN_SLACK_MS ? INT_MAX : wait_ms + TEARDOWN_SLACK_MS;
   for (int round = 1; round <= 2; ++round) {
     if (round == 2) sccl_engine_teardown_stop(comm->engine);
     if (round == 2 && !arrived) break;
@@ -1020,7 +1024,7 @@ static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call) {
       if (result == ncclSuccess) {
         result = ncclRemoteError;
         snprintf(message, sizeof message, "%s: teardown round %d: not every rank arrived within the wait limit "
-                 "(%d ms): %s", call, round, limit_ms, sccl_bootstrap_error());
+                 "plus 5 s (%d ms): %s", call, round, limit_ms, sccl_bootstrap_error());
       }
       if (round == 1) sccl_engine_teardown_stop(comm->engine);
       break;
