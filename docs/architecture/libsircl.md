@@ -224,6 +224,13 @@ refuses a library without the mode. The layer records `fail_stop` in the lock
 when the library's bytes name `LIBSIRCL_FAIL_STOP`; the stock-image preflight
 reads the same mark from the host library.
 
+The lane sets no wait variable, so every communicator runs in the startup
+wait regime with libsircl's default limit of 600 s (`SIRCL_STARTUP_WAIT_S`)
+for its whole life: nothing switches it to the serving regime
+(`sirclSetWaitRegime`). A rank whose peer died learns of it only when one of
+its waits reaches that limit, 600 s after the wait began; fail-stop then ends
+the process.
+
 ### Container settings
 
 Each rank's container gets the profile's settings with these changes
