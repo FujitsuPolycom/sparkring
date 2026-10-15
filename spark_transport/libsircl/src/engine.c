@@ -1739,6 +1739,24 @@ static int p2p_close(sccl_engine *e, int free_memory) {
   return 0;
 }
 
+/* Stop the point-to-point channels so that every peer learns of it: poison the control line, so this rank's
+ * channel kernels return and its progress thread takes its failure path, which writes an abort notice into
+ * every peer's abort word (SIRCL's post_aborts); wait up to P2P_NOTICE_WAIT_NS for the thread to report the
+ * failure, then stop it, which joins it after the notices were posted. A thread that has not reported by
+ * then is stopped without notices; peers then fall back to their own wait limits. Not after the progress
+ * thread was stopped (teardown_stop), when no thread is left to post. */
+enum { P2P_NOTICE_WAIT_NS = 50000000 };
+static void p2p_fault(sccl_engine *e, const char *why);
+static uint64_t monotonic_ns(void);
+static void p2p_stop_with_notices(sccl_engine *e, const char *why) {
+  if (!e->p2p || !e->p2p_ctrl || e->stopped) return;
+  p2p_fault(e, why);
+  uint64_t until = monotonic_ns() + P2P_NOTICE_WAIT_NS;
+  const struct timespec pause = {0, 100000};
+  while (!e->p2p_transport->failed(e->p2p) && monotonic_ns() < until) nanosleep(&pause, NULL);
+  e->p2p_transport->stop(e->p2p);
+}
+
 /* After the first setup exchange gave every rank's p2p_out: ranks a and b have a channel when each one's lanes
  * toward the other can carry items, so every rank derives the same table. A rank without a channel still
  * opens a context (every rank's connection record is validated together); when no pair of the group has one,
@@ -4584,6 +4602,10 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
     result = ncclUnhandledCudaError;
     put_error(err, len, "waiting for the communicator's context failed; its arena stays allocated");
   }
+  /* Abort stops the channels first: their kernels return once they see the poison word, and every peer gets
+   * the abort notice instead of waiting out its wait limit. A channel kernel still running at the idle check
+   * below keeps the arena allocated (quarantined). */
+  if (abort) p2p_stop_with_notices(e, "ncclCommAbort");
   if (pushed && abort) {
     if (e->have_last) idle = cu->StreamQuery(e->last_stream) == SCCL_CUDA_SUCCESS;
     for (int d = 0; d < 2; ++d)
