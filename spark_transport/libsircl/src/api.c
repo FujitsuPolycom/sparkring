@@ -1053,6 +1053,8 @@ ncclResult_t ncclCommRevoke(ncclComm_t comm, int flags) {
 }
 static ncclResult_t dispose(ncclComm_t handle, int abort) {
   CHECK_PROCESS();
+  /* NVIDIA NCCL 2.32.3's ncclCommDestroy and ncclCommAbort return ncclSuccess for a NULL communicator. */
+  if (!handle) return ncclSuccess;
   /* Group-owned pending handles cannot be removed before GroupEnd consumes them. */
   for (unsigned i = 0; i < pending_count; ++i) if (pending[i] == handle)
     return fail(ncclInvalidUsage, "communicator initialization is pending in a group");

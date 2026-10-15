@@ -244,7 +244,11 @@ assert libc.mprotect(base+p,p,3)==0
         self.assertEqual(LIB.ncclCommFinalize(handle), INVALID_USAGE)
         self.assertEqual(LIB.ncclCommAbort(handle), SUCCESS)
         self.assertEqual(LIB.ncclCommAbort(handle), INVALID_ARGUMENT)
-        self.assertEqual(LIB.ncclCommAbort(None), INVALID_ARGUMENT)
+        # NULL is a no-op for destroy and abort, as in NVIDIA NCCL 2.32.3; finalize refuses it.
+        for prefix in ("", "p"):
+            self.assertEqual(getattr(LIB, prefix + "ncclCommAbort")(None), SUCCESS)
+            self.assertEqual(getattr(LIB, prefix + "ncclCommDestroy")(None), SUCCESS)
+            self.assertEqual(getattr(LIB, prefix + "ncclCommFinalize")(None), INVALID_ARGUMENT)
 
     def test_thread_local_nested_group_and_error(self):
         barrier = threading.Barrier(2)
