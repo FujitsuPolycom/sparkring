@@ -726,8 +726,11 @@ static ncclResult_t query(ncclComm_t handle, int *out, int field) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
   if (result == ncclSuccess) *out = field == 0 ? comm->nranks : field == 1 ? comm->rank : comm->device;
+  /* A failed communicator's result comes with its text, so ncclGetLastError(NULL) says why. */
+  char text[sizeof comm->error_message] = {0};
+  if (result != ncclSuccess && result != ncclInProgress) read_error(comm, text, sizeof text);
   release(comm);
-  return result;
+  return text[0] ? fail(result, text) : result;
 }
 ncclResult_t ncclCommCount(ncclComm_t comm, int *out) { return query(comm, out, 0); }
 

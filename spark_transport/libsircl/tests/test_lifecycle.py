@@ -419,6 +419,11 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
             self.assertTrue(handle.value)
             self.assertEqual(self.asynchronous_error(handle), TIMEOUT)
             self.assertIn(b"timed out", self.lib.ncclGetLastError(handle))
+            # A query of the failed handle returns its result with its text for this thread.
+            self.assertEqual(self.lib.ncclGetVersion(None), ARGUMENT)
+            count = C.c_int(-1)
+            self.assertEqual(self.lib.ncclCommCount(handle, C.byref(count)), TIMEOUT)
+            self.assertIn(b"timed out", self.lib.ncclGetLastError(None))
         finally:
             self.dispose_all([handle])
 
