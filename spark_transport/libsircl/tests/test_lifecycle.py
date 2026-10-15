@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import ctypes as C
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -49,6 +50,47 @@ class LifecycleTests(unittest.TestCase):
             for handle in handles:
                 if handle:
                     self.lib.ncclCommAbort(handle)
+
+    def test_split_leader_failure_fails_every_member_at_once(self):
+        """The split leader cannot create the new unique id (the process holds all 64 bootstrap roots). It still
+        takes part in the unique-id round with a failure record, so both ranks return its result at once
+        instead of the member waiting out LIBSIRCL_SETUP_TIMEOUT_MS, and the parent's bootstrap stays usable."""
+        script = r'''
+import concurrent.futures, ctypes as C, json, os, sys, time
+sys.path.insert(0, sys.argv[2]); import test_api as api
+api.LIBRARY=api.Path(sys.argv[1]); api.initialize_library()
+os.environ.update(LIBSIRCL_BOOTSTRAP_ONLY="1", LIBSIRCL_SETUP_TIMEOUT_MS="5000", SIRCL_BOOTSTRAP_TIMEOUT_MS="30000")
+handles=(C.c_void_p*2)(); assert api.LIB.ncclCommInitAll(handles,2,None)==0
+held=[]
+while True:
+    u=api.UniqueId()
+    if api.LIB.ncclGetUniqueId(C.byref(u))!=0: break
+    held.append(u)
+children=[C.c_void_p(), C.c_void_p()]
+def split(r):
+    code=api.LIB.ncclCommSplit(handles[r],0,r,C.byref(children[r]),None)
+    return code, api.LIB.ncclGetLastError(None).decode()
+start=time.monotonic()
+with concurrent.futures.ThreadPoolExecutor(2) as pool:
+    results=list(pool.map(split, range(2)))
+elapsed=time.monotonic()-start
+none=[C.c_void_p(), C.c_void_p()]
+with concurrent.futures.ThreadPoolExecutor(2) as pool:
+    again=list(pool.map(lambda r: api.LIB.ncclCommSplit(handles[r],-1,0,C.byref(none[r]),None), range(2)))
+print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children":[c.value for c in children],
+                  "again":again}))
+'''
+        out = subprocess.run([sys.executable, "-c", script, str(LIBRARY), str(Path(__file__).parent)],
+                             capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        self.assertEqual(data["held"], 63)
+        self.assertEqual([code for code, _ in data["results"]], [USAGE, USAGE], data)
+        self.assertIn("64 active bootstrap IDs", data["results"][0][1])
+        self.assertIn("split leader (parent rank 0)", data["results"][1][1])
+        self.assertLess(data["elapsed"], 2)
+        self.assertEqual(data["children"], [None, None])
+        self.assertEqual(data["again"], [SUCCESS, SUCCESS])
 
     def test_split_refuses_short_records_in_both_rounds(self):
         for short_round in (0, 1):

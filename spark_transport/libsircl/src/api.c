@@ -385,13 +385,21 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   for (int i = 0; i < count; ++i)
     if (members[i] == parent->rank) rank = i;
   free(all);
+  /* Every rank takes part in round 2, including a leader whose unique id could not be created: it sends a
+   * failure record instead (no id magic; bytes 8-11 its result, big-endian), so its members fail with the
+   * same result at once and every rank's bootstrap stays in step. */
   ncclUniqueId id;
   memset(&id, 0, sizeof id);
   ncclResult_t result = ncclSuccess;
-  if (rank == 0) result = ncclGetUniqueId(&id);
-  if (result != ncclSuccess) {
-    release(parent);
-    return result;
+  char reason[512] = {0};
+  if (rank == 0) {
+    result = ncclGetUniqueId(&id);
+    if (result != ncclSuccess) {
+      snprintf(reason, sizeof reason, "%s", last_error);
+      memset(&id, 0, sizeof id);
+      id.internal[8] = (unsigned char)((unsigned)result >> 24); id.internal[9] = (unsigned char)((unsigned)result >> 16);
+      id.internal[10] = (unsigned char)((unsigned)result >> 8); id.internal[11] = (unsigned char)result;
+    }
   }
   if (sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths, &parent->cancelled)) {
     char message[700];
@@ -406,6 +414,18 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   }
   if (rank >= 0) memcpy(id.internal, (const unsigned char *)all + 128 * (size_t)members[0], 128);
   free(all);
+  if (rank > 0 && id.internal[0] == 0) {
+    unsigned code = (unsigned)id.internal[8] << 24 | (unsigned)id.internal[9] << 16 | (unsigned)id.internal[10] << 8 |
+                    id.internal[11];
+    result = code > ncclSuccess && code < ncclNumResults && code != ncclInProgress ? (ncclResult_t)code : ncclRemoteError;
+    snprintf(reason, sizeof reason, "the split leader (parent rank %d) could not create the unique id (%s)",
+             members[0], ncclGetErrorString(result));
+  }
+  if (result != ncclSuccess) {
+    char message[700];
+    snprintf(message, sizeof message, "ncclCommSplit: %s", reason);
+    return split_failed(parent, result, message);
+  }
   int position = parent->position, blocking = parent->blocking;
   release(parent);
   if (rank < 0) return ncclSuccess;

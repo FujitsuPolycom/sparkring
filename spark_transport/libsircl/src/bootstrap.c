@@ -35,7 +35,9 @@ static const unsigned char frame_magic[4] = {'S','C','F','1'};
 static const unsigned char gather_magic[4] = {'S','C','R','1'};
 static _Thread_local char last_error[192];
 
-struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; };
+/* `failed`: an all-gather on this handle failed after it began sending, so this rank's round count may differ
+ * from the broker's; every later all-gather fails at once instead of matching another round's records. */
+struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; int failed; };
 struct peer {
   int fd;
   int rank;
@@ -698,6 +700,7 @@ int sccl_bootstrap_join_cancel(const unsigned char id[ID_SIZE], int nranks, int 
   handle->nranks = nranks;
   handle->rank = rank;
   handle->round = 0;
+  handle->failed = 0;
   *out = handle;
   return OK;
 failed:
@@ -747,6 +750,8 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
     return error_result(USAGE, "fork after library use is unsupported; exec is required in the child");
   if (!handle || !out || !lengths || (bytes && !data) || bytes > MAX_FRAME || timeout_ms < 1)
     return error_result(ARGUMENT, "all-gather needs a handle, outputs, at most 1 MiB per rank and a timeout");
+  if (handle->failed)
+    return error_result(REMOTE, "an earlier all-gather on this bootstrap failed, so its rounds are out of step");
   int64_t deadline = now_ms() + timeout_ms;
   unsigned char header[FRAME_HEADER];
   memcpy(header, frame_magic, 4);
@@ -762,7 +767,10 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
       get32(header + 8) != (uint32_t)handle->nranks ||
       total > (uint32_t)handle->nranks * (4u + MAX_FRAME)) { result = REMOTE; goto failed; }
   unsigned char *body = malloc(total ? total : 1);
-  if (!body) return error_result(SYSTEM, "cannot allocate the all-gather answer");
+  if (!body) {
+    handle->failed = 1;
+    return error_result(SYSTEM, "cannot allocate the all-gather answer");
+  }
   result = recv_all(handle->fd, body, total, deadline, cancelled);
   if (result != OK) { free(body); goto failed; }
   /* Repack as the contributions back to back, without their length words. */
@@ -780,6 +788,7 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
   *out = body;
   return OK;
 failed:
+  handle->failed = 1;
   switch (result) {
     case TIMEOUT: return error_result(TIMEOUT, "bootstrap all-gather timed out waiting for every rank");
     case USAGE: return error_result(USAGE, "bootstrap all-gather cancelled");
