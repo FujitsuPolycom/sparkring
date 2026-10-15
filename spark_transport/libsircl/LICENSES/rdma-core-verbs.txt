@@ -1,7 +1,8 @@
 The RDMA transport of libsircl is compiled against <infiniband/verbs.h> from rdma-core and contains code
 from that header's inline functions (among them ibv_post_send and ibv_poll_cq), used under the OpenIB.org
-BSD license option. The notices below are copied from the header of rdma-core 50.0 on the build
-workstation; a release built in another image copies that image's header.
+BSD license option. The notices below are copied from the header of rdma-core 50.0. Every libsircl
+image layer ships this file as it is in the source tree (runtime/images/libsircl_layer.py copies the
+notices listed in runtime/common/libsircl.py), whichever rdma-core header its build compiled against.
 
 Copyright (c) 2004, 2005 Topspin Communications.  All rights reserved.
 Copyright (c) 2004, 2011-2012 Intel Corporation.  All rights reserved.

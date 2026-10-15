@@ -201,7 +201,7 @@ check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan $(BUILD)/test_kernelpack
 	  $(PYTHON) tests/test_site_routes.py || status=1; \
 	  $(PYTHON) tests/test_mpi_shim.py || status=1; \
 	  $(PYTHON) tests/test_check_nccl_tests.py || status=1; \
-	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py --library $(abspath $(BUILD)/libsircl.so) || status=1; 	  $(PYTHON) tests/test_source_snapshot.py || status=1; \
 	  exit $$status
 
 # The check suites against a host library built with AddressSanitizer and UndefinedBehaviorSanitizer in
