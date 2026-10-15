@@ -314,6 +314,35 @@ print(json.dumps([r, g.sccl_fake_cuda_pushes()-before]))
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertEqual(json.loads(out.stdout), [0, 1])
 
+    def test_an_ignored_config_field_is_logged_once_under_nccl_debug(self):
+        """libsircl honors only ncclConfig_t.blocking: under NCCL_DEBUG=WARN the first config that sets another
+        field writes one line naming it; without NCCL_DEBUG nothing is written."""
+        script = '''class Config(C.Structure):
+    _fields_ = [("size", C.c_size_t), ("magic", C.c_uint), ("version", C.c_uint), ("blocking", C.c_int),
+                ("cgaClusterSize", C.c_int), ("minCTAs", C.c_int), ("maxCTAs", C.c_int), ("netName", C.c_char_p),
+                ("splitShare", C.c_int), ("trafficClass", C.c_int), ("commName", C.c_char_p)] + [
+                (n, C.c_int) for n in ("collnetEnable", "CTAPolicy", "shrinkShare", "nvlsCTAs",
+                "nChannelsPerNetPeer", "nvlinkCentricSched", "graphUsageMode", "numRmaCtx", "maxP2pPeers",
+                "graphStreamOrdering", "launchOrderImplicit", "numRmaSig", "rmaEagerInit", "hostCftMode",
+                "nvlsHostMode")]
+l.ncclCommInitRankConfig.argtypes=[C.POINTER(C.c_void_p),C.c_int,U,C.c_int,C.POINTER(Config)]
+for name in ("commName", "commName"):
+    cfg=Config(); cfg.size=C.sizeof(Config); cfg.magic=0xcafebeef; cfg.version=23203
+    for field, kind in Config._fields_[3:]:
+        if kind is C.c_int: setattr(cfg, field, -2147483648)
+    cfg.commName=b"tp0"
+    u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+    c=C.c_void_p(); assert l.ncclCommInitRankConfig(C.byref(c),1,u,0,C.byref(cfg))==0
+    assert l.ncclCommDestroy(c)==0
+'''
+        loud = run(script, {"LIBSIRCL_BOOTSTRAP_ONLY": "1", "NCCL_DEBUG": "WARN"})
+        self.assertEqual(loud.returncode, 0, loud.stderr)
+        lines = [line for line in loud.stderr.splitlines() if "is set and ignored" in line]
+        self.assertEqual(lines, ["libsircl: ncclConfig_t.commName is set and ignored: libsircl honors only blocking"])
+        quiet = run(script, {"LIBSIRCL_BOOTSTRAP_ONLY": "1", "NCCL_DEBUG": ""})
+        self.assertEqual(quiet.returncode, 0, quiet.stderr)
+        self.assertNotIn("is set and ignored", quiet.stderr)
+
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
         self.assertEqual(out.returncode, 0, out.stderr)

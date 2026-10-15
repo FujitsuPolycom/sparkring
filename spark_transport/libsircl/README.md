@@ -203,6 +203,33 @@ gets an error, never a plain sum); a reduction op that is not built in returns `
 the receipt. Nothing is forwarded to another NCCL. `tests/api_manifest.json` marks every function of the
 header implemented or not.
 
+## Threading, streams and graphs
+
+These are caller contracts; libsircl does not detect every violation.
+
+- One communicator is not used from several threads at once without ordering between them. The guards
+  for concurrent use (bootstrap rounds that run one after another, a second close that waits for the
+  first) make misuse fail safe, not correct.
+- A stream passed to a collective or point-to-point call stays valid until the next call on that
+  communicator or its teardown: libsircl orders later calls after it and waits for the communicator's
+  work at finalize and destroy.
+- CUDA graph replays of one communicator do not overlap its eager calls or each other; they share the
+  communicator's sequence and scratch.
+- `ncclGetLastError(NULL)` returns the calling thread's last error text (NVIDIA NCCL's is per process);
+  `ncclGetLastError(comm)` returns the communicator's.
+- `ncclConfig_t`: only `blocking` is honored. Every other field is accepted and ignored; under
+  `NCCL_DEBUG` (`WARN`, `INFO` or `TRACE`) the first config of the process that sets one writes one line
+  naming it. The `nccl*Config` collectives are unsupported.
+- Groups: collectives inside a group run at the call; point-to-point calls are queued and run at the
+  outermost `ncclGroupEnd`, at most 1,024 per communicator, all on one stream; a group's pending
+  initializations start at `ncclGroupEnd`. A thread that ends inside its group fails its pending
+  initializations.
+- `SIRCL_SITE_HASH` (64 hexadecimal digits) goes into every unique id this process creates, and a rank
+  refuses to join an id whose hash differs from its own, so processes of different sites never form a
+  communicator.
+- An unsupported function returns `ncclInvalidUsage`, writes `libsircl: <function> unsupported by this
+  build` to stderr once per process, and zeroes its handle and value outputs.
+
 ## Build and test
 
 ```sh

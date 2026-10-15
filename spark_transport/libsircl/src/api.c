@@ -277,6 +277,44 @@ static ncclResult_t start(struct ncclComm *comm) {
   comm->worker_started = 1;
   return ncclSuccess;
 }
+/* libsircl honors only `blocking` of ncclConfig_t. Under NCCL_DEBUG (WARN, INFO or TRACE) the first config
+ * of the process that sets another field (an int not NCCL_CONFIG_UNDEF_INT, a name not NULL) within its
+ * `size` writes one stderr line naming that field. */
+static void log_ignored_config(const ncclConfig_t *config, size_t size) {
+  static atomic_int logged;
+  if (!debug_errors() || atomic_load(&logged)) return;
+  static const struct { const char *name; size_t offset; int pointer; } fields[] = {
+#define INT_FIELD(f) {#f, offsetof(ncclConfig_t, f), 0}
+#define NAME_FIELD(f) {#f, offsetof(ncclConfig_t, f), 1}
+      INT_FIELD(cgaClusterSize), INT_FIELD(minCTAs), INT_FIELD(maxCTAs), NAME_FIELD(netName),
+      INT_FIELD(splitShare), INT_FIELD(trafficClass), NAME_FIELD(commName), INT_FIELD(collnetEnable),
+      INT_FIELD(CTAPolicy), INT_FIELD(shrinkShare), INT_FIELD(nvlsCTAs), INT_FIELD(nChannelsPerNetPeer),
+      INT_FIELD(nvlinkCentricSched), INT_FIELD(graphUsageMode), INT_FIELD(numRmaCtx), INT_FIELD(maxP2pPeers),
+      INT_FIELD(graphStreamOrdering), INT_FIELD(launchOrderImplicit), INT_FIELD(numRmaSig),
+      INT_FIELD(rmaEagerInit), INT_FIELD(hostCftMode), INT_FIELD(nvlsHostMode),
+#undef INT_FIELD
+#undef NAME_FIELD
+  };
+  for (size_t i = 0; i < sizeof fields / sizeof fields[0]; ++i) {
+    size_t width = fields[i].pointer ? sizeof(const char *) : sizeof(int);
+    if (fields[i].offset + width > size) continue;
+    int set;
+    if (fields[i].pointer) {
+      const char *name;
+      memcpy(&name, (const char *)config + fields[i].offset, sizeof name);
+      set = name != NULL;
+    } else {
+      int value;
+      memcpy(&value, (const char *)config + fields[i].offset, sizeof value);
+      set = value != NCCL_CONFIG_UNDEF_INT;
+    }
+    if (set && !atomic_exchange(&logged, 1)) {
+      fprintf(stderr, "libsircl: ncclConfig_t.%s is set and ignored: libsircl honors only blocking\n",
+              fields[i].name);
+      return;
+    }
+  }
+}
 /* The blocking mode of a new communicator: the config's, or `inherited` when the config is NULL or leaves the
  * field undefined (1 for ncclCommInitRank*, the parent's for ncclCommSplit). */
 static ncclResult_t config_blocking(const ncclConfig_t *config, int inherited, int *blocking) {
@@ -293,6 +331,7 @@ static ncclResult_t config_blocking(const ncclConfig_t *config, int inherited, i
   if (magic != NCCL_API_MAGIC || version < 21400)
     return fail(ncclInvalidArgument, "config magic or version is invalid");
   memcpy(blocking, (const char *)config + offsetof(ncclConfig_t, blocking), sizeof(*blocking));
+  log_ignored_config(config, size);
   if (*blocking == NCCL_CONFIG_UNDEF_INT) *blocking = inherited;
   if (*blocking != 0 && *blocking != 1)
     return fail(ncclInvalidArgument, "config blocking must be 0, 1, or UNDEF");
