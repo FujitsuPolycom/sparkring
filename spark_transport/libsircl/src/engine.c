@@ -304,7 +304,9 @@ typedef struct {
   uint32_t startup_wait_us, serving_wait_us, proxy_abi, graph_staging;
   char kernel_pack[72], fold_pack[72], links_pack[72];
   /* The chain schedule: SIRCL_LARGE_SCHEDULE, geometry, and the chain order (ranks by chain index). */
-  uint32_t large_schedule, chain_slots, chain_chunk, chain_blocks, chain_unroll, chain_reserved;
+  uint32_t large_schedule, chain_slots, chain_chunk, chain_blocks, chain_unroll;
+  /* Fail-stop's mode (LIBSIRCL_FAIL_STOP, 0 for a communicator of one rank). */
+  uint32_t fail_stop;
   uint64_t chain_slot_bytes;
   /* Smallest collective (COLL_*) that auto runs as a chain op, and that a ring schedule runs as a ring op. */
   uint64_t chain_mins[COLLECTIVES], ring_mins[COLLECTIVES];
@@ -313,7 +315,9 @@ typedef struct {
    * collective (COLL_*), staggers, whether the ring that closes the chain runs (LIBSIRCL_RING_WINDOW
    * set), the reduce-scatter's column tile. */
   uint32_t gather_schedule, scatter_schedule, link_slots, link_blocks, link_unroll, ring_on;
-  uint32_t ring_stagger, ring_gather_stagger, link_chunk[COLLECTIVES], link_reserved;
+  uint32_t ring_stagger, ring_gather_stagger, link_chunk[COLLECTIVES];
+  /* The wait regime at setup (LIBSIRCL_WAIT_REGIME: 0 startup, 1 serving). */
+  uint32_t wait_regime;
   uint64_t link_slot_bytes, link_tile;
   /* Blocks per role and pieces per collective: chunk_set[c] when a link chunk variable sets the piece,
    * coll_blocks[c] from LIBSIRCL_<collective>_LINK_BLOCKS (0: unset), blocks_set when SIRCL_LINK_BLOCKS
@@ -972,6 +976,7 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   e->serving = regime && !strcmp(regime, "serving");
+  s->wait_regime = (uint32_t)e->serving;
   const char *stop = sccl_env("LIBSIRCL_FAIL_STOP");
   if (stop && *stop && strcmp(stop, "0") && strcmp(stop, "1") && strcmp(stop, "abort")) {
     put_error(err, len, "LIBSIRCL_FAIL_STOP=%s: 0, 1 or abort", stop);
@@ -1166,6 +1171,8 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(algorithm_plus_one, "SIRCL_ALLREDUCE_ALGORITHM");
   SAME(startup_wait_us, "SIRCL_STARTUP_WAIT_S");
   SAME(serving_wait_us, "SIRCL_SERVING_WAIT_S");
+  SAME(wait_regime, "LIBSIRCL_WAIT_REGIME");
+  SAME(fail_stop, "LIBSIRCL_FAIL_STOP");
   SAME(proxy_abi, "native proxy ABI");
   SAME(graph_staging, "stream-ordered allocation (cuMemAllocAsync and the device's memory pools), which "
                       "stages unaligned buffers under CUDA graph capture");
@@ -2221,6 +2228,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     e->device = device;
     if (read_settings(e, emulation, local, sizeof local)) break;
     if (nranks == 1) e->fail_stop = 0;
+    e->shared.fail_stop = (uint32_t)e->fail_stop;
     if (e->fail_stop && watch_start(local, sizeof local)) break;
     e->shared.proxy_abi = (uint32_t)e->transport->abi_version();
     /* Before the setup verdict, so a rank whose native proxy lacks a feature fails setup with every rank. */

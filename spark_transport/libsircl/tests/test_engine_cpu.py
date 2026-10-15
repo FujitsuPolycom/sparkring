@@ -189,7 +189,8 @@ if c.value: l.ncclCommAbort(c)
     def test_route_and_check_settings_reach_the_setup_exchange(self):
         """LIBSIRCL_RELAYED_LANES marks a peer position as relayed in the first setup exchange's record (which
         the cycle plan reads) without any forward window; a malformed value, or a LIBSIRCL_RING_WINDOW above the
-        native cap, or a LIBSIRCL_LANE_CHECK_MS out of range, fails the first verdict naming the variable."""
+        native cap, a LIBSIRCL_LANE_CHECK_MS out of range, or an invalid LIBSIRCL_FAIL_STOP or LIBSIRCL_FAIL_STOP_POLL_MS
+        fails the first verdict naming the variable."""
         script = '''import socket, struct, threading
 u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
 server=socket.socket(); server.bind(("127.0.0.1", 0)); server.listen()
@@ -238,6 +239,14 @@ if c.value: l.ncclCommAbort(c)
         out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_LANE_CHECK_MS": "0"})
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("LIBSIRCL_LANE_CHECK_MS=0 must be an integer from 1", json.loads(out.stdout)["local"])
+        # Fail-stop's settings: refused before the first verdict, naming the variable.
+        for extra, text in (({"LIBSIRCL_FAIL_STOP": "yes"}, "LIBSIRCL_FAIL_STOP=yes: 0, 1 or abort"),
+                            ({"LIBSIRCL_FAIL_STOP": "1", "LIBSIRCL_FAIL_STOP_POLL_MS": "0"},
+                             "LIBSIRCL_FAIL_STOP_POLL_MS=0 must be an integer from 1")):
+            with self.subTest(**extra):
+                out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", **extra})
+                self.assertEqual(out.returncode, 0, out.stderr)
+                self.assertIn(text, json.loads(out.stdout)["local"])
 
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
