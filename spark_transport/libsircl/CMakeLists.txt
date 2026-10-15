@@ -141,7 +141,7 @@ add_test(NAME kernelpack_cache COMMAND ${CMAKE_COMMAND} -E env
 foreach(name abi api lifecycle engine_cpu build_flags)
   add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${name}.py --library $<TARGET_FILE:sircl>)
 endforeach()
-foreach(name bootstrap shm_verbs vendored_sources p2p_native site_routes mpi_shim check_nccl_tests source_snapshot docs_consistency)
+foreach(name bootstrap shm_verbs vendored_sources p2p_native site_routes mpi_shim check_nccl_tests source_snapshot docs_consistency teardown_race)
   add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${name}.py)
 endforeach()
 add_test(NAME kernel_entries COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_kernel_entries.py
