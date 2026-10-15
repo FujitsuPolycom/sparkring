@@ -84,10 +84,50 @@ def test_a_library_that_is_not_libsircl_or_lacks_pyncclss_functions_fails_instea
         plugin.check_binding("/opt/sparkring/libsircl/lib/libsircl.so.0.6.0", load=load, functions=lambda: functions)
 
 
-def test_outside_vllm_only_the_identity_is_checked():
-    assert plugin.pynccl_functions() is None or isinstance(plugin.pynccl_functions(), list)
-    info = plugin.check_binding("/lib", load=lambda path: Library(functions=()), functions=lambda: None)
+WRAPPER = "vllm.distributed.device_communicators.pynccl_wrapper"
+
+
+def test_outside_vllm_only_the_identity_is_checked(monkeypatch):
+    monkeypatch.delitem(sys.modules, "vllm", raising=False)
+    monkeypatch.setitem(sys.modules, WRAPPER, None)
+    monkeypatch.setattr(plugin.importlib.util, "find_spec", lambda name: None)
+    assert plugin.pynccl_functions() is None
+    info = plugin.check_binding("/lib", load=lambda path: Library(functions=()), functions=plugin.pynccl_functions)
     assert info["library"] == "libsircl"
+
+
+def test_an_importable_vllm_whose_pynccl_wrapper_fails_to_import_is_refused(monkeypatch):
+    # The functions PyNccl binds cannot be listed, so the binding check must not pass with nothing to check.
+    monkeypatch.setitem(sys.modules, "vllm", types.ModuleType("vllm"))
+    monkeypatch.setitem(sys.modules, WRAPPER, None)
+    with pytest.raises(plugin.LibsirclSelectionError, match="PyNccl wrapper is not"):
+        plugin.pynccl_functions()
+    with pytest.raises(plugin.LibsirclSelectionError, match="PyNccl wrapper is not"):
+        plugin.check_binding("/lib", load=lambda path: Library(), functions=plugin.pynccl_functions)
+
+
+def test_a_library_replaced_after_its_check_is_refused(tmp_path):
+    path, digest = library(tmp_path)
+    assert plugin.selected({plugin.LIBRARY: str(path), plugin.DIGEST: digest}) == str(path)
+    plugin.identical(str(path))
+    other = tmp_path / "other.so"
+    other.write_bytes(b"ELF something else")
+    os.replace(other, path)
+    with pytest.raises(plugin.LibsirclSelectionError, match="replaced after its SHA-256 was checked"):
+        plugin.identical(str(path))
+
+
+def test_a_path_through_a_linked_directory_is_not_the_library(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    path, digest = library(real)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("this host cannot create symbolic links")
+    with pytest.raises(plugin.LibsirclSelectionError, match="not its own real path"):
+        plugin.selected({plugin.LIBRARY: str(linked / path.name), plugin.DIGEST: digest})
 
 
 def test_a_symbolic_link_is_not_the_library(tmp_path):

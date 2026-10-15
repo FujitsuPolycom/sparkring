@@ -29,6 +29,7 @@ research-only.
 """
 import ctypes
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -39,6 +40,7 @@ TARGET = "VLLM_NCCL_SO_PATH"
 NAME = "libsircl"
 ENTRY_POINT = ("vllm.general_plugins", NAME, "sparkring_libsircl:register")
 _checked = {}
+_identity = {}
 # How PyNccl loads its library (vllm/distributed/device_communicators/pynccl_wrapper.py).
 LOADER = ctypes.CDLL
 
@@ -56,22 +58,43 @@ def selected(environ=None):
     library = Path(path)
     if not library.is_absolute() or library.is_symlink() or not library.is_file():
         raise LibsirclSelectionError(f"{LIBRARY}={path} is not an absolute path to a regular file")
-    stat = library.stat()
-    key = (path, digest, stat.st_ino, stat.st_size, stat.st_mtime_ns)
-    if key not in _checked:
-        with library.open("rb") as stream:
+    if os.path.realpath(path) != path:
+        raise LibsirclSelectionError(f"{LIBRARY}={path} is not its own real path ({os.path.realpath(path)}): a "
+                                     "directory of it is a symbolic link, or the path is not normalized")
+    # The file hashed is the open file, and its device and inode identify it for identical().
+    with library.open("rb") as stream:
+        stat = os.fstat(stream.fileno())
+        key = (path, digest, stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)
+        if key not in _checked:
             found = hashlib.file_digest(stream, "sha256").hexdigest()
-        if found != digest:
-            raise LibsirclSelectionError(f"{path} has SHA-256 {found}, not {DIGEST}={digest}")
-        _checked[key] = True
+            if found != digest:
+                raise LibsirclSelectionError(f"{path} has SHA-256 {found}, not {DIGEST}={digest}")
+            _checked[key] = (stat.st_dev, stat.st_ino)
+    _identity[path] = _checked[key]
     return path
 
 
+def identical(path):
+    """Require ``path`` to still name the file selected() hashed (same device and inode)."""
+    stat = os.stat(path)
+    if (stat.st_dev, stat.st_ino) != _identity.get(path):
+        raise LibsirclSelectionError(f"{path} was replaced after its SHA-256 was checked")
+
+
 def pynccl_functions():
-    """The functions vLLM's PyNccl binds (``NCCLLibrary.exported_functions``), or None outside vLLM."""
+    """The functions vLLM's PyNccl binds (``NCCLLibrary.exported_functions``), or None outside vLLM. Inside a
+    process where vLLM is importable but its PyNccl wrapper is not, the functions cannot be checked:
+    LibsirclSelectionError, not a check that passes with nothing to check."""
     try:
         from vllm.distributed.device_communicators.pynccl_wrapper import NCCLLibrary
-    except ImportError:
+    except ImportError as error:
+        try:
+            importable = importlib.util.find_spec("vllm") is not None
+        except (ImportError, ValueError):
+            importable = "vllm" in __import__("sys").modules
+        if importable:
+            raise LibsirclSelectionError(f"vLLM is importable but its PyNccl wrapper is not ({error}), so the "
+                                         "functions PyNccl binds cannot be checked") from None
         return None
     return [function.name for function in NCCLLibrary.exported_functions]
 
@@ -111,6 +134,7 @@ def register():
     """Point vLLM's PyNccl at the checked libsircl library; vLLM may call this more than once."""
     path = selected()
     check_binding(path)
+    identical(path)
     os.environ[TARGET] = path
     found = resolved_target()
     if found is not None and found != path:
