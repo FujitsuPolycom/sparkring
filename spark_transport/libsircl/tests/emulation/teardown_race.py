@@ -25,6 +25,16 @@ flag waits time out (--late-rank R --late-s S: rank R starts its all-reduce S se
 SIRCL_STARTUP_WAIT_S below S) or when releasing the transport fails (--env SIRCL_EMU_FAIL_DEREG=1: the
 stand-in fails every deregistration, and destroy keeps the arena allocated).
 
+With --expect concurrent-close each round's child is finalized and destroyed while another thread of the
+rank keeps enqueueing all-reduces on it; the round passes when both calls succeed, the enqueueing thread
+ends, and its calls returned success or a refusal (ncclInvalidArgument or ncclInvalidUsage) once the close
+began.
+
+With --expect revoke-destroy each round revokes the child (ncclCommRevoke) right after its all-reduce and
+then destroys it. Destroy after revoke runs the same two teardown rounds as destroy of a ready
+communicator, so the rounds pass as with exact: every child all-reduce is exact, revoke and destroy succeed,
+and the parent stays healthy.
+
 With --expect fail-stop (and --env LIBSIRCL_FAIL_STOP=1, a late rank and SIRCL_STARTUP_WAIT_S below its
 delay) the rounds run as with exact, and the runner checks fail-stop instead: every rank but the late one
 must end with exit status 70 and the fail-stop line of a timed-out wait, whether the watcher or the library
@@ -78,6 +88,7 @@ def run_rank(args) -> int:
                                   ctypes.c_void_p]
     lib.ncclCommDestroy.argtypes = [ctypes.c_void_p]
     lib.ncclCommFinalize.argtypes = [ctypes.c_void_p]
+    lib.ncclCommRevoke.argtypes = [ctypes.c_void_p, ctypes.c_int]
     lib.ncclCommGetAsyncError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
     lib.sirclGetReceipt.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                                     ctypes.POINTER(ctypes.c_size_t)]
@@ -159,14 +170,17 @@ def run_rank(args) -> int:
             rounds.append(entry)
             save()
             continue
+        revoked = lib.ncclCommRevoke(child, 0) if args.expect == "revoke-destroy" else 0
+        if revoked:
+            entry["revoke_error"] = lib.ncclGetLastError(None).decode(errors="replace")
         state = ctypes.c_int(0)
         lib.ncclCommGetAsyncError(child, ctypes.byref(state))
         if not exact or state.value:
             entry["async_error"] = state.value
             entry["error"] = lib.ncclGetLastError(child).decode(errors="replace")
         destroyed = lib.ncclCommDestroy(child)
-        entry.update(ok=exact and not state.value and destroyed == 0, exact=exact, destroy=destroyed,
-                     seconds=round(time.perf_counter() - started, 3))
+        entry.update(ok=exact and not state.value and not revoked and destroyed == 0, exact=exact, destroy=destroyed,
+                     revoke=revoked, seconds=round(time.perf_counter() - started, 3))
         if destroyed:
             entry["destroy_error"] = lib.ncclGetLastError(None).decode(errors="replace")
         rounds.append(entry)
@@ -300,7 +314,8 @@ def main(argv=None) -> int:
     parser.add_argument("--slow-rank", type=int, default=0)
     parser.add_argument("--slow-ns", type=int, default=5_000_000)
     parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop", "concurrent-close"), default="exact")
+    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop", "concurrent-close",
+                                                 "revoke-destroy"), default="exact")
     parser.add_argument("--late-rank", type=int, default=-1, help="the rank that starts each all-reduce late")
     parser.add_argument("--late-s", type=float, default=0.0)
     parser.add_argument("--env", action="append", default=[], help="NAME=VALUE for every rank")

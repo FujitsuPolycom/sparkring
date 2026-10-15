@@ -898,8 +898,10 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
 static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
   if (comm->quiesced) return (ncclResult_t)comm->close_result;
   if (!comm->engine || comm->bootstrap_only || comm->nranks < 2 || !comm->bootstrap) return ncclSuccess;
+  /* A revoked communicator runs the rounds too: revoke stops new work, not the kernels and forwards already
+   * in flight, so freeing without the rounds could pull queue pairs and regions from under a peer's writes. */
   int state = atomic_load(&comm->state);
-  if (state != READY && state != FINALIZED && state != FAILED) return ncclSuccess;
+  if (state == INIT) return ncclSuccess;
   comm->quiesced = 1;
   if (state == READY) atomic_store(&comm->state, FINALIZED);
   char message[700] = {0};

@@ -152,8 +152,8 @@ without it, such a capture is refused with `ncclInvalidUsage` on the rank that n
 eager call of that size has run there. Point-to-point channel messages stage through a stream-ordered
 allocation on their channel's stream where there is one, else through their channel's own staging buffer.
 
-Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready communicator of two or more ranks wait
-for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
+Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready or revoked communicator of two or more ranks
+wait for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
 completed, so every item and flag any kernel waits for has landed (a kernel completes once it has its
 inbound items, while its progress thread may still owe a forward or a last item to a peer); the progress
 thread then stops, and a second round proves that every rank's progress thread stopped before any queue
