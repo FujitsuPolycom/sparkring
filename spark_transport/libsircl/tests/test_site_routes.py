@@ -177,6 +177,32 @@ class SiteRoutesP2PTests(unittest.TestCase):
             self.assertTrue(want, rank)
             self.assertEqual(windows(env.get("LIBSIRCL_RELAYED_LANES", "")), want, rank)
 
+    def test_windows_keep_to_the_native_caps(self):
+        """With small chunks SIRCL's planner gives windows of more chunks than the native layers accept; the
+        tool lowers them to the caps: forward windows to 60 chunks, point-to-point windows to 120."""
+        def printed(result, name):
+            return [value for row in result["ranks"] for lanes in windows(row["env"].get(name, "")).values()
+                    for value in lanes if value]
+        forward = printed(plan("--layout", "ring:8", "--lanes", "2", "--chunk", "1024"), "LIBSIRCL_FORWARD_WINDOWS")
+        self.assertTrue(forward)
+        self.assertLessEqual(max(forward), 60 * 1024)
+        self.assertTrue(all(value % 1024 == 0 for value in forward))
+        p2p = printed(plan("--layout", "ring:8", "--lanes", "2", "--p2p-chunk", "1024", "--p2p-reserve", "none"),
+                      "LIBSIRCL_P2P_WINDOWS")
+        self.assertTrue(p2p)
+        self.assertLessEqual(max(p2p), 120 * 1024)
+
+    def test_a_plan_that_overfills_a_relay_queue_is_refused(self):
+        """SIRCL gives every relayed lane at least one chunk; with 64 KiB chunks on path:0-7 the lanes through
+        one relay queue then hold more than its share, and the tool refuses the plan, naming the queue."""
+        process = subprocess.run([sys.executable, str(ROOT / "tools" / "site_routes.py"), "--layout", "path:0-7",
+                                  "--lanes", "2", "--chunk", "65536"],
+                                 env=dict(os.environ, PYTHONPATH=PACKAGE), capture_output=True, text=True,
+                                 timeout=120)
+        self.assertEqual(process.returncode, 1, process.stdout)
+        self.assertIn("above its share of 393216", process.stderr)
+        self.assertEqual(process.stdout, "")
+
     def test_the_data_files_are_the_tools_output(self):
         for name, arguments in (("site_routes_ring8_l2.json", ("--layout", "ring:8")),
                                 ("site_routes_ring8_l2_p2p_alone.json", ("--layout", "ring:8", "--p2p-reserve", "none")),

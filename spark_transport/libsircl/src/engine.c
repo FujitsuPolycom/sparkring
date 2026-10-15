@@ -285,6 +285,9 @@ enum {
 #define P2P_DEFAULT_UNROLL 4u
 #define P2P_DEFAULT_CHUNK_BYTES 32768u
 
+/* The native layer's ring links post through relays in chunks of 32 KiB and accept a ring window of 1 to
+ * 60 such chunks (roce_set_links). */
+enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
 enum { ALG_AUTO = -1 };
 /* LIBSIRCL_FAIL_STOP's modes (see fail_stop). */
 enum { FAIL_STOP_EXIT = 1, FAIL_STOP_ABORT = 2 };
@@ -752,6 +755,11 @@ static int link_settings(sccl_engine *e, shared_settings *s, int pair_plan, char
   e->ring_window = 0;
   if (ring && *ring) {
     if (env_u64("LIBSIRCL_RING_WINDOW", 0, 0, 0xFFFFFFFFu, &v, err, len)) return -1;
+    if (v && (v < RING_WINDOW_CHUNK || v / RING_WINDOW_CHUNK > RING_WINDOW_MAX_CHUNKS)) {
+      put_error(err, len, "LIBSIRCL_RING_WINDOW=%" PRIu64 " must be 0 or hold 1 to %d chunks of %d bytes", v,
+                RING_WINDOW_MAX_CHUNKS, RING_WINDOW_CHUNK);
+      return -1;
+    }
     e->ring_window = (uint32_t)v;
   }
   return 0;
@@ -1296,6 +1304,8 @@ static int start_progress(sccl_engine *e) {
  * rank at that position (SIRCL's routes.forward_windows for the layout; tools/site_routes.py prints it),
  * 0 for a direct lane; positions outside the communicator are ignored. SIRCL_FORWARD_CHUNK_BYTES is the
  * chunk a windowed stripe is posted in (SIRCL's default 32,768). */
+/* The native proxy accepts a forward window of 1 to 60 chunks (roce_set_forward). */
+enum { FORWARD_MAX_CHUNKS = 60 };
 static int forward_windows(sccl_engine *e, char *err, size_t len) {
   memset(e->forward, 0, sizeof e->forward);
   e->forward_lanes = 0;
@@ -1330,6 +1340,12 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
         put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS entry '%s' needs 1 or 2 byte counts", entry);
         return -1;
       }
+      if (bytes && (bytes < chunk || bytes / chunk > FORWARD_MAX_CHUNKS)) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: the window of %lu bytes toward position %ld must be 0 or "
+                  "hold 1 to %d chunks of SIRCL_FORWARD_CHUNK_BYTES (%" PRIu64 ")", bytes, position,
+                  FORWARD_MAX_CHUNKS, chunk);
+        return -1;
+      }
       if (peer < 0 || peer == e->rank || lane >= e->lanes) continue;
       e->forward[peer][lane] = (uint32_t)bytes;
       if (bytes) e->forward_lanes += 1;
@@ -1338,9 +1354,6 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
   return 0;
 }
 
-/* The native layer's ring links post through relays in chunks of 32 KiB and accept a ring window of 1 to
- * 60 such chunks (roce_set_links). */
-enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
 
 /* The window of this communicator's ring lanes toward its ring's next rank. LIBSIRCL_RING_WINDOW is the
  * process's layout's ring plan, the same for every communicator the process joins; for the layout's own
@@ -1349,18 +1362,25 @@ enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
  * pairs i and i + 4 of a ring of eight) may have a ring next reached through relays, which the forward
  * windows name: its ring lanes then keep the smallest forward window toward that rank in flight, never
  * posting through relays unwindowed. A nonzero LIBSIRCL_RING_WINDOW is the planner's own value and is kept. */
-static void ring_lane_window(sccl_engine *e) {
-  if (e->ring_window || e->ring_next < 0) return;
+static int ring_lane_window(sccl_engine *e, char *err, size_t len) {
+  if (e->ring_window || e->ring_next < 0) return 0;
   uint32_t window = 0;
   for (int l = 0; l < e->lanes; ++l) {
     uint32_t lane = e->forward[e->ring_next][l];
     if (lane && (!window || lane < window)) window = lane;
   }
-  if (!window) return;
+  if (!window) return 0;
+  /* Never above the forward window: a forward window below one ring chunk leaves the ring lanes no window
+   * within it, and the communicator is refused rather than posting past it. */
+  if (window < RING_WINDOW_CHUNK) {
+    put_error(err, len, "the ring lanes toward rank %d cross relays whose forward window (LIBSIRCL_FORWARD_WINDOWS) "
+              "is %u bytes, below one %d-byte ring chunk", e->ring_next, window, RING_WINDOW_CHUNK);
+    return -1;
+  }
   window = window / RING_WINDOW_CHUNK * RING_WINDOW_CHUNK;
-  if (window < RING_WINDOW_CHUNK) window = RING_WINDOW_CHUNK;
   if (window > RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS) window = RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS;
   e->ring_window = window;
+  return 0;
 }
 
 /* LIBSIRCL_P2P_WINDOWS: <position>=<bytes>[/<bytes>],... the window of each of this process's lanes toward the
@@ -2284,8 +2304,9 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       put_error(local, sizeof local, "chain schedule: %s", e->transport->error(e->proxy));
     } else if (forward_windows(e, local, sizeof local) == 0) {
       /* The forward windows first: the ring lanes' window may come from them (ring_lane_window). */
-      if (e->link_on) ring_lane_window(e);
-      if (e->link_on &&
+      if (e->link_on && ring_lane_window(e, local, sizeof local) != 0) {
+        /* refused: `local` says why */
+      } else if (e->link_on &&
           e->transport->set_links(e->proxy, e->chain_prev, e->chain_next, e->chain_index, e->ring_prev,
                                   e->ring_next, e->ring_window, (int)e->shared.link_slots,
                                   e->shared.link_slot_bytes, e->link_off) != 0) {
