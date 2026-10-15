@@ -10,11 +10,13 @@ handles with NCCL's result codes. The checks of communicator creation run on the
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 LIBRARY = Path(__file__).resolve().parents[1] / "build" / "libsircl.so"
 FAKE_DRIVER = LIBRARY.parent / "fake-cuda"
@@ -33,11 +35,20 @@ l.ncclCommDestroy.argtypes=[C.c_void_p]
 '''
 
 
-def run(script, env=None):
+def run(script, env=None, *, isolate_preloads=False):
     environment = dict(os.environ)
     environment.update(env or {})
     if os.environ.get("LIBSIRCL_TEST_ASAN"):
         environment["LD_PRELOAD"] = os.environ["LD_PRELOAD"]
+    if isolate_preloads:
+        # A runtime preloaded at startup wins RTLD_DEFAULT lookup over the fake driver's later dlopen.
+        # Preserve ASan first, but remove inherited CUDA/NCCL providers from these controlled probes.
+        preloads = [entry for entry in re.split(r"[:\s]+", environment.get("LD_PRELOAD", ""))
+                    if re.fullmatch(r"libasan\.so(?:\.\d+)*|libclang_rt\.asan.*\.so", Path(entry).name)]
+        if environment.get("LIBSIRCL_TEST_ASAN") and not preloads:
+            raise unittest.SkipTest("LIBSIRCL_TEST_ASAN requires an identifiable ASan runtime in LD_PRELOAD "
+                                    "to isolate the CUDA context probe")
+        environment["LD_PRELOAD"] = ":".join(preloads)
     return subprocess.run([sys.executable, "-c", PRELUDE + script, str(LIBRARY)], env=environment,
                           capture_output=True, text=True, timeout=60)
 
@@ -415,7 +426,8 @@ print(r, r2)'''
         """One ncclCommInitRank of a one-rank communicator on the stand-in driver, on a thread without a current
         context; LIBSIRCL_TRANSPORT=bogus makes the engine refuse right after the context step, before any device
         work. ``runtime`` brings the stand-in's cudaGetDevice into the global scope, as a framework's CUDA runtime
-        is. Returns (result, ncclGetLastError, (retains, retained device, cuCtxSetCurrent calls), stderr)."""
+        is. Inherited preloads are removed except ASan, so only this stand-in can supply cudaGetDevice.
+        Returns (result, ncclGetLastError, (retains, retained device, cuCtxSetCurrent calls), stderr)."""
         load = (f"g=C.CDLL({str(FAKE_DRIVER / 'libcuda.so.1')!r}, mode=C.RTLD_GLOBAL)\n" if runtime else
                 f"g=C.CDLL({str(FAKE_DRIVER / 'libcuda.so.1')!r})\n")
         environment = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus", "FAKE_CUDA_NO_CONTEXT": "1",
@@ -425,7 +437,7 @@ print(r, r2)'''
 c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
 n=[C.c_int(),C.c_int(),C.c_int()]; g.sccl_fake_cuda_contexts(*[C.byref(v) for v in n])
 print(json.dumps({"result":r,"message":l.ncclGetLastError(None).decode(),"contexts":[v.value for v in n]}))''',
-                  environment)
+                  environment, isolate_preloads=True)
         self.assertEqual(out.returncode, 0, out.stderr)
         data = json.loads(out.stdout)
         return data["result"], data["message"], tuple(data["contexts"]), out.stderr
@@ -447,6 +459,7 @@ print(json.dumps({"result":r,"message":l.ncclGetLastError(None).decode(),"contex
                                                      runtime=True)
         self.assertIn("LIBSIRCL_TRANSPORT=bogus", message)
         self.assertEqual(contexts, (1, 1, 1))
+        self.assertNotEqual(result, 0)
 
     def test_init_without_cuda_context_is_refused_when_the_device_is_unknown(self):
         # Two devices and no CUDA runtime in the process: no device can be chosen, so the creation is refused,
@@ -456,6 +469,31 @@ print(json.dumps({"result":r,"message":l.ncclGetLastError(None).decode(),"contex
         self.assertIn("no current CUDA context, and the current CUDA device is unknown", message)
         self.assertEqual(contexts, (0, -1, 0))
         self.assertIn("libsircl: communicator creation failed (invalid usage): no current CUDA context", stderr)
+
+    def test_context_selection_ignores_inherited_cuda_runtime(self):
+        """A preloaded runtime must not replace the creation probe's controlled runtime or its absence."""
+        source = '''#include <stdlib.h>
+int cudaGetDevice(int *device) {
+  *device = 0;
+  return atoi(getenv("SHADOW_CUDA_RESULT"));
+}
+'''
+        with tempfile.TemporaryDirectory(prefix="sircl-cuda-preload-") as directory:
+            path = Path(directory)
+            (path / "runtime.c").write_text(source)
+            subprocess.run(["cc", "-shared", "-fPIC", "-Wall", "-Wextra", "-Werror",
+                            str(path / "runtime.c"), "-o", str(path / "runtime.so")], check=True,
+                           capture_output=True, text=True, timeout=60)
+            inherited = os.environ.get("LD_PRELOAD", "")
+            for separator in (":", " "):
+                for status in ("0", "100"):
+                    # Keep an inherited ASan runtime first, as required by check-asan.
+                    preload = separator.join(filter(None, (inherited, str(path / "runtime.so"))))
+                    with self.subTest(separator=separator, runtime_status=status), patch.dict(
+                            os.environ, LD_PRELOAD=preload, SHADOW_CUDA_RESULT=status):
+                        self.test_init_without_cuda_context_uses_the_only_devices_primary_context()
+                        self.test_init_without_cuda_context_uses_the_runtimes_current_device()
+                        self.test_init_without_cuda_context_is_refused_when_the_device_is_unknown()
 
     def test_init_without_a_cuda_driver_is_refused_with_reason(self):
         out = run('''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
