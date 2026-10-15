@@ -586,6 +586,32 @@ int test_missed(void) { return missed; }
         finally:
             os.environ.pop("SIRCL_BOOTSTRAP_ADDR")
 
+    def test_interface_exclusions_and_loopback(self):
+        """NCCL_SOCKET_IFNAME with exclusions only (``^docker``, ``^=lo``) never selects loopback, which a remote
+        rank cannot reach; ``^=name`` excludes exactly that interface; a list longer than 255 characters is
+        refused, naming the variable."""
+        if not any(name != "lo" for _, name in socket.if_nameindex()):
+            self.skipTest("no interface besides loopback")
+        os.environ.pop("SIRCL_BOOTSTRAP_IFNAME", None)
+        try:
+            for value in ("^docker", "^=lo", "^=lo,^docker"):
+                with self.subTest(list=value):
+                    os.environ["NCCL_SOCKET_IFNAME"] = value
+                    buffer = ctypes.create_string_buffer(128)
+                    result = self.bootstrap.lib.sccl_bootstrap_id(buffer)
+                    if result == 4 and b"no IPv4 address" in self.bootstrap.lib.sccl_bootstrap_error():
+                        self.skipTest("no IPv4 interface besides loopback")
+                    self.assertEqual(result, 0, self.bootstrap.lib.sccl_bootstrap_error())
+                    self.assertNotEqual(socket.inet_ntoa(buffer.raw[12:16]), "127.0.0.1")
+                    for handle in self.joined_group(1, buffer.raw):
+                        self.bootstrap.close(handle)
+            os.environ["NCCL_SOCKET_IFNAME"] = ",".join(["^docker"] * 40)
+            buffer = ctypes.create_string_buffer(128)
+            self.assertEqual(self.bootstrap.lib.sccl_bootstrap_id(buffer), 4)
+            self.assertIn(b"NCCL_SOCKET_IFNAME is longer than 255", self.bootstrap.lib.sccl_bootstrap_error())
+        finally:
+            os.environ.pop("NCCL_SOCKET_IFNAME", None)
+
     def test_invalid_env_and_arguments(self):
         for invalid in ["0", "-1", "nan", "600001"]:
             os.environ["SIRCL_BOOTSTRAP_TIMEOUT_MS"] = invalid

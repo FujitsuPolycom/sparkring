@@ -496,22 +496,29 @@ static int lan_configured(void) {
   return 0;
 }
 
-/* Interface list match: comma-separated prefixes, "=name" for an exact name,
- * "^prefix" entries exclude. */
-static int interface_matches(const char *list, const char *name) {
+/* Interface list match, in NCCL_SOCKET_IFNAME's syntax: comma-separated entries; "prefix" selects the
+ * interfaces whose name starts with it and "=name" exactly that one; "^prefix" and "^=name" exclude them.
+ * Without any selecting entry every interface not excluded matches except a loopback interface, which only
+ * a selecting entry chooses (a remote rank cannot reach the root's loopback address). */
+static int interface_matches(const char *list, const char *name, int loopback) {
   char copy[256];
   snprintf(copy, sizeof copy, "%s", list);
   int included = 0, any_include = 0;
   for (char *save = NULL, *item = strtok_r(copy, ",", &save); item; item = strtok_r(NULL, ",", &save)) {
     while (*item == ' ') ++item;
-    if (*item == '^') {
-      if (!strncmp(name, item + 1, strlen(item + 1))) return 0;
+    int exclude = *item == '^';
+    if (exclude) ++item;
+    int exact = *item == '=';
+    if (exact) ++item;
+    int match = exact ? !strcmp(name, item) : !strncmp(name, item, strlen(item));
+    if (exclude) {
+      if (match) return 0;
       continue;
     }
     any_include = 1;
-    if (*item == '=' ? !strcmp(name, item + 1) : !strncmp(name, item, strlen(item))) included = 1;
+    if (match) included = 1;
   }
-  return any_include ? included : 1;
+  return any_include ? included : !loopback;
 }
 
 /* The IPv4 address a new root listens on and advertises: SIRCL_BOOTSTRAP_ADDR,
@@ -525,15 +532,19 @@ static int root_address(struct in_addr *out) {
       return error_result(ARGUMENT, "SIRCL_BOOTSTRAP_ADDR must be an IPv4 address");
     return OK;
   }
-  const char *list = sccl_env("SIRCL_BOOTSTRAP_IFNAME");
-  if (!list || !*list) list = sccl_env("NCCL_SOCKET_IFNAME");
+  const char *name = "SIRCL_BOOTSTRAP_IFNAME", *list = sccl_env(name);
+  if (!list || !*list) list = sccl_env(name = "NCCL_SOCKET_IFNAME");
   if (!list || !*list) return OK;
+  if (strlen(list) > 255) {
+    (void)snprintf(last_error, sizeof last_error, "%s is longer than 255 characters", name);
+    return ARGUMENT;
+  }
   struct ifaddrs *all = NULL;
   if (getifaddrs(&all) != 0) return error_result(SYSTEM, "cannot list network interfaces");
   int found = 0;
   for (struct ifaddrs *a = all; a && !found; a = a->ifa_next) {
     if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET || !(a->ifa_flags & IFF_UP)) continue;
-    if (!interface_matches(list, a->ifa_name)) continue;
+    if (!interface_matches(list, a->ifa_name, (a->ifa_flags & IFF_LOOPBACK) != 0)) continue;
     *out = ((struct sockaddr_in *)a->ifa_addr)->sin_addr;
     found = 1;
   }
