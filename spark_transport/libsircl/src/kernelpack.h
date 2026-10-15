@@ -147,8 +147,8 @@ sccl_CUresult sccl_kp_launch_chain(sccl_CUfunction function, const sccl_chain_ar
 /* The link collective entry of a kind (SCCL_LINK_*, SCCL_RING_*), dtype and unroll (1-8). */
 int sccl_kp_link_function(sccl_CUcontext ctx, int kind, int dtype, int unroll, sccl_CUfunction *out);
 /* The ring all-reduce whose relay stores its result to link 3's slot, then copies the slot to the output
- * (sircl_ring_reduce_two_pass_<dtype>_u<U>): the same protocol and bytes as SCCL_RING_REDUCE's one-pass
- * entry; LIBSIRCL_RING_REDUCE_PASSES=2 selects it, for comparisons. */
+ * (sircl_ring_reduce_two_pass_<dtype>_u<U>): the same protocol as SCCL_RING_REDUCE's one-pass entry. The
+ * library launches it by default (LIBSIRCL_RING_REDUCE_PASSES=2); the one-pass entry is research-only. */
 int sccl_kp_ring_reduce_two_pass_function(sccl_CUcontext ctx, int dtype, int unroll, sccl_CUfunction *out);
 /* The pair exchange (sircl_ring_exchange_u<U>): on the wire the ring all-gather of a ring of two, carrying
  * one block each way (input to the peer, the peer's block to output + peer * stride, the local block from

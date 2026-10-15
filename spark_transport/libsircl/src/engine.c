@@ -316,8 +316,9 @@ typedef struct {
    * coll_blocks[c] from LIBSIRCL_<collective>_LINK_BLOCKS (0: unset), blocks_set when SIRCL_LINK_BLOCKS
    * sets link_blocks; pair_plan when the pair plan chooses the rest by size. */
   uint32_t chunk_set[COLLECTIVES], coll_blocks[COLLECTIVES], blocks_set, pair_plan;
-  /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies. */
-  uint32_t cycle_plan, cycle_reserved;
+  /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies; the ring all-reduce's relay form
+   * (LIBSIRCL_RING_REDUCE_PASSES, see sccl_engine.ring_reduce_passes). */
+  uint32_t cycle_plan, ring_reduce_passes;
   /* Point-to-point channels: on (LIBSIRCL_P2P_CHANNELS on a communicator of three or more ranks), the native
    * library's ABI, SIRCL's channel geometry (SIRCL_P2P_*) and the point-to-point pack. */
   uint32_t p2p_on, p2p_abi, p2p_slots, p2p_blocks, p2p_threads, p2p_unroll, p2p_chunk, p2p_reserved;
@@ -382,9 +383,10 @@ struct sccl_engine {
   uint32_t ring_window;
   /* The CPUs the transport's progress thread may run on (a CPU list, or "unpinned"). */
   char progress_cpus[160];
-  /* The ring all-reduce's form (LIBSIRCL_RING_REDUCE_PASSES): 2 (default), the relay stores its result to
-   * link 3's slot, then copies the slot to the output; 1, it stores both in one pass. Rank-local: both forms
-   * speak the same protocol and write the same bytes. */
+  /* The ring all-reduce's form (LIBSIRCL_RING_REDUCE_PASSES, agreed at setup): 2 (default), the relay stores
+   * its result to link 3's slot, then copies the slot to the output; 1, it stores both in one pass. Both
+   * speak the same protocol and are designed to write the same bytes, but one run of the one-pass form on a
+   * GB10 returned differing bits on one rank (STATUS.md), so 1 needs LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1. */
   int ring_reduce_passes;
   uint64_t link_off;
   sccl_CUdeviceptr link_counters, piece_counters, link_scratch;
@@ -921,7 +923,15 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   }
   e->fail_stop = !stop || !*stop || !strcmp(stop, "0") ? 0 : !strcmp(stop, "1") ? FAIL_STOP_EXIT : FAIL_STOP_ABORT;
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
+  const char *one_pass = sccl_env("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH");
+  if (v == 1 && (!one_pass || strcmp(one_pass, "1"))) {
+    put_error(err, len, "LIBSIRCL_RING_REDUCE_PASSES=1 (the one-pass ring relay) is research-only: one run returned "
+              "differing bits on one rank and the cause is not isolated; set LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1 "
+              "to select it");
+    return -1;
+  }
   e->ring_reduce_passes = (int)v;
+  s->ring_reduce_passes = (uint32_t)v;
   const char *policy = sccl_env("LIBSIRCL_CPU_POLICY");
   if (policy && *policy && strcmp(policy, "performance") && strcmp(policy, "none")) {
     put_error(err, len, "LIBSIRCL_CPU_POLICY=%s: performance or none", policy);
@@ -1114,6 +1124,7 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(blocks_set, "SIRCL_LINK_BLOCKS");
   SAME(pair_plan, "the pair plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
   SAME(cycle_plan, "the cycle plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
+  SAME(ring_reduce_passes, "LIBSIRCL_RING_REDUCE_PASSES");
   SAME(p2p_on, "LIBSIRCL_P2P_CHANNELS");
   SAME(p2p_abi, "point-to-point native ABI");
   SAME(p2p_slots, "SIRCL_P2P_SLOTS");

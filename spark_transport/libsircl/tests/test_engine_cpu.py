@@ -57,6 +57,28 @@ print(json.dumps([before,g.sccl_fake_cuda_context_syncs()]))
         self.assertGreaterEqual(before, 1)
         self.assertGreater(after, before)
 
+    def test_one_pass_ring_relay_needs_the_research_opt_in(self):
+        """LIBSIRCL_RING_REDUCE_PASSES=1 selects the one-pass ring relay, which is research-only: creation is
+        refused, naming the opt-in, unless LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1; 2 (the default) and the
+        opted-in 1 create a communicator on the stand-in driver."""
+        script = '''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
+print(json.dumps([r, l.ncclGetLastError(None).decode()]))
+if c.value: l.ncclCommDestroy(c)
+'''
+        base = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs", "LD_LIBRARY_PATH": str(FAKE_DRIVER)}
+        for passes, opt_in, refused in (("1", "", True), ("1", "0", True), ("1", "1", False), ("2", "", False)):
+            with self.subTest(passes=passes, opt_in=opt_in):
+                out = run(script, {**base, "LIBSIRCL_RING_REDUCE_PASSES": passes,
+                                   "LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH": opt_in})
+                self.assertEqual(out.returncode, 0, out.stderr)
+                result, message = json.loads(out.stdout)
+                if refused:
+                    self.assertNotEqual(result, 0)
+                    self.assertIn("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1", message)
+                else:
+                    self.assertEqual(result, 0, message)
+
     def test_initall_refuses_distinct_cuda_devices(self):
         for devices in ("None", "(C.c_int*2)(0,1)"):
             out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "

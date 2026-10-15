@@ -46,7 +46,9 @@ point-to-point library; they have not run in one group with SIRCL's DSL point-to
   `SIRCL_LINK_UNROLL`). The ring all-reduce's relay in `sircl_ring_reduce_<dtype>_u<U>` stores each pack of
   this rank's finished piece to link 3's own slot and to the output from one load and one sum; the
   two-pass entries, which the library launches by default, store the slot, then copy it to the output
-  (`LIBSIRCL_RING_REDUCE_PASSES=1` selects the one-pass entries). Both write the same bytes and speak the same protocol,
+  (`LIBSIRCL_RING_REDUCE_PASSES=1` with `LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1` selects the one-pass entries, and every
+  rank must agree). Both speak the same protocol and are designed to write the same bytes; one run of the one-pass
+  entries on a GB10 returned differing bits on one rank and is not isolated (`STATUS.md`), so they are research-only,
   and the ring all-gather's own role stores each pack to the slot and the output in one pass as well. The
   pair exchange entries run the ring all-gather's items and op word on a ring of two, carrying one block
   each way (or one way) with three roles: sending, receiving (or discarding), and copying the own block in
