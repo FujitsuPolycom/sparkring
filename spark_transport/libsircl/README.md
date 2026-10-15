@@ -1,13 +1,17 @@
 # libsircl
 
+Status: **research-only**. No serving or training claim rests on libsircl; `STATUS.md` states what is
+implemented and the evidence for it.
+
 libsircl is SIRCL's NCCL-compatible C API: a Linux shared library that implements the public C
 interface of NVIDIA NCCL 2.32 (the 73 functions of the NCCL 2.32.3 header and their `pnccl`
 profiling twins) on SIRCL, SparkRing's Switchless Inference RDMA Collective Layer for clusters of
 NVIDIA DGX Spark systems. A program written against NCCL's C API, such as PyTorch, vLLM, SGLang or
 nccl-tests, loads libsircl in place of NCCL's `libnccl.so.2` without modification.
 
-Compatibility is at the C API and ABI. libsircl implements a subset of the API (`STATUS.md` lists
-each function) and does not exchange data with NVIDIA NCCL processes. libsircl is an independent
+Compatibility is at the C API and ABI. libsircl implements 36 of the header's 73 functions
+(`tests/api_manifest.json` marks each one implemented or not; the other 37 return `ncclInvalidUsage`) and
+does not exchange data with NVIDIA NCCL processes. libsircl is an independent
 implementation: it contains no NCCL implementation source, it is not NVIDIA NCCL, and it is not
 sponsored or endorsed by NVIDIA. `STATUS.md` states what is implemented and the evidence; `RUNBOOK.md`
 gives the build, emulation and hardware commands.
@@ -366,7 +370,7 @@ and their terms, and every source or binary copy carries `LICENSE`, `NOTICE`, `v
   unmodified in `vendor/`, adapted with marked changes in `include/nccl.h`) and the NCCL user guide;
   no NCCL implementation source is used.
 - The SIRCL implementation this library follows is SIRCL's package in this repository
-  (`spark_transport/sircl`, `sparkring_sircl` 0.3.1); its tests run against that package
+  (`spark_transport/sircl`, `sparkring_sircl` 0.3.2); its tests run against that package
   (`SIRCL_PACKAGE`). `SOURCE_SNAPSHOT.json` records the SHA-256 of each of the 200 files of the SIRCL tree
   that the evidence in `STATUS.md` was taken against (captured 2026-10-08 06:00 UTC). A change the
   library needs inside SIRCL is a change to `spark_transport/sircl`.
