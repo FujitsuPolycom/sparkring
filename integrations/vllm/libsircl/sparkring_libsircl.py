@@ -16,8 +16,11 @@ that process creates a PyNccl communicator (a worker loads general plugins in
    function PyNccl's ``NCCLLibrary`` binds. PyNccl disables itself, and vLLM
    falls back to torch's own NCCL, when that load or binding fails; this
    check makes such a fallback fail the process instead;
-3. sets ``VLLM_NCCL_SO_PATH`` to the file; processes that vLLM starts later
-   inherit the setting.
+3. sets ``VLLM_NCCL_SO_PATH`` to the file, and requires vLLM's own reading
+   of it (``vllm.envs.VLLM_NCCL_SO_PATH``) to name the same file, so a vLLM
+   whose environment values were read before the plugin ran fails instead of
+   loading the earlier library; processes that vLLM starts later inherit the
+   setting.
 
 Any other state fails the process, so a deployment that asked for libsircl
 never runs on another NCCL. The plugin changes nothing else: torch's
@@ -91,8 +94,25 @@ def check_binding(path, *, load=None, functions=None):
     return info
 
 
+def resolved_target():
+    """vLLM's own value of ``VLLM_NCCL_SO_PATH`` (``vllm.envs``), or None outside vLLM."""
+    try:
+        import vllm.envs as envs
+    except ImportError:
+        return None
+    try:
+        return getattr(envs, TARGET)
+    except AttributeError:
+        raise LibsirclSelectionError(f"vllm.envs has no {TARGET}, so this vLLM may not load the library it "
+                                     "names") from None
+
+
 def register():
     """Point vLLM's PyNccl at the checked libsircl library; vLLM may call this more than once."""
     path = selected()
     check_binding(path)
     os.environ[TARGET] = path
+    found = resolved_target()
+    if found is not None and found != path:
+        raise LibsirclSelectionError(f"vLLM resolves {TARGET} to {found!r}, not {path}: it read its environment "
+                                     "before the plugin set the variable, so PyNccl would load that library")

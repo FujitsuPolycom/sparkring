@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -104,3 +106,47 @@ def test_the_entry_point_names_the_register_function():
     assert (group, name) == ("vllm.general_plugins", "libsircl")
     module, _, function = value.partition(":")
     assert module == SOURCE.stem and callable(getattr(plugin, function))
+
+
+class FrozenEnvs(types.ModuleType):
+    """A ``vllm.envs`` whose values were read before the plugin ran."""
+
+    def __init__(self, value):
+        super().__init__("vllm.envs")
+        self.VLLM_NCCL_SO_PATH = value
+
+
+class LiveEnvs(types.ModuleType):
+    """A ``vllm.envs`` that reads the environment at each access, as vLLM does without its cache."""
+
+    def __init__(self):
+        super().__init__("vllm.envs")
+
+    def __getattr__(self, name):
+        if name == plugin.TARGET:
+            return os.environ.get(name)
+        raise AttributeError(name)
+
+
+@pytest.mark.parametrize("envs, message", [
+    (LiveEnvs(), None),
+    (FrozenEnvs("/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"), "vLLM resolves VLLM_NCCL_SO_PATH to"),
+    (types.ModuleType("vllm.envs"), "vllm.envs has no VLLM_NCCL_SO_PATH"),
+])
+def test_register_confirms_vllm_resolves_the_library(tmp_path, monkeypatch, envs, message):
+    path, digest = library(tmp_path)
+    monkeypatch.setenv(plugin.LIBRARY, str(path))
+    monkeypatch.setenv(plugin.DIGEST, digest)
+    monkeypatch.setenv(plugin.TARGET, "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2")
+    monkeypatch.setattr(plugin, "LOADER", lambda name: Library())
+    monkeypatch.setattr(plugin, "pynccl_functions", lambda: ["ncclAllReduce"])
+    package = types.ModuleType("vllm")
+    package.envs = envs
+    monkeypatch.setitem(sys.modules, "vllm", package)
+    monkeypatch.setitem(sys.modules, "vllm.envs", envs)
+    if message is None:
+        plugin.register()
+        assert plugin.resolved_target() == str(path)
+    else:
+        with pytest.raises(plugin.LibsirclSelectionError, match=message):
+            plugin.register()
