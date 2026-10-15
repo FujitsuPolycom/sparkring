@@ -322,6 +322,11 @@ print(json.dumps([r, g.sccl_fake_cuda_pushes()-before]))
         self.assertIn("reduce_scatter", info["collectives"])
         self.assertIn("all_gather", info["collectives"])
         self.assertEqual(info["transports"], ["verbs", "emulation"])
+        # The documented point-to-point scope, the four packs and the plans that change the default schedule.
+        self.assertIn("point-to-point channels on communicators of three or more ranks", info["collectives"]["send_recv"])
+        self.assertIn("transport, fold, link and point-to-point packs", info["kernels"])
+        self.assertIn("pair plan", info["schedules"]["default"])
+        self.assertIn("cycle plan", info["schedules"]["default"])
 
     def test_device_api_host_entry_points(self):
         """ncclCommQueryProperties reports the communicator and no device API; the teams are the world,

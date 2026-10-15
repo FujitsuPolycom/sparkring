@@ -170,12 +170,14 @@ const char *sirclGetInfo(void) {
          "\"ops\":[\"sum\",\"prod\",\"max\",\"min\",\"avg\"],\"transport_reductions\":[\"float16/sum\","
          "\"bfloat16/sum\",\"float32/sum\"],\"all_gather\":\"every datatype\",\"broadcast\":"
          "\"every datatype\",\"all_to_all\":\"every datatype\",\"gather\":\"every datatype\",\"scatter\":"
-         "\"every datatype\",\"send_recv\":\"two-rank communicators, and a rank to itself\",\"split\":true},"
+         "\"every datatype\",\"send_recv\":\"two-rank communicators, a rank to itself, and point-to-point "
+         "channels on communicators of three or more ranks (LIBSIRCL_P2P_CHANNELS=on)\",\"split\":true},"
          "\"schedules\":{\"large_all_reduce\":[\"pieces\",\"chain\",\"auto\",\"ring\"],\"all_gather\":"
          "[\"pieces\",\"chain\",\"auto\",\"ring\"],\"reduce_scatter\":[\"pieces\",\"chain\",\"auto\",\"ring\"],"
-         "\"default\":\"pieces\"},"
+         "\"default\":\"pieces; the pair plan on a cabled pair; the cycle plan on a ring that closes over "
+         "cables\"},"
          "\"transports\":[\"verbs\",\"emulation\"],\"kernels\":\"ahead-of-time CUDA C++ "
-         "(sm_120, sm_121): transport, fold and link packs\",\"bootstrap\":"
+         "(sm_120, sm_121): transport, fold, link and point-to-point packs\",\"bootstrap\":"
          "\"tcp (loopback or SIRCL_BOOTSTRAP_ADDR/IFNAME)\",\"world\":\"1-8\"}";
 }
 ncclResult_t ncclGetVersion(int *version) {
