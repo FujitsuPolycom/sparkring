@@ -247,8 +247,10 @@ static void *initialize(void *arg) {
     sccl_bootstrap_close(comm->bootstrap);
     comm->bootstrap = NULL;
   }
-  atomic_store(&comm->state, result == 0 ? READY : FAILED);
+  /* The result first (both stores sequentially consistent): a reader that sees READY or FAILED also sees
+   * the result that goes with it. */
   atomic_store(&comm->error, result);
+  atomic_store(&comm->state, result == 0 ? READY : FAILED);
   return NULL;
 }
 static ncclResult_t start(struct ncclComm *comm) {
