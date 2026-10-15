@@ -11,6 +11,11 @@ override CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSI
 CFLAGS ?= -O2 -g
 # Diagnostic messages are bounded copies that truncate by design.
 override CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
+# Hardening, whatever the compiler's own defaults: stack protector and fortified libc calls (which need an
+# optimized build, -O1 or above), full RELRO with immediate binding and a non-executable stack for the library.
+override CFLAGS += -fstack-protector-strong
+override CPPFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+HARDENING_LDFLAGS = -Wl,-z,relro,-z,now,-z,noexecstack
 
 # The library: API layer, bootstrap, fabric arithmetic, session engine, CUDA
 # driver loader and the embedded kernel packs, plus SIRCL's native proxy and
@@ -63,7 +68,7 @@ all: $(BUILD)/libsircl.so
 
 $(BUILD) $(BUILD)/transport:
 	mkdir -p $@
-$(BUILD)/%.o: src/%.c include/nccl.h src/internal.h | $(BUILD)
+$(BUILD)/%.o: src/%.c include/nccl.h src/internal.h Makefile | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 # SIRCL's native proxy is vendored byte-identical as well (src/transport/sircl_roce_proxy.c, SHA-256 in its
 # .sha256 file); the build refuses a copy of other contents. The engine checks its local feature word
@@ -134,8 +139,10 @@ $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD
 # and ctypes.CDLL("libnccl.so.2") resolve. libsircl.so is a development link to it.
 $(BUILD)/libsircl.so: $(BUILD)/libsircl.so.$(VERSION)
 	ln -sf libsircl.so.$(VERSION) $@
-$(BUILD)/libsircl.so.$(VERSION): $(OBJECTS) exports.map $(BUILD)/entries.ok
-	$(CC) -shared -pthread $(LDFLAGS) -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=exports.map -o $@ $(OBJECTS) -ldl
+# The Makefile is a prerequisite of the objects and the library, so a change of their flags rebuilds them.
+$(filter $(BUILD)/transport/%.o,$(OBJECTS)): Makefile
+$(BUILD)/libsircl.so.$(VERSION): $(OBJECTS) exports.map $(BUILD)/entries.ok Makefile
+	$(CC) -shared -pthread $(LDFLAGS) $(HARDENING_LDFLAGS) -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=exports.map -o $@ $(OBJECTS) -ldl
 
 # The kernel-entry check (tests/check_entries.c): the library's pack loader runs on the embedded fatbins
 # through a stand-in CUDA driver (tests/fake_cuda.c) that reads their cubins offline, so every entry the
@@ -190,7 +197,7 @@ check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan $(BUILD)/test_kernelpack
 	  $(PYTHON) tests/test_site_routes.py || status=1; \
 	  $(PYTHON) tests/test_mpi_shim.py || status=1; \
 	  $(PYTHON) tests/test_check_nccl_tests.py || status=1; \
-	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py || status=1; \
+	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
 	  exit $$status
 
 # The check suites against a host library built with AddressSanitizer and UndefinedBehaviorSanitizer in

@@ -155,6 +155,16 @@ jobs:
           sha256sum build/packs/*.fatbin
           python tools/check_exports.py --include include --library build/libsircl.so
           make check-asan BUILD=build NVCC="$NVCC"
+      # The CMake build of the same sources and its tests (the same suites as make check).
+      - name: Build libsircl with CMake and run ctest
+        working-directory: spark_transport/libsircl
+        env:
+          SIRCL_PACKAGE: ${{ github.workspace }}/spark_transport/sircl
+        run: |
+          cmake -S . -B build-cmake -DLIBSIRCL_NVCC="$LIBSIRCL_NVCC" \
+            -DLIBSIRCL_NVCC_EXTRA_FLAGS=-DCCCL_DISABLE_CTK_COMPATIBILITY_CHECK
+          cmake --build build-cmake -j
+          ctest --test-dir build-cmake --output-on-failure
 
   lil-bridge:
     name: pinned LIL bridge
