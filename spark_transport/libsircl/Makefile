@@ -5,10 +5,12 @@ NVCC ?= nvcc
 BUILD ?= build
 # The library's version, from the one version source (VERSION).
 VERSION := $(shell cat VERSION)
-CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSIRCL_VERSION='"$(VERSION)"'
+# The flags the build needs are appended with `override`, so that CFLAGS or CPPFLAGS given on the command line
+# (make CFLAGS=-O1) or in the environment replace only the optional part (the default -O2 -g) and keep them.
+override CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSIRCL_VERSION='"$(VERSION)"'
 CFLAGS ?= -O2 -g
 # Diagnostic messages are bounded copies that truncate by design.
-CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
+override CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
 
 # The library: API layer, bootstrap, fabric arithmetic, session engine, CUDA
 # driver loader and the embedded kernel packs, plus SIRCL's native proxy and
@@ -52,7 +54,7 @@ PACKS = $(FATBIN) $(FOLD_FATBIN) $(LINKS_FATBIN) $(P2P_FATBIN)
 P2P_PROXY = src/transport/sircl_p2p_proxy.c
 P2P_FEATURES ?= 1
 ifeq ($(P2P_FEATURES),1)
-CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
+override CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
 endif
 NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
 
@@ -188,7 +190,7 @@ check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan $(BUILD)/test_kernelpack
 	  $(PYTHON) tests/test_site_routes.py || status=1; \
 	  $(PYTHON) tests/test_mpi_shim.py || status=1; \
 	  $(PYTHON) tests/test_check_nccl_tests.py || status=1; \
-	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; \
+	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py || status=1; \
 	  exit $$status
 
 # The check suites against a host library built with AddressSanitizer and UndefinedBehaviorSanitizer in
