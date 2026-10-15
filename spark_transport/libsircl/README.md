@@ -186,7 +186,10 @@ naming it. The close is terminal: from its start the communicator refuses new wo
 its error, and a second `ncclCommFinalize` or the destroy that follows returns the same result. When the
 transport's queue pairs or registrations cannot be released, destroy keeps the communicator's memory
 allocated and returns `ncclSystemError`. Ranks destroy their communicators in the same order, as they issue
-collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait. Finalize is
+collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait. When an abort finds a
+kernel of the communicator still running, its memory stays allocated (quarantined) until a later communicator
+creation or destroy in the process finds that kernel finished and frees it; every receipt's `quarantined_bytes`
+says how much memory is held so. Finalize is
 synchronous for every communicator: a non-blocking one (`blocking` 0 in its config) also runs both rounds
 before `ncclCommFinalize` returns, which never returns `ncclInProgress`; a caller that must not block runs
 finalize on a thread of its own.

@@ -76,6 +76,7 @@ typedef struct sccl_cuda {
   sccl_CUresult (*EventRecord)(sccl_CUevent, sccl_CUstream);
   sccl_CUresult (*EventDestroy)(sccl_CUevent);
   sccl_CUresult (*EventSynchronize)(sccl_CUevent);
+  sccl_CUresult (*EventQuery)(sccl_CUevent);
   /* Optional (NULL when the driver lacks them): stream-ordered allocation, which inside a CUDA graph
    * capture adds allocation and free nodes to the graph. */
   sccl_CUresult (*MemAllocAsync)(sccl_CUdeviceptr *, size_t, sccl_CUstream);

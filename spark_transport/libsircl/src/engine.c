@@ -448,6 +448,12 @@ struct sccl_engine {
   int lane_check_ms;  /* LIBSIRCL_LANE_CHECK_MS: the lane check's bound */
   int traffic_class;  /* SIRCL_TRAFFIC_CLASS or NCCL_IB_TC */
   int kp_held;  /* this engine holds a reference on its context's kernel-pack entry (sccl_kp_load) */
+  /* Quarantine (sccl_engine_destroy after an abort with a launch still running): the events recorded
+   * behind the last launch and the channels' work, the bytes held, the next quarantined engine. */
+  sccl_CUevent quarantine_done[1 + 2 * MAX_WORLD];
+  int quarantine_events;
+  uint64_t quarantine_bytes;
+  struct sccl_engine *quarantine_next;
   uint64_t stop_ns, stopped_ns;
   int have_last;
   sccl_CUevent order_event;
@@ -2219,10 +2225,13 @@ void sccl_engine_fail_stop_shutdown(void) {
   if (started) pthread_join(watcher, NULL);
 }
 
+static void quarantine_reclaim(void);
 int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int position, sccl_CUcontext ctx,
                        const atomic_int *cancelled, sccl_engine **out, char *err, size_t err_len) {
   *out = NULL;
   cu = sccl_cuda_get();
+  /* Engines quarantined by earlier aborts whose kernels have finished since are freed first. */
+  quarantine_reclaim();
   sccl_engine *e = calloc(1, sizeof *e);
   if (!e) {
     put_error(err, err_len, "out of memory");
@@ -4520,6 +4529,8 @@ static void p2p_receipt(sccl_engine *e, char *out, size_t len) {
            c ? (int)t->stat(c, P2P_STAT_ABORT_FROM) - 1 : -1);
 }
 
+/* The bytes quarantined engines hold (see quarantine_reclaim), reported in every receipt. */
+static _Atomic uint64_t quarantined_bytes;
 size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
   static const char *const dt[SCCL_DT_COUNT] = {"float32", "float16", "bfloat16"};
   char ops[512] = {0};
@@ -4567,7 +4578,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       out, len,
       "{\"schema\":\"libsircl-receipt/v1\",\"library\":\"libsircl " LIBSIRCL_VERSION "\",\"pid\":%d,"
       "\"communicator\":%d,\"rank\":%d,\"world\":%d,\"position\":%d,\"lanes\":%d,"
-      "\"device\":%d,"
+      "\"device\":%d,\"quarantined_bytes\":%" PRIu64 ","
       "\"transport\":\"%s\",\"kernel_pack\":\"%s\",\"fold_pack\":\"%s\",\"links_pack\":\"%s\","
       "\"slot_bytes\":%" PRIu64
       ",\"capacity\":%" PRIu64
@@ -4592,6 +4603,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "},\"forwarded\":0,\"native\":{\"ops_posted\":%" PRIu64 ",\"writes_completed\":%" PRIu64
       ",\"phases_posted\":%" PRIu64 "},\"healthy\":%s,\"error\":%s}",
       (int)getpid(), e->receipt_id, e->rank, e->world, e->position, e->lanes, e->device,
+      atomic_load_explicit(&quarantined_bytes, memory_order_relaxed),
       e->world == 1 ? "none" : e->transport->name,
       sccl_kp_hash(),
       sccl_kp_fold_hash(), sccl_kp_links_hash(),
@@ -4812,8 +4824,79 @@ void sccl_engine_teardown_stop(sccl_engine *e) {
   e->stopped = 1;
 }
 
+/* Engines whose arena a kernel may still read: an abort found a launch still running. Each holds events
+ * recorded behind its last launch and its channels' work; later creations and destroys retry them
+ * (quarantine_reclaim) and free every engine whose events completed, or whose context is gone (and with it
+ * every allocation and kernel). Engines kept because a queue pair or registration could not be released
+ * are not quarantined here and stay allocated: such an object may still be written. */
+static pthread_mutex_t quarantine_lock = PTHREAD_MUTEX_INITIALIZER;
+static sccl_engine *quarantined;
+static _Atomic uint64_t quarantined_bytes;
+
+static void quarantine_reclaim(void) {
+  if (!cu) return;
+  pthread_mutex_lock(&quarantine_lock);
+  for (sccl_engine **at = &quarantined; *at;) {
+    sccl_engine *e = *at;
+    int pushed = cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS, done = 1;
+    for (int i = 0; pushed && done && i < e->quarantine_events; ++i)
+      done = cu->EventQuery(e->quarantine_done[i]) == SCCL_CUDA_SUCCESS;
+    if (!done) {
+      sccl_CUcontext popped;
+      cu->CtxPopCurrent(&popped);
+      at = &e->quarantine_next;
+      continue;
+    }
+    *at = e->quarantine_next;
+    atomic_fetch_sub_explicit(&quarantined_bytes, e->quarantine_bytes, memory_order_relaxed);
+    if (pushed) {
+      for (int i = 0; i < e->quarantine_events; ++i) cu->EventDestroy(e->quarantine_done[i]);
+      if (e->order_event) cu->EventDestroy(e->order_event);
+      p2p_close(e, 1);
+      release_memory(e);
+      if (e->kp_held) sccl_kp_release(e->ctx, 1);
+      sccl_CUcontext popped;
+      cu->CtxPopCurrent(&popped);
+    } else {
+      /* The context is gone, and with it every device allocation and kernel: only host bookkeeping. */
+      free(e->retired_stage);
+      if (e->host && e->host_emulated) sccl_emu_segment_free(e->host);
+      if (e->p2p_host && e->p2p_host_emulated) sccl_emu_segment_free(e->p2p_host);
+      if (e->kp_held) sccl_kp_release(e->ctx, 0);
+    }
+    free(e);
+  }
+  pthread_mutex_unlock(&quarantine_lock);
+}
+
+/* With the engine's context current: record the events quarantine_reclaim waits for (behind the last
+ * launch and every channel stream) and put the engine on the quarantine list. 0 when an event could not be
+ * made: the engine then stays allocated without a retry. */
+static int quarantine_add(sccl_engine *e) {
+  int n = 0;
+  sccl_CUstream streams[1 + 2 * MAX_WORLD];
+  if (e->have_last) streams[n++] = e->last_stream;
+  for (int d = 0; d < 2; ++d)
+    for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
+      if (e->p2p_ch[d][p].stream) streams[n++] = e->p2p_ch[d][p].stream;
+  e->quarantine_events = 0;
+  for (int i = 0; i < n; ++i) {
+    if (cu->EventCreate(&e->quarantine_done[i], SCCL_CU_EVENT_DISABLE_TIMING) != SCCL_CUDA_SUCCESS) return 0;
+    e->quarantine_events = i + 1;
+    if (cu->EventRecord(e->quarantine_done[i], streams[i]) != SCCL_CUDA_SUCCESS) return 0;
+  }
+  e->quarantine_bytes = e->region_bytes + e->shared.slot_bytes * (uint64_t)(1 + e->world);
+  atomic_fetch_add_explicit(&quarantined_bytes, e->quarantine_bytes, memory_order_relaxed);
+  pthread_mutex_lock(&quarantine_lock);
+  e->quarantine_next = quarantined;
+  quarantined = e;
+  pthread_mutex_unlock(&quarantine_lock);
+  return 1;
+}
+
 ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t len) {
   if (!e) return ncclSuccess;
+  quarantine_reclaim();
   pthread_mutex_lock(&e->lock);
   e->closing = 1;
   pthread_mutex_unlock(&e->lock);
@@ -4855,7 +4938,7 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
               "verbs calls); their arena stays allocated", e->rank, p2p_unreleased);
   }
   /* A queue pair, completion queue or registration whose release failed may still be live: the arena
-   * and device memory stay allocated (quarantined) until the process exits. */
+   * and device memory stay allocated until the process exits (no retry frees them). */
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
   int released = unreleased == 0 && p2p_unreleased == 0;
@@ -4866,7 +4949,8 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
   }
   dump_teardown(e, e->stop_ns, e->stopped_ns, realtime_ns());
   /* After an abort with a launch still running, its kernel may read the arena and counters
-   * until its wait limit; they stay allocated until the process exits. */
+   * until its wait limit; they stay allocated, quarantined, until a later creation or destroy finds that
+   * kernel finished (quarantine_reclaim). */
   int freed = pushed && idle && released;
   if (freed) {
     if (e->order_event) cu->EventDestroy(e->order_event);
@@ -4886,11 +4970,12 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
     e->host = e->p2p_host = NULL;
     freed = 1;
   }
+  int queued = !freed && pushed && released && quarantine_add(e);
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
   }
   pthread_mutex_destroy(&e->lock);
-  if (freed) free(e);
+  if (freed && !queued) free(e);
   return result;
 }

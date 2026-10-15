@@ -66,6 +66,7 @@ static void load(void) {
   SYM(EventRecord, "cuEventRecord");
   SYM(EventDestroy, "cuEventDestroy_v2");
   SYM(EventSynchronize, "cuEventSynchronize");
+  SYM(EventQuery, "cuEventQuery");
 #undef SYM
   *(void **)(&table.MemAllocAsync) = dlsym(handle, "cuMemAllocAsync");
   *(void **)(&table.MemFreeAsync) = dlsym(handle, "cuMemFreeAsync");

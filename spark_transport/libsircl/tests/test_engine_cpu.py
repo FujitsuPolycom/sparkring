@@ -265,11 +265,14 @@ u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
 c=C.c_void_p(); assert l.ncclCommInitRank(C.byref(c),1,u,0)==0
 assert l.ncclCommDestroy(c)==0
 print(json.dumps([open(target).read(), os.path.islink(receipt + ".partial"), os.path.isfile(receipt),
-                  sorted(name for name in os.listdir(directory) if ".partial." in name)]))
+                  sorted(name for name in os.listdir(directory) if ".partial." in name),
+                  json.load(open(receipt)).get("quarantined_bytes")]))
 '''.replace("sys.argv[2]", repr(directory)), {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs",
                                                     "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
             self.assertEqual(out.returncode, 0, out.stderr[-2000:])
-            victim, still_link, written, leftovers = json.loads(out.stdout)
+            victim, still_link, written, leftovers, quarantined = json.loads(out.stdout)
+            # Every receipt reports the memory quarantined engines hold; none here.
+            self.assertEqual(quarantined, 0)
             self.assertEqual(victim, "untouched")
             self.assertTrue(still_link)
             self.assertTrue(written)
