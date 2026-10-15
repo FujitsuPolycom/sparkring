@@ -180,8 +180,10 @@ EXPORT int cuModuleUnload(void *module) { return module ? 0 : 400; }
 /* Every other entry point src/cuda_api.c binds: present, never used by the check. */
 #define UNUSED_ENTRY(name) \
   EXPORT int name(void) { return 0; }
-UNUSED_ENTRY(cuCtxGetDevice)
-UNUSED_ENTRY(cuCtxSynchronize)
+EXPORT int cuCtxGetDevice(int *device) { *device = 0; return 0; }
+static int context_syncs;
+EXPORT int cuCtxSynchronize(void) { ++context_syncs; return 0; }
+EXPORT int sccl_fake_cuda_context_syncs(void) { return context_syncs; }
 UNUSED_ENTRY(cuDeviceGetAttribute)
 UNUSED_ENTRY(cuLaunchKernel)
 UNUSED_ENTRY(cuMemAlloc_v2)

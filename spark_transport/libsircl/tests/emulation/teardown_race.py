@@ -46,6 +46,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -131,6 +132,30 @@ def run_rank(args) -> int:
             entry.update(ok=(first != 0 or destroyed != 0) and second == first and after != 0, exact=exact,
                          finalize=[first, second], after_close=after, destroy=destroyed, error=error,
                          seconds=round(time.perf_counter() - started, 3))
+            rounds.append(entry)
+            save()
+            continue
+        if args.expect == "concurrent-close":
+            started_calls = threading.Event()
+            results = []
+            def enqueue():
+                torch.cuda.set_device(0)
+                for _ in range(1000):
+                    result = lib.ncclAllReduce(ctypes.c_void_p(x.data_ptr()), ctypes.c_void_p(y.data_ptr()),
+                                               count, 9, 0, child, ctypes.c_void_p(stream.cuda_stream))
+                    results.append(result)
+                    started_calls.set()
+                    if result:
+                        break
+            worker = threading.Thread(target=enqueue)
+            worker.start()
+            started_calls.wait()
+            finalized = lib.ncclCommFinalize(child)
+            destroyed = lib.ncclCommDestroy(child)
+            worker.join(timeout=30)
+            entry.update(ok=not worker.is_alive() and not finalized and not destroyed
+                         and all(result in (0, 4, 5) for result in results),
+                         finalize=finalized, destroy=destroyed, calls=results)
             rounds.append(entry)
             save()
             continue
@@ -275,7 +300,7 @@ def main(argv=None) -> int:
     parser.add_argument("--slow-rank", type=int, default=0)
     parser.add_argument("--slow-ns", type=int, default=5_000_000)
     parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop"), default="exact")
+    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop", "concurrent-close"), default="exact")
     parser.add_argument("--late-rank", type=int, default=-1, help="the rank that starts each all-reduce late")
     parser.add_argument("--late-s", type=float, default=0.0)
     parser.add_argument("--env", action="append", default=[], help="NAME=VALUE for every rank")

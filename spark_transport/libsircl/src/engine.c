@@ -433,7 +433,7 @@ struct sccl_engine {
   sccl_CUstream last_stream;
   /* Teardown: the progress thread stopped (sccl_engine_teardown_stop), when its stop was requested and
    * when it had stopped (CLOCK_REALTIME nanoseconds). */
-  int stopped;
+  int stopped, closing;
   uint64_t stop_ns, stopped_ns;
   int have_last;
   sccl_CUevent order_event;
@@ -2961,6 +2961,11 @@ static ncclResult_t begin_call(sccl_engine *e, const char *what, sccl_CUstream s
                                size_t len) {
   call->pushed = call->capturing = 0;
   pthread_mutex_lock(&e->lock);
+  if (e->closing) {
+    put_error(err, len, "%s: communicator is closing", what);
+    pthread_mutex_unlock(&e->lock);
+    return ncclInvalidUsage;
+  }
   sccl_CUcontext current = NULL;
   if (cu->CtxGetCurrent(&current) != SCCL_CUDA_SUCCESS || current != e->ctx) {
     if (cuda_check(cu->CtxPushCurrent(e->ctx), "making the communicator's context current", err, len)) {
@@ -2993,8 +2998,8 @@ static ncclResult_t begin_call(sccl_engine *e, const char *what, sccl_CUstream s
         (cuda_check(cu->EventRecord(e->order_event, e->last_stream), "recording the order event", err, len) ||
          cuda_check(cu->StreamWaitEvent(stream, e->order_event, 0), "ordering the stream", err, len)))
       result = ncclUnhandledCudaError;
-    e->last_stream = stream;
-    e->have_last = 1;
+    e->have_last = result == ncclSuccess;
+    if (e->have_last) e->last_stream = stream;
   }
   if (result != ncclSuccess) {
     sccl_CUcontext popped;
@@ -4154,16 +4159,15 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
 
 ncclResult_t sccl_engine_teardown_sync(sccl_engine *e) {
   if (!e || !cu) return ncclSuccess;
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  pthread_mutex_unlock(&e->lock);
   ncclResult_t result = ncclSuccess;
   int pushed = e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
   /* Without the creating context the enqueued work cannot be waited for: a failure, not a skipped wait. */
   if (e->ctx && !pushed) result = ncclUnhandledCudaError;
-  if (pushed && e->have_last && cu->StreamSynchronize(e->last_stream) != SCCL_CUDA_SUCCESS)
+  if (pushed && cu->CtxSynchronize() != SCCL_CUDA_SUCCESS)
     result = ncclUnhandledCudaError;
-  for (int d = 0; pushed && d < 2; ++d)
-    for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
-      if (e->p2p_ch[d][p].stream && cu->StreamSynchronize(e->p2p_ch[d][p].stream) != SCCL_CUDA_SUCCESS)
-        result = ncclUnhandledCudaError;
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
@@ -4178,17 +4182,7 @@ int sccl_engine_wait_limit_ms(const sccl_engine *e) {
 }
 
 ncclResult_t sccl_engine_finalize(sccl_engine *e) {
-  if (!e || !cu) return ncclSuccess;
-  pthread_mutex_lock(&e->lock);
-  ncclResult_t result = ncclSuccess;
-  if (e->have_last) {
-    int pushed = cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
-    if (cu->StreamSynchronize(e->last_stream) != SCCL_CUDA_SUCCESS) result = ncclUnhandledCudaError;
-    sccl_CUcontext popped;
-    if (pushed) cu->CtxPopCurrent(&popped);
-  }
-  pthread_mutex_unlock(&e->lock);
-  return result;
+  return sccl_engine_teardown_sync(e);
 }
 
 ncclResult_t sccl_engine_set_wait_regime(sccl_engine *e, const char *regime) {
@@ -4554,7 +4548,12 @@ static void dump_teardown(sccl_engine *e, uint64_t stop_ns, uint64_t stopped_ns,
 }
 
 void sccl_engine_teardown_stop(sccl_engine *e) {
-  if (!e || e->stopped) return;
+  if (!e) return;
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  int stopped = e->stopped;
+  pthread_mutex_unlock(&e->lock);
+  if (stopped) return;
   write_receipt(e);
   int pushed = cu && e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
   dump_links(e, "destroy", pushed);
@@ -4571,28 +4570,27 @@ void sccl_engine_teardown_stop(sccl_engine *e) {
 
 ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t len) {
   if (!e) return ncclSuccess;
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  pthread_mutex_unlock(&e->lock);
   watch_remove(e);
   ncclResult_t result = ncclSuccess;
   int stopped = e->stopped;
   if (!stopped) write_receipt(e);
   int pushed = cu && e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
-  int idle = 1;
-  if (pushed && e->have_last) {
-    if (abort) {
-      idle = cu->StreamQuery(e->last_stream) == SCCL_CUDA_SUCCESS;
-    } else if (!stopped) {
-      cu->StreamSynchronize(e->last_stream);
-    }
+  int idle = pushed;
+  if (pushed && !abort && cu->CtxSynchronize() != SCCL_CUDA_SUCCESS) {
+    idle = 0;
+    result = ncclUnhandledCudaError;
+    put_error(err, len, "waiting for the communicator's context failed; its arena stays allocated");
   }
-  for (int d = 0; pushed && d < 2; ++d)
-    for (int p = 0; p < e->world && p < MAX_WORLD; ++p) {
-      sccl_CUstream channel = e->p2p_ch[d][p].stream;
-      if (!channel) continue;
-      if (abort)
-        idle = idle && cu->StreamQuery(channel) == SCCL_CUDA_SUCCESS;
-      else if (!stopped)
-        cu->StreamSynchronize(channel);
-    }
+  if (pushed && abort) {
+    if (e->have_last) idle = cu->StreamQuery(e->last_stream) == SCCL_CUDA_SUCCESS;
+    for (int d = 0; d < 2; ++d)
+      for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
+        if (e->p2p_ch[d][p].stream)
+          idle = idle && cu->StreamQuery(e->p2p_ch[d][p].stream) == SCCL_CUDA_SUCCESS;
+  }
   if (!stopped) {
     dump_links(e, "destroy", pushed && idle);
     e->stop_ns = realtime_ns();

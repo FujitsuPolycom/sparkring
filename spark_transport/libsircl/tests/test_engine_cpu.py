@@ -40,6 +40,21 @@ def run(script, env=None):
 
 
 class EngineCpuTests(unittest.TestCase):
+    def test_finalize_and_destroy_wait_for_the_context(self):
+        out = run('''g=C.CDLL("libcuda.so.1")
+u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); assert l.ncclCommInitRank(C.byref(c),1,u,0)==0
+assert l.ncclCommFinalize(c)==0
+before=g.sccl_fake_cuda_context_syncs()
+assert l.ncclCommDestroy(c)==0
+print(json.dumps([before,g.sccl_fake_cuda_context_syncs()]))
+''', {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs",
+       "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        before, after = json.loads(out.stdout)
+        self.assertGreaterEqual(before, 1)
+        self.assertGreater(after, before)
+
     def test_initall_refuses_distinct_cuda_devices(self):
         for devices in ("None", "(C.c_int*2)(0,1)"):
             out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "
