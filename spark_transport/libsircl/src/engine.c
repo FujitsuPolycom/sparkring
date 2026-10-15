@@ -18,6 +18,7 @@
 #include <unistd.h>
 
 #include "kernelpack.h"
+#include "link_plan.h"
 #include "transport/shm_verbs.h"
 
 /* -- SIRCL's native proxy (src/transport/sircl_roce_proxy.c), compiled once per transport ----- */
@@ -2656,6 +2657,11 @@ static ncclResult_t launch_link_entry(sccl_engine *e, sccl_CUfunction fn, unsign
                                       sccl_CUdeviceptr src, sccl_CUdeviceptr dst, sccl_CUdeviceptr scratch,
                                       uint64_t chunk, uint64_t stride, uint32_t piece, uint32_t blocks, int32_t flags,
                                       sccl_CUstream stream, char *err, size_t len) {
+  if (!sccl_packs_fit(chunk) || !sccl_packs_fit(stride) || !sccl_packs_fit(piece)) {
+    put_error(err, len, "%s: chunk %" PRIu64 " or stride %" PRIu64 " bytes: the pack count exceeds the kernel's int32 "
+              "argument", what, chunk, stride);
+    return ncclInvalidArgument;
+  }
   sccl_link_args a;
   memset(&a, 0, sizeof a);
   a.input = src;
@@ -2827,7 +2833,8 @@ static int gather_link_kind(const sccl_engine *e, uint64_t shard) {
  * -1; chunks a multiple of 16 bytes. */
 static int scatter_link_kind(const sccl_engine *e, uint64_t chunk) {
   uint64_t input = chunk * (uint64_t)e->world;
-  if (!e->link_on || chunk == 0 || chunk % PACK) return -1;
+  /* The chunk is also the ops' stride, a pack count of the kernels' int32 arguments. */
+  if (!e->link_on || chunk == 0 || chunk % PACK || !sccl_packs_fit(chunk)) return -1;
   uint32_t schedule = effective_schedule(e, e->shared.scatter_schedule, input, COLL_SCATTER);
   if (schedule == SCHEDULE_RING) return SCCL_RING_SCATTER;
   if (schedule == SCHEDULE_PIECES) return -1;
@@ -2918,6 +2925,10 @@ static ncclResult_t reduce_link(sccl_engine *e, int ring, int dtype, sccl_CUdevi
 /* One chain op over `nbytes` (a positive multiple of 16) from src to dst, both 16-byte aligned. */
 static ncclResult_t launch_chain(sccl_engine *e, int dtype, sccl_CUdeviceptr src, sccl_CUdeviceptr dst,
                                  uint64_t nbytes, sccl_CUstream stream, char *err, size_t len) {
+  if (!sccl_packs_fit(nbytes)) {
+    put_error(err, len, "chain op of %" PRIu64 " bytes: its pack count exceeds the kernel's int32 argument", nbytes);
+    return ncclInvalidArgument;
+  }
   int32_t packs = (int32_t)(nbytes / PACK);
   sccl_chain_args a;
   memset(&a, 0, sizeof a);
@@ -3416,14 +3427,13 @@ static ncclResult_t reduce_into(sccl_engine *e, const char *what, const void *se
    * every rank (not ncclReduce); unaligned buffers go through the staging buffer. */
   if (body && e->shared.large_schedule != SCHEDULE_PIECES) {
     uint32_t schedule = effective_schedule(e, e->shared.large_schedule, nbytes, COLL_REDUCE);
-    uint64_t ring_bytes = body / (PACK * (uint64_t)e->world) * PACK * (uint64_t)e->world;
-    if (schedule == SCHEDULE_RING && e->link_on && ring_bytes && ring_bytes / (uint64_t)e->world < (1ull << 31)) {
-      result = reduce_link(e, 1, dtype, src, dst, ring_bytes, capturing, stream, err, len);
-      start = ring_bytes;
-    } else if (schedule != SCHEDULE_RING && e->chain_on &&
-               (schedule == SCHEDULE_CHAIN || body >= e->shared.chain_mins[COLL_REDUCE])) {
-      result = reduce_link(e, 0, dtype, src, dst, body, capturing, stream, err, len);
-      start = body;
+    uint64_t link_bytes = 0;
+    int plan = sccl_large_reduce_plan(body, (uint64_t)e->world, schedule == SCHEDULE_RING, e->link_on,
+                                      e->chain_on && (schedule == SCHEDULE_CHAIN ||
+                                                      body >= e->shared.chain_mins[COLL_REDUCE]), &link_bytes);
+    if (plan != SCCL_LARGE_PIECES) {
+      result = reduce_link(e, plan == SCCL_LARGE_RING, dtype, src, dst, link_bytes, capturing, stream, err, len);
+      start = link_bytes;
     }
   }
   for (uint64_t offset = start; result == ncclSuccess && offset < body; offset += e->shared.large_piece) {
@@ -4104,6 +4114,13 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
       put_error(err, len, "ncclGroupEnd: send %u to this rank itself carries %zu bytes, the receive %zu", k,
                 ops[sends[1][k]].bytes, ops[recvs[1][k]].bytes);
       return ncclInvalidUsage;
+    }
+  /* A channel item's message is a pack count of the point-to-point kernels' int32 arguments. */
+  for (unsigned i = 0; e->world > 2 && i < count; ++i)
+    if (ops[i].peer != e->rank && !sccl_packs_fit(round_up(ops[i].bytes, PACK))) {
+      put_error(err, len, "%s of %zu bytes: a point-to-point channel message holds at most %" PRIu64 " bytes",
+                ops[i].send ? "ncclSend" : "ncclRecv", ops[i].bytes, (uint64_t)INT32_MAX * PACK);
+      return ncclInvalidArgument;
     }
   char message[400];
   ncclResult_t health = sccl_engine_async_error(e, message, sizeof message);

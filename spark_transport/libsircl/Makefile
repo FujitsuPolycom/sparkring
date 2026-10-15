@@ -166,9 +166,12 @@ $(BUILD)/mpi-shim/lib/libmpi.so: tools/mpi-shim/mpi_shim.c tools/mpi-shim/includ
 
 $(BUILD)/test_fabric: tests/test_fabric.c $(BUILD)/fabric.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
-check: all $(BUILD)/test_fabric
+$(BUILD)/test_link_plan: tests/test_link_plan.c src/link_plan.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
+check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan
 	@status=0; \
 	  $(BUILD)/test_fabric || status=1; \
+	  $(BUILD)/test_link_plan || status=1; \
 	  $(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
 	  $(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
 	  $(PYTHON) tests/test_bootstrap.py || status=1; \
