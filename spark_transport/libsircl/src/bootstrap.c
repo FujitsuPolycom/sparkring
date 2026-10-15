@@ -36,8 +36,10 @@ static const unsigned char gather_magic[4] = {'S','C','R','1'};
 static _Thread_local char last_error[192];
 
 /* `failed`: an all-gather on this handle failed after it began sending, so this rank's round count may differ
- * from the broker's; every later all-gather fails at once instead of matching another round's records. */
-struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; int failed; };
+ * from the broker's; every later all-gather fails at once instead of matching another round's records.
+ * `lock` is held across each all-gather round, so rounds that threads start on one handle at once run one
+ * after another instead of interleaving their frames on the socket. */
+struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; int failed; pthread_mutex_t lock; };
 struct peer {
   int fd;
   int rank;
@@ -701,6 +703,7 @@ int sccl_bootstrap_join_cancel(const unsigned char id[ID_SIZE], int nranks, int 
   handle->rank = rank;
   handle->round = 0;
   handle->failed = 0;
+  pthread_mutex_init(&handle->lock, NULL);
   *out = handle;
   return OK;
 failed:
@@ -726,7 +729,11 @@ void sccl_bootstrap_close(sccl_bootstrap *handle) {
     (void)error_result(USAGE, "fork after library use is unsupported; exec is required in the child");
     return;
   }
-  if (handle) { close(handle->fd); free(handle); }
+  if (handle) {
+    close(handle->fd);
+    pthread_mutex_destroy(&handle->lock);
+    free(handle);
+  }
   reap_finished();
 }
 
@@ -743,6 +750,9 @@ int sccl_bootstrap_allgather(sccl_bootstrap *handle, const void *data, uint32_t 
   return sccl_bootstrap_allgather_within(handle, data, bytes, out, lengths, frame_deadline_ms(), cancelled);
 }
 
+static int allgather_locked(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
+                            uint32_t *lengths, int timeout_ms, const atomic_int *cancelled);
+
 int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
                                     uint32_t *lengths, int timeout_ms, const atomic_int *cancelled) {
   if (out) *out = NULL;
@@ -750,6 +760,15 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
     return error_result(USAGE, "fork after library use is unsupported; exec is required in the child");
   if (!handle || !out || !lengths || (bytes && !data) || bytes > MAX_FRAME || timeout_ms < 1)
     return error_result(ARGUMENT, "all-gather needs a handle, outputs, at most 1 MiB per rank and a timeout");
+  pthread_mutex_lock(&handle->lock);
+  int result = allgather_locked(handle, data, bytes, out, lengths, timeout_ms, cancelled);
+  pthread_mutex_unlock(&handle->lock);
+  return result;
+}
+
+/* One all-gather round with the handle's lock held; its deadline counts from the moment the lock is held. */
+static int allgather_locked(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
+                            uint32_t *lengths, int timeout_ms, const atomic_int *cancelled) {
   if (handle->failed)
     return error_result(REMOTE, "an earlier all-gather on this bootstrap failed, so its rounds are out of step");
   int64_t deadline = now_ms() + timeout_ms;

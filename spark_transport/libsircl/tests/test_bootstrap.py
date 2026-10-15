@@ -426,6 +426,37 @@ int test_already_cancelled_join(const unsigned char id[128], int world, int rank
             for handle in handles:
                 self.bootstrap.close(handle)
 
+    def test_concurrent_allgathers_on_one_handle_run_one_after_another(self):
+        """Two threads start an all-gather on rank 0's handle at once while rank 1 runs two rounds: the two
+        rounds on rank 0 run one after another instead of interleaving their frames, so every round completes
+        and each of rank 1's rounds pairs with exactly one of rank 0's."""
+        saved = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "3000"
+        try:
+            for attempt in range(20):
+                handles = self.joined_group(2)
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+                        zeros = [pool.submit(self.bootstrap.allgather, handles[0], payload * 3000, 2)
+                                 for payload in (b"a", b"b")]
+                        ones = pool.submit(lambda: [self.bootstrap.allgather(handles[1], payload, 2)
+                                                    for payload in (b"x", b"y")])
+                        zeros = [future.result(timeout=10) for future in zeros]
+                        ones = ones.result(timeout=10)
+                    self.assertEqual([result for result, _ in zeros + ones], [0] * 4, attempt)
+                    seen_by_zero = {parts[1]: parts[0] for _, parts in zeros}
+                    self.assertEqual(sorted(seen_by_zero), [b"x", b"y"], attempt)
+                    for _, parts in ones:
+                        self.assertEqual(parts[0], seen_by_zero[parts[1]], attempt)
+                finally:
+                    for handle in handles:
+                        self.bootstrap.close(handle)
+        finally:
+            if saved is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = saved
+
     def test_allgather_fails_fast_when_a_rank_leaves(self):
         handles = self.joined_group(3)
         self.bootstrap.close(handles[2])

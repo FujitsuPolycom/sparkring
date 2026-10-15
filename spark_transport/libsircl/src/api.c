@@ -32,8 +32,9 @@ struct ncclComm {
   sccl_engine *engine;
   char error_message[1024];
   pthread_mutex_t error_lock;    /* an error published after the status (publish_error) with its text */
-  int quiesced;                  /* the close began (ncclCommFinalize, or ncclCommDestroy) */
+  int quiesced;                  /* the close ran (ncclCommFinalize, or ncclCommDestroy); under close_lock */
   int close_result;              /* its result, returned again by a repeated ncclCommFinalize or destroy */
+  pthread_mutex_t close_lock;    /* held across the close, so a concurrent second close waits for its result */
   uint64_t serial;               /* creation number in this process: tells a reused address apart */
   atomic_int state, error, grouped, cancelled;
 };
@@ -346,6 +347,7 @@ static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   struct ncclComm *comm = calloc(1, sizeof(*comm));
   if (!comm) return creation_failed(ncclSystemError, "communicator allocation failed");
   pthread_mutex_init(&comm->error_lock, NULL);
+  pthread_mutex_init(&comm->close_lock, NULL);
   comm->nranks = nranks; comm->rank = rank; comm->blocking = blocking;
   comm->bootstrap_only = bootstrap_only; comm->ctx = ctx; comm->position = position;
   memcpy(comm->id, id.internal, 128);
@@ -948,8 +950,9 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
     result = ncclInvalidUsage;
     why = "communicator initialization is still in progress";
   } else if (result == ncclSuccess) {
-    if (state == READY || (state == next)) atomic_store(&comm->state, next);
-    else result = ncclInvalidUsage;
+    /* Compare-exchange: a state another thread stored in between is seen, not overwritten. */
+    while ((state == READY || state == next) && !atomic_compare_exchange_weak(&comm->state, &state, next)) {}
+    if (state != READY && state != next) result = ncclInvalidUsage;
   }
   release(comm);
   return result == ncclSuccess ? result : fail(result, why);
@@ -964,7 +967,14 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
  * result (this rank's own error first, else ncclRemoteError naming the first rank that reported one, or a
  * round that not every rank reached) is kept, becomes the communicator's error when it failed, and is what a
  * repeated ncclCommFinalize or the destroy returns. */
+static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call);
 static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
+  pthread_mutex_lock(&comm->close_lock);
+  ncclResult_t result = quiesce_locked(comm, call);
+  pthread_mutex_unlock(&comm->close_lock);
+  return result;
+}
+static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call) {
   if (comm->quiesced) return (ncclResult_t)comm->close_result;
   if (!comm->engine || comm->bootstrap_only || comm->nranks < 2 || !comm->bootstrap) return ncclSuccess;
   /* A revoked communicator runs the rounds too: revoke stops new work, not the kernels and forwards already
@@ -972,7 +982,7 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
   int state = atomic_load(&comm->state);
   if (state == INIT) return ncclSuccess;
   comm->quiesced = 1;
-  if (state == READY) atomic_store(&comm->state, FINALIZED);
+  if (state == READY) atomic_compare_exchange_strong(&comm->state, &state, FINALIZED);
   char message[700] = {0};
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
   if (result != ncclSuccess) read_error(comm, message, sizeof message);
@@ -1075,6 +1085,7 @@ static ncclResult_t dispose(ncclComm_t handle, int abort) {
   }
   sccl_bootstrap_close(comm->bootstrap);
   pthread_mutex_destroy(&comm->error_lock);
+  pthread_mutex_destroy(&comm->close_lock);
   free(comm);
   return result == ncclSuccess ? ncclSuccess : fail(result, message);
 }
