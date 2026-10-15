@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import struct
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -373,6 +374,59 @@ assert after==before, (before, after)
 '''
         subprocess.run([sys.executable, "-c", script, str(LIBRARY), str(Path(__file__).parent)],
                        check=True, capture_output=True, text=True, timeout=5)
+
+    def test_unload_waits_for_a_call_still_inside_the_library(self):
+        """Another thread is inside ncclCommSplit, waiting for a peer, when the library unloads (dlclose, or
+        the destructors that exit runs). The unload cancels the call and waits for it to leave before freeing
+        the communicator, so the call returns an error instead of using freed memory or unmapped code. The
+        exit case is decisive under `make check-asan`, where a use of the freed communicator is reported.
+
+        The parent communicator's bootstrap root is a stand-in broker in the child process that admits rank 0
+        and never answers its all-gather, so the split waits in its socket poll until cancellation reaches
+        it. In the exit case a helper library, loaded after libsircl and finalized after it, keeps the
+        exiting process alive for 0.3 s after libsircl's destructor, long enough for the split thread to wake."""
+        script = r'''
+import _ctypes, ctypes as C, os, socket, struct, sys, threading, time
+sys.path.insert(0, sys.argv[2]); import test_api as api
+api.LIBRARY=api.Path(sys.argv[1]); api.initialize_library()
+if sys.argv[3]=="exit": C.CDLL(sys.argv[4])
+os.environ["LIBSIRCL_BOOTSTRAP_ONLY"]="1"; os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"]="5000"
+server=socket.socket(); server.bind(("127.0.0.1",0)); server.listen()
+peers=[]
+def broker():
+    peer,_=server.accept(); peers.append(peer)
+    hello=b""
+    while len(hello)<136: hello+=peer.recv(136-len(hello))
+    peer.sendall(b"SCC1"+struct.pack("!I",0))
+threading.Thread(target=broker, daemon=True).start()
+u=api.UniqueId(); assert api.LIB.ncclGetUniqueId(C.byref(u))==0
+u.internal[16:18]=struct.pack("!H",server.getsockname()[1])
+handle=C.c_void_p(); assert api.LIB.ncclCommInitRank(C.byref(handle),2,u,0)==0
+child=C.c_void_p(); result=[]
+def split(): result.append(api.LIB.ncclCommSplit(handle,0,0,C.byref(child),None))
+thread=threading.Thread(target=split, daemon=True); thread.start(); time.sleep(0.1)
+assert not result
+if sys.argv[3]=="exit":
+    sys.stdout.flush(); C.CDLL(None).exit(0)
+_ctypes.dlclose(api.LIB._handle)
+thread.join(2)
+assert result and result[0]!=0, result
+print("split returned", result[0])
+'''
+        with tempfile.TemporaryDirectory() as directory:
+            source, helper = Path(directory) / "linger.c", Path(directory) / "liblinger.so"
+            source.write_text("#include <unistd.h>\n__attribute__((destructor)) static void linger(void) "
+                              "{ usleep(300000); }\n")
+            subprocess.run([os.environ.get("CC", "cc"), "-shared", "-fPIC", str(source), "-o", str(helper)],
+                           check=True)
+            for mode in ("dlclose", "exit"):
+                with self.subTest(mode=mode):
+                    out = subprocess.run([sys.executable, "-c", script, str(LIBRARY), str(Path(__file__).parent),
+                                          mode, str(helper)], capture_output=True, text=True, timeout=10)
+                    self.assertEqual(out.returncode, 0, out.stderr)
+                    self.assertNotIn("AddressSanitizer", out.stderr)
+                    if mode == "dlclose":
+                        self.assertIn("split returned", out.stdout)
 
     def test_dso_unload_joins_workers_and_closes_roots(self):
         script = r'''

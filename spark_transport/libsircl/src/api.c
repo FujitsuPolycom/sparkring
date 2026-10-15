@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum comm_state { INIT, READY, FINALIZED, REVOKED, FAILED };
 struct ncclComm {
@@ -332,6 +333,13 @@ ncclResult_t ncclCommInitRank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   return ncclCommInitRankConfig(out, nranks, id, rank, NULL);
 }
 
+/* A failed split: its reason is recorded before the parent's reference is dropped, so that a library unload
+ * waiting for the reference finds the call already past its library work. */
+static ncclResult_t split_failed(struct ncclComm *parent, ncclResult_t result, const char *message) {
+  creation_failed(result, message);
+  release(parent);
+  return result;
+}
 /* ncclCommSplit: two rounds over the parent's bootstrap. Round 1 gathers every rank's (color, key); the
  * ranks of one color form a communicator ordered by key, then parent rank. Round 2 gathers the unique id
  * each new rank 0 created; every member then joins its communicator with that id, keeping the parent's
@@ -354,14 +362,12 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   if (sccl_bootstrap_allgather(parent->bootstrap, mine, sizeof mine, &all, lengths, &parent->cancelled)) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging colors: %s", sccl_bootstrap_error());
-    release(parent);
-    return creation_failed(ncclSystemError, message);
+    return split_failed(parent, ncclSystemError, message);
   }
   for (int r = 0; r < parent->nranks; ++r) {
     if (lengths[r] != sizeof mine) {
       free(all);
-      release(parent);
-      return creation_failed(ncclRemoteError, "ncclCommSplit: invalid color record length");
+      return split_failed(parent, ncclRemoteError, "ncclCommSplit: invalid color record length");
     }
   }
   const int32_t *records = all;
@@ -390,14 +396,12 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   if (sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths, &parent->cancelled)) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging unique ids: %s", sccl_bootstrap_error());
-    release(parent);
-    return creation_failed(ncclSystemError, message);
+    return split_failed(parent, ncclSystemError, message);
   }
   for (int r = 0; r < parent->nranks; ++r) {
     if (lengths[r] != sizeof id.internal) {
       free(all);
-      release(parent);
-      return creation_failed(ncclRemoteError, "ncclCommSplit: invalid unique-id record length");
+      return split_failed(parent, ncclRemoteError, "ncclCommSplit: invalid unique-id record length");
     }
   }
   if (rank >= 0) memcpy(id.internal, (const unsigned char *)all + 128 * (size_t)members[0], 128);
@@ -986,8 +990,19 @@ static ncclResult_t dispose(ncclComm_t handle, int abort) {
 ncclResult_t ncclCommDestroy(ncclComm_t comm) { return dispose(comm, 0); }
 ncclResult_t ncclCommAbort(ncclComm_t comm) { return dispose(comm, 1); }
 
-/* A library unload must not leave a worker executing code in an unmapped DSO.
- * dlclose concurrent with API calls is outside the supported caller contract. */
+/* A library unload (dlclose, or the destructors exit runs) must not leave a worker executing code in an
+ * unmapped DSO, nor free a communicator that a call on another thread still uses. Every communicator is
+ * cancelled first, which ends its bootstrap waits within one poll slice (50 ms); calls still inside the
+ * library hold references, and the unload waits up to UNLOAD_WAIT_MS for them to leave. A communicator still
+ * referenced after that stays allocated with its bootstrap open: freeing it would pull memory from under the
+ * call. dlclose concurrent with API calls remains outside the supported caller contract, since a call that
+ * has released its reference still returns through library code. */
+enum { UNLOAD_WAIT_MS = 1000 };
+static int referenced(const struct ncclComm *list) {
+  for (const struct ncclComm *entry = list; entry; entry = entry->next)
+    if (entry->refs) return 1;
+  return 0;
+}
 __attribute__((destructor)) static void shutdown_communicators(void) {
   if (!sccl_bootstrap_process_valid()) return;
   sccl_engine_fail_stop_shutdown();
@@ -996,9 +1011,20 @@ __attribute__((destructor)) static void shutdown_communicators(void) {
   registry = NULL;
   for (struct ncclComm *entry = comm; entry; entry = entry->next)
     atomic_store(&entry->cancelled, 1);
+  struct timespec deadline;
+  clock_gettime(CLOCK_REALTIME, &deadline);
+  deadline.tv_sec += UNLOAD_WAIT_MS / 1000;
+  deadline.tv_nsec += (long)(UNLOAD_WAIT_MS % 1000) * 1000000L;
+  if (deadline.tv_nsec >= 1000000000L) { ++deadline.tv_sec; deadline.tv_nsec -= 1000000000L; }
+  while (referenced(comm))
+    if (pthread_cond_timedwait(&registry_idle, &registry_lock, &deadline) == ETIMEDOUT) break;
   pthread_mutex_unlock(&registry_lock);
   while (comm) {
     struct ncclComm *next = comm->next;
+    pthread_mutex_lock(&registry_lock);
+    int busy = comm->refs != 0;
+    pthread_mutex_unlock(&registry_lock);
+    if (busy) { comm = next; continue; }
     if (comm->worker_started) pthread_join(comm->worker, NULL);
     /* At unload only the native threads stop; CUDA may already be torn down. */
     sccl_engine_shutdown(comm->engine);
