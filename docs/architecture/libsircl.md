@@ -236,7 +236,7 @@ Each rank's container gets the profile's settings with these changes
 | `LIBSIRCL_FAIL_STOP` | `1` |
 | `LIBSIRCL_NCCL_API_VERSION` | `22705`, libsircl's default: it passes vLLM's and torch's feature gates without opening newer ones |
 | `LIBSIRCL_TRANSPORT` | `verbs` |
-| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW`, `LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES` | the rank's routing settings, recorded per rank in the deployment lock |
+| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_RELAYED_LANES`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW`, `LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES` | the rank's routing settings, recorded per rank in the deployment lock |
 | `SIRCL_BOOTSTRAP_ADDR` | the rank's `VLLM_HOST_IP` |
 | `SIRCL_GID_INDEX` | the profile's `NCCL_IB_GID_INDEX`, else 3 |
 | `LIBSIRCL_RECEIPT` | `/run/sparkring/sircl/receipts/libsircl`: one receipt per communicator in the deployment's receipt directory on each Spark |
