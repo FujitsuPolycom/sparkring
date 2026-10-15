@@ -4672,15 +4672,27 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
   dump_teardown(e, e->stop_ns, e->stopped_ns, realtime_ns());
   /* After an abort with a launch still running, its kernel may read the arena and counters
    * until its wait limit; they stay allocated until the process exits. */
-  if (pushed && idle && released) {
+  int freed = pushed && idle && released;
+  if (freed) {
     if (e->order_event) cu->EventDestroy(e->order_event);
     release_memory(e);
+  } else if (!pushed && released) {
+    /* The communicator's context could not be made current: it was destroyed (or the driver is shutting
+     * down), and with it every device and pinned allocation and every kernel that could read them. Only the
+     * host bookkeeping is left: the retired staging list, the shared-memory segments of the emulation
+     * transport, and the engine itself. */
+    free(e->retired_stage);
+    e->retired_stage = NULL;
+    if (e->host && e->host_emulated) sccl_emu_segment_free(e->host);
+    if (e->p2p_host && e->p2p_host_emulated) sccl_emu_segment_free(e->p2p_host);
+    e->host = e->p2p_host = NULL;
+    freed = 1;
   }
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
   }
   pthread_mutex_destroy(&e->lock);
-  if (idle && released) free(e);
+  if (freed) free(e);
   return result;
 }

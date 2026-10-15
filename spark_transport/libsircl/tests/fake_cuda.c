@@ -174,7 +174,10 @@ EXPORT int cuCtxPopCurrent_v2(void **ctx) {
   return 0;
 }
 EXPORT int cuInit(unsigned flags) { return (int)(flags & 0); }
-EXPORT int cuCtxPushCurrent_v2(void *ctx) { return ctx ? 0 : 201; }
+/* sccl_fake_cuda_fail_push(1): every later push fails, as for a destroyed context. */
+static int fail_push;
+EXPORT void sccl_fake_cuda_fail_push(int on) { fail_push = on; }
+EXPORT int cuCtxPushCurrent_v2(void *ctx) { return ctx && !fail_push ? 0 : 201; }
 EXPORT int cuModuleUnload(void *module) { return module ? 0 : 400; }
 
 /* Every other entry point src/cuda_api.c binds: present, never used by the check. */

@@ -111,6 +111,29 @@ print(json.dumps([before, after, last, l.ncclGetLastError(None).decode()]))
         self.assertEqual(handles, [None, None])
         self.assertIn("group initialization failed", message)
 
+    def test_destroy_without_its_context_frees_the_host_bookkeeping(self):
+        """Destroying a communicator whose context can no longer be made current (the stand-in driver fails
+        every push, as for a destroyed context) frees its engine: 1,000 such destroys leave the process heap
+        within 1 MiB of where it started. Not under AddressSanitizer, whose allocator mallinfo2 does not see."""
+        if os.environ.get("LIBSIRCL_TEST_ASAN"):
+            self.skipTest("mallinfo2 does not measure AddressSanitizer's allocator")
+        out = run('''g=C.CDLL("libcuda.so.1")
+class Info(C.Structure): _fields_=[(n, C.c_size_t) for n in ("arena","ordblks","smblks","hblks","hblkhd","usmblks","fsmblks","uordblks","fordblks","keepcost")]
+libc=C.CDLL(None); libc.mallinfo2.restype=Info
+def used(): return libc.mallinfo2().uordblks + libc.mallinfo2().hblkhd
+def cycle():
+    u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+    c=C.c_void_p(); assert l.ncclCommInitRank(C.byref(c),1,u,0)==0
+    g.sccl_fake_cuda_fail_push(1); l.ncclCommDestroy(c); g.sccl_fake_cuda_fail_push(0)
+for _ in range(5): cycle()
+before=used()
+for _ in range(1000): cycle()
+print(json.dumps([before, used()]))
+''', {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs", "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+        self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+        before, after = json.loads(out.stdout)
+        self.assertLess(after - before, 1 << 20, (before, after))
+
     def test_initall_refuses_distinct_cuda_devices(self):
         for devices in ("None", "(C.c_int*2)(0,1)"):
             out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "
