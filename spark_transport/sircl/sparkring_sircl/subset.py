@@ -123,11 +123,11 @@ def ring_packet_bound(layout, maps, *, chunk=32768, queue_bytes=routes.DEFAULT_H
     rows = []
     for key in sorted(keys):
         reverse = (*key[:2], 1 - key[2])
-        a = sum(tables[r][p][l] for r, p, l in arena.get(key, ()))
-        b = sum(tables[r][p][l] for r, p, l in arena.get(reverse, ()))
+        a = sum(tables[r][p][lane] for r, p, lane in arena.get(key, ()))
+        b = sum(tables[r][p][lane] for r, p, lane in arena.get(reverse, ()))
         controls = (len(arena.get(key, ())) + len(arena.get(reverse, ()))) * CONTROL_BYTES_PER_LANE
-        shared = [tables[r][p][l] for r, p, l in ring.get(key, ())]
-        back_shared = [tables[r][p][l] for r, p, l in ring.get(reverse, ())]
+        shared = [tables[r][p][lane] for r, p, lane in ring.get(key, ())]
+        back_shared = [tables[r][p][lane] for r, p, lane in ring.get(reverse, ())]
         # Payload on QPs that do not carry the ring remains independently live.
         fixed2 = 3 * (a - sum(shared)) + b - sum(back_shared) + 2 * controls
         if 3 * a + b + 2 * controls > 2 * queue_bytes:

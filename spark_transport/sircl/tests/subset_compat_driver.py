@@ -4,6 +4,9 @@ The fixture was generated with this driver against df86c93d, before subset
 support. CUDA is mocked; the real configuration, route and plan code runs.
 """
 
+# CUDA stand-ins must be installed before importing the runtime.
+# ruff: noqa: E402
+
 import hashlib
 import json
 import sys
