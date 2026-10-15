@@ -611,7 +611,9 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   for (struct root *entry = roots; entry; entry = entry->next) ++count;
   if (count >= MAX_ROOTS) {
     pthread_mutex_unlock(&roots_lock);
-    result = error_result(USAGE, "at most 64 active bootstrap IDs are supported");
+    /* At most 191 characters: the error text buffer. */
+    result = error_result(USAGE, "this process already holds 64 bootstrap roots, the limit: an id keeps its root until "
+                                 "its communicator is destroyed on every rank or its join window ends");
     goto cleanup;
   }
   if (pthread_create(&r->thread, NULL, root_thread, r) != 0) {

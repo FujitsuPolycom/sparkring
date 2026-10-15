@@ -73,6 +73,30 @@ class LifecycleTests(unittest.TestCase):
             if grouped.value:
                 self.lib.ncclCommDestroy(grouped)
 
+    def test_sixty_four_live_roots_are_the_limit_and_the_refusal_names_it(self):
+        """Each id a process creates keeps its bootstrap root while its communicator lives: with 64 live one-rank
+        communicators a 65th id is refused with ncclInvalidUsage naming the limit, and destroying one
+        communicator makes room for an id again."""
+        script = r'''
+import ctypes as C, json, os, sys, time
+sys.path.insert(0, sys.argv[2]); import test_api as api
+api.LIBRARY=api.Path(sys.argv[1]); api.initialize_library()
+os.environ["LIBSIRCL_BOOTSTRAP_ONLY"]="1"
+handles=[api.new_comm() for _ in range(64)]
+u=api.UniqueId(); refused=api.LIB.ncclGetUniqueId(C.byref(u)); message=api.LIB.ncclGetLastError(None).decode()
+assert api.LIB.ncclCommDestroy(handles.pop())==0
+time.sleep(0.2)
+again=api.LIB.ncclGetUniqueId(C.byref(u))
+print(json.dumps([refused, message, again]))
+'''
+        out = subprocess.run([sys.executable, "-c", script, str(LIBRARY), str(Path(__file__).parent)],
+                             capture_output=True, text=True, timeout=30)
+        self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+        refused, message, again = json.loads(out.stdout)
+        self.assertEqual(refused, USAGE)
+        self.assertIn("already holds 64 bootstrap roots", message)
+        self.assertEqual(again, SUCCESS)
+
     def test_split_leader_failure_fails_every_member_at_once(self):
         """The split leader cannot create the new unique id (the process holds all 64 bootstrap roots). It still
         takes part in the unique-id round with a failure record, so both ranks return its result at once
@@ -108,7 +132,7 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
         data = json.loads(out.stdout)
         self.assertEqual(data["held"], 63)
         self.assertEqual([code for code, _ in data["results"]], [USAGE, USAGE], data)
-        self.assertIn("64 active bootstrap IDs", data["results"][0][1])
+        self.assertIn("64 bootstrap roots", data["results"][0][1])
         self.assertIn("split leader (parent rank 0)", data["results"][1][1])
         self.assertLess(data["elapsed"], 2)
         self.assertEqual(data["children"], [None, None])

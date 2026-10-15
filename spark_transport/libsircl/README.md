@@ -61,7 +61,12 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
 
 - **Bootstrap**: a 128-byte unique id carrying the root's address and port, a nonce and an optional site
   hash; TCP rendezvous over loopback or the wired LAN (`SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`
-  or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup.
+  or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup, splits and teardown. The root
+  runs in the process that created the id and lives until every rank's connection to it closes (each rank's
+  communicator is destroyed or aborted) or, before every rank joined, until its join window ends
+  (`SIRCL_BOOTSTRAP_TIMEOUT_MS`, default 10 s). A process holds at most 64 roots at once: `ncclGetUniqueId`
+  beyond that returns `ncclInvalidUsage`, naming the limit, until a communicator whose id it created is
+  destroyed.
 - **Session engine** (`src/engine.c`): settings agreed across ranks, the pinned arena, device counters,
   SIRCL's native progress thread (`src/transport/sircl_roce_proxy.c`, a byte-identical copy of SIRCL's
   `oneshot/_roce_proxy.c` with change LF, its SHA-256 checked by the build and its local feature word,
