@@ -165,7 +165,10 @@ naming it. The close is terminal: from its start the communicator refuses new wo
 its error, and a second `ncclCommFinalize` or the destroy that follows returns the same result. When the
 transport's queue pairs or registrations cannot be released, destroy keeps the communicator's memory
 allocated and returns `ncclSystemError`. Ranks destroy their communicators in the same order, as they issue
-collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait.
+collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait. Finalize is
+synchronous for every communicator: a non-blocking one (`blocking` 0 in its config) also runs both rounds
+before `ncclCommFinalize` returns, which never returns `ncclInProgress`; a caller that must not block runs
+finalize on a thread of its own.
 
 Errors of single calls: a collective or point-to-point call refused with `ncclInvalidArgument` did nothing
 and leaves the calling thread's group as it was (the group's other calls still run at `ncclGroupEnd`); other
