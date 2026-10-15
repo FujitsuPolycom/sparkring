@@ -23,6 +23,32 @@ LIBRARY = Path(__file__).resolve().parents[1] / "build" / "libsircl.so"
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_abort_cancels_an_inflight_split(self):
+        handles = (C.c_void_p * 2)()
+        self.assertEqual(self.lib.ncclCommInitAll(handles, 2, None), SUCCESS)
+        old = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "2000"
+        child = C.c_void_p()
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                split = pool.submit(self.lib.ncclCommSplit, handles[0], 0, 0, C.byref(child), None)
+                time.sleep(0.05)
+                self.assertFalse(split.done())
+                start = time.monotonic()
+                self.assertEqual(self.lib.ncclCommAbort(handles[0]), SUCCESS)
+                elapsed = time.monotonic() - start
+                handles[0] = None
+                self.assertNotEqual(split.result(timeout=1), SUCCESS)
+                self.assertLess(elapsed, 1)
+        finally:
+            if old is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = old
+            for handle in handles:
+                if handle:
+                    self.lib.ncclCommAbort(handle)
+
     def test_split_refuses_short_records_in_both_rounds(self):
         for short_round in (0, 1):
             with self.subTest(round=short_round):

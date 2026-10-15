@@ -872,7 +872,6 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
     snprintf(message, sizeof message, "%s: waiting for this rank's enqueued work failed", call);
   }
   if (result == ncclSuccess) result = sccl_engine_async_error(comm->engine, message, sizeof message);
-  const atomic_int never = 0;
   int limit_ms = sccl_engine_wait_limit_ms(comm->engine), arrived = 0;
   for (int round = 1; round <= 2; ++round) {
     if (round == 2) sccl_engine_teardown_stop(comm->engine);
@@ -881,7 +880,7 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
     void *all = NULL;
     unsigned lengths[64] = {0};
     arrived = sccl_bootstrap_allgather_within(comm->bootstrap, &mine, sizeof mine, &all, lengths, limit_ms,
-                                              &never) == 0;
+                                              &comm->cancelled) == 0;
     if (arrived && round == 1 && result == ncclSuccess) {
       for (int r = 0; r < comm->nranks; ++r) {
         int32_t theirs = 0;
@@ -950,9 +949,10 @@ static ncclResult_t dispose(ncclComm_t handle, int abort) {
     return fail(ncclInvalidUsage, "communicator initialization is pending in a group");
   }
   *link = comm->next;
+  if (abort) atomic_store(&comm->cancelled, 1);
   while (comm->refs) pthread_cond_wait(&registry_idle, &registry_lock);
   pthread_mutex_unlock(&registry_lock);
-  atomic_store(&comm->cancelled, 1);
+  if (atomic_load(&comm->state) == INIT) atomic_store(&comm->cancelled, 1);
   if (comm->worker_started) pthread_join(comm->worker, NULL);
   ncclResult_t result = abort ? ncclSuccess : quiesce(comm, "ncclCommDestroy");
   char message[sizeof comm->error_message];
