@@ -440,6 +440,7 @@ struct sccl_engine {
   /* Teardown: the progress thread stopped (sccl_engine_teardown_stop), when its stop was requested and
    * when it had stopped (CLOCK_REALTIME nanoseconds). */
   int stopped, closing;
+  int kp_held;  /* this engine holds a reference on its context's kernel-pack entry (sccl_kp_load) */
   uint64_t stop_ns, stopped_ns;
   int have_last;
   sccl_CUevent order_event;
@@ -2270,6 +2271,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       put_error(local, sizeof local, "%s", sccl_kp_error());
       break;
     }
+    e->kp_held = 1;
     for (int a = 0; a < SCCL_ALG_COUNT; ++a)
       for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_function(ctx, a, d, nranks, &e->fn[a][d]);
     for (int k = SCCL_K_SCATTER; k < SCCL_K_COUNT; ++k)
@@ -2465,6 +2467,7 @@ fail:;
   p2p_close(e, pushed);
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
+  if (e->kp_held) sccl_kp_release(e->ctx, pushed);
   if (pushed) {
     if (!unreleased) release_memory(e);
     cu->CtxPopCurrent(&ctx);
@@ -4751,7 +4754,10 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
   if (freed) {
     if (e->order_event) cu->EventDestroy(e->order_event);
     release_memory(e);
+    /* No kernel of the packs runs any more: the context's pack entry may go (its last reference unloads). */
+    if (e->kp_held) sccl_kp_release(e->ctx, 1);
   } else if (!pushed && released) {
+    if (e->kp_held) sccl_kp_release(e->ctx, 0);
     /* The communicator's context could not be made current: it was destroyed (or the driver is shutting
      * down), and with it every device and pinned allocation and every kernel that could read them. Only the
      * host bookkeeping is left: the retired staging list, the shared-memory segments of the emulation

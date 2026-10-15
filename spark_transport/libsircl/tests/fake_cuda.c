@@ -19,6 +19,7 @@
 enum { NOT_FOUND = 500, INVALID_IMAGE = 200, MAX_MODULES = 16, MAX_CUBINS = 8 };
 
 typedef struct {
+  int in_use;
   int cubins;
   uint32_t flags[MAX_CUBINS];
   char **names[MAX_CUBINS];
@@ -82,18 +83,24 @@ EXPORT int sccl_fake_cuda(void) { return 1; }
 
 /* Modules loaded, the fewest cubins of any module, and symbol lookups so far. */
 EXPORT void sccl_fake_cuda_stats(int *loaded, int *fewest_cubins, int *looked_up) {
-  *loaded = nmodules;
+  /* The modules loaded and not unloaded, and the fewest cubins among them. */
+  *loaded = 0;
   *fewest_cubins = 0;
-  for (int i = 0; i < nmodules; ++i)
-    if (!i || modules[i].cubins < *fewest_cubins) *fewest_cubins = modules[i].cubins;
+  for (int i = 0; i < nmodules; ++i) {
+    if (!modules[i].in_use) continue;
+    if (!*loaded || modules[i].cubins < *fewest_cubins) *fewest_cubins = modules[i].cubins;
+    ++*loaded;
+  }
   *looked_up = lookups;
 }
 
 EXPORT int cuModuleLoadData(void **module, const void *image) {
   const uint8_t *p = image;
-  if (nmodules == MAX_MODULES || u32(p) != 0xBA55ED50u) return INVALID_IMAGE;
+  int slot = 0;
+  while (slot < nmodules && modules[slot].in_use) ++slot;
+  if (slot == MAX_MODULES || u32(p) != 0xBA55ED50u) return INVALID_IMAGE;
   uint64_t total = (uint64_t)u16(p + 6) + u64(p + 8);
-  module_t *m = &modules[nmodules];
+  module_t *m = &modules[slot];
   memset(m, 0, sizeof *m);
   for (uint64_t at = 0; at + 4 <= total;) {
     if (memcmp(p + at, "\x7f" "ELF", 4) == 0) {
@@ -107,7 +114,8 @@ EXPORT int cuModuleLoadData(void **module, const void *image) {
   }
   if (!m->cubins) return INVALID_IMAGE;
   *module = m;
-  ++nmodules;
+  m->in_use = 1;
+  if (slot == nmodules) ++nmodules;
   return 0;
 }
 
@@ -178,7 +186,12 @@ EXPORT int cuInit(unsigned flags) { return (int)(flags & 0); }
 static int fail_push;
 EXPORT void sccl_fake_cuda_fail_push(int on) { fail_push = on; }
 EXPORT int cuCtxPushCurrent_v2(void *ctx) { return ctx && !fail_push ? 0 : 201; }
-EXPORT int cuModuleUnload(void *module) { return module ? 0 : 400; }
+EXPORT int cuModuleUnload(void *module) {
+  module_t *m = module;
+  if (!m || m < modules || m >= modules + MAX_MODULES || !m->in_use) return 400;
+  m->in_use = 0;
+  return 0;
+}
 
 /* Every other entry point src/cuda_api.c binds: present, never used by the check. */
 #define UNUSED_ENTRY(name) \

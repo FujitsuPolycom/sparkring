@@ -122,9 +122,14 @@ typedef struct {
 } sccl_p2p_args;
 _Static_assert(sizeof(sccl_p2p_args) == 120, "sccl_p2p_args must match the point-to-point pack's P2PParams");
 
-/* Load every pack into `ctx` once (pushing it current for the load); later
- * calls for the same context return at once. 0 on success. */
+/* Load every pack into `ctx` once (pushing it current for the load); later calls for the same context
+ * return at once. Each successful call holds a reference on the context's entry, which sccl_kp_release
+ * drops; at most 16 contexts hold entries at once. 0 on success. */
 int sccl_kp_load(sccl_CUcontext ctx);
+/* Drop a reference sccl_kp_load took. The last one removes the context's entry, so a later context at the
+ * same address loads the packs afresh; with `unload` the modules are unloaded first (the context still
+ * exists and no kernel of the packs runs in it), without it they are left to the context's destruction. */
+void sccl_kp_release(sccl_CUcontext ctx, int unload);
 /* The entry of (kind, dtype, world) in a context the pack is loaded in. */
 int sccl_kp_function(sccl_CUcontext ctx, int kind, int dtype, int world, sccl_CUfunction *out);
 /* One launch of `grid` blocks of `threads` threads on `stream`, from the

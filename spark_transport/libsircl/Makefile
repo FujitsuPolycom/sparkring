@@ -168,10 +168,15 @@ $(BUILD)/test_fabric: tests/test_fabric.c $(BUILD)/fabric.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
 $(BUILD)/test_link_plan: tests/test_link_plan.c src/link_plan.h | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
-check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan
+$(BUILD)/test_kernelpack_cache: tests/test_kernelpack_cache.c $(BUILD)/kernelpack.o $(BUILD)/cuda_api.o \
+                                $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o \
+                                $(BUILD)/p2p_fatbin.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -ldl
+check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan $(BUILD)/test_kernelpack_cache
 	@status=0; \
 	  $(BUILD)/test_fabric || status=1; \
 	  $(BUILD)/test_link_plan || status=1; \
+	  LD_LIBRARY_PATH=$(abspath $(BUILD)/fake-cuda) $(BUILD)/test_kernelpack_cache || status=1; \
 	  $(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
 	  $(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
 	  $(PYTHON) tests/test_bootstrap.py || status=1; \

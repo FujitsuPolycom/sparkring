@@ -22,6 +22,7 @@ extern const char sccl_p2p_fatbin_sha256[];
 enum { MAX_CONTEXTS = 16 };
 typedef struct {
   sccl_CUcontext ctx;
+  int refs;  /* sccl_kp_load calls not yet released (sccl_kp_release) */
   sccl_CUmodule module, fold_module, links_module, p2p_module;
   sccl_CUfunction fn[SCCL_K_COUNT][SCCL_DT_COUNT][SCCL_KP_MAX_WORLD + 1];
   sccl_CUfunction fold[SCCL_FOLD_DTYPES][SCCL_FOLD_OPS];
@@ -65,7 +66,9 @@ int sccl_kp_load(sccl_CUcontext ctx) {
     return -1;
   }
   pthread_mutex_lock(&lock);
-  if (find(ctx)) {
+  loaded_pack *held = find(ctx);
+  if (held) {
+    ++held->refs;
     pthread_mutex_unlock(&lock);
     return 0;
   }
@@ -198,10 +201,32 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   cu->CtxPopCurrent(&popped);
   if (!failed) {
     p->ctx = ctx;
+    p->refs = 1;
     ++npacks;
   }
   pthread_mutex_unlock(&lock);
   return failed ? -1 : 0;
+}
+
+void sccl_kp_release(sccl_CUcontext ctx, int unload) {
+  const sccl_cuda *cu = sccl_cuda_get();
+  pthread_mutex_lock(&lock);
+  loaded_pack *p = find(ctx);
+  if (!p || --p->refs > 0) {
+    pthread_mutex_unlock(&lock);
+    return;
+  }
+  if (unload && cu && cu->CtxPushCurrent(ctx) == SCCL_CUDA_SUCCESS) {
+    sccl_CUmodule modules[4] = {p->p2p_module, p->links_module, p->fold_module, p->module};
+    for (int i = 0; i < 4; ++i)
+      if (modules[i]) cu->ModuleUnload(modules[i]);
+    sccl_CUcontext popped;
+    cu->CtxPopCurrent(&popped);
+  }
+  /* The last entry takes the released one's place. */
+  if (p != &packs[npacks - 1]) *p = packs[npacks - 1];
+  --npacks;
+  pthread_mutex_unlock(&lock);
 }
 
 int sccl_kp_function(sccl_CUcontext ctx, int kind, int dtype, int world, sccl_CUfunction *out) {

@@ -117,6 +117,14 @@ add_executable(test_link_plan tests/test_link_plan.c)
 target_include_directories(test_link_plan PRIVATE src)
 target_compile_options(test_link_plan PRIVATE -Wall -Wextra -Werror)
 add_test(NAME link_plan COMMAND test_link_plan)
+add_executable(test_kernelpack_cache tests/test_kernelpack_cache.c src/kernelpack.c src/cuda_api.c
+               ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
+               ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c)
+target_include_directories(test_kernelpack_cache PRIVATE include src)
+target_compile_definitions(test_kernelpack_cache PRIVATE LIBSIRCL_CPU_ONLY NCCL_OS_LINUX)
+target_link_libraries(test_kernelpack_cache PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
+add_test(NAME kernelpack_cache COMMAND ${CMAKE_COMMAND} -E env
+         LD_LIBRARY_PATH=${CMAKE_CURRENT_BINARY_DIR}/fake-cuda $<TARGET_FILE:test_kernelpack_cache>)
 foreach(name abi api lifecycle engine_cpu)
   add_test(NAME ${name} COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tests/test_${name}.py --library $<TARGET_FILE:sircl>)
 endforeach()
