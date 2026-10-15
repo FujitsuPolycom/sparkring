@@ -35,6 +35,8 @@ l.ncclCommDestroy.argtypes=[C.c_void_p]
 def run(script, env=None):
     environment = dict(os.environ)
     environment.update(env or {})
+    if os.environ.get("LIBSIRCL_TEST_ASAN"):
+        environment["LD_PRELOAD"] = os.environ["LD_PRELOAD"]
     return subprocess.run([sys.executable, "-c", PRELUDE + script, str(LIBRARY)], env=environment,
                           capture_output=True, text=True, timeout=60)
 
@@ -278,6 +280,8 @@ l.sirclGetInfo.restype = C.c_char_p; l.sirclGetInfo()
 print(json.dumps({"before": before, "after": state()}))
 '''
         environment = {k: v for k, v in os.environ.items() if k != "LD_PRELOAD" and not k.startswith("PYTHON")}
+        if os.environ.get("LIBSIRCL_TEST_ASAN"):
+            environment["LD_PRELOAD"] = os.environ["LD_PRELOAD"]
         out = subprocess.run([sys.executable, "-S", "-E", "-c", script, str(LIBRARY)], env=environment,
                              capture_output=True, text=True, timeout=60)
         self.assertEqual(out.returncode, 0, out.stderr)
@@ -308,4 +312,5 @@ if __name__ == "__main__":
     parser.add_argument("--library", type=Path, default=LIBRARY)
     options, extra = parser.parse_known_args()
     LIBRARY = options.library.resolve()
+    FAKE_DRIVER = LIBRARY.parent / "fake-cuda"
     unittest.main(argv=[sys.argv[0], *extra], verbosity=2)

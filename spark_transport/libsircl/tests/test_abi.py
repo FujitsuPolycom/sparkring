@@ -143,7 +143,7 @@ int main(void) {
             run("cc", "-std=c11", "-Wall", "-Wextra", "-Werror", str(path / "preload.c"), "-L", str(path), "-Wl,-rpath," + str(path), "-lnccl", "-ldl", "-o", str(path / "preload"))
             env = os.environ.copy()
             env.pop("LIBSIRCL_NCCL_API_VERSION", None)
-            env["LD_PRELOAD"] = str(LIBRARY)
+            env["LD_PRELOAD"] = ":".join(filter(None, (env.get("LD_PRELOAD"), str(LIBRARY))))
             self.assertIn("all 146 symbols", run(str(path / "preload"), env=env))
 
 

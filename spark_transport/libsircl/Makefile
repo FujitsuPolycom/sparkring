@@ -167,19 +167,32 @@ $(BUILD)/mpi-shim/lib/libmpi.so: tools/mpi-shim/mpi_shim.c tools/mpi-shim/includ
 $(BUILD)/test_fabric: tests/test_fabric.c $(BUILD)/fabric.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
 check: all $(BUILD)/test_fabric
-	$(BUILD)/test_fabric
-	$(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_bootstrap.py
-	$(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_shm_verbs.py
-	$(PYTHON) tests/test_vendored_sources.py
-	$(PYTHON) tests/test_p2p_native.py
-	$(PYTHON) tests/test_site_routes.py
-	$(PYTHON) tests/test_mpi_shim.py
-	$(PYTHON) tests/test_check_nccl_tests.py
-	$(PYTHON) tests/test_kernel_entries.py --build $(BUILD)
+	@status=0; \
+	  $(BUILD)/test_fabric || status=1; \
+	  $(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_bootstrap.py || status=1; \
+	  $(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_shm_verbs.py || status=1; \
+	  $(PYTHON) tests/test_vendored_sources.py || status=1; \
+	  $(PYTHON) tests/test_p2p_native.py || status=1; \
+	  $(PYTHON) tests/test_site_routes.py || status=1; \
+	  $(PYTHON) tests/test_mpi_shim.py || status=1; \
+	  $(PYTHON) tests/test_check_nccl_tests.py || status=1; \
+	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; \
+	  exit $$status
+
+# The check suites against a host library built with AddressSanitizer and UndefinedBehaviorSanitizer in
+# $(BUILD)-asan. The sanitizer flags reach the sub-make through the environment, so the CFLAGS line above
+# still appends the required flags. The interpreters that load the library preload the ASan runtime, which
+# must come first in the process; leak detection is off because the interpreter's own allocations would
+# dominate it.
+.PHONY: check-asan
+check-asan:
+	ASAN_OPTIONS=detect_leaks=0 CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined" $(MAKE) BUILD=$(BUILD)-asan all
+	LIBSIRCL_TEST_ASAN=1 LD_PRELOAD="$$($(CC) -print-file-name=libasan.so)" ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined" $(MAKE) BUILD=$(BUILD)-asan check
+
 generate:
 	$(PYTHON) tools/generate_api.py
 clean:

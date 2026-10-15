@@ -153,6 +153,8 @@ jobs:
           make -j BUILD=build NVCC="$NVCC"
           make check BUILD=build NVCC="$NVCC"
           sha256sum build/packs/*.fatbin
+          python tools/check_exports.py --include include --library build/libsircl.so
+          make check-asan BUILD=build NVCC="$NVCC"
 
   lil-bridge:
     name: pinned LIL bridge

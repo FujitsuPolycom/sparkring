@@ -53,6 +53,7 @@ def initialize_library() -> None:
         "CommInitRank": ([C.POINTER(C.c_void_p), C.c_int, UniqueId, C.c_int], C.c_int),
         "CommInitRankConfig": ([C.POINTER(C.c_void_p), C.c_int, UniqueId, C.c_int, C.POINTER(Config)], C.c_int),
         "CommInitAll": ([C.POINTER(C.c_void_p), C.c_int, C.POINTER(C.c_int)], C.c_int),
+        "CommSplit": ([C.c_void_p, C.c_int, C.c_int, C.POINTER(C.c_void_p), C.c_void_p], C.c_int),
         "CommRevoke": ([C.c_void_p, C.c_int], C.c_int),
         "CommGetAsyncError": ([C.c_void_p, C.POINTER(C.c_int)], C.c_int),
         "CommCount": ([C.c_void_p, C.POINTER(C.c_int)], C.c_int),
