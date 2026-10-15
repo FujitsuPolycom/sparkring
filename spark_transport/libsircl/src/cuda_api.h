@@ -55,6 +55,7 @@ typedef struct sccl_cuda {
                                 unsigned, sccl_CUstream, void **, void **);
   sccl_CUresult (*MemAlloc)(sccl_CUdeviceptr *, size_t);
   sccl_CUresult (*MemFree)(sccl_CUdeviceptr);
+  sccl_CUresult (*PointerGetAttribute)(void *, int, sccl_CUdeviceptr);
   sccl_CUresult (*MemsetD32Async)(sccl_CUdeviceptr, unsigned, size_t, sccl_CUstream);
   sccl_CUresult (*MemsetD8Async)(sccl_CUdeviceptr, unsigned char, size_t, sccl_CUstream);
   sccl_CUresult (*MemcpyDtoDAsync)(sccl_CUdeviceptr, sccl_CUdeviceptr, size_t, sccl_CUstream);

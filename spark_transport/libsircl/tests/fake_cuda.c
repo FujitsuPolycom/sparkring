@@ -185,7 +185,19 @@ EXPORT int cuInit(unsigned flags) { return (int)(flags & 0); }
 /* sccl_fake_cuda_fail_push(1): every later push fails, as for a destroyed context. */
 static int fail_push;
 EXPORT void sccl_fake_cuda_fail_push(int on) { fail_push = on; }
-EXPORT int cuCtxPushCurrent_v2(void *ctx) { return ctx && !fail_push ? 0 : 201; }
+static int pushes;
+EXPORT int cuCtxPushCurrent_v2(void *ctx) {
+  if (!ctx || fail_push) return 201;
+  ++pushes;
+  return 0;
+}
+EXPORT int sccl_fake_cuda_pushes(void) { return pushes; }
+/* CU_POINTER_ATTRIBUTE_CONTEXT (1) of any pointer: the stand-in's one context. */
+EXPORT int cuPointerGetAttribute(void *data, int attribute, unsigned long long pointer) {
+  if (attribute != 1 || !pointer) return 1;
+  *(void **)data = &context_token;
+  return 0;
+}
 EXPORT int cuModuleUnload(void *module) {
   module_t *m = module;
   if (!m || m < modules || m >= modules + MAX_MODULES || !m->in_use) return 400;

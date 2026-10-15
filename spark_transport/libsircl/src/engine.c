@@ -3954,6 +3954,9 @@ ncclResult_t sccl_engine_mem_alloc(void **ptr, size_t size, char *err, size_t le
   return ncclSuccess;
 }
 
+/* The memory is freed in the context it was allocated in (CU_POINTER_ATTRIBUTE_CONTEXT), made current for
+ * the call, whatever context the calling thread has, if any. */
+enum { SCCL_POINTER_ATTRIBUTE_CONTEXT = 1 };
 ncclResult_t sccl_engine_mem_free(void *ptr, char *err, size_t len) {
   if (!ptr) return ncclSuccess;
   cu = sccl_cuda_get();
@@ -3961,8 +3964,23 @@ ncclResult_t sccl_engine_mem_free(void *ptr, char *err, size_t len) {
     put_error(err, len, "ncclMemFree: %s", sccl_cuda_error());
     return ncclSystemError;
   }
-  return cuda_check(cu->MemFree((sccl_CUdeviceptr)(uintptr_t)ptr), "ncclMemFree", err, len) ? ncclUnhandledCudaError
-                                                                                             : ncclSuccess;
+  sccl_CUdeviceptr memory = (sccl_CUdeviceptr)(uintptr_t)ptr;
+  sccl_CUcontext owner = NULL;
+  if (cuda_check(cu->PointerGetAttribute(&owner, SCCL_POINTER_ATTRIBUTE_CONTEXT, memory),
+                 "ncclMemFree: finding the memory's context", err, len))
+    return ncclInvalidArgument;
+  int pushed = owner && cu->CtxPushCurrent(owner) == SCCL_CUDA_SUCCESS;
+  if (owner && !pushed) {
+    put_error(err, len, "ncclMemFree: the memory's context cannot be made current");
+    return ncclUnhandledCudaError;
+  }
+  ncclResult_t result = cuda_check(cu->MemFree(memory), "ncclMemFree", err, len) ? ncclUnhandledCudaError
+                                                                                  : ncclSuccess;
+  if (pushed) {
+    sccl_CUcontext popped;
+    cu->CtxPopCurrent(&popped);
+  }
+  return result;
 }
 
 /* One pair exchange of `chunk` bytes each way: `sent` (0: nothing meaningful) to the peer, the peer's block

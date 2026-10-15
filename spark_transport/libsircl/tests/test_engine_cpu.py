@@ -302,6 +302,18 @@ if c.value: l.ncclCommDestroy(c)
         out = run(script, {**base, "SIRCL_TRAFFIC_CLASS": "106", "LIBSIRCL_RECEIPT_INTERVAL_S": "2.5"})
         self.assertEqual(json.loads(out.stdout)[0], 0, out.stdout)
 
+    def test_mem_free_makes_the_memorys_context_current(self):
+        """ncclMemFree on a thread without a current context frees in the context the memory belongs to: it
+        makes that context current for the call (the stand-in driver counts the pushes)."""
+        out = run('''g=C.CDLL("libcuda.so.1")
+l.ncclMemFree.argtypes=[C.c_void_p]
+before=g.sccl_fake_cuda_pushes()
+r=l.ncclMemFree(C.c_void_p(0x10000))
+print(json.dumps([r, g.sccl_fake_cuda_pushes()-before]))
+''', {"FAKE_CUDA_NO_CONTEXT": "1", "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout), [0, 1])
+
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
         self.assertEqual(out.returncode, 0, out.stderr)
