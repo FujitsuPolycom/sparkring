@@ -43,6 +43,11 @@ gives the build, emulation and hardware commands.
   session setup failed) still returns the handle, whose `ncclCommGetAsyncError` and `ncclGetLastError` give
   the result and reason; the failed communicator holds no bootstrap connection or session, but the caller
   must still destroy or abort the handle to free it.
+- Result codes have NVIDIA NCCL's values and meaning. `ncclGetErrorString` returns short texts ("invalid
+  usage", "remote error", ...) without NVIDIA NCCL's hints to rerun with `NCCL_DEBUG`; the reason of a
+  failed call is in `ncclGetLastError`. `ncclCommDestroy(NULL)` and `ncclCommAbort(NULL)` return
+  `ncclSuccess`, as in NVIDIA NCCL 2.32.3; `ncclCommFinalize(NULL)` returns `ncclInvalidArgument`, where
+  NVIDIA NCCL 2.32.3 returns `ncclSuccess`.
 - `include/nccl.h` is NVIDIA's 2.32.3 header with marked changes (`NCCL_VERSION_CODE` 23203), used
   only to build libsircl.
 - The name `libsircl` without a suffix means this library; SIRCL's own test libraries are named
