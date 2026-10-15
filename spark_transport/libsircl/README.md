@@ -64,7 +64,11 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
   or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup, splits and teardown. The root
   runs in the process that created the id and lives until every rank's connection to it closes (each rank's
   communicator is destroyed or aborted) or, before every rank joined, until its join window ends
-  (`SIRCL_BOOTSTRAP_TIMEOUT_MS`, default 10 s). A process holds at most 64 roots at once: `ncclGetUniqueId`
+  (`SIRCL_BOOTSTRAP_TIMEOUT_MS`, default 10 s, counted from `ncclGetUniqueId`, not from the first rank's
+  join; a rank that arrives later is told the root rejected the id or disconnected, and the message names
+  the window). A connection that has not sent its join request within 1 s of being accepted is dropped.
+  Each all-gather round waits at most `LIBSIRCL_SETUP_TIMEOUT_MS` (1 ms to 1 h, default 600 s); another
+  value is refused, naming the variable. A process holds at most 64 roots at once: `ncclGetUniqueId`
   beyond that returns `ncclInvalidUsage`, naming the limit, until a communicator whose id it created is
   destroyed.
 - **Session engine** (`src/engine.c`): settings agreed across ranks, the pinned arena, device counters,

@@ -21,8 +21,10 @@
 #include <unistd.h>
 
 enum { OK = 0, SYSTEM = 2, ARGUMENT = 4, USAGE = 5, REMOTE = 6, TIMEOUT = 8 };
+/* HELLO_LIMIT_MS: a connection that has not sent its whole hello this long after the root accepted it is
+ * dropped, so idle connections cannot hold the root's MAX_PENDING slots until the join window ends. */
 enum { ID_SIZE = 128, HELLO_SIZE = 136, MAX_RANKS = 8, MAX_PENDING = 32,
-       MAX_ROOTS = 64, FRAME_HEADER = 16, MAX_FRAME = 1 << 20 };
+       MAX_ROOTS = 64, FRAME_HEADER = 16, MAX_FRAME = 1 << 20, HELLO_LIMIT_MS = 1000 };
 enum { VERSION_OFF = 8, IP_OFF = 12, PORT_OFF = 16,
        NONCE_OFF = 20, HASH_OFF = 36, RESERVED_OFF = 68 };
 static const unsigned char id_magic[8] = {'S','C','C','L','B','O','0','1'};
@@ -43,6 +45,7 @@ struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; int failed
 struct peer {
   int fd;
   int rank;
+  int64_t accepted;  /* CLOCK_MONOTONIC ms when the root accepted it */
   size_t used;
   unsigned char hello[HELLO_SIZE];
   unsigned char frame[FRAME_HEADER];
@@ -112,16 +115,14 @@ static int timeout_ms(int *out) {
 
 /* Deadline of one all-gather round (LIBSIRCL_SETUP_TIMEOUT_MS, 1 ms to 1 h;
  * default 600 s, the startup wait regime: ranks may lag while they allocate,
- * register and connect). */
+ * register and connect). -1 for a value that is not an integer in range. */
 static int frame_deadline_ms(void) {
   const char *value = sccl_env("LIBSIRCL_SETUP_TIMEOUT_MS");
   char *end;
-  if (value && *value) {
-    errno = 0;
-    long parsed = strtol(value, &end, 10);
-    if (!errno && !*end && parsed >= 1 && parsed <= 3600000) return (int)parsed;
-  }
-  return 600000;
+  if (!value || !*value) return 600000;
+  errno = 0;
+  long parsed = strtol(value, &end, 10);
+  return !errno && !*end && parsed >= 1 && parsed <= 3600000 ? (int)parsed : -1;
 }
 
 static int hex_digit(unsigned char c) {
@@ -308,9 +309,11 @@ static int finish_round(struct root *r) {
     at += 4 + by_rank[k]->payload_bytes;
   }
   int result = 0;
-  int64_t deadline = now_ms() + frame_deadline_ms();
+  int limit = frame_deadline_ms();
+  int64_t deadline = now_ms() + (limit > 0 ? limit : 600000);
   for (int k = 0; k < r->nranks; ++k) {
-    if (send_all(by_rank[k]->fd, answer, at, deadline, NULL) != OK) result = -1;
+    /* Bounded by the round's deadline, and given up at once when the library unloads (`stopped`). */
+    if (send_all(by_rank[k]->fd, answer, at, deadline, &r->stopped) != OK) result = -1;
     free(by_rank[k]->payload);
     by_rank[k]->payload = NULL;
     by_rank[k]->payload_bytes = 0; by_rank[k]->payload_used = 0;
@@ -349,6 +352,7 @@ static void accept_connections(struct root *r) {
     r->peers[slot].fd = fd;
     r->peers[slot].rank = -1;
     r->peers[slot].used = 0;
+    r->peers[slot].accepted = now_ms();
   }
 }
 
@@ -372,6 +376,20 @@ static void *root_thread(void *arg) {
     if (ready && !r->joined) break;
     int delay = ready ? 100 : remaining_ms(r->deadline);
     if (!ready && !delay) break;
+    /* Pending connections without a whole hello within HELLO_LIMIT_MS are dropped; wake for the next. */
+    if (!ready) {
+      int64_t now = now_ms();
+      for (int i = 0; i < MAX_PENDING; ++i) {
+        struct peer *p = &r->peers[i];
+        if (p->fd < 0 || p->rank >= 0) continue;
+        int64_t left = p->accepted + HELLO_LIMIT_MS - now;
+        if (left <= 0) {
+          drop_peer(r, i, -1);
+          continue;
+        }
+        if (left < delay) delay = (int)left;
+      }
+    }
     int rc = poll(pfds, (nfds_t)n, delay);
     if (rc < 0) { if (errno == EINTR) continue; break; }
     for (int j = 0; j < n; ++j) {
@@ -730,7 +748,8 @@ failed:
     case TIMEOUT: return error_result(result, "bootstrap timed out waiting for every rank");
     case USAGE: return error_result(result, "bootstrap rejected a duplicate rank or mismatched world size");
     case ARGUMENT: return error_result(result, "bootstrap rejected invalid rank arguments");
-    case REMOTE: return error_result(result, "bootstrap endpoint rejected the ID or disconnected");
+    case REMOTE: return error_result(result, "bootstrap root rejected the ID or disconnected (its join window, "
+                                             "SIRCL_BOOTSTRAP_TIMEOUT_MS from ncclGetUniqueId, may have ended)");
     default: return error_result(SYSTEM, "bootstrap socket or allocation failure");
   }
 }
@@ -763,7 +782,12 @@ int sccl_bootstrap_fd(const sccl_bootstrap *handle) {
 
 int sccl_bootstrap_allgather(sccl_bootstrap *handle, const void *data, uint32_t bytes,
                              void **out, uint32_t *lengths, const atomic_int *cancelled) {
-  return sccl_bootstrap_allgather_within(handle, data, bytes, out, lengths, frame_deadline_ms(), cancelled);
+  int limit = frame_deadline_ms();
+  if (limit < 0) {
+    if (out) *out = NULL;
+    return error_result(ARGUMENT, "LIBSIRCL_SETUP_TIMEOUT_MS must be an integer from 1 to 3600000");
+  }
+  return sccl_bootstrap_allgather_within(handle, data, bytes, out, lengths, limit, cancelled);
 }
 
 static int allgather_locked(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,

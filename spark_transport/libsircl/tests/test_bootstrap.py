@@ -455,6 +455,43 @@ int test_missed(void) { return missed; }
         self.assertGreaterEqual(lib.test_created(), 4)
         self.assertEqual(lib.test_missed(), 0)
 
+    def test_setup_timeout_must_be_valid(self):
+        """An invalid LIBSIRCL_SETUP_TIMEOUT_MS refuses the all-gather, naming the variable, instead of
+        silently waiting the 600 s default."""
+        handles = self.joined_group(1)
+        saved = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        try:
+            for invalid in ("abc", "0", "3600001", "-5"):
+                with self.subTest(value=invalid):
+                    os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = invalid
+                    result, _ = self.bootstrap.allgather(handles[0], b"x", 1)
+                    self.assertEqual(result, 4)
+                    self.assertIn(b"LIBSIRCL_SETUP_TIMEOUT_MS", self.bootstrap.lib.sccl_bootstrap_error())
+            os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "5000"
+            self.assertEqual(self.bootstrap.allgather(handles[0], b"ok", 1), (0, [b"ok"]))
+        finally:
+            if saved is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = saved
+            self.bootstrap.close(handles[0])
+
+    def test_idle_connections_do_not_hold_the_roots_slots(self):
+        """Thirty-two connections that never send a hello fill the root's pending slots; the root drops them
+        after its hello limit (1 s), so a rank that joins later is admitted within the join window."""
+        os.environ["SIRCL_BOOTSTRAP_TIMEOUT_MS"] = "8000"
+        value = self.bootstrap.unique_id()
+        port = struct.unpack("!H", value[16:18])[0]
+        idle = [socket.create_connection(("127.0.0.1", port), timeout=1) for _ in range(32)]
+        try:
+            time.sleep(1.5)
+            result, handle = self.bootstrap.join(value, 1, 0)
+            self.assertEqual(result, 0, self.bootstrap.lib.sccl_bootstrap_error())
+            self.bootstrap.close(handle)
+        finally:
+            for connection in idle:
+                connection.close()
+
     def test_allgather_rounds(self):
         world = 3
         handles = self.joined_group(world)
