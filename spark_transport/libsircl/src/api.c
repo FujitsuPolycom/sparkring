@@ -121,8 +121,12 @@ static ncclResult_t fail(ncclResult_t result, const char *message) {
  * group's, unless the group already has one. ncclInProgress never becomes a group's result: ncclGroupEnd
  * would record it as the terminal error of the group's pending initializations, which would then read as in
  * progress forever. */
+static _Thread_local char group_reason[400];  /* the text of the call that set group_error */
 static ncclResult_t group_fail(ncclResult_t result, const char *message) {
-  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) group_error = result;
+  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) {
+    group_error = result;
+    snprintf(group_reason, sizeof group_reason, "%s", message);
+  }
   return fail(result, message);
 }
 /* A communicator that cannot be created (ncclCommInitRank*, ncclCommSplit): its reason goes to stderr
@@ -638,7 +642,7 @@ ncclResult_t ncclRecv(void *recvbuff, size_t count, ncclDataType_t datatype, int
 ncclResult_t ncclGroupStart(void) {
   CHECK_PROCESS();
   if (group_depth == 256) return group_fail(ncclInvalidUsage, "group nesting exceeds 256");
-  if (group_depth++ == 0) { group_error = ncclSuccess; pending_count = 0; }
+  if (group_depth++ == 0) { group_error = ncclSuccess; group_reason[0] = 0; pending_count = 0; }
   group_thread_watch();
   return ncclSuccess;
 }
@@ -647,11 +651,15 @@ ncclResult_t ncclGroupEnd(void) {
   if (!group_depth) return fail(ncclInvalidUsage, "GroupEnd without GroupStart");
   if (--group_depth) return ncclSuccess;
   ncclResult_t result = group_error;
+  /* The reason the group failed: the first failing call's text, else the first initialization's. */
+  char reason[sizeof group_reason + 64];
+  snprintf(reason, sizeof reason, "%s", group_reason);
   for (unsigned i = 0; i < pending_count; ++i) {
     if (result != ncclSuccess) {
-      atomic_store(&pending[i]->state, FAILED);
-      snprintf(pending[i]->error_message, sizeof(pending[i]->error_message), "group initialization rejected");
+      snprintf(pending[i]->error_message, sizeof(pending[i]->error_message), "group initialization rejected: %s",
+               reason);
       atomic_store(&pending[i]->error, result);
+      atomic_store(&pending[i]->state, FAILED);
     } else {
       ncclResult_t r = start(pending[i]);
       if (r != ncclSuccess) result = r;
@@ -666,6 +674,13 @@ ncclResult_t ncclGroupEnd(void) {
     if (comm->blocking && comm->worker_started) {
       pthread_join(comm->worker, NULL); comm->worker_started = 0;
       ncclResult_t r = (ncclResult_t)atomic_load(&comm->error);
+      if (r != ncclSuccess && !atomic_load(&comm->cancelled)) {
+        /* A group-deferred creation that failed reports its reason as an ungrouped one does. */
+        char message[1200];
+        snprintf(message, sizeof message, "communicator initialization failed: %s", comm->error_message);
+        creation_failed(r, message);
+        if (!reason[0]) snprintf(reason, sizeof reason, "%s", message);
+      }
       if ((result == ncclSuccess || result == ncclInProgress) && r != ncclSuccess) result = r;
     } else if (!comm->blocking && result == ncclSuccess) result = ncclInProgress;
     atomic_store(&comm->grouped, 0);
@@ -673,7 +688,9 @@ ncclResult_t ncclGroupEnd(void) {
   pending_count = 0;
   if (result != ncclSuccess && result != ncclInProgress) {
     flush_p2p(0);
-    return fail(result, "group initialization failed");
+    char text[sizeof reason + 64];
+    snprintf(text, sizeof text, "group initialization failed%s%s", reason[0] ? ": " : "", reason);
+    return fail(result, text);
   }
   ncclResult_t sent = flush_p2p(1);
   return sent != ncclSuccess ? sent : result;

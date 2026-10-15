@@ -290,8 +290,10 @@ print(json.dumps({"results":results,"elapsed":elapsed,"held":len(held),"children
         self.assertEqual(self.lib.ncclGroupEnd(), SUCCESS)
         self.assertEqual(self.lib.ncclGroupEnd(), ARGUMENT)
         try:
+            # The group's end and the pending handle name the call that failed the group.
+            self.assertIn(b"group initialization failed: negative device number", self.lib.ncclGetLastError(None))
             self.assertEqual(self.asynchronous_error(handle), ARGUMENT)
-            self.assertIn(b"group", self.lib.ncclGetLastError(handle))
+            self.assertIn(b"group initialization rejected: negative device number", self.lib.ncclGetLastError(handle))
         finally:
             self.dispose_all([handle])
 
