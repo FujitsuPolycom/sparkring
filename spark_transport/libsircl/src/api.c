@@ -200,6 +200,12 @@ static void *initialize(void *arg) {
                                 &comm->cancelled, &comm->engine, comm->error_message, sizeof(comm->error_message));
     if (!result) comm->device = sccl_engine_device(comm->engine);
   }
+  if (result && comm->bootstrap) {
+    /* A failed communicator keeps no bootstrap connection: it would hold a socket, and on the root's process
+     * a broker thread and one of the 64 root slots, until the caller destroys the handle. */
+    sccl_bootstrap_close(comm->bootstrap);
+    comm->bootstrap = NULL;
+  }
   atomic_store(&comm->state, result == 0 ? READY : FAILED);
   atomic_store(&comm->error, result);
   return NULL;

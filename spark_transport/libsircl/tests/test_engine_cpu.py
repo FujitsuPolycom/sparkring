@@ -79,6 +79,26 @@ if c.value: l.ncclCommDestroy(c)
                 else:
                     self.assertEqual(result, 0, message)
 
+    def test_failed_creations_release_their_bootstrap(self):
+        """Seventy creations that fail in session setup (LIBSIRCL_TRANSPORT=bogus), whose handles are never
+        destroyed, leave no socket open and no bootstrap root held: a further unique id is still granted
+        (the process holds at most 64 roots)."""
+        out = run('''import os, time
+before=len(os.listdir("/proc/self/fd"))
+handles=[]
+for _ in range(70):
+    u=U(); assert l.ncclGetUniqueId(C.byref(u))==0, l.ncclGetLastError(None)
+    c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0); assert r!=0 and c.value; handles.append(c)
+time.sleep(0.3)
+after=len(os.listdir("/proc/self/fd"))
+u=U(); last=l.ncclGetUniqueId(C.byref(u))
+print(json.dumps([before, after, last, l.ncclGetLastError(None).decode()]))
+''', {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "bogus", "LD_LIBRARY_PATH": str(FAKE_DRIVER)})
+        self.assertEqual(out.returncode, 0, out.stderr[-2000:])
+        before, after, last, message = json.loads(out.stdout)
+        self.assertEqual(last, 0, message)
+        self.assertEqual(after, before)
+
     def test_initall_refuses_distinct_cuda_devices(self):
         for devices in ("None", "(C.c_int*2)(0,1)"):
             out = run("c=(C.c_void_p*2)(); r=l.ncclCommInitAll(c,2," + devices + "); "

@@ -39,7 +39,10 @@ gives the build, emulation and hardware commands.
   `ncclCommSplit`) writes one stderr line, `libsircl: communicator creation failed (<result>): <reason>`,
   the text `ncclGetLastError` returns, whatever `NCCL_DEBUG` says: frameworks commonly report only
   `ncclGetErrorString`. With `NCCL_DEBUG` set to `WARN`, `INFO` or `TRACE`, every failed call writes
-  `libsircl: <result>: <reason>`.
+  `libsircl: <result>: <reason>`. A creation that fails after the handle was allocated (the bootstrap or the
+  session setup failed) still returns the handle, whose `ncclCommGetAsyncError` and `ncclGetLastError` give
+  the result and reason; the failed communicator holds no bootstrap connection or session, but the caller
+  must still destroy or abort the handle to free it.
 - `include/nccl.h` is NVIDIA's 2.32.3 header with marked changes (`NCCL_VERSION_CODE` 23203), used
   only to build libsircl.
 - The name `libsircl` without a suffix means this library; SIRCL's own test libraries are named
