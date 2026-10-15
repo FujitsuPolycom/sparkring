@@ -440,6 +440,7 @@ struct sccl_engine {
   /* Teardown: the progress thread stopped (sccl_engine_teardown_stop), when its stop was requested and
    * when it had stopped (CLOCK_REALTIME nanoseconds). */
   int stopped, closing;
+  int lane_check_ms;  /* LIBSIRCL_LANE_CHECK_MS: the lane check's bound */
   int kp_held;  /* this engine holds a reference on its context's kernel-pack entry (sccl_kp_load) */
   uint64_t stop_ns, stopped_ns;
   int have_last;
@@ -979,6 +980,9 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   e->fail_stop = !stop || !*stop || !strcmp(stop, "0") ? 0 : !strcmp(stop, "1") ? FAIL_STOP_EXIT : FAIL_STOP_ABORT;
   uint8_t relayed[MAX_POSITIONS][MAX_LANES];
   if (relayed_lanes(relayed, err, len)) return -1;
+  /* Read with the other settings, so that a bad value fails the first verdict on every rank. */
+  if (env_u64("LIBSIRCL_LANE_CHECK_MS", 10000, 1, 600000, &v, err, len)) return -1;
+  e->lane_check_ms = (int)v;
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
   const char *one_pass = sccl_env("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH");
   if (v == 1 && (!one_pass || strcmp(one_pass, "1"))) {
@@ -2427,17 +2431,13 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   }
   /* Exchange 3: prove every lane with one write, then start the progress thread. */
   {
-    uint64_t check_ms;
-    if (env_u64("LIBSIRCL_LANE_CHECK_MS", 10000, 1, 600000, &check_ms, err, err_len)) {
-      status = ncclInvalidArgument;
-      goto fail;
-    }
+    int check_ms = e->lane_check_ms;
     char why[400] = {0};
-    int rc = e->transport->lane_check(e->proxy, (int)check_ms);
+    int rc = e->transport->lane_check(e->proxy, check_ms);
     if (rc) snprintf(why, sizeof why, "lane check: %s", e->transport->error(e->proxy));
     if (!rc && e->p2p) {
       uint64_t started = monotonic_ns();
-      rc = e->p2p_transport->lane_check(e->p2p, (int)check_ms) || p2p_apply_windows(e);
+      rc = e->p2p_transport->lane_check(e->p2p, check_ms) || p2p_apply_windows(e);
       e->p2p_check_ns = monotonic_ns() - started;
       if (rc) snprintf(why, sizeof why, "point-to-point lane check: %s", e->p2p_transport->error(e->p2p));
     }
@@ -2447,15 +2447,14 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       rc = start_progress(e);
       if (rc) snprintf(why, sizeof why, "%s", rc == 1 ? e->transport->error(e->proxy) : e->p2p_transport->error(e->p2p));
     }
+    /* Every local step before the last verdict, so that no rank fails alone after its peers succeeded. */
+    if (rc == 0 && cuda_check(cu->EventCreate(&e->order_event, SCCL_CU_EVENT_DISABLE_TIMING),
+                              "creating the order event", why, sizeof why))
+      rc = -1;
     if (verdict(bootstrap, nranks, rank, rc == 0, why, cancelled, err, err_len)) {
       status = ncclSystemError;
       goto fail;
     }
-  }
-  if (cuda_check(cu->EventCreate(&e->order_event, SCCL_CU_EVENT_DISABLE_TIMING), "creating the order event", err,
-                 err_len)) {
-    status = ncclUnhandledCudaError;
-    goto fail;
   }
   cu->CtxPopCurrent(&ctx);
   start_receipts(e);

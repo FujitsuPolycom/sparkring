@@ -186,10 +186,10 @@ if c.value: l.ncclCommAbort(c)
                 self.assertIn("rank 1 position", data["local"])
                 self.assertIn("0-63", data["local"])
 
-    def test_relayed_lanes_reach_the_setup_exchange(self):
+    def test_route_and_check_settings_reach_the_setup_exchange(self):
         """LIBSIRCL_RELAYED_LANES marks a peer position as relayed in the first setup exchange's record (which
         the cycle plan reads) without any forward window; a malformed value, or a LIBSIRCL_RING_WINDOW above the
-        native cap, fails creation naming the variable."""
+        native cap, or a LIBSIRCL_LANE_CHECK_MS out of range, fails the first verdict naming the variable."""
         script = '''import socket, struct, threading
 u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
 server=socket.socket(); server.bind(("127.0.0.1", 0)); server.listen()
@@ -234,6 +234,10 @@ if c.value: l.ncclCommAbort(c)
         out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RING_WINDOW": str(61 * 32768)})
         self.assertEqual(out.returncode, 0, out.stderr)
         self.assertIn("LIBSIRCL_RING_WINDOW=1998848 must be 0 or hold 1 to 60 chunks", json.loads(out.stdout)["local"])
+        # The lane check's bound is read with the settings, so a bad value fails the first verdict.
+        out = run(script, {**base, "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_LANE_CHECK_MS": "0"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("LIBSIRCL_LANE_CHECK_MS=0 must be an integer from 1", json.loads(out.stdout)["local"])
 
     def test_info_names_the_collectives(self):
         out = run("print(l.sirclGetInfo().decode())")
