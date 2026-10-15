@@ -357,6 +357,13 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
     release(parent);
     return creation_failed(ncclSystemError, message);
   }
+  for (int r = 0; r < parent->nranks; ++r) {
+    if (lengths[r] != sizeof mine) {
+      free(all);
+      release(parent);
+      return creation_failed(ncclRemoteError, "ncclCommSplit: invalid color record length");
+    }
+  }
   const int32_t *records = all;
   int members[64], count = 0, rank = -1;
   for (int r = 0; r < parent->nranks; ++r)
@@ -385,6 +392,13 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
     snprintf(message, sizeof message, "ncclCommSplit: exchanging unique ids: %s", sccl_bootstrap_error());
     release(parent);
     return creation_failed(ncclSystemError, message);
+  }
+  for (int r = 0; r < parent->nranks; ++r) {
+    if (lengths[r] != sizeof id.internal) {
+      free(all);
+      release(parent);
+      return creation_failed(ncclRemoteError, "ncclCommSplit: invalid unique-id record length");
+    }
   }
   if (rank >= 0) memcpy(id.internal, (const unsigned char *)all + 128 * (size_t)members[0], 128);
   free(all);

@@ -8,12 +8,14 @@ import ctypes as C
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import threading
 import time
 import unittest
 
 import test_api as api
+from test_bootstrap import raw_peer, raw_reply
 
 
 SUCCESS, ARGUMENT, USAGE, PROGRESS, TIMEOUT = 0, 4, 5, 7, 8
@@ -21,6 +23,36 @@ LIBRARY = Path(__file__).resolve().parents[1] / "build" / "libsircl.so"
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_split_refuses_short_records_in_both_rounds(self):
+        for short_round in (0, 1):
+            with self.subTest(round=short_round):
+                value = self.uid()
+                peer = raw_peer(bytes(value), 2, 1)
+                handle, child = C.c_void_p(), C.c_void_p()
+                try:
+                    self.assertEqual(self.lib.ncclCommInitRank(C.byref(handle), 2, value, 0), SUCCESS)
+                    self.assertEqual(raw_reply(peer), SUCCESS)
+                    def respond():
+                        for round_number in range(short_round + 1):
+                            payload = b"\x00" if round_number == short_round else struct.pack("=ii", 0, 1)
+                            peer.sendall(b"SCF1" + struct.pack("!III", round_number, len(payload), 0) + payload)
+                            header = peer.recv(16, __import__("socket").MSG_WAITALL)
+                            self.assertEqual(len(header), 16)
+                            size = struct.unpack("!I", header[12:])[0]
+                            self.assertEqual(len(peer.recv(size, __import__("socket").MSG_WAITALL)), size)
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        response = pool.submit(respond)
+                        result = self.lib.ncclCommSplit(handle, 0, 0, C.byref(child), None)
+                        response.result(timeout=2)
+                    self.assertEqual(result, 6)
+                    self.assertFalse(child.value)
+                finally:
+                    peer.close()
+                    if child.value:
+                        self.lib.ncclCommAbort(child)
+                    if handle.value:
+                        self.lib.ncclCommAbort(handle)
+
     @classmethod
     def setUpClass(cls):
         api.LIBRARY = LIBRARY
