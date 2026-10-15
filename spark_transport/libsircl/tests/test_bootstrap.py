@@ -409,6 +409,52 @@ int test_already_cancelled_join(const unsigned char id[128], int world, int rank
         self.assertEqual([r for r, _ in results], [0] * world)
         return [handle for _, handle in results]
 
+    def test_every_descriptor_is_close_on_exec_from_its_creation(self):
+        """The bootstrap creates every socket and pipe close-on-exec atomically (SOCK_CLOEXEC, accept4 with
+        SOCK_CLOEXEC, pipe2 with O_CLOEXEC), never setting the flag after the fact, so a concurrent fork and
+        exec cannot inherit one. A build of the bootstrap whose socket, accept, accept4, pipe and pipe2 calls
+        are wrapped (ld --wrap) counts the creations made without the flag."""
+        build = Path(self.build.name)
+        probe = build / "cloexec_probe.c"
+        probe.write_text(r'''
+#define _GNU_SOURCE
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <unistd.h>
+static int created, missed;
+int __real_socket(int, int, int);
+int __real_accept(int, struct sockaddr *, socklen_t *);
+int __real_accept4(int, struct sockaddr *, socklen_t *, int);
+int __real_pipe(int[2]);
+int __real_pipe2(int[2], int);
+int __wrap_socket(int d, int t, int p) { created++; missed += !(t & SOCK_CLOEXEC); return __real_socket(d, t, p); }
+int __wrap_accept(int f, struct sockaddr *a, socklen_t *l) { created++; missed++; return __real_accept(f, a, l); }
+int __wrap_accept4(int f, struct sockaddr *a, socklen_t *l, int x) {
+  created++; missed += !(x & SOCK_CLOEXEC); return __real_accept4(f, a, l, x); }
+int __wrap_pipe(int p[2]) { created++; missed++; return __real_pipe(p); }
+int __wrap_pipe2(int p[2], int x) { created++; missed += !(x & O_CLOEXEC); return __real_pipe2(p, x); }
+int test_created(void) { return created; }
+int test_missed(void) { return missed; }
+''', encoding="utf-8")
+        source = Path(__file__).resolve().parents[1] / "src" / "bootstrap.c"
+        library = build / "bootstrap_wrapped.so"
+        wrap = ",".join(f"--wrap={name}" for name in ("socket", "accept", "accept4", "pipe", "pipe2"))
+        subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-fPIC", "-shared", "-pthread",
+                        "-I", str(source.parent), f"-Wl,{wrap}", str(source), str(probe), "-o", str(library)],
+                       check=True)
+        lib = ctypes.CDLL(str(library))
+        lib.sccl_bootstrap_id.argtypes = [ctypes.c_void_p]
+        lib.sccl_bootstrap_join.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)]
+        lib.sccl_bootstrap_close.argtypes = [ctypes.c_void_p]
+        value = ctypes.create_string_buffer(128)
+        self.assertEqual(lib.sccl_bootstrap_id(value), 0)
+        handle = ctypes.c_void_p()
+        self.assertEqual(lib.sccl_bootstrap_join(value.raw, 1, 0, ctypes.byref(handle)), 0)
+        lib.sccl_bootstrap_close(handle)
+        # The id's listener and wake pipe, the joining socket and the root's accepted connection.
+        self.assertGreaterEqual(lib.test_created(), 4)
+        self.assertEqual(lib.test_missed(), 0)
+
     def test_allgather_rounds(self):
         world = 3
         handles = self.joined_group(world)

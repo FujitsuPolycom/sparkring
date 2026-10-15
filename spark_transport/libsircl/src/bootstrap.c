@@ -157,6 +157,9 @@ static uint32_t get32(const unsigned char *p) {
          ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
+/* Every descriptor the bootstrap creates is close-on-exec from its creation (SOCK_CLOEXEC, accept4,
+ * pipe2), so a concurrent fork and exec in another thread cannot inherit it and keep a broker connection
+ * open after this process's rank left. configure_fd sets the flags again for descriptors of any origin. */
 static int configure_fd(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0 ||
@@ -336,7 +339,7 @@ static int accept_hello(struct root *r, int index) {
 static void accept_connections(struct root *r) {
   /* Cap each batch so connections cannot starve the absolute deadline. */
   for (int attempt = 0; attempt < MAX_PENDING; ++attempt) {
-    int fd = accept(r->listen_fd, NULL, NULL);
+    int fd = accept4(r->listen_fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
     if (fd < 0) { if (errno == EINTR) continue; return; }
     if (configure_fd(fd) != 0) { close(fd); continue; }
     int slot;
@@ -586,7 +589,7 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   memcpy(r->id + IP_OFF, &bind_address.s_addr, 4);
   memcpy(r->id + HASH_OFF, hash, 32);
   if (random_nonce(r->id + NONCE_OFF) != 0) goto failed;
-  r->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  r->listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (r->listen_fd < 0 || configure_fd(r->listen_fd) != 0) goto failed;
   struct sockaddr_in address;
   memset(&address, 0, sizeof address);
@@ -598,7 +601,7 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   if (getsockname(r->listen_fd, (struct sockaddr *)&address, &length) < 0)
     goto failed;
   memcpy(r->id + PORT_OFF, &address.sin_port, 2);
-  if (pipe(r->wake) != 0 || configure_fd(r->wake[0]) != 0 ||
+  if (pipe2(r->wake, O_CLOEXEC | O_NONBLOCK) != 0 || configure_fd(r->wake[0]) != 0 ||
       configure_fd(r->wake[1]) != 0) goto failed;
   int64_t now = now_ms();
   if (now < 0) goto failed;
@@ -666,7 +669,7 @@ int sccl_bootstrap_join_cancel(const unsigned char id[ID_SIZE], int nranks, int 
   int64_t now = now_ms();
   if (now < 0) return error_result(SYSTEM, "cannot read monotonic clock");
   int64_t deadline = now + timeout;
-  fd = socket(AF_INET, SOCK_STREAM, 0);
+  fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (fd < 0 || configure_fd(fd) != 0) { result = SYSTEM; goto failed; }
   struct sockaddr_in address;
   memset(&address, 0, sizeof address);
