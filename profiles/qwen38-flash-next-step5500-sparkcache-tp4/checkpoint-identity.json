@@ -1,0 +1,30 @@
+{
+  "checkpoint_sha256": "759a6ce3138e95cddaa4dc8e53480274d2a3e75154cf1893ff275237b1ded2b6",
+  "inputs": {
+    "artifacts": {
+      "manifest_sha256": "633b3741c6c52932f88060a8e75845883e5799132f13ac61678d7b6ffe70dcdd"
+    },
+    "draft": {
+      "config": {
+        "attention_backend": "B12X",
+        "draft_sample_method": "probabilistic",
+        "kv_cache_dtype": "auto",
+        "method": "mtp",
+        "moe_backend": "humming",
+        "num_speculative_tokens": 3
+      },
+      "mode": "embedded"
+    },
+    "model_config": {
+      "sha256": "e0a704d86793ff7c84f4ef99eb9908e13b1684f60bc61b3b3fb1c1a7f3688abc"
+    },
+    "quantization": {
+      "encoding": "safetensors",
+      "load_format": "b12x",
+      "method": "modelopt_mixed"
+    },
+    "repository": "local-inference-lab/Qwen3.8-Flash-Next-NVFP4",
+    "revision": "60215d26cf5e42c2db6128774032d57fc62678da"
+  },
+  "schema": "sparkcache-checkpoint-identity/v1"
+}

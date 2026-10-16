@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "qwen38-flash-next-csf-sparkcache-tp2",
+  "title": "Qwen3.8-Flash-Next csf with SparkCache on 2 Sparks (research-only)",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/qwen38-flash-next-csf-sparkcache-tp2/config.json"
+  },
+  "release": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/release.json",
+  "guide": "profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md",
+  "evidence_scope": "Research-only. CPU conformance and configuration tests cover this pinned checkpoint on release 2026.10.4. No serving, CUDA capture/restore or performance record exists for this composition. Hardware acceptance is specified in docs/research/qwen38-sparkcache.md. The shared-2026.09.3 qualification does not apply. Requires SparkCache 3daf882e358b0c0846f14b44122204a8774f2f66 from installer-sparkcache-3daf882e358b and an image lock that explicitly admits this ID.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/qwen38-flash-next-csf-sparkcache-tp2/config.json"
+    ]
+  }
+}
