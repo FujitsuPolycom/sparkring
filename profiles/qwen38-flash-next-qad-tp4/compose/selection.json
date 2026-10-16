@@ -3,5 +3,5 @@
   "profile": "qwen38-flash-next-qad-tp4",
   "checkpoint": "qad-step5500-ple1000",
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "9f6b9f0f0cc1e8726bc1c11992697c03c0ae20c597ee7277a2d63973809265db"
+  "deployment": "65d15698ad933a64ba1058b090ade774f1cd6262a72c7663c098be9a790b5d4a"
 }

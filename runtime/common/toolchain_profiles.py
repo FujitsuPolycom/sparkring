@@ -44,6 +44,7 @@ TOOLCHAIN_CONFIGS = tuple(ROOT / "profiles" / name / "config.json" for name in (
     "glm53-flash-nvfp4-spark-tp2-dcp2", "glm53-flash-nvfp4-sparkcache-tp2",
     "glm53-flash-nvfp4-sparkcache-tp4", "glm53-flash-nvfp4-sparkcache-crc32-tp2",
     "glm53-flash-nvfp4-sparkcache-crc32-tp4",
+    "qwen38-flash-next-csf-sparkcache-tp2", "qwen38-flash-next-step5500-sparkcache-tp4",
     "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4",
     "qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4",
     "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"))

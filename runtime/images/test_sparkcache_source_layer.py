@@ -61,12 +61,12 @@ def test_parent_and_build_inputs_preserve_release_and_admission():
             image_lock.validate(parent, profile)
 
 
-@pytest.fixture
-def prepared_inputs(tmp_path):
+@pytest.fixture(params=[cache.SOURCES, cache.SOURCES.parent.with_name("installer-sparkcache-3daf882e358b") / "sources.json"])
+def prepared_inputs(tmp_path, request):
     """Synthetic receipts exercise preparation without claiming real image bytes."""
     repository = tmp_path / "repository"
     repository.mkdir()
-    record = sources()
+    record = json.loads(request.param.read_text())
     for row in record["files"].values():
         dest = repository / row["source"]
         dest.parent.mkdir(parents=True, exist_ok=True)
@@ -110,10 +110,10 @@ def test_preparation_records_actual_inherited_hashes_and_source_commit(prepared_
     assert provenance["files"][target]["sha256"] == record["files"][target]["sha256"]
     descriptor = layer.descriptor(output / "descriptor.json")
     assert layer.digest((output / "descriptor.json").read_bytes()) == json.loads((output / "plan.json").read_text())["descriptor_sha256"]
-    source = cache.PACKAGE + "runtime_patches/sparkring-source-8abbe9da67b8.json"
+    source = cache.PACKAGE + "runtime_patches/sparkring-source-" + record["source"]["commit"][:12] + ".json"
     assert descriptor["files"][source]["inherited_sha256"] is None
     installed = json.loads((output / "files" / source.lstrip("/")).read_text())
-    assert installed["source"]["commit"] == sources()["source"]["commit"]
+    assert installed["source"]["commit"] == record["source"]["commit"]
     rewritten = json.loads((output / "files" / layer.BASE_RECEIPT.lstrip("/")).read_text())
     for target, sha in record["native_libraries"].items():
         assert rewritten["files"][target] == sha
@@ -153,3 +153,27 @@ def test_native_pin_cannot_be_omitted():
     del base["files"][next(iter(record["native_libraries"]))]
     with pytest.raises(ValueError, match="native library differs"):
         cache.resolve_descriptor(record, base, cache.ROOT)
+
+
+def test_qwen_layer_pins_runtime_and_admits_both_model_families_without_release_selection():
+    directory = cache.SOURCES.parent.with_name("installer-sparkcache-3daf882e358b")
+    record = json.loads((directory / "sources.json").read_text())
+    build = json.loads((directory / "build-inputs.json").read_text())
+    parent = json.loads((cache.ROOT / record["parent_lock"]).read_text())
+    assert record["source"]["commit"] == "3daf882e358b0c0846f14b44122204a8774f2f66"
+    assert record["source"]["native_tree"] == sources()["source"]["native_tree"]
+    assert record["native_libraries"] == sources()["native_libraries"]
+    assert set(build["profiles"]) == (set(parent["profiles"]) | set(installer_image.SPARKCACHE_CRC32_VARIANTS)
+                                      | set(installer_image.QWEN_SPARKCACHE_VARIANTS))
+    assert len(build["profiles"]) == 19
+    assert (cache.ROOT / build["output"]).parent == directory
+    assert not (cache.ROOT / build["output"]).exists()
+    for row in record["files"].values():
+        assert layer.digest((cache.ROOT / row["source"]).read_bytes()) == row["sha256"]
+    recipe = (directory / "build.sh").read_text()
+    assert "--sources " + (directory / "sources.json").relative_to(cache.ROOT).as_posix() in recipe
+    for value in (build["name"], build["tag"], build["output"], ",".join(build["profiles"])):
+        assert value in recipe
+    assert recipe.index("/verify.py --vllm-root") < recipe.index("derived_layer.py build")
+    for sha in record["native_libraries"].values():
+        assert sha in recipe

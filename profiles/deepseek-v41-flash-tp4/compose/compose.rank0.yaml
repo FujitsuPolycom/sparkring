@@ -149,7 +149,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/deepseek-v41-flash-3cc9a81fd344-dba1be0a40aa
     labels:
-      io.sparkring.deployment: 0f07da51d134b5d19f7ebe135825127feea928d22f0ea3da5a2d10b56e41bd5b
+      io.sparkring.deployment: 2347e3056dbb951f6b23b86bb0cc31752895865e505f76f4391c23652d5dc40f
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
