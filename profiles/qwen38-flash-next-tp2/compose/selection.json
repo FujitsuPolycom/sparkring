@@ -3,5 +3,5 @@
   "profile": "qwen38-flash-next-tp2",
   "checkpoint": "csf",
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "d9346449a11e84e732da11552361ec3d4794c9fd6f4e2c761ddeea3daaec6ab7"
+  "deployment": "e7327cc69f599b0fd7a4077f11d2e86d194d4542267eea5a4e284dd81e05220f"
 }

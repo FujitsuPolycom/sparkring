@@ -63,7 +63,10 @@ def prepare(base_receipt, toolchain_receipt, output, *, sources=SOURCES, reposit
     descriptor = resolve_descriptor(record, json.loads(base_raw), repository)
     # Install the source inventory so the resulting receipt binds commit, tree,
     # native-library expectations and all resulting source digests.
-    source_target = PACKAGE + "runtime_patches/sparkring-source-8abbe9da67b8.json"
+    commit = record["source"]["commit"]
+    layer.require(len(commit) == 40 and all(c in "0123456789abcdef" for c in commit),
+                  "SparkCache source commit must be an immutable Git revision")
+    source_target = PACKAGE + f"runtime_patches/sparkring-source-{commit[:12]}.json"
     layer.require(source_target not in json.loads(base_raw)["files"], "Source inventory already exists")
     descriptor["files"][source_target] = {
         "source": sources.resolve().relative_to(repository).as_posix(),
@@ -79,9 +82,10 @@ def main(argv=None):
     parser.add_argument("--base-receipt", type=Path, required=True)
     parser.add_argument("--toolchain-receipt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--sources", type=Path, default=SOURCES)
     args = parser.parse_args(argv)
     try:
-        result = prepare(args.base_receipt, args.toolchain_receipt, args.output)
+        result = prepare(args.base_receipt, args.toolchain_receipt, args.output, sources=args.sources)
     except (ValueError, OSError, KeyError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))
