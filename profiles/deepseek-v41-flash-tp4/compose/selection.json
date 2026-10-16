@@ -3,5 +3,5 @@
   "profile": "deepseek-v41-flash-tp4",
   "checkpoint": null,
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "7c3beb0bed35168dcd137a1d489fdc82b6f989a426745aeac612e589ae842b69"
+  "deployment": "d077355bb7b03b5503f8d71cc1f7e515f9c4c16effd7094817d01e1d81b1409d"
 }

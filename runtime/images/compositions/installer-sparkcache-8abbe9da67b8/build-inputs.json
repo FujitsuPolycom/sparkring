@@ -1,0 +1,27 @@
+{
+  "schema": "sparkring-sparkcache-build-inputs/v1",
+  "name": "dev-20261015-sparkcache-8abbe9da67b8-status038",
+  "tag": "sparkring:sparkcache-8abbe9da67b8-status038",
+  "parent_image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+  "sources": "sources.json",
+  "profiles": [
+    "deepseek-v41-flash-tp4",
+    "deepseek-v41-flash-tp8",
+    "glm53-flash-csf-tp8",
+    "glm53-flash-nvfp4-spark-tp2",
+    "glm53-flash-nvfp4-spark-tp2-dcp2",
+    "glm53-flash-nvfp4-spark-tp4",
+    "glm53-flash-nvfp4-sparkcache-crc32-tp2",
+    "glm53-flash-nvfp4-sparkcache-crc32-tp4",
+    "glm53-nvfp4-csf-tp6",
+    "glm53-nvfp4-tp8",
+    "glm53-nvfp4-tp8-dcp1",
+    "mimo-v26-flash-mopd-tp2",
+    "mimo-v26-flash-mopd-tp4",
+    "qwen38-flash-next-qad-tp4",
+    "qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp2",
+    "swift15-qwen38-flash-next-tp4"
+  ],
+  "output": "runtime/releases/dev-20261015-sparkcache-8abbe9da67b8-status038/installer-image.json"
+}

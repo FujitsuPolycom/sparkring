@@ -1,0 +1,105 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "vllm_commit": "5dede5bb7fa04949a02823411f2fdf135e29b3dc",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save"
+  ],
+  "qualification": "Source review and CPU conformance only; CUDA/model qualification remains required.",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "8ea57558c576d80971faf28aba3d093d3d0ca5ad773b79e586255c2695e30846",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "6035392edc1854a51f1686a17cb50981c18074f9256b23fb39b38d8874efc5d6",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "sha256": "c6a09fc3b4f725fd31ddc2a07a8dd80953df502726534969ad279a504a66122c",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "sha256": "ee894e24e4bcf3d1b97b876eacd1b8f904772577cde245d568cb13a24b6d5ec1",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "sha256": "23932c3f3672f233f9b8405c95b33d7ecd773bfeadc03bdbf104e36e46ea601e",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
+      "required_symbols": []
+    }
+  ]
+}

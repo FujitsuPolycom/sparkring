@@ -3,5 +3,5 @@
   "profile": "swift15-qwen38-flash-next-tp4",
   "checkpoint": null,
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "81ff55de4c3ee243a9d0446ea217a7e13e0ac3e84626ce2bc155e7170341fd97"
+  "deployment": "9c80a937c55982d9189a2e2f095d420b589a82a60daa609638ee8f36cdb9259d"
 }

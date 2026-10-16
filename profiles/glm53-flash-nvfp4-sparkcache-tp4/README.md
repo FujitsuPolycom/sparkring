@@ -46,11 +46,11 @@ On top it enables the SparkCache KV connector:
   `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
   low watermark, and two capture slots of 8 GiB;
 - the checkpoint identity
-  `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`, which
-  `deploy/glm53_flash/profile.py` in the external SparkCache repository derives
-  from the checkpoint's pin manifest; stored entries of the CSF checkpoint
-  never restore into another checkpoint, and no other checkpoint's entries
-  restore into this one;
+  `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`,
+  a recorded value whose original derivation is not available. The external
+  SparkCache helper `deploy/glm53_flash/profile.py` validates a supplied digest;
+  it does not derive one from the checkpoint pin manifest. The recorded value
+  remains pinned;
 - the rank-local root `SPARK_CONTEXT_CACHE_ROOT=/cache/glm53-flash-sparkcache-ab53c097d7ca-dec48abd33ef`,
   which `sparkring storage` classifies as `cache` and which the deployment
   names, so automatic release sees it referenced.
@@ -99,3 +99,7 @@ are recorded in the [thinking records](../thinking.json) and
 Recorded measurements that omitted an effort choice used the chat template's
 `max` default. They do not measure this profile's `high` deployment default.
 Measurements with explicit request settings retain those stated conditions.
+
+The [CRC32 variant](../glm53-flash-nvfp4-sparkcache-crc32-tp4/README.md) uses a
+separate profile ID and the SparkCache source layer over release 2026.10.4.
+This profile retains its earlier image composition and evidence.
