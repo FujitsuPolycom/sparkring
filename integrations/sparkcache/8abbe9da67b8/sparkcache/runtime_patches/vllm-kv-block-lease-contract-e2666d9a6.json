@@ -1,0 +1,53 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "vllm_commit": "e2666d9a6",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "d6acdb1da6f2322ea51819cf8d1d8b66221823a7cac0406e85f1f029746d9e3d",
+      "required_symbols": [
+        "KVConnectorBase_V1.handle_preemptions",
+        "KVConnectorBase_V1.request_finished",
+        "KVConnectorBase_V1.get_finished"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "sha256": "a005d542161b71d824338a0fbbf329291ee580c5113787d8e080bb8cf6909a9b",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "accepted_sha256": {
+        "e2666d9a6_pre_patch": "5020bfa9a8142056949357e6acfc355edb974d799e2e7ed62feb93dfef3316a6",
+        "sparkcache_async_rollback_post_patch": "52bf226d9964d8ddb99f4c7444470d592496c8d4836750f3e0ba226cbbc07d75",
+        "sparkcache_hma_recompute_post_patch": "47b6cc16dc61c98beeecc4cbdb2d468844eccc08bc284ffd2be45f0c42b521ca",
+        "stock_pre_patch": "1ea341f4cc28d282452597c25d97eea84be8b5f984d2e1a6b548356c8417fdce",
+        "stock_async_rollback_post_patch": "d4ebec211b027b6c7f64574f79374237de0f5fde0c5c03f20f1cb1596ffadc3a",
+        "stock_hma_recompute_post_patch": "2f34aa9d65a495a86d814c90f654fbe1ff754cfdbecd204b98d513652ca3e06d"
+      },
+      "required_symbols": [
+        "Scheduler._connector_finished",
+        "Scheduler._update_from_kv_xfer_finished",
+        "Scheduler._free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "91fcedcc9fa478b5e5bf718c8fc50052c52bf418193c02cd471ca20e7f7518c6",
+      "required_symbols": [
+        "SchedulerOutput.preempted_req_ids"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "sha256": "6e96f2810959aeb7003eeb1e4ce64f46d8e72bebbe38a27f33b6904d25e861ed",
+      "required_symbols": [
+        "GPUModelRunner.execute_model"
+      ]
+    }
+  ]
+}

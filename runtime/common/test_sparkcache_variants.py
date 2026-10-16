@@ -3,7 +3,7 @@
 The variants enable the SparkContextCacheConnector for the CSF checkpoint, keep
 every speed setting of their cache-off profile, and run only on an image whose
 lock lists them: no lock of this package does, only the lock the derived layer
-runtime/images/compositions/installer-sparkcache-gab86b70 records does.
+under runtime/images/compositions/installer-sparkcache-* records does.
 """
 
 import json
@@ -18,11 +18,19 @@ from runtime.host.storage import CACHE_NAME
 
 VARIANTS = installer_image.SPARKCACHE_VARIANTS
 BASES = {"glm53-flash-nvfp4-sparkcache-tp2": "glm53-flash-nvfp4-spark-tp2",
-         "glm53-flash-nvfp4-sparkcache-tp4": "glm53-flash-nvfp4-spark-tp4"}
+         "glm53-flash-nvfp4-sparkcache-tp4": "glm53-flash-nvfp4-spark-tp4",
+         "glm53-flash-nvfp4-sparkcache-crc32-tp2": "glm53-flash-nvfp4-spark-tp2",
+         "glm53-flash-nvfp4-sparkcache-crc32-tp4": "glm53-flash-nvfp4-spark-tp4"}
 CACHE_ROOT = "/cache/glm53-flash-sparkcache-ab53c097d7ca-dec48abd33ef"
 CHECKPOINT_IDENTITY = "6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e"
 SITE_PACKAGES = "/usr/local/lib/python3.12/dist-packages"
 CONTRACT = SITE_PACKAGES + "/sparkcache/runtime_patches/vllm-connector-jobs-gab86b70.json"
+
+
+def cache_root(profile):
+    if profile in installer_image.SPARKCACHE_CRC32_VARIANTS:
+        return f"/cache/glm53-flash-sparkcache-crc32-{profile[-3:]}-8abbe9da67b8-dec48abd33ef"
+    return CACHE_ROOT
 
 
 def development_lock():
@@ -83,10 +91,10 @@ def test_variant_keeps_every_speed_setting_of_its_base_profile(profile):
 def test_variant_renders_the_connector_settings_and_storage_paths(profile):
     lock, spec, connector_json = connector(profile)
     assert spec.environment["SPARKCACHE_ENABLED"] == "1"
-    assert spec.environment["SPARK_CONTEXT_CACHE_ROOT"] == CACHE_ROOT
+    assert spec.environment["SPARK_CONTEXT_CACHE_ROOT"] == cache_root(profile)
     # The root matches the name `sparkring storage` classifies as a cache
     # directory: <family>-<image 12>-<revision 12>.
-    assert CACHE_NAME.fullmatch(Path(CACHE_ROOT).name)
+    assert CACHE_NAME.fullmatch(Path(cache_root(profile)).name)
     assert connector_json["kv_connector"] == "SparkContextCacheConnector"
     assert connector_json["kv_connector_module_path"] == "sparkcache.spark_context_cache_connector"
     assert connector_json["kv_role"] == "kv_both"
@@ -97,7 +105,8 @@ def test_variant_renders_the_connector_settings_and_storage_paths(profile):
     assert extra["spark_cache_draft_policy"] == "separate"
     assert extra["spark_cache_target_checkpoint_sha256"] == CHECKPOINT_IDENTITY
     assert extra["spark_cache_draft_checkpoint_sha256"] == CHECKPOINT_IDENTITY
-    assert extra["spark_cache_max_span_tokens"] == 65536
+    assert extra["spark_cache_max_span_tokens"] == (
+        262144 if profile in installer_image.SPARKCACHE_CRC32_VARIANTS else 65536)
     assert extra["spark_cache_async_page_capture"] is True
     assert extra["spark_cache_async_page_capture_lease_mode"] == "connector-jobs"
     assert extra["spark_cache_async_page_capture_lease_contract"] == CONTRACT
@@ -107,7 +116,9 @@ def test_variant_renders_the_connector_settings_and_storage_paths(profile):
         "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so"
     assert extra["spark_cache_async_page_capture_library"] == \
         "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so"
-    assert extra["spark_cache_root"] == CACHE_ROOT
+    assert extra["spark_cache_root"] == cache_root(profile)
+    if profile in installer_image.SPARKCACHE_CRC32_VARIANTS:
+        assert extra["spark_cache_payload_integrity"] == "fast"
 
 
 @pytest.mark.parametrize("profile", VARIANTS)
@@ -136,7 +147,7 @@ def test_check_reports_the_connector_state(profile):
     assert state["model_profile"] == "glm53-flash-hybrid"
     assert state["lease_mode"] == "connector-jobs"
     assert state["lease_contract"] == CONTRACT
-    assert state["cache_root"] == CACHE_ROOT
+    assert state["cache_root"] == cache_root(profile)
     assert state["checkpoint_identity"].startswith("6af0343976ee")
 
 
@@ -156,3 +167,32 @@ def test_every_other_installer_profile_keeps_sparkcache_off():
             assert enabled == "1" and connector_on
         else:
             assert enabled == "0" and not connector_on, profile
+
+
+CRC32_TUNED_SETTINGS = {
+    "spark_cache_cuda_restore_io_workers": 8,
+    "spark_cache_max_span_tokens": 262144,
+    "spark_cache_max_bytes": 32 * 1024**3,
+    "spark_cache_low_watermark_bytes": 28 * 1024**3,
+}
+
+
+@pytest.mark.parametrize("profile", installer_image.SPARKCACHE_CRC32_VARIANTS)
+def test_crc32_variant_preserves_prior_settings_except_integrity_root_and_restore_capacity(profile):
+    root = installer_image.ROOT / "profiles"
+    prior = json.loads((root / profile.replace("-crc32", "") / "config.json").read_text())
+    variant = json.loads((root / profile / "config.json").read_text())
+    variant["environment"]["SPARK_CONTEXT_CACHE_ROOT"] = prior["environment"]["SPARK_CONTEXT_CACHE_ROOT"]
+    index = variant["vllm_args"].index("--kv-transfer-config") + 1
+    settings = json.loads(variant["vllm_args"][index])
+    previous = json.loads(prior["vllm_args"][index])
+    assert settings["kv_connector_extra_config"].pop("spark_cache_payload_integrity") == "fast"
+    settings["kv_connector_extra_config"]["spark_cache_root"] = previous["kv_connector_extra_config"]["spark_cache_root"]
+    # Restore and capacity settings measured on the CRC32 layer: eight CUDA
+    # restore I/O workers and a 256K-token span bounded by 32 GiB per rank.
+    for key, value in CRC32_TUNED_SETTINGS.items():
+        assert settings["kv_connector_extra_config"].pop(key) == value, key
+        previous["kv_connector_extra_config"].pop(key)
+    assert settings == previous
+    variant["vllm_args"][index] = prior["vllm_args"][index]
+    assert variant == prior
