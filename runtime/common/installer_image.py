@@ -58,9 +58,11 @@ SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-s
 # Opt-in SparkCache variants of the GLM-5.3-Flash installer profiles. They enable
 # the SparkContextCacheConnector (--kv-transfer-config) and serve the CSF
 # checkpoint only, so no published image lock lists them: only the lock that the
-# derived layer runtime/images/compositions/installer-sparkcache-gab86b70
-# records lists them, and every other image refuses the profile.
-SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4")
+# corresponding SparkCache derived layer records lists them. The CRC32 variants
+# use installer-sparkcache-8abbe9da67b8; the earlier IDs retain the gab86b70 layer.
+SPARKCACHE_CRC32_VARIANTS = ("glm53-flash-nvfp4-sparkcache-crc32-tp2", "glm53-flash-nvfp4-sparkcache-crc32-tp4")
+SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4",
+                      *SPARKCACHE_CRC32_VARIANTS)
 # Research-only variants of the GLM-5.3-Flash pair profile that serve the CSF checkpoint with
 # decode-context parallelism above 1. They run only on an image whose vLLM is the TP2/DCP2 prefill build,
 # which reads CSF; only an image lock v3 records that build (sircl.vllm_pins), and the installer refuses

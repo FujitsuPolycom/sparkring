@@ -1,0 +1,111 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "connector_api": "jj-block-state-read-leases/v1",
+  "vllm_commit": "9b87df5d47b9c7163d1105ac5ea8c0a088baafc9",
+  "required_semantics": [
+    "scheduler-binds-owning-block-pool",
+    "block-state-and-boundary-offers-describe-one-scheduled-step",
+    "offered-recurrent-pages-are-retained-hashed-or-copy-on-write-destinations",
+    "full-attention-prefix-pages-remain-immutable-while-referenced",
+    "connector-metadata-is-built-before-scheduler-dispatch",
+    "worker-post-forward-follows-target-and-mtp-state-writes",
+    "worker-metadata-aggregates-distinct-physical-ranks",
+    "pending-connector-work-keeps-idle-engine-stepping",
+    "no-forward-steps-do-not-call-wait-for-save",
+    "hybrid-load-failure-discards-unproven-prefixes",
+    "failed-load-blocks-retire-after-receive-or-write-fences"
+  ],
+  "qualification": "Source semantics review; 33 vLLM recovery/cache-pollution/aggregation CPU tests, 8 cross-project ownership conformance checks, and 75 SparkCache contract/read-lease/runtime/capture-offer tests passed. Standalone GPU ordering and full-model qualification remain pending.",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "sha256": "bc1965431087676876f58360cd9cc07ab6c06febe6d747695f10b051fd85c412",
+      "required_symbols": [
+        "KVConnectorBase_V1.bind_gpu_block_pool",
+        "KVConnectorBase_V1.build_connector_worker_meta",
+        "KVConnectorBase_V1.has_pending_push_work",
+        "KVConnectorWorkerMetadata.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "sha256": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2",
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "sha256": "2335384bca2b2764ea8064ab27e2d056d22e57ffac4fe920e18cfe4262c180b7",
+      "required_symbols": [
+        "KVConnectorBlockState.block_ids",
+        "KVConnectorBlockState.boundary_state_offloads",
+        "SchedulerOutput.kv_connector_block_state"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "sha256": "0e1e069e0c72ad5340e692255619fabcdca595fd8a6501f61b4aba0f49974423",
+      "required_symbols": [
+        "Scheduler.__init__",
+        "Scheduler.schedule",
+        "Scheduler.has_requests",
+        "Scheduler.update_from_output",
+        "Scheduler._free_request_blocks",
+        "Scheduler._handle_invalid_blocks",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._preempt_request"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "sha256": "fb1b76f1d4d01ad83e74b225abd76a8b3c92ba776961070c4d614f75ea1e37f1",
+      "required_symbols": [
+        "KVCacheManager.take_boundary_state_offloads",
+        "KVCacheManager.free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "sha256": "10ede58a1bf4732d92f9ef42b17116a700106838a546e398e6aa178ae2534ecf",
+      "required_symbols": [
+        "SingleTypeKVCacheManager.take_pending_boundary_state_offloads",
+        "MambaManager.cache_blocks",
+        "MambaManager.allocate_new_blocks",
+        "MambaManager.pop_blocks_for_free"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "sha256": "a0932da63c38487a5fae401c9b43f627e2dcee8e975ec8d6427e00d2796c6239",
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/model_runner.py",
+      "sha256": "9cc9eca1ed3c48f4ceb60ef7b4622ea845da26faef9c17dc54326039d52f6eae",
+      "required_symbols": [
+        "GPUModelRunner.update_requests",
+        "GPUModelRunner.sample_tokens"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu/kv_connector.py",
+      "sha256": "b50a13e7c4f62fa2c67ee0d40b8ec7a2b62a6f6dab23571227fd56682c24ecf6",
+      "required_symbols": [
+        "ActiveKVConnector.pre_forward",
+        "ActiveKVConnector.post_forward",
+        "ActiveKVConnector.no_forward"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/mamba_utils.py",
+      "sha256": "fa7b4662fbc08e3865d88ee7350d72dd7f729921e70070ebaafd29ac374eb86b",
+      "required_symbols": []
+    }
+  ]
+}

@@ -54,3 +54,6 @@ runtime/images/compositions/lil-r37-glm-spark/*.patch whitespace=-trailing-space
 runtime/images/compositions/lil-r37-qwen-prefill/*.patch whitespace=-trailing-space
 runtime/deepseek-v41-sglang/patches/*.patch whitespace=-trailing-space,-blank-at-eof
 integrations/vllm/dcp2_prefill/*.patch whitespace=-trailing-space
+
+# Pinned SparkCache source bytes must survive Windows checkouts unchanged.
+integrations/sparkcache/8abbe9da67b8/** -text
