@@ -55,14 +55,16 @@ QWEN = ("qwen38-flash-next-tp2", "qwen38-flash-next-qad-tp4")
 QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4")
 SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
              "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
-# Opt-in SparkCache variants of the GLM-5.3-Flash installer profiles. They enable
-# the SparkContextCacheConnector (--kv-transfer-config) and serve the CSF
-# checkpoint only, so no published image lock lists them: only the lock that the
-# corresponding SparkCache derived layer records lists them. The CRC32 variants
-# use installer-sparkcache-8abbe9da67b8; the earlier IDs retain the gab86b70 layer.
+# Opt-in SparkCache installer profiles pin their checkpoint and isolated root.
+# Only a derived image lock that explicitly lists a variant admits it. GLM CRC32
+# uses installer-sparkcache-8abbe9da67b8; Qwen requires the recurrent-topology
+# runtime in installer-sparkcache-3daf882e358b, which also serves GLM CRC32.
+# The earlier GLM IDs retain the gab86b70 layer.
 SPARKCACHE_CRC32_VARIANTS = ("glm53-flash-nvfp4-sparkcache-crc32-tp2", "glm53-flash-nvfp4-sparkcache-crc32-tp4")
+QWEN_SPARKCACHE_VARIANTS = ("qwen38-flash-next-csf-sparkcache-tp2",
+                           "qwen38-flash-next-step5500-sparkcache-tp4")
 SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sparkcache-tp4",
-                      *SPARKCACHE_CRC32_VARIANTS)
+                      *SPARKCACHE_CRC32_VARIANTS, *QWEN_SPARKCACHE_VARIANTS)
 # Research-only variants of the GLM-5.3-Flash pair profile that serve the CSF checkpoint with
 # decode-context parallelism above 1. They run only on an image whose vLLM is the TP2/DCP2 prefill build,
 # which reads CSF; only an image lock v3 records that build (sircl.vllm_pins), and the installer refuses
@@ -85,7 +87,7 @@ _RELAYED = profiles.relayed_research()
 SIRCL_ONLY = tuple(_RELAYED)
 # A relayed research profile runs the Qwen3.8-Flash-Next architecture when its configuration selects
 # the Qwen HC prefill mode, which ``adapt`` and admission configure as for QWEN4_EXP_PREPARED.
-QWEN4_EXP = (*QWEN4_EXP_PREPARED, *(profile for profile, path in _RELAYED.items()
+QWEN4_EXP = (*QWEN4_EXP_PREPARED, *QWEN_SPARKCACHE_VARIANTS, *(profile for profile, path in _RELAYED.items()
                                     if "VLLM_QWEN3_8_HC_PREFILL_MODE" in profiles.read_json(path)["environment"]))
 # A v2 lock may also list IDs in profiles.REPLACED, so that the locks of other
 # releases in runtime/releases keep validating; ``for_profile`` refuses those IDs

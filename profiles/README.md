@@ -9,7 +9,9 @@ licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
 (`glm53-nvfp4-csf-tp6`, `glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
-(`qwen38-flash-next-tp2`).
+(`qwen38-flash-next-tp2`, `qwen38-flash-next-csf-sparkcache-tp2`).
+The Experimental Qwen SparkCache installer variants and their build and
+qualification requirements are documented in the [hardware plan](../docs/research/qwen38-sparkcache.md).
 
 A profile is a saved configuration of one model on a fixed number of DGX
 Sparks: checkpoint, serving image, parallelism, cabling and serving settings.
@@ -99,6 +101,7 @@ add a profile that `sparkring install` sets up.
 | [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1/2 | 1M / (—/[4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)) | Included | Experimental |
 | [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1/2 | 1M / (—/[4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)) | Included | Experimental |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated)<br>by malaiwah | 1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 262K / — | Included | Experimental |
 
 
 Status and context describe the linked default. DCP and KV figures follow the same order;
@@ -272,7 +275,7 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
-<summary>Qwen3.8-Flash-Next · 2 Sparks · vLLM</summary>
+<summary>Qwen3.8-Flash-Next (NVFP4) · 2 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
@@ -288,6 +291,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | ring of 4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
 | DCP1 | ring of 4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+| DCP1 | ring of 4 | On | Experimental | [qwen38-flash-next-step5500-sparkcache-tp4](../profiles/qwen38-flash-next-step5500-sparkcache-tp4/README.md) |
 
 </details>
 
@@ -297,6 +301,15 @@ record links preserve configuration evidence when the guide selects a different 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | ring of 8 | Off | Experimental | [qwen38-flash-next-qad-tp8 (default)](../profiles/qwen38-flash-next-qad-tp8/README.md) |
+
+</details>
+
+<details>
+<summary>Qwen3.8-Flash-Next (NVFP4/MXFP8 CSF) · 2 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | pair | On | Experimental | [qwen38-flash-next-csf-sparkcache-tp2](../profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md) |
 
 </details>
 

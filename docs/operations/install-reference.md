@@ -534,6 +534,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `qwen38-flash-next-tp2` | Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it, the default image among them; Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`), on every other image, 2026.10.1's among them | MTP, three tokens, probabilistic drafting |
 | `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
+| `qwen38-flash-next-csf-sparkcache-tp2`, `qwen38-flash-next-step5500-sparkcache-tp4` | Qwen CSF TP2 and QAD step-5500 TP4 with CRC32 SparkCache over release 2026.10.4; Experimental, requires the [Qwen source layer and hardware gates](../research/qwen38-sparkcache.md) | MTP3 |
 | `glm53-flash-nvfp4-sparkcache-crc32-tp2`, `glm53-flash-nvfp4-sparkcache-crc32-tp4` | GLM CSF with CRC32 SparkCache over release 2026.10.4; Experimental, requires the [derived image](../../runtime/images/compositions/installer-sparkcache-8abbe9da67b8/README.md) | MTP3 |
 | `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with SparkCache persistent context; research-only, installs only on an image whose lock lists it (the derived layer of `runtime/images/compositions/installer-sparkcache-gab86b70`) | MTP, three tokens (MTP3) |
 | `glm53-flash-nvfp4-spark-tp2-dcp2` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with decode-context parallelism 2; research-only, installs only on an image whose lock lists it | MTP, three tokens (MTP3) |
@@ -602,9 +603,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   the plan states that its checkpoint is research-only. No image lock this
   package carries lists it: it installs with `--image-lock FILE`, a lock
   that lists it.
-- All installer profiles run with vLLM's native prefix cache on and
-  SparkCache off. SparkCache is the external connector that keeps the prefix
-  KV cache on disk across restarts.
+- Installer profiles run with vLLM's native prefix cache on. SparkCache is
+  enabled only by the explicitly named SparkCache variants. It keeps the
+  prefix KV cache on disk across restarts.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
   eight-Spark ring and only on SIRCL ring sessions. They install on an image
   lock (`sparkring-installer-image/v3`) whose image carries the SIRCL layer

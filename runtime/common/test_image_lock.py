@@ -256,12 +256,17 @@ SPARKCACHE_LAYER = (Path(__file__).resolve().parents[2] / "runtime" / "images" /
                     / "installer-sparkcache-gab86b70" / "descriptor.json")
 
 
-def sparkcache_locks():
-    """``(parent, derived)``: the image lock that the SparkCache lease layer derives from (release 2026.10.2's)
-    and the lock ``runtime/images/derived_layer.py record`` writes for the layer's image, which lists the
-    SparkCache variants beside the parent's profiles; the image ID and receipts stand in for a build's."""
+def sparkcache_locks(profile=None):
+    """Synthetic parent/derived receipts test admission, without claiming a build.
+
+    Qwen uses release 2026.10.4's parent; the GLM lease-layer tests keep their
+    release 2026.10.2 parent. Real build records live beside each composition.
+    """
     from runtime.images import derived_layer
-    descriptor = derived_layer.descriptor(SPARKCACHE_LAYER)
+    if profile in installer_image.QWEN_SPARKCACHE_VARIANTS:
+        descriptor = json.loads((installer_image.ROOT / "runtime/images/compositions/installer-sparkcache-3daf882e358b/sources.json").read_text())
+    else:
+        descriptor = derived_layer.descriptor(SPARKCACHE_LAYER)
     parent = json.loads((installer_image.ROOT / descriptor["parent_lock"]).read_text(encoding="utf-8"))
     plan = {"parent_lock": parent, "payload_bytes": 4096,
             "receipts": {derived_layer.BASE_RECEIPT: "7" * 64, derived_layer.TOOLCHAIN_RECEIPT: "8" * 64}}
@@ -273,7 +278,7 @@ def sparkcache_locks():
 
 @pytest.mark.parametrize("profile", installer_image.SPARKCACHE_VARIANTS)
 def test_the_sparkcache_variants_are_admitted_only_on_the_lock_of_their_derived_layer(profile):
-    parent, derived = sparkcache_locks()
+    parent, derived = sparkcache_locks(profile)
     # Locks without the layer: the v3 locks of these tests, with and without libsircl, and the layer's parent.
     for value in (sircl_lock(), libsircl_lock(), parent):
         with pytest.raises(ValueError, match=f"{profile} is not admitted on image lock {value['name']}"):

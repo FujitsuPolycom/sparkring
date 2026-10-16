@@ -3,5 +3,5 @@
   "profile": "mimo-v26-flash-mopd-tp2",
   "checkpoint": null,
   "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "61b14f88ff29c2d552306679cbff0bb0d25488267c9399dd7f1682e0b0e84ca7"
+  "deployment": "efb41f3ecc236cfe81daead2eae001f276420e5855db6c98a7db7c76e55e9b05"
 }
