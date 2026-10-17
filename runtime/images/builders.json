@@ -225,6 +225,12 @@
       "path": "runtime/images/derive_dcp2_prefill.py",
       "kind": "python",
       "reason": "Derive a CSF image with hash-pinned TP2/DCP2 KDA coalescing and mHC row ownership admission, including SIRCL pins and source-overlay receipts."
+    },
+    {
+      "id": "installer-sparkcache-8abbe9da67b8",
+      "path": "runtime/images/prepare_sparkcache.py",
+      "kind": "python",
+      "reason": "Prepare the pinned SparkCache CRC32 runtime over release 2026.10.4 from authenticated parent receipts; the shared derived-layer builder records the image after construction."
     }
   ]
 }

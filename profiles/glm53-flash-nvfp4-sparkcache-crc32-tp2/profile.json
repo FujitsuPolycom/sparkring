@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "glm53-flash-nvfp4-sparkcache-crc32-tp2",
+  "title": "GLM-5.3-Flash CSF with SparkCache CRC32 on 2 Sparks (research-only)",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/glm53-flash-nvfp4-sparkcache-crc32-tp2/config.json"
+  },
+  "release": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/release.json",
+  "guide": "profiles/glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md",
+  "evidence_scope": "Research-only; no build, CUDA restore, serving or performance evidence exists for this composition. The installer variant preserves the settings of glm53-flash-nvfp4-sparkcache-tp2, adds explicit fast CRC32 payload integrity and a separate rank-local cache root, and requires the development image produced by runtime/images/compositions/installer-sparkcache-8abbe9da67b8. That layer pins SparkCache 8abbe9da67b8143831d21b43d0395c4f347a619a over release 2026.10.4. Historical results for glm53-flash-nvfp4-sparkcache-tp2 do not qualify this variant. The recorded checkpoint identity 6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e is retained; its original derivation is not available.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/glm53-flash-nvfp4-sparkcache-crc32-tp2/config.json"
+    ]
+  }
+}
