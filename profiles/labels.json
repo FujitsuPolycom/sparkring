@@ -90,6 +90,12 @@
     "mimo-v26-flash-mopd-tp4": {"purpose": "Xiaomi MiMo's MXFP8/BF16 weights, 262K context", "checkpoints": {}},
     "swift15-qwen38-flash-next-tp2": {"purpose": "UkisAI's NVFP4 fine-tune of Qwen3.8-Flash-Next, 262K context", "checkpoints": {}},
     "swift15-qwen38-flash-next-tp4": {"purpose": "UkisAI's NVFP4 fine-tune of Qwen3.8-Flash-Next; no serving run on four Sparks", "checkpoints": {}},
-    "deepseek-v41-flash-tp4": {"purpose": "DeepSeek's FP8/MXFP4 weights, 1M context", "checkpoints": {}}
+    "deepseek-v41-flash-tp4": {
+      "purpose": "DeepSeek's FP8/MXFP4 weights, 1M context",
+      "checkpoints": {
+        "original": {"purpose": "Default checkpoint, DeepSeek's publication of 2026-09"},
+        "1017": {"status": "implemented", "purpose": "DeepSeek's 2026-10-17 weights, same architecture and context", "evidence": "performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-1017-20261017.md"}
+      }
+    }
   }
 }

@@ -692,7 +692,7 @@ def test_checkpoints_carry_the_measurement_of_their_own_profile(data):
     assert "SparkRing 2026.09.3" in qwen["conditions"] and "sparkcache.json" in qwen["kv_evidence"]
     assert measured(capacity[(MIMO2, None)]) == {"tokens": 655772, "kv_bytes_per_rank": 12 * GIB, "checkpoint": None}
     # A measurement without its KV size sizes nothing: DeepSeek's pool depends on the memory free at start.
-    assert capacity[("deepseek-v41-flash-tp4", None)] is None
+    assert capacity[("deepseek-v41-flash-tp4", "original")] is None and capacity[("deepseek-v41-flash-tp4", "1017")] is None
 
 
 def test_kv_estimate_scales_the_measured_pool_to_the_chosen_size(data, node):

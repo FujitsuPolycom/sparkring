@@ -55,6 +55,8 @@ LISTED = {
         [("qwen38-flash-next-qad-tp4", "jmni-qad5500-hybrid"), ("qwen38-flash-next-tp2", "jmni-qad5500-hybrid")],
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"):
         [("qwen38-flash-next-tp2", "csf")],
+    ("deepseek-ai/DeepSeek-V4.1-Flash-1017", "1bae0e1088993b9b82de08f59de5be5a34e42170"):
+        [("deepseek-v41-flash-tp4", "1017")],
 }
 # Derived checkpoints, a profile's default among them: their manifests (runtime/common/derived_checkpoint.py,
 # checked by runtime/common/test_derived_checkpoint.py and runtime/common/test_csf_serving.py) follow the same
