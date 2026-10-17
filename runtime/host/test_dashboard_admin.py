@@ -237,6 +237,8 @@ def test_automated_setup_starts_the_dashboard_after_recording_the_fabric(tmp_pat
     monkeypatch.setattr(single_uplink, "record_reason", lambda base: None)
     monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: value["plan"]["nodes"])
     monkeypatch.setattr(single_uplink, "match_revisions", lambda targets, nodes, directory: nodes)
+    monkeypatch.setattr(controller, "preflight_configuration", lambda plan: None)
+    monkeypatch.setattr(controller, "refuse_unit_overrides", lambda plan: None)
     monkeypatch.setattr(single_uplink.node, "read", lambda root, name: {"node_id": value["plan"]["nodes"][0]["node_id"]})
     monkeypatch.setattr(single_uplink.topology, "build_spec", lambda *args, **kwargs: value["plan"])
     monkeypatch.setattr(single_uplink.controller, "apply", lambda plan, directory, **options: plan)

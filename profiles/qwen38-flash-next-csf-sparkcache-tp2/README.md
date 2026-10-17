@@ -12,8 +12,8 @@ An image lock must explicitly admit `qwen38-flash-next-csf-sparkcache-tp2`; publ
 Serving settings match [qwen38-flash-next-tp2](../qwen38-flash-next-tp2/README.md)
 with its `csf` checkpoint selected. The connector uses
 `qwen38-flash-next-hybrid`, CUDA restore, asynchronous connector-job capture,
-two 512 MiB slots and CRC32 `tail-cow-v2`. The cache budget is 8 GiB per rank
-with a 6 GiB low watermark. Minimum span is 4,096 tokens; the configured maximum
+two 512 MiB slots and CRC32 `tail-cow-v2`. The cache budget is 32 GiB per rank
+with a 28 GiB low watermark. Minimum span is 4,096 tokens; the configured maximum
 is 49,152, aligned to 2,848-token manager pages.
 
 The [checkpoint identity receipt](checkpoint-identity.json) binds the complete

@@ -56,6 +56,10 @@
     {
       "id": "qwen38-flash-next-step5500-sparkcache-tp4",
       "path": "profiles/qwen38-flash-next-step5500-sparkcache-tp4/profile.json"
+    },
+    {
+      "id": "deepseek-v41-flash-sparkcache-tp4",
+      "path": "profiles/deepseek-v41-flash-sparkcache-tp4/profile.json"
     }
   ]
 }

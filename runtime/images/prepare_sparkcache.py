@@ -8,9 +8,10 @@ import argparse
 import json
 from pathlib import Path, PurePosixPath
 import sys
+import tempfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
-from runtime.images import derived_layer as layer
+from runtime.images import derived_layer as layer, sparkcache_metrics
 
 ROOT = Path(__file__).resolve().parents[2]
 SOURCES = ROOT / "runtime/images/compositions/installer-sparkcache-8abbe9da67b8/sources.json"
@@ -48,7 +49,7 @@ def resolve_descriptor(record, base, repository):
             "parent_lock": record["parent_lock"], "provenance": record["provenance"], "files": files}
 
 
-def prepare(base_receipt, toolchain_receipt, output, *, sources=SOURCES, repository=ROOT):
+def prepare(base_receipt, toolchain_receipt, output, *, sources=SOURCES, repository=ROOT, metrics_source=None):
     repository = Path(repository).resolve()
     sources = Path(sources)
     record = json.loads(sources.read_text(encoding="utf-8"))
@@ -71,8 +72,32 @@ def prepare(base_receipt, toolchain_receipt, output, *, sources=SOURCES, reposit
     descriptor["files"][source_target] = {
         "source": sources.resolve().relative_to(repository).as_posix(),
         "sha256": layer.digest(sources.read_bytes()), "inherited_sha256": None}
-    result = layer.prepare_layer(descriptor, lock, read, output, identity={"repository": repository},
-                                 descriptor_sha256=layer.digest(layer.canonical_json(descriptor)))
+    if record.get("operator_logging"):
+        layer.require(metrics_source is not None, "Combined composition requires --metrics-source")
+        raw = Path(metrics_source).read_bytes()
+        inherited = json.loads(base_raw)["files"].get(sparkcache_metrics.TARGET)
+        layer.require(inherited is not None and layer.digest(raw) == inherited,
+                      "Metrics logger differs from the authenticated parent receipt")
+        patched = sparkcache_metrics.transform(raw)
+        # Stage pinned package sources and the authenticated transform together.
+        # The generic descriptor builder records every resulting installed hash.
+        with tempfile.TemporaryDirectory(prefix="sparkring-metrics-") as temporary:
+            staging = Path(temporary)
+            for row in descriptor["files"].values():
+                target = staging / row["source"]
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes((repository / row["source"]).read_bytes())
+            generated = "generated/vllm/distributed/kv_transfer/kv_connector/v1/metrics.py"
+            target = staging / generated
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(patched)
+            descriptor["files"][sparkcache_metrics.TARGET] = {
+                "source": generated, "sha256": layer.digest(patched), "inherited_sha256": inherited}
+            result = layer.prepare_layer(descriptor, lock, read, output, identity={"repository": staging},
+                                         descriptor_sha256=layer.digest(layer.canonical_json(descriptor)))
+    else:
+        result = layer.prepare_layer(descriptor, lock, read, output, identity={"repository": repository},
+                                     descriptor_sha256=layer.digest(layer.canonical_json(descriptor)))
     (Path(output) / "descriptor.json").write_bytes(layer.canonical_json(descriptor))
     return result
 
@@ -83,9 +108,10 @@ def main(argv=None):
     parser.add_argument("--toolchain-receipt", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--sources", type=Path, default=SOURCES)
+    parser.add_argument("--metrics-source", type=Path, help="parent vLLM KV-connector metrics.py authenticated by its receipt")
     args = parser.parse_args(argv)
     try:
-        result = prepare(args.base_receipt, args.toolchain_receipt, args.output, sources=args.sources)
+        result = prepare(args.base_receipt, args.toolchain_receipt, args.output, sources=args.sources, metrics_source=args.metrics_source)
     except (ValueError, OSError, KeyError) as error:
         parser.error(str(error))
     print(json.dumps(result, indent=2))

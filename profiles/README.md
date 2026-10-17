@@ -179,6 +179,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-tp4 (default)](../docs/operations/install.md) |
 | DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-cycle](../profiles/deepseek-v41-flash-cycle/README.md) |
+| DCP1 | ring of 4 | On | Experimental | [deepseek-v41-flash-sparkcache-tp4](../profiles/deepseek-v41-flash-sparkcache-tp4/README.md) |
 
 </details>
 

@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "disable_existing_loggers": false,
+  "formatters": {
+    "console": {"format": "%(levelname)s %(asctime)s [%(name)s] %(message)s"}
+  },
+  "handlers": {
+    "console": {
+      "class": "logging.StreamHandler",
+      "level": "DEBUG",
+      "formatter": "console",
+      "stream": "ext://sys.stdout"
+    }
+  },
+  "loggers": {
+    "vllm": {"level": "INFO", "handlers": ["console"], "propagate": false},
+    "vllm.spark_context_cache": {"level": "DEBUG", "handlers": ["console"], "propagate": false},
+    "sparkcache": {"level": "DEBUG", "handlers": ["console"], "propagate": false}
+  }
+}

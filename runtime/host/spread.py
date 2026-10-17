@@ -47,6 +47,7 @@ plan and saved with the checkpoint plan, whose ``envelope`` bounds a later
 it, which write nothing), and ``sha256`` of the rest.
 """
 import concurrent.futures
+import contextlib
 import hashlib
 import json
 from pathlib import Path
@@ -422,6 +423,8 @@ def describe(value, document):
         forwarding = sorted({p for pipeline in rows for p in pipeline["forwarded_only_positions"]})
         text = (f"  {NOUNS[asset][0].capitalize()} from {positions_text(sources)}, each Spark forwarding while it "
                 f"writes: {paths}; {each}")
+        if asset == "image":
+            text += "; sizes are compressed registry blobs, before Docker extraction (disk space is listed separately)"
         if forwarding:
             text += f"; {positions_text(forwarding)} forward{'s' if len(forwarding) == 1 else ''} without writing"
         lines.append(text + ".")
@@ -595,9 +598,10 @@ class Spread:
     """
 
     def __init__(self, document, *, start, send, alive, say=None, rounds=ROUNDS,
-                 announce_seconds=ANNOUNCE_SECONDS, finish_seconds=FINISH_SECONDS):
+                 announce_seconds=ANNOUNCE_SECONDS, finish_seconds=FINISH_SECONDS, reserve=None):
         self.document, self.layout = document, fabric_document.layout(document)
         self.start, self.send, self.alive = start, send, alive
+        self.reserve = reserve or (lambda positions: contextlib.nullcontext())
         self.say = say or (lambda text: None)
         self.rounds, self.announce_seconds, self.finish_seconds = rounds, announce_seconds, finish_seconds
 
@@ -629,7 +633,9 @@ class Spread:
             if not pipelines:
                 break
             rounds = number
-            with concurrent.futures.ThreadPoolExecutor(max_workers=len(pipelines)) as pool:
+            used = sorted({position for chain in pipelines for position in [chain["start"], *chain["hops"]]})
+            # Replanning can choose another route; admit it before launching any hop.
+            with self.reserve(used), concurrent.futures.ThreadPoolExecutor(max_workers=len(pipelines)) as pool:
                 outcomes = list(pool.map(lambda chain: self.chain(chain, files, needs), pipelines))
             # A file that arrived with another SHA-256, that a slow writer deferred or that a lost
             # stream left incomplete is sent again in the next round, up to ``rounds`` rounds.

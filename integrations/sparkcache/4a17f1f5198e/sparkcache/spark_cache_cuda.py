@@ -1,0 +1,32 @@
+"""Canonical Python binding for the SparkCache CUDA placement ABI."""
+
+from sparkcache.spark_cache_native import *  # noqa: F403
+from sparkcache.spark_cache_native import (
+    CAP_DIRECT_ENCODED,
+    CAP_HYBRID_PAGE_CUDA,
+    CAP_HYBRID_PAGE_REFERENCE,
+    CAP_LOW_PRIORITY_STREAMS,
+    CAP_MANAGED,
+    CAP_MAPPED_HOST,
+    CAP_STAGED_DEVICE,
+    RECORD_BOUNDARY_HIDDEN,
+    RECORD_MTP_DRAFT_KV,
+    RECORD_SPARSE_INDEXER,
+    RECORD_TARGET_CKV,
+    __all__ as _COMPATIBILITY_EXPORTS,
+)
+
+__all__ = [
+    *_COMPATIBILITY_EXPORTS,
+    "CAP_DIRECT_ENCODED",
+    "CAP_HYBRID_PAGE_CUDA",
+    "CAP_HYBRID_PAGE_REFERENCE",
+    "CAP_LOW_PRIORITY_STREAMS",
+    "CAP_MANAGED",
+    "CAP_MAPPED_HOST",
+    "CAP_STAGED_DEVICE",
+    "RECORD_BOUNDARY_HIDDEN",
+    "RECORD_MTP_DRAFT_KV",
+    "RECORD_SPARSE_INDEXER",
+    "RECORD_TARGET_CKV",
+]

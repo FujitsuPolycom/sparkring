@@ -492,7 +492,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     settings = lock.get("serving") or {}
     ranks = [only_rank] if only_rank is not None else range(len(specs))
     selected = (card["profile"], card["target_variant"])
-    return [replace(serving.container(spec, settings, rank=rank, model=selected), name=container_name(lock, rank),
+    return [replace(serving.container(spec, settings, rank=rank, model=selected,
+                                      source_root=site["ranks"][rank]["repository"]), name=container_name(lock, rank),
                     labels={**spec.labels, **container_labels(lock, rank)})
             for rank, spec in zip(ranks, specs, strict=True)]
 

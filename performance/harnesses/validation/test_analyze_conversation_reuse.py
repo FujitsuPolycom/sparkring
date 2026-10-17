@@ -155,3 +155,13 @@ def test_different_engine_requests_cannot_be_combined_into_quorum():
     row = analysis.analyze([turn()], rows, [0, 1])["turns"][0]
     assert row["source"] == "unknown"
     assert not row["all_rank_worker_verification"]
+
+
+def test_trace_prefixes_and_json_envelopes_remain_compatible():
+    record = {"schema": analysis.TRACE_SCHEMA, "event": "worker_restore_completed", "rank": 0}
+    for marker in analysis.MARKERS:
+        line = "(Worker_TP0) DEBUG " + marker + json.dumps(record)
+        assert analysis.parse_trace(line) == record
+        assert analysis.parse_trace(json.dumps({"message": line})) == record
+        assert analysis.parse_trace(json.dumps({"log": line})) == record
+    assert analysis.parse_trace(json.dumps(record)) == record

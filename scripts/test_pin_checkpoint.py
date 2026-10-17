@@ -35,7 +35,7 @@ COMMITTED = {
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
-        ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"],
+        ["deepseek-v41-flash-sparkcache-tp4", "deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"],
     ("ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38"):
         ["swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"],
 }

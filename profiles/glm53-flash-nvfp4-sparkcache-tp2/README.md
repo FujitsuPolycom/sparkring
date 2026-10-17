@@ -49,7 +49,7 @@ On top it enables the SparkCache KV connector:
   through `/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so`, both with
   their pinned SHA-256;
 - 64K-token spans (`spark_cache_min_span_tokens` 4096,
-  `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
+  `spark_cache_max_span_tokens` 65536), 32 GiB of cache bytes with a 28 GiB
   low watermark, and two capture slots of 512 MiB, the value of the qualified
   shared-2026.09.3 profile `glm53-flash-spark-tp2-dcp1-sparkcache`. Beside the
   base profile's 84.5 GiB of weights and 10 GiB of KV cache per Spark, two

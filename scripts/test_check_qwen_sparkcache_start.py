@@ -5,6 +5,7 @@ import json
 import pytest
 
 from scripts import check_qwen_sparkcache_start as check
+from scripts import check_deepseek_sparkcache_start as deepseek
 from runtime.common import installer_image
 from runtime.images import derived_layer
 
@@ -34,24 +35,35 @@ def test_qwen_hw_3_only_rank_zero_requires_enginecore_lcm(nodes, page):
         assert check.check_log("", page, rank=rank) == ["missing attention page", "missing SparkCache topology"]
 
 
-def test_probe_binds_receipt_inventory_native_pins_and_lease_contract():
-    inventory = (check.COMPOSITION / "sources.json").read_bytes()
+@pytest.mark.parametrize("module,profile", [
+    (check, installer_image.QWEN_SPARKCACHE_VARIANTS[0]),
+    (deepseek, installer_image.DEEPSEEK_SPARKCACHE_VARIANTS[0]),
+])
+def test_probe_binds_receipt_inventory_native_pins_and_lease_contract(module, profile):
+    inventory = (module.COMPOSITION / "sources.json").read_bytes()
     record = json.loads(inventory)
     files = {path: row["sha256"] for path, row in record["files"].items()}
     files.update(record["native_libraries"])
-    files["/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/sparkring-source-3daf882e358b.json"] = derived_layer.digest(inventory)
+    files["/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/sparkring-source-" + record["source"]["commit"][:12] + ".json"] = derived_layer.digest(inventory)
     base = derived_layer.canonical_json({"files": files})
     parent = json.loads((check.ROOT / record["parent_lock"]).read_text())
-    build = json.loads((check.COMPOSITION / "build-inputs.json").read_text())
+    build = json.loads((module.COMPOSITION / "build-inputs.json").read_text())
     plan = {"parent_lock": parent, "payload_bytes": 1,
             "receipts": {derived_layer.BASE_RECEIPT: derived_layer.digest(base),
                          derived_layer.TOOLCHAIN_RECEIPT: "1" * 64}}
     lock = derived_layer.derived_lock(plan, {"Id": "sha256:" + "2" * 64, "Size": 1},
                                      build["name"], build["profiles"])
-    profile = installer_image.QWEN_SPARKCACHE_VARIANTS[0]
     lease = "verified SparkCache KV-block lease contract: 11 files"
-    check.verify_probe(lock, profile, base, inventory, lease)
+    check.verify_probe(lock, profile, base, inventory, lease, composition=module.COMPOSITION)
     for changed_base, changed_inventory, changed_lease in [
         (b"{}", inventory, lease), (base, b"{}", lease), (base, inventory, "10 files")]:
         with pytest.raises(ValueError):
-            check.verify_probe(lock, profile, changed_base, changed_inventory, changed_lease)
+            check.verify_probe(lock, profile, changed_base, changed_inventory, changed_lease, composition=module.COMPOSITION)
+
+
+def test_combined_startup_line_supports_qwen():
+    text = ("Setting attention block size to 2848 tokens\nkv lcm block sizes 2848\n"
+            "sparkcache: startup profile=qwen38-flash-next-hybrid groups=5 "
+            "policies=full,recurrent_align identity=0123456789ab integrity=fast role=WORKER\n")
+    assert check.check_log(text, 2848) == []
+    assert check.check_log(text + text.replace("groups=5", "groups=65"), 2848)

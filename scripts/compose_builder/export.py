@@ -145,6 +145,9 @@ def _setting_rows(command):
             row.update(endpoint=True, address=True)
         rows.append(row)
     for name, (variable, value, text) in serving_settings.SWITCHES.items():
+        # The browser builder does not stage the deployment's logging-config mount.
+        if name == "sparkcache_debug":
+            continue
         row = {"name": name, "option": serving_settings.option(name), "flag": variable, "switch": True,
                "value": value, "help": text}
         if name in serving_settings.NEEDS:

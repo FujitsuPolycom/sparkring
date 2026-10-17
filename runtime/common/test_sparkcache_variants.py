@@ -1,9 +1,8 @@
-"""The opt-in SparkCache installer-profile variants of the GLM and Qwen profiles.
+"""Opt-in SparkCache variants preserve their base profiles' serving settings.
 
-The variants enable the SparkContextCacheConnector for the CSF checkpoint, keep
-every speed setting of their cache-off profile, and run only on an image whose
-lock lists them: no lock of this package does, only the lock the derived layer
-under runtime/images/compositions/installer-sparkcache-* records does.
+The GLM, Qwen and DeepSeek variants pin checkpoints and isolated roots. They
+run only on a lock that lists them: no published lock of this package does;
+locks recorded by the derived compositions supply explicit admission.
 """
 
 import json
@@ -18,7 +17,8 @@ from runtime.host.storage import CACHE_NAME
 
 VARIANTS = installer_image.SPARKCACHE_VARIANTS
 QWEN = installer_image.QWEN_SPARKCACHE_VARIANTS
-BASES = {QWEN[0]: "qwen38-flash-next-tp2", QWEN[1]: "qwen38-flash-next-qad-tp4", "glm53-flash-nvfp4-sparkcache-tp2": "glm53-flash-nvfp4-spark-tp2",
+DEEPSEEK = installer_image.DEEPSEEK_SPARKCACHE_VARIANTS[0]
+BASES = {DEEPSEEK: "deepseek-v41-flash-tp4", QWEN[0]: "qwen38-flash-next-tp2", QWEN[1]: "qwen38-flash-next-qad-tp4", "glm53-flash-nvfp4-sparkcache-tp2": "glm53-flash-nvfp4-spark-tp2",
          "glm53-flash-nvfp4-sparkcache-tp4": "glm53-flash-nvfp4-spark-tp4",
          "glm53-flash-nvfp4-sparkcache-crc32-tp2": "glm53-flash-nvfp4-spark-tp2",
          "glm53-flash-nvfp4-sparkcache-crc32-tp4": "glm53-flash-nvfp4-spark-tp4"}
@@ -29,6 +29,8 @@ CONTRACT = SITE_PACKAGES + "/sparkcache/runtime_patches/vllm-connector-jobs-gab8
 
 
 def cache_root(profile):
+    if profile == DEEPSEEK:
+        return "/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-dba1be0a40aa"
     if profile in QWEN:
         revision = "dc5b8ab2fa14" if profile == QWEN[0] else "60215d26cf5e"
         return f"/cache/{profile}-ab53c097d7ca-{revision}"
@@ -38,10 +40,14 @@ def cache_root(profile):
 
 
 def model_profile(profile):
+    if profile == DEEPSEEK:
+        return "deepseek-v41-b12x-hma"
     return "qwen38-flash-next-hybrid" if profile in QWEN else "glm53-flash-hybrid"
 
 
 def checkpoint_identity(profile):
+    if profile == DEEPSEEK:
+        return "0b447c086ca74be5e7ed9e98c424637f1f8015ee38fd1e767370415377ed401e"
     if profile in QWEN:
         return {QWEN[0]: "7906c93c59bf153168170b601cf36ae7cdd31927797dc4608320fe1ba8ec2c78",
                 QWEN[1]: "759a6ce3138e95cddaa4dc8e53480274d2a3e75154cf1893ff275237b1ded2b6"}[profile]
@@ -82,7 +88,7 @@ def connector(profile_id):
 def test_variant_keeps_every_speed_setting_of_its_base_profile(profile):
     base = toolchain_profiles.read(installer_image.ROOT / "profiles" / BASES[profile] / "config.json")
     variant = toolchain_profiles.read(installer_image.ROOT / "profiles" / profile / "config.json")
-    selected = toolchain_profiles.checkpoint_settings(
+    selected = base if profile == DEEPSEEK else toolchain_profiles.checkpoint_settings(
         base, "qad-step5500-ple1000" if profile == QWEN[1] else "csf")
     # Compare the complete effective configuration, not selected speed flags.
     selected = json.loads(json.dumps(selected))
@@ -100,7 +106,7 @@ def test_variant_keeps_every_speed_setting_of_its_base_profile(profile):
         args = value["vllm_args"]
         at = args.index("--speculative-config") + 1
         args[at] = json.dumps(json.loads(args[at]), sort_keys=True)
-    if profile not in QWEN:
+    if profile not in (*QWEN, DEEPSEEK):
         # The recorded GLM variants omit this optional base-profile threshold.
         assert selected["environment"].pop("B12X_W4A16_A4_PREFILL_MIN_TOKENS") == "1536"
     assert actual == selected
@@ -122,6 +128,21 @@ def test_variant_renders_the_connector_settings_and_storage_paths(profile):
     extra = connector_json["kv_connector_extra_config"]
     assert extra["spark_cache_model_profile"] == model_profile(profile)
     assert extra["spark_cache_publication_schema"] == "tail-cow-v2"
+    if profile == DEEPSEEK:
+        assert extra["spark_cache_draft_policy"] == "colocated_target"
+        assert "spark_cache_draft_checkpoint_sha256" not in extra
+        assert extra["spark_cache_cuda_restore"] is False
+        assert extra["spark_cache_async_page_capture"] is False
+        assert extra["spark_cache_async_page_capture_slot_bytes"] == 1024**3
+        assert extra["spark_cache_async_page_capture_slot_count"] == 2
+        assert extra["spark_cache_min_span_tokens"] == 4096
+        assert extra["spark_cache_max_span_tokens"] == 524288
+        assert extra["spark_cache_max_bytes"] == 32 * 1024**3
+        assert extra["spark_cache_low_watermark_bytes"] == 28 * 1024**3
+        assert extra["spark_cache_target_checkpoint_sha256"] == checkpoint_identity(profile)
+        assert extra["spark_cache_payload_integrity"] == "fast"
+        assert spec.memory == 115964116992
+        return
     assert extra["spark_cache_draft_policy"] == "separate"
     assert extra["spark_cache_target_checkpoint_sha256"] == checkpoint_identity(profile)
     assert extra["spark_cache_draft_checkpoint_sha256"] == checkpoint_identity(profile)
@@ -131,8 +152,8 @@ def test_variant_renders_the_connector_settings_and_storage_paths(profile):
         assert extra["spark_cache_async_page_capture_slot_bytes"] == 512 * 1024**2
         assert extra["spark_cache_async_page_capture_slot_count"] == 2
         assert extra["spark_cache_min_span_tokens"] == 4096
-        assert extra["spark_cache_max_bytes"] == 8 * 1024**3
-        assert extra["spark_cache_low_watermark_bytes"] == 6 * 1024**3
+        assert extra["spark_cache_max_bytes"] == 32 * 1024**3
+        assert extra["spark_cache_low_watermark_bytes"] == 28 * 1024**3
     assert extra["spark_cache_async_page_capture"] is True
     assert extra["spark_cache_async_page_capture_lease_mode"] == "connector-jobs"
     assert extra["spark_cache_async_page_capture_lease_contract"] == CONTRACT
@@ -245,3 +266,27 @@ def test_crc32_variant_preserves_prior_settings_except_integrity_root_and_restor
     assert settings == previous
     variant["vllm_args"][index] = prior["vllm_args"][index]
     assert variant == prior
+
+
+def test_deepseek_identity_matches_checkpoint_manifest_and_embedded_draft():
+    import hashlib
+    value = json.loads((installer_image.ROOT / "profiles" / DEEPSEEK / "config.json").read_text())
+    vendor = installer_image.ROOT / "integrations/sparkcache/4a17f1f5198e/deploy/deepseek_v41"
+    receipt = json.loads((vendor / "checkpoint-identity-receipt.json").read_text())
+    inputs = receipt["inputs"]
+    assert inputs == json.loads((vendor / "checkpoint-identity-inputs.json").read_text())
+    sums = (installer_image.ROOT / "profiles" / DEEPSEEK / "SHA256SUMS").read_bytes()
+    assert sums == (vendor / "checkpoint-sha256sums.txt").read_bytes()
+    assert hashlib.sha256(sums).hexdigest() == inputs["artifacts"]["manifest_sha256"]
+    assert (inputs["repository"], inputs["revision"]) == (value["model"]["repository"], value["model"]["revision"])
+    assert inputs["model_config"]["sha256"] == value["model"]["config_sha256"]
+    args = value["vllm_args"]
+    draft = json.loads(args[args.index("--speculative-config") + 1])
+    for backend in ("attention_backend", "moe_backend"):
+        draft[backend] = args[args.index("--" + backend.replace("_", "-")) + 1]
+    assert inputs["draft"] == {"mode": "embedded", "config": draft}
+    envelope = {"schema": receipt["schema"], "inputs": inputs}
+    digest = hashlib.sha256(json.dumps(envelope, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("ascii")).hexdigest()
+    assert digest == receipt["checkpoint_sha256"] == checkpoint_identity(DEEPSEEK)
+    assert DEEPSEEK not in installer_image.QWEN4_EXP
+    assert not (installer_image.ROOT / "profiles" / DEEPSEEK / "compose").exists()

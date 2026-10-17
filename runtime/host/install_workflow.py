@@ -71,6 +71,7 @@ from runtime.common import (
 )
 from runtime.common import thinking
 from runtime.common import serving as serving_settings
+from runtime.common import sparkcache
 from runtime.common import transport as transports
 from runtime.host import (
     api_endpoint,
@@ -791,6 +792,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          **({"placement": list(placement)} if placement is not None else {}),
                                          # Repeat operator choices without pinning inherited profile defaults.
                                          **({"serving": explicit} if explicit else {}),
+                                         "serving_text": getattr(args, "serving_text", {}),
                                          "transport": getattr(args, "transport", None),
                                          "nccl": getattr(args, "nccl", None)},
                                 derivation=derivation_section(selection, rows, surveys),
@@ -1325,10 +1327,17 @@ def summary_lines(result):
     lines.append("    " + colour.cmd(result["example_request"]))
 
     # Single-line commands
+    recovery_text = RECOVERY_TEXT.get(result.get("recovery"))
+    stop = commands.get("stop", "")
+    if recovery_text and "--on " in stop:
+        arc = stop.split("--on ", 1)[1].split()[0]
+        for action in ("on", "off"):
+            recovery_text = recovery_text.replace("sparkring recover " + action,
+                                                  "sparkring recover " + action + " --on " + arc)
     inline_commands = [("Watch logs", colour.cmd("sudo sparkring logs --follow")),
                        ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
                        ("Start again", colour.cmd(commands["start_again"]) if commands.get("start_again") else None),
-                       ("Recovery", RECOVERY_TEXT.get(result.get("recovery")))]
+                       ("Recovery", recovery_text)]
     for name, value in inline_commands:
         if value:
             lines.append(f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}")
@@ -1489,12 +1498,19 @@ def execute(args):
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
                                                             else "start the selected model."))
         if lock is not None:
+            cache_size = sparkcache.deployment_budget(lock)
+            if cache_size is not None:
+                print(sparkcache.status_line(cache_size))
+            for line in sparkcache.option_lines(sparkcache.deployment_options(lock)):
+                print(line)
             print("Thinking: " + thinking.deployment_text(thinking.deployment_default(
                 thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock.get("serving"))))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Serving settings: " + "; ".join(serving_settings.describe(
-                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
+            descriptions = serving_settings.describe(
+                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))
+            if descriptions:
+                print("Serving settings: " + "; ".join(descriptions))
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
         if lock is not None and endpoint_requested(args):
@@ -1641,6 +1657,9 @@ def execute(args):
         assets.allow_package_updates = operation["positions"] is None
         checkpoints = (assets if placement is None else
                        install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
+        from runtime.host import slices
+        assets.reserve_route = checkpoints.reserve_route = lambda route: slices.transfer(
+            state_root, operation["positions"], route, operation=operation["operation"])
         if needs_hairpin:
             record = {}
             cluster = hairpin_step(cluster, assets, state_root, record,
@@ -1820,7 +1839,14 @@ def main(argv=None):
     # A stock image's vLLM arguments follow --.
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
-    args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    options = argv[:argv.index("--")] if "--" in argv else argv
+    args = parser.parse_args(options)
+    # The validated settings are bytes; repeat commands keep the entered units.
+    size_parser = argparse.ArgumentParser(add_help=False)
+    for name in serving_settings.SIZES:
+        size_parser.add_argument(serving_settings.option(name))
+    sizes, _ = size_parser.parse_known_args(options)
+    args.serving_text = {name: value for name, value in vars(sizes).items() if value is not None}
     colour.set_mode(args.color)
     if args.profile:
         # Every later step, and every record, uses the profile's ID (models.ALIASES).

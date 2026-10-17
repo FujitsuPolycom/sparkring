@@ -12,8 +12,8 @@ An image lock must explicitly admit `qwen38-flash-next-step5500-sparkcache-tp4`;
 Serving settings match [qwen38-flash-next-qad-tp4](../qwen38-flash-next-qad-tp4/README.md)
 with its `qad-step5500-ple1000` checkpoint selected. The connector uses
 `qwen38-flash-next-hybrid`, CUDA restore, asynchronous connector-job capture,
-two 512 MiB slots and CRC32 `tail-cow-v2`. The cache budget is 8 GiB per rank
-with a 6 GiB low watermark. Minimum span is 4,096 tokens; the configured maximum
+two 512 MiB slots and CRC32 `tail-cow-v2`. The cache budget is 32 GiB per rank
+with a 28 GiB low watermark. Minimum span is 4,096 tokens; the configured maximum
 is 61,920, aligned to 1,440-token manager pages.
 
 The [checkpoint identity receipt](checkpoint-identity.json) binds the complete

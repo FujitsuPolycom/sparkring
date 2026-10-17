@@ -8,7 +8,7 @@ import shutil
 import pytest
 
 from runtime.common import image_lock, installer_image
-from runtime.images import derived_layer as layer, prepare_sparkcache as cache
+from runtime.images import derived_layer as layer, prepare_sparkcache as cache, sparkcache_metrics
 
 
 def sources():
@@ -44,6 +44,7 @@ def test_parent_and_build_inputs_preserve_release_and_admission():
     assert set(build["profiles"]) == set(parent["profiles"]) | set(installer_image.SPARKCACHE_CRC32_VARIANTS)
     assert len(build["profiles"]) == 17
     assert not (cache.ROOT / build["output"]).exists()
+    assert layer.digest((cache.SOURCES.parent / "built-image.json").read_bytes()) == "1be5d2e5a07b5352b597fe60f290526167d2f2266a645b4c0ab15061cf758a9d"
     recipe = (cache.SOURCES.parent / "build.sh").read_text()
     for value in (build["parent_image_id"], build["tag"], build["name"], build["output"], ",".join(build["profiles"])):
         assert value in recipe
@@ -61,7 +62,7 @@ def test_parent_and_build_inputs_preserve_release_and_admission():
             image_lock.validate(parent, profile)
 
 
-@pytest.fixture(params=[cache.SOURCES, cache.SOURCES.parent.with_name("installer-sparkcache-3daf882e358b") / "sources.json"])
+@pytest.fixture(params=[cache.SOURCES, cache.SOURCES.parent.with_name("installer-sparkcache-4a17f1f5198e") / "sources.json", cache.SOURCES.parent.with_name("installer-sparkcache-3daf882e358b") / "sources.json"])
 def prepared_inputs(tmp_path, request):
     """Synthetic receipts exercise preparation without claiming real image bytes."""
     repository = tmp_path / "repository"
@@ -74,6 +75,10 @@ def prepared_inputs(tmp_path, request):
     target = cache.PACKAGE + "spark_context_cache_config.py"
     base = {"files": {target: "a" * 64, **record["native_libraries"]},
             "capabilities": {"runtime_status": {"version": "0.3.8"}}}
+    if record.get("operator_logging"):
+        raw = ("def report(self, log_fn):\n    if True:\n        if True:\n" + sparkcache_metrics.ORIGINAL).encode()
+        (repository / "metrics.py").write_bytes(raw)
+        base["files"][sparkcache_metrics.TARGET] = layer.digest(raw)
     parent = json.loads((cache.ROOT / record["parent_lock"]).read_text())
     fixture_sources = repository / "sources.json"
     base_path, toolchain_path = tmp_path / "base.json", tmp_path / "toolchain.json"
@@ -97,7 +102,8 @@ def prepared_inputs(tmp_path, request):
 
 def prepare_fixture(fixture, output):
     repository, _, _, base, toolchain, source, _ = fixture
-    return cache.prepare(base, toolchain, output, repository=repository, sources=source)
+    return cache.prepare(base, toolchain, output, repository=repository, sources=source,
+                         metrics_source=repository / "metrics.py")
 
 
 def test_preparation_records_actual_inherited_hashes_and_source_commit(prepared_inputs, tmp_path):
@@ -118,6 +124,12 @@ def test_preparation_records_actual_inherited_hashes_and_source_commit(prepared_
     for target, sha in record["native_libraries"].items():
         assert rewritten["files"][target] == sha
     assert (output / "Dockerfile").read_text() == layer.dockerfile()
+    if record.get("operator_logging"):
+        logger_path = output / "files" / sparkcache_metrics.TARGET.lstrip("/")
+        assert sparkcache_metrics.REPLACEMENT in logger_path.read_text()
+        assert rewritten["files"][sparkcache_metrics.TARGET] == layer.digest(logger_path.read_bytes())
+        assert descriptor["files"][sparkcache_metrics.TARGET]["inherited_sha256"] == prepared_inputs[2]["files"][sparkcache_metrics.TARGET]
+
 
 
 @pytest.mark.parametrize("change,match", [
@@ -167,7 +179,7 @@ def test_qwen_layer_pins_runtime_and_admits_both_model_families_without_release_
                                       | set(installer_image.QWEN_SPARKCACHE_VARIANTS))
     assert len(build["profiles"]) == 19
     assert (cache.ROOT / build["output"]).parent == directory
-    assert not (cache.ROOT / build["output"]).exists()
+    assert layer.digest((cache.ROOT / build["output"]).read_bytes()) == "6a77a18bb6196a317b9f4f32bf5415b3f37d5b866d0eaa7febf699d6bdacb7a2"
     for row in record["files"].values():
         assert layer.digest((cache.ROOT / row["source"]).read_bytes()) == row["sha256"]
     recipe = (directory / "build.sh").read_text()
@@ -177,3 +189,49 @@ def test_qwen_layer_pins_runtime_and_admits_both_model_families_without_release_
     assert recipe.index("/verify.py --vllm-root") < recipe.index("derived_layer.py build")
     for sha in record["native_libraries"].values():
         assert sha in recipe
+
+
+def test_deepseek_layer_pins_runtime_deployment_tools_and_admission():
+    directory = cache.SOURCES.parent.with_name("installer-sparkcache-4a17f1f5198e")
+    record = json.loads((directory / "sources.json").read_text())
+    assert layer.digest((directory / "sources.json").read_bytes()) == "3feeab40a3aa2bbba50c7534f7731a2ed6ec1c4fa217654345503fb5d5c00e94"
+    assert record["source"]["commit"] == "4a17f1f5198eb2402bcd6669425c62857937d39f"
+    assert record["source"]["tree"] == "aed4c52b9e3368bd59b0ff50ea0e0831ba596759"
+    assert record["native_libraries"] == sources()["native_libraries"]
+    build = json.loads((directory / "build-inputs.json").read_text())
+    parent_raw = (cache.ROOT / record["parent_lock"]).read_bytes()
+    assert layer.digest(parent_raw) == record["parent_lock_sha256"]
+    parent = json.loads(parent_raw)
+    assert set(build["profiles"]) == (set(parent["profiles"]) | set(installer_image.SPARKCACHE_CRC32_VARIANTS)
+                                      | set(installer_image.QWEN_SPARKCACHE_VARIANTS)
+                                      | set(installer_image.DEEPSEEK_SPARKCACHE_VARIANTS))
+    assert len(build["profiles"]) == 20
+    assert (cache.ROOT / build["output"]).parent == directory
+    for row in record["files"].values():
+        assert layer.digest((cache.ROOT / row["source"]).read_bytes()) == row["sha256"]
+    output = cache.ROOT / build["output"]
+    # An unbuilt composition has no record; a recorded build names its image.
+    if output.exists():
+        assert json.loads(output.read_text())["image_id"].startswith("sha256:")
+    vendor = cache.ROOT / "integrations/sparkcache/4a17f1f5198e"
+    deployment = json.loads((vendor / "deployment-files.json").read_text())
+    assert layer.digest((vendor / "deployment-files.json").read_bytes()) == "1c7ab79afc9b060f6b1b3c6d2d157170dafb059fe855cac7b106414fa74d1cd9"
+    assert deployment["source_commit"] == record["source"]["commit"]
+    for path, sha in deployment["files"].items():
+        assert layer.digest((vendor / path).read_bytes()) == sha
+    recipe = (directory / "build.sh").read_text()
+    for value in (build["parent_image_id"], build["tag"], build["name"], build["output"], ",".join(build["profiles"])):
+        assert value in recipe
+    assert recipe.index("/verify.py --vllm-root") < recipe.index("derived_layer.py build")
+
+
+def test_combined_metrics_source_is_required_and_authenticated(prepared_inputs, tmp_path):
+    repository, record, _, base, toolchain, source, _ = prepared_inputs
+    if not record.get("operator_logging"):
+        return
+    with pytest.raises(ValueError, match="requires --metrics-source"):
+        cache.prepare(base, toolchain, tmp_path / "missing", repository=repository, sources=source)
+    (repository / "metrics.py").write_bytes(b"tampered")
+    with pytest.raises(ValueError, match="Metrics logger differs"):
+        prepare_fixture(prepared_inputs, tmp_path / "tampered")
+    assert not (tmp_path / "tampered").exists()

@@ -259,11 +259,13 @@ SPARKCACHE_LAYER = (Path(__file__).resolve().parents[2] / "runtime" / "images" /
 def sparkcache_locks(profile=None):
     """Synthetic parent/derived receipts test admission, without claiming a build.
 
-    Qwen uses release 2026.10.4's parent; the GLM lease-layer tests keep their
+    Qwen and DeepSeek use release 2026.10.4's parent; GLM lease-layer tests keep their
     release 2026.10.2 parent. Real build records live beside each composition.
     """
     from runtime.images import derived_layer
-    if profile in installer_image.QWEN_SPARKCACHE_VARIANTS:
+    if profile in installer_image.DEEPSEEK_SPARKCACHE_VARIANTS:
+        descriptor = json.loads((installer_image.ROOT / "runtime/images/compositions/installer-sparkcache-4a17f1f5198e/sources.json").read_text())
+    elif profile in installer_image.QWEN_SPARKCACHE_VARIANTS:
         descriptor = json.loads((installer_image.ROOT / "runtime/images/compositions/installer-sparkcache-3daf882e358b/sources.json").read_text())
     else:
         descriptor = derived_layer.descriptor(SPARKCACHE_LAYER)

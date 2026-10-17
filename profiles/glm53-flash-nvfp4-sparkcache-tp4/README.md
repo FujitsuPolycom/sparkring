@@ -43,7 +43,7 @@ On top it enables the SparkCache KV connector:
   through `/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so`, both with
   their pinned SHA-256;
 - 64K-token spans (`spark_cache_min_span_tokens` 4096,
-  `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
+  `spark_cache_max_span_tokens` 65536), 32 GiB of cache bytes with a 28 GiB
   low watermark, and two capture slots of 8 GiB;
 - the checkpoint identity
   `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`,

@@ -534,6 +534,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `qwen38-flash-next-tp2` | Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it, the default image among them; Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`), on every other image, 2026.10.1's among them | MTP, three tokens, probabilistic drafting |
 | `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
+| `deepseek-v41-flash-sparkcache-tp4` | DeepSeek V4.1 TP4/DCP1 with CRC32 SparkCache; Experimental, requires the [pinned source layer and H0-H11 gates](../../profiles/deepseek-v41-flash-sparkcache-tp4/HARDWARE.md); same checkpoint and API port 8015 as the cache-off profile | DSpark5 |
 | `qwen38-flash-next-csf-sparkcache-tp2`, `qwen38-flash-next-step5500-sparkcache-tp4` | Qwen CSF TP2 and QAD step-5500 TP4 with CRC32 SparkCache over release 2026.10.4; Experimental, requires the [Qwen source layer and hardware gates](../research/qwen38-sparkcache.md) | MTP3 |
 | `glm53-flash-nvfp4-sparkcache-crc32-tp2`, `glm53-flash-nvfp4-sparkcache-crc32-tp4` | GLM CSF with CRC32 SparkCache over release 2026.10.4; Experimental, requires the [derived image](../../runtime/images/compositions/installer-sparkcache-8abbe9da67b8/README.md) | MTP3 |
 | `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with SparkCache persistent context; research-only, installs only on an image whose lock lists it (the derived layer of `runtime/images/compositions/installer-sparkcache-gab86b70`) | MTP, three tokens (MTP3) |
@@ -790,6 +791,19 @@ on Node A under `receipts/<time>/`; `sudo sparkring status` prints the last
 verdict and `sudo sparkring check` repeats the check.
 
 ### Serving settings
+
+For a SparkCache profile, `--sparkcache-size 64G` sets the disk budget per
+Spark. `--sparkcache-integrity fast|sha256|none` selects the payload check;
+the default is `fast`. `--sparkcache-debug` enables detailed SparkCache logs
+and reuse tracing while vLLM stays at INFO. These settings persist through
+`up`, `restart` and automatic recovery, and appear in the plan and status.
+Other profiles refuse them.
+
+Integrity mode selects the stored-entry identity: `fast` uses
+`page-tail-cow-v3-fast`, `none` uses `page-tail-cow-v3-none`, and `sha256`
+uses `page-tail-cow-v2`. Entries written in another mode miss cleanly.
+Disk budget and debug logging do not change cache identity. `none` checks
+lengths and geometry but does not detect payload corruption.
 
 `sudo sparkring install`, `sudo sparkring up PROFILE`, `sparkring init` and
 `sparkring compose render` accept optional settings, each of which replaces
