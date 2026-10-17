@@ -631,16 +631,20 @@ def test_unparking_removes_one_unit_and_the_record_with_the_last(tmp_path):
 def test_a_sircl_groups_ranks_check_the_relay_table_at_their_fabric_positions(monkeypatch):
     reference = {"site_path": "/etc/sparkring/fabric/topology.json", "site_sha256": "1" * 64, "plan_sha256": "2" * 64}
     rows = [{"rank": rank, "fabric": reference, "gid": 3, "host_ip": f"192.0.2.{14 + rank}"} for rank in range(4)]
-    lock = {"site": {"placement": [4, 5, 6, 7], "ranks": rows}}
+    fabric_id = "sha256:" + "a" * 64
+    lock = {"site": {"placement": [4, 5, 6, 7], "ranks": rows}, "transport": {"fabric": {"id": fabric_id}}}
     calls = []
-    monkeypatch.setattr(native_mesh, "serve_group", lambda *args: calls.append(("serve", *args)) or {"ok": True})
-    monkeypatch.setattr(native_mesh.relays, "check_position", lambda *args: calls.append(("check", *args)))
+    monkeypatch.setattr(native_mesh, "serve_group",
+                        lambda *args, fabric_id=None: calls.append(("serve", *args, fabric_id)) or {"ok": True})
+    monkeypatch.setattr(native_mesh.relays, "check_position",
+                        lambda *args, fabric_id=None: calls.append(("check", *args, fabric_id)))
     assert native_mesh.group_position(lock, 1) == 5 and native_mesh.group_position({"site": {}}, 1) == 1
     assert native_mesh.group_operation("ring-stop", lock, 2)["action"] == "none"
     assert native_mesh.group_operation("ring-stopped", lock, 2)["relays"] == "fabric"
     native_mesh.group_operation("ring-serve", lock, 1)
     assert native_mesh.group_operation("ring-check", lock, 3) == {"ok": True}
-    assert calls == [("serve", reference, 5, 3, "192.0.2.15"), ("check", reference, 7, 3, "192.0.2.17")]
+    # Each operation passes the cabling identity of the lock's transport section to the check.
+    assert calls == [("serve", reference, 5, 3, "192.0.2.15", fabric_id), ("check", reference, 7, 3, "192.0.2.17", fabric_id)]
 
 
 def test_serving_a_groups_relay_table_repairs_its_cabled_ports_and_waits_for_the_check(monkeypatch):
@@ -651,7 +655,7 @@ def test_serving_a_groups_relay_table_repairs_its_cabled_ports_and_waits_for_the
     monkeypatch.setattr(native_mesh.node, "read", lambda root, path: {"relays": {"routes": []}})
     monkeypatch.setattr(native_mesh.relays, "restore", lambda table, call=None, root="/": [{"state": "restored"}])
 
-    def check(reference, position, gid, host_ip, root="/"):
+    def check(reference, position, gid, host_ip, root="/", fabric_id=None):
         checks.append(position)
         if len(checks) == 1:
             raise ValueError("markers not yet running")
