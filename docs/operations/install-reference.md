@@ -2732,6 +2732,16 @@ sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017
 | `deepseek-v41-flash-tp4` | `original` (default) | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277) by DeepSeek, revision `dba1be0a40aa` | — |
 | `deepseek-v41-flash-tp4` | `1017` | [DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/tree/1bae0e1088993b9b82de08f59de5be5a34e42170) by DeepSeek, revision `1bae0e108899`: new weights with the original's architecture, `config.json`, weight index and tokenizer files | Served as `DeepSeek-V4.1-Flash-1017-TP4`. The release's reference prompt encoder (`encoding/encoding.py`) changed how tool results are rendered; the image's vLLM encoder predates that change |
 
+- The DeepSeek `1017` entry is **implemented** on installer image
+  `dev-20261013-dcp2prefill-status038-sircl-tp6` on four Sparks: `sudo sparkring
+  install --checkpoint 1017` installed it on one ring, where it passed all 7
+  functional checks and a 256-request correctness screen with no degenerate,
+  failed or wrong response
+  ([record](../../performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-1017-20261017.md)).
+  With tool definitions in a request, the image's vLLM encoder renders the
+  same prompt as the 1017 release's reference encoder; without them and with
+  thinking on, the reference keeps the reasoning of earlier tool steps and
+  the image's encoder drops it.
 - The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
   installer image on two and four Sparks. On one pair and one four-Spark
   ring, `sudo sparkring install` derived it on the Sparks (on the pair,
