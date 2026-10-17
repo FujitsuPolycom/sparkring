@@ -151,9 +151,10 @@ was not started on the recheck build either.
   transform only changes which connector statistics the stat logger prints.
 - The dashboard's per-request output rate rests on the operator's
   observation; no harness captured it.
-- The Install Builder page lists no SparkCache profile and no SparkCache
-  option ([limits](../../../docs/operations/compose-builder.md#limits)); its
-  verification covers the 10 profiles it lists.
+- The Install Builder lists the five SparkCache profiles as install-command
+  cards with the cache size and payload-check fields; its Compose
+  verification covers the 10 Compose profiles, not the install-only cards
+  ([limits](../../../docs/operations/compose-builder.md#limits)).
 
 ## Publication
 

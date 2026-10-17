@@ -41,7 +41,11 @@ A profile without Compose exports that `sparkring install` installs on a
 published image (INSTALL_ONLY) is listed for its install command only: its
 data has ``compose`` false and no rendered files, it is rendered on the
 first offered image that runs it, and only images whose lock lists it offer
-it.
+it. The SparkCache installer profiles are such profiles: their serving
+settings carry two rows of their own (_setting_rows), the cache size
+(``size``) and the payload check (``choice``), which the page offers as
+fields and the install command passes as `--sparkcache-size` and
+`--sparkcache-integrity`.
 
 Each profile and checkpoint carries ``status`` and ``purpose``, which the page
 shows beside it. A profile's status is its profile.json ``status``; its
@@ -57,7 +61,8 @@ from pathlib import Path
 import re
 import subprocess
 
-from runtime.common import compose, image_lock, installer_image, profile_aliases, profiles, toolchain_profiles, setup
+from runtime.common import (compose, image_lock, installer_image, profile_aliases, profiles, sparkcache, toolchain_profiles,
+                            setup)
 from runtime.common import serving as serving_settings
 
 HERE = Path(__file__).resolve().parent
@@ -68,10 +73,20 @@ REPOSITORY = "FujitsuPolycom/sparkring"
 STATUSES = ("qualified", "implemented", "research-only", "unsupported")
 # Compose-supported profiles the builder does not list.
 EXCLUDED = frozenset({"qwen38-flash-next-tp2-sparkcache", "qwen38-flash-next-qad-tp4-sparkcache"})
-# Installer profiles without Compose exports (installer_image.DCP_VARIANTS) that the builder lists with
-# their `sparkring install` command only, on the images whose lock lists them. Each maps to the
-# Compose profile whose example site gives its example paths.
-INSTALL_ONLY = {"glm53-flash-nvfp4-spark-tp2-dcp2": "glm53-flash-nvfp4-spark-tp2"}
+# Installer profiles without Compose exports (installer_image.DCP_VARIANTS and the SparkCache variants a
+# published lock lists, installer_image.LISTED_SPARKCACHE_VARIANTS) that the builder lists with their
+# `sparkring install` command only, on the images whose lock lists them. Each maps to the Compose
+# profile whose example site gives its example paths.
+INSTALL_ONLY = {
+    "glm53-flash-nvfp4-spark-tp2-dcp2": "glm53-flash-nvfp4-spark-tp2",
+    "deepseek-v41-flash-sparkcache-tp4": "deepseek-v41-flash-tp4",
+    "qwen38-flash-next-step5500-sparkcache-tp4": "qwen38-flash-next-qad-tp4",
+    "qwen38-flash-next-csf-sparkcache-tp2": "qwen38-flash-next-tp2",
+    "glm53-flash-nvfp4-sparkcache-crc32-tp2": "glm53-flash-nvfp4-spark-tp2",
+    "glm53-flash-nvfp4-sparkcache-crc32-tp4": "glm53-flash-nvfp4-spark-tp4",
+}
+if set(INSTALL_ONLY) != {*installer_image.DCP_VARIANTS, *installer_image.LISTED_SPARKCACHE_VARIANTS}:
+    raise ValueError("INSTALL_ONLY must list exactly the DCP variants and the SparkCache variants a published lock lists")
 
 # Lines on which a substituted site value may appear: these YAML keys, or a list item ("-").
 SITE_KEYS = {"name", "container_name", "VLLM_HOST_IP", "GLOO_SOCKET_IFNAME", "NCCL_SOCKET_IFNAME",
@@ -127,6 +142,15 @@ def _setting_rows(command):
     carry ``endpoint``; ``api_port`` lists the ports it may not take
     (serving.reserved_ports) in ``reserved``, and a listen address
     (serving.ADDRESSES) carries ``address``.
+
+    A command with a SparkCache connector (sparkcache.connector) has two rows
+    more. ``sparkcache_size`` (serving.SIZES) carries ``size``: its
+    ``profile`` is the connector's cache budget as a `--sparkcache-size`
+    value (_size_option) and ``minimum`` the smallest accepted size, the
+    profile's capture slot (sparkcache.apply), as sparkcache.format_size
+    writes it, with both as bytes in ``profile_bytes`` and ``minimum_bytes``. ``sparkcache_integrity``
+    (serving.CONNECTOR_CHOICES) carries ``choice`` with its ``values``;
+    its ``profile`` is the connector's payload check.
     """
     rows = []
     for name, (flag, key, _, minimum, text) in serving_settings.SETTINGS.items():
@@ -144,6 +168,21 @@ def _setting_rows(command):
         if name in serving_settings.ADDRESSES:
             row.update(endpoint=True, address=True)
         rows.append(row)
+    connector = sparkcache.connector(command)
+    if connector is not None:
+        extra = connector["kv_connector_extra_config"]
+        if set(serving_settings.SIZES) != {"sparkcache_size"} or set(serving_settings.CONNECTOR_CHOICES) != {"sparkcache_integrity"}:
+            raise ValueError("the builder knows the SparkCache size and payload-check settings only")
+        minimum = extra["spark_cache_async_page_capture_slot_bytes"]
+        rows.append({"name": "sparkcache_size", "option": serving_settings.option("sparkcache_size"),
+                     "flag": "spark_cache_max_bytes (--kv-transfer-config)", "size": True,
+                     "profile": _size_option(extra["spark_cache_max_bytes"]), "profile_bytes": extra["spark_cache_max_bytes"],
+                     "minimum": sparkcache.format_size(minimum), "minimum_bytes": minimum,
+                     "help": serving_settings.SIZES["sparkcache_size"]})
+        values, text = serving_settings.CONNECTOR_CHOICES["sparkcache_integrity"]
+        rows.append({"name": "sparkcache_integrity", "option": serving_settings.option("sparkcache_integrity"),
+                     "flag": "spark_cache_payload_integrity (--kv-transfer-config)", "choice": True, "values": list(values),
+                     "profile": extra.get("spark_cache_payload_integrity", values[0]), "help": text})
     for name, (variable, value, text) in serving_settings.SWITCHES.items():
         # The browser builder does not stage the deployment's logging-config mount.
         if name == "sparkcache_debug":
@@ -154,6 +193,14 @@ def _setting_rows(command):
             row["needs"] = serving_settings.NEEDS[name]
         rows.append(row)
     return rows
+
+
+def _size_option(size):
+    """A byte count as a `--sparkcache-size` value (sparkcache.parse_size): the largest binary unit that divides it, such as 32G."""
+    for exponent, unit in ((4, "T"), (3, "G"), (2, "M"), (1, "K")):
+        if size % 1024 ** exponent == 0:
+            return f"{size // 1024 ** exponent}{unit}"
+    return str(size)
 
 
 def _changes(entry):

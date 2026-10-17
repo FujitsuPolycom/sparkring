@@ -96,6 +96,11 @@
         "original": {"purpose": "Default checkpoint, DeepSeek's publication of 2026-09"},
         "1017": {"status": "implemented", "purpose": "DeepSeek's 2026-10-17 weights, same architecture and context", "evidence": "performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-1017-20261017.md"}
       }
-    }
+    },
+    "deepseek-v41-flash-sparkcache-tp4": {"purpose": "DeepSeek's FP8/MXFP4 weights with SparkCache, the persistent KV cache; 1M context", "checkpoints": {}},
+    "qwen38-flash-next-step5500-sparkcache-tp4": {"purpose": "Local Inference Lab's NVFP4 QAD step 5500 with SparkCache, 262K context", "checkpoints": {}},
+    "qwen38-flash-next-csf-sparkcache-tp2": {"purpose": "Local Inference Lab's CSF QAD weights with SparkCache, two Sparks only", "checkpoints": {}},
+    "glm53-flash-nvfp4-sparkcache-crc32-tp2": {"purpose": "Local Inference Lab's CSF QAD weights with SparkCache, 1M context", "checkpoints": {}},
+    "glm53-flash-nvfp4-sparkcache-crc32-tp4": {"purpose": "Local Inference Lab's CSF QAD weights with SparkCache, 1M context", "checkpoints": {}}
   }
 }
