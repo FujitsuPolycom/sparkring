@@ -34,17 +34,18 @@ class RingLinks(LocalSession):
     """Every rank of one session with its link area, ring links set as a session sets them."""
 
     def __init__(self, library_path: str, layout: routes_mod.Layout, *, lanes: int = 2, slots: int = 8,
-                 slot_bytes: int = 4096, timeout: float = 20.0) -> None:
+                 slot_bytes: int = 4096, timeout: float = 20.0, subset_ring: bool = False) -> None:
         arena = proto.ArenaLayout(layout.world, 16384)
         self.link_offset = proto.chain_offset(arena.total_bytes)
         self.links = proto.LinkLayout(lanes, slots, slot_bytes)
         super().__init__(library_path, layout, lanes=lanes, slot_bytes=16384,
                          region_bytes=self.link_offset + self.links.total_bytes)
         maps = [self.routes.route_map(rank) for rank in range(self.world)]
-        order = routes_mod.chain_order(layout, maps)
+        order = routes_mod.chain_order(layout, maps, subset_ring=subset_ring)
         if order is None:
             raise ValueError(f"{layout.identity()} is not a chain of cable neighbors")
-        window, problems = routes_mod.ring_window(layout, maps, order, chunk=proto.LINK_WINDOW_CHUNK)
+        window, problems = routes_mod.ring_window(layout, maps, order, chunk=proto.LINK_WINDOW_CHUNK,
+                                                  subset_ring=subset_ring)
         if problems:
             raise ValueError("the ring cannot run: " + "; ".join(problems))
         relayed = {rank for members in routes_mod.ring_queues(layout, maps, order).values()

@@ -77,6 +77,8 @@ class SessionSettings:
     forward_chunk: int = routes_mod.DEFAULT_FORWARD_CHUNK
     ring_schedule: bool = False          # a large, gather or scatter schedule is ``ring``
 
+    subset_ring: bool = False
+
     @classmethod
     def from_env(cls, environ: Mapping[str, str]) -> "SessionSettings":
         def number(name: str, default: int) -> int:
@@ -85,8 +87,9 @@ class SessionSettings:
 
         ring = any(environ.get(name, "").strip() == "ring"
                    for name in ("SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE"))
+        from .. import subset
         return cls(number("SIRCL_FORWARD_WINDOW_BYTES", routes_mod.DEFAULT_FORWARD_WINDOW),
-                   number("SIRCL_FORWARD_CHUNK_BYTES", routes_mod.DEFAULT_FORWARD_CHUNK), ring)
+                   number("SIRCL_FORWARD_CHUNK_BYTES", routes_mod.DEFAULT_FORWARD_CHUNK), ring, subset.enabled(environ))
 
 
 def queue_share(queue_bytes: int) -> int:
@@ -99,6 +102,11 @@ def session_reservation(lanes: LaneSet, settings: SessionSettings, *,
     queues = lanes.queues()
     if not queues:
         return {}
+    if settings.subset_ring and sorted(lanes.layout.positions) != list(lanes.layout.fabric.positions):
+        # Relayed P2P sessions have independent QPs and are outside the subset session proof.
+        from .. import subset
+        subset.validate(lanes.layout, lanes.filtered_maps(), queue_bytes=queue_bytes)
+        return {key: queue_share(queue_bytes) for key in queues}
     if settings.forward_window <= 0:
         return {key: queue_share(queue_bytes) for key in queues}
     maps = lanes.filtered_maps()

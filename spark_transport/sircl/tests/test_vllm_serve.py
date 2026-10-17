@@ -3586,7 +3586,7 @@ def test_the_tensor_parallel_session_variables_are_every_schedule_and_link_varia
     scoped = {name for name in names if re.fullmatch(r"SIRCL_(LARGE|GATHER|SCATTER)_SCHEDULE|SIRCL_(CHAIN|LINK|RING)_\w+",
                                                      name)} | set(constants["LINK_COLLECTIVES"].values()) \
         | set(constants["LINK_BLOCK_VARIABLES"].values())
-    assert scoped == set(adapter_settings.TP_SESSION_VARIABLES)
+    assert scoped | {"SIRCL_SUBSET_RING"} == set(adapter_settings.TP_SESSION_VARIABLES)
     assert len(adapter_settings.TP_SESSION_VARIABLES) == len(set(adapter_settings.TP_SESSION_VARIABLES))
     # The plan's copies of the session's defaults and rules.
     assert constants["DEFAULT_LINK_SLOTS"] == plan_mod.DEFAULT_LINK_SLOTS

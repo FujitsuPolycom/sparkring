@@ -129,6 +129,7 @@ class BundleOptions:
     ring_min: int | None = None               # SIRCL_RING_MIN_BYTES; None: the session's defaults
     link_sizes: Mapping[str, int] = dataclasses.field(default_factory=dict)  # plan.LinkSize.attribute -> bytes
     link_slots: int | None = None             # SIRCL_LINK_SLOTS; None: the session's default
+    subset_ring: bool = False
     ring_gather_stagger: int | None = None    # SIRCL_RING_GATHER_STAGGER; None: the session's default
     tuning_tables: tuple[str, ...] = ()       # --tuning-table PATH (SIRCL_TUNING_TABLE)
     reasoning_effort: str | None = None       # --reasoning-effort, checked against the checkpoint below
@@ -358,7 +359,8 @@ def bundle_sessions(group: fabric.GroupTopology, positions: Sequence[int], optio
                  if getattr(options, attribute) is not None}
     tables = tuning or plan_mod.TuningPlan()
     rows = [plan_mod.session_settings(group, name="tp", groups=f"one group of ranks 0-{len(positions) - 1}",
-                                      scoped=True, schedules=schedules, link_sizes=options.link_sizes,
+                                      scoped=True, subset_ring=options.subset_ring, schedules=schedules,
+                                      link_sizes=options.link_sizes,
                                       link_slots=options.link_slots, chain_min=options.chain_min,
                                       ring_min=options.ring_min,
                                       ring_gather_stagger=options.ring_gather_stagger,
@@ -401,7 +403,8 @@ def build_bundle(site: ServeSite | Site, options: BundleOptions, *, staged_diges
         raise ServePlanError(f"positions {list(positions)} must be distinct Sparks of the {ring.size}-Spark ring")
     layout = fabric.Layout.ring(ring.size)
     try:
-        group = fabric.describe_group(layout, positions)
+        group = fabric.describe_group(layout, positions,
+                                      route_scope="fabric" if options.subset_ring else "group")
     except fabric.FabricError as error:
         raise ServePlanError(str(error)) from None
     run_id = options.run_id or default_run_id(positions)
@@ -824,7 +827,7 @@ def plan_from_args(args: argparse.Namespace) -> BundlePlan:
             gid_index=args.gid_index, fused_norm=None if args.fused_norm is None else args.fused_norm == "on",
             column_gather=None if args.column_gather is None else args.column_gather == "on",
             large_schedule=args.large_schedule, gather_schedule=args.gather_schedule,
-            scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
+            subset_ring=args.subset_ring, scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
             link_sizes=plan_mod.link_values(args), reasoning_effort=args.reasoning_effort,
             repository=args.repository, checkpoint=args.checkpoint_id, thinking_behaviour=args.thinking_behaviour,
             extra_env=plan_mod.parse_env(args.env or []), vllm_edits=plan_mod.edits_from_args(args),
