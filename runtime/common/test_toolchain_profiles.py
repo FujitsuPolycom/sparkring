@@ -329,6 +329,31 @@ def test_the_nvidia_checkpoint_runs_modelopt_nvfp4_with_the_safetensors_loader()
     assert worker.command[-1] == "--headless" and worker.name == "glm53-flash-nvfp4-spark-tp4-r3"
 
 
+DEEPSEEK_TP4 = ROOT / "profiles/deepseek-v41-flash-tp4/config.json"
+
+
+def test_the_deepseek_ring_serves_the_1017_weights_with_the_original_settings():
+    profile = adapter.read(DEEPSEEK_TP4)
+    assert adapter.checkpoint_names(profile) == ("original", ("1017", "original"))
+    assert adapter.checkpoint_settings(profile, "original") is profile
+    assert adapter.preferred_checkpoint(profile) is None
+    # DeepSeek's 1017 revision keeps the architecture, config.json and weight index byte for byte;
+    # only the weights change.
+    original, update = (profile["checkpoints"][name]["model"] for name in ("original", "1017"))
+    assert update["repository"] == "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+    assert ((update["config_sha256"], update["index_sha256"])
+            == (original["config_sha256"], original["index_sha256"]))
+    _, default = glm_command(path=DEEPSEEK_TP4)
+    spec, command = glm_command("1017", path=DEEPSEEK_TP4)
+    assert command[command.index("--served-model-name") + 1] == "DeepSeek-V4.1-Flash-1017-TP4"
+    assert [index for index, (a, b) in enumerate(zip(command, default)) if a != b] == [
+        command.index("--served-model-name") + 1]
+    # Each revision compiles into a cache directory of its own.
+    assert spec.environment["XDG_CACHE_HOME"].endswith("-1bae0e108899")
+    worker, _ = glm_command("1017", rank=3, path=DEEPSEEK_TP4)
+    assert worker.command[-1] == "--headless"
+
+
 CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
              "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
              "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",

@@ -2398,6 +2398,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | Qwen `csf` (two Sparks), `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` @ `dc5b8ab2fa14` | 95.2 GiB | 99.9 GiB | 155.8 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
+| DeepSeek `--checkpoint 1017`, `deepseek-ai/DeepSeek-V4.1-Flash-1017` @ `1bae0e108899` | 475.3 GiB | 491.3 GiB | 547.1 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
 | GLM-5.3 NVFP4-CSF, `local-inference-lab/GLM-5.3-NVFP4-CSF` @ `a4d406932f2d` (eight Sparks) | 412.5 GiB | 428.5 GiB | 484.4 GiB |
 | GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
@@ -2711,6 +2712,7 @@ sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint jmni-qad5500
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-ple1000
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
+sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017
 ```
 
 | Profiles | `--checkpoint` | Checkpoint | Settings that differ from the default |
@@ -2727,6 +2729,8 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode with two CTAs per SM for small-M experts; KDA prefill coalescing (`VLLM_B12X_KDA_PREFILL_COALESCING=1`); the draft's experts on the Marlin MoE backend instead of Humming, with the four-Spark profile's draft tensor parallelism, probabilistic draft sampling and standard rejection; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
+| `deepseek-v41-flash-tp4` | `original` (default) | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277) by DeepSeek, revision `dba1be0a40aa` | — |
+| `deepseek-v41-flash-tp4` | `1017` | [DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/tree/1bae0e1088993b9b82de08f59de5be5a34e42170) by DeepSeek, revision `1bae0e108899`: new weights with the original's architecture, `config.json`, weight index and tokenizer files | Served as `DeepSeek-V4.1-Flash-1017-TP4`. The release's reference prompt encoder (`encoding/encoding.py`) changed how tool results are rendered; the image's vLLM encoder predates that change |
 
 - The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
   installer image on two and four Sparks. On one pair and one four-Spark
