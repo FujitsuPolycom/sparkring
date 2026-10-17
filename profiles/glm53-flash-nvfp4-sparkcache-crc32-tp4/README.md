@@ -4,11 +4,10 @@ This profile serves [GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/l
 created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
 License, Version 1.0, at revision `dec48abd33efa73c3bb7c95b74eee10cad34f9be`.
 
-Status: **research-only** (Experimental). No image build or hardware run is
-recorded for this variant. It requires the [SparkCache source layer](../../runtime/images/compositions/installer-sparkcache-8abbe9da67b8/README.md)
-over release 2026.10.4. No published image lock admits this profile and no
-Compose export exists. The layer's build step produces a development lock
-that lists `glm53-flash-nvfp4-sparkcache-crc32-tp4`.
+Status: **research-only** (Experimental). The default image, release
+2026.10.5's, admits this profile
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md));
+no hardware run is recorded for this variant. No Compose export exists.
 
 Serving settings match [glm53-flash-nvfp4-sparkcache-tp4](../glm53-flash-nvfp4-sparkcache-tp4/README.md)
 except restore and capacity:

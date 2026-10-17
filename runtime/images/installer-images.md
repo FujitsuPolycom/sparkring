@@ -6,8 +6,9 @@ a builder in [builders.json](builders.json); the entry's `releases` field names
 it. The [repository layout check](../../scripts/check_repository_layout.py)
 requires a builder for every release that has an `installer-image.json` lock.
 
-Release 2026.10.4's default image is built on release 2026.10.2's image, the
-rollback image, which is built on release 2026.10.1's image,
+Release 2026.10.5's default image is built on release 2026.10.4's image, the
+rollback image, which is built on release 2026.10.2's, itself built on release
+2026.10.1's image,
 `dev-20261004-kraken-cuda1342-nccl2323-status034`
 ([release record](../releases/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036/README.md)).
 Release 2026.10.1's image is built in two layers over `eugr/spark-vllm-b12x` nightly-20261001: a software layer
@@ -251,8 +252,8 @@ the CPU stat-logger plugin and the TP6 resident quantization facts, built from
 Git tree `ae8b68dd7114fc68e3485186e26c810118085aa8` with archive time
 `1791927655`. It names the image with ID `sha256:d52737a109e0`, release
 2026.10.2's, as its parent; `prepare --parent-lock` stacks it on an image
-derived from that parent. Release 2026.10.4's default image carries its layer
-([release record](../releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#layers)).
+derived from that parent. The images of releases 2026.10.4 and 2026.10.5 carry
+its layer ([release record](../releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md#layers)).
 
 ### Commands
 
@@ -390,9 +391,9 @@ libsircl, SIRCL's NCCL-compatible C library
 ([design](../../docs/architecture/libsircl.md)), to a kraken-line image with a
 v3 lock, normally the SIRCL image, and writes the derived image's v3 lock with
 `libsircl` among its `transports` and a `libsircl` block. Status:
-**research-only**. No release is this layer's own output; release 2026.10.2's
-image and release 2026.10.4's default image carry it below their own layers
-(libsircl 0.6.0, `--transport libsircl`). The layer holds:
+**research-only**. No release is this layer's own output; the images of
+releases 2026.10.2, 2026.10.4 and 2026.10.5 (the default) carry it below their
+own layers (libsircl 0.6.0, `--transport libsircl`). The layer holds:
 
 - `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, built by libsircl's
   own Makefile from its committed [source](../../spark_transport/libsircl/README.md)

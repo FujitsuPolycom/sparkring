@@ -24,6 +24,7 @@ from runtime.common import (
     fabric_layout,
     installer,
     serving,
+    sparkcache,
     thinking,
 )
 from runtime.host import (
@@ -111,8 +112,26 @@ def detail_lines(details):
     return lines
 
 
+def setup_name(requested, default="sparkring"):
+    """Keep the recorded storage namespace unless the operator names another."""
+    path = STATE / "cluster.json"
+    recorded = installer.read(path) if path.exists() else {}
+    previous = recorded.get("name") or recorded.get("plan", {}).get("spec", {}).get("owner")
+    return requested if requested is not None else previous or default, previous
+
+
+def cluster_name_lines(name, previous):
+    lines = ["Cluster name: " + name]
+    if previous and previous != name:
+        lines += [f"Rename cluster: {previous} -> {name}",
+                  "Existing deployments and storage stay under " + previous + "."]
+    return lines
+
+
 def summarize(plan, *, observe_only=False, api_address=None, display_name=None):
     layout = topology.layout_of(plan)
+    for line in cluster_name_lines(*setup_name(plan["spec"]["owner"])):
+        print(line)
     print("Ring name: " + (display_name or ring_name.effective(STATE, {"name": plan["spec"]["owner"]})))
     print(f"{len(plan['nodes'])} Sparks: " + {"pair": "p0 pair", "cycle": "p0-to-p1 ring",
                                                "path": "p0-to-p1 line"}[layout["shape"]])
@@ -169,6 +188,7 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     journal = directory / "setup.json"
     if journal.exists():
         raise ValueError("Setup receipt exists; inspect it and host state before recovery: " + str(journal))
+    preflight_configuration(plan, invoke=invoke)
     refuse_unit_overrides(plan, invoke=invoke)
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     record = {"schema": "sparkring-setup-receipt/v1", "complete": False, "plan_id": plan["id"], "steps": []}
@@ -242,6 +262,20 @@ def apply(plan, directory, *, inspect_nodes=collect, run=None, invoke=discovery.
     return plan
 
 
+def preflight_configuration(plan, *, invoke=None):
+    """Read every saved fabric record before updating workers or starting a setup receipt.
+
+    Use Python's standard library so the check also works on workers whose
+    installed SparkRing package predates this controller.
+    """
+    invoke = invoke or discovery.ssh
+    script = ("import json,pathlib; p=pathlib.Path('/etc/sparkring/fabric.json'); "
+              "print(json.dumps({'config': json.loads(p.read_text()) if p.exists() else None}))")
+    for rank, host in enumerate(plan["spec"]["hosts"]):
+        observed = json.loads(invoke(host["host"], ["sudo", "-n", "python3", "-I", "-c", script]))
+        node.check_configuration(topology.persistent_config(plan, rank), observed.get("config"))
+
+
 def refuse_unit_overrides(plan, *, invoke=None):
     """Refuse, before any change, a setup whose Sparks replace or change SparkRing's units in /etc/systemd/system.
 
@@ -294,7 +328,7 @@ def setup(argv=None):
                                      description="Discover a pair, line or ring of up to eight "
                                      "Sparks, review its fabric, then save persistent host setup.")
     parser.add_argument("--node", action="append", help="USER@management-IP (include this head); bypass mDNS")
-    parser.add_argument("--name", default="sparkring")
+    parser.add_argument("--name", help="cluster name (default: recorded name, or sparkring)")
     parser.add_argument("--display-name", type=ring_name.validate, help="ring display name (1 to 40 printable characters)")
     parser.add_argument("--fabric-cidr", default=None,
                         help="fabric supernet (default: 198.18.0.0/21 for up to four cables, 198.18.0.0/20 above)")
@@ -309,12 +343,17 @@ def setup(argv=None):
     parser.add_argument("--output", type=Path, help="new private setup receipt directory")
     args = parser.parse_args(argv)
     colour.set_mode(args.color)
+    args.name, previous_name = setup_name(args.name)
     if args.plan and args.apply or args.inventory and (args.apply or not args.plan):
         raise ValueError("Offline inventory requires --plan; --plan and --apply are exclusive")
     if args.yes and not args.apply and not args.plan:
         raise ValueError("Noninteractive setup changes require --apply --yes")
     if args.allow_driver_reload:
         print("--allow-driver-reload: " + ALLOW_DRIVER_RELOAD)
+    if previous_name and previous_name != args.name and not args.plan:
+        for line in cluster_name_lines(args.name, previous_name):
+            print(line)
+        confirm(f"Rename cluster {previous_name} to {args.name}?", args.yes)
     if args.inventory:
         nodes = json.loads(args.inventory.read_text(encoding="utf-8"))
         head = args.head_id
@@ -351,6 +390,13 @@ def setup(argv=None):
         if any(n.get("revision") != expected for n in nodes):
             raise ValueError("Install the same SparkRing package revision on all selected nodes")
     plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr)
+    path = STATE / "cluster.json"
+    if path.exists() and not args.adopt and not args.plan:
+        recorded = installer.read(path)["plan"]
+        def identities(value):
+            return [host["node_id"] for host in value.get("spec", {}).get("hosts", [])]
+        if identities(recorded) != identities(plan):
+            raise ValueError("Controller already records another cluster; inspect " + str(path))
     summarize(plan, observe_only=args.adopt, display_name=args.display_name)
     directory = args.output or Path.home() / ".local/state/sparkring/setups" / str(time.time_ns())
     installer.write(directory / "plan.json", plan)
@@ -427,9 +473,6 @@ def setup(argv=None):
     # workspace() established this directory for the SSH operator, not root.
     cluster = {"schema": "sparkring-appliance-cluster/v1", "name": args.name, "plan": plan,
                "setup_receipt": str(directory / "setup.json")}
-    path = STATE / "cluster.json"
-    if path.exists() and installer.read(path)["plan"]["id"] != plan["id"]:
-        raise ValueError("Controller already records another cluster; inspect " + str(path))
     node.save(STATE, "cluster.json", cluster, mode=0o600)
     if args.display_name is not None:
         ring_name.save(STATE, args.display_name)
@@ -659,7 +702,7 @@ def lifecycle(argv):
 
 def _lifecycle(argv, *, output, locks):
     parser = argparse.ArgumentParser(prog="sparkring " + argv[0], parents=[colour.parser()])
-    parser.add_argument("operation", choices=("up", "down", "restart", "status"))
+    parser.set_defaults(operation=argv[0])
     parser.add_argument("profile", nargs="?", help="exact profile shown by sparkring models")
     parser.add_argument("--model-path", help="serve this complete copy read-only on every rank; it is verified, never changed")
     images = parser.add_mutually_exclusive_group()
@@ -688,7 +731,7 @@ def _lifecycle(argv, *, output, locks):
     parser.add_argument("--nccl", choices=(*transports.NCCL_MODES, *transports.NCCL_ALIASES),
                         help="for a new SIRCL deployment: never (default) or auto")
     serving.add_arguments(parser)
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv[1:])
     restarting = args.operation == "restart"
     if restarting:
         if args.profile:
@@ -780,9 +823,8 @@ def _lifecycle(argv, *, output, locks):
                         print("  " + line)
             if result.get("ring_name"):
                 print("Ring: " + result["ring_name"])
-            # Node A's own state; each Spark's line follows.
-            print(colour.render(result["state"] + " | next: "
-                                + colour.action(result.get("next_action", "sparkring status")), sys.stdout))
+            headline, next_action = status_headline(result, views)
+            print(colour.render(headline + " | next: " + colour.action(next_action), sys.stdout))
             if not result.get("nodes"):
                 for warning in result.get("warnings", []):
                     print("  warning: " + warning)
@@ -834,9 +876,15 @@ def _lifecycle(argv, *, output, locks):
                               f"derived from {source}")
                 print("Checkpoint: " + (f"{saved['checkpoint']} ({source})" if saved["checkpoint"] else source)
                       + f" | Image: {saved['image_release']}")
-                if saved.get("serving_requested"):
+                requested = {name: value for name, value in (saved.get("serving_requested") or {}).items()
+                             if name not in sparkcache.SETTINGS}
+                if requested:
                     print("Serving settings: " + ", ".join(serving.label(name, value)
-                                                           for name, value in sorted(saved["serving_requested"].items())))
+                                                           for name, value in sorted(requested.items())))
+                if saved.get("sparkcache_size") is not None:
+                    print(sparkcache.status_line(saved["sparkcache_size"]))
+                for line in sparkcache.option_lines(saved):
+                    print(line)
                 if "thinking" in saved:
                     print("Thinking: " + thinking.deployment_text(saved["thinking"]))
                 if saved.get("transport"):
@@ -874,7 +922,7 @@ def _lifecycle(argv, *, output, locks):
                      existing_deployment(args.profile, args.instance))
         guarded_slot = placements.of_directory(candidate) if candidate.exists() else requested
     active = active_deployment(placement=slot)
-    assessment = activity.assess(STATE, guarded_slot)
+    assessment = activity.assess(STATE, guarded_slot, operation=args.operation)
     activity.confirm(assessment, yes=args.yes, plan=args.plan or not args.execute,
                      interactive=not args.json and sys.stdin.isatty())
     planning = args.plan or not args.execute and not sys.stdin.isatty()
@@ -1104,6 +1152,33 @@ def status_serving_settings(path, lock):
     return {key: value for key, value in (lock.get("serving") or {}).items() if inherited.get(key) != value}
 
 
+def status_headline(node_status, views):
+    """Summarize serving observations or saved starts without claiming a saved state is live."""
+    serving_count = sum((view.get("model") or {}).get("state") == "serving" for view in views)
+    started_count = sum(
+        not view.get("model") and (view.get("deployment", {}).get("state") or {}).get("operation") in ("up", "verify")
+        and bool((view.get("deployment", {}).get("state") or {}).get("complete"))
+        for view in views)
+    if serving_count:
+        labels = []
+        for view in views:
+            if (view.get("model") or {}).get("state") != "serving":
+                continue
+            profile = (view.get("deployment", {}).get("profile")
+                       or (view.get("lock", {}).get("selection") or {}).get("profile") or "unknown")
+            positions = (view.get("group") or {}).get("positions") or view.get("placement") or []
+            if positions and positions == list(range(positions[0], positions[-1] + 1)) and len(positions) > 1:
+                where = f"{positions[0]}-{positions[-1]}"
+            else:
+                where = ",".join(map(str, positions)) or "all Sparks"
+            labels.append(f"{profile} ({where})")
+        return ("Serving: " + ", ".join(labels), "sparkring status")
+    if started_count:
+        return (f"{started_count} started deployment{'s' if started_count != 1 else ''} (saved state)",
+                "sudo sparkring status --refresh")
+    return node_status["state"], node_status.get("next_action", "sparkring status")
+
+
 def _status_view(slot, path, args, result, cache, *, layout=None):
     """One deployment's part of ``sparkring status``: its saved state, recovery record and, with --refresh, model check.
 
@@ -1136,6 +1211,10 @@ def _status_view(slot, path, args, result, cache, *, layout=None):
     effective = serving.effective(selection["profile"], lock.get("serving"), selection.get("target_variant")) if model else {}
     view["deployment"]["thinking"] = thinking.deployment_default(model, effective)
     view["deployment"]["serving_requested"] = status_serving_settings(path, lock)
+    cache_size = sparkcache.deployment_budget(lock)
+    view["deployment"].update(sparkcache.deployment_options(lock))
+    if cache_size is not None:
+        view["deployment"]["sparkcache_size"] = cache_size
     view["deployment"]["transport"] = transport_view(path, lock)
     try:
         record = view["record"] = recovery.record_of(recovery.load(), path)

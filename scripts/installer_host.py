@@ -2084,14 +2084,18 @@ def perform(operation, lock, number):
         # A SIRCL or libsircl group's ranks check the fabric's relay table at their own fabric positions.
         from runtime.host import native_mesh
         return native_mesh.group_operation(operation, lock, number)
-    if operation in ("ring-stop", "ring-stopped", "ring-serve"):
+    if operation in ("ring-stop", "ring-stopped"):
         from runtime.host import native_mesh
-        step = {"ring-stop": native_mesh.stop_ring, "ring-stopped": native_mesh.ring_stopped,
-                "ring-serve": native_mesh.serve_ring}[operation]
+        step = {"ring-stop": native_mesh.stop_ring, "ring-stopped": native_mesh.ring_stopped}[operation]
         return step(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+    if operation == "ring-serve":
+        from runtime.host import native_mesh, relays
+        return native_mesh.serve_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"],
+                                      fabric_id=relays.deployment_fabric_id(lock))
     if operation == "ring-check":
-        from runtime.host import native_mesh
-        native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"])
+        from runtime.host import native_mesh, relays
+        native_mesh.check_ring(row["fabric"], number, row["hcas"], row["gid"], row["host_ip"],
+                               fabric_id=relays.deployment_fabric_id(lock))
         return {"ok": True}
     if operation in ("gid-serve", "gid-check"):
         from runtime.host import roce_gid

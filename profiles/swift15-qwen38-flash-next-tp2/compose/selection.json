@@ -2,6 +2,6 @@
   "schema": "sparkring-compose-selection/v1",
   "profile": "swift15-qwen38-flash-next-tp2",
   "checkpoint": null,
-  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "8c37e127ca389610ec155124e0b102a6a7761dc4b29f2d575a182cb03ef77fa0"
+  "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
+  "deployment": "7b776489e35558256e24ceef0d074977259d1cbd7391887b67420610acd9e72a"
 }

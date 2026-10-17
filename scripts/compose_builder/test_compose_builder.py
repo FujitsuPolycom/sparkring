@@ -256,7 +256,9 @@ def test_image_data_renders_profiles_on_that_image(monkeypatch, data):
     monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
     row = next(row for row in data["images"] if not row["default"])
     document = export.image_data(row["name"])
-    profile, = document["profiles"]
+    # The rollback image's data lists the patched profile and, when its lock admits one, an INSTALL_ONLY profile.
+    assert {p["id"] for p in document["profiles"]} - set(export.INSTALL_ONLY) == {"mimo-v26-flash-mopd-tp2"}
+    profile = next(p for p in document["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2")
     default = next(p for p in data["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2")
     assert document["image"] == row["name"] and profile["image_option"] == profile["render_image_option"] == row["option"]
     assert profile["image_release"] == row["name"] and profile["image_id"] != default["image_id"]
@@ -293,8 +295,9 @@ console.log(JSON.stringify(profiles.map(profile => {
 })));""", {"profiles": profiles, "meta": meta_of(data)})
     install, render = f"sudo sparkring install --profile {mimo}", f"sparkring compose render {mimo} --site ring.site.yaml --output ring"
     assert data["images"][0]["name"] == image_lock.default_row()["name"]
+    assert rollback["option"] == "2026.10.4"
     assert found == [[install, render],
-                     [install + " --image 2026.10.2", render + " --image 2026.10.2"],
+                     [install + " --image 2026.10.4", render + " --image 2026.10.4"],
                      [install + " --image 2026.10.1", render + " --image 2026.10.1"]]
 
 
@@ -853,7 +856,7 @@ def test_an_install_only_profile_is_offered_with_its_install_command_on_an_image
     # The decode-context-parallel variant has no Compose files. The Builder lists it with its install command,
     # rendered on a published image whose lock lists it and pins the TP2/DCP2 prefill vLLM build.
     from runtime.common.test_image_lock import sircl_block, sircl_lock
-    assert set(export.INSTALL_ONLY) == set(installer_image.DCP_VARIANTS)
+    assert set(export.INSTALL_ONLY) == {*installer_image.DCP_VARIANTS, *installer_image.LISTED_SPARKCACHE_VARIANTS}
     variant = "glm53-flash-nvfp4-spark-tp2-dcp2"
     value = sircl_lock(name="dev-20261013-dcp2prefill-example", profiles=sorted({*sircl_lock()["profiles"], variant}),
                        sircl=dict(sircl_block(), vllm_pins=["sparkring-kraken-bc9ea774-tp2-dcp2-prefill"]))
@@ -942,3 +945,74 @@ console.log(JSON.stringify([site.installer, local.installer, command(site, true)
                      f"curl -fsSL {raw}/main/install.sh | bash -s -- --profile {DCP2}",
                      f"curl -fsSL {raw}/{COMMIT}/install.sh | bash -s -- --ref {COMMIT} --profile {DCP2}",
                      f"curl -fsSL {hosted} | bash -s -- --package-only"]
+
+
+def test_sparkcache_profiles_are_install_only_cards_with_size_and_payload_check_fields(data, node):
+    """Release 2026.10.5's lock, the install default, lists the five SparkCache installer profiles; the rollback
+    image's does not. Each is an install-command card whose settings carry the cache size and the payload check,
+    which the engine reads as `sparkring install` does and passes as --sparkcache-size and --sparkcache-integrity."""
+    import re
+    from runtime.common import compose, image_lock, serving, sparkcache
+    variants = set(installer_image.LISTED_SPARKCACHE_VARIANTS)
+    listed = [p for p in data["profiles"] if p["id"] in variants]
+    assert {p["id"] for p in listed} == variants
+    for profile in listed:
+        assert profile["compose"] is False and profile["installable"] and profile["image_option"] is None
+        assert profile["status"] == "research-only" and "SparkCache" in profile["purpose"]
+        assert [checkpoint["name"] for checkpoint in profile["checkpoints"]] == [None]
+        rows = {row["name"]: row for row in profile["checkpoints"][0]["settings"]}
+        size, check = rows["sparkcache_size"], rows["sparkcache_integrity"]
+        assert size["size"] and size["option"] == "--sparkcache-size" and size["profile"] == "32G"
+        # The minimum is the profile's own capture slot, which differs by profile (1 GiB for DeepSeek).
+        assert size["profile_bytes"] == 32 * 2**30 and 0 < size["minimum_bytes"] <= size["profile_bytes"]
+        assert size["minimum"] == sparkcache.format_size(size["minimum_bytes"])
+        assert check["choice"] and check["option"] == "--sparkcache-integrity"
+        assert check["values"] == ["fast", "sha256", "none"] and check["profile"] == "fast"
+        assert "sparkcache_debug" not in rows
+    rollback = next(row for row in data["images"] if not row["default"])
+    assert not set(rollback["profiles"]) & variants and variants <= set(data["images"][0]["profiles"])
+    for profile in data["profiles"]:
+        if profile["id"] not in variants:
+            assert not any(row["name"].startswith("sparkcache") for row in profile["checkpoints"][0]["settings"])
+    # No Compose verification case renders them.
+    assert not [case for case in verify.cases(data, per_checkpoint=1, seed=1) if case["profile"] in variants]
+    profile = next(p for p in listed if p["id"] == "deepseek-v41-flash-sparkcache-tp4")
+    assert next(row for row in profile["checkpoints"][0]["settings"] if row["name"] == "sparkcache_size")["minimum"] == "1 GiB"
+    found = run_engine(node, """
+const { profile, meta, features } = value, cp = E.checkpointOf(profile, null), row = n => cp.settings.find(r => r.name === n);
+const check = E.servingCheck(profile, { sparkcache_size: '48G', sparkcache_integrity: 'sha256' }, null);
+console.log(JSON.stringify({
+  size: ['48G', '64GiB', '1000M', 'abc', ''].map(t => E.readSetting(row('sparkcache_size'), t)),
+  check: ['sha256', 'md5'].map(t => E.readSetting(row('sparkcache_integrity'), t)),
+  ok: check.ok, settings: check.settings, lines: check.lines,
+  small: E.servingCheck(profile, { sparkcache_size: '500M' }, null).error,
+  text: E.servingCheck(profile, { sparkcache_size: 'abc' }, null).error,
+  wrong: E.servingCheck(profile, { sparkcache_integrity: 'md5' }, null).error,
+  install: E.installCommand(profile, cp, check.settings, meta, { form: 'installed', approval: 'yes' }),
+  plain: E.installCommand(profile, cp, {}, meta, { form: 'installed', approval: 'ask' }),
+  read: E.readSelection(profile, cp, { sparkcache_size: ' 48G ', sparkcache_integrity: 'fast', max_concurrency: '4' }, { mode: 'auto' }),
+  link: E.linkChoices('?p=' + profile.id + '&sparkcache_size=64GiB&sparkcache_integrity=none&max_concurrency=8',
+                      { [profile.id]: profile }, features, {}).main.settings,
+}));""", {"profile": profile, "meta": meta_of(data), "features": data["features"]})
+    assert found["size"] == [{"value": "48G", "problem": ""}, {"value": "64GiB", "problem": ""}, {"problem": "At least 1 GiB."},
+                             {"problem": "A size such as 32G, 64GiB or 500M."}, {"problem": ""}]
+    assert found["check"] == [{"value": "sha256", "problem": ""}, {"problem": "One of fast, sha256, none."}]
+    assert found["ok"] and found["settings"] == {"sparkcache_integrity": "sha256", "sparkcache_size": "48G"}
+    assert found["lines"] == ["--sparkcache-integrity sha256 (profile: fast)", "--sparkcache-size 48G (profile: 32G)"]
+    assert found["install"] == ("sudo sparkring install --profile deepseek-v41-flash-sparkcache-tp4 "
+                                "--sparkcache-integrity sha256 --sparkcache-size 48G --yes")
+    assert found["plain"] == "sudo sparkring install --profile deepseek-v41-flash-sparkcache-tp4"
+    assert found["read"] == {"settings": {"max_concurrency": 4, "sparkcache_size": "48G", "sparkcache_integrity": "fast"},
+                             "address": None, "problems": []}
+    assert found["link"] == {"max_concurrency": 8, "sparkcache_size": "64GiB", "sparkcache_integrity": "none"}
+    # The installer accepts and refuses the same values, with the engine's messages.
+    default = next(row for row in image_lock.catalog() if row["default"])
+    specs, _ = compose.specifications(profile["id"], export.example_site(profile["id"]), image_runtime=image_lock.v2_view(default["lock"]))
+    command = list(specs[0].command)
+    applied = sparkcache.connector(serving.apply(command, serving.normalized(found["settings"])))["kv_connector_extra_config"]
+    assert (applied["spark_cache_max_bytes"], applied["spark_cache_low_watermark_bytes"], applied["spark_cache_payload_integrity"]) == (
+        48 * 2**30, 42 * 2**30, "sha256")
+    for settings, message in (({"sparkcache_size": "500M"}, found["small"]), ({"sparkcache_size": "abc"}, found["text"]),
+                              ({"sparkcache_integrity": "md5"}, found["wrong"])):
+        with pytest.raises(ValueError, match="^" + re.escape(message) + "$"):
+            serving.apply(command, serving.normalized(settings))

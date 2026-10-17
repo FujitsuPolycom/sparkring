@@ -40,7 +40,7 @@ and `--checkpoint jmni-qad5500-hybrid`, a third-party build of the same idea
 ([checkpoints](../../docs/operations/install-reference.md#another-checkpoint-of-a-profile)).
 The CSF checkpoint carries the hybrid's layer recipes with compressed expert
 block scales and a quantized vision tower. It installs only on two Sparks,
-with an image whose vLLM reads it, such as release 2026.10.4's or 2026.10.2's;
+with an image whose vLLM reads it, such as release 2026.10.5's, 2026.10.4's or 2026.10.2's;
 `--checkpoint csf` on any other image is refused.
 
 [Install SparkRing](../../docs/operations/install.md) covers requirements,
@@ -51,7 +51,7 @@ logs and recovery. To run step 5500's containers with Docker Compose, see
 
 | Setting | Installer profile ([config.json](config.json)) | SparkCache profile ([sparkcache.json](sparkcache.json)) |
 |---|---|---|
-| Image | `dev-20261013-dcp2prefill-status038-sircl-tp6` (release 2026.10.4, the `sparkring install` default); `--image 2026.10.2` selects `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` | `shared-2026.09.3` |
+| Image | `dev-20261016-sparkcache-4a17f1f5198e-status038` (release 2026.10.5, the `sparkring install` default); `--image 2026.10.4` selects `dev-20261013-dcp2prefill-status038-sircl-tp6` and `--image 2026.10.2` selects `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` | `shared-2026.09.3` |
 | Checkpoint | CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it; otherwise step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | Step 4000, revision `629bc3218833` (branch `qad-step-4000`) |
 | Parallelism | TP2/DCP1; one p0-to-p0 cable, both PCIe functions of p0 | Same |
 | Context / sequences / batch | 262144 / 16 / 8192; no YaRN | Same |

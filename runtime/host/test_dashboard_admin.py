@@ -237,6 +237,8 @@ def test_automated_setup_starts_the_dashboard_after_recording_the_fabric(tmp_pat
     monkeypatch.setattr(single_uplink, "record_reason", lambda base: None)
     monkeypatch.setattr(single_uplink.controller, "collect", lambda targets: value["plan"]["nodes"])
     monkeypatch.setattr(single_uplink, "match_revisions", lambda targets, nodes, directory: nodes)
+    monkeypatch.setattr(controller, "preflight_configuration", lambda plan: None)
+    monkeypatch.setattr(controller, "refuse_unit_overrides", lambda plan: None)
     monkeypatch.setattr(single_uplink.node, "read", lambda root, name: {"node_id": value["plan"]["nodes"][0]["node_id"]})
     monkeypatch.setattr(single_uplink.topology, "build_spec", lambda *args, **kwargs: value["plan"])
     monkeypatch.setattr(single_uplink.controller, "apply", lambda plan, directory, **options: plan)
@@ -345,3 +347,37 @@ def test_the_dashboard_command_routes_its_root_actions(monkeypatch):
     assert dashboard.main(["disable"]) == 0 and dashboard.main(["enable"]) == 0
     assert dashboard.main(["export", "--output", "site.json"]) == 0
     assert seen == ["disable", "enable", ("export", "site.json")]
+
+
+def test_a_record_the_package_cannot_render_again_takes_its_api_from_its_container_record(records, monkeypatch):
+    # After a package change the installed profile may not list a record's checkpoint any more;
+    # installer.connection then refuses the lock, and the row comes from rank0/container.json instead.
+    def refuse(lock):
+        if lock["selection"]["profile"] == "p-profile-on-2-3":
+            raise ValueError("Select a checkpoint the profile lists: csf, qad-step5500-ple1000")
+        return {"api_url": f"http://{NODE_A_LAN}:8000/v1", "model": "M", "port": 8000}
+    monkeypatch.setattr(installer, "connection", refuse)
+    directory = records / "deployments" / "profile-on-2-3"
+    lock = json.loads((directory / "deployment.lock.json").read_text())
+    lock["site"]["api_address"] = "192.0.2.10"
+    (directory / "deployment.lock.json").write_text(json.dumps(lock))
+    (directory / "rank0").mkdir()
+    (directory / "rank0" / "container.json").write_text(json.dumps({
+        "command": ["python3", "-m", "vllm.entrypoints.openai.api_server", "--port", "8015",
+                    "--served-model-name", "Recorded-Model-TP2"]}))
+    site = dashboard_admin.site_from_records(records)
+    rows = {row["id"]: row for row in site["deployments"]}
+    assert rows["profile-on-2-3"]["model"] == "Recorded-Model-TP2" and rows["profile-on-2-3"]["api_port"] == 8015
+    assert rows["profile-on-2-3"]["api_host"] == "192.0.2.10"
+    assert rows["whole"]["model"] == "M" and rows["whole"]["api_port"] == 8000
+
+
+def test_a_record_the_controller_cannot_describe_is_left_out_with_a_note(records, monkeypatch, capsys):
+    def refuse(lock):
+        if lock["selection"]["profile"] == "p-profile-on-2-3":
+            raise ValueError("Select a checkpoint the profile lists: csf")
+        return {"api_url": f"http://{NODE_A_LAN}:8000/v1", "model": "M", "port": 8000}
+    monkeypatch.setattr(installer, "connection", refuse)
+    site = dashboard_admin.site_from_records(records)
+    assert [row["id"] for row in site["deployments"]] == ["whole"]
+    assert "Dashboard: deployment profile-on-2-3 is not shown (FileNotFoundError" in capsys.readouterr().err

@@ -235,12 +235,21 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
 .manage input, .manage select { background: var(--code); color: var(--fg); padding: 7px; border: 1px solid var(--line2); }
 .manage pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 420px; overflow: auto; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The page follows the system theme until the viewer picks one with the theme button. */
 @media (prefers-color-scheme: light) {
-  :root { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
+  :root:not([data-theme="dark"]) { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
     --muted: #55636c; --line: #cfd7db; --g1: #0b7f8a; --g2: #2f8a4a;
     --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
     --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; }
 }
+:root[data-theme="light"] { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
+    --muted: #55636c; --line: #cfd7db; --g1: #0b7f8a; --g2: #2f8a4a;
+    --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
+    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; }
+.theme { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted);
+  background: none; border: 1px solid var(--line); border-radius: 50%; cursor: pointer; flex: none; }
+.theme:hover { color: var(--fg); }
+.theme:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .tiles .s { white-space: normal; overflow-wrap: anywhere; }
 .chart { min-width: 0; position: relative; }
 .chart button, .graph-controls button { color: var(--fg); background: var(--code); border: 1px solid var(--line2);
@@ -348,7 +357,8 @@ svg .node:focus-visible rect { stroke: var(--g1); stroke-width: 3; }
       <h1 id="ring-name">SparkRing</h1>
       <p class="summary" id="summary">Connecting to the dashboard…</p>
     </div>
-    <div class="live" id="live"><span class="dot"></span><span id="fresh">Connecting</span></div>
+    <div class="live" id="live"><span class="dot"></span><span id="fresh">Connecting</span>
+      <button class="theme" id="theme" type="button" aria-label="Switch theme" title="Switch theme"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M8 1.5a6.5 6.5 0 0 1 0 13z" fill="currentColor"/></svg></button></div>
     <div id="page-graphs" class="graph-controls" data-controls="page"></div>
   </header>
   <div class="banner" id="banner" hidden></div>
@@ -570,9 +580,14 @@ function servingTotals(members) {
   const sum = key => serving.reduce((total, m) => total + (m.live?.[key] || 0), 0);
   return {serving, tps: sum("output_tps"), tps5: sum("output_tps_5m"), running: sum("running"), waiting: sum("waiting")};
 }
+// Mean output rate per running request across the serving groups; null when nothing runs.
+function perRequest(tps, running) {
+  return running >= 1 ? tps / running : null;
+}
 function ringTotalsLayout(ring, members, labels) {
   const t = servingTotals(onRing(ring, members));
-  const output = `${rate(t.tps)} tok/s`, requests = `${int(t.running)} running · ${int(t.waiting)} queued`;
+  const each = perRequest(t.tps, t.running);
+  const output = `${rate(t.tps)} tok/s`, requests = `${int(t.running)} running · ${int(t.waiting)} queued${each === null ? "" : ` · ${rate(each)} each`}`;
   const mono = getComputedStyle(document.documentElement).getPropertyValue("--mono");
   ringLabelMeasure.font = `600 12px ${mono}`;
   const outputWidth = ringLabelMeasure.measureText(output).width;
@@ -682,7 +697,7 @@ function stripHtml(rings, members) {
   const tile = (k, v, unit, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}${unit ? `<small>${unit}</small>` : ""}</div><div class="s">${sub}</div></div>`;
   return tile("Serving", serving.length, serving.length === 1 ? "group" : "groups", esc(sizes || "nothing serving"))
     + tile("Output", rate(tps), "tok/s", "5 min avg " + rate(tps5))
-    + tile("Requests", int(running), "running", int(waiting) + " waiting")
+    + tile("Requests", int(running), "running", int(waiting) + " waiting" + (perRequest(tps, running) === null ? "" : " · " + rate(perRequest(tps, running)) + " tok/s each"))
     + tile("Sparks up", up, "/ " + size, `${busy} busy · ${idle} idle${down ? ` · <span style="color:var(--bad)">${down} down</span>` : ""}${unknown ? ` · ${unknown} unobserved` : ""}`)
     + tile("KV cache", pct(kv), "", kv === null ? "no serving group" : "highest · " + esc(kvName));
 }
@@ -950,6 +965,19 @@ const views = new Map();
 // One viewer-local window and pause time; each member retains its frozen samples.
 const graphView = { window: "auto", paused: null };
 try { graphView.window = localStorage.getItem("sparkring-window") || "auto"; } catch (_) { /* Storage is optional. */ }
+
+// -- theme -------------------------------------------------------------------------------
+// A stored choice overrides the system theme; without one the page follows the system.
+try {
+  const stored = localStorage.getItem("sparkring-theme");
+  if (stored === "light" || stored === "dark") document.documentElement.dataset.theme = stored;
+} catch (_) { /* Storage is optional. */ }
+document.getElementById("theme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const current = root.dataset.theme || (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark");
+  root.dataset.theme = current === "light" ? "dark" : "light";
+  try { localStorage.setItem("sparkring-theme", root.dataset.theme); } catch (_) { /* Storage is optional. */ }
+});
 if (!windows.some(w => w[0] === graphView.window)) graphView.window = "auto";
 function viewFor(id) {
   if (!views.has(id)) views.set(id, { history: graphView.paused === null ? null : [] });
@@ -1280,6 +1308,7 @@ function render() {
   if (!rings.length) {
     const {running, tps} = servingTotals(stacks);
     parts.push(`${int(running)} request${running === 1 ? "" : "s"} running`, `${rate(tps)} tok/s out`);
+    if (perRequest(tps, running) !== null) parts.push(`${rate(perRequest(tps, running))} tok/s per request`);
   }
   text($("summary"), parts.join(" · "));
   renderRings(rings, ringMembers, now);

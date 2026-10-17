@@ -1,0 +1,329 @@
+[
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 0,
+    "layers": [
+      "language_model.model.layers.0.attn.swa_cache",
+      "language_model.model.layers.14.attn.swa_cache",
+      "language_model.model.layers.7.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 1,
+    "layers": [
+      "language_model.model.layers.1.attn.swa_cache",
+      "language_model.model.layers.15.attn.swa_cache",
+      "language_model.model.layers.8.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 2,
+    "layers": [
+      "language_model.model.layers.16.attn.swa_cache",
+      "language_model.model.layers.2.attn.swa_cache",
+      "language_model.model.layers.9.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 3,
+    "layers": [
+      "language_model.model.layers.10.attn.swa_cache",
+      "language_model.model.layers.17.attn.swa_cache",
+      "language_model.model.layers.3.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 4,
+    "layers": [
+      "language_model.model.layers.11.attn.swa_cache",
+      "language_model.model.layers.18.attn.swa_cache",
+      "language_model.model.layers.4.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 5,
+    "layers": [
+      "language_model.model.layers.12.attn.swa_cache",
+      "language_model.model.layers.19.attn.swa_cache",
+      "language_model.model.layers.5.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 6,
+    "layers": [
+      "language_model.model.layers.13.attn.swa_cache",
+      "language_model.model.layers.6.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "reuse_policy": "sliding",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 256,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 7,
+    "layers": [
+      "language_model.model.layers.14.attn",
+      "language_model.model.layers.14.attn.indexer.k_cache",
+      "language_model.model.layers.2.attn",
+      "language_model.model.layers.2.attn.indexer.k_cache",
+      "language_model.model.layers.20.attn",
+      "language_model.model.layers.20.attn.indexer.k_cache",
+      "language_model.model.layers.8.attn",
+      "language_model.model.layers.8.attn.indexer.k_cache"
+    ],
+    "logical_tokens_per_block": 256,
+    "page_size_bytes": 36864,
+    "reuse_policy": "full",
+    "reuse_window_tokens": null,
+    "spec": "MLAAttentionSpec",
+    "storage_block_size": 0
+  },
+  {
+    "block_size": 8,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 8,
+    "layers": [
+      "language_model.model.layers.14.attn.compressor.state_cache",
+      "language_model.model.layers.2.attn.compressor.state_cache",
+      "language_model.model.layers.8.attn.compressor.state_cache"
+    ],
+    "logical_tokens_per_block": 8,
+    "page_size_bytes": 32768,
+    "replay_tokens": 0,
+    "reuse_policy": "transient",
+    "reuse_window_tokens": null,
+    "spec": "CircularBufferSpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 9,
+    "layers": [
+      "language_model.model.layers.20.attn.swa_cache",
+      "language_model.model.layers.28.attn.swa_cache",
+      "language_model.model.layers.36.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 10,
+    "layers": [
+      "language_model.model.layers.21.attn.swa_cache",
+      "language_model.model.layers.29.attn.swa_cache",
+      "language_model.model.layers.37.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 11,
+    "layers": [
+      "language_model.model.layers.22.attn.swa_cache",
+      "language_model.model.layers.30.attn.swa_cache",
+      "language_model.model.layers.38.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 12,
+    "layers": [
+      "language_model.model.layers.23.attn.swa_cache",
+      "language_model.model.layers.31.attn.swa_cache",
+      "language_model.model.layers.39.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 13,
+    "layers": [
+      "language_model.model.layers.24.attn.swa_cache",
+      "language_model.model.layers.32.attn.swa_cache",
+      "model.layers.40.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 14,
+    "layers": [
+      "language_model.model.layers.25.attn.swa_cache",
+      "language_model.model.layers.33.attn.swa_cache",
+      "model.layers.41.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 15,
+    "layers": [
+      "language_model.model.layers.26.attn.swa_cache",
+      "language_model.model.layers.34.attn.swa_cache",
+      "model.layers.42.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  },
+  {
+    "block_size": 128,
+    "dcp_replicated": false,
+    "dcp_shard_count": 1,
+    "eagle": false,
+    "group": 16,
+    "layers": [
+      "language_model.model.layers.27.attn.swa_cache",
+      "language_model.model.layers.35.attn.swa_cache"
+    ],
+    "logical_tokens_per_block": 128,
+    "page_size_bytes": 67584,
+    "replay_tokens": 128,
+    "reuse_policy": "replay",
+    "reuse_window_tokens": 128,
+    "spec": "SlidingWindowMLASpec",
+    "storage_block_size": 0,
+    "tokens_per_state": 1
+  }
+]

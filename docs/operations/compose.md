@@ -21,7 +21,7 @@ any model downtime.
 Every other profile is rejected. For the nine installer-image profiles:
 
 - Each rank defaults to the image and checkpoint `sparkring install` selects:
-  release `2026.10.4`, including CSF for GLM-5.3-Flash and two-Spark Qwen.
+  release `2026.10.5`, including CSF for GLM-5.3-Flash and two-Spark Qwen.
   `deployment.json` records both selections. `--image 2026.10.1` selects that release's image
   and compatible checkpoint ([images and checkpoints](compose-files.md#images-and-checkpoints)).
 - Compose reads the loader seccomp policy from

@@ -9,7 +9,9 @@ licensed under the Local Inference Lab License, Version 1.0:
 [GLM-5.3-NVFP4-CSF](https://huggingface.co/local-inference-lab/GLM-5.3-NVFP4-CSF)
 (`glm53-nvfp4-csf-tp6`, `glm53-nvfp4-csf-tp8`) and
 [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)
-(`qwen38-flash-next-tp2`).
+(`qwen38-flash-next-tp2`, `qwen38-flash-next-csf-sparkcache-tp2`).
+The Experimental Qwen SparkCache installer variants and their build and
+qualification requirements are documented in the [hardware plan](../docs/research/qwen38-sparkcache.md).
 
 A profile is a saved configuration of one model on a fixed number of DGX
 Sparks: checkpoint, serving image, parallelism, cabling and serving settings.
@@ -31,8 +33,8 @@ the tables below from them; edit the profiles, not the tables.
 - **Quant** links the checkpoint repository; Stock is the publisher's original
   checkpoint. Profiles pin exact revisions.
 - **Installer-profile rows** show what `sparkring install` installs on its
-  default image, release 2026.10.4's
-  `dev-20261013-dcp2prefill-status038-sircl-tp6`: the checkpoint, its
+  default image, release 2026.10.5's
+  `dev-20261016-sparkcache-4a17f1f5198e-status038`: the checkpoint, its
   configured context and its recorded KV pool. Other rows show the profile's
   own default.
 - **DCP** is the decode-context-parallel size, the number of Sparks that split
@@ -99,6 +101,7 @@ add a profile that `sparkring install` sets up.
 | [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1/2 | 1M / (—/[4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)) | Included | Experimental |
 | [GLM-5.3-Flash](../profiles/glm53-flash-nvfp4-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1/2 | 1M / (—/[4.1M](../performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-glm53-flash-nvfp4-spark-tp2-dcp2-pair-20261013.md)) | Included | Experimental |
 | [Qwen3.8-27B](../profiles/qwen38-27b-exl3-k5k6-pair/README.md)<br>vLLM | [EXL3 K5/K6](https://huggingface.co/malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated)<br>by malaiwah | 1 | 1M / [4.1M](../profiles/qwen38-27b-exl3-k5k6-pair/recipe.json) | No | Development |
+| [Qwen3.8-Flash-Next](../profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md)<br>vLLM | [NVFP4/MXFP8 CSF](https://huggingface.co/local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD)<br>by Local Inference Lab | 1 | 262K / — | Included | Experimental |
 
 
 Status and context describe the linked default. DCP and KV figures follow the same order;
@@ -176,6 +179,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-tp4 (default)](../docs/operations/install.md) |
 | DCP1 | ring of 4 | Off | Development | [deepseek-v41-flash-cycle](../profiles/deepseek-v41-flash-cycle/README.md) |
+| DCP1 | ring of 4 | On | Experimental | [deepseek-v41-flash-sparkcache-tp4](../profiles/deepseek-v41-flash-sparkcache-tp4/README.md) |
 
 </details>
 
@@ -272,7 +276,7 @@ record links preserve configuration evidence when the guide selects a different 
 </details>
 
 <details>
-<summary>Qwen3.8-Flash-Next · 2 Sparks · vLLM</summary>
+<summary>Qwen3.8-Flash-Next (NVFP4) · 2 Sparks · vLLM</summary>
 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
@@ -288,6 +292,7 @@ record links preserve configuration evidence when the guide selects a different 
 |---|---|---|---|---|
 | DCP1 | ring of 4 | Off | Development | [qwen38-flash-next-qad-tp4 (default)](../profiles/qwen38-flash-next-qad-tp4/README.md) |
 | DCP1 | ring of 4 | On | Validated | [qwen38-flash-next-qad-tp4-sparkcache](../profiles/qwen38-flash-next-qad-tp4-sparkcache/README.md) |
+| DCP1 | ring of 4 | On | Experimental | [qwen38-flash-next-step5500-sparkcache-tp4](../profiles/qwen38-flash-next-step5500-sparkcache-tp4/README.md) |
 
 </details>
 
@@ -297,6 +302,15 @@ record links preserve configuration evidence when the guide selects a different 
 | Parallelism | Network | SparkCache | Guide status | Configuration and guide |
 |---|---|---|---|---|
 | DCP1 | ring of 8 | Off | Experimental | [qwen38-flash-next-qad-tp8 (default)](../profiles/qwen38-flash-next-qad-tp8/README.md) |
+
+</details>
+
+<details>
+<summary>Qwen3.8-Flash-Next (NVFP4/MXFP8 CSF) · 2 Sparks · vLLM</summary>
+
+| Parallelism | Network | SparkCache | Guide status | Configuration and guide |
+|---|---|---|---|---|
+| DCP1 | pair | On | Experimental | [qwen38-flash-next-csf-sparkcache-tp2](../profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md) |
 
 </details>
 
@@ -363,9 +377,11 @@ Profiles of six and eight Sparks are research-only and appear only under Configu
 
 The Experimental GLM SparkCache CRC32 profiles for
 [two Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md) and
-[four Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp4/README.md) require the
-SparkCache source layer over release 2026.10.4. Their separate IDs preserve
-the earlier variants' image-specific evidence; neither has hardware results.
+[four Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp4/README.md) run on the
+default image, release 2026.10.5's, whose lock admits them. Their separate IDs
+preserve the earlier variants' image-specific evidence. The two-Spark profile
+installed and passed `sparkring check` on that image composition's recheck
+build ([record](../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md)); the four-Spark profile has no hardware result.
 
 \* KV capacity depends on configuration and enabled features, including
 SparkCache, and does not show that concurrent full-context requests fit. Each

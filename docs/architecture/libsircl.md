@@ -88,10 +88,11 @@ that holds the parent loads only the difference
 ([layer_delta.py](../../runtime/images/layer_delta.py)), and one image carries
 SIRCL and libsircl over the same vLLM, CUDA and NCCL bytes.
 
-Release 2026.10.2's image (`d52737a109e0`) has this layer, and the installer's
-default release 2026.10.4 (`3cc9a81fd344`) inherits it unchanged: libsircl
-0.6.0 from source tree `030419b8`, library SHA-256 `ffdba5b24a2b…`, with the
-fail-stop mode ([2026.10.4 lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)).
+Release 2026.10.2's image (`d52737a109e0`) has this layer, and the images of
+release 2026.10.4 (`3cc9a81fd344`) and the installer's default release
+2026.10.5 (`f625053225d4`) inherit it unchanged: libsircl 0.6.0 from source
+tree `030419b8`, library SHA-256 `ffdba5b24a2b…`, with the fail-stop mode
+([2026.10.5 lock](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json)).
 
 The layer adds:
 

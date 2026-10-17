@@ -18,7 +18,10 @@ REVISION = "0123456789abcdef0123456789abcdef01234567"
 WEIGHTS = ("model-00001-of-00002.safetensors", "model-00002-of-00002.safetensors")
 COMMITTED = {
     ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4", "60215d26cf5e42c2db6128774032d57fc62678da"):
-        ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8", "qwen38-flash-next-tp2"],
+        ["qwen38-flash-next-qad-tp4", "qwen38-flash-next-qad-tp8",
+         "qwen38-flash-next-step5500-sparkcache-tp4", "qwen38-flash-next-tp2"],
+    ("local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD", "dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2"):
+        ["qwen38-flash-next-csf-sparkcache-tp2"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-Spark", "a608241037e4c2565356bff7ca293f2133888f88"):
         ["glm53-flash-nvfp4-spark-tp2", "glm53-flash-nvfp4-spark-tp4"],
     ("local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD", "dec48abd33efa73c3bb7c95b74eee10cad34f9be"):
@@ -32,7 +35,7 @@ COMMITTED = {
     ("XiaomiMiMo/MiMo-V2.6-Flash-MOPD", "2479e2d0029eca9a34cc7e7f55a121925f81908e"):
         ["mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4"],
     ("deepseek-ai/DeepSeek-V4.1-Flash", "dba1be0a40aa45a94ad051997016db3960a90277"):
-        ["deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"],
+        ["deepseek-v41-flash-sparkcache-tp4", "deepseek-v41-flash-tp4", "deepseek-v41-flash-tp8"],
     ("ukisai/Swift-1.5-Qwen3.8-Flash-Next-NVFP4", "3ff0520224f264a2d0ac4ab56ece8f2f13aadb38"):
         ["swift15-qwen38-flash-next-tp2", "swift15-qwen38-flash-next-tp4"],
 }

@@ -451,6 +451,7 @@ __ENGINE__
   const LABELS = {
     max_concurrency: 'Concurrent requests', context_length: 'Maximum context', kv_cache_gib: 'KV cache per Spark',
     max_images: 'Images per request', max_videos: 'Videos per request', save_cpu: 'Save CPU between decode steps',
+    sparkcache_size: 'SparkCache size per Spark', sparkcache_integrity: 'SparkCache payload check',
     api_port: 'API port', api_bind: 'API listens only on',
   };
   // The API endpoint choices the source offers (export.features): automatic; ask during install,
@@ -465,7 +466,8 @@ __ENGINE__
     set: ['Set here', 'Pick the port and addresses below.'],
   };
   const UNITS = { max_concurrency: 'requests', context_length: 'tokens', kv_cache_gib: 'GiB', max_images: 'images', max_videos: 'videos' };
-  const ORDER = ['max_concurrency', 'context_length', 'kv_cache_gib', 'max_images', 'max_videos', 'save_cpu'];
+  const ORDER = ['max_concurrency', 'context_length', 'kv_cache_gib', 'max_images', 'max_videos', 'sparkcache_size',
+    'sparkcache_integrity', 'save_cpu'];
   const FIELDS = {
     host: { label: 'SSH host' },
     host_ip: { label: 'IP address' },
@@ -924,6 +926,47 @@ __ENGINE__
         input.addEventListener('change', () => {
           if (input.checked) s[row.name] = true; else delete s[row.name];
           wrap.classList.toggle('changed', input.checked);
+          changed();
+        });
+        box.append(wrap);
+        continue;
+      }
+      // A SparkCache payload check (export._setting_rows `choice`): a list of its values, the profile's marked.
+      if (row.choice) {
+        const select = el('select', { id, 'aria-describedby': 'hint-' + id });
+        for (const value of row.values) select.append(el('option', { value }, value === row.profile ? value + ' (default)' : value));
+        select.value = s[row.name] !== undefined ? s[row.name] : row.profile;
+        const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
+          el('label', { for: id }, LABELS[row.name] || row.option),
+          el('div', { class: 'field' }, select),
+          el('p', { class: 'hint', id: 'hint-' + id }, switchSummary(row.help)));
+        select.addEventListener('change', () => {
+          if (select.value === row.profile) delete s[row.name]; else s[row.name] = select.value;
+          wrap.classList.toggle('changed', s[row.name] !== undefined);
+          changed();
+        });
+        box.append(wrap);
+        continue;
+      }
+      // A SparkCache size (`size`): text with a unit, such as 48G, read as `sparkring install --sparkcache-size` reads it.
+      if (row.size) {
+        const input = el('input', { type: 'text', id, spellcheck: 'false', placeholder: row.profile, 'aria-describedby': 'err-' + id });
+        if (s[row.name] !== undefined) input.value = s[row.name];
+        const err = el('p', { class: 'err', id: 'err-' + id });
+        const wrap = el('div', { class: 'setting' + (s[row.name] !== undefined ? ' changed' : '') },
+          el('label', { for: id }, LABELS[row.name] || row.option),
+          el('div', { class: 'field' }, input, el('span', { class: 'unit' }, '')),
+          el('p', { class: 'hint' }, 'Default ' + row.profile + '; at least ' + row.minimum + '. A size such as 48G or 64GiB.'), err);
+        const check = () => {
+          err.textContent = E.readSetting(row, input.value).problem || '';
+          input.setAttribute('aria-invalid', String(Boolean(err.textContent)));
+        };
+        check();
+        input.addEventListener('input', () => {
+          const text = input.value.trim();
+          check();
+          if (text === '') delete s[row.name]; else s[row.name] = text;
+          wrap.classList.toggle('changed', s[row.name] !== undefined);
           changed();
         });
         box.append(wrap);

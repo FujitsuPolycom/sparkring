@@ -335,5 +335,5 @@ SIRCL-only registration and the existing CSF checkpoint pins. Its profile guide
 records the padded HF overrides and the omitted TP8-only checks. Its six ranks
 use the fabric's universal routes (`SIRCL_ROUTE_SCOPE=fabric`), so the closing
 route 5-6-7-0 crosses at most three relays. Only an image lock built with the
-TP6 SIRCL layer admits it, such as release 2026.10.4's; release 2026.10.2's
+TP6 SIRCL layer admits it, such as release 2026.10.4's and 2026.10.5's; release 2026.10.2's
 does not. A six-rank CPU render is not deployment qualification.

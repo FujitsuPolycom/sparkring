@@ -2,6 +2,6 @@
   "schema": "sparkring-compose-selection/v1",
   "profile": "glm53-flash-nvfp4-spark-tp4",
   "checkpoint": "csf",
-  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "e58b6a35225d6b02f57a3b3c25347c6100dfb40e7d55407cb48039c45553d5c9"
+  "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
+  "deployment": "a222706213b62424526ffca519867ee2d1ee5274d749e3b1fc6fc11bcb6590e9"
 }

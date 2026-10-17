@@ -265,6 +265,15 @@ const SparkRingEngine = (() => {
     const first = Number(value.split('.')[0]);
     return first > 0 && first < 224;
   }
+  // sparkcache.parse_size: whole bytes, or binary K/M/G/T sizes with optional B or iB suffixes;
+  // null for anything else.
+  const SIZE = /^([0-9]+)([KMGT](?:IB|B)?|B)?$/i;
+  function sizeBytes(text) {
+    const m = SIZE.exec(String(text ?? '').trim());
+    if (!m) return null;
+    const bytes = Number(m[1]) * 1024 ** 'BKMGT'.indexOf((m[2] || 'B')[0].toUpperCase());
+    return bytes > 0 && Number.isSafeInteger(bytes) ? bytes : null;
+  }
   function normalized(profile, values) {
     const rows = Object.fromEntries(profile.settings.map(r => [r.name, r]));
     const result = {};
@@ -276,6 +285,20 @@ const SparkRingEngine = (() => {
       if (row.switch) {
         if (value !== true) throw new Error(option(name) + ' is a switch without a value');
         result[name] = true;
+        continue;
+      }
+      // A SparkCache size (export._setting_rows `size`), as sparkcache.parse_size reads it and sparkcache.apply
+      // bounds it; a payload check (`choice`), one of the row's values (serving.CONNECTOR_CHOICES).
+      if (row.size) {
+        const bytes = typeof value === 'string' ? sizeBytes(value) : null;
+        if (bytes === null) throw new Error(`${option(name)} requires a positive size, such as 32G, 64GiB or 500M`);
+        if (bytes < row.minimum_bytes) throw new Error(`${option(name)} must be at least ${row.minimum} for this profile`);
+        result[name] = value.trim();
+        continue;
+      }
+      if (row.choice) {
+        if (!row.values.includes(value)) throw new Error(`${option(name)} takes ` + row.values.join(' or '));
+        result[name] = value;
         continue;
       }
       if (row.address) {
@@ -402,6 +425,13 @@ const SparkRingEngine = (() => {
     const text = String(entry ?? '').trim();
     if (text === '') return { value: undefined, problem: '' };
     if (row.address) return listenable(text) ? { value: text, problem: '' } : { problem: 'An IPv4 address of the Spark, such as 192.0.2.10.' };
+    if (row.size) {
+      const bytes = sizeBytes(text);
+      if (bytes === null) return { problem: 'A size such as 32G, 64GiB or 500M.' };
+      if (bytes < row.minimum_bytes) return { problem: `At least ${row.minimum}.` };
+      return { value: text, problem: '' };
+    }
+    if (row.choice) return row.values.includes(text) ? { value: text, problem: '' } : { problem: 'One of ' + row.values.join(', ') + '.' };
     if (!/^\d+$/.test(text)) return { problem: 'Enter a whole number.' };
     const n = Number(text), largest = row.largest ?? null, maximum = row.maximum ?? null;
     if (!Number.isSafeInteger(n)) return { problem: 'Enter a smaller number.' };
@@ -1105,6 +1135,8 @@ const SparkRingEngine = (() => {
         if (text === null) continue;
         if (row.switch) { if (text === '1') settings[row.name] = true; }
         else if (row.address) { if (IPV4.test(text)) settings[row.name] = text; }
+        else if (row.size) { if (sizeBytes(text) !== null) settings[row.name] = text.trim(); }
+        else if (row.choice) { if (row.values.includes(text)) settings[row.name] = text; }
         else if (/^\d+$/.test(text)) settings[row.name] = Number(text);
       }
       const mode = query.get(prefix + 'endpoint');

@@ -250,6 +250,8 @@ def scope_lines(args, *, fresh, follow=None, four=None):
     layout before discovery.
     """
     lines = []
+    if getattr(args, "name", None):
+        lines += ["  - " + line for line in controller.cluster_name_lines(args.name, args.previous_name)]
     if fresh:
         lines += ["  - find cabled Sparks over IPv6 link-local fabric addresses, adding link-local"
                   " addressing to fabric connections without it and turning off DHCP on fabric connections"
@@ -391,7 +393,7 @@ def _arguments(argv):
     parser = argparse.ArgumentParser(prog="sparkring setup", parents=[colour.parser()],
                                      description="Run on Node A to install a pair/ring through its fabric links.")
     parser.add_argument("--env", type=Path, help="optional literal preferences; never required for guided setup")
-    parser.add_argument("--name", default=values["SPARKRING_NAME"])
+    parser.add_argument("--name", help="cluster name (default: recorded name, or preferences on first setup)")
     parser.add_argument("--display-name", type=controller.ring_name.validate,
                         help="ring display name (1 to 40 printable characters)")
     parser.add_argument("--ssh-user", default=values["SPARKRING_SSH_USER"])
@@ -414,6 +416,7 @@ def _arguments(argv):
                         help="on an installed cluster, add fallback paths (the other fabric cables, the LAN) to the "
                              "administration network; changes nothing else")
     args = parser.parse_args(argv)
+    args.name, args.previous_name = controller.setup_name(args.name, values["SPARKRING_NAME"])
     colour.set_mode(args.color)
     chosen = settings.explicit(env.env)
     if args.fabric_cidr is None and "SPARKRING_FABRIC_CIDR" in chosen:
@@ -449,6 +452,10 @@ def main(argv=None, *, follow=None):
     if not distribution.installed(installer.ROOT):
         raise ValueError("Install the local ARM64 Debian package on Node A before fabric provisioning")
     base = controller.STATE
+    for line in controller.cluster_name_lines(args.name, args.previous_name):
+        print(line)
+    if args.previous_name and args.previous_name != args.name and not args.plan:
+        controller.confirm(f"Rename cluster {args.previous_name} to {args.name}?", args.yes)
     print("Ring name: " + (args.display_name or controller.ring_name.effective(base, {"name": args.name})))
     base.mkdir(parents=True, exist_ok=True, mode=0o700)
     private, public = identity_key(base)
@@ -553,8 +560,6 @@ def main(argv=None, *, follow=None):
     if args.plan:
         for target in other_revisions(targets, nodes):
             print(f"Note: {target} runs another SparkRing revision; setup updates it to Node A's before changing networking.")
-    else:
-        nodes = match_revisions(targets, nodes, directory)
     head = node.read("/", "/etc/sparkring/node.json")["node_id"]
     try:
         plan = topology.build_spec(nodes, head, name=args.name, fabric_cidr=args.fabric_cidr,
@@ -573,6 +578,12 @@ def main(argv=None, *, follow=None):
                          f"{fabric_layout.name(topology.layout_of(plan))}. To keep the recorded layout, restore its "
                          "cables (sudo sparkring cabling shows them). To set the Sparks up as they are cabled now, "
                          "run sudo sparkring setup --re-form")
+    if not args.plan:
+        controller.preflight_configuration(plan)
+        controller.refuse_unit_overrides(plan)
+        nodes = match_revisions(targets, nodes, directory)
+        plan = topology.build_spec(nodes, head, name=plan["spec"]["owner"], fabric_cidr=plan.get("fabric_cidr"),
+                                   reset=plan.get("reset_requested", False), preserve_control=True)
     controller.summarize(plan, api_address=api_address, display_name=args.display_name)
     installer.write(directory / "plan.json", plan)
     if args.plan:

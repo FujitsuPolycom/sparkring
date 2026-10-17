@@ -98,6 +98,17 @@ reads its variable, as the page's data records for each image
 that does not, step 4 says the image can't, and the commands and files leave
 the switch out.
 
+Step 4 offers **SparkCache size per Spark** and **SparkCache payload check**
+only for a SparkCache profile, whose command carries the SparkCache
+connector. The size is read as `sparkring install --sparkcache-size` reads
+it, such as `48G` or `64GiB`, and must be at least the profile's capture
+slot, which the field's hint names (1 GiB for DeepSeek); the check is one
+of `fast`, `sha256` and `none`. A changed
+value reaches the install command as `--sparkcache-size` or
+`--sparkcache-integrity`; the profile's values (`32G`, `fast`) need no
+option. `--sparkcache-debug` is not offered: it mounts a logging
+configuration the page does not stage.
+
 ## Layout
 
 Step 2 chooses how the Sparks serve:
@@ -156,12 +167,16 @@ repeats the status of each model it installs. Statuses use the labels of the
   render` renders the profile's own checkpoint without `--checkpoint`, so on
   such an image the page's install command for the **Default** card has no
   `--checkpoint`, while its render command and the Compose files name `csf`.
-- A profile without Compose files, such as the research-only
-  `glm53-flash-nvfp4-spark-tp2-dcp2`, is listed when an offered image's lock
-  lists it (`export.INSTALL_ONLY`). Its card says **Install command only**,
-  step 1 offers only images that run it, and the output is its
-  `sparkring install` command, with `--image NAME` on an image other than the
-  default; the Docker Compose tab is off for it.
+- A profile without Compose files is listed when an offered image's lock
+  lists it (`export.INSTALL_ONLY`): the research-only
+  `glm53-flash-nvfp4-spark-tp2-dcp2`, and the SparkCache installer profiles
+  `deepseek-v41-flash-sparkcache-tp4`, `qwen38-flash-next-step5500-sparkcache-tp4`,
+  `qwen38-flash-next-csf-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-crc32-tp2`
+  and `glm53-flash-nvfp4-sparkcache-crc32-tp4`, which release 2026.10.5's
+  image lock lists. Its card says **Install command only**, step 1 offers
+  only images that run it, and the output is its `sparkring install`
+  command, with `--image NAME` on an image other than the default; the
+  Docker Compose tab is off for it.
 
 ## Commands
 
@@ -387,8 +402,12 @@ files with `sparkring compose`. A derived checkpoint, such as
 - Pasted site files are read as YAML 1.2: an unquoted `on` or `yes` stays a
   string, which SparkRing's own reader would read as true.
 - The page lists the [Compose profiles](compose.md#supported-profiles) that
-  `sparkring install` deploys; it omits the SparkCache Qwen profiles,
-  `qwen38-flash-next-tp2-sparkcache` and `qwen38-flash-next-qad-tp4-sparkcache`.
+  `sparkring install` deploys and the install-only profiles an offered
+  image's lock lists ([model and checkpoint](#model-and-checkpoint)); it
+  omits the SparkCache Compose profiles `qwen38-flash-next-tp2-sparkcache`
+  and `qwen38-flash-next-qad-tp4-sparkcache`, whose frozen `shared-2026.09.3`
+  image no offered image is. The SparkCache installer profiles have install
+  commands only: no Compose files and no Compose verification.
 - Generated files carry no serving qualification, like every `compose render`
   deployment.
 

@@ -180,12 +180,20 @@ def operation_times(directory: Path) -> dict:
 
 
 def deployment_row(directory, slot=None, size=None):
-    """Public deployment fields shared by site export and active installation progress."""
+    """Public deployment fields shared by site export and active installation progress.
+
+    A record the installed package cannot render again (its checkpoint or
+    profile is no longer listed) takes its API and model from its own
+    rank-0 container record (``installer.recorded_connection``).
+    """
     from runtime.common import installer
     from runtime.host import api_endpoint
     from runtime.host import placement as placements
     lock = installer.read(Path(directory) / "deployment.lock.json")
-    connection = installer.connection(lock)
+    try:
+        connection = installer.connection(lock)
+    except (ValueError, KeyError):
+        connection = installer.recorded_connection(directory, lock)
     host = urllib.parse.urlsplit(connection["api_url"]).hostname
     positions = list(slot) if slot else list(range(size or len(lock["site"]["ranks"])))
     shown = api_endpoint.recorded(directory)
@@ -227,7 +235,11 @@ def site_from_records(state_root: Path) -> dict:
         directory = placements.recorded(state_root, slot)
         if not placements.exists(directory):
             continue
-        rows.append(deployment_row(directory, slot, size))
+        try:
+            rows.append(deployment_row(directory, slot, size))
+        except (ValueError, KeyError, OSError, TypeError, IndexError) as error:
+            # One record the controller cannot describe must not keep every other deployment off the page.
+            _stderr(f"Dashboard: deployment {Path(directory).name} is not shown ({type(error).__name__}: {error})")
     from runtime.host import ring_name
     return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows,
             "display_name": ring_name.read(state_root)}

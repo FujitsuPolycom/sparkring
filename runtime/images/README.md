@@ -28,8 +28,8 @@ It does not change published image selections or serving deployments.
 
 ## Container images
 
-`sparkring install` runs every installer profile on release 2026.10.4's image,
-`dev-20261013-dcp2prefill-status038-sircl-tp6`, unless `--image` selects
+`sparkring install` runs every installer profile on release 2026.10.5's image,
+`dev-20261016-sparkcache-4a17f1f5198e-status038`, unless `--image` selects
 another; `--image 2026.10.2` selects the rollback image, release 2026.10.2's
 ([serving image and profiles](../../docs/operations/install-reference.md#serving-image-and-profiles),
 [builders](installer-images.md)).

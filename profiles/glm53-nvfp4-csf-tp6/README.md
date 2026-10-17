@@ -75,8 +75,10 @@ acceptance, every rank's weights, graph pools and allocated cache capacity.
 
 ## Image admission and installation
 
-The default image of release 2026.10.4,
-`dev-20261013-dcp2prefill-status038-sircl-tp6`, admits this profile
+The default image of release 2026.10.5,
+`dev-20261016-sparkcache-4a17f1f5198e-status038`, admits this profile
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)),
+as does release 2026.10.4's
 ([release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)).
 It carries what the profile needs:
 

@@ -146,7 +146,7 @@ MAX_FILE_BYTES = 1024 * 1024
 MAX_EVENTS = 200
 CLOCK_STEP_SECONDS = 2.0      # a cycle whose clock reads this much earlier than the last one's saw a step back
 DEFAULT_PORT = 8090
-LOG_LINES = 200
+LOG_LINES = 40
 
 COUNTERS = {
     "vllm:generation_tokens_total": "gen",
@@ -1528,7 +1528,7 @@ def log_commands(hostname, container) -> dict:
     head Spark with their own login, so nothing reads a log unless someone asks."""
     if not container:
         return {"enabled": False, "host": hostname, "commands": []}
-    return {"enabled": True, "host": hostname, "commands": [f"sudo docker logs --tail {LOG_LINES} {container}"]}
+    return {"enabled": True, "host": hostname, "commands": [f"sudo docker logs -f --tail {LOG_LINES} {container}"]}
 
 
 # -- process placement -------------------------------------------------------------------------

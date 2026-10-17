@@ -492,7 +492,8 @@ def specifications(lock, *, receipt=None, local=False, only_rank=None):
     settings = lock.get("serving") or {}
     ranks = [only_rank] if only_rank is not None else range(len(specs))
     selected = (card["profile"], card["target_variant"])
-    return [replace(serving.container(spec, settings, rank=rank, model=selected), name=container_name(lock, rank),
+    return [replace(serving.container(spec, settings, rank=rank, model=selected,
+                                      source_root=site["ranks"][rank]["repository"]), name=container_name(lock, rank),
                     labels={**spec.labels, **container_labels(lock, rank)})
             for rank, spec in zip(ranks, specs, strict=True)]
 
@@ -542,6 +543,25 @@ def connection(lock):
         model = args[args.index("--served-model-name") + 1]
     host_ip = ((lock.get("serving") or {}).get("api_bind")
                or lock["site"].get("api_address", lock["site"]["ranks"][0]["management_ip"]))
+    return {"api_url": f"http://{host_ip}:{port}/v1", "model": model, "port": port}
+
+
+def recorded_connection(directory, lock):
+    """``connection`` of a deployment from its own rank-0 container record.
+
+    ``connection`` renders the deployment's command from the installed
+    package's profile, which refuses a lock whose checkpoint or profile the
+    package no longer lists (after a package change, or a record of a
+    research entry). The deployment directory keeps the command that ran in
+    ``rank0/container.json`` (``rendered``), whose ``--port`` and
+    ``--served-model-name`` are what a reader of the record needs.
+    """
+    args = read(Path(directory) / "rank0" / "container.json")["command"]
+    port = int(args[args.index("--port") + 1])
+    model = args[args.index("--served-model-name") + 1]
+    site = lock["site"]
+    host_ip = ((lock.get("serving") or {}).get("api_bind") or site.get("api_address")
+               or site["ranks"][0]["management_ip"])
     return {"api_url": f"http://{host_ip}:{port}/v1", "model": model, "port": port}
 
 

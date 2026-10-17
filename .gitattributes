@@ -57,3 +57,4 @@ integrations/vllm/dcp2_prefill/*.patch whitespace=-trailing-space
 
 # Pinned SparkCache source bytes must survive Windows checkouts unchanged.
 integrations/sparkcache/8abbe9da67b8/** -text
+integrations/sparkcache/4a17f1f5198e/** -text whitespace=cr-at-eol

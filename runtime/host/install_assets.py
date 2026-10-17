@@ -226,6 +226,7 @@ class Assets:
         document, _ = self.fabric()
         return spread.Spread(
             document, say=progress.say, alive=lambda position: self.alive(rank_of[position]),
+            reserve=getattr(self, "reserve_route", None),
             start=lambda position, *args: start(rank_of[position], *args),
             send=lambda position, *args: send(rank_of[position], *args))
 

@@ -49,7 +49,7 @@ On top it enables the SparkCache KV connector:
   through `/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so`, both with
   their pinned SHA-256;
 - 64K-token spans (`spark_cache_min_span_tokens` 4096,
-  `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
+  `spark_cache_max_span_tokens` 65536), 32 GiB of cache bytes with a 28 GiB
   low watermark, and two capture slots of 512 MiB, the value of the qualified
   shared-2026.09.3 profile `glm53-flash-spark-tp2-dcp1-sparkcache`. Beside the
   base profile's 84.5 GiB of weights and 10 GiB of KV cache per Spark, two
@@ -76,7 +76,7 @@ variant only on an image whose lock lists it. No lock in this package lists
 it; the lock that
 [runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/](../../runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/README.md)
 records when a Spark builds the derived layer does. On every other image, including
-the default image of release 2026.10.4, the installer refuses the profile. The
+the default image of release 2026.10.5, the installer refuses the profile. The
 variant has no Compose exports: a Compose deployment runs the default image,
 whose lock does not list the profile.
 

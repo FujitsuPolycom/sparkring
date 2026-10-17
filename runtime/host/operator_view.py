@@ -20,6 +20,7 @@ import json
 import time
 from pathlib import Path
 
+from runtime.common import sparkcache
 from runtime.host import privilege
 
 PATH = Path("/var/lib/sparkring/operator-status.json")
@@ -75,7 +76,11 @@ def view(state_root: Path) -> dict:
             if not placements.exists(directory):
                 continue
             lock = installer.read(directory / "deployment.lock.json")
-            connection = installer.connection(lock)
+            try:
+                connection = installer.connection(lock)
+            except (ValueError, KeyError):
+                # The installed package no longer lists the record's checkpoint or profile.
+                connection = installer.recorded_connection(directory, lock)
             record = recovery.record_of(recovery_document, directory)
             deployments.append({
                 "id": directory.name,
@@ -84,6 +89,8 @@ def view(state_root: Path) -> dict:
                 "positions": list(slot) if slot else list(range(len(lock["site"]["ranks"]))),
                 "api_port": connection["port"],
                 "backend": lock.get("backend"),
+                "sparkcache_size": sparkcache.deployment_budget(lock),
+                **sparkcache.deployment_options(lock),
                 "stopped": placements.stopped(directory),
                 "recovery": {"enabled": bool(record.get("enabled")),
                              "failures": record.get("failures", 0),
@@ -167,6 +174,9 @@ def lines(document: dict, *, now=time.time) -> list[str]:
                       f" | model {deployment['model']} | API port {deployment['api_port']}"
                       f" | transport {deployment.get('backend') or 'prepared'}")
         recovery_record = deployment.get("recovery") or {}
+        if deployment.get("sparkcache_size") is not None:
+            result.append(sparkcache.status_line(deployment["sparkcache_size"]))
+        result.extend(sparkcache.option_lines(deployment))
         if recovery_record:
             timer = document.get("recovery_timer")
             result.append("  automatic recovery: "

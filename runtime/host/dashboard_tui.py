@@ -196,6 +196,8 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
         segs += [sep, (f"{down} down", style(CRIT, bold=True))]
     segs += [sep, (f"{round(running)} reqs", style(WARN, bold=True) if running else style(dim=True)),
              sep, (f"{tps:,.0f} tok/s", style(GOOD, bold=True) if tps >= 0.05 else style(dim=True))]
+    if running >= 1:
+        segs += [sep, (f"{tps / running:,.0f} tok/s each", style(INFO))]
     # `age` is the time since this view's last read of the service, `period` how often the service
     # reads each model's /metrics (5 s while viewed, no API reads without a viewer).
     collector = snapshot.get("collector") or {}

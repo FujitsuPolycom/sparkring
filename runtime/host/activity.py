@@ -82,7 +82,7 @@ def read_metrics(url):
         return None
 
 
-def assess(root, positions, *, metrics=None, quiet_path=None, probe=True):
+def assess(root, positions, *, metrics=None, quiet_path=None, probe=True, operation="install"):
     """Inspect locks, benchmark holders and neighbours once at an operator's request."""
     root = Path(root)
     reasons = []
@@ -96,16 +96,16 @@ def assess(root, positions, *, metrics=None, quiet_path=None, probe=True):
         where = owner.get("positions")
         if placement.overlap(positions, where):
             reason("blocked", where, owner["operation"], slices.label(where))
-        elif owner["operation"].startswith("install"):
+        elif operation == "install" and owner["operation"].startswith("install"):
             reason("may-be-affected", where, owner["operation"],
                    transfer_resource(root, where, positions))
     quiet = dashboard.quiet_state(Path(quiet_path or dashboard.QUIET_PATH), time.time())
-    for holder in quiet["holders"]:
+    for holder in quiet["holders"] if operation != "down" else ():
         reason("may-be-affected", None, "benchmark " + str(holder.get("label") or "measurement"), "the fabric network")
-    if quiet["operator"]:
+    if quiet["operator"] and operation != "down":
         reason("may-be-affected", None, "dashboard quiet mode (traffic is not sampled)", "the fabric network")
     observations = []
-    if not any(row["grade"] == "blocked" for row in reasons):
+    if operation != "down" and not any(row["grade"] == "blocked" for row in reasons):
         try:
             cluster = installer.read(root / "cluster.json")
             layout = placement.layout_of(cluster)

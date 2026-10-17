@@ -570,9 +570,9 @@ def test_status_says_the_model_runs_on_one_spark_only(pair, monkeypatch, capsys)
     assert "  API: HTTP 503 from /health: the model engine has stopped" in lines
 
 
-def test_status_of_a_serving_model_keeps_node_a_first(pair, monkeypatch, capsys):
+def test_status_headline_reflects_a_serving_model(pair, monkeypatch, capsys):
     lines = status(monkeypatch, capsys)
-    assert lines[:2] == ["Ring: test", "network-configured | next: sparkring models"]
+    assert lines[:2] == ["Ring: test", f"Serving: {PROFILE} (0-1) | next: sparkring status"]
     assert "Model: The model runs on every Spark and its API answers" in lines
     assert controller.lifecycle(["status", "--refresh", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["model"]["state"] == "serving"
