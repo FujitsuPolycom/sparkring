@@ -23,10 +23,10 @@ and five SparkCache variants. This page is the release record.
 Status: **implemented**; release maturity **candidate**. The image is in the
 registry as
 `ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd`
-([publication](#publication)). Two SparkCache profiles were installed and
-served on this image, and three more on the same composition's recheck
-build; the others were admitted by the installer's image checks and not
-started on it ([evidence](#evidence)).
+([publication](#publication)). The five SparkCache profiles and
+`deepseek-v41-flash-tp4` were installed and served on this image; the other
+14 profiles were admitted by the installer's image checks and not started on
+it ([evidence](#evidence)).
 
 ## Identity
 
@@ -61,7 +61,10 @@ installing their CSF checkpoints by default.
 ## Profiles and transports
 
 The lock admits 20 profiles. The status column is the profile catalog's
-([profiles](../../../profiles/README.md)).
+([profiles](../../../profiles/README.md)). `deepseek-v41-flash-tp4` lists
+two checkpoints: `original` (the default, unchanged) and `1017`, DeepSeek's
+2026-10-17 weights, installed with `--checkpoint 1017`
+([install reference](../../../docs/operations/install-reference.md)).
 
 | Profiles | Status | Notes |
 |---|---|---|
@@ -119,18 +122,42 @@ during live use of the two installations, as observed by the operator; the
 harness polls never caught a request mid-decode. Its theme switch was checked
 at desktop and 375 px width.
 
-The other 15 profiles of the lock were admitted by the lock's `record` step:
+On 2026-10-17, from the release candidate tree with the default payload check
+(`fast`), each of the five SparkCache profiles was installed, saved a session,
+restored it after a restart of the deployment and recovered after one bit was
+flipped in every chunk file of rank 1's cache
+([record](../../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-profiles-ring8-20261017.md)):
+
+| Profile | Sparks | Install | Restore after restart | After rank-1 corruption |
+|---|---|---|---|---|
+| `qwen38-flash-next-csf-sparkcache-tp2` | 4-5 | rc=0, 640 s | 17,088 of 18,530 tokens in 1.45 s | first read recomputes and re-saves; second read restores |
+| `glm53-flash-nvfp4-sparkcache-crc32-tp2` | 6-7 | rc=0, 612 s | 14,336 of 15,681 in 1.5 s | as above |
+| `glm53-flash-nvfp4-sparkcache-crc32-tp4` | 4-7 | rc=0, 599 s | 15,360 of 15,756 in 0.9 s | as above |
+| `qwen38-flash-next-step5500-sparkcache-tp4` | 4-7 | rc=0, 271 s | 17,280 of 18,532 in 0.7 s | as above |
+| `deepseek-v41-flash-sparkcache-tp4` (`--sparkcache-size 48G`) | 0-3 | rc=0, 385 s | 14,592 of 14,884 in 0.7 s | as above |
+
+`deepseek-v41-flash-tp4` installed on this image too (rc=0, 404 s; check
+passed; a smoke request answered). The two installer fixes of this release
+were checked on the same ring with the release package
+([record](../../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md)):
+after `sparkring setup` rewrote the fabric document, the SparkCache TP4
+deployment on 0-3 passed `check`, `down`, `up` and `check` (the previous
+package refused that restart), and the dashboard's site file was written
+while stopped records named an unlisted checkpoint.
+
+The other 14 profiles of the lock were admitted by the lock's `record` step:
 the installer's admission (`installer_image.admit`) with the image's isolated
 `verify`, which checks the installed files and receipts, passed for each.
-They were not started on this image; `glm53-flash-nvfp4-sparkcache-crc32-tp4`
-was not started on the recheck build either.
+They were not started on this image.
 
 ## Qualification
 
 | Gate | Result | Record |
 |---|---|---|
 | `image-lock`: image `f625053225d4` built by the composition's `build.sh`, the KV-block lease contract verified in the parent and the built image, and its lock recorded for 20 profiles | passed | [installer-image.json](installer-image.json) |
-| `ring8-installs`: the two installations on this image | passed (status research-only) | [Evidence](#evidence) |
+| `ring8-installs`: the five SparkCache profiles and `deepseek-v41-flash-tp4` installed and served on this image | passed (status research-only) | [Evidence](#evidence) |
+| `installer-restart-after-setup`: check, down and up of a retained deployment after `sparkring setup` rewrote the fabric document | passed (one deployment, one setup) | [installer fixes record](../../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md) |
+| `dashboard-unlisted-checkpoint`: the site file written with stopped records of an unlisted checkpoint | passed | [installer fixes record](../../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md) |
 | `sparkcache-recovery`: cluster-name preservation, parallel disjoint installations and corruption recovery at both integrity modes, on the recheck build | passed (single runs) | [Evidence](#evidence) |
 | `relay-marker`: source `c64c74535c06`, unchanged since release 2026.10.2; package builds take the binary that [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json) records | passed | [relay-marker-artifact.json](../../../spark_transport/fabric/relay-marker-artifact.json) |
 | `publication`: registry push, anonymous manifest and configuration check of `sha256:ac313f040fe3…`, and the publication records | passed | [publication.json](publication.json) |
@@ -144,11 +171,13 @@ was not started on the recheck build either.
 - The SparkCache profiles are research-only: single runs, no soak, no
   correctness screen and no performance measurement on this image. The
   restores are attributed to SparkCache by its log lines, not by timing alone.
-- `glm53-flash-nvfp4-sparkcache-crc32-tp4` has not started on any build of
-  this composition.
-- None of release 2026.10.4's 15 profiles was started on this image. The
-  layer changes no file they load, except the connector metrics logger, whose
-  transform only changes which connector statistics the stat logger prints.
+- Of release 2026.10.4's 15 profiles, only `deepseek-v41-flash-tp4` was
+  started on this image. The layer changes no file they load, except the
+  connector metrics logger, whose transform only changes which connector
+  statistics the stat logger prints.
+- `--checkpoint 1017` of `deepseek-v41-flash-tp4` was qualified by its
+  contributor on release 2026.10.4's image; on this image the 1017 weights
+  served only under the SparkCache TP4 profile as a research configuration.
 - The dashboard's per-request output rate rests on the operator's
   observation; no harness captured it.
 - The Install Builder lists the five SparkCache profiles as install-command

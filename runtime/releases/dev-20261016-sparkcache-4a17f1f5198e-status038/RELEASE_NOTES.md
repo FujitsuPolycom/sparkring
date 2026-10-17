@@ -13,7 +13,7 @@ licensed under the Local Inference Lab License, Version 1.0:
 Packages built from tag `2026.10.5` install this release's image by default.
 The
 [release record](https://github.com/FujitsuPolycom/sparkring/blob/2026.10.5/runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)
-has the evidence and the open gates.
+has the evidence and what remains open.
 
 ## What's in it
 
@@ -37,6 +37,11 @@ restored from the cache instead of recomputed.
   entries are dropped and saved again.
 
 Every 2026.10.4 profile is admitted on this image with its 2026.10.4 settings.
+`deepseek-v41-flash-tp4` offers DeepSeek's 2026-10-17 weights as
+`--checkpoint 1017` (`deepseek-ai/DeepSeek-V4.1-Flash-1017`, served as
+`DeepSeek-V4.1-Flash-1017-TP4`); without the option it installs the original
+checkpoint as before. Contributed by Sabatino Masala with a hardware record
+on a four-Spark ring.
 
 Installer and dashboard, in the package:
 
@@ -45,6 +50,13 @@ Installer and dashboard, in the package:
 - `sparkring status` names the serving profiles and their Sparks.
 - The dashboard shows the output rate per running request, has a light and
   dark theme switch, and each model's Logs panel shows a follow command.
+- A deployment starts again after `sparkring setup` rewrote the fabric
+  document: each Spark accepts a copy that records the cabling the
+  deployment was made on.
+- The dashboard keeps its page when a stopped record names a checkpoint the
+  installed package does not list.
+- The Install Builder offers the five SparkCache profiles as install-command
+  cards with the cache size and payload-check fields.
 
 ## Tested
 
@@ -57,6 +69,12 @@ On a ring of eight DGX Sparks, with `sparkring install`:
 - On the same composition's recheck build: three installations on disjoint
   Sparks at once, and cache recovery after one Spark's cache files were
   corrupted, for DeepSeek (fast integrity) and Qwen (sha256).
+- Each of the five SparkCache profiles with the default payload check:
+  installed, a session saved and restored after a restart, and recovered
+  after one Spark's cache files were corrupted; `deepseek-v41-flash-tp4` also
+  installed and answered.
+- The restart-after-setup fix and the dashboard fix, on a deployment that
+  served DeepSeek-V4.1-Flash-1017 with the SparkCache TP4 profile.
 
 The other profiles passed the installer's image checks but were not started
 on this image. No speed was measured on it.

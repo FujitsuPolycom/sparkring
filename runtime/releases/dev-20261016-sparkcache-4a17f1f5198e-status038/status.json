@@ -153,6 +153,28 @@
       "scope": "the ring dashboard on Node A during live use of the two installations above, 2026-10-16; the theme switch at desktop and 375 px width",
       "result": "a tokens-per-second figure shown per running request (observed by the operator, no harness capture); the theme switch changes the page and stores the choice",
       "record": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md#evidence"
+    },
+    {
+      "id": "ring8-sparkcache-profiles-fast-integrity",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+      "scope": "each of the five SparkCache profiles installed on this image with the default payload check (fast) from the release candidate tree, 2026-10-17 00:16 to 02:16; a session saved, restored after a restart of the deployment and recovered after one bit was flipped in every chunk file of rank 1's cache; the DeepSeek installation with --sparkcache-size 48G; single runs",
+      "result": "every installation rc=0 and sparkring check passed; every replay after a restart and every second read after corruption was a scheduler restore hit of the same token count (12,000 to 17,000 tokens in 0.5 to 1.5 s against 4 to 11 s recomputed); the damaged entries were invalidated and saved again; glm53-flash-nvfp4-sparkcache-crc32-tp4 ran on hardware for the first time; deepseek-v41-flash-tp4 also installed and answered",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-profiles-ring8-20261017.md"
+    },
+    {
+      "id": "ring8-installer-fixes",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+      "scope": "the package with the restart-after-setup rule and the dashboard's unlisted-checkpoint reader on every Spark, 2026-10-17 10:24 to 11:22: a SparkCache TP4 deployment on positions 0-3, then sparkring setup (which rewrote every copy of the fabric document), check, down, up and check of the same deployment; the dashboard's site file written with stopped records of an unlisted checkpoint under the controller",
+      "result": "setup changed the document digest from 98a214db to 65d55ba0; check, down, up and check returned 0 and the API was ready after 5 minutes, which the previous package refused four times; the site file lists both serving deployments",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md"
     }
   ],
   "gates": [
@@ -165,8 +187,8 @@
     {
       "id": "ring8-installs",
       "result": "passed",
-      "scope": "deepseek-v41-flash-sparkcache-tp4 and qwen38-flash-next-step5500-sparkcache-tp4 installed on this image with sparkring install and served requests (research-only); the other 18 profiles were not started on this image",
-      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+      "scope": "the five SparkCache profiles and deepseek-v41-flash-tp4 installed on this image with sparkring install and served requests (research-only); the other 14 profiles were admitted by the lock's record step and not started on this image",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-profiles-ring8-20261017.md"
     },
     {
       "id": "sparkcache-recovery",
@@ -197,6 +219,18 @@
       "result": "passed",
       "scope": "python scripts/generate_compose_builder.py --output DIR --tag 2026.10.5 --verify with this release's lock as the default: 10 profiles, 2 images, 459 valid and 910 invalid generated sites agree with compose.build, 36 stricter",
       "record": "docs/operations/compose-builder.md"
+    },
+    {
+      "id": "installer-restart-after-setup",
+      "result": "passed",
+      "scope": "a retained SIRCL deployment's check, down and up after sparkring setup rewrote the fabric document, on this image with the release package; one deployment, one setup",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md"
+    },
+    {
+      "id": "dashboard-unlisted-checkpoint",
+      "result": "passed",
+      "scope": "the dashboard's site file written while stopped records name a checkpoint the installed package does not list",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md"
     }
   ],
   "github_release": {
