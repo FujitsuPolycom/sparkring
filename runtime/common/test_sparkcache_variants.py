@@ -1,8 +1,10 @@
 """Opt-in SparkCache variants preserve their base profiles' serving settings.
 
 The GLM, Qwen and DeepSeek variants pin checkpoints and isolated roots. They
-run only on a lock that lists them: no published lock of this package does;
-locks recorded by the derived compositions supply explicit admission.
+run only on a lock that lists them. Release 2026.10.5's published lock lists
+the GLM CRC32, Qwen and DeepSeek variants (installer_image.LISTED_SPARKCACHE_VARIANTS);
+no published lock lists the earlier GLM variants (installer_image.UNLISTED), whose
+admission comes only from locks recorded by their derived compositions.
 """
 
 import json
@@ -168,12 +170,28 @@ def test_variant_renders_the_connector_settings_and_storage_paths(profile):
         assert extra["spark_cache_payload_integrity"] == "fast"
 
 
-@pytest.mark.parametrize("profile", VARIANTS)
-def test_no_image_of_this_package_runs_the_variant(profile):
+@pytest.mark.parametrize("profile", installer_image.UNLISTED)
+def test_no_image_of_this_package_runs_an_unlisted_variant(profile):
     from runtime.common import image_lock
     for row in installer_image.catalog():
         with pytest.raises(ValueError, match="not admitted"):
             image_lock.validate(row["lock"], profile)
+    with pytest.raises(ValueError, match="not admitted"):
+        installer_image.for_profile(profile)
+
+
+@pytest.mark.parametrize("profile", installer_image.LISTED_SPARKCACHE_VARIANTS)
+def test_only_the_sparkcache_release_image_runs_a_listed_variant(profile):
+    from runtime.common import image_lock
+    sparkcache_release = "dev-20261016-sparkcache-4a17f1f5198e-status038"
+    for row in installer_image.catalog():
+        if row["name"] == sparkcache_release:
+            image_lock.validate(row["lock"], profile)
+        else:
+            with pytest.raises(ValueError, match="not admitted"):
+                image_lock.validate(row["lock"], profile)
+    # The installer selects the v3 default for it; the v2 selector (installer_image.for_profile) never admits it.
+    assert image_lock.for_profile(profile) == image_lock.default() and image_lock.default()["name"] == sparkcache_release
     with pytest.raises(ValueError, match="not admitted"):
         installer_image.for_profile(profile)
 

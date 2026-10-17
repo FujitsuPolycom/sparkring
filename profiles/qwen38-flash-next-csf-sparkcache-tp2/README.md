@@ -4,10 +4,15 @@ This profile runs [Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD](https://huggingface.c
 created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
 License, Version 1.0. The checkpoint is fixed at `dc5b8ab2fa14bc4fecd6886273b7ebc6095662e2`.
 
-Status: **Experimental** (`research-only`). No serving, CUDA restore or performance
-qualification record exists for the corrected composition. Follow the
-[build and hardware acceptance plan](../../docs/research/qwen38-sparkcache.md).
-An image lock must explicitly admit `qwen38-flash-next-csf-sparkcache-tp2`; published locks do not.
+Status: **Experimental** (`research-only`). The default image, release
+2026.10.5's, admits this profile
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)).
+One installation on two Sparks of that image composition's recheck build
+returned rc=0 and passed `sparkring check`
+([record](../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md));
+no serving-restore or performance record exists. The
+[hardware acceptance plan](../../docs/research/qwen38-sparkcache.md) states the
+gates.
 
 Serving settings match [qwen38-flash-next-tp2](../qwen38-flash-next-tp2/README.md)
 with its `csf` checkpoint selected. The connector uses

@@ -256,7 +256,9 @@ def test_image_data_renders_profiles_on_that_image(monkeypatch, data):
     monkeypatch.setattr(export, "profile_ids", lambda: ["mimo-v26-flash-mopd-tp2"])
     row = next(row for row in data["images"] if not row["default"])
     document = export.image_data(row["name"])
-    profile, = document["profiles"]
+    # The rollback image's data lists the patched profile and, when its lock admits one, an INSTALL_ONLY profile.
+    assert {p["id"] for p in document["profiles"]} - set(export.INSTALL_ONLY) == {"mimo-v26-flash-mopd-tp2"}
+    profile = next(p for p in document["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2")
     default = next(p for p in data["profiles"] if p["id"] == "mimo-v26-flash-mopd-tp2")
     assert document["image"] == row["name"] and profile["image_option"] == profile["render_image_option"] == row["option"]
     assert profile["image_release"] == row["name"] and profile["image_id"] != default["image_id"]
@@ -293,8 +295,9 @@ console.log(JSON.stringify(profiles.map(profile => {
 })));""", {"profiles": profiles, "meta": meta_of(data)})
     install, render = f"sudo sparkring install --profile {mimo}", f"sparkring compose render {mimo} --site ring.site.yaml --output ring"
     assert data["images"][0]["name"] == image_lock.default_row()["name"]
+    assert rollback["option"] == "2026.10.4"
     assert found == [[install, render],
-                     [install + " --image 2026.10.2", render + " --image 2026.10.2"],
+                     [install + " --image 2026.10.4", render + " --image 2026.10.4"],
                      [install + " --image 2026.10.1", render + " --image 2026.10.1"]]
 
 

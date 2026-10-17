@@ -56,11 +56,13 @@ QWEN4_EXP_PREPARED = (*QWEN, "swift15-qwen38-flash-next-tp2", "swift15-qwen38-fl
 SUPPORTED = (*QWEN4_EXP_PREPARED, "deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp2",
              "glm53-flash-nvfp4-spark-tp4", "mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
 # Opt-in SparkCache installer profiles pin their checkpoint and isolated root.
-# Only a derived image lock that explicitly lists a variant admits it. GLM CRC32
+# Only an image lock that explicitly lists a variant admits it. GLM CRC32
 # uses installer-sparkcache-8abbe9da67b8; Qwen requires the recurrent-topology
 # runtime in installer-sparkcache-3daf882e358b, which also serves GLM CRC32.
 # DeepSeek V4.1 requires installer-sparkcache-4a17f1f5198e, which also admits
-# GLM CRC32 and both Qwen variants. The earlier GLM IDs retain gab86b70.
+# GLM CRC32 and both Qwen variants; release 2026.10.5's image is that
+# composition's build, so its published lock lists those five variants. The
+# earlier GLM IDs retain gab86b70, which no published lock lists.
 SPARKCACHE_CRC32_VARIANTS = ("glm53-flash-nvfp4-sparkcache-crc32-tp2", "glm53-flash-nvfp4-sparkcache-crc32-tp4")
 QWEN_SPARKCACHE_VARIANTS = ("qwen38-flash-next-csf-sparkcache-tp2",
                            "qwen38-flash-next-step5500-sparkcache-tp4")
@@ -73,12 +75,15 @@ SPARKCACHE_VARIANTS = ("glm53-flash-nvfp4-sparkcache-tp2", "glm53-flash-nvfp4-sp
 # the variants on any other lock (image_lock.prefill_source_problem, image_lock.checkpoint_problem). A
 # published release's lock may list them; `sparkring images --profile` names the images that run them.
 DCP_VARIANTS = ("glm53-flash-nvfp4-spark-tp2-dcp2",)
+# SparkCache variants that a published release's lock lists, release 2026.10.5's; like the DCP
+# variants, `sparkring images --profile` names the images that run them.
+LISTED_SPARKCACHE_VARIANTS = (*SPARKCACHE_CRC32_VARIANTS, *QWEN_SPARKCACHE_VARIANTS, *DEEPSEEK_SPARKCACHE_VARIANTS)
 # Installer profiles that no image lock of this package lists; every image of the package refuses them.
-UNLISTED = SPARKCACHE_VARIANTS
+UNLISTED = tuple(profile for profile in SPARKCACHE_VARIANTS if profile not in LISTED_SPARKCACHE_VARIANTS)
 # Installer profiles outside the profile list of the shared installer images: only the lock of an image
 # built for them lists them. They have no Compose exports; `sparkring install` renders them through the
 # Compose adapter on such a lock.
-NOT_SHARED = (*UNLISTED, *DCP_VARIANTS)
+NOT_SHARED = (*UNLISTED, *LISTED_SPARKCACHE_VARIANTS, *DCP_VARIANTS)
 SUPPORTED = (*SUPPORTED, *NOT_SHARED)
 # Installer profiles that only an image carrying SIRCL ring sessions runs (an image lock v3,
 # runtime/common/image_lock.py): the research-only profiles whose ranks reach each other through

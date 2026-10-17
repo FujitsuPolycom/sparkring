@@ -1,0 +1,206 @@
+{
+  "schema": "sparkring-release-status/v1",
+  "release": "2026.10.5",
+  "image_release": "dev-20261016-sparkcache-4a17f1f5198e-status038",
+  "status": "implemented",
+  "maturity": "candidate",
+  "record": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md",
+  "notes": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/RELEASE_NOTES.md",
+  "image": {
+    "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+    "build_tag": "sparkring:sparkcache-4a17f1f5198e-status038",
+    "build_composition": "runtime/images/compositions/installer-sparkcache-4a17f1f5198e",
+    "recorded_lock_sha256": "dfe3d6610b6a6c16fbe74ca85523d8192873a24aeaa00d875d9fd66e8c3b0704",
+    "registry_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd",
+    "image_bytes": 31898421029,
+    "delta_download_bytes_from_rollback": 708862,
+    "download_bytes": 15283745437
+  },
+  "rollback": {
+    "release": "2026.10.4",
+    "image_release": "dev-20261013-dcp2prefill-status038-sircl-tp6",
+    "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f",
+    "command": "sudo sparkring install --profile PROFILE --image 2026.10.4"
+  },
+  "profiles": [
+    {
+      "id": "deepseek-v41-flash-sparkcache-tp4",
+      "status": "research-only"
+    },
+    {
+      "id": "deepseek-v41-flash-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "deepseek-v41-flash-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-csf-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp2-dcp2",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-spark-tp4",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf"
+    },
+    {
+      "id": "glm53-flash-nvfp4-sparkcache-crc32-tp2",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-flash-nvfp4-sparkcache-crc32-tp4",
+      "status": "research-only",
+      "note": "admitted; not started on this image or its recheck build"
+    },
+    {
+      "id": "glm53-nvfp4-csf-tp6",
+      "status": "research-only",
+      "note": "not started on this image"
+    },
+    {
+      "id": "glm53-nvfp4-tp8",
+      "status": "research-only"
+    },
+    {
+      "id": "glm53-nvfp4-tp8-dcp1",
+      "status": "research-only"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "mimo-v26-flash-mopd-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-csf-sparkcache-tp2",
+      "status": "research-only"
+    },
+    {
+      "id": "qwen38-flash-next-qad-tp4",
+      "status": "implemented"
+    },
+    {
+      "id": "qwen38-flash-next-step5500-sparkcache-tp4",
+      "status": "research-only"
+    },
+    {
+      "id": "qwen38-flash-next-tp2",
+      "status": "implemented",
+      "default_checkpoint_on_this_image": "csf (no serving record on this image's vLLM build)"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp2",
+      "status": "implemented"
+    },
+    {
+      "id": "swift15-qwen38-flash-next-tp4",
+      "status": "research-only"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "ring8-install-deepseek-v41-flash-sparkcache-tp4",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+      "scope": "sparkring install --profile deepseek-v41-flash-sparkcache-tp4 --on 0-3 with the installer's default settings (SparkCache 32 GiB, integrity fast), 2026-10-16, at the same time as the Qwen installation below; one installation",
+      "result": "rc=0 after 522 s; sparkring check passed; served requests; after a restart, replaying a saved session logged one scheduler line per request (restore hit tokens=14592 ms=100.3); no performance measured",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+    },
+    {
+      "id": "ring8-install-qwen38-flash-next-step5500-sparkcache-tp4",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+      "scope": "sparkring install --profile qwen38-flash-next-step5500-sparkcache-tp4 --on 4-7 with the installer's default settings, 2026-10-16; one installation",
+      "result": "rc=0 after 487 s; sparkring check passed; served requests; no performance measured",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+    },
+    {
+      "id": "ring8-recheck-sparkcache-6ef875ecd94b",
+      "lane": "public-functional",
+      "status": "research-only",
+      "maturity": "live-validated",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:c6fb5c0f4abb25835cdd93f87fa38864c34451b13015eada41939c6f97b6c8da",
+      "scope": "the same composition built with SparkCache 6ef875ecd94b, which differs from 4a17f1f5198e only in operator log lines and counter names, installed with --image-lock on 2026-10-16: deepseek-v41-flash-sparkcache-tp4 on 0-3, qwen38-flash-next-csf-sparkcache-tp2 on 4-5 and glm53-flash-nvfp4-sparkcache-crc32-tp2 on 6-7 at once, then qwen38-flash-next-step5500-sparkcache-tp4 on 4-7 with --sparkcache-integrity sha256; single runs",
+      "result": "the three parallel installations returned rc=0 (405, 531 and 512 s); setup without --name kept the cluster name across two runs and a plan; after rank 1's cache files were corrupted and the deployment restarted, DeepSeek (fast integrity) recomputed the first read, invalidated 4 damaged entries, re-saved, and restored 14,592 of 14,875 tokens on all four ranks on the second read (0.54 s); Qwen (sha256) restored 17,280 of 18,533 tokens (0.79 s); a sha256 installation replaying a session saved in fast mode first missed with reason integrity_schema_mismatch, then saved and restored in its own schema",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+    },
+    {
+      "id": "dashboard-per-request-rate",
+      "lane": "public-functional",
+      "status": "implemented",
+      "maturity": "observed",
+      "hardware": "a ring of eight DGX Sparks (GB10), ConnectX-7 RoCE, SIRCL ring sessions with NCCL off, GPU clocks not locked",
+      "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+      "scope": "the ring dashboard on Node A during live use of the two installations above, 2026-10-16; the theme switch at desktop and 375 px width",
+      "result": "a tokens-per-second figure shown per running request (observed by the operator, no harness capture); the theme switch changes the page and stores the choice",
+      "record": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md#evidence"
+    }
+  ],
+  "gates": [
+    {
+      "id": "image-lock",
+      "result": "passed",
+      "scope": "image f625053225d4 built by runtime/images/compositions/installer-sparkcache-4a17f1f5198e/build.sh on a Spark holding the parent image; the KV-block lease contract verified in the parent and in the built image; its lock recorded for 20 profiles by the installer's admission and isolated verify",
+      "record": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json"
+    },
+    {
+      "id": "ring8-installs",
+      "result": "passed",
+      "scope": "deepseek-v41-flash-sparkcache-tp4 and qwen38-flash-next-step5500-sparkcache-tp4 installed on this image with sparkring install and served requests (research-only); the other 18 profiles were not started on this image",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+    },
+    {
+      "id": "sparkcache-recovery",
+      "result": "passed",
+      "scope": "cluster-name preservation, three disjoint installations in parallel, and SparkCache recovery after rank-local corruption at both integrity modes, on the recheck build c6fb5c0f4abb; single runs",
+      "record": "performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md"
+    },
+    {
+      "id": "relay-marker",
+      "result": "passed",
+      "scope": "relay marker source c64c74535c06 unchanged since release 2026.10.2; its recorded binary applies",
+      "record": "spark_transport/fabric/relay-marker-artifact.json"
+    },
+    {
+      "id": "publication",
+      "result": "passed",
+      "scope": "registry push and anonymous manifest and configuration check of sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd; configuration is the image ID; 58 layers, the first 57 release 2026.10.4's",
+      "record": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/publication.json"
+    },
+    {
+      "id": "glm53-tp6-hardware",
+      "result": "not-run",
+      "scope": "an installation of glm53-nvfp4-csf-tp6 on six Sparks of this image",
+      "record": "profiles/glm53-nvfp4-csf-tp6/README.md"
+    },
+    {
+      "id": "compose-v3",
+      "result": "passed",
+      "scope": "python scripts/generate_compose_builder.py --output DIR --tag 2026.10.5 --verify with this release's lock as the default: 10 profiles, 2 images, 459 valid and 910 invalid generated sites agree with compose.build, 36 stricter",
+      "record": "docs/operations/compose-builder.md"
+    }
+  ],
+  "github_release": {
+    "tag": "2026.10.5",
+    "prerelease": false
+  }
+}

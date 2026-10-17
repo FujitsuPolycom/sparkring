@@ -7,11 +7,12 @@ pinned parent image available:
 bash runtime/images/compositions/installer-sparkcache-4a17f1f5198e/build.sh
 ```
 
-Status: **implemented**, CPU validated; serving qualification is pending.
-One local build is recorded in [`built-image.json`](built-image.json) (image
-`sha256:c6fb5c0f4abb25835cdd93f87fa38864c34451b13015eada41939c6f97b6c8da`). The recipe writes
-that file beside these inputs only after image admission. It does not publish
-a release or push an image.
+Status: **implemented**. The build recorded in [`built-image.json`](built-image.json)
+(image `sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8`)
+is the image of release 2026.10.5
+([release record](../../../releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)).
+The recipe writes that file beside these inputs only after image admission. It
+does not publish a release or push an image.
 
 [sources.json](sources.json) pins SparkCache `4a17f1f5198eb2402bcd6669425c62857937d39f` for
 GLM-5.3-Flash, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash, including quorum

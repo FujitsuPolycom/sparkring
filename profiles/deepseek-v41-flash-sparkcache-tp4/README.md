@@ -2,14 +2,15 @@
 
 This profile serves `deepseek-ai/DeepSeek-V4.1-Flash`, published by DeepSeek,
 at revision `dba1be0a40aa45a94ad051997016db3960a90277`. Status:
-**Experimental** (`research-only`). The 2026-10-15 worker inventory is recorded; scheduler startup failed
-with SparkCache `a5940102c99e`. The role-independent alignment fix is CPU
-validated and awaits image build and hardware qualification.
-
-Build the [pinned image composition](../../runtime/images/compositions/installer-sparkcache-4a17f1f5198e/README.md),
-then follow [HARDWARE.md](HARDWARE.md) in an authorized maintenance window.
-The default image does not admit this profile. Its build lock remains beside
-the composition; no published release or default is changed.
+**Experimental** (`research-only`). The default image, release 2026.10.5's,
+admits this profile
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)).
+On that image it installed on four Sparks, served requests and restored a
+saved session after a restart; on the image composition's recheck build it
+recovered from a corrupted rank's cache, re-saving the damaged entries
+([record](../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md)).
+No performance is measured. [HARDWARE.md](HARDWARE.md) states the gates that
+remain open for serving qualification.
 
 The [configuration](config.json) keeps every serving setting of
 `deepseek-v41-flash-tp4`, including TP4/DCP1, DSpark five-token speculation,

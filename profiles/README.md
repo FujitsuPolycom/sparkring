@@ -33,8 +33,8 @@ the tables below from them; edit the profiles, not the tables.
 - **Quant** links the checkpoint repository; Stock is the publisher's original
   checkpoint. Profiles pin exact revisions.
 - **Installer-profile rows** show what `sparkring install` installs on its
-  default image, release 2026.10.4's
-  `dev-20261013-dcp2prefill-status038-sircl-tp6`: the checkpoint, its
+  default image, release 2026.10.5's
+  `dev-20261016-sparkcache-4a17f1f5198e-status038`: the checkpoint, its
   configured context and its recorded KV pool. Other rows show the profile's
   own default.
 - **DCP** is the decode-context-parallel size, the number of Sparks that split
@@ -377,9 +377,11 @@ Profiles of six and eight Sparks are research-only and appear only under Configu
 
 The Experimental GLM SparkCache CRC32 profiles for
 [two Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md) and
-[four Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp4/README.md) require the
-SparkCache source layer over release 2026.10.4. Their separate IDs preserve
-the earlier variants' image-specific evidence; neither has hardware results.
+[four Sparks](glm53-flash-nvfp4-sparkcache-crc32-tp4/README.md) run on the
+default image, release 2026.10.5's, whose lock admits them. Their separate IDs
+preserve the earlier variants' image-specific evidence. The two-Spark profile
+installed and passed `sparkring check` on that image composition's recheck
+build ([record](../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md)); the four-Spark profile has no hardware result.
 
 \* KV capacity depends on configuration and enabled features, including
 SparkCache, and does not show that concurrent full-context requests fit. Each

@@ -66,7 +66,7 @@ variant only on an image whose lock lists it. No lock in this package lists
 it; the lock that
 [runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/](../../runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/README.md)
 records when a Spark builds the derived layer does. On every other image, including
-the default image of release 2026.10.4, the installer refuses the profile. The
+the default image of release 2026.10.5, the installer refuses the profile. The
 variant has no Compose exports: a Compose deployment runs the default image,
 whose lock does not list the profile.
 

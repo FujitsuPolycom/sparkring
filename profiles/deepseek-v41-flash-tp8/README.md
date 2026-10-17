@@ -11,8 +11,8 @@ Experimental.
 The eight ranks reach each other through ConnectX relays, so only SIRCL ring
 sessions carry the model's collectives, with NCCL off. It installs on an
 image whose lock (schema v3) carries the SIRCL layer and lists
-`deepseek-v41-flash-tp8`, such as the default image, release 2026.10.4's
-([release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)):
+`deepseek-v41-flash-tp8`, such as the default image, release 2026.10.5's
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)):
 
 ```bash
 sudo sparkring install --profile deepseek-v41-flash-tp8

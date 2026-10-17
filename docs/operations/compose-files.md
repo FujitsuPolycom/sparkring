@@ -47,7 +47,7 @@ expect ([images and checkpoints](#images-and-checkpoints)).
 
 ## Images and checkpoints
 
-The nine installer profiles default to release `2026.10.4`'s image and the
+The nine installer profiles default to release `2026.10.5`'s image and the
 same checkpoints as `sparkring install`. This applies to generated per-rank
 files, `sparkring compose render`, `sparkring init` and its ZIP export, and
 standalone installer-profile exports. GLM-5.3-Flash and two-Spark Qwen use CSF
@@ -59,7 +59,7 @@ arguments to select release `2026.10.1`. Its image uses the profile's own
 checkpoint because it cannot read CSF.
 
 The Qwen and GLM SparkCache exports listed above use their frozen
-`shared-2026.09.3` image and checkpoints; they do not run on `2026.10.4`.
+`shared-2026.09.3` image and checkpoints; they do not run on `2026.10.5` or `2026.10.4`.
 Installer SparkCache variants (`glm53-flash-nvfp4-sparkcache-tp2` and
 `glm53-flash-nvfp4-sparkcache-tp4`) have no public Compose exports and require an explicit development image
 lock that lists them. Relayed six- and eight-Spark profiles use the

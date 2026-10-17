@@ -2,6 +2,6 @@
   "schema": "sparkring-compose-selection/v1",
   "profile": "mimo-v26-flash-mopd-tp4",
   "checkpoint": null,
-  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "3df7051d08d6f1d3974e76aad2ddca12bace2bbb902eb8e2944d34c147b746b2"
+  "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
+  "deployment": "be2063c78f0c06a55642202830eb3ffa0a27505398ec6a4be16a1a46304ae88e"
 }

@@ -89,12 +89,13 @@ kernel library for GB10 (SM121) GPUs. Each profile's
 `profiles/<id>/config.json` selects the model, the vLLM arguments and the
 transport limits ([install reference](../operations/install-reference.md)).
 
-The installer's default image is release 2026.10.4,
-`dev-20261013-dcp2prefill-status038-sircl-tp6`. It carries SIRCL 0.3.2,
-libsircl 0.6.0, three GLM-5.3 vLLM plugins and runtime-status 0.3.8, and
-its [image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
-admits 15 profiles. Release 2026.10.2 is its rollback
-(`--image 2026.10.2`). [Images](../operations/images.md#installer-image)
+The installer's default image is release 2026.10.5,
+`dev-20261016-sparkcache-4a17f1f5198e-status038`. It carries SIRCL 0.3.2,
+libsircl 0.6.0, three GLM-5.3 vLLM plugins, runtime-status 0.3.8 and
+SparkCache for three models, and
+its [image lock](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json)
+admits 20 profiles. Release 2026.10.4 is its rollback
+(`--image 2026.10.4`). [Images](../operations/images.md#installer-image)
 describes both.
 
 ## Collective path

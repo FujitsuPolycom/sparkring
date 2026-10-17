@@ -231,6 +231,15 @@
       "path": "runtime/images/prepare_sparkcache.py",
       "kind": "python",
       "reason": "Prepare the pinned SparkCache CRC32 runtime over release 2026.10.4 from authenticated parent receipts; the shared derived-layer builder records the image after construction."
+    },
+    {
+      "id": "installer-sparkcache-4a17f1f5198e",
+      "path": "runtime/images/prepare_sparkcache.py",
+      "kind": "python",
+      "reason": "Prepare the pinned SparkCache 4a17f1f5198e runtime for GLM-5.3-Flash, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash over release 2026.10.4 from authenticated parent receipts, with the change-only connector logging transform of the parent's KV-connector metrics logger; the shared derived-layer builder builds the one layer and records the image's sparkring-installer-image/v3 lock for its twenty profiles.",
+      "releases": [
+        "dev-20261016-sparkcache-4a17f1f5198e-status038"
+      ]
     }
   ]
 }

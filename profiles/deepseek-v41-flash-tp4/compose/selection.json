@@ -2,6 +2,6 @@
   "schema": "sparkring-compose-selection/v1",
   "profile": "deepseek-v41-flash-tp4",
   "checkpoint": "original",
-  "image_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
-  "deployment": "55f0c5a9e0884c442b1a817006228a5c90d5c364056ca022605baf7cecd2736d"
+  "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
+  "deployment": "daf9d8e9b8433083c7b3fadf221b7210e8280f0a9a390c9b880df3123808ceb7"
 }

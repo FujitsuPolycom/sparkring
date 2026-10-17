@@ -11,7 +11,8 @@ MIMO = ("mimo-v26-flash-mopd-tp2", "mimo-v26-flash-mopd-tp4")
 def test_images_lists_the_default_first_and_each_image_s_release_tag(capsys):
     assert images.main([]) == 0
     lines = capsys.readouterr().out.splitlines()
-    assert lines[0] == "dev-20261013-dcp2prefill-status038-sircl-tp6  (2026.10.4, default)"
+    assert lines[0] == "dev-20261016-sparkcache-4a17f1f5198e-status038  (2026.10.5, default)"
+    assert "dev-20261013-dcp2prefill-status038-sircl-tp6  (2026.10.4)" in lines
     assert "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036  (2026.10.2)" in lines
     from runtime.common import installer
     for row in images.rows():
@@ -36,6 +37,16 @@ def test_no_image_of_this_package_lists_an_unlisted_profile(capsys, variant):
     # records, so no listed image runs them.
     assert images.main(["--profile", variant, "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == []
+
+
+@pytest.mark.parametrize("variant", installer_image.LISTED_SPARKCACHE_VARIANTS)
+def test_only_the_sparkcache_image_lists_a_listed_sparkcache_variant(capsys, variant):
+    # Release 2026.10.5's lock, the default, is the only published lock that names the SparkCache variants
+    # its composition was built for.
+    assert images.main(["--profile", variant, "--json"]) == 0
+    listed = json.loads(capsys.readouterr().out)
+    assert [row["name"] for row in listed] == ["dev-20261016-sparkcache-4a17f1f5198e-status038"]
+    assert listed[0]["default"] and listed[0]["tags"] == ["2026.10.5"]
 
 
 @pytest.mark.parametrize("variant", installer_image.DCP_VARIANTS)
@@ -87,9 +98,11 @@ def test_images_for_a_profile_lists_only_images_that_run_it(capsys):
     assert "dev-20260927-mimovision-cuda1342-nccl2323-status032" in [row["name"] for row in listed]
     assert not any(name.startswith("mimo-v26-flash-rl") for row in listed for name in row["profiles"])
     assert listed[0]["transports"] == ["libsircl", "prepared", "sircl"] and listed[0]["line"] == "kraken"
-    # Release 2026.10.2's image, the default image's parent, also carries SIRCL; the older images do not.
-    assert listed[1]["name"] == "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036" and listed[1]["transports"] == listed[0]["transports"]
-    assert all(row["transports"] == ["prepared"] and row["line"] is None for row in listed[2:])
+    # Releases 2026.10.4's and 2026.10.2's images, the default image's parent and grandparent, also carry SIRCL;
+    # the older images do not.
+    assert [row["name"] for row in listed[1:3]] == ["dev-20261013-dcp2prefill-status038-sircl-tp6", "dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036"]
+    assert all(row["transports"] == listed[0]["transports"] for row in listed[1:3])
+    assert all(row["transports"] == ["prepared"] and row["line"] is None for row in listed[3:])
     assert not any(row["archived"] for row in listed)
 
 

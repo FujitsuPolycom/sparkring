@@ -387,8 +387,13 @@ files with `sparkring compose`. A derived checkpoint, such as
 - Pasted site files are read as YAML 1.2: an unquoted `on` or `yes` stays a
   string, which SparkRing's own reader would read as true.
 - The page lists the [Compose profiles](compose.md#supported-profiles) that
-  `sparkring install` deploys; it omits the SparkCache Qwen profiles,
-  `qwen38-flash-next-tp2-sparkcache` and `qwen38-flash-next-qad-tp4-sparkcache`.
+  `sparkring install` deploys and the install-only `glm53-flash-nvfp4-spark-tp2-dcp2`;
+  it omits every SparkCache profile: the Compose profiles
+  `qwen38-flash-next-tp2-sparkcache` and `qwen38-flash-next-qad-tp4-sparkcache`,
+  and the five SparkCache installer profiles that release 2026.10.5's image lock
+  admits, which have no card and no `--sparkcache-size` or
+  `--sparkcache-integrity` field; the landing page's table names them among
+  the profiles the default image runs.
 - Generated files carry no serving qualification, like every `compose render`
   deployment.
 

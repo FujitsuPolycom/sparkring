@@ -4,10 +4,16 @@ This profile runs [Qwen3.8-Flash-Next-NVFP4](https://huggingface.co/local-infere
 created by Local Inference Lab, Inc. and licensed under the Local Inference Lab
 License, Version 1.0. The checkpoint is fixed at `60215d26cf5e42c2db6128774032d57fc62678da`.
 
-Status: **Experimental** (`research-only`). No serving, CUDA restore or performance
-qualification record exists for the corrected composition. Follow the
-[build and hardware acceptance plan](../../docs/research/qwen38-sparkcache.md).
-An image lock must explicitly admit `qwen38-flash-next-step5500-sparkcache-tp4`; published locks do not.
+Status: **Experimental** (`research-only`). The default image, release
+2026.10.5's, admits this profile
+([release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)).
+On that image it installed on four Sparks and served requests; on the image
+composition's recheck build, with `--sparkcache-integrity sha256`, it restored
+17,280 of 18,533 tokens of a saved session after a corrupted rank's cache was
+dropped ([record](../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-sparkcache-recovery-ring8-20261016.md)).
+No performance record exists. The
+[hardware acceptance plan](../../docs/research/qwen38-sparkcache.md) states the
+remaining gates.
 
 Serving settings match [qwen38-flash-next-qad-tp4](../qwen38-flash-next-qad-tp4/README.md)
 with its `qad-step5500-ple1000` checkpoint selected. The connector uses
