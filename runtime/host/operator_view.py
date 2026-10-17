@@ -76,7 +76,11 @@ def view(state_root: Path) -> dict:
             if not placements.exists(directory):
                 continue
             lock = installer.read(directory / "deployment.lock.json")
-            connection = installer.connection(lock)
+            try:
+                connection = installer.connection(lock)
+            except (ValueError, KeyError):
+                # The installed package no longer lists the record's checkpoint or profile.
+                connection = installer.recorded_connection(directory, lock)
             record = recovery.record_of(recovery_document, directory)
             deployments.append({
                 "id": directory.name,
