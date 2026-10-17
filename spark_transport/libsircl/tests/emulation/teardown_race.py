@@ -25,6 +25,17 @@ flag waits time out (--late-rank R --late-s S: rank R starts its all-reduce S se
 SIRCL_STARTUP_WAIT_S below S) or when releasing the transport fails (--env SIRCL_EMU_FAIL_DEREG=1: the
 stand-in fails every deregistration, and destroy keeps the arena allocated).
 
+With --expect concurrent-close each round's child is finalized and destroyed while another thread of the
+rank keeps enqueueing all-reduces on it. The parent communicator exchanges the threads' accepted call
+counts after close. Both close calls must succeed when counts match; when counts differ, ncclRemoteError
+is also allowed because unmatched collectives time out. Every thread must exit, its calls must return
+success or a refusal (ncclInvalidArgument or ncclInvalidUsage), and a call after destroy must be refused.
+
+With --expect revoke-destroy each round revokes the child (ncclCommRevoke) right after its all-reduce and
+then destroys it. Destroy after revoke runs the same two teardown rounds as destroy of a ready
+communicator, so the rounds pass as with exact: every child all-reduce is exact, revoke and destroy succeed,
+and the parent stays healthy.
+
 With --expect fail-stop (and --env LIBSIRCL_FAIL_STOP=1, a late rank and SIRCL_STARTUP_WAIT_S below its
 delay) the rounds run as with exact, and the runner checks fail-stop instead: every rank but the late one
 must end with exit status 70 and the fail-stop line of a timed-out wait, whether the watcher or the library
@@ -46,6 +57,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -56,6 +68,43 @@ RING = {
     "SIRCL_LARGE_SCHEDULE": "ring", "SIRCL_GATHER_SCHEDULE": "ring", "SIRCL_SCATTER_SCHEDULE": "ring",
     "SIRCL_RING_MIN_BYTES": "0", "LIBSIRCL_RING_WINDOW": "0", "SIRCL_STARTUP_WAIT_S": "20",
 }
+
+
+def close_concurrently(enqueue, finalize, destroy, prepare_thread, exchange_counts, timeout=30):
+    """Race close against enqueue; exchange counts only after the worker has stopped changing them."""
+    started_calls = threading.Event()
+    results, errors = [], []
+
+    def worker_main():
+        try:
+            prepare_thread()
+            for _ in range(1000):
+                result = enqueue()
+                results.append(result)
+                started_calls.set()
+                if result:
+                    break
+        except Exception as error:
+            errors.append(f"{type(error).__name__}: {error}")
+        finally:
+            started_calls.set()
+
+    worker = threading.Thread(target=worker_main)
+    worker.start()
+    if not started_calls.wait(timeout):
+        raise TimeoutError("enqueue thread did not finish its first call before close")
+    finalized = finalize()
+    destroyed = destroy()
+    worker.join(timeout=timeout)
+    if worker.is_alive():
+        raise TimeoutError("enqueue thread did not exit after close")
+    after = enqueue()
+    counts = exchange_counts(results.count(0))
+    allowed = (0,) if len(set(counts)) == 1 else (0, 6)
+    return dict(ok=bool(results) and results[0] == 0 and not errors and finalized in allowed and destroyed in allowed
+                and all(result in (0, 4, 5) for result in results) and after in (4, 5),
+                finalize=finalized, destroy=destroyed, calls=results, accepted_counts=counts,
+                after_close=after, worker_exited=True, worker_errors=errors)
 
 
 def run_rank(args) -> int:
@@ -71,12 +120,15 @@ def run_rank(args) -> int:
     lib.ncclGetLastError.argtypes = [ctypes.c_void_p]
     lib.ncclAllReduce.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int, ctypes.c_int,
                                   ctypes.c_void_p, ctypes.c_void_p]
+    lib.ncclAllGather.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int,
+                                  ctypes.c_void_p, ctypes.c_void_p]
     lib.ncclCommInitRank.argtypes = [ctypes.POINTER(ctypes.c_void_p), ctypes.c_int, unique_id.UniqueId,
                                      ctypes.c_int]
     lib.ncclCommSplit.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p),
                                   ctypes.c_void_p]
     lib.ncclCommDestroy.argtypes = [ctypes.c_void_p]
     lib.ncclCommFinalize.argtypes = [ctypes.c_void_p]
+    lib.ncclCommRevoke.argtypes = [ctypes.c_void_p, ctypes.c_int]
     lib.ncclCommGetAsyncError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
     lib.sirclGetReceipt.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_size_t,
                                     ctypes.POINTER(ctypes.c_size_t)]
@@ -134,14 +186,43 @@ def run_rank(args) -> int:
             rounds.append(entry)
             save()
             continue
+        if args.expect == "concurrent-close":
+            def exchange_counts(accepted):
+                # The parent already coordinates the splits and must survive every child close.
+                sent = torch.tensor([accepted], dtype=torch.int64, device="cuda")
+                received = torch.empty(world, dtype=torch.int64, device="cuda")
+                torch.cuda.synchronize()
+                gathered = lib.ncclAllGather(ctypes.c_void_p(sent.data_ptr()),
+                                            ctypes.c_void_p(received.data_ptr()), 1, 4, comm,
+                                            ctypes.c_void_p(stream.cuda_stream))
+                torch.cuda.synchronize()
+                state = ctypes.c_int(0)
+                queried = lib.ncclCommGetAsyncError(comm, ctypes.byref(state))
+                if gathered or queried or state.value:
+                    raise RuntimeError(f"parent count exchange failed: {gathered}, {queried}, {state.value}")
+                return received.cpu().tolist()
+
+            entry.update(close_concurrently(
+                lambda: lib.ncclAllReduce(ctypes.c_void_p(x.data_ptr()), ctypes.c_void_p(y.data_ptr()),
+                                         count, 9, 0, child, ctypes.c_void_p(stream.cuda_stream)),
+                lambda: lib.ncclCommFinalize(child), lambda: lib.ncclCommDestroy(child),
+                lambda: torch.cuda.set_device(0), exchange_counts))
+            entry.update(ok=entry["ok"] and exact, exact=exact,
+                         seconds=round(time.perf_counter() - started, 3))
+            rounds.append(entry)
+            save()
+            continue
+        revoked = lib.ncclCommRevoke(child, 0) if args.expect == "revoke-destroy" else 0
+        if revoked:
+            entry["revoke_error"] = lib.ncclGetLastError(None).decode(errors="replace")
         state = ctypes.c_int(0)
         lib.ncclCommGetAsyncError(child, ctypes.byref(state))
         if not exact or state.value:
             entry["async_error"] = state.value
             entry["error"] = lib.ncclGetLastError(child).decode(errors="replace")
         destroyed = lib.ncclCommDestroy(child)
-        entry.update(ok=exact and not state.value and destroyed == 0, exact=exact, destroy=destroyed,
-                     seconds=round(time.perf_counter() - started, 3))
+        entry.update(ok=exact and not state.value and not revoked and destroyed == 0, exact=exact, destroy=destroyed,
+                     revoke=revoked, seconds=round(time.perf_counter() - started, 3))
         if destroyed:
             entry["destroy_error"] = lib.ncclGetLastError(None).decode(errors="replace")
         rounds.append(entry)
@@ -230,6 +311,8 @@ def run_group(args) -> int:
               f"statuses {codes}, {len(problems)} problems, {time.perf_counter() - started:.1f} s; work {work}")
         return 1 if problems else 0
     for rank in range(args.world):
+        if codes[rank] != 0:
+            problems.append(f"rank {rank}: exit {codes[rank]}; log {work / f'rank{rank}.log'}")
         path = work / f"rank{rank}.json"
         if not path.exists():
             problems.append(f"rank {rank}: no result (exit {codes[rank]}); log {work / f'rank{rank}.log'}")
@@ -246,6 +329,9 @@ def run_group(args) -> int:
                 problems.append(f"rank {rank} round {entry['round']}: the close did not fail as expected: "
                                 f"finalize {entry.get('finalize')}, all-reduce after the close "
                                 f"{entry.get('after_close')}, destroy {entry.get('destroy')}: {entry.get('error')}")
+            elif not entry.get("ok") and args.expect == "concurrent-close":
+                failed_rounds.add(entry["round"])
+                problems.append(f"rank {rank} round {entry['round']}: concurrent close {entry}")
             elif not entry.get("ok"):
                 failed_rounds.add(entry["round"])
                 problems.append(f"rank {rank} round {entry['round']}: exact {entry.get('exact')}, destroy "
@@ -275,7 +361,8 @@ def main(argv=None) -> int:
     parser.add_argument("--slow-rank", type=int, default=0)
     parser.add_argument("--slow-ns", type=int, default=5_000_000)
     parser.add_argument("--timeout", type=float, default=1800)
-    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop"), default="exact")
+    parser.add_argument("--expect", choices=("exact", "close-error", "fail-stop", "concurrent-close",
+                                                 "revoke-destroy"), default="exact")
     parser.add_argument("--late-rank", type=int, default=-1, help="the rank that starts each all-reduce late")
     parser.add_argument("--late-s", type=float, default=0.0)
     parser.add_argument("--env", action="append", default=[], help="NAME=VALUE for every rank")

@@ -224,6 +224,13 @@ refuses a library without the mode. The layer records `fail_stop` in the lock
 when the library's bytes name `LIBSIRCL_FAIL_STOP`; the stock-image preflight
 reads the same mark from the host library.
 
+The lane sets no wait variable, so every communicator runs in the startup
+wait regime with libsircl's default limit of 600 s (`SIRCL_STARTUP_WAIT_S`)
+for its whole life: nothing switches it to the serving regime
+(`sirclSetWaitRegime`). A rank whose peer died learns of it only when one of
+its waits reaches that limit, 600 s after the wait began; fail-stop then ends
+the process.
+
 ### Container settings
 
 Each rank's container gets the profile's settings with these changes
@@ -236,7 +243,7 @@ Each rank's container gets the profile's settings with these changes
 | `LIBSIRCL_FAIL_STOP` | `1` |
 | `LIBSIRCL_NCCL_API_VERSION` | `22705`, libsircl's default: it passes vLLM's and torch's feature gates without opening newer ones |
 | `LIBSIRCL_TRANSPORT` | `verbs` |
-| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW`, `LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES` | the rank's routing settings, recorded per rank in the deployment lock |
+| `LIBSIRCL_POSITION`, `SIRCL_PEER_ROUTES`, `LIBSIRCL_CHAIN_ORDER`, `LIBSIRCL_RELAYED_LANES`, `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES`, `LIBSIRCL_RING_WINDOW`, `LIBSIRCL_P2P_WINDOWS`, `SIRCL_P2P_CHUNK_BYTES` | the rank's routing settings, recorded per rank in the deployment lock |
 | `SIRCL_BOOTSTRAP_ADDR` | the rank's `VLLM_HOST_IP` |
 | `SIRCL_GID_INDEX` | the profile's `NCCL_IB_GID_INDEX`, else 3 |
 | `LIBSIRCL_RECEIPT` | `/run/sparkring/sircl/receipts/libsircl`: one receipt per communicator in the deployment's receipt directory on each Spark |

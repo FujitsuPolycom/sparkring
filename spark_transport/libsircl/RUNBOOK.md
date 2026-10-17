@@ -1,9 +1,11 @@
 # libsircl runbook
 
 Commands to build libsircl, check it in GPU emulation on the workstation, run the pair milestone on a
-cabled pair of NVIDIA DGX Spark systems, and run relayed groups (a path of four, the cycle of eight). Status: sections
-3.1 to 3.3 ran on the pair at positions 0-1 (`STATUS.md`, hardware evidence); sections 3.4, 3.5 and 4
-have not run. Only the operator who holds the ring measurement lock runs sections 3 and 4.
+cabled pair of NVIDIA DGX Spark systems, and run relayed groups (a path of four, the cycle of eight). Status
+(research-only): sections 3.1 to 3.5 ran on the cabled pairs at positions 0-1 and 6-7, and section 4's
+bit-exact check, nccl-tests and timing sweeps on the path of four at positions 4-7 and the cycle of eight
+(`STATUS.md`, hardware evidence). Sections 3 and 4 change the Sparks: only the ring's operator, who
+schedules the ring's time, runs them.
 
 Safety classes, as in SIRCL's ring runbook:
 
@@ -144,7 +146,8 @@ NCCL_TESTS_BUILD=/opt/nccl-tests/build bash tools/emulation_suite.sh /tmp/libsir
 
 ## 3. Pair milestone on Sparks at positions 0 and 1 (MUTATES HOST; operator only)
 
-Conditions: the serving image (the image whose ID starts `aba309e4610c`, or its successor), host
+Conditions: the serving image (the image whose ID starts `aba309e4610c`; another image gives other library
+and pack bytes, which the run's records then name), host
 networking, GPU 0, the RDMA devices of the cabled pair, containers started the way SIRCL's ring harness
 starts them. `LAN0` is the wired-LAN address of the Spark at position 0 and `IFACE` the wired-LAN
 interface name (the site file's `lan_interface`). The route maps are SIRCL's for `path:0-1` with two
@@ -237,7 +240,7 @@ python3 tests/emulation/perf_rank.py --library $LIB --world 2 --rank <r> --id-se
 ```
 
 Exit: every size checked is correct; the eager 8192-byte rows give the milestone's eager latency
-measurement (criterion: at or below 20 us) and the graph rows its graph measurement, pending 3.4.
+measurement (criterion: at or below 20 us) and the graph rows its graph measurement.
 
 ### 3.4 nccl-tests, unmodified, through `LD_PRELOAD`
 
@@ -473,4 +476,6 @@ env <line r> [schedule variables] python3 tests/emulation/perf_rank.py --library
     --id-server $LAN0:29724 --out /tmp/sircl-ccl/perf-<schedule>-rank<r>.json
 ```
 
-The library's default large-message schedule stays `pieces` until these measurements choose another.
+Without schedule variables the library takes the pair plan on a cabled pair and the cycle plan on a ring that
+closes over cables (`README.md`, "Pair default" and "Cycle default"), else `pieces`; these measurements
+compare the schedules.

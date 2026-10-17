@@ -409,6 +409,89 @@ int test_already_cancelled_join(const unsigned char id[128], int world, int rank
         self.assertEqual([r for r, _ in results], [0] * world)
         return [handle for _, handle in results]
 
+    def test_every_descriptor_is_close_on_exec_from_its_creation(self):
+        """The bootstrap creates every socket and pipe close-on-exec atomically (SOCK_CLOEXEC, accept4 with
+        SOCK_CLOEXEC, pipe2 with O_CLOEXEC), never setting the flag after the fact, so a concurrent fork and
+        exec cannot inherit one. A build of the bootstrap whose socket, accept, accept4, pipe and pipe2 calls
+        are wrapped (ld --wrap) counts the creations made without the flag."""
+        build = Path(self.build.name)
+        probe = build / "cloexec_probe.c"
+        probe.write_text(r'''
+#define _GNU_SOURCE
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <unistd.h>
+static int created, missed;
+int __real_socket(int, int, int);
+int __real_accept(int, struct sockaddr *, socklen_t *);
+int __real_accept4(int, struct sockaddr *, socklen_t *, int);
+int __real_pipe(int[2]);
+int __real_pipe2(int[2], int);
+int __wrap_socket(int d, int t, int p) { created++; missed += !(t & SOCK_CLOEXEC); return __real_socket(d, t, p); }
+int __wrap_accept(int f, struct sockaddr *a, socklen_t *l) { created++; missed++; return __real_accept(f, a, l); }
+int __wrap_accept4(int f, struct sockaddr *a, socklen_t *l, int x) {
+  created++; missed += !(x & SOCK_CLOEXEC); return __real_accept4(f, a, l, x); }
+int __wrap_pipe(int p[2]) { created++; missed++; return __real_pipe(p); }
+int __wrap_pipe2(int p[2], int x) { created++; missed += !(x & O_CLOEXEC); return __real_pipe2(p, x); }
+int test_created(void) { return created; }
+int test_missed(void) { return missed; }
+''', encoding="utf-8")
+        source = Path(__file__).resolve().parents[1] / "src" / "bootstrap.c"
+        library = build / "bootstrap_wrapped.so"
+        wrap = ",".join(f"--wrap={name}" for name in ("socket", "accept", "accept4", "pipe", "pipe2"))
+        subprocess.run([os.environ.get("CC", "cc"), "-std=c11", "-O2", "-fPIC", "-shared", "-pthread",
+                        "-I", str(source.parent), f"-Wl,{wrap}", str(source), str(probe), "-o", str(library)],
+                       check=True)
+        lib = ctypes.CDLL(str(library))
+        lib.sccl_bootstrap_id.argtypes = [ctypes.c_void_p]
+        lib.sccl_bootstrap_join.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p)]
+        lib.sccl_bootstrap_close.argtypes = [ctypes.c_void_p]
+        value = ctypes.create_string_buffer(128)
+        self.assertEqual(lib.sccl_bootstrap_id(value), 0)
+        handle = ctypes.c_void_p()
+        self.assertEqual(lib.sccl_bootstrap_join(value.raw, 1, 0, ctypes.byref(handle)), 0)
+        lib.sccl_bootstrap_close(handle)
+        # The id's listener and wake pipe, the joining socket and the root's accepted connection.
+        self.assertGreaterEqual(lib.test_created(), 4)
+        self.assertEqual(lib.test_missed(), 0)
+
+    def test_setup_timeout_must_be_valid(self):
+        """An invalid LIBSIRCL_SETUP_TIMEOUT_MS refuses the all-gather, naming the variable, instead of
+        silently waiting the 600 s default."""
+        handles = self.joined_group(1)
+        saved = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        try:
+            for invalid in ("abc", "0", "3600001", "-5"):
+                with self.subTest(value=invalid):
+                    os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = invalid
+                    result, _ = self.bootstrap.allgather(handles[0], b"x", 1)
+                    self.assertEqual(result, 4)
+                    self.assertIn(b"LIBSIRCL_SETUP_TIMEOUT_MS", self.bootstrap.lib.sccl_bootstrap_error())
+            os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "5000"
+            self.assertEqual(self.bootstrap.allgather(handles[0], b"ok", 1), (0, [b"ok"]))
+        finally:
+            if saved is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = saved
+            self.bootstrap.close(handles[0])
+
+    def test_idle_connections_do_not_hold_the_roots_slots(self):
+        """Thirty-two connections that never send a hello fill the root's pending slots; the root drops them
+        after its hello limit (1 s), so a rank that joins later is admitted within the join window."""
+        os.environ["SIRCL_BOOTSTRAP_TIMEOUT_MS"] = "8000"
+        value = self.bootstrap.unique_id()
+        port = struct.unpack("!H", value[16:18])[0]
+        idle = [socket.create_connection(("127.0.0.1", port), timeout=1) for _ in range(32)]
+        try:
+            time.sleep(1.5)
+            result, handle = self.bootstrap.join(value, 1, 0)
+            self.assertEqual(result, 0, self.bootstrap.lib.sccl_bootstrap_error())
+            self.bootstrap.close(handle)
+        finally:
+            for connection in idle:
+                connection.close()
+
     def test_allgather_rounds(self):
         world = 3
         handles = self.joined_group(world)
@@ -425,6 +508,37 @@ int test_already_cancelled_join(const unsigned char id[128], int world, int rank
         finally:
             for handle in handles:
                 self.bootstrap.close(handle)
+
+    def test_concurrent_allgathers_on_one_handle_run_one_after_another(self):
+        """Two threads start an all-gather on rank 0's handle at once while rank 1 runs two rounds: the two
+        rounds on rank 0 run one after another instead of interleaving their frames, so every round completes
+        and each of rank 1's rounds pairs with exactly one of rank 0's."""
+        saved = os.environ.get("LIBSIRCL_SETUP_TIMEOUT_MS")
+        os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = "3000"
+        try:
+            for attempt in range(20):
+                handles = self.joined_group(2)
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=3) as pool:
+                        zeros = [pool.submit(self.bootstrap.allgather, handles[0], payload * 3000, 2)
+                                 for payload in (b"a", b"b")]
+                        ones = pool.submit(lambda: [self.bootstrap.allgather(handles[1], payload, 2)
+                                                    for payload in (b"x", b"y")])
+                        zeros = [future.result(timeout=10) for future in zeros]
+                        ones = ones.result(timeout=10)
+                    self.assertEqual([result for result, _ in zeros + ones], [0] * 4, attempt)
+                    seen_by_zero = {parts[1]: parts[0] for _, parts in zeros}
+                    self.assertEqual(sorted(seen_by_zero), [b"x", b"y"], attempt)
+                    for _, parts in ones:
+                        self.assertEqual(parts[0], seen_by_zero[parts[1]], attempt)
+                finally:
+                    for handle in handles:
+                        self.bootstrap.close(handle)
+        finally:
+            if saved is None:
+                os.environ.pop("LIBSIRCL_SETUP_TIMEOUT_MS", None)
+            else:
+                os.environ["LIBSIRCL_SETUP_TIMEOUT_MS"] = saved
 
     def test_allgather_fails_fast_when_a_rank_leaves(self):
         handles = self.joined_group(3)
@@ -508,6 +622,32 @@ int test_already_cancelled_join(const unsigned char id[128], int world, int rank
             self.assertEqual(self.bootstrap.lib.sccl_bootstrap_id(buffer), 4)
         finally:
             os.environ.pop("SIRCL_BOOTSTRAP_ADDR")
+
+    def test_interface_exclusions_and_loopback(self):
+        """NCCL_SOCKET_IFNAME with exclusions only (``^docker``, ``^=lo``) never selects loopback, which a remote
+        rank cannot reach; ``^=name`` excludes exactly that interface; a list longer than 255 characters is
+        refused, naming the variable."""
+        if not any(name != "lo" for _, name in socket.if_nameindex()):
+            self.skipTest("no interface besides loopback")
+        os.environ.pop("SIRCL_BOOTSTRAP_IFNAME", None)
+        try:
+            for value in ("^docker", "^=lo", "^=lo,^docker"):
+                with self.subTest(list=value):
+                    os.environ["NCCL_SOCKET_IFNAME"] = value
+                    buffer = ctypes.create_string_buffer(128)
+                    result = self.bootstrap.lib.sccl_bootstrap_id(buffer)
+                    if result == 4 and b"no IPv4 address" in self.bootstrap.lib.sccl_bootstrap_error():
+                        self.skipTest("no IPv4 interface besides loopback")
+                    self.assertEqual(result, 0, self.bootstrap.lib.sccl_bootstrap_error())
+                    self.assertNotEqual(socket.inet_ntoa(buffer.raw[12:16]), "127.0.0.1")
+                    for handle in self.joined_group(1, buffer.raw):
+                        self.bootstrap.close(handle)
+            os.environ["NCCL_SOCKET_IFNAME"] = ",".join(["^docker"] * 40)
+            buffer = ctypes.create_string_buffer(128)
+            self.assertEqual(self.bootstrap.lib.sccl_bootstrap_id(buffer), 4)
+            self.assertIn(b"NCCL_SOCKET_IFNAME is longer than 255", self.bootstrap.lib.sccl_bootstrap_error())
+        finally:
+            os.environ.pop("NCCL_SOCKET_IFNAME", None)
 
     def test_invalid_env_and_arguments(self):
         for invalid in ["0", "-1", "nan", "600001"]:

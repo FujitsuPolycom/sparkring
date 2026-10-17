@@ -5,6 +5,7 @@
 
 #include <dirent.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <inttypes.h>
 #include <limits.h>
 #include <pthread.h>
@@ -18,6 +19,7 @@
 #include <unistd.h>
 
 #include "kernelpack.h"
+#include "link_plan.h"
 #include "transport/shm_verbs.h"
 
 /* -- SIRCL's native proxy (src/transport/sircl_roce_proxy.c), compiled once per transport ----- */
@@ -284,6 +286,9 @@ enum {
 #define P2P_DEFAULT_UNROLL 4u
 #define P2P_DEFAULT_CHUNK_BYTES 32768u
 
+/* The native layer's ring links post through relays in chunks of 32 KiB and accept a ring window of 1 to
+ * 60 such chunks (roce_set_links). */
+enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
 enum { ALG_AUTO = -1 };
 /* LIBSIRCL_FAIL_STOP's modes (see fail_stop). */
 enum { FAIL_STOP_EXIT = 1, FAIL_STOP_ABORT = 2 };
@@ -300,7 +305,9 @@ typedef struct {
   uint32_t startup_wait_us, serving_wait_us, proxy_abi, graph_staging;
   char kernel_pack[72], fold_pack[72], links_pack[72];
   /* The chain schedule: SIRCL_LARGE_SCHEDULE, geometry, and the chain order (ranks by chain index). */
-  uint32_t large_schedule, chain_slots, chain_chunk, chain_blocks, chain_unroll, chain_reserved;
+  uint32_t large_schedule, chain_slots, chain_chunk, chain_blocks, chain_unroll;
+  /* Fail-stop's mode (LIBSIRCL_FAIL_STOP, 0 for a communicator of one rank). */
+  uint32_t fail_stop;
   uint64_t chain_slot_bytes;
   /* Smallest collective (COLL_*) that auto runs as a chain op, and that a ring schedule runs as a ring op. */
   uint64_t chain_mins[COLLECTIVES], ring_mins[COLLECTIVES];
@@ -309,14 +316,17 @@ typedef struct {
    * collective (COLL_*), staggers, whether the ring that closes the chain runs (LIBSIRCL_RING_WINDOW
    * set), the reduce-scatter's column tile. */
   uint32_t gather_schedule, scatter_schedule, link_slots, link_blocks, link_unroll, ring_on;
-  uint32_t ring_stagger, ring_gather_stagger, link_chunk[COLLECTIVES], link_reserved;
+  uint32_t ring_stagger, ring_gather_stagger, link_chunk[COLLECTIVES];
+  /* The wait regime at setup (LIBSIRCL_WAIT_REGIME: 0 startup, 1 serving). */
+  uint32_t wait_regime;
   uint64_t link_slot_bytes, link_tile;
   /* Blocks per role and pieces per collective: chunk_set[c] when a link chunk variable sets the piece,
    * coll_blocks[c] from LIBSIRCL_<collective>_LINK_BLOCKS (0: unset), blocks_set when SIRCL_LINK_BLOCKS
    * sets link_blocks; pair_plan when the pair plan chooses the rest by size. */
   uint32_t chunk_set[COLLECTIVES], coll_blocks[COLLECTIVES], blocks_set, pair_plan;
-  /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies. */
-  uint32_t cycle_plan, cycle_reserved;
+  /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies; the ring all-reduce's relay form
+   * (LIBSIRCL_RING_REDUCE_PASSES, see sccl_engine.ring_reduce_passes). */
+  uint32_t cycle_plan, ring_reduce_passes;
   /* Point-to-point channels: on (LIBSIRCL_P2P_CHANNELS on a communicator of three or more ranks), the native
    * library's ABI, SIRCL's channel geometry (SIRCL_P2P_*) and the point-to-point pack. */
   uint32_t p2p_on, p2p_abi, p2p_slots, p2p_blocks, p2p_threads, p2p_unroll, p2p_chunk, p2p_reserved;
@@ -381,9 +391,10 @@ struct sccl_engine {
   uint32_t ring_window;
   /* The CPUs the transport's progress thread may run on (a CPU list, or "unpinned"). */
   char progress_cpus[160];
-  /* The ring all-reduce's form (LIBSIRCL_RING_REDUCE_PASSES): 2 (default), the relay stores its result to
-   * link 3's slot, then copies the slot to the output; 1, it stores both in one pass. Rank-local: both forms
-   * speak the same protocol and write the same bytes. */
+  /* The ring all-reduce's form (LIBSIRCL_RING_REDUCE_PASSES, agreed at setup): 2 (default), the relay stores
+   * its result to link 3's slot, then copies the slot to the output; 1, it stores both in one pass. Both
+   * speak the same protocol and are designed to write the same bytes, but one run of the one-pass form on a
+   * GB10 returned differing bits on one rank (STATUS.md), so 1 needs LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1. */
   int ring_reduce_passes;
   uint64_t link_off;
   sccl_CUdeviceptr link_counters, piece_counters, link_scratch;
@@ -433,7 +444,16 @@ struct sccl_engine {
   sccl_CUstream last_stream;
   /* Teardown: the progress thread stopped (sccl_engine_teardown_stop), when its stop was requested and
    * when it had stopped (CLOCK_REALTIME nanoseconds). */
-  int stopped;
+  int stopped, closing;
+  int lane_check_ms;  /* LIBSIRCL_LANE_CHECK_MS: the lane check's bound */
+  int traffic_class;  /* SIRCL_TRAFFIC_CLASS or NCCL_IB_TC */
+  int kp_held;  /* this engine holds a reference on its context's kernel-pack entry (sccl_kp_load) */
+  /* Quarantine (sccl_engine_destroy after an abort with a launch still running): the events recorded
+   * behind the last launch and the channels' work, the bytes held, the next quarantined engine. */
+  sccl_CUevent quarantine_done[1 + 2 * MAX_WORLD];
+  int quarantine_events;
+  uint64_t quarantine_bytes;
+  struct sccl_engine *quarantine_next;
   uint64_t stop_ns, stopped_ns;
   int have_last;
   sccl_CUevent order_event;
@@ -574,8 +594,9 @@ static int env_u64(const char *name, uint64_t fallback, uint64_t lo, uint64_t hi
   }
   char *end;
   errno = 0;
-  unsigned long long value = strtoull(text, &end, 10);
-  if (errno || *end || value < lo || value > hi) {
+  /* Digits only: strtoull would also take a sign ("-1" wraps to a huge value) and leading spaces. */
+  unsigned long long value = text[0] >= '0' && text[0] <= '9' ? strtoull(text, &end, 10) : (end = (char *)text, 0);
+  if (errno || *end || end == text || value < lo || value > hi) {
     put_error(err, len, "%s=%s must be an integer from %" PRIu64 " to %" PRIu64, name, text, lo, hi);
     return -1;
   }
@@ -749,6 +770,11 @@ static int link_settings(sccl_engine *e, shared_settings *s, int pair_plan, char
   e->ring_window = 0;
   if (ring && *ring) {
     if (env_u64("LIBSIRCL_RING_WINDOW", 0, 0, 0xFFFFFFFFu, &v, err, len)) return -1;
+    if (v && (v < RING_WINDOW_CHUNK || v / RING_WINDOW_CHUNK > RING_WINDOW_MAX_CHUNKS)) {
+      put_error(err, len, "LIBSIRCL_RING_WINDOW=%" PRIu64 " must be 0 or hold 1 to %d chunks of %d bytes", v,
+                RING_WINDOW_MAX_CHUNKS, RING_WINDOW_CHUNK);
+      return -1;
+    }
     e->ring_window = (uint32_t)v;
   }
   return 0;
@@ -761,12 +787,52 @@ typedef struct {
   uint64_t relayed;
 } position_record;
 
-/* The positions LIBSIRCL_FORWARD_WINDOWS gives a nonzero window toward (reached through relays), as bits;
- * a malformed entry counts as none here (forward_windows() reports it). */
-static uint64_t relayed_positions(void) {
-  const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
-  uint64_t mask = 0;
+/* LIBSIRCL_RELAYED_LANES, "<position>=<0|1>[/<0|1>],...": 1 for every lane toward that position that crosses
+ * relays, whatever its windows. tools/site_routes.py prints it on every rank of a layout with relays, so a
+ * relayed lane is known as relayed even when no forward or point-to-point window is printed for it (for
+ * example with --max-window 0). Fills `flags` (position by lane); -1 with `err` on a malformed value. */
+static int relayed_lanes(uint8_t flags[MAX_POSITIONS][MAX_LANES], char *err, size_t len) {
+  memset(flags, 0, sizeof(uint8_t[MAX_POSITIONS][MAX_LANES]));
+  const char *text = sccl_env("LIBSIRCL_RELAYED_LANES");
   if (!text || !*text) return 0;
+  if (strlen(text) >= 1024) {
+    put_error(err, len, "LIBSIRCL_RELAYED_LANES is longer than 1023 characters");
+    return -1;
+  }
+  char copy[1024];
+  snprintf(copy, sizeof copy, "%s", text);
+  for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
+    char *equals = strchr(entry, '='), *end;
+    long position = equals ? strtol(entry, &end, 10) : -1;
+    if (!equals || end != equals || position < 0 || position >= MAX_POSITIONS) {
+      put_error(err, len, "LIBSIRCL_RELAYED_LANES entry '%s' is not <position 0-63>=<0|1>[/<0|1>]", entry);
+      return -1;
+    }
+    int lane = 0;
+    for (char *save2 = NULL, *value = strtok_r(equals + 1, "/", &save2); value;
+         value = strtok_r(NULL, "/", &save2), ++lane) {
+      if (lane >= MAX_LANES || (strcmp(value, "0") && strcmp(value, "1"))) {
+        put_error(err, len, "LIBSIRCL_RELAYED_LANES entry for position %ld needs 1 or 2 flags of 0 or 1", position);
+        return -1;
+      }
+      flags[position][lane] = value[0] == '1';
+    }
+  }
+  return 0;
+}
+
+/* The positions reached through relays, as bits: those LIBSIRCL_FORWARD_WINDOWS gives a nonzero window
+ * toward, and those LIBSIRCL_RELAYED_LANES marks. A malformed entry counts as none here (read_settings and
+ * forward_windows() report it). */
+static uint64_t relayed_positions(void) {
+  uint8_t flags[MAX_POSITIONS][MAX_LANES];
+  uint64_t mask = 0;
+  if (relayed_lanes(flags, NULL, 0) == 0)
+    for (int p = 0; p < MAX_POSITIONS; ++p)
+      for (int l = 0; l < MAX_LANES; ++l)
+        if (flags[p][l]) mask |= 1ull << p;
+  const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
+  if (!text || !*text) return mask;
   char copy[1024];
   snprintf(copy, sizeof copy, "%s", text);
   for (char *save = NULL, *entry = strtok_r(copy, ",", &save); entry; entry = strtok_r(NULL, ",", &save)) {
@@ -779,9 +845,15 @@ static uint64_t relayed_positions(void) {
   return mask;
 }
 
-/* Whether LIBSIRCL_FORWARD_WINDOWS gives a nonzero window on some lane toward rank `peer` (the peer is
- * reached through relays). A malformed value counts as none here; forward_windows() reports it. */
+/* Whether rank `peer` is reached through relays: LIBSIRCL_RELAYED_LANES marks a lane toward it, or
+ * LIBSIRCL_FORWARD_WINDOWS gives a lane toward it a nonzero window. A malformed value counts as none here;
+ * read_settings and forward_windows() report it. */
 static int relayed_toward(const sccl_engine *e, int peer) {
+  uint8_t flags[MAX_POSITIONS][MAX_LANES];
+  int position = e->positions[peer];
+  if (relayed_lanes(flags, NULL, 0) == 0 && position >= 0 && position < MAX_POSITIONS)
+    for (int l = 0; l < MAX_LANES; ++l)
+      if (flags[position][l]) return 1;
   const char *text = sccl_env("LIBSIRCL_FORWARD_WINDOWS");
   if (!text || !*text) return 0;
   char copy[1024];
@@ -841,6 +913,7 @@ static int p2p_settings(sccl_engine *e, shared_settings *s, char *err, size_t le
   return 0;
 }
 
+static int traffic_class(int *out, char *err, size_t len);
 static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   shared_settings *s = &e->shared;
   uint64_t v;
@@ -913,14 +986,51 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   e->serving = regime && !strcmp(regime, "serving");
+  s->wait_regime = (uint32_t)e->serving;
   const char *stop = sccl_env("LIBSIRCL_FAIL_STOP");
   if (stop && *stop && strcmp(stop, "0") && strcmp(stop, "1") && strcmp(stop, "abort")) {
     put_error(err, len, "LIBSIRCL_FAIL_STOP=%s: 0, 1 or abort", stop);
     return -1;
   }
   e->fail_stop = !stop || !*stop || !strcmp(stop, "0") ? 0 : !strcmp(stop, "1") ? FAIL_STOP_EXIT : FAIL_STOP_ABORT;
+  uint8_t relayed[MAX_POSITIONS][MAX_LANES];
+  if (relayed_lanes(relayed, err, len)) return -1;
+  /* Read with the other settings, so that a bad value fails the first verdict on every rank. */
+  if (env_u64("LIBSIRCL_LANE_CHECK_MS", 10000, 1, 600000, &v, err, len)) return -1;
+  e->lane_check_ms = (int)v;
+  if (traffic_class(&e->traffic_class, err, len)) return -1;
+  /* The list variables are parsed from 1,024-byte copies: a longer value is refused, not cut. */
+  static const char *const lists[] = {"SIRCL_PEER_ROUTES", "LIBSIRCL_FORWARD_WINDOWS", "LIBSIRCL_P2P_WINDOWS",
+                                      "LIBSIRCL_RELAYED_LANES", "LIBSIRCL_CHAIN_ORDER", "SIRCL_GID_INDEX",
+                                      "SIRCL_PROGRESS_CPU", "LIBSIRCL_LINK_BLOCKS_CYCLE"};
+  for (size_t i = 0; i < sizeof lists / sizeof lists[0]; ++i) {
+    const char *text = sccl_env(lists[i]);
+    if (text && strlen(text) >= 1024) {
+      put_error(err, len, "%s is longer than 1023 characters", lists[i]);
+      return -1;
+    }
+  }
+  const char *interval = sccl_env("LIBSIRCL_RECEIPT_INTERVAL_S");
+  double seconds = 10.0;
+  if (interval && *interval) {
+    char *end;
+    seconds = strtod(interval, &end);
+    if (*end || !(seconds >= 0 && seconds <= 86400)) {
+      put_error(err, len, "LIBSIRCL_RECEIPT_INTERVAL_S=%s must be a number of seconds from 0 to 86400", interval);
+      return -1;
+    }
+  }
+  e->receipt_interval_ns = (uint64_t)(seconds * 1e9);
   if (env_u64("LIBSIRCL_RING_REDUCE_PASSES", 2, 1, 2, &v, err, len)) return -1;
+  const char *one_pass = sccl_env("LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH");
+  if (v == 1 && (!one_pass || strcmp(one_pass, "1"))) {
+    put_error(err, len, "LIBSIRCL_RING_REDUCE_PASSES=1 (the one-pass ring relay) is research-only: one run returned "
+              "differing bits on one rank and the cause is not isolated; set LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1 "
+              "to select it");
+    return -1;
+  }
   e->ring_reduce_passes = (int)v;
+  s->ring_reduce_passes = (uint32_t)v;
   const char *policy = sccl_env("LIBSIRCL_CPU_POLICY");
   if (policy && *policy && strcmp(policy, "performance") && strcmp(policy, "none")) {
     put_error(err, len, "LIBSIRCL_CPU_POLICY=%s: performance or none", policy);
@@ -1094,6 +1204,8 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(algorithm_plus_one, "SIRCL_ALLREDUCE_ALGORITHM");
   SAME(startup_wait_us, "SIRCL_STARTUP_WAIT_S");
   SAME(serving_wait_us, "SIRCL_SERVING_WAIT_S");
+  SAME(wait_regime, "LIBSIRCL_WAIT_REGIME");
+  SAME(fail_stop, "LIBSIRCL_FAIL_STOP");
   SAME(proxy_abi, "native proxy ABI");
   SAME(graph_staging, "stream-ordered allocation (cuMemAllocAsync and the device's memory pools), which "
                       "stages unaligned buffers under CUDA graph capture");
@@ -1113,6 +1225,7 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(blocks_set, "SIRCL_LINK_BLOCKS");
   SAME(pair_plan, "the pair plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
   SAME(cycle_plan, "the cycle plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
+  SAME(ring_reduce_passes, "LIBSIRCL_RING_REDUCE_PASSES");
   SAME(p2p_on, "LIBSIRCL_P2P_CHANNELS");
   SAME(p2p_abi, "point-to-point native ABI");
   SAME(p2p_slots, "SIRCL_P2P_SLOTS");
@@ -1236,6 +1349,8 @@ static int start_progress(sccl_engine *e) {
  * rank at that position (SIRCL's routes.forward_windows for the layout; tools/site_routes.py prints it),
  * 0 for a direct lane; positions outside the communicator are ignored. SIRCL_FORWARD_CHUNK_BYTES is the
  * chunk a windowed stripe is posted in (SIRCL's default 32,768). */
+/* The native proxy accepts a forward window of 1 to 60 chunks (roce_set_forward). */
+enum { FORWARD_MAX_CHUNKS = 60 };
 static int forward_windows(sccl_engine *e, char *err, size_t len) {
   memset(e->forward, 0, sizeof e->forward);
   e->forward_lanes = 0;
@@ -1266,8 +1381,19 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
          value = strtok_r(NULL, "/", &save2), ++lane) {
       char *stop;
       unsigned long bytes = strtoul(value, &stop, 10);
-      if (*stop || lane >= MAX_LANES || bytes > 0xFFFFFFFFul) {
-        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS entry '%s' needs 1 or 2 byte counts", entry);
+      if (*stop || !*value || bytes > 0xFFFFFFFFul) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: '%s' toward position %ld is not a byte count", value, position);
+        return -1;
+      }
+      if (lane >= MAX_LANES) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: the entry for position %ld has more than %d lanes", position,
+                  MAX_LANES);
+        return -1;
+      }
+      if (bytes && (bytes < chunk || bytes / chunk > FORWARD_MAX_CHUNKS)) {
+        put_error(err, len, "LIBSIRCL_FORWARD_WINDOWS: the window of %lu bytes toward position %ld must be 0 or "
+                  "hold 1 to %d chunks of SIRCL_FORWARD_CHUNK_BYTES (%" PRIu64 ")", bytes, position,
+                  FORWARD_MAX_CHUNKS, chunk);
         return -1;
       }
       if (peer < 0 || peer == e->rank || lane >= e->lanes) continue;
@@ -1278,9 +1404,6 @@ static int forward_windows(sccl_engine *e, char *err, size_t len) {
   return 0;
 }
 
-/* The native layer's ring links post through relays in chunks of 32 KiB and accept a ring window of 1 to
- * 60 such chunks (roce_set_links). */
-enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
 
 /* The window of this communicator's ring lanes toward its ring's next rank. LIBSIRCL_RING_WINDOW is the
  * process's layout's ring plan, the same for every communicator the process joins; for the layout's own
@@ -1289,18 +1412,25 @@ enum { RING_WINDOW_CHUNK = 32768, RING_WINDOW_MAX_CHUNKS = 60 };
  * pairs i and i + 4 of a ring of eight) may have a ring next reached through relays, which the forward
  * windows name: its ring lanes then keep the smallest forward window toward that rank in flight, never
  * posting through relays unwindowed. A nonzero LIBSIRCL_RING_WINDOW is the planner's own value and is kept. */
-static void ring_lane_window(sccl_engine *e) {
-  if (e->ring_window || e->ring_next < 0) return;
+static int ring_lane_window(sccl_engine *e, char *err, size_t len) {
+  if (e->ring_window || e->ring_next < 0) return 0;
   uint32_t window = 0;
   for (int l = 0; l < e->lanes; ++l) {
     uint32_t lane = e->forward[e->ring_next][l];
     if (lane && (!window || lane < window)) window = lane;
   }
-  if (!window) return;
+  if (!window) return 0;
+  /* Never above the forward window: a forward window below one ring chunk leaves the ring lanes no window
+   * within it, and the communicator is refused rather than posting past it. */
+  if (window < RING_WINDOW_CHUNK) {
+    put_error(err, len, "the ring lanes toward rank %d cross relays whose forward window (LIBSIRCL_FORWARD_WINDOWS) "
+              "is %u bytes, below one %d-byte ring chunk", e->ring_next, window, RING_WINDOW_CHUNK);
+    return -1;
+  }
   window = window / RING_WINDOW_CHUNK * RING_WINDOW_CHUNK;
-  if (window < RING_WINDOW_CHUNK) window = RING_WINDOW_CHUNK;
   if (window > RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS) window = RING_WINDOW_CHUNK * RING_WINDOW_MAX_CHUNKS;
   e->ring_window = window;
+  return 0;
 }
 
 /* LIBSIRCL_P2P_WINDOWS: <position>=<bytes>[/<bytes>],... the window of each of this process's lanes toward the
@@ -1335,8 +1465,13 @@ static int p2p_windows(sccl_engine *e, char *err, size_t len) {
            value = strtok_r(NULL, "/", &save2), ++lane) {
         char *stop;
         unsigned long bytes = strtoul(value, &stop, 10);
-        if (*stop || lane >= MAX_LANES || bytes > 0xFFFFFFFFul) {
-          put_error(err, len, "LIBSIRCL_P2P_WINDOWS entry for position %ld needs 1 or 2 byte counts", position);
+        if (*stop || !*value || bytes > 0xFFFFFFFFul) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS: '%s' toward position %ld is not a byte count", value, position);
+          return -1;
+        }
+        if (lane >= MAX_LANES) {
+          put_error(err, len, "LIBSIRCL_P2P_WINDOWS: the entry for position %ld has more than %d lanes", position,
+                    MAX_LANES);
           return -1;
         }
         if (bytes && (bytes % PACK || bytes < chunk || bytes / chunk > P2P_MAX_WINDOW_CHUNKS)) {
@@ -1351,11 +1486,17 @@ static int p2p_windows(sccl_engine *e, char *err, size_t len) {
       }
     }
   }
+  /* A lane is relayed when it has a forward window or LIBSIRCL_RELAYED_LANES marks it; a relayed lane without
+   * a point-to-point window gives its pair no channel (SIRCL's budget refuses unwindowed relayed lanes). */
+  uint8_t relayed[MAX_POSITIONS][MAX_LANES];
+  if (relayed_lanes(relayed, err, len)) return -1;
   e->p2p_out = 0;
   for (int p = 0; p < e->world; ++p) {
-    int ok = p != e->rank;
+    int ok = p != e->rank, position = e->positions[p];
     for (int l = 0; ok && l < e->lanes; ++l)
-      if (e->forward[p][l] && !e->p2p_window[p][l]) ok = 0;
+      if ((e->forward[p][l] || (position >= 0 && position < MAX_POSITIONS && relayed[position][l])) &&
+          !e->p2p_window[p][l])
+        ok = 0;
     if (ok) e->p2p_out |= 1u << p;
   }
   return 0;
@@ -1520,13 +1661,18 @@ static int gid_indices(route_table *t, char *err, size_t len) {
   return 0;
 }
 
-static int traffic_class(void) {
+/* The IB traffic class of the queue pairs: SIRCL_TRAFFIC_CLASS, else NCCL_IB_TC, else 0; a value that is not
+ * an integer from 0 to 255 is refused, naming the variable. */
+static int traffic_class(int *out, char *err, size_t len) {
   const char *names[] = {"SIRCL_TRAFFIC_CLASS", "NCCL_IB_TC"};
+  *out = 0;
   for (int i = 0; i < 2; ++i) {
     const char *text = sccl_env(names[i]);
     if (text && *text) {
-      long value = strtol(text, NULL, 10);
-      return value >= 0 && value <= 255 ? (int)value : 0;
+      uint64_t value;
+      if (env_u64(names[i], 0, 0, 255, &value, err, len)) return -1;
+      *out = (int)value;
+      return 0;
     }
   }
   return 0;
@@ -1739,6 +1885,24 @@ static int p2p_close(sccl_engine *e, int free_memory) {
   return 0;
 }
 
+/* Stop the point-to-point channels so that every peer learns of it: poison the control line, so this rank's
+ * channel kernels return and its progress thread takes its failure path, which writes an abort notice into
+ * every peer's abort word (SIRCL's post_aborts); wait up to P2P_NOTICE_WAIT_NS for the thread to report the
+ * failure, then stop it, which joins it after the notices were posted. A thread that has not reported by
+ * then is stopped without notices; peers then fall back to their own wait limits. Not after the progress
+ * thread was stopped (teardown_stop), when no thread is left to post. */
+enum { P2P_NOTICE_WAIT_NS = 50000000 };
+static void p2p_fault(sccl_engine *e, const char *why);
+static uint64_t monotonic_ns(void);
+static void p2p_stop_with_notices(sccl_engine *e, const char *why) {
+  if (!e->p2p || !e->p2p_ctrl || e->stopped) return;
+  p2p_fault(e, why);
+  uint64_t until = monotonic_ns() + P2P_NOTICE_WAIT_NS;
+  const struct timespec pause = {0, 100000};
+  while (!e->p2p_transport->failed(e->p2p) && monotonic_ns() < until) nanosleep(&pause, NULL);
+  e->p2p_transport->stop(e->p2p);
+}
+
 /* After the first setup exchange gave every rank's p2p_out: ranks a and b have a channel when each one's lanes
  * toward the other can carry items, so every rank derives the same table. A rank without a channel still
  * opens a context (every rank's connection record is validated together); when no pair of the group has one,
@@ -1801,7 +1965,7 @@ static int p2p_open(sccl_engine *e, const route_table *routes, char *err, size_t
   }
   char native[512] = {0};
   e->p2p = e->p2p_transport->create(e->world, e->rank, names, routes->n_devices, lane_devices, e->lanes,
-                                    routes->gid_index, traffic_class(), channels, e->p2p_host, e->p2p_bytes,
+                                    routes->gid_index, e->traffic_class, channels, e->p2p_host, e->p2p_bytes,
                                     (int)s->p2p_slots, s->p2p_slot_bytes, native, sizeof native);
   if (!e->p2p) {
     put_error(err, len, "point-to-point native setup: %s", native);
@@ -1910,7 +2074,31 @@ static ncclResult_t session_error(sccl_engine *e, char *message, size_t len);
 /* The line names the time twice: the wall clock for logs, and CLOCK_MONOTONIC (the clock of the host's own
  * timeouts and of Python's time.monotonic), which a stepped wall clock (a VM's time synchronization) does
  * not move; and what found the error. */
+/* fail_stop's backstop: whatever the steps before _exit wait for (a stalled stderr pipe, a receipt or link
+ * dump on a stalled filesystem, a FIFO without a reader), the process ends FAIL_STOP_BACKSTOP_MS after
+ * fail_stop began, with the fail-stop status. */
+enum { FAIL_STOP_BACKSTOP_MS = 1000 };
+static void *fail_stop_backstop(void *unused) {
+  (void)unused;
+  const struct timespec delay = {FAIL_STOP_BACKSTOP_MS / 1000, (FAIL_STOP_BACKSTOP_MS % 1000) * 1000000L};
+  nanosleep(&delay, NULL);
+  _exit(FAIL_STOP_STATUS);
+  return NULL;
+}
+
 static void fail_stop(sccl_engine *e, const char *found_by, const char *message) {
+  /* The backstop first, before any step that can block. A failure to start it leaves the steps unbounded,
+   * as they are without it. */
+  pthread_t backstop;
+  pthread_attr_t attributes;
+  if (!pthread_attr_init(&attributes)) {
+    pthread_attr_setdetachstate(&attributes, PTHREAD_CREATE_DETACHED);
+    (void)pthread_create(&backstop, &attributes, fail_stop_backstop, NULL);
+    pthread_attr_destroy(&attributes);
+  }
+  /* Before the process ends, the channels' progress thread posts its abort notices, so the peers' channels
+   * stop now instead of at their wait limits (bounded; see p2p_stop_with_notices). */
+  p2p_stop_with_notices(e, message);
   char line[1200];
   uint64_t now = realtime_ns(), mono = monotonic_ns();
   int n = snprintf(line, sizeof line,
@@ -2037,10 +2225,13 @@ void sccl_engine_fail_stop_shutdown(void) {
   if (started) pthread_join(watcher, NULL);
 }
 
+static void quarantine_reclaim(void);
 int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int position, sccl_CUcontext ctx,
                        const atomic_int *cancelled, sccl_engine **out, char *err, size_t err_len) {
   *out = NULL;
   cu = sccl_cuda_get();
+  /* Engines quarantined by earlier aborts whose kernels have finished since are freed first. */
+  quarantine_reclaim();
   sccl_engine *e = calloc(1, sizeof *e);
   if (!e) {
     put_error(err, err_len, "out of memory");
@@ -2064,6 +2255,10 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       return ncclRemoteError;
     }
     for (int r = 0; r < nranks; ++r) {
+      if (all[r].position < 0 || all[r].position >= MAX_POSITIONS) {
+        if (!local[0]) put_error(local, sizeof local, "rank %d position %d is outside 0-63", r, all[r].position);
+        continue;
+      }
       e->positions[r] = all[r].position;
       e->relayed[r] = all[r].relayed;
     }
@@ -2105,6 +2300,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     e->device = device;
     if (read_settings(e, emulation, local, sizeof local)) break;
     if (nranks == 1) e->fail_stop = 0;
+    e->shared.fail_stop = (uint32_t)e->fail_stop;
     if (e->fail_stop && watch_start(local, sizeof local)) break;
     e->shared.proxy_abi = (uint32_t)e->transport->abi_version();
     /* Before the setup verdict, so a rank whose native proxy lacks a feature fails setup with every rank. */
@@ -2159,21 +2355,31 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       put_error(local, sizeof local, "%s", sccl_kp_error());
       break;
     }
+    e->kp_held = 1;
+    /* Every entry the engine launches, looked up once; a lookup that fails refuses setup here, naming the
+     * entry, instead of leaving a NULL function for the first launch. */
+    int missing = 0;
     for (int a = 0; a < SCCL_ALG_COUNT; ++a)
-      for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_function(ctx, a, d, nranks, &e->fn[a][d]);
+      for (int d = 0; d < SCCL_DT_COUNT; ++d) missing |= sccl_kp_function(ctx, a, d, nranks, &e->fn[a][d]);
     for (int k = SCCL_K_SCATTER; k < SCCL_K_COUNT; ++k)
-      for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_function(ctx, k, d, nranks, &e->fn[k][d]);
+      for (int d = 0; d < SCCL_DT_COUNT; ++d) missing |= sccl_kp_function(ctx, k, d, nranks, &e->fn[k][d]);
     for (int d = 0; d < SCCL_FOLD_DTYPES; ++d)
-      for (int o = 0; o < SCCL_FOLD_OPS; ++o) sccl_kp_fold_function(ctx, d, o, &e->fold[d][o]);
-    for (int d = 0; d < SCCL_DT_COUNT; ++d) sccl_kp_chain_function(ctx, d, (int)e->shared.chain_unroll, &e->chain_fn[d]);
+      for (int o = 0; o < SCCL_FOLD_OPS; ++o) missing |= sccl_kp_fold_function(ctx, d, o, &e->fold[d][o]);
+    for (int d = 0; d < SCCL_DT_COUNT; ++d)
+      missing |= sccl_kp_chain_function(ctx, d, (int)e->shared.chain_unroll, &e->chain_fn[d]);
     for (int k = 0; k < SCCL_LINK_KINDS; ++k)
       for (int d = 0; d < SCCL_DT_COUNT; ++d)
-        sccl_kp_link_function(ctx, k, d, (int)e->shared.link_unroll, &e->link_fn[k][d]);
+        missing |= sccl_kp_link_function(ctx, k, d, (int)e->shared.link_unroll, &e->link_fn[k][d]);
     for (int d = 0; e->ring_reduce_passes == 2 && d < SCCL_DT_COUNT; ++d)
-      sccl_kp_ring_reduce_two_pass_function(ctx, d, (int)e->shared.link_unroll, &e->link_fn[SCCL_RING_REDUCE][d]);
-    sccl_kp_ring_exchange_function(ctx, (int)e->shared.link_unroll, &e->exchange_fn);
+      missing |= sccl_kp_ring_reduce_two_pass_function(ctx, d, (int)e->shared.link_unroll,
+                                                       &e->link_fn[SCCL_RING_REDUCE][d]);
+    missing |= sccl_kp_ring_exchange_function(ctx, (int)e->shared.link_unroll, &e->exchange_fn);
     for (int d = 0; d < SCCL_DT_COUNT; ++d)
-      sccl_kp_ring_exchange_reduce_function(ctx, d, (int)e->shared.link_unroll, &e->exchange_reduce_fn[d]);
+      missing |= sccl_kp_ring_exchange_reduce_function(ctx, d, (int)e->shared.link_unroll, &e->exchange_reduce_fn[d]);
+    if (missing) {
+      put_error(local, sizeof local, "kernel pack lookup: %s", sccl_kp_error());
+      break;
+    }
     if (allocate(e, local, sizeof local)) break;
     e->ctrl[CTRL_WAIT_LIMIT_US] = e->serving ? e->shared.serving_wait_us : e->shared.startup_wait_us;
     const char *names[MAX_DEVICES];
@@ -2183,7 +2389,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       for (int l = 0; l < routes.lanes; ++l) lane_devices[p * routes.lanes + l] = routes.lane_device[p][l];
     char proxy_error[512] = {0};
     e->proxy = e->transport->create(nranks, rank, names, routes.n_devices, lane_devices, routes.lanes,
-                                    routes.gid_index, traffic_class(), e->host, e->region_bytes,
+                                    routes.gid_index, e->traffic_class, e->host, e->region_bytes,
                                     e->shared.slot_bytes, proxy_error, sizeof proxy_error);
     if (!e->proxy) {
       put_error(local, sizeof local, "native setup: %s", proxy_error);
@@ -2193,8 +2399,9 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       put_error(local, sizeof local, "chain schedule: %s", e->transport->error(e->proxy));
     } else if (forward_windows(e, local, sizeof local) == 0) {
       /* The forward windows first: the ring lanes' window may come from them (ring_lane_window). */
-      if (e->link_on) ring_lane_window(e);
-      if (e->link_on &&
+      if (e->link_on && ring_lane_window(e, local, sizeof local) != 0) {
+        /* refused: `local` says why */
+      } else if (e->link_on &&
           e->transport->set_links(e->proxy, e->chain_prev, e->chain_next, e->chain_index, e->ring_prev,
                                   e->ring_next, e->ring_window, (int)e->shared.link_slots,
                                   e->shared.link_slot_bytes, e->link_off) != 0) {
@@ -2245,7 +2452,9 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       const char *why = records[r].error[0] ? records[r].error : NULL;
       const char *field = why || any_error ? NULL : settings_difference(&records[r].settings, &records[0].settings);
       if (!why && !field) continue;
-      used += (size_t)snprintf(text + used, used < sizeof text ? sizeof text - used : 0, "%srank %d: %s%s",
+      /* A peer's error field is a fixed 400-byte array from the wire: printed at most 399 bytes, so a
+       * record without a terminating zero is never read past its end. */
+      used += (size_t)snprintf(text + used, used < sizeof text ? sizeof text - used : 0, "%srank %d: %.399s%s",
                                used ? "; " : "", r, why ? why : field, why ? "" : " differs from rank 0");
       if (used >= sizeof text) used = sizeof text - 1;
     }
@@ -2313,17 +2522,13 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
   }
   /* Exchange 3: prove every lane with one write, then start the progress thread. */
   {
-    uint64_t check_ms;
-    if (env_u64("LIBSIRCL_LANE_CHECK_MS", 10000, 1, 600000, &check_ms, err, err_len)) {
-      status = ncclInvalidArgument;
-      goto fail;
-    }
+    int check_ms = e->lane_check_ms;
     char why[400] = {0};
-    int rc = e->transport->lane_check(e->proxy, (int)check_ms);
+    int rc = e->transport->lane_check(e->proxy, check_ms);
     if (rc) snprintf(why, sizeof why, "lane check: %s", e->transport->error(e->proxy));
     if (!rc && e->p2p) {
       uint64_t started = monotonic_ns();
-      rc = e->p2p_transport->lane_check(e->p2p, (int)check_ms) || p2p_apply_windows(e);
+      rc = e->p2p_transport->lane_check(e->p2p, check_ms) || p2p_apply_windows(e);
       e->p2p_check_ns = monotonic_ns() - started;
       if (rc) snprintf(why, sizeof why, "point-to-point lane check: %s", e->p2p_transport->error(e->p2p));
     }
@@ -2333,15 +2538,14 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       rc = start_progress(e);
       if (rc) snprintf(why, sizeof why, "%s", rc == 1 ? e->transport->error(e->proxy) : e->p2p_transport->error(e->p2p));
     }
+    /* Every local step before the last verdict, so that no rank fails alone after its peers succeeded. */
+    if (rc == 0 && cuda_check(cu->EventCreate(&e->order_event, SCCL_CU_EVENT_DISABLE_TIMING),
+                              "creating the order event", why, sizeof why))
+      rc = -1;
     if (verdict(bootstrap, nranks, rank, rc == 0, why, cancelled, err, err_len)) {
       status = ncclSystemError;
       goto fail;
     }
-  }
-  if (cuda_check(cu->EventCreate(&e->order_event, SCCL_CU_EVENT_DISABLE_TIMING), "creating the order event", err,
-                 err_len)) {
-    status = ncclUnhandledCudaError;
-    goto fail;
   }
   cu->CtxPopCurrent(&ctx);
   start_receipts(e);
@@ -2353,6 +2557,7 @@ fail:;
   p2p_close(e, pushed);
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
+  if (e->kp_held) sccl_kp_release(e->ctx, pushed);
   if (pushed) {
     if (!unreleased) release_memory(e);
     cu->CtxPopCurrent(&ctx);
@@ -2631,6 +2836,11 @@ static ncclResult_t launch_link_entry(sccl_engine *e, sccl_CUfunction fn, unsign
                                       sccl_CUdeviceptr src, sccl_CUdeviceptr dst, sccl_CUdeviceptr scratch,
                                       uint64_t chunk, uint64_t stride, uint32_t piece, uint32_t blocks, int32_t flags,
                                       sccl_CUstream stream, char *err, size_t len) {
+  if (!sccl_packs_fit(chunk) || !sccl_packs_fit(stride) || !sccl_packs_fit(piece)) {
+    put_error(err, len, "%s: chunk %" PRIu64 " or stride %" PRIu64 " bytes: the pack count exceeds the kernel's int32 "
+              "argument", what, chunk, stride);
+    return ncclInvalidArgument;
+  }
   sccl_link_args a;
   memset(&a, 0, sizeof a);
   a.input = src;
@@ -2802,7 +3012,8 @@ static int gather_link_kind(const sccl_engine *e, uint64_t shard) {
  * -1; chunks a multiple of 16 bytes. */
 static int scatter_link_kind(const sccl_engine *e, uint64_t chunk) {
   uint64_t input = chunk * (uint64_t)e->world;
-  if (!e->link_on || chunk == 0 || chunk % PACK) return -1;
+  /* The chunk is also the ops' stride, a pack count of the kernels' int32 arguments. */
+  if (!e->link_on || chunk == 0 || chunk % PACK || !sccl_packs_fit(chunk)) return -1;
   uint32_t schedule = effective_schedule(e, e->shared.scatter_schedule, input, COLL_SCATTER);
   if (schedule == SCHEDULE_RING) return SCCL_RING_SCATTER;
   if (schedule == SCHEDULE_PIECES) return -1;
@@ -2893,6 +3104,10 @@ static ncclResult_t reduce_link(sccl_engine *e, int ring, int dtype, sccl_CUdevi
 /* One chain op over `nbytes` (a positive multiple of 16) from src to dst, both 16-byte aligned. */
 static ncclResult_t launch_chain(sccl_engine *e, int dtype, sccl_CUdeviceptr src, sccl_CUdeviceptr dst,
                                  uint64_t nbytes, sccl_CUstream stream, char *err, size_t len) {
+  if (!sccl_packs_fit(nbytes)) {
+    put_error(err, len, "chain op of %" PRIu64 " bytes: its pack count exceeds the kernel's int32 argument", nbytes);
+    return ncclInvalidArgument;
+  }
   int32_t packs = (int32_t)(nbytes / PACK);
   sccl_chain_args a;
   memset(&a, 0, sizeof a);
@@ -2957,6 +3172,11 @@ static ncclResult_t begin_call(sccl_engine *e, const char *what, sccl_CUstream s
                                size_t len) {
   call->pushed = call->capturing = 0;
   pthread_mutex_lock(&e->lock);
+  if (e->closing) {
+    put_error(err, len, "%s: communicator is closing", what);
+    pthread_mutex_unlock(&e->lock);
+    return ncclInvalidUsage;
+  }
   sccl_CUcontext current = NULL;
   if (cu->CtxGetCurrent(&current) != SCCL_CUDA_SUCCESS || current != e->ctx) {
     if (cuda_check(cu->CtxPushCurrent(e->ctx), "making the communicator's context current", err, len)) {
@@ -2989,8 +3209,8 @@ static ncclResult_t begin_call(sccl_engine *e, const char *what, sccl_CUstream s
         (cuda_check(cu->EventRecord(e->order_event, e->last_stream), "recording the order event", err, len) ||
          cuda_check(cu->StreamWaitEvent(stream, e->order_event, 0), "ordering the stream", err, len)))
       result = ncclUnhandledCudaError;
-    e->last_stream = stream;
-    e->have_last = 1;
+    e->have_last = result == ncclSuccess;
+    if (e->have_last) e->last_stream = stream;
   }
   if (result != ncclSuccess) {
     sccl_CUcontext popped;
@@ -3383,17 +3603,17 @@ static ncclResult_t reduce_into(sccl_engine *e, const char *what, const void *se
    * ring op for the largest prefix of W equal chunks of whole packs; else under the chain schedule (or auto
    * from the chain minimum) one chain op for the 16-byte-aligned body; the rest in pieces, then the
    * zero-padded tail. Decided from agreed settings and sizes only, for calls that keep their result on
-   * every rank (not ncclReduce); unaligned buffers go through the staging buffer. */
+   * every rank and for ncclReduce alike: off the root its destination is 0 and the link op runs in place in the
+   * staging buffer (reduce_link); unaligned buffers go through the staging buffer. */
   if (body && e->shared.large_schedule != SCHEDULE_PIECES) {
     uint32_t schedule = effective_schedule(e, e->shared.large_schedule, nbytes, COLL_REDUCE);
-    uint64_t ring_bytes = body / (PACK * (uint64_t)e->world) * PACK * (uint64_t)e->world;
-    if (schedule == SCHEDULE_RING && e->link_on && ring_bytes && ring_bytes / (uint64_t)e->world < (1ull << 31)) {
-      result = reduce_link(e, 1, dtype, src, dst, ring_bytes, capturing, stream, err, len);
-      start = ring_bytes;
-    } else if (schedule != SCHEDULE_RING && e->chain_on &&
-               (schedule == SCHEDULE_CHAIN || body >= e->shared.chain_mins[COLL_REDUCE])) {
-      result = reduce_link(e, 0, dtype, src, dst, body, capturing, stream, err, len);
-      start = body;
+    uint64_t link_bytes = 0;
+    int plan = sccl_large_reduce_plan(body, (uint64_t)e->world, schedule == SCHEDULE_RING, e->link_on,
+                                      e->chain_on && (schedule == SCHEDULE_CHAIN ||
+                                                      body >= e->shared.chain_mins[COLL_REDUCE]), &link_bytes);
+    if (plan != SCCL_LARGE_PIECES) {
+      result = reduce_link(e, plan == SCCL_LARGE_RING, dtype, src, dst, link_bytes, capturing, stream, err, len);
+      start = link_bytes;
     }
   }
   for (uint64_t offset = start; result == ncclSuccess && offset < body; offset += e->shared.large_piece) {
@@ -3753,6 +3973,9 @@ ncclResult_t sccl_engine_mem_alloc(void **ptr, size_t size, char *err, size_t le
   return ncclSuccess;
 }
 
+/* The memory is freed in the context it was allocated in (CU_POINTER_ATTRIBUTE_CONTEXT), made current for
+ * the call, whatever context the calling thread has, if any. */
+enum { SCCL_POINTER_ATTRIBUTE_CONTEXT = 1 };
 ncclResult_t sccl_engine_mem_free(void *ptr, char *err, size_t len) {
   if (!ptr) return ncclSuccess;
   cu = sccl_cuda_get();
@@ -3760,8 +3983,23 @@ ncclResult_t sccl_engine_mem_free(void *ptr, char *err, size_t len) {
     put_error(err, len, "ncclMemFree: %s", sccl_cuda_error());
     return ncclSystemError;
   }
-  return cuda_check(cu->MemFree((sccl_CUdeviceptr)(uintptr_t)ptr), "ncclMemFree", err, len) ? ncclUnhandledCudaError
-                                                                                             : ncclSuccess;
+  sccl_CUdeviceptr memory = (sccl_CUdeviceptr)(uintptr_t)ptr;
+  sccl_CUcontext owner = NULL;
+  if (cuda_check(cu->PointerGetAttribute(&owner, SCCL_POINTER_ATTRIBUTE_CONTEXT, memory),
+                 "ncclMemFree: finding the memory's context", err, len))
+    return ncclInvalidArgument;
+  int pushed = owner && cu->CtxPushCurrent(owner) == SCCL_CUDA_SUCCESS;
+  if (owner && !pushed) {
+    put_error(err, len, "ncclMemFree: the memory's context cannot be made current");
+    return ncclUnhandledCudaError;
+  }
+  ncclResult_t result = cuda_check(cu->MemFree(memory), "ncclMemFree", err, len) ? ncclUnhandledCudaError
+                                                                                  : ncclSuccess;
+  if (pushed) {
+    sccl_CUcontext popped;
+    cu->CtxPopCurrent(&popped);
+  }
+  return result;
 }
 
 /* One pair exchange of `chunk` bytes each way: `sent` (0: nothing meaningful) to the peer, the peer's block
@@ -4075,6 +4313,13 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
                 ops[sends[1][k]].bytes, ops[recvs[1][k]].bytes);
       return ncclInvalidUsage;
     }
+  /* A channel item's message is a pack count of the point-to-point kernels' int32 arguments. */
+  for (unsigned i = 0; e->world > 2 && i < count; ++i)
+    if (ops[i].peer != e->rank && !sccl_packs_fit(round_up(ops[i].bytes, PACK))) {
+      put_error(err, len, "%s of %zu bytes: a point-to-point channel message holds at most %" PRIu64 " bytes",
+                ops[i].send ? "ncclSend" : "ncclRecv", ops[i].bytes, (uint64_t)INT32_MAX * PACK);
+      return ncclInvalidArgument;
+    }
   char message[400];
   ncclResult_t health = sccl_engine_async_error(e, message, sizeof message);
   if (health != ncclSuccess) {
@@ -4150,16 +4395,15 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
 
 ncclResult_t sccl_engine_teardown_sync(sccl_engine *e) {
   if (!e || !cu) return ncclSuccess;
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  pthread_mutex_unlock(&e->lock);
   ncclResult_t result = ncclSuccess;
   int pushed = e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
   /* Without the creating context the enqueued work cannot be waited for: a failure, not a skipped wait. */
   if (e->ctx && !pushed) result = ncclUnhandledCudaError;
-  if (pushed && e->have_last && cu->StreamSynchronize(e->last_stream) != SCCL_CUDA_SUCCESS)
+  if (pushed && cu->CtxSynchronize() != SCCL_CUDA_SUCCESS)
     result = ncclUnhandledCudaError;
-  for (int d = 0; pushed && d < 2; ++d)
-    for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
-      if (e->p2p_ch[d][p].stream && cu->StreamSynchronize(e->p2p_ch[d][p].stream) != SCCL_CUDA_SUCCESS)
-        result = ncclUnhandledCudaError;
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
@@ -4174,17 +4418,7 @@ int sccl_engine_wait_limit_ms(const sccl_engine *e) {
 }
 
 ncclResult_t sccl_engine_finalize(sccl_engine *e) {
-  if (!e || !cu) return ncclSuccess;
-  pthread_mutex_lock(&e->lock);
-  ncclResult_t result = ncclSuccess;
-  if (e->have_last) {
-    int pushed = cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
-    if (cu->StreamSynchronize(e->last_stream) != SCCL_CUDA_SUCCESS) result = ncclUnhandledCudaError;
-    sccl_CUcontext popped;
-    if (pushed) cu->CtxPopCurrent(&popped);
-  }
-  pthread_mutex_unlock(&e->lock);
-  return result;
+  return sccl_engine_teardown_sync(e);
 }
 
 ncclResult_t sccl_engine_set_wait_regime(sccl_engine *e, const char *regime) {
@@ -4295,6 +4529,8 @@ static void p2p_receipt(sccl_engine *e, char *out, size_t len) {
            c ? (int)t->stat(c, P2P_STAT_ABORT_FROM) - 1 : -1);
 }
 
+/* The bytes quarantined engines hold (see quarantine_reclaim), reported in every receipt. */
+static _Atomic uint64_t quarantined_bytes;
 size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
   static const char *const dt[SCCL_DT_COUNT] = {"float32", "float16", "bfloat16"};
   char ops[512] = {0};
@@ -4342,7 +4578,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       out, len,
       "{\"schema\":\"libsircl-receipt/v1\",\"library\":\"libsircl " LIBSIRCL_VERSION "\",\"pid\":%d,"
       "\"communicator\":%d,\"rank\":%d,\"world\":%d,\"position\":%d,\"lanes\":%d,"
-      "\"device\":%d,"
+      "\"device\":%d,\"quarantined_bytes\":%" PRIu64 ","
       "\"transport\":\"%s\",\"kernel_pack\":\"%s\",\"fold_pack\":\"%s\",\"links_pack\":\"%s\","
       "\"slot_bytes\":%" PRIu64
       ",\"capacity\":%" PRIu64
@@ -4367,6 +4603,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "},\"forwarded\":0,\"native\":{\"ops_posted\":%" PRIu64 ",\"writes_completed\":%" PRIu64
       ",\"phases_posted\":%" PRIu64 "},\"healthy\":%s,\"error\":%s}",
       (int)getpid(), e->receipt_id, e->rank, e->world, e->position, e->lanes, e->device,
+      atomic_load_explicit(&quarantined_bytes, memory_order_relaxed),
       e->world == 1 ? "none" : e->transport->name,
       sccl_kp_hash(),
       sccl_kp_fold_hash(), sccl_kp_links_hash(),
@@ -4400,20 +4637,39 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       status == ncclSuccess ? "true" : "false", health_json);
 }
 
+/* A diagnostic file of this library: created by open(2) with O_NOFOLLOW (a symbolic link at the path is
+ * refused, never followed) and close-on-exec; with `fresh`, also O_EXCL (the file must not exist), else
+ * appended to. NULL when the path did not fit its buffer (`fits` 0) or the open failed. */
+static FILE *open_diagnostic(const char *path, int fits, int fresh) {
+  if (!fits) return NULL;
+  int flags = O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC | (fresh ? O_EXCL : O_APPEND);
+  int fd = open(path, flags, 0644);
+  if (fd < 0) return NULL;
+  FILE *f = fdopen(fd, fresh ? "w" : "a");
+  if (!f) close(fd);
+  return f;
+}
+
 /* <prefix>.rank<r>.<pid>.c<n>.json, n the communicator's number among the process's communicators, so
  * communicators of one process with the same rank keep files of their own. The file is replaced whole
- * (written beside it, then renamed), so a reader never sees a partial receipt. */
+ * (written beside it under a name of this writer's own, then renamed), so a reader never sees a partial
+ * receipt, and two writers (the fail-stop watcher and a library call) never share a partial file. A path
+ * that does not fit is not written. */
 static void write_receipt(sccl_engine *e) {
+  static atomic_uint writes;
   const char *prefix = sccl_env("LIBSIRCL_RECEIPT");
   if (!prefix || !*prefix) return;
-  char path[600], partial[620];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  snprintf(partial, sizeof partial, "%s.partial", path);
+  char path[600], partial[640];
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  int fits = n > 0 && (size_t)n < sizeof path;
+  n = snprintf(partial, sizeof partial, "%s.partial.%u", path, atomic_fetch_add(&writes, 1));
+  fits = fits && n > 0 && (size_t)n < sizeof partial;
+  if (!fits) return;
   size_t need = sccl_engine_receipt(e, NULL, 0) + 1;
   char *text = malloc(need);
   if (!text) return;
   sccl_engine_receipt(e, text, need);
-  FILE *f = fopen(partial, "w");
+  FILE *f = open_diagnostic(partial, 1, 1);
   if (f) {
     int ok = fprintf(f, "%s\n", text) > 0;
     ok = fclose(f) == 0 && ok;
@@ -4444,9 +4700,7 @@ static void start_receipts(sccl_engine *e) {
   e->receipt_id = atomic_fetch_add(&communicators, 1) + 1;
   const char *prefix = sccl_env("LIBSIRCL_RECEIPT");
   if (!prefix || !*prefix) return;
-  const char *text = sccl_env("LIBSIRCL_RECEIPT_INTERVAL_S");
-  double seconds = text && *text ? strtod(text, NULL) : 10.0;
-  e->receipt_interval_ns = seconds > 0 ? (uint64_t)(seconds * 1e9) : 0;
+  /* e->receipt_interval_ns: LIBSIRCL_RECEIPT_INTERVAL_S, validated by read_settings (0: no refresh). */
   e->receipt_next_ns = monotonic_ns() + e->receipt_interval_ns;
   write_receipt(e);
 }
@@ -4471,8 +4725,8 @@ static void dump_links(sccl_engine *e, const char *why, int device) {
   const char *prefix = sccl_env("LIBSIRCL_LINK_DUMP");
   if (!prefix || !*prefix || !e->link_on || !e->host) return;
   char path[640];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  FILE *f = fopen(path, "a");
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  FILE *f = open_diagnostic(path, n > 0 && (size_t)n < sizeof path, 0);
   if (!f) return;
   enum { LINKS = 4, STRIDE = 128 };
   const uint8_t *area = e->host + e->link_off;
@@ -4538,8 +4792,8 @@ static void dump_teardown(sccl_engine *e, uint64_t stop_ns, uint64_t stopped_ns,
   const char *prefix = sccl_env("LIBSIRCL_LINK_DUMP");
   if (!prefix || !*prefix || !e->link_on || !e->host) return;
   char path[640];
-  snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
-  FILE *f = fopen(path, "a");
+  int n = snprintf(path, sizeof path, "%s.rank%d.%d.c%d.links.json", prefix, e->rank, (int)getpid(), e->receipt_id);
+  FILE *f = open_diagnostic(path, n > 0 && (size_t)n < sizeof path, 0);
   if (!f) return;
   fprintf(f, "{\"why\":\"proxy destroyed\",\"ns\":%" PRIu64 ",\"rank\":%d,\"position\":%d,\"stop_ns\":%" PRIu64
              ",\"stopped_ns\":%" PRIu64 ",\"destroyed_ns\":%" PRIu64,
@@ -4550,7 +4804,12 @@ static void dump_teardown(sccl_engine *e, uint64_t stop_ns, uint64_t stopped_ns,
 }
 
 void sccl_engine_teardown_stop(sccl_engine *e) {
-  if (!e || e->stopped) return;
+  if (!e) return;
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  int stopped = e->stopped;
+  pthread_mutex_unlock(&e->lock);
+  if (stopped) return;
   write_receipt(e);
   int pushed = cu && e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
   dump_links(e, "destroy", pushed);
@@ -4565,30 +4824,104 @@ void sccl_engine_teardown_stop(sccl_engine *e) {
   e->stopped = 1;
 }
 
+/* Engines whose arena a kernel may still read: an abort found a launch still running. Each holds events
+ * recorded behind its last launch and its channels' work; later creations and destroys retry them
+ * (quarantine_reclaim) and free every engine whose events completed, or whose context is gone (and with it
+ * every allocation and kernel). Engines kept because a queue pair or registration could not be released
+ * are not quarantined here and stay allocated: such an object may still be written. */
+static pthread_mutex_t quarantine_lock = PTHREAD_MUTEX_INITIALIZER;
+static sccl_engine *quarantined;
+static _Atomic uint64_t quarantined_bytes;
+
+static void quarantine_reclaim(void) {
+  if (!cu) return;
+  pthread_mutex_lock(&quarantine_lock);
+  for (sccl_engine **at = &quarantined; *at;) {
+    sccl_engine *e = *at;
+    int pushed = cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS, done = 1;
+    for (int i = 0; pushed && done && i < e->quarantine_events; ++i)
+      done = cu->EventQuery(e->quarantine_done[i]) == SCCL_CUDA_SUCCESS;
+    if (!done) {
+      sccl_CUcontext popped;
+      cu->CtxPopCurrent(&popped);
+      at = &e->quarantine_next;
+      continue;
+    }
+    *at = e->quarantine_next;
+    atomic_fetch_sub_explicit(&quarantined_bytes, e->quarantine_bytes, memory_order_relaxed);
+    if (pushed) {
+      for (int i = 0; i < e->quarantine_events; ++i) cu->EventDestroy(e->quarantine_done[i]);
+      if (e->order_event) cu->EventDestroy(e->order_event);
+      p2p_close(e, 1);
+      release_memory(e);
+      if (e->kp_held) sccl_kp_release(e->ctx, 1);
+      sccl_CUcontext popped;
+      cu->CtxPopCurrent(&popped);
+    } else {
+      /* The context is gone, and with it every device allocation and kernel: only host bookkeeping. */
+      free(e->retired_stage);
+      if (e->host && e->host_emulated) sccl_emu_segment_free(e->host);
+      if (e->p2p_host && e->p2p_host_emulated) sccl_emu_segment_free(e->p2p_host);
+      if (e->kp_held) sccl_kp_release(e->ctx, 0);
+    }
+    free(e);
+  }
+  pthread_mutex_unlock(&quarantine_lock);
+}
+
+/* With the engine's context current: record the events quarantine_reclaim waits for (behind the last
+ * launch and every channel stream) and put the engine on the quarantine list. 0 when an event could not be
+ * made: the engine then stays allocated without a retry. */
+static int quarantine_add(sccl_engine *e) {
+  int n = 0;
+  sccl_CUstream streams[1 + 2 * MAX_WORLD];
+  if (e->have_last) streams[n++] = e->last_stream;
+  for (int d = 0; d < 2; ++d)
+    for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
+      if (e->p2p_ch[d][p].stream) streams[n++] = e->p2p_ch[d][p].stream;
+  e->quarantine_events = 0;
+  for (int i = 0; i < n; ++i) {
+    if (cu->EventCreate(&e->quarantine_done[i], SCCL_CU_EVENT_DISABLE_TIMING) != SCCL_CUDA_SUCCESS) return 0;
+    e->quarantine_events = i + 1;
+    if (cu->EventRecord(e->quarantine_done[i], streams[i]) != SCCL_CUDA_SUCCESS) return 0;
+  }
+  e->quarantine_bytes = e->region_bytes + e->shared.slot_bytes * (uint64_t)(1 + e->world);
+  atomic_fetch_add_explicit(&quarantined_bytes, e->quarantine_bytes, memory_order_relaxed);
+  pthread_mutex_lock(&quarantine_lock);
+  e->quarantine_next = quarantined;
+  quarantined = e;
+  pthread_mutex_unlock(&quarantine_lock);
+  return 1;
+}
+
 ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t len) {
   if (!e) return ncclSuccess;
+  quarantine_reclaim();
+  pthread_mutex_lock(&e->lock);
+  e->closing = 1;
+  pthread_mutex_unlock(&e->lock);
   watch_remove(e);
   ncclResult_t result = ncclSuccess;
   int stopped = e->stopped;
   if (!stopped) write_receipt(e);
   int pushed = cu && e->ctx && cu->CtxPushCurrent(e->ctx) == SCCL_CUDA_SUCCESS;
-  int idle = 1;
-  if (pushed && e->have_last) {
-    if (abort) {
-      idle = cu->StreamQuery(e->last_stream) == SCCL_CUDA_SUCCESS;
-    } else if (!stopped) {
-      cu->StreamSynchronize(e->last_stream);
-    }
+  int idle = pushed;
+  if (pushed && !abort && cu->CtxSynchronize() != SCCL_CUDA_SUCCESS) {
+    idle = 0;
+    result = ncclUnhandledCudaError;
+    put_error(err, len, "waiting for the communicator's context failed; its arena stays allocated");
   }
-  for (int d = 0; pushed && d < 2; ++d)
-    for (int p = 0; p < e->world && p < MAX_WORLD; ++p) {
-      sccl_CUstream channel = e->p2p_ch[d][p].stream;
-      if (!channel) continue;
-      if (abort)
-        idle = idle && cu->StreamQuery(channel) == SCCL_CUDA_SUCCESS;
-      else if (!stopped)
-        cu->StreamSynchronize(channel);
-    }
+  /* Abort stops the channels first: their kernels return once they see the poison word, and every peer gets
+   * the abort notice instead of waiting out its wait limit. A channel kernel still running at the idle check
+   * below keeps the arena allocated (quarantined). */
+  if (abort) p2p_stop_with_notices(e, "ncclCommAbort");
+  if (pushed && abort) {
+    if (e->have_last) idle = cu->StreamQuery(e->last_stream) == SCCL_CUDA_SUCCESS;
+    for (int d = 0; d < 2; ++d)
+      for (int p = 0; p < e->world && p < MAX_WORLD; ++p)
+        if (e->p2p_ch[d][p].stream)
+          idle = idle && cu->StreamQuery(e->p2p_ch[d][p].stream) == SCCL_CUDA_SUCCESS;
+  }
   if (!stopped) {
     dump_links(e, "destroy", pushed && idle);
     e->stop_ns = realtime_ns();
@@ -4605,7 +4938,7 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
               "verbs calls); their arena stays allocated", e->rank, p2p_unreleased);
   }
   /* A queue pair, completion queue or registration whose release failed may still be live: the arena
-   * and device memory stay allocated (quarantined) until the process exits. */
+   * and device memory stay allocated until the process exits (no retry frees them). */
   int unreleased = e->proxy ? e->transport->destroy(e->proxy) : 0;
   e->proxy = NULL;
   int released = unreleased == 0 && p2p_unreleased == 0;
@@ -4616,16 +4949,33 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
   }
   dump_teardown(e, e->stop_ns, e->stopped_ns, realtime_ns());
   /* After an abort with a launch still running, its kernel may read the arena and counters
-   * until its wait limit; they stay allocated until the process exits. */
-  if (pushed && idle && released) {
+   * until its wait limit; they stay allocated, quarantined, until a later creation or destroy finds that
+   * kernel finished (quarantine_reclaim). */
+  int freed = pushed && idle && released;
+  if (freed) {
     if (e->order_event) cu->EventDestroy(e->order_event);
     release_memory(e);
+    /* No kernel of the packs runs any more: the context's pack entry may go (its last reference unloads). */
+    if (e->kp_held) sccl_kp_release(e->ctx, 1);
+  } else if (!pushed && released) {
+    if (e->kp_held) sccl_kp_release(e->ctx, 0);
+    /* The communicator's context could not be made current: it was destroyed (or the driver is shutting
+     * down), and with it every device and pinned allocation and every kernel that could read them. Only the
+     * host bookkeeping is left: the retired staging list, the shared-memory segments of the emulation
+     * transport, and the engine itself. */
+    free(e->retired_stage);
+    e->retired_stage = NULL;
+    if (e->host && e->host_emulated) sccl_emu_segment_free(e->host);
+    if (e->p2p_host && e->p2p_host_emulated) sccl_emu_segment_free(e->p2p_host);
+    e->host = e->p2p_host = NULL;
+    freed = 1;
   }
+  int queued = !freed && pushed && released && quarantine_add(e);
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
   }
   pthread_mutex_destroy(&e->lock);
-  if (idle && released) free(e);
+  if (freed && !queued) free(e);
   return result;
 }
