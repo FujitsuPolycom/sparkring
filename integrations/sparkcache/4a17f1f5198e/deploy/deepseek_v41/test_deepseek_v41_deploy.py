@@ -39,6 +39,43 @@ def test_checkpoint_identity_reproduces_the_recorded_receipt() -> None:
     }
 
 
+RECORDED_1017_IDENTITY = (
+    "642667f82bb738e69d7ced6470fcdb4d48be378cd869e0243a1a4f9c89bf31dc"
+)
+
+
+def test_the_1017_checkpoint_has_its_own_pins_and_identity() -> None:
+    """The listed checkpoint 1017 keeps the original's config.json and draft settings; its manifest and
+    identity differ, and the profile's connector names that identity."""
+    receipt = checkpoint_identity.derive("1017")
+    assert receipt["checkpoint_sha256"] == RECORDED_1017_IDENTITY != RECORDED_IDENTITY
+    assert receipt["inputs"]["repository"] == "deepseek-ai/DeepSeek-V4.1-Flash-1017"
+    assert receipt["inputs"]["revision"] == "1bae0e1088993b9b82de08f59de5be5a34e42170"
+    original = checkpoint_identity.load_inputs()
+    assert receipt["inputs"]["model_config"] == original["model_config"]
+    assert receipt["inputs"]["draft"] == original["draft"]
+    assert receipt["inputs"]["artifacts"] != original["artifacts"]
+    pinned = checkpoint_identity._parse_sha256sums(
+        (checkpoint_identity.checkpoint_directory("1017") / "checkpoint-sha256sums.txt").read_text(encoding="utf-8")
+    )
+    assert pinned["config.json"] == (
+        "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879"
+    )
+    assert sum(1 for path in pinned if path.endswith(".safetensors")) == 48
+    assert checkpoint_identity.checkpoint_directory("original") == checkpoint_identity.checkpoint_directory()
+    with pytest.raises(RuntimeError, match="unknown checkpoint"):
+        checkpoint_identity.checkpoint_directory("1018")
+    profile = json.loads(
+        (Path(__file__).resolve().parents[5] / "profiles/deepseek-v41-flash-sparkcache-tp4/config.json")
+        .read_text(encoding="utf-8")
+    )
+    entry = profile["checkpoints"]["1017"]
+    connector = json.loads(entry["arguments"]["--kv-transfer-config"])["kv_connector_extra_config"]
+    assert connector["spark_cache_target_checkpoint_sha256"] == RECORDED_1017_IDENTITY
+    assert connector["spark_cache_root"] == entry["environment"]["SPARK_CONTEXT_CACHE_ROOT"]
+    assert connector["spark_cache_root"].endswith("-1bae0e108899")
+
+
 def test_pinned_manifest_covers_the_checkpoint_and_binds_the_identity(
     tmp_path: Path,
 ) -> None:

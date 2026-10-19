@@ -354,6 +354,33 @@ def test_the_deepseek_ring_serves_the_1017_weights_with_the_original_settings():
     assert worker.command[-1] == "--headless"
 
 
+DEEPSEEK_SPARKCACHE_TP4 = ROOT / "profiles/deepseek-v41-flash-sparkcache-tp4/config.json"
+
+
+def test_the_deepseek_sparkcache_ring_keys_its_cache_to_the_1017_weights():
+    """The SparkCache profile's 1017 entry changes the served name, the connector's checkpoint identity and
+    cache root, and the cache root variable; everything else is the default checkpoint's command."""
+    import json
+    profile = adapter.read(DEEPSEEK_SPARKCACHE_TP4)
+    assert adapter.checkpoint_names(profile) == ("original", ("1017", "original"))
+    plain = adapter.read(DEEPSEEK_TP4)
+    assert profile["checkpoints"]["1017"]["model"] == plain["checkpoints"]["1017"]["model"]
+    _, default = glm_command(path=DEEPSEEK_SPARKCACHE_TP4)
+    spec, command = glm_command("1017", path=DEEPSEEK_SPARKCACHE_TP4)
+    assert command[command.index("--served-model-name") + 1] == "DeepSeek-V4.1-Flash-1017-TP4"
+    assert [index for index, (a, b) in enumerate(zip(command, default)) if a != b] == [
+        command.index("--served-model-name") + 1, command.index("--kv-transfer-config") + 1]
+    before = json.loads(default[default.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
+    after = json.loads(command[command.index("--kv-transfer-config") + 1])["kv_connector_extra_config"]
+    assert after["spark_cache_target_checkpoint_sha256"] == (
+        "642667f82bb738e69d7ced6470fcdb4d48be378cd869e0243a1a4f9c89bf31dc")
+    assert after["spark_cache_root"] == "/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899"
+    assert {k: v for k, v in after.items() if k not in ("spark_cache_target_checkpoint_sha256", "spark_cache_root")} == {
+        k: v for k, v in before.items() if k not in ("spark_cache_target_checkpoint_sha256", "spark_cache_root")}
+    assert spec.environment["SPARK_CONTEXT_CACHE_ROOT"] == after["spark_cache_root"]
+    assert spec.environment["XDG_CACHE_HOME"].endswith("-1bae0e108899")
+
+
 CSF_MODEL = {"repository": "local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD",
              "revision": "dec48abd33efa73c3bb7c95b74eee10cad34f9be",
              "config_sha256": "d9d0b32d0fa38d0cfc7ac162670db17fe16fe02404e847e6b2aa07d71efd67f1",

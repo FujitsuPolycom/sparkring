@@ -37,20 +37,36 @@ _DIRECTORY = Path(__file__).resolve().parent
 INPUTS_PATH = _DIRECTORY / "checkpoint-identity-inputs.json"
 RECEIPT_PATH = _DIRECTORY / "checkpoint-identity-receipt.json"
 CHECKSUMS_PATH = _DIRECTORY / "checkpoint-sha256sums.txt"
+# The profile's other listed checkpoints keep their pins under checkpoints/<name>/ with the same three files;
+# the default checkpoint's pins are the files beside this module.
+CHECKPOINTS_DIRECTORY = _DIRECTORY / "checkpoints"
+DEFAULT_CHECKPOINT = "original"
 
 
-def load_inputs() -> dict[str, Any]:
-    """Return the pinned identity inputs."""
+def checkpoint_directory(checkpoint: str | None = None) -> Path:
+    """The directory holding the pins of ``checkpoint`` (None or the default name: this module's)."""
 
-    return json.loads(INPUTS_PATH.read_text(encoding="utf-8"))
+    if checkpoint in (None, DEFAULT_CHECKPOINT):
+        return _DIRECTORY
+    directory = CHECKPOINTS_DIRECTORY / checkpoint
+    if not directory.is_dir():
+        listed = sorted(p.name for p in CHECKPOINTS_DIRECTORY.iterdir()) if CHECKPOINTS_DIRECTORY.is_dir() else []
+        raise RuntimeError(f"unknown checkpoint {checkpoint!r}; listed: {[DEFAULT_CHECKPOINT, *listed]}")
+    return directory
 
 
-def derive() -> dict[str, Any]:
+def load_inputs(checkpoint: str | None = None) -> dict[str, Any]:
+    """Return the pinned identity inputs of ``checkpoint`` (default: the profile's default checkpoint)."""
+
+    return json.loads((checkpoint_directory(checkpoint) / INPUTS_PATH.name).read_text(encoding="utf-8"))
+
+
+def derive(checkpoint: str | None = None) -> dict[str, Any]:
     """Recompute the identity from the pins and compare the recorded receipt."""
 
-    inputs = load_inputs()
+    inputs = load_inputs(checkpoint)
     checkpoint_sha256 = derive_checkpoint_identity(inputs)
-    receipt = json.loads(RECEIPT_PATH.read_text(encoding="utf-8"))
+    receipt = json.loads((checkpoint_directory(checkpoint) / RECEIPT_PATH.name).read_text(encoding="utf-8"))
     if receipt.get("schema") != IDENTITY_SCHEMA:
         raise RuntimeError(
             "checkpoint identity receipt schema differs:"
@@ -82,7 +98,7 @@ def _parse_sha256sums(text: str) -> dict[str, str]:
     return pinned
 
 
-def verify_root(root: Path, *, workers: int = 4) -> dict[str, Any]:
+def verify_root(root: Path, *, workers: int = 4, checkpoint: str | None = None) -> dict[str, Any]:
     """Hash a local checkpoint root and compare it with the pinned manifest.
 
     Every pinned path must exist with exactly the pinned digest and no extra
@@ -94,7 +110,7 @@ def verify_root(root: Path, *, workers: int = 4) -> dict[str, Any]:
     root = root.resolve()
     if not root.is_dir():
         raise RuntimeError(f"checkpoint root is absent: {root}")
-    pinned = _parse_sha256sums(CHECKSUMS_PATH.read_text(encoding="utf-8"))
+    pinned = _parse_sha256sums((checkpoint_directory(checkpoint) / CHECKSUMS_PATH.name).read_text(encoding="utf-8"))
 
     present: dict[str, int] = {}
     for path in root.rglob("*"):
@@ -131,16 +147,21 @@ def verify_root(root: Path, *, workers: int = 4) -> dict[str, Any]:
         )
     return {
         "schema": "sparkcache-deepseek-v41-checkpoint-verify/v1",
-        "repository": str(load_inputs()["repository"]),
-        "revision": str(load_inputs()["revision"]),
+        "repository": str(load_inputs(checkpoint)["repository"]),
+        "revision": str(load_inputs(checkpoint)["revision"]),
         "files_verified": len(pinned),
         "bytes_verified": sum(present.values()),
-        "checkpoint_sha256": derive()["checkpoint_sha256"],
+        "checkpoint_sha256": derive(checkpoint)["checkpoint_sha256"],
     }
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="the profile's listed checkpoint whose pins apply (default: the default checkpoint)",
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("derive", help="recompute the pinned identity")
     verify = commands.add_parser(
@@ -150,9 +171,9 @@ def main(argv: list[str] | None = None) -> int:
     verify.add_argument("--workers", type=int, default=4)
     args = parser.parse_args(argv)
     if args.command == "derive":
-        print(json.dumps(derive(), sort_keys=True))
+        print(json.dumps(derive(args.checkpoint), sort_keys=True))
     else:
-        print(json.dumps(verify_root(args.root, workers=args.workers), sort_keys=True))
+        print(json.dumps(verify_root(args.root, workers=args.workers, checkpoint=args.checkpoint), sort_keys=True))
     return 0
 
 

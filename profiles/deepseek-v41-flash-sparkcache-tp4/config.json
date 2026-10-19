@@ -7,6 +7,32 @@
     "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
     "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
   },
+  "checkpoint": "original",
+  "checkpoints": {
+    "original": {
+      "model": {
+        "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+        "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+        "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+      }
+    },
+    "1017": {
+      "model": {
+        "repository": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+        "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+        "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+      },
+      "served_model_name": "DeepSeek-V4.1-Flash-1017-TP4",
+      "arguments": {
+        "--kv-transfer-config": "{\"kv_connector\":\"SparkContextCacheConnector\",\"kv_connector_module_path\":\"sparkcache.spark_context_cache_connector\",\"kv_role\":\"kv_both\",\"kv_load_failure_policy\":\"recompute\",\"kv_connector_extra_config\":{\"spark_cache_root\":\"/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899\",\"spark_cache_model_profile\":\"deepseek-v41-b12x-hma\",\"spark_cache_target_checkpoint_sha256\":\"642667f82bb738e69d7ced6470fcdb4d48be378cd869e0243a1a4f9c89bf31dc\",\"spark_cache_draft_policy\":\"colocated_target\",\"spark_cache_access_mode\":\"read-write\",\"spark_cache_publication_schema\":\"tail-cow-v2\",\"spark_cache_max_bytes\":34359738368,\"spark_cache_low_watermark_bytes\":30064771072,\"spark_cache_min_span_tokens\":4096,\"spark_cache_max_span_tokens\":524288,\"spark_cache_scheduler_probe\":\"none\",\"spark_cache_streaming_snapshots\":false,\"spark_cache_cuda_restore\":false,\"spark_cache_cuda_placement_library\":\"/opt/sparkring/sparkcache/lib/libspark_cache_placement.so\",\"spark_cache_cuda_placement_library_sha256\":\"d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93\",\"spark_cache_cuda_placement_arena_bytes\":67108864,\"spark_cache_cuda_restore_arena_budget_bytes\":536870912,\"spark_cache_cuda_restore_io_workers\":2,\"spark_cache_load_threads\":2,\"spark_cache_max_pending_restores\":2,\"spark_cache_async_page_capture\":false,\"spark_cache_async_page_capture_lease_mode\":\"connector-jobs\",\"spark_cache_async_page_capture_library\":\"/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so\",\"spark_cache_async_page_capture_library_sha256\":\"b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68\",\"spark_cache_async_page_capture_slot_bytes\":1073741824,\"spark_cache_async_page_capture_slot_count\":2,\"spark_cache_async_page_capture_vllm_root\":\"/usr/local/lib/python3.12/dist-packages\",\"spark_cache_async_page_capture_lease_contract\":\"/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-gab86b70.json\",\"spark_cache_page_snapshot_interval_tokens\":0,\"spark_cache_payload_integrity\":\"fast\"}}"
+      },
+      "environment": {
+        "SPARK_CONTEXT_CACHE_ROOT": "/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899"
+      }
+    }
+  },
   "topology": "direct-cycle-4",
   "served_model_name": "DeepSeek-V4.1-Flash-TP4",
   "cache_namespace": "deepseek-v41-flash",

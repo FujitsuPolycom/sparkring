@@ -959,7 +959,13 @@ def test_sparkcache_profiles_are_install_only_cards_with_size_and_payload_check_
     for profile in listed:
         assert profile["compose"] is False and profile["installable"] and profile["image_option"] is None
         assert profile["status"] == "research-only" and "SparkCache" in profile["purpose"]
-        assert [checkpoint["name"] for checkpoint in profile["checkpoints"]] == [None]
+        # The DeepSeek card lists the profile's two checkpoints; the others have one, unnamed. Every checkpoint
+        # of a card carries the SparkCache fields.
+        names = [checkpoint["name"] for checkpoint in profile["checkpoints"]]
+        assert names == (["original", "1017"] if profile["id"] == "deepseek-v41-flash-sparkcache-tp4" else [None])
+        for checkpoint in profile["checkpoints"]:
+            rows = {row["name"]: row for row in checkpoint["settings"]}
+            assert {"sparkcache_size", "sparkcache_integrity"} <= set(rows)
         rows = {row["name"]: row for row in profile["checkpoints"][0]["settings"]}
         size, check = rows["sparkcache_size"], rows["sparkcache_integrity"]
         assert size["size"] and size["option"] == "--sparkcache-size" and size["profile"] == "32G"

@@ -1,15 +1,19 @@
 {
   "source_commit": "4a17f1f5198eb2402bcd6669425c62857937d39f",
   "files": {
-    "deploy/deepseek_v41/README.md": "e928a5a0f483240cae91944396a08c00ec82713c1d1bd555d643ce04007b9cef",
+    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+    "deploy/deepseek_v41/README.md": "745cc968f853d9d33a9bbf470805a1e9d1f5620c56fb8063f40ae930cd27074b",
     "deploy/deepseek_v41/capacity_gate.py": "05baebf8c9d56dbbcf707a8c9f7dedfd432105eba4d60a4d4a3e98fd0fab1b68",
     "deploy/deepseek_v41/checkpoint-identity-inputs.json": "7574b198a4381a7b114f98d82309caf8ef72a34fcbc7b457b883f93902c1fd23",
     "deploy/deepseek_v41/checkpoint-identity-receipt.json": "bca6e954838450deb552b44b6a717e3cf25ea9ea81cacc73d90cacc73ba40208",
     "deploy/deepseek_v41/checkpoint-sha256sums.txt": "89de6bc77d0028b2b61b3cad12885342d0856f4c115c4f9328e91cf025c3d16f",
-    "deploy/deepseek_v41/checkpoint_identity.py": "e805e37ee86250afd9af4f16a70f7f28e39a8265af7ced6fdb2bff8634b540a5",
+    "deploy/deepseek_v41/checkpoint_identity.py": "57b0bb13d5a50b1e68fdb82945ed35c85b387a0d754e7b55874bd86ce50bce4d",
+    "deploy/deepseek_v41/checkpoints/1017/checkpoint-identity-inputs.json": "7648a210c1dcc249dd24c324b0e22ac1ec772398ee4020a1abae3696ad329bfb",
+    "deploy/deepseek_v41/checkpoints/1017/checkpoint-identity-receipt.json": "ccbe466233169ad8ffc12c5499c9c5ec15d1fa92fe53a9e880076c08ba66ada8",
+    "deploy/deepseek_v41/checkpoints/1017/checkpoint-sha256sums.txt": "32bd7b74336ed628c2ebca4d4102b1c69fbd08550c0cc3cfc33ef8cac0490066",
     "deploy/deepseek_v41/corruption_gate.py": "ed63ad0d5ab0f9014e9218a7a36d11e5e9ae08e171cf5766c4ece781254bfb50",
     "deploy/deepseek_v41/semantic_gate.py": "01202243a21490b7cbad9169a9df94271f799ead98acadbcd027515b925de0c1",
-    "deploy/deepseek_v41/test_deepseek_v41_deploy.py": "e18f76222b888868bdd6c7489ea35c1f7d527ab28ad1e81a6b1169bbdc93dbf4",
+    "deploy/deepseek_v41/test_deepseek_v41_deploy.py": "6ca32776c6081b526306f4b2c62ba2a448d09ffac0cb304d2ee3815d241225bd",
     "deploy/deployment_contract/README.md": "350f771bec010ca29d154ebbb9383c51068d50f4248ef44c8b0080b2e0f83508",
     "deploy/deployment_contract/__init__.py": "8c0e2834933fa24a922af966e8525abab8d3580ce84f4abc614a84bd773c29a7",
     "deploy/deployment_contract/command.py": "abb8ff3f9fe93d06fe2fc32ae4c2595136a214962ff4ec27cc1342e2d4833f37",
@@ -27,8 +31,7 @@
     "deploy/deployment_contract/test_receipts.py": "1c6e703b2382a2307af94e903cc4e55adad9cc4cca9860f4525cb74c8eb84a0f",
     "deploy/deployment_contract/test_release_hardening.py": "57b422ff940f1eb7d7be91c1314c8cbd651c951093e73effd032106c362b3784",
     "deploy/deployment_contract/test_source.py": "ddcbddafabbb0ce0cac8b0667ae2b08b81c3789eb8f373159f4a8cb3aa8af70b",
-    "LICENSE": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
-    "sparkcache/test_deepseek_v41_topology.py": "827bbf5bf470dfe97fec722a999e81c99c5c07354efe0677b154d4ee513e4a50",
-    "sparkcache/deepseek_v41_topology.json": "bf794b29793bc4f59cf61d7959957df1ceff2084ee6e74e3a94b99ba6b86b3f1"
+    "sparkcache/deepseek_v41_topology.json": "bf794b29793bc4f59cf61d7959957df1ceff2084ee6e74e3a94b99ba6b86b3f1",
+    "sparkcache/test_deepseek_v41_topology.py": "827bbf5bf470dfe97fec722a999e81c99c5c07354efe0677b154d4ee513e4a50"
   }
 }

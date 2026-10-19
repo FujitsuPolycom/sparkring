@@ -21,6 +21,20 @@ draft policy `colocated_target`, and checkpoint identity
 The [identity inputs and verifier](../../integrations/sparkcache/4a17f1f5198e/deploy/deepseek_v41/README.md)
 bind the checkpoint files and draft settings. Verify local weights before use.
 
+`--checkpoint 1017` serves DeepSeek's 2026-10-17 weights instead,
+`deepseek-ai/DeepSeek-V4.1-Flash-1017` at revision
+`1bae0e1088993b9b82de08f59de5be5a34e42170` (the same `config.json` and
+weight index; every weight shard differs), as `DeepSeek-V4.1-Flash-1017-TP4`,
+with the connector's checkpoint identity
+`642667f82bb738e69d7ced6470fcdb4d48be378cd869e0243a1a4f9c89bf31dc` and the
+cache root `/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899`,
+so the two revisions never share cache entries. Research-only: those weights
+served under this profile's settings on four Sparks on 2026-10-17 (KV pool
+11,308,736 tokens; a session restored across a restart) as a research
+configuration
+([record](../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md));
+the entry itself has not been installed yet.
+
 SparkCache stores full-history latent/indexer pages and encoder sliding-window
 pages. It never stores request-private decoder/draft sliding windows (`replay`)
 or compressor rings (`transient`). Restored spans end at least 128 tokens
