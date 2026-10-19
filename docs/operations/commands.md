@@ -36,7 +36,7 @@ sudo sparkring up --execute                                  # start it again
 | [`images`](#images) | any | no | List the installer images `install --image` can select |
 | [`status`](#status) | Node A | yes, or the `sparkring` group | Show each Spark's state and the saved model |
 | [`check`](#check) | Node A | yes | Test the running model and its transport; write a tester report |
-| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable` | Web page and terminal view of the ring (Experimental) |
+| [`dashboard`](#dashboard) | Node A | `export`, `quiet`, `enable`, `disable`, `external` | Web page and terminal view of the ring (Experimental) |
 | [`host-load`](#host-load) | Node A or each Spark | yes, except `show` | Set where and how often host jobs run |
 | [`logs`](#logs) | Node A | yes, or the `sparkring` group | Show or follow the installation log |
 | [`hairpin`](#hairpin) | Node A | yes | Apply the ConnectX setting that relayed forwarding needs |
@@ -570,6 +570,10 @@ sudo sparkring dashboard quiet on      # no request at all, for a benchmark
 sudo sparkring dashboard quiet off
 sudo sparkring dashboard disable       # off for good, across reboots, setups and upgrades
 sudo sparkring dashboard enable
+sudo sparkring dashboard external add flare-spark-6 --host 192.0.2.60 --port 8000 --label "Flare · Qwen3.8-Flash-Next (Spark 6)"
+sudo sparkring dashboard external add flare-spark-7 --host 192.0.2.61 --port 8000 --label "Flare (Spark 7)" --position 7   # on the ring figure
+sudo sparkring dashboard external list   # endpoints served outside the installer, shown as read-only cards
+sudo sparkring dashboard external remove flare-spark-6
 ```
 
 A measurement holds quiet mode with a holder of its own, so overlapping

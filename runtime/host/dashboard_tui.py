@@ -144,6 +144,8 @@ def span_text(positions) -> str:
 def group_color(member: dict) -> int:
     if member.get("unmanaged") or member.get("gpu_job"):
         return MUTED
+    if member.get("external"):
+        return WARN
     arc = member.get("arc")
     return RING_PALETTE[(arc.get("color") or 0) % len(RING_PALETTE)] if arc else 0
 
@@ -267,8 +269,8 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
       style(STATE_COLORS.get(state, 4), bold=True))
     arc = member.get("arc") or {}
     if arc:
-        b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") else
-          f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
+        b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") or member.get("external")
+          else f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
         where = f"{member.get('ring')}:" if ring_tag and member.get("ring") else ""
         b(f"@{where}{span_text(arc.get('positions'))}", style(group_color(member), bold=True))
         transport = (member.get("transport") or {}).get("label")

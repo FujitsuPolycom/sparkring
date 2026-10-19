@@ -245,6 +245,48 @@ def site_from_records(state_root: Path) -> dict:
             "display_name": ring_name.read(state_root)}
 
 
+def external_rows(path) -> list:
+    """The endpoints the external list names (dashboard.read_external); [] without the file."""
+    from runtime.host import dashboard
+    return dashboard.read_external(path)
+
+
+def write_external(path, rows) -> None:
+    """Write the external list file with ``rows``, world-readable, replacing it atomically."""
+    from runtime.host import dashboard, node
+    path = Path(path)
+    document = {"schema": dashboard.EXTERNAL_SCHEMA, "endpoints": rows}
+    node.save(path.parent, path.name, document, mode=0o644)
+
+
+def external(args) -> int:
+    """``sparkring dashboard external list|add|remove``: the endpoints shown as read-only cards.
+
+    ``add`` validates the entry as the service does and replaces an entry of the same id; ``remove``
+    drops one. The service re-reads the file within FILES_SECONDS; no restart. Prints the list."""
+    from runtime.host import dashboard
+    path = Path(args.file)
+    rows = external_rows(path)
+    if args.action == "add":
+        entry = {"id": args.id, "label": args.label, "kind": args.kind, "host": args.host, "port": args.port}
+        if getattr(args, "position", None) is not None:
+            entry["position"] = args.position
+        rows = dashboard.external_rows({"schema": dashboard.EXTERNAL_SCHEMA,
+                                        "endpoints": [r for r in rows if r["id"] != args.id] + [entry]}, str(path))
+        write_external(path, rows)
+    elif args.action == "remove":
+        if not any(r["id"] == args.id for r in rows):
+            raise ValueError(f"no endpoint {args.id} in {path}")
+        write_external(path, [r for r in rows if r["id"] != args.id])
+        rows = dashboard.read_external(path)
+    if not rows:
+        print(f"No endpoints listed in {path}.")
+    for row in rows:
+        where = f" on position {row['position']}" if row.get("position") is not None else ""
+        print(f"{row['id']}: {row['label']} ({row['kind']}) at http://{row['host']}:{row['port']}{where}")
+    return 0
+
+
 def write_site(output: Path | None = None) -> dict:
     """Write the site file from this controller's records; returns the document."""
     from runtime.host import controller, node

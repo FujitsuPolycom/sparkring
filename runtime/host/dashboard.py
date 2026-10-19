@@ -112,6 +112,11 @@ from runtime.host import startup
 SCHEMA = "sparkring-dashboard/v1"
 SITE_SCHEMA = "sparkring-dashboard-site/v1"
 SITE_PATH = Path("/var/lib/sparkring/dashboard/site.json")
+# Endpoints served outside the installer (sparkring dashboard external): read-only cards.
+EXTERNAL_PATH = Path("/var/lib/sparkring/dashboard/external.json")
+EXTERNAL_SCHEMA = "sparkring-dashboard-external/v1"
+EXTERNAL_KINDS = ("flare", "openai")
+EXTERNAL_ID_RE = re.compile(r"[a-z0-9][a-z0-9-]{0,39}")
 FABRIC_PATH = Path("/etc/sparkring/fabric/topology.json")
 NODE_STATUS_PATH = Path("/run/sparkring/status.json")
 NODE_REPORTS_PATH = Path("/var/lib/sparkring/dashboard/nodes.json")
@@ -343,6 +348,102 @@ def parse_metrics(text: str) -> dict:
         elif name == "process_start_time_seconds":
             out["started"] = value
     out["kv"] = kv
+    return out
+
+
+# Flare's /metrics series the external cards show (ghcr.io/local-inference-lab/flare). Gauges are read as
+# they are; counters are read as they are and the generation counter also gives a rate between two reads.
+FLARE_GAUGES = {"flare_active_requests": "active_requests", "flare_pending_requests": "pending_requests",
+                "flare_http_request_capacity": "request_capacity", "flare_uptime_seconds": "uptime_seconds",
+                "flare_generated_tokens_last_minute": "tokens_last_minute", "flare_total_kv_tokens": "kv_tokens_total",
+                "flare_free_kv_tokens": "kv_tokens_free", "flare_cached_kv_tokens": "kv_tokens_cached"}
+FLARE_COUNTERS = {"flare_generated_tokens_total": "generated_tokens", "flare_prefill_tokens_total": "prefill_tokens",
+                  "flare_requests_completed_total": "requests_completed", "flare_requests_failed_total": "requests_failed",
+                  "flare_speculative_offered_drafts_total": "drafts_offered",
+                  "flare_speculative_accepted_drafts_total": "drafts_accepted",
+                  "flare_engram_row_cache_hits_total": "row_cache_hits", "flare_engram_row_cache_misses_total": "row_cache_misses",
+                  "flare_cache_lookups_total": "prefix_lookups", "flare_cache_hits_total": "prefix_hits",
+                  "flare_http_requests_total": "http_requests"}
+
+
+def parse_flare_metrics(text: str) -> dict:
+    """The Flare series of FLARE_GAUGES and FLARE_COUNTERS by their short names; a labelled series is summed
+    over its labels. Series that are absent are absent from the result."""
+    out: dict = {}
+    for line in text.splitlines():
+        if not line or line[0] == "#":
+            continue
+        brace = line.find("{")
+        if brace != -1:
+            end = line.rfind("}")
+            if end < brace:
+                continue
+            name, rest = line[:brace], line[end + 1:]
+        else:
+            name, _, rest = line.partition(" ")
+        key = FLARE_GAUGES.get(name) or FLARE_COUNTERS.get(name)
+        if key is None:
+            continue
+        parts = rest.split()
+        if not parts:
+            continue
+        try:
+            value = float(parts[0])
+        except ValueError:
+            continue
+        out[key] = out.get(key, 0.0) + value
+    return out
+
+
+def read_external(path) -> list:
+    """The endpoints the file at ``path`` lists, validated; [] when the file is absent.
+
+    The document is ``sparkring-dashboard-external/v1``: ``endpoints``, each with an ``id``
+    (lowercase letters, digits and hyphens, at most 40 characters, distinct), a ``label`` (at most 80
+    characters), a ``kind`` (``flare`` or ``openai``), a ``host`` (an IP address), a ``port`` and an
+    optional ``position``: the ring position of the Spark that serves it, which places the endpoint on
+    the ring figure among the ring's own models. Raises ValueError for a document that is not of that
+    form."""
+    try:
+        document = read_json(Path(path))
+    except FileNotFoundError:
+        return []
+    return external_rows(document, path)
+
+
+def external_rows(document, path="external list") -> list:
+    """The validated endpoints of an external-list ``document`` (read_external's rules); ``path`` names it in errors."""
+    if not isinstance(document, dict) or document.get("schema") != EXTERNAL_SCHEMA:
+        raise ValueError(f"{path}: expected {EXTERNAL_SCHEMA}")
+    rows = document.get("endpoints")
+    if not isinstance(rows, list):
+        raise ValueError(f"{path}: endpoints must be a list")
+    out, seen = [], set()
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError(f"{path}: each endpoint is an object")
+        identifier = row.get("id")
+        if not isinstance(identifier, str) or not EXTERNAL_ID_RE.fullmatch(identifier) or identifier in seen:
+            raise ValueError(f"{path}: endpoint id {identifier!r} is not a distinct short lowercase name")
+        label = row.get("label")
+        if not isinstance(label, str) or not label.strip() or len(label) > 80:
+            raise ValueError(f"{path}: endpoint {identifier} needs a label of at most 80 characters")
+        kind = row.get("kind", "openai")
+        if kind not in EXTERNAL_KINDS:
+            raise ValueError(f"{path}: endpoint {identifier} kind must be one of {', '.join(EXTERNAL_KINDS)}")
+        host, port = row.get("host"), row.get("port")
+        if not isinstance(host, str) or not _ip(host):
+            raise ValueError(f"{path}: endpoint {identifier} host must be an IP address")
+        if not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535:
+            raise ValueError(f"{path}: endpoint {identifier} port must be 1 to 65535")
+        entry = {"id": identifier, "label": label.strip(), "kind": kind, "host": host, "port": port}
+        position = row.get("position")
+        if position is not None:
+            if not isinstance(position, int) or isinstance(position, bool) or position < 0:
+                raise ValueError(f"{path}: endpoint {identifier} position must be a ring position, 0 or more")
+            entry["position"] = position
+        seen.add(identifier)
+        out.append(entry)
     return out
 
 
@@ -857,6 +958,34 @@ class Model:
         self.last_ok = now
 
 
+# -- one endpoint outside the installer --------------------------------------------------------
+class External:
+    """One endpoint of the external list: what its /metrics and /v1/models said, and its state."""
+
+    def __init__(self, row: dict):
+        self.row = row
+        self.id = "external:" + row["id"]
+        self.state = None
+        self.state_since = None
+        self.model = None
+        self.root = None
+        self.max_model_len = None
+        self.metrics = None
+        self.metrics_at = None
+        self.sample = None            # (generated_tokens, at) of the previous /metrics read
+        self.output_tps = None
+        self.next_metrics = 0.0
+        self.next_models = 0.0
+
+    def observe_metrics(self, metrics: dict, now: float) -> None:
+        generated = metrics.get("generated_tokens")
+        if generated is not None and self.sample is not None and now > self.sample[1] and generated >= self.sample[0]:
+            self.output_tps = (generated - self.sample[0]) / (now - self.sample[1])
+        if generated is not None:
+            self.sample = (generated, now)
+        self.metrics, self.metrics_at = metrics, now
+
+
 # -- the collector ----------------------------------------------------------------------------
 class Collector:
     """Decides which reads are due, sends them through the client and keeps the results."""
@@ -866,9 +995,14 @@ class Collector:
                  node_reports_path: Path | None = NODE_REPORTS_PATH,
                  live_path=Path("/run/sparkring/dashboard-live.json"),
                  viewer_path=Path("/run/sparkring-dashboard/viewer"),
+                 external_path: Path | None = EXTERNAL_PATH,
                  clock=time.time, cpu_clock=time.process_time):
         self.sources = list(sources)
         self.client = client
+        self.external_path = Path(external_path) if external_path else None
+        self.externals: dict = {}     # endpoint id -> External, from the external list file
+        self.external_stamp = None
+        self.external_problem = None
         self.quiet_path = Path(quiet_path) if quiet_path else None
         self.node_status_path = Path(node_status_path) if node_status_path else None
         self.recovery_path = Path(recovery_path) if recovery_path else None
@@ -947,6 +1081,35 @@ class Collector:
                 self.node_status = None
         if self.recovery_path is not None:
             self.recovery = recovery_findings(self.recovery_path)
+        self.reload_externals()
+
+    def reload_externals(self) -> None:
+        """Re-read the external list when its stamp changed; keep each listed endpoint's state across re-reads."""
+        if self.external_path is None:
+            return
+        try:
+            stat = self.external_path.stat()
+            stamp = (stat.st_dev, stat.st_ino, stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            stamp = None
+        if stamp == self.external_stamp and self.external_stamp is not None:
+            return
+        self.external_stamp = stamp
+        try:
+            rows = read_external(self.external_path)
+            self.external_problem = None
+        except (OSError, ValueError) as error:
+            rows, self.external_problem = [], str(error)
+        with self.lock:
+            wanted = {row["id"]: row for row in rows}
+            for identifier in [i for i in self.externals if i not in wanted]:
+                del self.externals[identifier]
+            for identifier, row in wanted.items():
+                current = self.externals.get(identifier)
+                if current is None or (current.row["host"], current.row["port"]) != (row["host"], row["port"]):
+                    self.externals[identifier] = External(row)
+                else:
+                    current.row = row
 
     def reload_sources(self, force: bool = False) -> None:
         """Re-read each fabric's document and site file whose stamp changed (all of them when
@@ -966,6 +1129,8 @@ class Collector:
                 if row["api_host"]:
                     hosts.add(row["api_host"])
                 wanted[(source.ring_id(), row["id"])] = (source, row)
+        with self.lock:
+            hosts.update(external.row["host"] for external in self.externals.values())
         self.client.allow(hosts)
         with self.lock:
             for model_id in [m for m, model in self.models.items() if model.key not in wanted]:
@@ -1043,6 +1208,10 @@ class Collector:
         else:
             for model in models:
                 sent = self.poll(model, now, viewed) or sent
+        with self.lock:
+            externals = list(self.externals.values())
+        for external in externals:
+            sent = self.poll_external(external, now, viewed) or sent
         with self.lock:
             for model in models:
                 if viewed:
@@ -1172,6 +1341,130 @@ class Collector:
             with self.lock:
                 model.runtime = runtime
         return sent
+
+    def poll_external(self, external: External, now: float, viewed: bool) -> bool:
+        """Send the reads due for one external endpoint; True when any request was sent.
+
+        An endpoint whose /metrics answers is serving; a refused connection means nothing listens,
+        a timeout an unreachable host and an HTTP error a server that is not ready. /v1/models is
+        read once a minute while it serves, for the model's name, root and context length."""
+        if not viewed:
+            return False
+        row = external.row
+        host, port = row["host"], row["port"]
+        sent = False
+        if external.state == "serving" and external.metrics_at is not None:
+            external.next_metrics = min(external.next_metrics, external.metrics_at + METRICS_VIEWED_SECONDS)
+        if now >= external.next_metrics:
+            sent = True
+            fetched = self.client.get(host, port, "/metrics")
+            if fetched.ok:
+                metrics = parse_flare_metrics(fetched.body.decode("utf-8", "replace")) if row["kind"] == "flare" else {}
+                with self.lock:
+                    external.observe_metrics(metrics, now)
+                state = "serving"
+                external.next_metrics = now + METRICS_VIEWED_SECONDS
+            else:
+                state = {"refused": "stopped", "timeout": "offline", "unreachable": "offline"}.get(fetched.failure, "not_ready")
+                with self.lock:
+                    external.metrics, external.metrics_at, external.output_tps, external.sample = None, None, None, None
+                external.next_metrics = now + max(METRICS_VIEWED_SECONDS, FAILED_SECONDS)
+            self.set_external_state(external, state, now)
+        if external.state == "serving" and now >= external.next_models:
+            sent = True
+            external.next_models = now + MODELS_SECONDS
+            listed = self.models_listed(self.client.get(host, port, "/v1/models"))
+            if listed:
+                with self.lock:
+                    external.model = listed.get("id") or external.model
+                    external.root = listed.get("root") or external.root
+                    external.max_model_len = listed.get("max_model_len") or external.max_model_len
+        return sent
+
+    def set_external_state(self, external: External, state: str, now: float) -> None:
+        with self.lock:
+            if state == external.state:
+                return
+            previous, external.state, external.state_since = external.state, state, now
+            if previous is not None or state == "serving":
+                self.events.append({"at": now, "stack": external.row["label"], "text": LABELS[state],
+                                    "kind": state})
+
+    def external_member(self, external: External, now: float) -> dict:
+        """One external endpoint as the page shows it: identity, state and the figures of its last read."""
+        row, metrics = external.row, external.metrics or {}
+        serving = external.state == "serving"
+
+        def ratio(numerator, denominator):
+            top, bottom = metrics.get(numerator), metrics.get(denominator)
+            return (top / bottom) if top is not None and bottom else None
+
+        stats = None
+        if serving and metrics:
+            kv_total, kv_free = metrics.get("kv_tokens_total"), metrics.get("kv_tokens_free")
+            stats = {"output_tps": external.output_tps,
+                     "tokens_last_minute": metrics.get("tokens_last_minute"),
+                     "active_requests": metrics.get("active_requests"), "pending_requests": metrics.get("pending_requests"),
+                     "request_capacity": metrics.get("request_capacity"),
+                     "kv_in_use": ((kv_total - kv_free) / kv_total) if kv_total and kv_free is not None else None,
+                     "kv_tokens_total": kv_total, "kv_tokens_cached": metrics.get("kv_tokens_cached"),
+                     "uptime_seconds": metrics.get("uptime_seconds"),
+                     "generated_tokens": metrics.get("generated_tokens"), "prefill_tokens": metrics.get("prefill_tokens"),
+                     "requests_completed": metrics.get("requests_completed"), "requests_failed": metrics.get("requests_failed"),
+                     "http_requests": metrics.get("http_requests"),
+                     "draft_acceptance": ratio("drafts_accepted", "drafts_offered"),
+                     "row_cache_hit_rate": (metrics["row_cache_hits"] / (metrics["row_cache_hits"] + metrics["row_cache_misses"])
+                                            if metrics.get("row_cache_hits") is not None and metrics.get("row_cache_misses") is not None
+                                            and metrics["row_cache_hits"] + metrics["row_cache_misses"] else None),
+                     "prefix_hit_rate": ratio("prefix_hits", "prefix_lookups")}
+        return {"id": external.id, "label": row["label"], "kind": row["kind"], "host": row["host"], "port": row["port"],
+                "position": row.get("position"),
+                "endpoint": f"http://{row['host']}:{row['port']}/v1", "metrics_url": f"http://{row['host']}:{row['port']}/metrics",
+                "state": external.state, "state_label": LABELS[external.state], "state_since": external.state_since,
+                "model": external.model, "root": external.root, "max_model_len": external.max_model_len,
+                "metrics_at": external.metrics_at, "stats": stats}
+
+    def external_ring_member(self, external: External, source: Source, now: float, color: int) -> dict:
+        """An external endpoint placed on a ring, in the shape of member(): a one-Spark group at its listed
+        position, with the endpoint's figures as ``live`` and its card document under the same keys as
+        external_member()."""
+        card = self.external_member(external, now)
+        row, stats = external.row, card["stats"]
+        position = row["position"]
+        spark = next((p for p in source.fabric["positions"] if p["position"] == position), {})
+        serving = external.state == "serving"
+        runtime_name = "Flare" if row["kind"] == "flare" else "OpenAI API"
+        return {
+            **card,
+            "name": run_name([position]), "profile": None, "start_command": None,
+            "unmanaged": False, "gpu_job": False, "launch": {},
+            "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record",
+            "group_note": None, "containers": [], "stopped_records": [],
+            "startup": None, "spark_startup": None,
+            "model_short": short_model(external.model), "details_url": None,
+            "layout": {"label": runtime_name, "count": 1, "tp": 1, "dcp": None},
+            "live": {"output_tps": stats["output_tps"], "running": stats["active_requests"],
+                     "waiting": stats["pending_requests"], "kv": stats["kv_in_use"], "read_at": external.metrics_at}
+            if stats else None,
+            "counters": None, "plugin_counters": None, "counter_samples": [],
+            "totals": {"finished": stats["requests_completed"], "preemptions": None,
+                       "output_tokens": stats["generated_tokens"], "prompt_tokens": stats["prefill_tokens"]}
+            if stats else None,
+            "thinking": None, "thinking_default": None, "thinking_provenance": None,
+            "settings": None, "nodes": [], "capacity": None, "workers": None, "image": None, "transport": None,
+            "sparks": [{"name": spark.get("hostname", str(position)), "address": spark.get("address"),
+                        "lan_address": spark.get("lan_address"), "up": True if serving else None,
+                        "position": position, "container": None}],
+            "history": [],
+            "arc": {"positions": [position], "first": position, "last": position, "size": 1,
+                    "run": run_name([position]), "source": "external", "source_label": "external endpoint list",
+                    "inferred": False, "detail": None, "color": color},
+            "ring": source.ring_id(),
+            "head": {"position": position, "name": spark.get("hostname"), "address": row["host"], "port": row["port"],
+                     "container": None},
+            "logs": log_commands(spark.get("hostname"), None),
+            "runtime_read": False, "recovery": None, "external": True,
+        }
 
     @staticmethod
     def models_listed(fetched: Fetched) -> dict | None:
@@ -1305,6 +1598,8 @@ class Collector:
             models = list(self.models.values())
             groups, rings = [], []
             color = 0
+            externals = sorted(self.externals.values(), key=lambda e: e.row["id"])
+            placed: set = set()
             for source in self.sources:
                 fabric = source.fabric
                 members = []
@@ -1319,6 +1614,27 @@ class Collector:
                         member["counter_samples"] = delta
                         members.append(member)
                         color += 1
+                # An endpoint listed with a position joins the first ring whose fabric has that position. A
+                # container the host agents saw on that Spark without a known engine is that endpoint's own
+                # server, so its "GPU in use" row gives way to the endpoint's card, which then also names the
+                # stopped install records that row carried for the Spark.
+                here: dict = {}
+                for external in externals:
+                    position = external.row.get("position")
+                    if fabric and position is not None and external.id not in placed and position < fabric["size"]:
+                        here[position] = self.external_ring_member(external, source, now, color)
+                        placed.add(external.id)
+                        color += 1
+                kept = []
+                for member in members:
+                    if member["gpu_job"] and set(member["arc"]["positions"]) <= set(here):
+                        for position in member["arc"]["positions"]:
+                            known = {r["id"] for r in here[position]["stopped_records"]}
+                            here[position]["stopped_records"] += [r for r in member["stopped_records"]
+                                                                  if r["id"] not in known]
+                    else:
+                        kept.append(member)
+                members = kept + list(here.values())
                 members.sort(key=lambda m: m["arc"]["first"])
                 groups.append({"id": source.ring_id(), "name": self.ring_name(source), "kind": "ring",
                                "members": members})
@@ -1328,6 +1644,8 @@ class Collector:
             quiet, viewed = self.quiet, self.viewed(now)
             cpu = list(self.cycle_cpu)
             cursor = self.history_seq
+            externals = [self.external_member(e, now) for e in externals if e.id not in placed]
+            external_problem = self.external_problem
         problems = [s.problem for s in self.sources if s.problem]
         topology = {"source": "fabric" if rings else "none", "detail": "; ".join(problems) or None,
                     "rings": len(rings)}
@@ -1338,6 +1656,7 @@ class Collector:
                 "poll_seconds": METRICS_VIEWED_SECONDS, "groups": groups, "rings": rings,
                 "ring": rings[0] if len(rings) == 1 else None, "topology": topology, "events": events,
                 "node": self.node_summary(),
+                "external": externals, "external_problem": external_problem,
                 "collector": {"quiet": quiet, "viewed": viewed, "cycles": self.cycles,
                               "metrics_seconds": METRICS_VIEWED_SECONDS if viewed else None,
                               "models_seconds": MODELS_SECONDS,
@@ -1451,13 +1770,15 @@ class Collector:
             for position in member["arc"]["positions"]:
                 owners.setdefault(position, []).append(member["id"])
         local = socket.gethostname()
+        # A position's first member is the one that serves it; a stopped record sharing the position follows.
+        states = {m["id"]: m["state"] for m in members}
         positions = []
         for row in fabric["positions"]:
             reports = [d for d in [self.node_status, *self.node_reports] if isinstance(d, dict)
                        and row.get("node_id") and d.get("node_id") == row["node_id"]
                        and number(d.get("observed_at"))]
             cached = max(reports, key=lambda d: d["observed_at"], default={})
-            busy = owners.get(row["position"]) or []
+            busy = sorted(owners.get(row["position"]) or [], key=lambda i: states.get(i) != "serving")
             serving = any(m["state"] == "serving" and m["id"] in busy for m in members)
             up = True if serving or row["hostname"] == local else None
             positions.append({"position": row["position"], "name": row["hostname"],
@@ -1936,6 +2257,23 @@ def main(argv=None) -> int:
     hush.add_argument("--quiet-file", default=str(QUIET_PATH))
     commands.add_parser("disable", help="stop the service and keep it off across reboots, setups and upgrades (sudo)")
     commands.add_parser("enable", help="turn the service back on (sudo)")
+    external = commands.add_parser("external", help="list, add or remove endpoints served outside the installer, "
+                                                    "shown as read-only cards (Node A, sudo for add and remove)")
+    external_commands = external.add_subparsers(dest="action", required=True)
+    external_commands.add_parser("list", help="print the listed endpoints")
+    added = external_commands.add_parser("add", help="add or replace an endpoint by id")
+    added.add_argument("id", help="a short lowercase name, such as flare-spark-6")
+    added.add_argument("--host", required=True, help="the endpoint's IP address")
+    added.add_argument("--port", type=int, required=True)
+    added.add_argument("--label", required=True, help="what the card is called, at most 80 characters")
+    added.add_argument("--kind", choices=EXTERNAL_KINDS, default="flare",
+                       help="flare reads Flare's /metrics series; openai reads /v1/models only (default: flare)")
+    added.add_argument("--position", type=int, default=None,
+                       help="the ring position of the Spark serving it: the endpoint then appears on the ring "
+                            "figure with the ring's own models instead of under Other endpoints")
+    removed = external_commands.add_parser("remove", help="remove an endpoint by id")
+    removed.add_argument("id")
+    external.add_argument("--file", default=str(EXTERNAL_PATH), help=argparse.SUPPRESS)
     from runtime.host import dashboard_tui     # a reader of this service's /api/status; collects nothing
     dashboard_tui.add_parser(commands)
     args = parser.parse_args(argv)
@@ -1950,9 +2288,11 @@ def main(argv=None) -> int:
             raise ValueError("quiet hold needs --label")
         if args.command == "quiet" and args.state == "release" and not args.holder:
             raise ValueError("quiet release needs the holder id that quiet hold printed")
-        if args.command in ("export", "enable", "disable"):
+        if args.command in ("export", "enable", "disable", "external"):
             # Root actions; their module may start systemctl, which the collector never does.
             from runtime.host import dashboard_admin
+            if args.command == "external":
+                return dashboard_admin.external(args)
             return (dashboard_admin.export(args.output) if args.command == "export"
                     else dashboard_admin.switch(args.command))
         return quiet(args)

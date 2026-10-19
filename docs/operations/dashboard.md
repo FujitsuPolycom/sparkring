@@ -101,6 +101,9 @@ http://NODE_A_LAN_ADDRESS:8090/
   and upgrades; `sudo sparkring dashboard enable` turns it back on.
 - `install`, `up`, `down` and automatic recovery update it within about a
   second, without a restart.
+- Each model card folds to its head row (name, model, tags, state, endpoint)
+  with the arrow at its left; the fold is remembered per card in that
+  browser.
 
 The page reads files on Node A and sends GET requests to the model APIs only
 while someone views it. Node A's host agent forwards startup and container
@@ -216,6 +219,43 @@ SGLang needs `--enable-metrics` for rates. **Thinking** reads **unknown**
 unless the launch or runtime status gives explicit chat defaults. The
 [observation contract](../development/dashboard-counters.md#unmanaged-model-observations)
 states the bounds and freshness rules.
+
+### Other endpoints
+
+Models served outside the installer, such as Local Inference Lab's Flare
+runtime on one Spark, appear under **Other endpoints** when Node A lists them:
+
+```bash
+sudo sparkring dashboard external add flare-spark-6 --host 192.0.2.60 --port 8000 --label "Flare · Qwen3.8-Flash-Next (Spark 6)"
+sudo sparkring dashboard external add flare-spark-7 --host 192.0.2.61 --port 8000 --label "Flare · Qwen3.8-Flash-Next (Spark 7)" --position 7
+sudo sparkring dashboard external list
+sudo sparkring dashboard external remove flare-spark-6
+```
+
+With `--position N`, the endpoint is drawn on the ring figure as a one-Spark
+group at position N, in the legend and among the model cards, in the same
+orange-red as every Flare endpoint; its card shows the Spark's name and the
+endpoint's address and port, and its tokens per second count in the page's
+totals, and a flame mark beside its name, its runtime tag and its legend
+and ring labels. A container the host agents report on that Spark without a
+known engine is taken to be the endpoint's own server: it gets no separate
+"GPU in use" row, and a stopped install record for the Spark is named on the
+endpoint's card. Without a position the endpoint stays under **Other
+endpoints**. A position beyond the fabric's size is kept in the list but
+places nothing.
+
+The list is `/var/lib/sparkring/dashboard/external.json`
+(`sparkring-dashboard-external/v1`); the service re-reads it within 30 s. Each
+card is read-only: the page sends GET requests for the endpoint's `/metrics`
+and `/v1/models` only, as it does for the ring's models, and offers no
+actions. A `flare` endpoint shows Flare's own series: output tokens per
+second (from its generated-token counter between two reads), tokens in the
+last minute, running and maximum requests, KV tokens in use, uptime,
+requests completed and failed, draft acceptance, and the embedding-row and
+prefix cache hit rates; an `openai` endpoint shows the model name and
+context length from `/v1/models` and its state. The state follows the
+ring's rules: metrics answering is **Serving**, a refused connection **No
+model running**, no answer **Offline**, an HTTP error **Not ready**.
 
 ### Terminal view
 
