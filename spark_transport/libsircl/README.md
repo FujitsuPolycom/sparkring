@@ -1,13 +1,17 @@
 # libsircl
 
+Status: **research-only**. No serving or training claim rests on libsircl; `STATUS.md` states what is
+implemented and the evidence for it.
+
 libsircl is SIRCL's NCCL-compatible C API: a Linux shared library that implements the public C
 interface of NVIDIA NCCL 2.32 (the 73 functions of the NCCL 2.32.3 header and their `pnccl`
 profiling twins) on SIRCL, SparkRing's Switchless Inference RDMA Collective Layer for clusters of
 NVIDIA DGX Spark systems. A program written against NCCL's C API, such as PyTorch, vLLM, SGLang or
 nccl-tests, loads libsircl in place of NCCL's `libnccl.so.2` without modification.
 
-Compatibility is at the C API and ABI. libsircl implements a subset of the API (`STATUS.md` lists
-each function) and does not exchange data with NVIDIA NCCL processes. libsircl is an independent
+Compatibility is at the C API and ABI. libsircl implements 36 of the header's 73 functions
+(`tests/api_manifest.json` marks each one implemented or not; the other 37 return `ncclInvalidUsage`) and
+does not exchange data with NVIDIA NCCL processes. libsircl is an independent
 implementation: it contains no NCCL implementation source, it is not NVIDIA NCCL, and it is not
 sponsored or endorsed by NVIDIA. `STATUS.md` states what is implemented and the evidence; `RUNBOOK.md`
 gives the build, emulation and hardware commands.
@@ -39,7 +43,15 @@ gives the build, emulation and hardware commands.
   `ncclCommSplit`) writes one stderr line, `libsircl: communicator creation failed (<result>): <reason>`,
   the text `ncclGetLastError` returns, whatever `NCCL_DEBUG` says: frameworks commonly report only
   `ncclGetErrorString`. With `NCCL_DEBUG` set to `WARN`, `INFO` or `TRACE`, every failed call writes
-  `libsircl: <result>: <reason>`.
+  `libsircl: <result>: <reason>`. A creation that fails after the handle was allocated (the bootstrap or the
+  session setup failed) still returns the handle, whose `ncclCommGetAsyncError` and `ncclGetLastError` give
+  the result and reason; the failed communicator holds no bootstrap connection or session, but the caller
+  must still destroy or abort the handle to free it.
+- Result codes have NVIDIA NCCL's values and meaning. `ncclGetErrorString` returns short texts ("invalid
+  usage", "remote error", ...) without NVIDIA NCCL's hints to rerun with `NCCL_DEBUG`; the reason of a
+  failed call is in `ncclGetLastError`. `ncclCommDestroy(NULL)` and `ncclCommAbort(NULL)` return
+  `ncclSuccess`, as in NVIDIA NCCL 2.32.3; `ncclCommFinalize(NULL)` returns `ncclInvalidArgument`, where
+  NVIDIA NCCL 2.32.3 returns `ncclSuccess`.
 - `include/nccl.h` is NVIDIA's 2.32.3 header with marked changes (`NCCL_VERSION_CODE` 23203), used
   only to build libsircl.
 - The name `libsircl` without a suffix means this library; SIRCL's own test libraries are named
@@ -58,7 +70,16 @@ A communicator of W ranks (1 to 8) owns one SIRCL ring session:
 
 - **Bootstrap**: a 128-byte unique id carrying the root's address and port, a nonce and an optional site
   hash; TCP rendezvous over loopback or the wired LAN (`SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`
-  or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup.
+  or `NCCL_SOCKET_IFNAME`); all-gather rounds through the root for setup, splits and teardown. The root
+  runs in the process that created the id and lives until every rank's connection to it closes (each rank's
+  communicator is destroyed or aborted) or, before every rank joined, until its join window ends
+  (`SIRCL_BOOTSTRAP_TIMEOUT_MS`, default 10 s, counted from `ncclGetUniqueId`, not from the first rank's
+  join; a rank that arrives later is told the root rejected the id or disconnected, and the message names
+  the window). A connection that has not sent its join request within 1 s of being accepted is dropped.
+  Each all-gather round waits at most `LIBSIRCL_SETUP_TIMEOUT_MS` (1 ms to 1 h, default 600 s); another
+  value is refused, naming the variable. A process holds at most 64 roots at once: `ncclGetUniqueId`
+  beyond that returns `ncclInvalidUsage`, naming the limit, until a communicator whose id it created is
+  destroyed.
 - **Session engine** (`src/engine.c`): settings agreed across ranks, the pinned arena, device counters,
   SIRCL's native progress thread (`src/transport/sircl_roce_proxy.c`, a byte-identical copy of SIRCL's
   `oneshot/_roce_proxy.c` with change LF, its SHA-256 checked by the build and its local feature word,
@@ -152,12 +173,12 @@ without it, such a capture is refused with `ncclInvalidUsage` on the rank that n
 eager call of that size has run there. Point-to-point channel messages stage through a stream-ordered
 allocation on their channel's stream where there is one, else through their channel's own staging buffer.
 
-Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready communicator of two or more ranks wait
-for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
+Teardown: `ncclCommDestroy` and `ncclCommFinalize` of a ready or revoked communicator of two or more ranks
+wait for every rank. This rank's enqueued work completes; a first bootstrap round proves that every rank's work
 completed, so every item and flag any kernel waits for has landed (a kernel completes once it has its
 inbound items, while its progress thread may still owe a forward or a last item to a peer); the progress
 thread then stops, and a second round proves that every rank's progress thread stopped before any queue
-pair, registration or arena is freed. Each round is bounded by the session's wait limit; a rank that does
+pair, registration or arena is freed. Each round is bounded by the session's wait limit plus 5 s; a rank that does
 not arrive in time makes the call return `ncclRemoteError` after the local teardown. The first round
 also carries each rank's health: a rank whose own work failed (a flag wait that timed out, a failed progress
 thread, an earlier asynchronous error) returns that error, and every other rank returns `ncclRemoteError`
@@ -165,11 +186,21 @@ naming it. The close is terminal: from its start the communicator refuses new wo
 its error, and a second `ncclCommFinalize` or the destroy that follows returns the same result. When the
 transport's queue pairs or registrations cannot be released, destroy keeps the communicator's memory
 allocated and returns `ncclSystemError`. Ranks destroy their communicators in the same order, as they issue
-collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait.
+collectives. Finalize runs the rounds once and destroy then only frees; `ncclCommAbort` does not wait. When an abort finds a
+kernel of the communicator still running, its memory stays allocated (quarantined) until a later communicator
+creation or destroy in the process finds that kernel finished and frees it; every receipt's `quarantined_bytes`
+says how much memory is held so. Finalize is
+synchronous for every communicator: a non-blocking one (`blocking` 0 in its config) also runs both rounds
+before `ncclCommFinalize` returns, which never returns `ncclInProgress`; a caller that must not block runs
+finalize on a thread of its own.
 
 Errors of single calls: a collective or point-to-point call refused with `ncclInvalidArgument` did nothing
 and leaves the calling thread's group as it was (the group's other calls still run at `ncclGroupEnd`); other
-errors inside a group become the group's result. A point-to-point call queued in a group holds no reference
+errors of a collective, point-to-point or communicator-creation call inside a group become the group's
+result. A failed call that enqueues nothing (a query, a registration, `ncclGetUniqueId`, a lifecycle call, an
+unsupported function) returns its error and leaves the group as it was. Inside a group the point-to-point
+calls on one communicator must use one stream and number at most 1,024; the call that breaks either rule is
+refused with `ncclInvalidUsage`, which becomes the group's result. A point-to-point call queued in a group holds no reference
 on its communicator, so `ncclCommAbort` from another thread returns at once, and that group's
 `ncclGroupEnd` then fails its calls with `ncclInvalidUsage`. `ncclCommSplit` with a NULL config (or a config
 whose `blocking` is undefined) takes the parent's blocking mode.
@@ -183,6 +214,33 @@ sets the op it returns to `ncclNumOps`, which every collective refuses, so a cal
 gets an error, never a plain sum); a reduction op that is not built in returns `ncclInvalidArgument` and is counted in
 the receipt. Nothing is forwarded to another NCCL. `tests/api_manifest.json` marks every function of the
 header implemented or not.
+
+## Threading, streams and graphs
+
+These are caller contracts; libsircl does not detect every violation.
+
+- One communicator is not used from several threads at once without ordering between them. The guards
+  for concurrent use (bootstrap rounds that run one after another, a second close that waits for the
+  first) make misuse fail safe, not correct.
+- A stream passed to a collective or point-to-point call stays valid until the next call on that
+  communicator or its teardown: libsircl orders later calls after it and waits for the communicator's
+  work at finalize and destroy.
+- CUDA graph replays of one communicator do not overlap its eager calls or each other; they share the
+  communicator's sequence and scratch.
+- `ncclGetLastError(NULL)` returns the calling thread's last error text (NVIDIA NCCL's is per process);
+  `ncclGetLastError(comm)` returns the communicator's.
+- `ncclConfig_t`: only `blocking` is honored. Every other field is accepted and ignored; under
+  `NCCL_DEBUG` (`WARN`, `INFO` or `TRACE`) the first config of the process that sets one writes one line
+  naming it. The `nccl*Config` collectives are unsupported.
+- Groups: collectives inside a group run at the call; point-to-point calls are queued and run at the
+  outermost `ncclGroupEnd`, at most 1,024 per communicator, all on one stream; a group's pending
+  initializations start at `ncclGroupEnd`. A thread that ends inside its group fails its pending
+  initializations.
+- `SIRCL_SITE_HASH` (64 hexadecimal digits) goes into every unique id this process creates, and a rank
+  refuses to join an id whose hash differs from its own, so processes of different sites never form a
+  communicator.
+- An unsupported function returns `ncclInvalidUsage`, writes `libsircl: <function> unsupported by this
+  build` to stderr once per process, and zeroes its handle and value outputs.
 
 ## Build and test
 
@@ -225,21 +283,22 @@ LF), and refuses a vendored copy that does not define the word; `P2P_FEATURES=0`
 | `LIBSIRCL_REDUCE_LINK_BLOCKS`, `LIBSIRCL_GATHER_LINK_BLOCKS`, `LIBSIRCL_SCATTER_LINK_BLOCKS` (or SIRCL's `SIRCL_REDUCE_LINK_BLOCKS`, `SIRCL_GATHER_LINK_BLOCKS`, `SIRCL_SCATTER_LINK_BLOCKS`) | blocks per link role (1-64) of every chain and ring link op of that collective (pair exchanges count as all-gathers); unset, `SIRCL_LINK_BLOCKS` when set, else the pair plan's on a pair, else 4. The chain all-reduce's blocks are `SIRCL_CHAIN_BLOCKS`. Ops of one kernel type may use different blocks: a launch's last block is the one whose arrival completes its own grid |
 | `LIBSIRCL_LINK_DUMP` | a diagnostic: a file prefix; one JSON line in `<prefix>.rank<r>.<pid>.c<n>.links.json` when a wait of a communicator first times out or its native progress thread fails, and at destroy: the time (CLOCK_REALTIME nanoseconds, the clock of the native event trace), the link area's words (credit, sent, ready, consumed and inbound flag words of every link), the native counters, the device link counters, the native event trace since the previous dump, whether the progress thread failed and its message, and on the emulation transport the stand-in's report (every queue pair's posted, executed and completed writes; every failed write with the resolution check that failed); after destroy, a line with the times the progress thread's stop was requested and completed and the transport was destroyed |
 | `LIBSIRCL_LINK_BLOCKS_CYCLE` | a test hook: `<n>[,<n>...]` gives successive link ops these blocks per role in turn, to exercise launches of one kernel type with different grids |
-| `LIBSIRCL_RING_REDUCE_PASSES` | the ring all-reduce's relay: `2` (default) stores each pack of its finished piece to link 3's slot, then copies the slot to the output; `1` stores both in one pass (the same bytes and protocol, one read of the slot fewer; research-only, see `STATUS.md`); per rank |
+| `LIBSIRCL_RING_REDUCE_PASSES` | the ring all-reduce's relay: `2` (default) stores each pack of its finished piece to link 3's slot, then copies the slot to the output; `1` stores both in one pass (the same protocol, one read of the slot fewer; research-only, see `STATUS.md`, and refused unless `LIBSIRCL_RING_REDUCE_ONE_PASS_RESEARCH=1`); agreed at setup, so every rank sets the same value |
 | `LIBSIRCL_LINK_TILE_BYTES` | bytes of every chunk one link reduce-scatter op carries (default 16 MiB); a call's chunks split into column tiles, which leave every element's arithmetic unchanged |
 | `LIBSIRCL_RING_WINDOW` | the ring plan: set on every rank when the ring that closes the chain can run, to the bytes this rank's ring lanes keep unacknowledged through relays (0 for cables); the ring schedules need it. One value per process serves every communicator it joins: a communicator whose ring next is reached through relays (a forward window toward it) while this gives 0, such as a pipeline pair of positions i and i + 4 of a ring of eight, keeps the smallest forward window toward that rank in flight on its ring lanes (the receipt's `ring_window_bytes`) |
+| `LIBSIRCL_RELAYED_LANES` | the lanes that cross relays: `<position>=<flag>[/<flag>],...` per lane, flag 1 for a relayed lane and 0 for a cable; a lane counts as relayed when this marks it or `LIBSIRCL_FORWARD_WINDOWS` gives it a window, so a relayed lane without a forward window keeps the cycle plan off and gets no unwindowed point-to-point channel. `tools/site_routes.py` prints it on every rank of a layout with relays |
 | `LIBSIRCL_FORWARD_WINDOWS`, `SIRCL_FORWARD_CHUNK_BYTES` | forward windows of relayed lanes: `<position>=<bytes>[/<bytes>],...` per lane, 0 for a direct lane, and the chunk a windowed stripe posts in (default 32,768) |
 | `LIBSIRCL_P2P_CHANNELS` | `off` (default) or `on`, the same on every rank: a communicator of three or more ranks created with `on` has point-to-point channels and carries `ncclSend` and `ncclRecv` between its ranks on them (above); without them such a call is refused |
 | `SIRCL_P2P_SLOTS`, `SIRCL_P2P_SLOT_BYTES`, `SIRCL_P2P_BLOCKS`, `SIRCL_P2P_THREADS`, `SIRCL_P2P_UNROLL`, `SIRCL_P2P_CHUNK_BYTES` | the channels' geometry, SIRCL's names and defaults, agreed at setup: 8 slots (a power of two, 2-32) of 512 KiB (a multiple of 4096) per channel end, 4 blocks per launch (each taking every fourth item), 512 threads per block (a multiple of 32 from 64 to 512; SIRCL's kernels allow 1024), 4 packs per thread per pass, and a windowed stripe posted in chunks of 32,768 bytes |
-| `LIBSIRCL_P2P_WINDOWS` | windows of this process's channel lanes through relays: `<position>=<bytes>[/<bytes>],...` per lane, 0 or a multiple of 16 holding 1 to 120 chunks; a lane counts as relayed when `LIBSIRCL_FORWARD_WINDOWS` gives it a window, and a pair with a relayed lane in either direction without one has no channel. `tools/site_routes.py` prints them from SIRCL's point-to-point budget: `--p2p-reserve session` (the default, SIRCL's rule) leaves the collective session's forward windows, and with `--ring-schedules` (the site runs the ring schedules) its ring windows, their room in every relay queue first; `--session-share F` (default 1) sizes the session against F of every queue's share, so the channels get the rest; `none` sizes the channels as the only relayed traffic. On ring:8 the session's forward windows at the default share leave no relayed pair a channel; windows are whole 32 KiB chunks, so any share below 1 (0.95 to 0.05 checked) takes at least one chunk from every relayed session lane (at 0.95: 64-128 KiB become 32-96 KiB) and gives all 40 relayed ordered pairs a channel, as does `--max-window 32768` (every session lane one chunk) |
+| `LIBSIRCL_P2P_WINDOWS` | windows of this process's channel lanes through relays: `<position>=<bytes>[/<bytes>],...` per lane, 0 or a multiple of 16 holding 1 to 120 chunks; a lane counts as relayed when `LIBSIRCL_RELAYED_LANES` marks it or `LIBSIRCL_FORWARD_WINDOWS` gives it a window, and a pair with a relayed lane in either direction without one has no channel. `tools/site_routes.py` prints them from SIRCL's point-to-point budget: `--p2p-reserve session` (the default, SIRCL's rule) leaves the collective session's forward windows, and with `--ring-schedules` (the site runs the ring schedules) its ring windows, their room in every relay queue first; `--session-share F` (default 1) sizes the session against F of every queue's share, so the channels get the rest; `none` sizes the channels as the only relayed traffic. On ring:8 the session's forward windows at the default share leave no relayed pair a channel; windows are whole 32 KiB chunks, so any share below 1 (0.95 to 0.05 checked) takes at least one chunk from every relayed session lane (at 0.95: 64-128 KiB become 32-96 KiB) and gives all 40 relayed ordered pairs a channel, as does `--max-window 32768` (every session lane one chunk) |
 | `SIRCL_P2P_PROGRESS_CPU` | read by the channels' progress thread, as in SIRCL: a CPU list that pins it; unset, it runs where `LIBSIRCL_CPU_POLICY` places the transport's progress thread |
 | `LIBSIRCL_STREAM_ORDERED_ALLOC` | `auto` (default): staging uses stream-ordered allocation (`cuMemAllocAsync`) where the driver and device have it; `off` declines it (the communicator's own staging buffers; captured calls that need more are refused), the same on every rank, for comparisons and tests |
-| `SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`, `LIBSIRCL_WAIT_REGIME` | flag-wait limits and the regime a communicator starts in (`startup`, default, or `serving`); `sirclSetWaitRegime` switches it |
-| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process: with `1` or `abort` the process ends at the first asynchronous error (a flag wait that timed out, a failed progress thread, a failed point-to-point channel) of any communicator of two or more ranks. The error is found by a watcher thread that checks every such communicator every `LIBSIRCL_FAIL_STOP_POLL_MS`, or by the first library call that would report it to the caller (`ncclCommGetAsyncError`, a collective or point-to-point enqueue, `ncclCommFinalize`, `ncclCommDestroy`, `ncclCommAbort`), whichever comes first. The library writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> (Unix time; CLOCK_MONOTONIC <seconds> s) on an asynchronous error of communicator <n> (rank <r> of <w>, found by <the watcher, a library call, or ncclCommDestroy or ncclCommAbort>): <error>`) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls keeps a failed collective's output at most for the wait limit plus one poll, and a caller that reads the error and tears the communicator down never returns from that call; a read of the output within one poll after its stream wait returns, without a library call, is not prevented. Receipts read the error without ending the process |
+| `SIRCL_STARTUP_WAIT_S`, `SIRCL_SERVING_WAIT_S`, `LIBSIRCL_WAIT_REGIME` | flag-wait limits and the regime a communicator starts in (`startup`, default, or `serving`; every rank of a communicator must start in the same regime, or setup fails naming the variable); `sirclSetWaitRegime` switches it |
+| `LIBSIRCL_FAIL_STOP` | `0` (default), `1` or `abort`, per process and the same on every rank of a communicator (setup fails naming the variable otherwise): with `1` or `abort` the process ends at the first asynchronous error (a flag wait that timed out, a failed progress thread, a failed point-to-point channel) of any communicator of two or more ranks. The error is found by a watcher thread that checks every such communicator every `LIBSIRCL_FAIL_STOP_POLL_MS`, or by the first library call that would report it to the caller (`ncclCommGetAsyncError`, a collective or point-to-point enqueue, `ncclCommFinalize`, `ncclCommDestroy`, `ncclCommAbort`), whichever comes first. The library writes a line to stderr (`libsircl: LIBSIRCL_FAIL_STOP: ending the process at <Unix time> (Unix time; CLOCK_MONOTONIC <seconds> s) on an asynchronous error of communicator <n> (rank <r> of <w>, found by <the watcher, a library call, or ncclCommDestroy or ncclCommAbort>): <error>`) and the communicator's receipt, then ends the process: `1` at once with exit status 70 (no atexit handlers, no core dump), `abort` by `abort()` (SIGABRT, after the system's core-dump handling). A caller that only checks the codes of enqueue calls keeps a failed collective's output at most for the wait limit plus one poll, and a caller that reads the error and tears the communicator down never returns from that call; a read of the output within one poll after its stream wait returns, without a library call, is not prevented. Receipts read the error without ending the process |
 | `LIBSIRCL_FAIL_STOP_POLL_MS` | the fail-stop watcher's period, 1 to 3,600,000 ms (default 5); the tests set it long to show that the library calls alone end the process |
 | `SIRCL_POST_ORDER`, `SIRCL_PROGRESS_CPU`, `SIRCL_FORWARD_PROOF` | read by the native progress thread, as in SIRCL; `SIRCL_PROGRESS_CPU` pins it to a CPU list |
 | `LIBSIRCL_CPU_POLICY` | where the progress thread runs without `SIRCL_PROGRESS_CPU`: `performance` (default: on the fastest CPU class the creating thread may use, the Cortex-X925 cores of a GB10, found by `/proc/cpuinfo` part numbers or sysfs `cpu_capacity`) or `none` (where the scheduler puts it). The library never changes the affinity of the application's own threads; receipts name the progress thread's CPUs (`progress_cpus`) |
-| `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`, `NCCL_SOCKET_IFNAME` | the root's LAN address; a rank contacts a non-loopback root only when one is set |
+| `SIRCL_BOOTSTRAP_ADDR`, `SIRCL_BOOTSTRAP_IFNAME`, `NCCL_SOCKET_IFNAME` | the root's LAN address; a rank contacts a non-loopback root only when one is set. An interface list (at most 255 characters) takes NCCL's syntax: `prefix` and `=name` select, `^prefix` and `^=name` exclude; a list of exclusions only never selects a loopback interface |
 | `SIRCL_BOOTSTRAP_TIMEOUT_MS`, `LIBSIRCL_SETUP_TIMEOUT_MS`, `LIBSIRCL_LANE_CHECK_MS` | rendezvous, setup-exchange and lane-check deadlines |
 | `LIBSIRCL_RECEIPT`, `LIBSIRCL_RECEIPT_INTERVAL_S` | prefix of the receipt files, one per communicator (`<prefix>.rank<r>.<pid>.c<n>.json`, n the communicator's number in the process), written when the communicator forms, refreshed after calls at most every `LIBSIRCL_RECEIPT_INTERVAL_S` seconds (default 10; 0: only at creation and destroy) and at destroy, each replaced whole; `sirclGetReceipt` returns the same JSON in process |
 | `LIBSIRCL_EMU_LANES`, `SIRCL_EMU_FABRIC`, `SIRCL_EMU_SEED`, `SIRCL_EMU_LATENCY_NS` | emulation transport |
@@ -314,7 +373,7 @@ and their terms, and every source or binary copy carries `LICENSE`, `NOTICE`, `v
   unmodified in `vendor/`, adapted with marked changes in `include/nccl.h`) and the NCCL user guide;
   no NCCL implementation source is used.
 - The SIRCL implementation this library follows is SIRCL's package in this repository
-  (`spark_transport/sircl`, `sparkring_sircl` 0.3.1); its tests run against that package
+  (`spark_transport/sircl`, `sparkring_sircl` 0.3.2); its tests run against that package
   (`SIRCL_PACKAGE`). `SOURCE_SNAPSHOT.json` records the SHA-256 of each of the 200 files of the SIRCL tree
   that the evidence in `STATUS.md` was taken against (captured 2026-10-08 06:00 UTC). A change the
   library needs inside SIRCL is a change to `spark_transport/sircl`.

@@ -2,11 +2,13 @@
  * 2015-2026 NVIDIA CORPORATION & AFFILIATES, Apache-2.0; see vendor/NCCL-LICENSE.txt). Do not edit. */
 #include "internal.h"
 
+#include <string.h>
+
 ncclResult_t ncclCommShrink(ncclComm_t comm, int* excludeRanksList, int excludeRanksCount, ncclComm_t* newcomm, ncclConfig_t* config, int shrinkFlags) {
   (void)comm;
   (void)excludeRanksList;
   (void)excludeRanksCount;
-  (void)newcomm;
+  if (newcomm) memset(newcomm, 0, sizeof(*newcomm));
   (void)config;
   (void)shrinkFlags;
   return sccl_unsupported("ncclCommShrink");
@@ -14,7 +16,7 @@ ncclResult_t ncclCommShrink(ncclComm_t comm, int* excludeRanksList, int excludeR
 
 ncclResult_t ncclCommGetUniqueId(ncclComm_t comm, ncclUniqueId* uniqueId) {
   (void)comm;
-  (void)uniqueId;
+  if (uniqueId) memset(uniqueId, 0, sizeof(*uniqueId));
   return sccl_unsupported("ncclCommGetUniqueId");
 }
 
@@ -23,13 +25,13 @@ ncclResult_t ncclCommGrow(ncclComm_t comm, int nRanks, const ncclUniqueId* uniqu
   (void)nRanks;
   (void)uniqueId;
   (void)rank;
-  (void)newcomm;
+  if (newcomm) memset(newcomm, 0, sizeof(*newcomm));
   (void)config;
   return sccl_unsupported("ncclCommGrow");
 }
 
 ncclResult_t ncclCommInitRankScalable(ncclComm_t* newcomm, int nranks, int myrank, int nId, ncclUniqueId* commIds, ncclConfig_t* config) {
-  (void)newcomm;
+  if (newcomm) memset(newcomm, 0, sizeof(*newcomm));
   (void)nranks;
   (void)myrank;
   (void)nId;
@@ -56,7 +58,7 @@ ncclResult_t ncclCommResume(ncclComm_t comm) {
 ncclResult_t ncclCommMemStats(ncclComm_t comm, ncclCommMemStat_t stat, uint64_t* value) {
   (void)comm;
   (void)stat;
-  (void)value;
+  if (value) memset(value, 0, sizeof(*value));
   return sccl_unsupported("ncclCommMemStats");
 }
 
@@ -214,62 +216,62 @@ ncclResult_t ncclSetEncryption(const ncclEncryptionConfig_t* config) {
 }
 
 ncclResult_t ncclParamBind(ncclParamHandle_t* out, const char* key) {
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   (void)key;
   return sccl_unsupported("ncclParamBind");
 }
 
 ncclResult_t ncclParamGetI8(ncclParamHandle_t h, int8_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetI8");
 }
 
 ncclResult_t ncclParamGetI16(ncclParamHandle_t h, int16_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetI16");
 }
 
 ncclResult_t ncclParamGetI32(ncclParamHandle_t h, int32_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetI32");
 }
 
 ncclResult_t ncclParamGetI64(ncclParamHandle_t h, int64_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetI64");
 }
 
 ncclResult_t ncclParamGetU8(ncclParamHandle_t h, uint8_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetU8");
 }
 
 ncclResult_t ncclParamGetU16(ncclParamHandle_t h, uint16_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetU16");
 }
 
 ncclResult_t ncclParamGetU32(ncclParamHandle_t h, uint32_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetU32");
 }
 
 ncclResult_t ncclParamGetU64(ncclParamHandle_t h, uint64_t* out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetU64");
 }
 
 ncclResult_t ncclParamGetStr(ncclParamHandle_t h, const char** out) {
   (void)h;
-  (void)out;
+  if (out) memset(out, 0, sizeof(*out));
   return sccl_unsupported("ncclParamGetStr");
 }
 
@@ -277,20 +279,20 @@ ncclResult_t ncclParamGet(ncclParamHandle_t h, void* out, int maxLen, int* len) 
   (void)h;
   (void)out;
   (void)maxLen;
-  (void)len;
+  if (len) memset(len, 0, sizeof(*len));
   return sccl_unsupported("ncclParamGet");
 }
 
 ncclResult_t ncclParamGetParameter(const char* key, const char** value, int* valueLen) {
   (void)key;
-  (void)value;
-  (void)valueLen;
+  if (value) memset(value, 0, sizeof(*value));
+  if (valueLen) memset(valueLen, 0, sizeof(*valueLen));
   return sccl_unsupported("ncclParamGetParameter");
 }
 
 ncclResult_t ncclParamGetAllParameterKeys(const char*** table, int* tableLen) {
-  (void)table;
-  (void)tableLen;
+  if (table) memset(table, 0, sizeof(*table));
+  if (tableLen) memset(tableLen, 0, sizeof(*tableLen));
   return sccl_unsupported("ncclParamGetAllParameterKeys");
 }
 

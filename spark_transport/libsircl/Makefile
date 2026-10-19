@@ -5,10 +5,17 @@ NVCC ?= nvcc
 BUILD ?= build
 # The library's version, from the one version source (VERSION).
 VERSION := $(shell cat VERSION)
-CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSIRCL_VERSION='"$(VERSION)"'
+# The flags the build needs are appended with `override`, so that CFLAGS or CPPFLAGS given on the command line
+# (make CFLAGS=-O1) or in the environment replace only the optional part (the default -O2 -g) and keep them.
+override CPPFLAGS += -Iinclude -Isrc -DLIBSIRCL_CPU_ONLY -DNCCL_OS_LINUX -DLIBSIRCL_VERSION='"$(VERSION)"'
 CFLAGS ?= -O2 -g
 # Diagnostic messages are bounded copies that truncate by design.
-CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
+override CFLAGS += -std=c11 -fPIC -Wall -Wextra -Werror -Wno-format-truncation -pthread -MMD -MP
+# Hardening, whatever the compiler's own defaults: stack protector and fortified libc calls (which need an
+# optimized build, -O1 or above), full RELRO with immediate binding and a non-executable stack for the library.
+override CFLAGS += -fstack-protector-strong
+override CPPFLAGS += -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=2
+HARDENING_LDFLAGS = -Wl,-z,relro,-z,now,-z,noexecstack
 
 # The library: API layer, bootstrap, fabric arithmetic, session engine, CUDA
 # driver loader and the embedded kernel packs, plus SIRCL's native proxy and
@@ -52,16 +59,20 @@ PACKS = $(FATBIN) $(FOLD_FATBIN) $(LINKS_FATBIN) $(P2P_FATBIN)
 P2P_PROXY = src/transport/sircl_p2p_proxy.c
 P2P_FEATURES ?= 1
 ifeq ($(P2P_FEATURES),1)
-CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
+override CPPFLAGS += -DSCCL_P2P_LOCAL_FEATURES
 endif
 NVCCFLAGS = -O3 -std=c++17 -gencode arch=compute_120,code=sm_120 -gencode arch=compute_121,code=sm_121
+# The architectures the packs hold (the code= values), which a pack-load error names.
+comma := ,
+PACK_ARCHITECTURES = $(patsubst code=%,%,$(filter code=%,$(subst $(comma), ,$(NVCCFLAGS))))
+$(BUILD)/kernelpack.o: override CPPFLAGS += -DSCCL_PACK_ARCHITECTURES='"$(PACK_ARCHITECTURES)"'
 
 .PHONY: all check clean generate kernels emulation-tools mpi-shim
 all: $(BUILD)/libsircl.so
 
 $(BUILD) $(BUILD)/transport:
 	mkdir -p $@
-$(BUILD)/%.o: src/%.c include/nccl.h src/internal.h | $(BUILD)
+$(BUILD)/%.o: src/%.c include/nccl.h src/internal.h Makefile | $(BUILD)
 	$(CC) $(CPPFLAGS) $(CFLAGS) -c $< -o $@
 # SIRCL's native proxy is vendored byte-identical as well (src/transport/sircl_roce_proxy.c, SHA-256 in its
 # .sha256 file); the build refuses a copy of other contents. The engine checks its local feature word
@@ -132,8 +143,10 @@ $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o $(BUILD
 # and ctypes.CDLL("libnccl.so.2") resolve. libsircl.so is a development link to it.
 $(BUILD)/libsircl.so: $(BUILD)/libsircl.so.$(VERSION)
 	ln -sf libsircl.so.$(VERSION) $@
-$(BUILD)/libsircl.so.$(VERSION): $(OBJECTS) exports.map $(BUILD)/entries.ok
-	$(CC) -shared -pthread $(LDFLAGS) -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=exports.map -o $@ $(OBJECTS) -ldl
+# The Makefile is a prerequisite of the objects and the library, so a change of their flags rebuilds them.
+$(filter $(BUILD)/transport/%.o,$(OBJECTS)): Makefile
+$(BUILD)/libsircl.so.$(VERSION): $(OBJECTS) exports.map $(BUILD)/entries.ok Makefile
+	$(CC) -shared -pthread $(LDFLAGS) $(HARDENING_LDFLAGS) -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=exports.map -o $@ $(OBJECTS) -ldl
 
 # The kernel-entry check (tests/check_entries.c): the library's pack loader runs on the embedded fatbins
 # through a stand-in CUDA driver (tests/fake_cuda.c) that reads their cubins offline, so every entry the
@@ -166,20 +179,43 @@ $(BUILD)/mpi-shim/lib/libmpi.so: tools/mpi-shim/mpi_shim.c tools/mpi-shim/includ
 
 $(BUILD)/test_fabric: tests/test_fabric.c $(BUILD)/fabric.o
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
-check: all $(BUILD)/test_fabric
-	$(BUILD)/test_fabric
-	$(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_bootstrap.py
-	$(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so)
-	$(PYTHON) tests/test_shm_verbs.py
-	$(PYTHON) tests/test_vendored_sources.py
-	$(PYTHON) tests/test_p2p_native.py
-	$(PYTHON) tests/test_site_routes.py
-	$(PYTHON) tests/test_mpi_shim.py
-	$(PYTHON) tests/test_check_nccl_tests.py
-	$(PYTHON) tests/test_kernel_entries.py --build $(BUILD)
+$(BUILD)/test_link_plan: tests/test_link_plan.c src/link_plan.h | $(BUILD)
+	$(CC) $(CPPFLAGS) $(CFLAGS) $< -o $@
+$(BUILD)/test_kernelpack_cache: tests/test_kernelpack_cache.c $(BUILD)/kernelpack.o $(BUILD)/cuda_api.o \
+                                $(BUILD)/kernels_fatbin.o $(BUILD)/fold_fatbin.o $(BUILD)/links_fatbin.o \
+                                $(BUILD)/p2p_fatbin.o
+	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@ -ldl
+check: all $(BUILD)/test_fabric $(BUILD)/test_link_plan $(BUILD)/test_kernelpack_cache
+	@status=0; \
+	  $(BUILD)/test_fabric || status=1; \
+	  $(BUILD)/test_link_plan || status=1; \
+	  LD_LIBRARY_PATH=$(abspath $(BUILD)/fake-cuda) $(BUILD)/test_kernelpack_cache || status=1; \
+	  $(PYTHON) tests/test_abi.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_api.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_bootstrap.py || status=1; \
+	  $(PYTHON) tests/test_lifecycle.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_engine_cpu.py --library $(abspath $(BUILD)/libsircl.so) || status=1; \
+	  $(PYTHON) tests/test_shm_verbs.py || status=1; \
+	  $(PYTHON) tests/test_vendored_sources.py || status=1; \
+	  $(PYTHON) tests/test_p2p_native.py || status=1; \
+	  $(PYTHON) tests/test_site_routes.py || status=1; \
+	  $(PYTHON) tests/test_mpi_shim.py || status=1; \
+	  $(PYTHON) tests/test_check_nccl_tests.py || status=1; \
+	  $(PYTHON) tests/test_kernel_entries.py --build $(BUILD) || status=1; 	  $(PYTHON) tests/test_build_flags.py --library $(abspath $(BUILD)/libsircl.so) || status=1; 	  $(PYTHON) tests/test_source_snapshot.py || status=1; \
+	  $(PYTHON) tests/test_docs_consistency.py || status=1; \
+	  $(PYTHON) tests/test_teardown_race.py || status=1; \
+	  exit $$status
+
+# The check suites against a host library built with AddressSanitizer and UndefinedBehaviorSanitizer in
+# $(BUILD)-asan. The sanitizer flags reach the sub-make through the environment, so the CFLAGS line above
+# still appends the required flags. The interpreters that load the library preload the ASan runtime, which
+# must come first in the process; leak detection is off because the interpreter's own allocations would
+# dominate it.
+.PHONY: check-asan
+check-asan:
+	ASAN_OPTIONS=detect_leaks=0 CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined" $(MAKE) BUILD=$(BUILD)-asan all
+	LIBSIRCL_TEST_ASAN=1 LD_PRELOAD="$$($(CC) -print-file-name=libasan.so)" ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined" $(MAKE) BUILD=$(BUILD)-asan check
+
 generate:
 	$(PYTHON) tools/generate_api.py
 clean:

@@ -13,7 +13,9 @@ session, and checks that both return an error within the deadline and that the e
 - a ring schedule without the layout's ring plan (``SIRCL_SCATTER_SCHEDULE=ring`` without
   ``LIBSIRCL_RING_WINDOW``, and ``SIRCL_LARGE_SCHEDULE=pieces``, which turns off the pair plan and with it
   the ring plan a cabled pair gets by default);
-- a schedule differing between the ranks (``SIRCL_GATHER_SCHEDULE``).
+- a schedule differing between the ranks (``SIRCL_GATHER_SCHEDULE``);
+- fail-stop and the wait regime differing between the ranks (``LIBSIRCL_FAIL_STOP``,
+  ``LIBSIRCL_WAIT_REGIME``).
 """
 from __future__ import annotations
 
@@ -94,6 +96,12 @@ def main(argv=None) -> int:
         ("SIRCL_GATHER_SCHEDULE differing between ranks",
          [emulation, dict(emulation, SIRCL_GATHER_SCHEDULE="chain")],
          ["rank 1: SIRCL_GATHER_SCHEDULE differs from rank 0"]),
+        ("LIBSIRCL_FAIL_STOP differing between ranks",
+         [emulation, dict(emulation, LIBSIRCL_FAIL_STOP="1")],
+         ["rank 1: LIBSIRCL_FAIL_STOP differs from rank 0"]),
+        ("LIBSIRCL_WAIT_REGIME differing between ranks",
+         [emulation, dict(emulation, LIBSIRCL_WAIT_REGIME="serving")],
+         ["rank 1: LIBSIRCL_WAIT_REGIME differs from rank 0"]),
     ]
     failed = 0
     for index, (name, environments, expected) in enumerate(cases):

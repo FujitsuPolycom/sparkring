@@ -23,8 +23,10 @@ SIRCL components
   kernels, device intrinsics and progress-thread protocol derive from RoCEnante, the b12x one-shot
   RoCE collectives by Local Inference Lab and its contributors (https://github.com/local-inference-lab,
   b12x commit 236ddff04a5f5064084b46464800b70b34ec7d8c), licensed under the Apache License,
-  Version 2.0. vendor/SIRCL-NOTICE reproduces SIRCL's NOTICE; SOURCE_SNAPSHOT.json records the
-  SIRCL files this library follows.
+  Version 2.0. vendor/SIRCL-NOTICE reproduces SIRCL's NOTICE. SOURCE_SNAPSHOT.json records the SHA-256
+  of every file of the SIRCL implementation tree that STATUS.md's evidence was taken against, a dated
+  capture of a development workspace; the library is built against this repository's
+  spark_transport/sircl and the vendored copies under src/transport.
 
 libibverbs header code
   The RDMA transport is compiled against <infiniband/verbs.h> from rdma-core and contains code from

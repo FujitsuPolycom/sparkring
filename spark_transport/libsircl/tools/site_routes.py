@@ -9,8 +9,13 @@ SIRCL's point-to-point budget (``sparkring_sircl.p2p.budget``: ``LaneSet``, ``se
 ``allocate``) the window of every relayed lane of a point-to-point channel. This tool prints them as
 libsircl's environment, one line per rank (rank r of the layout runs at libsircl position r):
 
-  LIBSIRCL_POSITION=r SIRCL_PEER_ROUTES=... LIBSIRCL_CHAIN_ORDER=... LIBSIRCL_FORWARD_WINDOWS=...
-  LIBSIRCL_RING_WINDOW=... LIBSIRCL_P2P_WINDOWS=...
+  LIBSIRCL_POSITION=r SIRCL_PEER_ROUTES=... LIBSIRCL_CHAIN_ORDER=... LIBSIRCL_RELAYED_LANES=...
+  LIBSIRCL_FORWARD_WINDOWS=... LIBSIRCL_RING_WINDOW=... LIBSIRCL_P2P_WINDOWS=...
+
+LIBSIRCL_RELAYED_LANES appears on every rank with a lane that crosses relays: per peer position, 1 for each
+such lane and 0 for a cable. libsircl takes a lane's relay status from it, not from whether a window was
+printed, so a relayed lane without a forward window (``--max-window 0``) still counts as relayed: the
+point-to-point channels refuse it unwindowed, and the cycle plan does not run across it.
 
 LIBSIRCL_RING_WINDOW appears on every rank when the ring can run (no relay hairpin queue carries two of
 its lanes): the bytes each of the rank's lanes toward the next rank of the ring keeps unacknowledged
@@ -38,6 +43,16 @@ share (64 to 128 KiB) leave no relayed pair a channel. Windows are whole chunks,
 least one 32 KiB chunk from every relayed session lane (at 0.95: 32 to 96 KiB) and leaves every one of the 40
 relayed ordered pairs a 32 KiB window; ``--max-window 32768`` (every session lane one chunk) does too.
 
+Every window printed fits the native layers' caps: a forward window holds at most 60 chunks of
+SIRCL_FORWARD_CHUNK_BYTES, the ring window at most 60 chunks of 32 KiB, and a point-to-point window at most
+120 chunks of SIRCL_P2P_CHUNK_BYTES; a larger planned window is lowered to the cap. The tool then checks every
+relay hairpin queue: the session's windows through it (its forward windows, and with ``--ring-schedules``
+the larger of those and its ring windows) plus, under ``--p2p-reserve session``, the channels' windows must
+fit the queue's share (75 % of SIRCL_HAIRPIN_QUEUE_BYTES). A plan that overfills a queue, such as SIRCL's
+one-chunk minimum with ``--chunk 65536`` on path:0-7, is refused (exit status 1, naming the queue). Under
+``--p2p-reserve none`` the channels are sized as the only relayed traffic, so only the session's windows are
+checked.
+
 Limit: the windows are one plan per process, as libsircl reads them; communicators that run at once
 through the same relay queues are not budgeted against each other.
 
@@ -50,6 +65,12 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+
+# The native layers' window caps: SIRCL's native proxy accepts a forward or ring window of 1 to 60 chunks
+# (ROCE_CREDIT - 4), its point-to-point library 1 to 120 chunks.
+FORWARD_MAX_CHUNKS = 60
+RING_MAX_CHUNKS = 60
+P2P_MAX_CHUNKS = 120
 
 
 def share_value(text: str) -> float:
@@ -96,6 +117,7 @@ def main(argv: list[str] | None = None) -> int:
         from sparkring_sircl import protocol
         ring_window, problems = routes.ring_window(layout, maps, order, chunk=protocol.LINK_WINDOW_CHUNK,
                                                    queue_bytes=session_queue)
+        ring_window = min(ring_window, RING_MAX_CHUNKS * protocol.LINK_WINDOW_CHUNK)
         relayed = {rank for members in routes.ring_queues(layout, maps, order).values() for rank, _, _ in members}
     # Point-to-point windows of every ordered pair's relayed lanes (SIRCL's p2p/budget.py).
     p2p_max = p2p_protocol.DEFAULT_WINDOW_BYTES if args.p2p_max_window is None else args.p2p_max_window
@@ -112,16 +134,45 @@ def main(argv: list[str] | None = None) -> int:
     p2p_unavailable = allocation.unavailable_pairs("layout")
     relayed_pairs = sum(1 for a in range(world) for b in range(world)
                         if a != b and any(lane.relays for lane in group.lanes_to(a, b)))
-    rows = []
+    tables = []
     for rank in range(world):
         table = routes.forward_windows(layout, maps, rank, max_window=max_window, chunk=chunk,
                                        queue_bytes=session_queue)
+        tables.append([[min(window, FORWARD_MAX_CHUNKS * chunk) for window in lanes] for lanes in table])
+        for peer in range(world):
+            if peer != rank:
+                p2p_table[rank][peer] = [min(window, P2P_MAX_CHUNKS * p2p_chunk) for window in p2p_table[rank][peer]]
+    # Every relay hairpin queue within its share: the session's windows through it, and the channels'.
+    share = int(routes.RELAY_QUEUE_SHARE * routes.DEFAULT_HAIRPIN_QUEUE)
+    ring_lanes = {}
+    if order is not None and args.ring_schedules and not problems:
+        ring_lanes = routes.ring_queues(layout, maps, order)
+    for key, members in sorted(routes.relay_queues(layout, maps).items()):
+        held = sum(tables[rank][peer][lane] for rank, peer, lane in members)
+        if key in ring_lanes:
+            held = max(held, sum(ring_window if rank in relayed else 0 for rank, _, _ in ring_lanes[key]))
+        if args.p2p_reserve == "session":
+            held += sum(p2p_table[rank][peer][lane] for rank, peer, lane in members)
+        if held > share:
+            relay, secondary, port = key
+            print(f"site_routes.py: the relay queue of position {relay} ({'secondary' if secondary else 'primary'} "
+                  f"function, toward port {port}) would hold {held} bytes of windows, above its share of {share}; "
+                  f"choose a smaller --chunk, --max-window or --session-share", file=sys.stderr)
+            return 1
+    rows = []
+    for rank in range(world):
+        table = tables[rank]
         env = {
             "LIBSIRCL_POSITION": str(rank),
             "SIRCL_PEER_ROUTES": ",".join(f"{peer}={'/'.join(devices)}" for peer, devices in sorted(maps[rank].items())),
         }
         if order is not None:
             env["LIBSIRCL_CHAIN_ORDER"] = ",".join(str(r) for r in order)
+        relays = {peer: [1 if lane.relays else 0 for lane in group.lanes_to(rank, peer)]
+                  for peer in range(world) if peer != rank}
+        if any(any(flags) for flags in relays.values()):
+            env["LIBSIRCL_RELAYED_LANES"] = ",".join(f"{peer}={'/'.join(str(f) for f in flags)}"
+                                                     for peer, flags in relays.items() if any(flags))
         windows = [f"{peer}={'/'.join(str(w) for w in table[peer])}" for peer in range(world)
                    if peer != rank and any(table[peer])]
         if windows:

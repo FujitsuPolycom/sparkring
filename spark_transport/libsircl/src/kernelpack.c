@@ -20,8 +20,14 @@ extern const unsigned char sccl_p2p_fatbin[];
 extern const char sccl_p2p_fatbin_sha256[];
 
 enum { MAX_CONTEXTS = 16 };
+/* The GPU architectures the packs hold cubins for (the build's nvcc -gencode code= values), named when a
+ * pack does not load, for example on a GPU of another architecture. */
+#ifndef SCCL_PACK_ARCHITECTURES
+#define SCCL_PACK_ARCHITECTURES "sm_120 sm_121"
+#endif
 typedef struct {
   sccl_CUcontext ctx;
+  int refs;  /* sccl_kp_load calls not yet released (sccl_kp_release) */
   sccl_CUmodule module, fold_module, links_module, p2p_module;
   sccl_CUfunction fn[SCCL_K_COUNT][SCCL_DT_COUNT][SCCL_KP_MAX_WORLD + 1];
   sccl_CUfunction fold[SCCL_FOLD_DTYPES][SCCL_FOLD_OPS];
@@ -65,7 +71,9 @@ int sccl_kp_load(sccl_CUcontext ctx) {
     return -1;
   }
   pthread_mutex_lock(&lock);
-  if (find(ctx)) {
+  loaded_pack *held = find(ctx);
+  if (held) {
+    ++held->refs;
     pthread_mutex_unlock(&lock);
     return 0;
   }
@@ -84,7 +92,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   }
   r = cu->ModuleLoadData(&p->module, sccl_kernels_fatbin);
   int failed = r != SCCL_CUDA_SUCCESS;
-  if (failed) snprintf(error_text, sizeof error_text, "loading the kernel pack: %s", sccl_cuda_result_text(r));
+  if (failed) snprintf(error_text, sizeof error_text, "loading the kernel pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                        sccl_cuda_result_text(r));
   for (int k = 0; !failed && k < SCCL_K_COUNT; ++k)
     for (int d = 0; !failed && d < SCCL_DT_COUNT; ++d)
       for (int w = SCCL_KP_MIN_WORLD; !failed && w <= SCCL_KP_MAX_WORLD; ++w) {
@@ -104,7 +113,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->fold_module, sccl_fold_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the fold pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the fold pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                          sccl_cuda_result_text(r));
   }
   for (int d = 0; !failed && d < SCCL_FOLD_DTYPES; ++d)
     for (int o = 0; !failed && o < SCCL_FOLD_OPS; ++o) {
@@ -119,7 +129,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->links_module, sccl_links_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the link pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the link pack (built for %s): %s", SCCL_PACK_ARCHITECTURES,
+                          sccl_cuda_result_text(r));
   }
   for (int d = 0; !failed && d < SCCL_DT_COUNT; ++d)
     for (int u = 1; !failed && u <= SCCL_CHAIN_MAX_UNROLL; ++u) {
@@ -177,7 +188,8 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   if (!failed) {
     r = cu->ModuleLoadData(&p->p2p_module, sccl_p2p_fatbin);
     failed = r != SCCL_CUDA_SUCCESS;
-    if (failed) snprintf(error_text, sizeof error_text, "loading the point-to-point pack: %s", sccl_cuda_result_text(r));
+    if (failed) snprintf(error_text, sizeof error_text, "loading the point-to-point pack (built for %s): %s",
+                          SCCL_PACK_ARCHITECTURES, sccl_cuda_result_text(r));
   }
   for (int s = 0; !failed && s < 2; ++s)
     for (int u = 1; !failed && u <= SCCL_P2P_MAX_UNROLL; ++u) {
@@ -198,10 +210,32 @@ int sccl_kp_load(sccl_CUcontext ctx) {
   cu->CtxPopCurrent(&popped);
   if (!failed) {
     p->ctx = ctx;
+    p->refs = 1;
     ++npacks;
   }
   pthread_mutex_unlock(&lock);
   return failed ? -1 : 0;
+}
+
+void sccl_kp_release(sccl_CUcontext ctx, int unload) {
+  const sccl_cuda *cu = sccl_cuda_get();
+  pthread_mutex_lock(&lock);
+  loaded_pack *p = find(ctx);
+  if (!p || --p->refs > 0) {
+    pthread_mutex_unlock(&lock);
+    return;
+  }
+  if (unload && cu && cu->CtxPushCurrent(ctx) == SCCL_CUDA_SUCCESS) {
+    sccl_CUmodule modules[4] = {p->p2p_module, p->links_module, p->fold_module, p->module};
+    for (int i = 0; i < 4; ++i)
+      if (modules[i]) cu->ModuleUnload(modules[i]);
+    sccl_CUcontext popped;
+    cu->CtxPopCurrent(&popped);
+  }
+  /* The last entry takes the released one's place. */
+  if (p != &packs[npacks - 1]) *p = packs[npacks - 1];
+  --npacks;
+  pthread_mutex_unlock(&lock);
 }
 
 int sccl_kp_function(sccl_CUcontext ctx, int kind, int dtype, int world, sccl_CUfunction *out) {

@@ -34,7 +34,9 @@ unset or off; p2p_channels.py tests them), a send to another rank refused. Rank-
 collectives of every selection point with one rank's buffers unaligned or in place, eager and captured
 cold, launch and carry the same ops on every rank as with aligned buffers (receipt counts). On a pair,
 one-way exchanges whose empty direction alternates between the ranks across link-slot wrap, each round
-followed by two-way calls. An op that is not built in refused and counted; the receipt,
+followed by two-way calls. An op that is not built in refused and counted. Hostile arguments (overflowing counts, NULL buffers, roots
+out of range) to every collective and to ncclSend and ncclRecv refused with ncclInvalidArgument, buffers
+unchanged. The receipt,
 ncclCommGetAsyncError, finalize and destroy.
 """
 from __future__ import annotations
@@ -759,6 +761,55 @@ def run_abort_with_queued_send_check(torch, lib, comm, world, rank, stream, repo
           and results.get("end") == 5)
     report(name, ok, f"abort {results.get('abort')} after {waited:.2f} s, queued send {results.get('send')}, "
                      f"group end {results.get('end')}")
+
+
+def run_hostile_argument_checks(torch, lib, comm, world, rank, stream, report) -> None:
+    """Hostile arguments, table-driven: for every collective and ncclSend/ncclRecv, a count whose bytes overflow
+    size_t, a NULL buffer where every rank needs one, and a root outside 0..W-1 for the rooted collectives.
+    Every rank makes the same calls, so every refusal happens on every rank before any communication; each
+    call must return ncclInvalidArgument and leave the buffers it was given unchanged."""
+    v, i, z, c = ctypes.c_void_p, ctypes.c_int, ctypes.c_size_t, ctypes.c_void_p
+    signatures = {"ncclAllReduce": [v, v, z, i, i, c, v], "ncclAllGather": [v, v, z, i, c, v],
+                  "ncclReduceScatter": [v, v, z, i, i, c, v], "ncclReduce": [v, v, z, i, i, i, c, v],
+                  "ncclBroadcast": [v, v, z, i, i, c, v], "ncclAlltoAll": [v, v, z, i, c, v],
+                  "ncclGather": [v, v, z, i, i, c, v], "ncclScatter": [v, v, z, i, i, c, v],
+                  "ncclSend": [v, z, i, i, c, v], "ncclRecv": [v, z, i, i, c, v]}
+    for name, types in signatures.items():
+        getattr(lib, name).argtypes = types
+    count = 1024
+    send = torch.full((count * world,), 3.0, dtype=torch.float32, device="cuda")
+    recv = torch.full((count * world,), 7.0, dtype=torch.float32, device="cuda")
+    torch.cuda.synchronize()
+    snapshot = (send.cpu().clone(), recv.cpu().clone())
+    s, r, h = ctypes.c_void_p(send.data_ptr()), ctypes.c_void_p(recv.data_ptr()), ctypes.c_void_p(stream.cuda_stream)
+    huge = (1 << 64) - 1  # size_t's largest value: its bytes overflow every element size
+    f32, total = 7, 0
+    cases = [
+        ("ncclAllReduce", (s, r, huge, f32, 0, comm, h)), ("ncclAllReduce", (None, r, count, f32, 0, comm, h)),
+        ("ncclAllReduce", (s, None, count, f32, 0, comm, h)),
+        ("ncclAllGather", (s, r, huge, f32, comm, h)), ("ncclAllGather", (None, r, count, f32, comm, h)),
+        ("ncclReduceScatter", (s, r, huge, f32, 0, comm, h)), ("ncclReduceScatter", (s, None, count, f32, 0, comm, h)),
+        ("ncclAlltoAll", (s, r, huge, f32, comm, h)), ("ncclAlltoAll", (None, r, count, f32, comm, h)),
+        ("ncclReduce", (s, r, huge, f32, 0, 0, comm, h)), ("ncclReduce", (None, r, count, f32, 0, 0, comm, h)),
+        ("ncclBroadcast", (s, r, huge, f32, 0, comm, h)), ("ncclBroadcast", (s, None, count, f32, 0, comm, h)),
+        ("ncclGather", (s, r, huge, f32, 0, comm, h)), ("ncclScatter", (s, r, huge, f32, 0, comm, h)),
+        ("ncclSend", (s, huge, f32, (rank + 1) % world, comm, h)), ("ncclSend", (None, count, f32, 0, comm, h)),
+        ("ncclRecv", (r, huge, f32, (rank + 1) % world, comm, h)), ("ncclRecv", (None, count, f32, 0, comm, h)),
+    ] + [(name, args) for root in (-1, world, 1 << 30) for name, args in (
+        ("ncclReduce", (s, r, count, f32, 0, root, comm, h)), ("ncclBroadcast", (s, r, count, f32, root, comm, h)),
+        ("ncclGather", (s, r, count, f32, root, comm, h)), ("ncclScatter", (s, r, count, f32, root, comm, h)))]
+    wrong = []
+    for name, args in cases:
+        total += 1
+        code = getattr(lib, name)(*args)
+        if code != 4:
+            wrong.append(f"{name}{tuple('NULL' if a is None else a for a in args[2:-2])}: result {code}: "
+                         f"{lib.ncclGetLastError(None).decode()}")
+    torch.cuda.synchronize()
+    unchanged = torch.equal(send.cpu(), snapshot[0]) and torch.equal(recv.cpu(), snapshot[1])
+    report(f"{total} calls with hostile arguments (overflowing counts, NULL buffers, roots outside 0-{world - 1}) "
+           "refused with ncclInvalidArgument, buffers unchanged", not wrong and unchanged,
+           "; ".join(wrong[:4]) if wrong else "" if unchanged else "a buffer changed")
 
 
 def run_point_to_point_checks(torch, lib, comm, world, rank, max_piece, stream, seed_base, report) -> int:
@@ -1956,6 +2007,7 @@ def main(argv=None) -> int:
     alternating_alltoalls = run_alternating_grid_checks(torch, lib, comm, world, rank, stream_a, args.seed_base, report)
     run_split_checks(torch, lib, comm, world, rank, stream_a, args.seed_base, report)
     run_abort_with_queued_send_check(torch, lib, comm, world, rank, stream_a, report)
+    run_hostile_argument_checks(torch, lib, comm, world, rank, stream_a, report)
     run_capture_staging_check(torch, lib, comm, world, rank, args.seed_base, report)
     run_rank_local_staging_checks(torch, lib, comm, world, rank, args.seed_base, report)
     run_staging_growth_check(torch, lib, comm, world, rank, args.seed_base, report)
