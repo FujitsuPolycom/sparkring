@@ -215,7 +215,7 @@ def test_deepseek_layer_pins_runtime_deployment_tools_and_admission():
         assert json.loads(output.read_text())["image_id"].startswith("sha256:")
     vendor = cache.ROOT / "integrations/sparkcache/4a17f1f5198e"
     deployment = json.loads((vendor / "deployment-files.json").read_text())
-    assert layer.digest((vendor / "deployment-files.json").read_bytes()) == "1c7ab79afc9b060f6b1b3c6d2d157170dafb059fe855cac7b106414fa74d1cd9"
+    assert layer.digest((vendor / "deployment-files.json").read_bytes()) == "eb8806934c21ea36f7d2602c84739a1bda7a7d2456547385dd24c1bb40284a57"
     assert deployment["source_commit"] == record["source"]["commit"]
     for path, sha in deployment["files"].items():
         assert layer.digest((vendor / path).read_bytes()) == sha

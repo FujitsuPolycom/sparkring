@@ -34,6 +34,19 @@ python deploy/deepseek_v41/checkpoint_identity.py derive
 python deploy/deepseek_v41/checkpoint_identity.py verify-root /srv/models/DeepSeek-V4.1-Flash/dba1be0a40aa
 ```
 
+The profile's other listed checkpoint, `1017` (`deepseek-ai/DeepSeek-V4.1-Flash-1017` at
+`1bae0e1088993b9b82de08f59de5be5a34e42170`: the same `config.json`, weight index
+and draft settings, different weights), keeps the same three files under
+`checkpoints/1017/`; `--checkpoint 1017` selects them for both commands. Its
+identity is `642667f82bb738e69d7ced6470fcdb4d48be378cd869e0243a1a4f9c89bf31dc`,
+which the profile's `1017` entry names, with the cache root
+`/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899`:
+
+```sh
+python deploy/deepseek_v41/checkpoint_identity.py --checkpoint 1017 derive
+python deploy/deepseek_v41/checkpoint_identity.py --checkpoint 1017 verify-root /srv/models/DeepSeek-V4.1-Flash-1017/1bae0e108899
+```
+
 `derive` recomputes the identity from the pins and compares the recorded
 receipt:
 
