@@ -32,6 +32,10 @@ def agreement_failures(statuses: Sequence[tuple[Optional[str], bytes, Mapping[st
     if failures:
         return failures
     reference = statuses[0][2]
+    subset_ring = reference.get("subset_ring", False)
+    for index, status in enumerate(statuses):
+        if status[2].get("subset_ring", False) != subset_ring:
+            failures.append(f"rank {index} subset ring setting differs from rank 0")
     for index, status in enumerate(statuses):
         differing = {key: (reference[key], status[2].get(key)) for key in reference
                      if key not in RANK_LOCAL_FIELDS and status[2].get(key) != reference[key]}
