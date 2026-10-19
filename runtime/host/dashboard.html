@@ -9,7 +9,7 @@
 :root {
   --bg: #0f171c; --surface: #152129; --ink: #e3eaed; --muted: #93a3ac; --line: #2a3943;
   --g1: #3fc3cf; --g2: #74d494; --g3: #ac8ef6; --g4: #7aa6f6; --relay: #e3a246;
-  --ok: #74d494; --warn: #e3a246; --bad: #f08a80;
+  --ok: #74d494; --warn: #e3a246; --bad: #f08a80; --flare: #ff6a3d;
   --panel: var(--surface); --panel2: var(--surface); --fg: var(--ink); --faint: var(--muted);
   --line2: var(--line); --code: var(--bg); --accent: var(--g1); --idle: var(--muted);
   --ok-bg: color-mix(in srgb, var(--ok) 12%, transparent);
@@ -144,6 +144,17 @@ svg .ring-total-requests { font: 10px var(--mono); fill: var(--muted); }
 .card.st-idle { border-left-color: var(--idle); opacity: 0.75; }
 .card.st-offline { border-left-color: var(--bad); }
 .card.ringed { border-left-color: var(--gc); }
+.card.flare:not(.st-offline) { border-left-color: var(--flare); }
+.tag.flare { color: var(--flare); border-color: color-mix(in srgb, var(--flare) 45%, transparent); font-weight: 700; gap: 3px; }
+/* The flame marks an endpoint served by Flare: beside its name, in its runtime tag and in the legend. */
+.flame { width: 1em; height: 1em; flex: none; fill: var(--flare); vertical-align: -0.12em; }
+svg .flame-mark { fill: var(--flare); }
+/* A card folds to its head row; the fold is remembered per card in this browser. */
+button.fold { width: 22px; height: 22px; padding: 0; flex: none; display: inline-grid; place-items: center;
+  font-size: 0.7rem; color: var(--muted); background: none; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+button.fold:hover { color: var(--fg); border-color: var(--accent); }
+.card.collapsed { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.collapsed .head { display: contents; }
 .launch-facts { min-width: 0; overflow-wrap: anywhere; }
 .launch-facts summary { cursor: pointer; }
 .card.hot, .card.sel { outline: 1px solid var(--gc, var(--accent)); }
@@ -240,12 +251,12 @@ footer { color: var(--muted); font-size: 0.78rem; overflow-wrap: anywhere; }
   :root:not([data-theme="dark"]) { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
     --muted: #55636c; --line: #cfd7db; --g1: #0b7f8a; --g2: #2f8a4a;
     --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
-    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; }
+    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; --flare: #d9471a; }
 }
 :root[data-theme="light"] { color-scheme: light; --bg: #eef1f2; --surface: #f8fafa; --ink: #142028;
     --muted: #55636c; --line: #cfd7db; --g1: #0b7f8a; --g2: #2f8a4a;
     --g3: #6b5bb5; --g4: #3a64b5; --relay: #b5711b;
-    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; }
+    --ok: #2f8a4a; --warn: #b5711b; --bad: #ad2530; --flare: #d9471a; }
 .theme { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--muted);
   background: none; border: 1px solid var(--line); border-radius: 50%; cursor: pointer; flex: none; }
 .theme:hover { color: var(--fg); }
@@ -388,6 +399,10 @@ svg .node:focus-visible rect { stroke: var(--g1); stroke-width: 3; }
     </div>
   </section>
   <div class="stacks" id="stacks"></div>
+  <section id="external-section" hidden>
+    <div class="ringhead"><h2>Other endpoints</h2><span class="muted" id="external-meta">Served outside the installer; read-only</span></div>
+    <div class="stacks" id="external"></div>
+  </section>
   <section class="events">
     <h2>Events</h2>
     <ul id="events"><li><span class="empty">Nothing yet.</span></li></ul>
@@ -419,7 +434,22 @@ const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, 
 const PALETTE = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
 const JOB_COLOR = "var(--muted)";
 const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
-const memberColor = m => m.unmanaged || m.gpu_job ? JOB_COLOR : gcolor(m.arc?.color);
+const memberColor = m => m.unmanaged || m.gpu_job ? JOB_COLOR : m.external && m.kind === "flare" ? "var(--flare)" : gcolor(m.arc?.color);
+const isFlare = m => !!(m && m.external && m.kind === "flare");
+const FLAME_PATH = "M12 2c.5 4.2-5 6.6-5 11.4a5 5 0 0 0 10 0c0-2.5-1.3-4.1-2.3-5.2-.2 1.7-1.1 2.8-2 2.8-1.2 0-1.8-1.2-1.3-2.6C12.8 6.6 12.3 4.2 12 2z";
+const FLAME = `<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><path d="${FLAME_PATH}"/></svg>`;
+// Folded cards, by member id; kept in this browser only.
+let folded = new Set();
+try { folded = new Set(JSON.parse(localStorage.getItem("sparkring-folded") || "[]")); } catch (_) { /* Storage is optional. */ }
+function foldButton(id, name) {
+  const open = !folded.has(id);
+  return `<button class="fold" type="button" data-fold="${esc(id)}" aria-expanded="${open}" title="${open ? "Collapse" : "Expand"}" aria-label="${open ? "Collapse" : "Expand"} ${esc(name)}">${open ? "\u25BE" : "\u25B8"}</button>`;
+}
+function toggleFold(id) {
+  if (folded.has(id)) folded.delete(id); else folded.add(id);
+  try { localStorage.setItem("sparkring-folded", JSON.stringify([...folded])); } catch (_) { /* Storage is optional. */ }
+  scheduleRender();
+}
 const span = (positions) => !positions || !positions.length ? "" :
   positions.length === 1 ? String(positions[0]) :
   positions.some((p, i) => i && p > positions[i - 1] + 1) ? positions.join(", ") : positions[0] + "–" + positions[positions.length - 1];
@@ -541,6 +571,10 @@ function startupDetails(s) {
 
 const ringLabelMeasure = document.createElement("canvas").getContext("2d");
 function ringLabels(groups, N, cx, cy) {
+  // An inactive group whose Sparks all belong to an active one (a stopped install record under a running
+  // deployment or a listed endpoint) keeps its legend row and card but gets no label on the figure.
+  const owner = ringOwners(groups);
+  groups = groups.filter(g => groupActive(g) || g.positions.some(p => owner[p] === g));
   const placed = [], compact = groups.length > 4;
   for (const g of groups) {
     const full = g.size === N, step = 2 * Math.PI / N;
@@ -634,10 +668,12 @@ function ringSvg(ring, members, now, labels, totals) {
   }
   for (const position of labels) {
     const {g, x, size} = position, compact = groups.length > 4, y = position.y - (compact ? 11 : 13);
-    const tp = g.m?.gpu_job ? "" : g.outline ? (g.m?.layout?.tp ? "TP" + g.m.layout.tp : "Unmanaged") : "TP" + (g.m?.layout?.tp || g.size);
+    const tp = g.m?.gpu_job ? "" : isFlare(g.m) ? "Flare" : g.outline ? (g.m?.layout?.tp ? "TP" + g.m.layout.tp : "Unmanaged") : "TP" + (g.m?.layout?.tp || g.size);
+    ringLabelMeasure.font = `650 ${size}px system-ui, sans-serif`;
+    const flame = isFlare(g.m) ? `<path class="flame-mark" d="${FLAME_PATH}" transform="translate(${x - ringLabelMeasure.measureText(position.label).width / 2 - size - 2} ${y - size + 1}) scale(${size / 24})"/>` : "";
     const phase = ringStartupLabel(g.m);
     const phaseSize = 9;
-    const label = `<g class="lbl"><text class="l1" x="${x}" y="${y}" style="font-size:${size}px">${esc(position.label)}</text>`
+    const label = `<g class="lbl">${flame}<text class="l1" x="${x}" y="${y}" style="font-size:${size}px">${esc(position.label)}</text>`
       + `<text class="l2" x="${x}" y="${y + 14}">${tp ? esc(tp) + " · " : ""}${g.size === 1 ? "Spark" : "Sparks"} ${esc(span(g.positions))}</text>`
       + (phase ? `<text class="lstartup${g.state === "failed" ? " failed" : ""}" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${phaseSize}px">${esc(phase)}</text>`
         : `<text class="lrate" x="${x}" y="${y + (compact ? 28 : 32)}" style="font-size:${compact ? 14 : 18}px">${g.state === "serving" ? rate(g.m?.live?.output_tps) : "–"}<tspan class="unit"> tok/s</tspan></text>`) + `</g>`;
@@ -693,7 +729,7 @@ function stripHtml(rings, members) {
   let kv = null, kvName = "";
   for (const m of serving) if (m.live && has(m.live.kv) && (kv === null || m.live.kv > kv)) { kv = m.live.kv; kvName = m.name; }
   const short = Object.fromEntries(rings.map((r) => [r.id, r.short || r.id]));
-  const sizes = serving.map((m) => (m.unmanaged ? m.layout.label : "TP" + ((m.arc && m.arc.size) || "?")) + (rings.length > 1 && short[m.ring] ? " " + short[m.ring] : "")).join(" · ");
+  const sizes = serving.map((m) => (m.unmanaged || m.external ? m.layout.label : "TP" + ((m.arc && m.arc.size) || "?")) + (rings.length > 1 && short[m.ring] ? " " + short[m.ring] : "")).join(" · ");
   const tile = (k, v, unit, sub) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}${unit ? `<small>${unit}</small>` : ""}</div><div class="s">${sub}</div></div>`;
   return tile("Serving", serving.length, serving.length === 1 ? "group" : "groups", esc(sizes || "nothing serving"))
     + tile("Output", rate(tps), "tok/s", "5 min avg " + rate(tps5))
@@ -712,10 +748,11 @@ function legendHtml(rings, members) {
     let t1, t2, model, src, right;
     if (g.kind === "member") {
       const m = g.m, a = m.arc || {}, tr = m.transport && m.transport.label;
-      t1 = `<span class="mono">${esc(m.name)}</span>`;
+      t1 = `<span class="mono">${isFlare(m) ? FLAME : ""}${esc(m.name)}</span>`;
       t2 = `${where}${positionText(g.positions)}${esc(ends)}`;
       model = `<span title="${esc(m.model || (m.gpu_job ? gpuSummary(m) : m.name))}">${esc(m.gpu_job ? "GPU in use" : m.model_short || m.model || "—")}</span>`;
-      src = m.gpu_job ? esc(gpuSummary(m)) : `<span title="${esc((a.inferred ? "inferred from " : "from ") + (a.source_label || "?"))}">${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""}</span>${a.inferred ? ' · <span style="color:var(--warn)">positions guessed</span>' : ""}`;
+      src = m.gpu_job ? esc(gpuSummary(m)) : m.external ? `<span title="${esc("from " + (a.source_label || "?"))}">${esc(m.layout.label)} · ${esc(m.host)}:${esc(m.port)}</span>`
+        : `<span title="${esc((a.inferred ? "inferred from " : "from ") + (a.source_label || "?"))}">${m.unmanaged ? esc(m.layout.label) : 'TP' + a.size}${tr ? " · " + esc(tr) : ""}</span>${a.inferred ? ' · <span style="color:var(--warn)">positions guessed</span>' : ""}`;
       right = `<span class="pill p-${esc(m.state || "")}">${esc(m.startup ? startupLabel(m) : m.state_label || "")}</span>`
         + (m.state === "serving" ? `<span class="rate">${rate((m.live || {}).output_tps)} tok/s</span>` : "");
     } else {
@@ -1216,6 +1253,7 @@ function unmanagedFacts(s) {
 }
 
 function card(s, now) {
+  if (s.external) return externalCard(s, now);
   const st = s.state || "checking", serving = st === "serving";
   const since = s.state_since ? "for " + dur(now - s.state_since) : "";
   const layout = s.layout || {}, arc = s.arc;
@@ -1257,14 +1295,15 @@ function card(s, now) {
   const recoveryChip = recovery ? `<span class="tag recovery-chip" title="${esc(r.summary || recovery)}">${esc(recovery)}${has(r.checked_at) ? " · " + esc(dur(now - r.checked_at).split(" ").slice(0, 2).join(" ")) + " ago" : ""}</span>` : "";
   const thinking = s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : "";
   const modelText = s.name === s.model && !s.gpu_job ? (serving ? "" : `<span class="model muted">Last served: same model</span>`) : `<span class="model">${model}</span>`;
-  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+  const open = !folded.has(s.id);
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}${open ? "" : " collapsed"}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
-      <span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
+      ${foldButton(s.id, s.name)}<span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
       ${tags.join("")}
       <span class="state"><span class="pill p-${esc(st)}">${esc(s.startup ? startupLabel(s) : s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
       ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
-    </div>
+    </div>${open ? `
     ${startupDetails(s)}
     ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${acceptancePct(s.live?.acceptance)} draft acceptance${has(s.live?.accepted_per_step) ? ` · ${acceptedStep(s.live.accepted_per_step)} accepted tok/step` : ""} · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
@@ -1276,8 +1315,59 @@ function card(s, now) {
       ${s.unmanaged ? unmanagedFacts(s) : ""}
       ${recoveryLine(s, now)}${settings(s)}${metricDetails(s)}${totals(s, now)}${logsPanel(s)}
       ${data.manage && arc && !s.unmanaged ? `<div class="actions">${[["install", "Install / swap"], ["down", "Down"], ["restart", "Restart"], ["recovery-on", "Recovery on"], ["recovery-off", "Recovery off"], ["logs", "Follow logs"]].map(([action, title]) => `<button class="copy" type="button" data-action="${action}" data-on="${esc(arc.positions.join(','))}" data-profile="${esc(s.profile || '')}">${title}</button>`).join('')}</div>` : ""}
-    </div></details>
+    </div></details>` : ""}
   </article>`;
+}
+
+function externalCard(e, now) {
+  const st = e.state || "checking", serving = st === "serving", s = e.stats || {};
+  const kind = e.kind === "flare" ? "Flare" : "OpenAI API", flare = e.kind === "flare";
+  const gc = e.arc ? memberColor(e) : null;
+  const spark = e.head && e.head.name ? `${esc(e.head.name)} · ` : "";
+  const where = e.arc ? `<span class="tag arc">${esc(positionText(e.arc.positions))}</span>` : "";
+  const open = !folded.has(e.id);
+  const model = e.model ? esc(e.model) : '<span class="muted">No model seen yet</span>';
+  const note = ({
+    stopped: "Nothing listens on this endpoint's port.",
+    offline: "The host does not answer on the network.",
+    not_ready: "The port is open but the server isn't answering its metrics yet.",
+  })[st];
+  const endpoint = serving ? `<span class="endpoint"><code>${esc(e.endpoint)}</code><button class="copy" type="button" data-copy="${esc(e.endpoint)}" aria-label="Copy endpoint">Copy</button></span>` : "";
+  const tiles = serving ? `<div class="tiles">
+    <div class="tile"><div class="k">Output tok/s</div><div class="v">${rate(s.output_tps)}</div></div>
+    <div class="tile"><div class="k">Tokens <span class="muted">last minute</span></div><div class="v">${int(s.tokens_last_minute)}</div></div>
+    <div class="tile"><div class="k">Requests <span class="muted">running / max</span></div><div class="v">${int(s.active_requests)} / ${int(s.request_capacity)}</div></div>
+    <div class="tile"><div class="k">KV in use <span class="muted">% of tokens</span></div><div class="v">${pct(s.kv_in_use)}</div></div>
+  </div>` : "";
+  const line = serving ? `<div class="secondary muted">${has(s.uptime_seconds) ? "up " + dur(s.uptime_seconds) + " · " : ""}${int(s.requests_completed)} requests completed${has(s.requests_failed) && s.requests_failed ? " · " + int(s.requests_failed) + " failed" : ""}${has(s.draft_acceptance) ? " · " + pct(s.draft_acceptance) + " draft acceptance" : ""}</div>` : "";
+  const details = serving ? `<p>${int(s.generated_tokens)} tokens generated · ${int(s.prefill_tokens)} prefilled · ${int(s.pending_requests)} pending${has(s.kv_tokens_total) ? ` · KV ${int(s.kv_tokens_total)} tokens${has(s.kv_tokens_cached) ? `, ${int(s.kv_tokens_cached)} cached` : ""}` : ""}${has(s.row_cache_hit_rate) ? ` · embedding row cache ${pct(s.row_cache_hit_rate)} hits` : ""}${has(s.prefix_hit_rate) ? ` · prefix cache ${pct(s.prefix_hit_rate)} hits` : ""}</p>` : "";
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${flare ? " flare" : ""}${open ? "" : " collapsed"}" data-member="${esc(e.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+    <div class="head">
+      ${foldButton(e.id, e.label)}<span class="name">${flare ? FLAME : ""}${esc(e.label)}</span>
+      ${serving ? `<span class="model">${model}</span>` : ""}
+      <span class="tag${flare ? " flare" : ""}">${flare ? FLAME : ""}${esc(kind)}</span>${where}
+      <span class="state"><span class="pill p-${esc(st)}">${esc(e.state_label || "Checking")}</span><span class="since" data-age="${e.state_since || 0}">${e.state_since ? "for " + dur(now - e.state_since) : ""}</span></span>
+      ${!serving ? `<span class="model">${model}</span>` : ""}${endpoint}
+    </div>${open ? `
+    <div class="sub">${spark}${esc(kind)} at <span class="mono">${esc(e.host)}:${esc(e.port)}</span>${has(e.max_model_len) ? ` · ${int(e.max_model_len)}-token context` : ""}</div>
+    ${tiles}${line}
+    <details class="card-details"><summary>Details</summary><div class="detail-body">
+      <div class="sub">${esc(kind)} at ${esc(e.host)}:${esc(e.port)}${e.root ? ` · ${esc(e.root)}` : ""}${e.metrics_url ? ` · metrics ${esc(e.metrics_url)}` : ""}</div>
+      ${note ? `<p class="down-note">${esc(note)}</p>` : ""}
+      ${details}
+      ${(e.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
+      <p class="muted">Not installed by SparkRing: no automatic recovery, no install record. The page reads its /metrics and /v1/models only.</p>
+    </div></details>` : ""}
+  </article>`;
+}
+
+function renderExternal(list, now) {
+  const section = $("external-section");
+  setHidden(section, !list.length);
+  if (!list.length) return;
+  const n = list.filter((e) => e.state === "serving").length;
+  text($("external-meta"), `${n} of ${list.length} serving · served outside the installer; read-only`);
+  patch($("external"), list.map((e) => externalCard(e, now)).join(""));
 }
 
 function render() {
@@ -1321,6 +1411,7 @@ function render() {
   const order = [...$("stacks").children].map(c => c.dataset.member);
   for (const s of stacks) if (!order.includes(s.id)) order.push(s.id);
   patch($("stacks"), order.map(id => card(incoming.get(id), now)).join(""));
+  renderExternal(data.external || [], now);
   updateGraphControls();
   for (const s of stacks) updateGraphs(s);
   applyHighlight();
@@ -1565,6 +1656,8 @@ $("stacks").addEventListener("click", (e) => {
     $("manage-message").textContent = "Choose options if needed, then review the plan and activity.";
     $("manage").scrollIntoView({ block: "start", behavior: "smooth" });
   }
+  const fold = e.target.closest("button.fold");
+  if (fold) toggleFold(fold.dataset.fold);
   const btn = e.target.closest("button.copy");
   if (btn && btn.dataset.copy) copy(btn.dataset.copy, btn);
   const reread = e.target.closest("button.reread");
