@@ -4970,12 +4970,14 @@ ncclResult_t sccl_engine_destroy(sccl_engine *e, int abort, char *err, size_t le
     e->host = e->p2p_host = NULL;
     freed = 1;
   }
+  /* The lock goes before quarantine_add: once the engine is on the quarantine list, another thread's
+   * quarantine_reclaim may free it, so nothing here may touch it after a successful add. */
+  pthread_mutex_destroy(&e->lock);
   int queued = !freed && pushed && released && quarantine_add(e);
   if (pushed) {
     sccl_CUcontext popped;
     cu->CtxPopCurrent(&popped);
   }
-  pthread_mutex_destroy(&e->lock);
   if (freed && !queued) free(e);
   return result;
 }
