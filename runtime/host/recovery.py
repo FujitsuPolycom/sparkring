@@ -22,6 +22,8 @@ A run acts only when every guard holds:
 - recovery is on for the active deployment (``recovery.json``) and has not
   stopped (FAILURE_LIMIT consecutive failed attempts, or RESTART_LIMIT
   restarts within RESTART_WINDOW);
+- no operator holds the cluster (``runtime.host.hold``); recovery observes
+  during a hold and acts after it ends;
 - the deployment's position locks and the shared ring gate are available
   (``runtime.host.slices``). An install on another slice does not stop this
   deployment's check; an overlapping or ring-wide operation reports ``busy``;
@@ -708,14 +710,15 @@ def _confirmed(finding, pending, t):
 
 
 # The outcome of a run over several deployments: the first state in this order that one of them reached.
-PRECEDENCE = ("failed", "recovered", "stopped", "report", "waiting", "backoff", "confirming", "changed", "busy",
+PRECEDENCE = ("failed", "recovered", "stopped", "report", "waiting", "backoff", "confirming", "changed", "held", "busy",
               "unsupported", "inactive", "off", "serving", "idle")
 
 
 def check(*, now=time.time, invoke=None, api=None, apply=None, tunnel=None):
     """One run of ``sparkring recover --auto``; returns ``{"state", "summary", "deployment", ...}``.
 
-    ``state`` is one of ``idle``, ``off``, ``stopped``, ``busy``, ``inactive``,
+    ``state`` is one of ``idle``, ``off``, ``stopped``, ``busy``, ``held`` (an
+    operator's hold stands, ``runtime.host.hold``), ``inactive``,
     ``unsupported``, ``waiting``, ``serving``, ``report`` (not serving, and
     only the operator can act), ``confirming``, ``backoff``, ``changed``,
     ``recovered`` or ``failed``. ``invoke`` replaces SSH, ``api`` the API
@@ -876,6 +879,14 @@ def attempt(directory, lock, state, finding, *, now=time.time, apply=None, invok
             stack.enter_context(slices.hold(controller.STATE, placement.from_lock(lock), "automatic recovery"))
         except ValueError:
             return _outcome("busy", "Another SparkRing operation started", directory)
+        # An operator's hold (runtime.host.hold) reserves the cluster; recovery never overrides it.
+        from runtime.host import hold
+        try:
+            standing = hold.current(controller.STATE)
+        except OSError:
+            standing = None
+        if standing is not None:
+            return _outcome("held", hold.text(standing) + "; automatic recovery acts after the hold ends", directory)
         record = record_of(load(repair=True), directory)
         if not record["enabled"]:
             return _outcome("off", "Automatic recovery was turned off during the check", directory)
@@ -1064,6 +1075,8 @@ def main(argv=None):
     parser.add_argument("--on", help="apply to the active deployment on these Sparks")
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--yes", action="store_true")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--review", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     colour.set_mode(args.color)
@@ -1092,9 +1105,9 @@ def main(argv=None):
         if args.action in ("on", "off"):
             from runtime.host import activity, slices
             slot = controller.lifecycle_slot(args.on) if args.on else None
-            assessment = activity.assess(controller.STATE, slot)
+            assessment = activity.assess(controller.STATE, slot, command="recover " + args.action)
             activity.confirm(assessment, yes=args.yes, plan=args.plan,
-                             interactive=not args.json and sys.stdin.isatty())
+                             interactive=not args.json and sys.stdin.isatty(), override_hold=args.override_hold)
             if args.plan:
                 result = {"action": "recovery " + args.action, "activity": assessment,
                           "review": activity.fingerprint(controller.STATE, slot)}

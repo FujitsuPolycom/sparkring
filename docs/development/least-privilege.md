@@ -86,6 +86,8 @@ sudoers rule; the `sparkring node <verb>` dispatcher
 | `recover` / `recover status` | reads `recovery.json` (0644) and the active deployment records; `systemctl is-enabled` | none; root by record ownership | `runtime/host/recovery.py:999-1016,948-955,122` | READ-ONLY |
 | `recover on\|off` | writes `recovery.json` under locks; `systemctl enable --now sparkring-recover.timer` | DAC, SYSTEMD | `recovery.py:658-678,257` | MUTATES SERVING (policy) |
 | `recover --auto` | probes every rank as root over SSH (`recovery.py:355`); restarts the model through the `down`/`up` path | ROOT-CODE, DOCKER, DAC | `recovery.py:709-900,864-867`; `sparkring-recover.service` | MUTATES SERVING |
+| `hold` (show) | reads `controller/hold.json` (0644); a non-root member reads the operator view | none; root by directory ownership | `runtime/host/hold.py:95,212` | READ-ONLY |
+| `hold --reason\|--release` | root gate; writes or unlinks `controller/hold.json`, appends `hold-overrides.jsonl` on an override, refreshes the site file and operator view | DAC | `hold.py:175,194,212` | MAINTENANCE |
 | `cabling` | root gate (`cabling.py:769`); `lldpctl` (root or `_lldpd` group), `ip -j`, per-Spark survey | LLDPD, DAC | `cabling.py:753,769,777-784`; `survey.py:27,138` | READ-ONLY |
 | `cabling --bandwidth` | `ib_write_bw` per cable; refuses used cables without `--while-serving` | RDMA verbs + memlock; DAC | `runtime/host/fabric_bandwidth.py:313,399-416,691` | READ-ONLY (traffic); MUTATES SERVING with `--while-serving` |
 | `fabric show` | reads `controller/fabric.json` and `cluster.json` | none; root by ownership | `runtime/host/fabric.py:646-690` | READ-ONLY (root by ownership) |

@@ -1025,6 +1025,8 @@ def main(argv=None, *, state_root=None, invoke=None):
                         help="remove this SparkRing checkpoint directory from every Spark that holds it; the copies "
                              "its files were linked from are never written, moved or deleted")
     parser.add_argument("--yes", action="store_true", help="approve the release without a prompt")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout")
     args = parser.parse_args(argv)
     if state_root is None or invoke is None:
@@ -1042,6 +1044,7 @@ def main(argv=None, *, state_root=None, invoke=None):
         if not _administrator():
             raise ValueError("Run sudo sparkring checkpoints")
         if args.release:
+            hold.require(state_root, "sparkring checkpoints --release", override=args.override_hold)
             result = release_cluster(args.release, state_root, invoke, yes=args.yes,
                                      interactive=not args.json and sys.stdin.isatty(), write=write)
         else:

@@ -180,6 +180,8 @@ def _parser() -> argparse.ArgumentParser:
                                            "cache directory or deployment workspace")
     subcommands.add_parser("hairpin", help="apply the ConnectX hairpin setting that relayed forwarding needs (Node A)")
     subcommands.add_parser("recover", help="restart the active model automatically when a Spark stops serving (Node A)")
+    subcommands.add_parser("hold", help="show, take or release a hold on the cluster: other operators' changes "
+                                        "refuse while it stands (Node A)")
     subcommands.add_parser("cabling", help="show how the Sparks are cabled, the port-to-Spark map and what to change "
                                            "for a pair, line or ring, or with --bandwidth measure each cable's speed; "
                                            "changes nothing")
@@ -234,6 +236,9 @@ def _main(argv: Sequence[str] | None = None) -> int:
     if raw and raw[0] == "recover":
         from runtime.host.recovery import main as recover_main
         return recover_main(raw[1:])
+    if raw and raw[0] == "hold":
+        from runtime.host.hold import main as hold_main
+        return hold_main(raw[1:])
     if raw and raw[0] == "cabling":
         from runtime.host.cabling import main as cabling_main
         return cabling_main(raw[1:])
