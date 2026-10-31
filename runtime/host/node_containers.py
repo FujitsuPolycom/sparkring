@@ -1,10 +1,13 @@
-"""Bounded local model-container observations; never publish argv or environment.
+"""Bounded local model observations; never publish argv or environment.
 
 Docker inspect uses its local Unix socket. GPU PIDs already collected by the
-agent identify docker-exec servers whose launch differs from the entrypoint.
+agent identify docker-exec servers whose launch differs from the entrypoint,
+and bare ``flare run`` processes that the Orbit agent or an operator started.
 No command is executed and no environment is read from /proc.
 """
+import hashlib
 import http.client
+import ipaddress
 import json
 from pathlib import Path
 import re
@@ -13,6 +16,7 @@ import socket
 import time
 
 MAX_CONTAINERS = 32
+MAX_FLARE_PROCESSES = 16
 MAX_ARGV_BYTES = 16384
 MAX_ARGS = 256
 MAX_GPU_PIDS = 256
@@ -20,6 +24,7 @@ MAX_RESPONSE = 256 * 1024
 MAX_INSPECT_SECONDS = 1.0
 MANAGED_NAME = re.compile(r"(?:sr-)?[A-Za-z0-9][A-Za-z0-9_.-]*-[0-9a-f]{6}-r[0-9]+")
 MANAGED_LABELS = ("io.sparkring.deployment", "org.sparkring.profile", "io.sparkring.stock-plan")
+FLARE_BINARY = re.compile(r"flare(?:-[0-9a-f]{8,64})?")
 INTEGER_FLAGS = {
     "tp": ("--tensor-parallel-size", "--tp-size", "--tp", "-tp"),
     "pp": ("--pipeline-parallel-size", "--pp-size", "--pp", "-pp"),
@@ -56,6 +61,98 @@ def bounded_argv(argv, depth=0):
     return argv
 
 
+def flare_run_index(argv):
+    """The index of ``run`` in a ``flare run`` invocation, or None.
+
+    The binary is ``flare`` or a content-addressed ``flare-<hex>``; ``flare
+    agent``, ``flare orbit ...`` and other subcommands are not serving ranks.
+    """
+    for index, arg in enumerate(argv[:4]):
+        if FLARE_BINARY.fullmatch(Path(arg).name) and index + 1 < len(argv) and argv[index + 1] == "run":
+            return index + 1
+    return None
+
+
+def argument_values(argv, start):
+    """Literal ``--flag value`` and ``--flag=value`` pairs from ``start``; variables stay unknown."""
+    values: dict = {}
+    index = start
+    while index < len(argv):
+        arg = argv[index]
+        key, separator, value = arg.partition("=")
+        if not separator:
+            following = argv[index + 1] if index + 1 < len(argv) else ""
+            # A negative memory limit is a value, not the next option.
+            if following and (not following.startswith("-") or re.fullmatch(r"-[0-9][0-9A-Za-z.]*", following)):
+                value = following
+                index += 1
+            else:
+                value = ""
+        values[key] = value
+        index += 1
+    return values
+
+
+def bounded_text(value):
+    return isinstance(value, str) and 0 < len(value) <= 512 and not any(c in value for c in "$`\n\r")
+
+
+def flare_launch_facts(argv):
+    """Public launch facts of one ``flare run`` process, or None for another command.
+
+    Only the recognized serving options are published: rank, rendezvous,
+    HTTP bind and port, and the served alias. Package paths, trust stores,
+    publisher keys, API keys and the rest of argv stay private.
+    """
+    run = flare_run_index(argv)
+    if run is None:
+        return None
+    values = argument_values(argv, run + 1)
+    rank = values.get("--rank", "")
+    if rank and not re.fullmatch(r"[0-9]{1,5}", rank):
+        return {"engine": "unknown"}
+    rank = int(rank) if rank else 0
+    if rank > 65535:
+        return {"engine": "unknown"}
+    facts: dict = {"engine": "flare", "node_rank": rank, "headless": rank != 0}
+    rendezvous = values.get("--rendezvous")
+    if isinstance(rendezvous, str) and bounded_text(rendezvous):
+        host, separator, port = rendezvous.rpartition(":")
+        host = host.strip("[]")
+        try:
+            ipaddress.ip_address(host)
+            valid_host = True
+        except ValueError:
+            valid_host = bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}", host))
+        if separator and port.isdigit() and 0 < int(port) < 65536 and valid_host:
+            facts.update(master_addr=host, master_port=int(port))
+    if rank == 0:
+        # Flare's --host is an IpAddr with a 127.0.0.1 default. An unparsable
+        # value is not published as loopback, which would claim reachability
+        # the process never had.
+        provided = values.get("--host")
+        bind = (provided if provided is not None else "127.0.0.1").removeprefix("[").removesuffix("]")
+        port = values.get("--port") or "8000"
+        try:
+            ipaddress.ip_address(bind)
+        except ValueError:
+            bind = None
+        if bind is not None and re.fullmatch(r"[0-9]{1,5}", port) and 0 < int(port) < 65536:
+            facts.update(api_bind=bind, api_port=int(port))
+    served = values.get("--served-model-name")
+    if isinstance(served, str) and bounded_text(served):
+        facts["served_model"] = served
+    return facts
+
+
+def flare_row_name(facts):
+    """A stable row name for one bare process, independent of its PID."""
+    key = [facts.get("master_addr"), facts.get("master_port"), facts.get("node_rank", 0),
+           facts.get("api_bind"), facts.get("api_port")]
+    digest = hashlib.sha256(json.dumps(key, sort_keys=True).encode()).hexdigest()[:10]
+    return f"flare-r{facts.get('node_rank', 0)}-{digest}"
+
+
 def thinking_kwargs(value):
     """Only bounded thinking arguments are public launch facts; arbitrary template data stays private."""
     if isinstance(value, str):
@@ -75,6 +172,9 @@ def thinking_kwargs(value):
 
 def launch_facts(argv):
     argv = bounded_argv(argv)
+    flare = flare_launch_facts(argv)
+    if flare is not None:
+        return flare
     engine = next(("vllm" if "vllm" in a else "sglang" for a in argv
                    if a in ("vllm", "sglang", "sglang.launch_server", "vllm.entrypoints.openai.api_server",
                             "vllm.entrypoints.cli.main")
@@ -83,11 +183,11 @@ def launch_facts(argv):
     wrapper = "/opt/sparkring/toolchain/toolchain.py"
     if any(a == wrapper and argv[i + 1:i + 2] == ["serve"] for i, a in enumerate(argv)):
         engine = "vllm"
-    facts = {"engine": engine}
+    facts: dict = {"engine": engine}
     if engine == "unknown" or any(a in argv for a in ("bench", "preload", "--help", "--version")):
         return {"engine": "unknown"}
     # Keep only literal, recognized values. Shell variables are unknown, not facts.
-    values = {}
+    values: dict = {}
     for i, arg in enumerate(argv):
         key, sep, value = arg.partition("=")
         if not sep:
@@ -173,24 +273,27 @@ def observations(facts, *, root="/", inspect=inspect_local):
             candidates.append(row)
             if len(candidates) == MAX_CONTAINERS:
                 break
-    gpu_argv = {}
-    for pid in ((facts.get("gpu") or {}).get("compute_processes") or [])[:MAX_GPU_PIDS]:
-        if type(pid) is not int or pid <= 0:
+    gpu_argv, gpu_parsed, gpu_container = {}, {}, {}
+    for gpu_pid in ((facts.get("gpu") or {}).get("compute_processes") or [])[:MAX_GPU_PIDS]:
+        if type(gpu_pid) is not int or gpu_pid <= 0:
             continue
+        pid, parsed, container = gpu_pid, {"engine": "unknown"}, None
         try:
             for _ in range(8):
                 proc = Path(root) / "proc" / str(pid)
                 with (proc / "cgroup").open("rb") as stream:
                     groups = stream.read(8192).decode("utf-8", "replace")
-                container = next((r.get("id") for r in candidates if r.get("id") and r["id"] in groups), None)
-                if not container:
-                    break
+                found = next((r.get("id") for r in candidates if r.get("id") and r["id"] in groups), None)
+                if found:
+                    container = found
+                # Read every hop, not only container members: a bare `flare run`
+                # process has no container cgroup to match.
                 with (proc / "cmdline").open("rb") as stream:
                     raw = stream.read(MAX_ARGV_BYTES + 1)
-                parsed = (launch_facts(raw.rstrip(b"\0").decode("utf-8", "replace").split("\0"))
-                          if len(raw) <= MAX_ARGV_BYTES else {"engine": "unknown"})
-                if container not in gpu_argv or parsed["engine"] != "unknown":
-                    gpu_argv[container] = parsed
+                here = (launch_facts(raw.rstrip(b"\0").decode("utf-8", "replace").split("\0"))
+                        if len(raw) <= MAX_ARGV_BYTES else {"engine": "unknown"})
+                if parsed["engine"] == "unknown" or here["engine"] != "unknown":
+                    parsed = here
                 if parsed["engine"] != "unknown":
                     break
                 with (proc / "status").open("rb") as stream:
@@ -200,6 +303,12 @@ def observations(facts, *, root="/", inspect=inspect_local):
                 pid = int(parent[1])
         except OSError:
             continue
+        if parsed["engine"] != "unknown":
+            gpu_parsed[gpu_pid] = parsed
+        if container:
+            gpu_container[gpu_pid] = container
+            if container not in gpu_argv or parsed["engine"] != "unknown":
+                gpu_argv[container] = parsed
     result = []
     deadline = time.monotonic() + MAX_INSPECT_SECONDS
     for row in candidates:
@@ -223,4 +332,12 @@ def observations(facts, *, root="/", inspect=inspect_local):
                        "image_id": str(doc.get("Image") or "").removeprefix("sha256:")[:12],
                        "managed": bool(MANAGED_NAME.fullmatch(name) or any(labels.get(k) for k in MANAGED_LABELS)),
                        **parsed})
+    bare = 0
+    for pid, parsed in gpu_parsed.items():
+        if bare >= MAX_FLARE_PROCESSES:
+            break
+        if pid in gpu_container or parsed.get("engine") != "flare":
+            continue
+        result.append({"name": flare_row_name(parsed), "image": "", "image_id": "", "managed": False, **parsed})
+        bare += 1
     return result

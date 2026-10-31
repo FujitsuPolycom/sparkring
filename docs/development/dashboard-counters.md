@@ -55,6 +55,23 @@ cannot establish a cross-Spark group. Bridged Docker port translation and
 launches discoverable only through environment/configuration files are not
 inferred.
 
+A bare `flare run` process is recognized from its GPU PID and bounded argv.
+The parser accepts `flare` and `flare-<hex>` binaries, rejects `flare agent`
+and `flare orbit`, and publishes only rank, rendezvous, HTTP bind/port and
+the served alias. Flare's documented defaults apply: `--host 127.0.0.1`,
+`--port 8000`, rank zero when `--rank` is absent and no HTTP API on peers.
+Package paths, publisher keys, trust stores and API-key paths are not
+published. Ranks sharing a rendezvous form one group; a process without one
+is a one-Spark group. A missing rank zero is named **head Spark not
+reporting** rather than counted as a complete smaller group, including when
+only one peer rank reports. `flare run` has no world-size option; the
+prepared package learns it at rendezvous, so the expected count is the
+highest observed rank plus one and ranks above that highest one are not
+detected as missing. A non-IP `--host` publishes no API facts rather than
+being rewritten as loopback. The same parser runs for a container's
+entrypoint, so a containerized Flare server is found when its launch is in
+`Path`/`Args`.
+
 The recovery timer writes an allowlisted projection to
 `/var/lib/sparkring/dashboard/nodes.json` (`sparkring-dashboard-nodes/v1`).
 It reads all setup-recorded SSH targets through its existing client and
@@ -90,21 +107,28 @@ Unmanaged models use the same polling, bounded history, rate calculation,
 graph controls and integer token-rate formatting as managed models.
 SGLang's generation/prompt counters, first-token histogram sum/count,
 running/waiting gauges and token-usage gauge map to the shared numeric
-contract. Other absent counters remain unknown. Metric names follow the
+contract. Flare's generated/prefill token counters, active/pending gauges,
+KV page tokens, draft counters, prefix-cache counters and preemptions map to
+the same contract; uptime supplies the up-time line, but Flare publishes no
+start time, so a restart does not begin a new history run. Other absent
+counters remain unknown. Metric names follow the
 [SGLang metrics reference](https://docs.sglang.io/docs/references/production_metrics)
 and its [collector](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/observability/metrics_collector.py).
-Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/).
+Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/)
+and Flare's `flare run --help`.
 
 The agent unit preserves its shared `/run/sparkring` directory across
 stop/start, including package upgrades. Operator quiet files and holder
 records retain their contents and expiry; reboot still clears runtime state.
 
-Offline coverage is in `test_dashboard_unmanaged.py`, `test_dashboard_ring_observation.py` and
-`test_dashboard_charts.py`: both engines, one through eleven Sparks,
-non-contiguous membership, mixed parallel dimensions, incomplete groups,
-stale/stopped records, ownership, bounds, secret exclusion, restricted reads,
-quiet mode and in-place browser updates. These tests do not qualify live
-Docker, SSH latency, GPU serving or recovery on Spark hardware.
+Offline coverage is in `test_dashboard_unmanaged.py`, `test_flare_dashboard.py`,
+`test_dashboard_ring_observation.py` and `test_dashboard_charts.py`: both
+engines, Flare's Orbit/manual/default launch shapes, one through eleven
+Sparks, non-contiguous membership, mixed parallel dimensions, incomplete
+groups, missing heads, stale/stopped records, ownership, bounds, secret
+exclusion, restricted reads, quiet mode and in-place browser updates. These
+tests do not qualify live Docker, SSH latency, GPU serving or recovery on
+Spark hardware.
 
 The initial history response contains raw `counters` and optional
 `plugin_counters` envelopes for replay at their `observed_at` time.
