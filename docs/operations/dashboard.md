@@ -209,16 +209,34 @@ frozen view of up to 6 hours. Precision, counter sources and cost are in
 
 ### Models installed outside SparkRing
 
-The page also shows vLLM and SGLang containers that the host agents find
-running. Their cards say **Not installed by SparkRing: no automatic recovery,
-no install record** and show the Sparks, engine, image, served name and
-parallel sizes. Containers that share a head Spark and rendezvous port form
-one group; a group with missing ranks shows **incomplete: N of M Sparks
-reporting**. Only rank 0's reported API port is read, with no port scan;
-SGLang needs `--enable-metrics` for rates. **Thinking** reads **unknown**
-unless the launch or runtime status gives explicit chat defaults. The
+The page also shows vLLM and SGLang containers, and bare `flare run`
+processes, that the host agents find running. Their cards say **Not
+installed by SparkRing: no automatic recovery, no install record** and show
+the Sparks, engine, image or process, served name and parallel sizes.
+Containers and Flare ranks that share a head Spark and rendezvous port form
+one group; a Flare process without a rendezvous is a one-Spark group. A
+group with missing ranks shows **incomplete: N of M Sparks reporting**, and
+a Flare group whose rank zero is absent says **head Spark not reporting**.
+Flare's argv carries no world size, so M is inferred from the highest
+observed rank: ranks above the highest one seen are not detected as
+missing. Only rank 0's reported API port is read, with no port scan; SGLang needs
+`--enable-metrics` for rates. **Thinking** reads **unknown** unless the
+launch or runtime status gives explicit chat defaults. The
 [observation contract](../development/dashboard-counters.md#unmanaged-model-observations)
 states the bounds and freshness rules.
+
+A Flare rank is recognized from the GPU process's bounded argv, whichever
+way it was started: Orbit, a manual `flare run`, a systemd unit or a shell
+wrapper. Rank, `--rendezvous`, `--host`, `--port` and `--served-model-name`
+are published; package paths, trust stores, API-key paths and the rest of
+argv stay private. The card reads the head's `/metrics` and `/v1/models` and
+uses Flare's own counters for tokens, requests, KV use, draft acceptance and
+prefix hits. Two limits follow from Flare's defaults: a launch bound to
+`127.0.0.1` (Flare's default) has no live counters from another Spark, and
+a launch configured only through environment variables or an opaque
+container entrypoint cannot be identified. The host-agent cache updates
+about once a minute, so a starting or stopped process may take that long to
+appear or leave the page.
 
 ### Other endpoints
 

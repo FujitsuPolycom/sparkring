@@ -434,8 +434,8 @@ const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, 
 const PALETTE = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
 const JOB_COLOR = "var(--muted)";
 const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
-const memberColor = m => m.unmanaged || m.gpu_job ? JOB_COLOR : m.external && m.kind === "flare" ? "var(--flare)" : gcolor(m.arc?.color);
-const isFlare = m => !!(m && m.external && m.kind === "flare");
+const isFlare = m => !!(m && ((m.external && m.kind === "flare") || (m.unmanaged && (m.flare || m.launch?.engine === "flare"))));
+const memberColor = m => isFlare(m) ? "var(--flare)" : m.unmanaged || m.gpu_job ? JOB_COLOR : gcolor(m.arc?.color);
 const FLAME_PATH = "M12 2c.5 4.2-5 6.6-5 11.4a5 5 0 0 0 10 0c0-2.5-1.3-4.1-2.3-5.2-.2 1.7-1.1 2.8-2 2.8-1.2 0-1.8-1.2-1.3-2.6C12.8 6.6 12.3 4.2 12 2z";
 const FLAME = `<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><path d="${FLAME_PATH}"/></svg>`;
 // Folded cards, by member id; kept in this browser only.
@@ -1240,14 +1240,23 @@ function logsPanel(s) {
 }
 
 function unmanagedFacts(s) {
-  const f = s.launch || {};
+  const f = s.launch || {}, flare = isFlare(s);
+  const api = (c) => c.headless ? "headless"
+    : c.api_bind ? `API ${esc(c.api_bind)}:${c.api_port ?? "unknown"}` : `API port ${c.api_port ?? "unknown"}`;
   return `<p class="down-note">${esc(s.ownership_label)}</p>
     ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
-    ${s.gpu_job ? "" : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
-    <details class="launch-facts"><summary>Container launch facts and install records</summary>
-    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}${s.gpu_job ? "" : `<br>
-      ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
-      ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}`}</p>`).join("")}
+    ${s.api_local ? `<p class="down-note">The API is bound to loopback on the head Spark, so this page cannot read live counters. Start it with <code>--host 0.0.0.0</code> to show them.</p>` : ""}
+    ${s.gpu_job ? "" : flare
+      ? `<p>${esc(s.layout.label)} · flare process · ${esc(f.served_model || "model not named yet")}</p>`
+      : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
+    <details class="launch-facts"><summary>${flare ? "Process" : "Container"} launch facts and install records</summary>
+    ${(s.containers || []).map(c => flare
+      ? `<p>position ${c.position}: ${esc(c.name)} · flare process<br>
+        engine flare · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"}<br>
+        master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${api(c)}</p>`
+      : `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}<br>
+        ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
+        ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${api(c)}</p>`).join("")}
     ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
     </details>`;
 }
@@ -1296,7 +1305,7 @@ function card(s, now) {
   const thinking = s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : "";
   const modelText = s.name === s.model && !s.gpu_job ? (serving ? "" : `<span class="model muted">Last served: same model</span>`) : `<span class="model">${model}</span>`;
   const open = !folded.has(s.id);
-  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}${open ? "" : " collapsed"}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}${isFlare(s) ? " flare" : ""}${open ? "" : " collapsed"}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
       ${foldButton(s.id, s.name)}<span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
