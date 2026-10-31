@@ -398,3 +398,31 @@ def test_redo_install_sets_aside_all_acceptance_results(tmp_path):
     assert len(h.model.requests) > requests and len(h.bench.calls) == runs + 1
     for step in accept_profile.STEPS:
         assert (h.out / (accept_profile.RESULTS[step] + ".20260927T120000Z")).is_file()
+
+
+def test_the_cluster_is_held_for_the_whole_run(tmp_path):
+    """The hold is taken before the installation, released after the last load step, and recorded."""
+    import contextlib
+    require_repository_drive(tmp_path)
+    h = Harness(tmp_path)
+    quiet = Quiet(h)
+    env = h.env()
+    env.quiet = quiet
+    calls = []
+
+    @contextlib.contextmanager
+    def cluster_hold(reason, **kwargs):
+        calls.append(("hold", reason, kwargs["ssh"][-1] if kwargs.get("ssh") else None, len(quiet.events)))
+        try:
+            yield {"state": "held", "where": kwargs.get("where"), "holder": "code", "reason": reason,
+                   "since": 1.0, "detail": None}
+        finally:
+            calls.append(("release", len(quiet.events)))
+    env.cluster_hold = cluster_hold
+    # The hold is taken as the --node-a login, which runs the installation, not the dashboard's.
+    assert accept_profile.main(h.args("--dashboard-ssh", f"admin@{LAN}"), env=env) == 0
+    assert calls[0][:3] == ("hold", f"acceptance run of {PROFILE}", f"code@{LAN}") and calls[0][3] == 0
+    assert quiet.events[0][2] == f"admin@{LAN}"
+    assert calls[1] == ("release", 2)
+    for step in ("install", "readiness", "functional", "stress", "throughput"):
+        assert json.loads((h.out / f"{step}.json").read_text())["cluster_hold"]["state"] == "held"

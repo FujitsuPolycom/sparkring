@@ -25,7 +25,7 @@ from typing import Callable
 ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from performance.harnesses import dashboard_quiet  # noqa: E402
+from performance.harnesses import cluster_hold, dashboard_quiet  # noqa: E402
 from performance.harnesses.acceptance import checks, install, profile_info, record, runners, throughput  # noqa: E402
 
 STEPS = ("readiness", "functional", "stress", "throughput", "record")
@@ -72,6 +72,7 @@ class Environment:
     hostname: Callable = socket.gethostname
     revision: Callable = harness_revision
     quiet: Callable = dashboard_quiet.held
+    cluster_hold: Callable = cluster_hold.held
 
 
 def read_json(path):
@@ -141,6 +142,16 @@ class Acceptance:
         # The dashboard on Node A sends no request from the first load step until this run ends,
         # also when it stops on an error or Ctrl-C (performance/harnesses/dashboard_quiet.py).
         with contextlib.ExitStack() as stack:
+            # Other operators' install, up and down refuse from here until this run ends, unless a
+            # hold already stands (performance/harnesses/cluster_hold.py).
+            # Under the login that runs the installation (--node-a), so the hold does not refuse it.
+            holder = self.args.node_a or self.args.dashboard_ssh
+            hold = stack.enter_context(self.env.cluster_hold(
+                f"acceptance run of {self.profile.id}", ssh=dashboard_quiet.ssh_for(holder),
+                where="Node A" if holder else None))
+            self.env.log(f"cluster: hold {hold['state']}"
+                         + (f" by {hold['holder']}: {hold['reason']}" if hold["state"] == "already held" else "")
+                         + (f" ({hold['detail']})" if hold.get("detail") else ""))
             quiet = None
             for step in steps:
                 result = self.saved(step)
@@ -161,6 +172,7 @@ class Acceptance:
                     if result.get("complete"):
                         if step in LOAD_STEPS:
                             result = {**result, dashboard_quiet.DASHBOARD_FIELD: dict(quiet)}
+                        result = {**result, cluster_hold.HOLD_FIELD: dict(hold)}
                         write_json(self.out / RESULTS[step], result)
                 if not result.get("ok"):
                     ok = False
