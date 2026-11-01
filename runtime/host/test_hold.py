@@ -68,11 +68,29 @@ def test_reason_is_required_and_bounded(tmp_path):
             hold.take(tmp_path, reason, now=NOW, who="alice")
 
 
-def test_an_unreadable_or_foreign_schema_record_is_no_hold(tmp_path):
+def test_a_damaged_record_refuses_everyone_until_cleared(tmp_path, as_operator):
+    for damaged in ("{not json", json.dumps({"schema": "other/v1", "holder": "alice"})):
+        (tmp_path / hold.NAME).write_text(damaged, encoding="utf-8")
+        standing = hold.current(tmp_path, NOW)
+        assert standing["holder"] == hold.UNREADABLE and standing["invalid"] is True
+        assert "--override-hold clears it" in hold.text(standing)
+        for who in ("alice", "bob"):
+            assert hold.foreign(tmp_path, NOW, who=who) == standing
+    as_operator("alice")
+    with pytest.raises(NeedsInput):
+        hold.release(tmp_path, now=NOW)
+    assert hold.release(tmp_path, override=True, now=NOW)["invalid"] is True
+    assert hold.current(tmp_path, NOW) is None
+    assert _overrides(tmp_path)[0]["hold"]["holder"] == hold.UNREADABLE
+
+
+def test_a_damaged_record_shows_how_to_clear_it(tmp_path, monkeypatch, capsys):
     (tmp_path / hold.NAME).write_text("{not json", encoding="utf-8")
-    assert hold.current(tmp_path, NOW) is None
-    (tmp_path / hold.NAME).write_text(json.dumps({"schema": "other/v1", "holder": "alice"}), encoding="utf-8")
-    assert hold.current(tmp_path, NOW) is None
+    document = operator_view.view(tmp_path)
+    assert document["hold"]["holder"] == hold.UNREADABLE and document["hold"]["invalid"] is True
+    assert any("--override-hold clears it" in line for line in operator_view.lines(document))
+    source = Path(controller.__file__).read_text(encoding="utf-8")
+    assert '" --override-hold" if result["hold"].get("invalid")' in source
 
 
 def test_another_operators_hold_needs_an_override_to_replace_or_release(tmp_path):

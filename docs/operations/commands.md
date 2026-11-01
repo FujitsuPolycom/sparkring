@@ -890,7 +890,14 @@ a hold either.
 The holder is the operator's login, as `sudo` records it. Sessions under the
 same login, such as an operator and an agent session on one account, are one
 operator, so the hold does not refuse them. A hold whose `--until` has passed
-refuses nothing. A hold is separate from the dashboard's
+refuses nothing. A `hold.json` that is not a valid hold record refuses every
+operator, and keeps automatic recovery waiting, until
+`sudo sparkring hold --release --override-hold` clears it; `sparkring status`
+names that command.
+The acceptance harness (`performance/harnesses/acceptance/accept_profile.py`)
+holds the cluster for its whole run when no hold stands, under its `--node-a`
+login (`sudo -n`), so its own installation is not refused, and releases that
+hold when the run ends; every result record carries the hold's state. A hold is separate from the dashboard's
 [quiet holds](#dashboard), which pause the page around one measurement and
 only warn.
 
