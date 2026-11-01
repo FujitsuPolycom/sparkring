@@ -26,7 +26,7 @@ def _config(
     num_speculative_tokens: int = 5,
     max_num_batched_tokens: int = 4096,
     max_model_len: int = 1048576,
-    bearer: str | None = None,
+    token: str | None = None,
 ) -> warmup.WarmupConfig:
     return warmup.WarmupConfig(
         endpoint=endpoint,
@@ -36,7 +36,7 @@ def _config(
         num_speculative_tokens=num_speculative_tokens,
         max_num_batched_tokens=max_num_batched_tokens,
         max_model_len=max_model_len,
-        bearer=bearer,
+        token=token,
     )
 
 
@@ -44,14 +44,14 @@ class _ServerState:
     def __init__(
         self,
         *,
-        bearer: str | None = None,
+        token: str | None = None,
         completion_skeleton: int = 6,
         completion_density: int = 1,
         chat_tokens: int = 24,
         failing_label: str | None = None,
         malformed: bool = False,
     ) -> None:
-        self.bearer = bearer
+        self.token = token
         self.completion_skeleton = completion_skeleton
         self.completion_density = completion_density
         self.chat_tokens = chat_tokens
@@ -110,9 +110,9 @@ def _handler(state: _ServerState) -> type[BaseHTTPRequestHandler]:
             )
 
         def _authorized(self) -> bool:
-            if state.bearer is None:
+            if state.token is None:
                 return True
-            if self.headers.get("Authorization") == f"Bearer {state.bearer}":
+            if self.headers.get("Authorization") == f"Bearer {state.token}":
                 return True
             self._send_json(401, {"error": "unauthorized"})
             return False
@@ -436,13 +436,13 @@ def test_malformed_completion_is_a_failure() -> None:
     assert run["failures"]
 
 
-def test_bearer_from_the_key_file_reaches_every_api_request(tmp_path: Path) -> None:
+def test_token_from_the_key_file_reaches_every_api_request(tmp_path: Path) -> None:
     key_file = tmp_path / "api-keys"
     key_file.write_text("\n  indented\nsecret-key\n", encoding="utf-8")
-    bearer = warmup.read_bearer(str(key_file))
-    assert bearer == "secret-key"
-    with _fake_api(bearer=bearer) as (endpoint, state):
-        config = _config(endpoint, bearer=bearer)
+    token = warmup.read_token(str(key_file))
+    assert token == "secret-key"
+    with _fake_api(token=token) as (endpoint, state):
+        config = _config(endpoint, token=token)
         arms, skipped = warmup.build_sweep(config)
         run = warmup.run_warmup(
             config,
@@ -459,7 +459,7 @@ def test_bearer_from_the_key_file_reaches_every_api_request(tmp_path: Path) -> N
         if item["path"] in ("/tokenize", "/v1/chat/completions", "/v1/completions")
     ]
     assert protected
-    assert {item["authorization"] for item in protected} == {f"Bearer {bearer}"}
+    assert {item["authorization"] for item in protected} == {f"Bearer {token}"}
     health = state.paths("/health")
     assert health and all(item["authorization"] is None for item in health)
 
@@ -478,13 +478,13 @@ def test_an_unconfigured_bearer_sends_no_authorization_header() -> None:
     assert all(item["authorization"] is None for item in state.requests)
 
 
-def test_read_bearer_rejects_a_file_without_a_key(tmp_path: Path) -> None:
+def test_read_token_rejects_a_file_without_a_key(tmp_path: Path) -> None:
     empty = tmp_path / "empty"
     empty.write_text("\n \n", encoding="utf-8")
     with pytest.raises(warmup.WarmupError, match="no non-empty line"):
-        warmup.read_bearer(str(empty))
+        warmup.read_token(str(empty))
     with pytest.raises(warmup.WarmupError, match="cannot read"):
-        warmup.read_bearer(str(tmp_path / "missing"))
+        warmup.read_token(str(tmp_path / "missing"))
 
 
 def test_readiness_timeout_is_reported_without_raising() -> None:

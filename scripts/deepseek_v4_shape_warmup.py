@@ -70,7 +70,7 @@ class WarmupConfig:
     num_speculative_tokens: int
     max_num_batched_tokens: int
     max_model_len: int
-    bearer: str | None = None
+    token: str | None = None
 
     @property
     def max_tokens(self) -> int:
@@ -211,7 +211,7 @@ def build_sweep(
     return tuple(arms), tuple(skipped)
 
 
-def read_bearer(path: str) -> str:
+def read_token(path: str) -> str:
     """Return the first line that does not start with whitespace.
 
     The cycle controller's readiness probe reads the same file with this rule,
@@ -239,12 +239,12 @@ def _post_json(
     path: str,
     payload: dict,
     *,
-    bearer: str | None,
+    token: str | None,
     timeout: float,
 ) -> dict:
     headers = {"Content-Type": "application/json"}
-    if bearer:
-        headers["Authorization"] = f"Bearer {bearer}"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     request = urllib.request.Request(
         endpoint.rstrip("/") + path,
         data=json.dumps(payload).encode(),
@@ -296,7 +296,7 @@ def tokenize_chat(
     if thinking_off:
         payload["chat_template_kwargs"] = dict(THINKING_OFF)
     document = _post_json(
-        config.endpoint, "/tokenize", payload, bearer=config.bearer, timeout=timeout
+        config.endpoint, "/tokenize", payload, token=config.token, timeout=timeout
     )
     return _token_count(document)
 
@@ -307,7 +307,7 @@ def tokenize_completion(config: WarmupConfig, prompt: str, *, timeout: float) ->
         config.endpoint,
         "/tokenize",
         {"model": config.model, "prompt": prompt},
-        bearer=config.bearer,
+        token=config.token,
         timeout=timeout,
     )
     return _token_count(document)
@@ -396,7 +396,7 @@ def send_chat_request(
         config.endpoint,
         "/v1/chat/completions",
         payload,
-        bearer=config.bearer,
+        token=config.token,
         timeout=timeout,
     )
     choices = document.get("choices")
@@ -435,7 +435,7 @@ def send_completion_request(
             "temperature": 0,
             "max_tokens": config.max_tokens,
         },
-        bearer=config.bearer,
+        token=config.token,
         timeout=timeout,
     )
     choices = document.get("choices")
@@ -576,7 +576,7 @@ def run_warmup(
         "max_num_batched_tokens": config.max_num_batched_tokens,
         "max_model_len": config.max_model_len,
         "max_tokens": config.max_tokens,
-        "authenticated": config.bearer is not None,
+        "authenticated": config.token is not None,
         "arms": [],
         "failures": [],
         "skipped": list(skipped),
@@ -646,7 +646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--timeout-seconds", type=_positive_seconds, default=600.0)
     args = parser.parse_args(argv)
     try:
-        bearer = read_bearer(args.api_key_file) if args.api_key_file else None
+        token = read_token(args.api_key_file) if args.api_key_file else None
         config = WarmupConfig(
             endpoint=args.endpoint,
             model=args.model,
@@ -655,7 +655,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             num_speculative_tokens=args.num_speculative_tokens,
             max_num_batched_tokens=args.max_num_batched_tokens,
             max_model_len=args.max_model_len,
-            bearer=bearer,
+            token=token,
         )
         arms, skipped = build_sweep(config)
     except (WarmupError, ValueError, OSError) as error:
