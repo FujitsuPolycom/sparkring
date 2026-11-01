@@ -212,7 +212,9 @@ frozen view of up to 6 hours. Precision, counter sources and cost are in
 The page also shows vLLM and SGLang containers, and bare `flare run`
 processes, that the host agents find running. Their cards say **Not
 installed by SparkRing: no automatic recovery, no install record** and show
-the Sparks, engine, image or process, served name and parallel sizes.
+the Sparks, engine, image or process, served name and parallel sizes. A
+fact the page could not read is left out rather than named, and a GPU
+compute job shows its container and image alone.
 Containers and Flare ranks that share a head Spark and rendezvous port form
 one group; a Flare process without a rendezvous is a one-Spark group. A
 group with missing ranks shows **incomplete: N of M Sparks reporting**, and

@@ -50,7 +50,9 @@ SparkRing's `/opt/sparkring/toolchain/toolchain.py serve` wrapper and
 `python3 -m vllm.entrypoints.cli.main serve` supply the same vLLM launch facts.
 Literal defaults are used only for recognized server launches without a
 configuration-file argument. Shell variables are not expanded. Unknown
-GPU containers remain visible with engine `unknown`; absent launch facts
+GPU containers remain visible with engine `unknown` in the observation row;
+the page omits a launch fact it could not read rather than naming it, and a
+GPU compute job shows its container and image alone. Absent launch facts
 cannot establish a cross-Spark group. Bridged Docker port translation and
 launches discoverable only through environment/configuration files are not
 inferred.
