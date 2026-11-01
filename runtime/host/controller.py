@@ -818,8 +818,8 @@ def _lifecycle(argv, *, output, locks):
             print(json.dumps(result, indent=2), file=output)
         else:
             if result["hold"]:
-                print(colour.render(hold.text(result["hold"]) + " | release: "
-                                    + colour.action("sudo sparkring hold --release"), sys.stdout))
+                clear = "sudo sparkring hold --release" + (" --override-hold" if result["hold"].get("invalid") else "")
+                print(colour.render(hold.text(result["hold"]) + " | release: " + colour.action(clear), sys.stdout))
             for view in views:
                 model = view.get("model")
                 if model and model["state"] != "serving":

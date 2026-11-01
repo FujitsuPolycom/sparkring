@@ -24,7 +24,9 @@ experiment or an acceptance run during which a model must keep serving:
 The holder is the operator's login: ``SUDO_USER`` under sudo, else the
 process's user. Sessions that share one login, such as an operator and an
 agent session under the same account, are one operator, so a hold does not
-refuse them. A hold whose ``--until`` has passed no longer refuses anything.
+refuse them. A hold whose ``--until`` has passed no longer refuses anything. A damaged
+``hold.json`` refuses everyone until ``sudo sparkring hold --release
+--override-hold`` clears it.
 Holds are separate from the dashboard's quiet holders
 (``runtime.host.dashboard``), which pause the dashboard around one
 measurement and only warn.
@@ -53,6 +55,7 @@ REASON_LIMIT = 200
 DURATION_RE = re.compile(r"([1-9][0-9]{0,4})([mhd])")
 DURATION_UNITS = {"m": 60, "h": 3600, "d": 86400}
 OVERRIDE_FLAG = "--override-hold"
+UNREADABLE = "(unreadable hold record)"
 
 
 def operator() -> str:
@@ -95,22 +98,40 @@ def _valid(record) -> bool:
 
 
 def current(state_root, now: float | None = None) -> dict | None:
-    """The standing hold at ``state_root``, or None: no record, an unreadable one, or one whose ``until`` passed.
+    """The standing hold at ``state_root``, or None: no record, or one whose ``until`` passed.
+
+    A record that is not valid JSON or not ``sparkring-hold/v1`` stands as a hold by UNREADABLE
+    (``_unreadable``), so it refuses every operator until it is cleared.
 
     A record root cannot read raises ``PermissionError``; callers without root read the operator view.
     """
     now = time.time() if now is None else now
+    path = Path(state_root) / NAME
     try:
-        record = json.loads((Path(state_root) / NAME).read_text(encoding="utf-8"))
+        record = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return None
     except ValueError:
-        return None
+        record = None
     if not _valid(record):
-        return None
+        return _unreadable(path)
     if record.get("until") is not None and record["until"] <= now:
         return None
     return record
+
+
+def _unreadable(path) -> dict:
+    """A stand-in hold for a ``hold.json`` that is not a valid record: it refuses everyone until it is cleared.
+
+    ``hold.json`` is written whole (``node.save``), so an invalid one was damaged or edited by hand;
+    treating it as no hold would drop a hold someone may rely on.
+    """
+    try:
+        since = path.stat().st_mtime
+    except OSError:
+        since = time.time()
+    return {"schema": SCHEMA, "holder": UNREADABLE, "since": since, "until": None, "invalid": True,
+            "reason": f"{path} is not a valid hold record; sudo sparkring hold --release --override-hold clears it"}
 
 
 def foreign(state_root, now: float | None = None, who: str | None = None) -> dict | None:

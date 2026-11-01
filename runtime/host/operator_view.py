@@ -102,7 +102,7 @@ def view(state_root: Path) -> dict:
     try:
         from runtime.host import hold
         standing = hold.current(state_root)
-        document["hold"] = ({key: standing.get(key) for key in ("holder", "reason", "since", "until")}
+        document["hold"] = ({key: standing.get(key) for key in ("holder", "reason", "since", "until", "invalid") if key in standing}
                             if standing else None)
     except OSError:
         document["hold"] = None
