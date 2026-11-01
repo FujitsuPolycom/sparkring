@@ -75,6 +75,7 @@ from runtime.common import sparkcache
 from runtime.common import transport as transports
 from runtime.host import (
     api_endpoint,
+    cancel,
     checkpoint_plan,
     checkpoint_search,
     colour,
@@ -1724,9 +1725,16 @@ def execute(args):
         # A candidate whose own start did not complete, for example a first
         # installation that failed its readiness check, stops before it is
         # prepared again.
-        result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
-                                 verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
-                                 unfinished=installer.unfinished, placement=placement, displaced=displaced)
+        operation_id = operation.get("id")
+        try:
+            result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
+                                     verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
+                                     unfinished=installer.unfinished, placement=placement, displaced=displaced,
+                                     cancelled=lambda boundary: cancel.check(state_root, operation_id, boundary))
+        finally:
+            # Every step a cancel names is behind this run either way, so its
+            # request must not stand for a later installation.
+            cancel.clear(state_root, operation_id)
         # Records the deployment's choice (on unless --no-auto-recover, also
         # after sparkring recover off), resets failures and restarts, records
         # the generation's boots and enables the timer.
@@ -1799,6 +1807,10 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true",
                         help="print and save the setup, checkpoint and model plan without changing any Spark; a later "
                              "--yes stays within a saved plan")
+    parser.add_argument("--cancel", action="store_true",
+                        help="stop the running installation at its next step boundary and bring back the model it "
+                             "replaces, or settle a model switch an interrupted installation left behind; takes no "
+                             "other option")
     parser.add_argument("--yes", action="store_true",
                         help="approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an "
                              "idle ring, and model replacement; SSH trust is still required")
@@ -1851,6 +1863,22 @@ def main(argv=None):
     sizes, _ = size_parser.parse_known_args(options)
     args.serving_text = {name: value for name, value in vars(sizes).items() if value is not None}
     colour.set_mode(args.color)
+    if args.cancel:
+        # Ending an installation changes nothing an operator holds: the request
+        # takes no installation lock and no hold override, and the command
+        # carries no other option.
+        used = sorted(name for name, value in vars(args).items()
+                      if name not in ("cancel", "json", "color") and value not in (None, False, {}, []))
+        if used:
+            parser.error("--cancel takes no other option; it stops the running installation")
+        try:
+            document = cancel.run(controller.STATE, say=(lambda line: None) if args.json else print)
+        except (OSError, ValueError, RuntimeError) as error:
+            document = {"schema": cancel.RESULT_SCHEMA, "state": "failed", "message": str(error),
+                        "operations": [], "switches": [], "busy": []}
+        if args.json:
+            print(json.dumps(document, indent=2), file=sys.stdout)
+        return 0 if document["state"] in ("idle", "cancelled", "requested") else 2
     if args.profile:
         # Every later step, and every record, uses the profile's ID (models.ALIASES).
         args.profile = models.canonical(args.profile)
@@ -1890,6 +1918,15 @@ def main(argv=None):
                 result = execute(args)
         except NeedsInput as error:
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
+        except cancel.Cancelled as stop:
+            # The run stopped where the operator asked it to, so its record is
+            # the outcome: the model the switch replaced serves again.
+            result, code = {"schema": "sparkring-install-result/v1", "state": "cancelled",
+                            "message": str(stop)}, 2
+            for journal in journals():
+                if journal.exists() and journal.read_bytes() != before.get(journal):
+                    result["transaction"] = installer.read(journal)
+                    break
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
             result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
             if getattr(error, "activity", None):
@@ -1914,6 +1951,8 @@ def main(argv=None):
                 print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
                 print(line)
+        elif result["state"] == "cancelled":
+            print(result["message"])
         elif result["state"] == "needs_input":
             print(result["message"])
             # A checkpoint message already names every file, path and size its

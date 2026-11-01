@@ -248,6 +248,10 @@ are host settings that SparkRing neither applies nor has measured
   resumes the switch. Another profile or checkpoint replaces it instead: after
   the GPU check, the installer stops the unfinished model through its own
   deployment and switches from the last model that served.
+  `sudo sparkring install --cancel` settles it without installing anything: it
+  stops the unfinished candidate on every Spark, starts the model the switch
+  replaced again and records the switch as `cancelled`
+  ([cancel an installation](commands.md#cancel-an-installation)).
 - **Selected model's last start did not complete**, for example when a first
   installation failed its readiness check or a restart of the installed model
   failed: the same command first stops that model on every Spark, then

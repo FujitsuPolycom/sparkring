@@ -72,6 +72,7 @@ except ImportError:  # Non-POSIX development hosts import the module; listing an
 from runtime.host import slices
 
 from runtime.host import checkpoint_place
+from runtime.host import placement as placements
 from runtime.host.install_errors import NeedsInput
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -86,8 +87,8 @@ SEARCH = (("srv", "sparkring", "*", "checkpoints", "*", ".*.sparkring"),
 STATE_SUFFIX = ".sparkring"
 STATE_FILES = frozenset({"owner.json", "journal.json", "lock"})
 _TEMPORARY = re.compile(r"(?:owner|journal)\.json\.[0-9]+\.[0-9]+\.writing")
-# Model-switch states in which a candidate deployment may hold containers or still be started.
-SETTLED = frozenset({"complete", "failed", "preparation-failed", "failed-recovered"})
+# Model-switch states that leave nothing of the switch running (placement.SETTLED).
+SETTLED = placements.SETTLED
 JSON_LIMIT = 16 << 20
 GIB = 1024 ** 3
 

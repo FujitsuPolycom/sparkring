@@ -768,6 +768,13 @@ def _lifecycle(argv, *, output, locks):
         result = node.snapshot() if args.refresh else node.status()
         # An operator's hold (runtime.host.hold) comes first: other operators' changes refuse while it stands.
         result["hold"] = hold.current(STATE)
+        from runtime.host import rollout
+        # A model switch that stopped before it finished, and the step that settles it.
+        switches = rollout.unfinished(STATE)
+        if switches:
+            result["switches"] = [{"placement": list(slot) if slot else None,
+                                   "candidate": record.get("candidate"), "previous": record.get("previous"),
+                                   "state": record.get("state")} for slot, record in switches]
         plan_id = size = layout = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
@@ -820,6 +827,9 @@ def _lifecycle(argv, *, output, locks):
             if result["hold"]:
                 clear = "sudo sparkring hold --release" + (" --override-hold" if result["hold"].get("invalid") else "")
                 print(colour.render(hold.text(result["hold"]) + " | release: " + colour.action(clear), sys.stdout))
+            for slot, record in switches:
+                print(colour.render(rollout.switch_line(slot, record, size) + " | next: "
+                                    + colour.action(rollout.SWITCH_NEXT), sys.stdout))
             for view in views:
                 model = view.get("model")
                 if model and model["state"] != "serving":
