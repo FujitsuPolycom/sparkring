@@ -156,8 +156,11 @@ def run(state_root, *, now=None, who=None, say=print, sleep=time.sleep, active=N
     Returns the result document. ``operations`` names what the request held,
     ``switches`` the model switches this command settled, ``busy`` the slots
     another operation kept, and ``message`` the one line an operator reads.
+    ``state`` is ``requested`` while a running installation finishes a step it
+    cannot abandon, ``failed`` when a switch this command settled still needs
+    attention, and otherwise ``cancelled`` or ``idle``.
     """
-    from runtime.host import slices
+    from runtime.host import placement as placements, slices
     state_root = Path(state_root)
     active = slices.active if active is None else active
     document = {"schema": RESULT_SCHEMA, "operations": [], "switches": [], "busy": []}
@@ -209,7 +212,17 @@ def run(state_root, *, now=None, who=None, say=print, sleep=time.sleep, active=N
         say("No installation is running.")
     settled, busy = settle(state_root, now=now, who=who, say=say)
     document["switches"], document["busy"] = settled, busy
-    if busy:
+    attention = [item for item in settled if item["state"] != placements.CANCELLED]
+    if attention:
+        # A switch that stopped with a model it could not bring back is not
+        # settled: its slot stays reserved and status keeps reporting it until
+        # an operator or a later installation acts on it.
+        first = next((item for item in attention if item.get("error")), attention[0])
+        document["state"] = "failed"
+        document["message"] = (f"The model switch to {Path(first.get('candidate') or '').name} still needs attention"
+                               + (f": {first['error']}" if first.get("error") else "")
+                               + ". sparkring status names it.")
+    elif busy:
         document["state"] = "busy"
         document["message"] = ("Another operation holds "
                                + ", ".join(item["placement"] or "the whole ring" for item in busy)
@@ -232,6 +245,10 @@ def settle(state_root, *, apply=None, verify=None, now=None, who=None, say=print
     request, so each one is settled while holding that slot's admission. A slot
     another operation keeps is reported and left alone, and a switch another
     cancel settled between the scan and the admission is skipped.
+
+    Each settled entry names its placement, candidate, state and ``recovered``,
+    and ``error`` the restore failure that left the switch needing attention
+    when its state is not ``placements.CANCELLED``.
     """
     from runtime.host import placement as placements, retained_source, rollout, slices
     state_root = Path(state_root)
@@ -259,7 +276,8 @@ def settle(state_root, *, apply=None, verify=None, now=None, who=None, say=print
             say(f"Stopping the unfinished model switch to {candidate.name} on {placements.text(slot)}.")
             result = rollout.settle(state_root, slot, apply=apply, verify=verify, now=now, who=who, say=say)
             settled.append({"placement": list(slot) if slot else None, "candidate": result.get("candidate"),
-                            "state": result.get("state"), "recovered": bool(result.get("recovered"))})
+                            "state": result.get("state"), "recovered": bool(result.get("recovered")),
+                            "error": (result.get("cancelled") or {}).get("error")})
         finally:
             guard.__exit__(None, None, None)
     return settled, busy

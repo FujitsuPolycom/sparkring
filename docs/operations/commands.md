@@ -94,7 +94,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
 | `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)). Default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The `prepared` transport runs two-Spark models only on a four-Spark ring's halves, `0,1` and `2,3` |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. A later `--yes` run stays within the saved plan. Before the first setup, use `sudo sparkring setup --plan` |
-| `--cancel` | [Stop the running installation](#cancel-an-installation) at its next step boundary, or settle a model switch an interrupted installation left; takes no other option |
+| `--cancel` | [Stop the running installation](#cancel-an-installation) at its next step boundary, or settle a model switch an interrupted installation left; takes no other installation option |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch. Unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
 | `--override-hold` | Proceed although another operator [holds the cluster](#hold); the override is recorded |
@@ -155,12 +155,12 @@ sudo sparkring install --cancel
   or a Spark restart. It stops that switch's candidate on every Spark and
   starts the model the switch replaced, so the candidate's own `sparkring down
   PROFILE --instance i<hash>` is no longer needed for this.
-- `--cancel` takes no other option and no lock: it ends the operation whose
-  admission already holds them. An operator's [hold](#hold) does not refuse
-  it, because a hold reserves the cluster for work rather than for keeping an
-  unwanted installation. While another command changes the cluster (`up`,
-  `down` or `restart`), it names that command and changes nothing: repeat it
-  when the operation finishes.
+- `--cancel` takes no other installation option and no lock: it ends the
+  operation whose admission already holds them. An operator's [hold](#hold)
+  does not refuse it, because a hold reserves the cluster for work rather than
+  for keeping an unwanted installation. While another command changes the
+  cluster (`up`, `down` or `restart`), it names that command and changes
+  nothing: repeat it when the operation finishes.
 - A switch in progress, or one that stopped before it finished, is reported by
   [status](#status) as `Model switch: ... | next: ...`, and by the
   group-readable operator view a member prints without sudo.

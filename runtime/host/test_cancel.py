@@ -223,7 +223,8 @@ def test_settling_an_unfinished_switch_stops_its_candidate_and_restarts_the_prev
     record = installer.read(tmp_path / "transaction.json")
     assert record["state"] == "cancelled" and record["recovered"] is True
     assert record["cancelled"]["boundary"] == "starting"
-    assert settled == [{"placement": None, "candidate": str(stuck), "state": "cancelled", "recovered": True}]
+    assert settled == [{"placement": None, "candidate": str(stuck), "state": "cancelled", "recovered": True,
+                        "error": None}]
     # Nothing is left for a second run to settle.
     assert cancel.settle(tmp_path, apply=lambda directory, action: None) == ([], [])
 
@@ -385,6 +386,29 @@ def test_cancel_does_not_settle_a_switch_under_a_running_lifecycle_operation(tmp
     assert len(rollout.unfinished(tmp_path)) == 1
 
 
+def test_cancel_reports_a_settle_that_still_needs_attention(tmp_path, monkeypatch):
+    from runtime.host import retained_source
+    interrupted(tmp_path, "verifying")
+
+    def apply(directory, action, cache=None):
+        if action == "up":
+            raise RuntimeError("Node 1 did not answer")
+
+    monkeypatch.setattr(retained_source, "apply", apply)
+    lines = []
+    document = cancel.run(tmp_path, say=lines.append, sleep=lambda seconds: None, active=lambda root: [])
+    assert document["state"] == "failed"
+    assert document["switches"] == [{"placement": None, "candidate": str(tmp_path / "stuck"),
+                                     "state": "needs-attention", "recovered": False,
+                                     "error": "old up: Node 1 did not answer"}]
+    assert document["message"] == ("The model switch to stuck still needs attention: old up: Node 1 did not answer. "
+                                   "sparkring status names it.")
+    assert lines[-1] == document["message"]
+    # The switch still needs attention, so the command does not claim it was cancelled.
+    assert installer.read(tmp_path / "transaction.json")["state"] == "needs-attention"
+    assert len(rollout.unfinished(tmp_path)) == 1
+
+
 def test_the_command_needs_no_cluster_and_refuses_other_options(tmp_path, monkeypatch):
     from runtime.host import install_workflow
     monkeypatch.setattr(install_workflow.controller, "STATE", tmp_path)
@@ -397,3 +421,21 @@ def test_the_command_needs_no_cluster_and_refuses_other_options(tmp_path, monkey
     for refused in (["--profile", "glm53-flash"], ["--yes"], ["--events", str(tmp_path / "events.jsonl")]):
         with pytest.raises(SystemExit):
             install_workflow.main(["--cancel", *refused])
+
+
+def test_the_command_exits_2_when_a_settle_still_needs_attention(tmp_path, monkeypatch, capsys):
+    from runtime.host import install_workflow, retained_source
+    interrupted(tmp_path, "verifying")
+
+    def apply(directory, action, cache=None):
+        if action == "up":
+            raise RuntimeError("Node 1 did not answer")
+
+    monkeypatch.setattr(retained_source, "apply", apply)
+    monkeypatch.setattr(install_workflow.controller, "STATE", tmp_path)
+    assert install_workflow.main(["--cancel"]) == 2
+    assert "still needs attention" in capsys.readouterr().out
+    assert install_workflow.main(["--cancel", "--json"]) == 2
+    document = json.loads(capsys.readouterr().out)
+    assert document["schema"] == cancel.RESULT_SCHEMA and document["state"] == "failed"
+    assert document["switches"][0]["state"] == "needs-attention"
