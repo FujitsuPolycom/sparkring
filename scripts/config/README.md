@@ -163,6 +163,16 @@ The template's immutable image digest is also represented in
 [`runtime/faststart-lock.json`](../../runtime/faststart-lock.json). If those
 inputs differ, stop and resolve the identity drift before launching.
 
+Both DeepSeek launchers read optional settings from the rank env file that the
+templates do not assign by default: `BLOCK_SIZE` (default 256, the recipe's
+value), `SHAPE_WARMUP` (default 0), `SHAPE_WARMUP_WAIT_SECONDS`,
+`SHAPE_WARMUP_TIMEOUT_SECONDS` and `SHAPE_WARMUP_API_KEY_FILE`. With
+`SHAPE_WARMUP=1`, rank 0 runs `scripts/deepseek_v4_shape_warmup.py` after
+readiness and before the launcher returns. The phase is non-fatal, and the
+sweep remains uncalibrated until the
+[calibration procedure](../../docs/operations/deepseek-0731.md#calibrating-the-sweep)
+passes on the deployment.
+
 ## DeepSeek-V4.1-Flash
 
 Status: **implemented**. `deepseek-v41-flash-cycle.env.example` selects the
