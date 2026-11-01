@@ -33,6 +33,7 @@ from runtime.host import (
     discovery,
     fabric,
     hairpin_ring,
+    hold,
     node,
     operator_view,
     privilege,
@@ -336,6 +337,7 @@ def setup(argv=None):
     parser.add_argument("--apply", action="store_true", help="apply the reviewed plan")
     parser.add_argument("--adopt", action="store_true", help="verify/save existing networking without changing links, routes or services")
     parser.add_argument("--yes", action="store_true", help="accept the printed configuration scope; never trusts SSH host keys")
+    hold.add_override_argument(parser)
     parser.add_argument("--skip-enroll", action="store_true", help="SSH keys and host trust are already configured")
     parser.add_argument("--allow-driver-reload", action="store_true", help=ALLOW_DRIVER_RELOAD)
     parser.add_argument("--inventory", type=Path, help="offline array of authenticated-node fixture records; planning only")
@@ -716,6 +718,7 @@ def _lifecycle(argv, *, output, locks):
     parser.add_argument("--plan", action="store_true")
     parser.add_argument("--execute", action="store_true")
     parser.add_argument("--yes", action="store_true", help="approve advisory activity warnings; never bypass a lock")
+    hold.add_override_argument(parser)
     parser.add_argument("--refresh", action="store_true")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--review", help=argparse.SUPPRESS)
@@ -763,6 +766,8 @@ def _lifecycle(argv, *, output, locks):
             print("Reading live model status." if args.refresh else "Reading saved model status.", file=sys.stderr, flush=True)
         from runtime.host import fabric_bandwidth
         result = node.snapshot() if args.refresh else node.status()
+        # An operator's hold (runtime.host.hold) comes first: other operators' changes refuse while it stands.
+        result["hold"] = hold.current(STATE)
         plan_id = size = layout = None
         if (STATE / "cluster.json").exists():
             cluster = installer.read(STATE / "cluster.json")
@@ -812,6 +817,9 @@ def _lifecycle(argv, *, output, locks):
         if args.json:
             print(json.dumps(result, indent=2), file=output)
         else:
+            if result["hold"]:
+                print(colour.render(hold.text(result["hold"]) + " | release: "
+                                    + colour.action("sudo sparkring hold --release"), sys.stdout))
             for view in views:
                 model = view.get("model")
                 if model and model["state"] != "serving":
@@ -922,10 +930,14 @@ def _lifecycle(argv, *, output, locks):
                      existing_deployment(args.profile, args.instance))
         guarded_slot = placements.of_directory(candidate) if candidate.exists() else requested
     active = active_deployment(placement=slot)
-    assessment = activity.assess(STATE, guarded_slot, operation=args.operation)
+    assessment = activity.assess(STATE, guarded_slot, operation=args.operation,
+                                 command="restart" if restarting else args.operation)
     activity.confirm(assessment, yes=args.yes, plan=args.plan or not args.execute,
-                     interactive=not args.json and sys.stdin.isatty())
+                     interactive=not args.json and sys.stdin.isatty(), override_hold=args.override_hold)
     planning = args.plan or not args.execute and not sys.stdin.isatty()
+    if not planning and not args.execute:
+        # A terminal run without --execute asks below, after confirm treated it as a plan.
+        activity.refuse_hold(assessment, args.override_hold)
     if not (planning and assessment["grade"] == "blocked"):
         locks.enter_context(slices.hold(STATE, guarded_slot, "restart" if restarting else args.operation))
     elif args.profile and not candidate.exists():
@@ -1097,6 +1109,8 @@ def _lifecycle(argv, *, output, locks):
         if problem:
             raise ValueError(problem)
     confirm("Apply these model/image actions?", args.execute)
+    if not args.execute:
+        activity.record_hold_overrides(assessment)
     from runtime.host import recovery
     # Automatic recovery never takes a state this operation leaves for its
     # own, neither in this deployment nor in the active one it replaces.
@@ -1303,8 +1317,9 @@ def _setup_lock(argv):
     if any(flag in argv for flag in ("--plan", "--inventory", "-h", "--help")):
         return contextlib.nullcontext()
     from runtime.host import activity, slices
-    assessment = activity.assess(STATE, None)
-    activity.confirm(assessment, yes="--yes" in argv, interactive="--json" not in argv and sys.stdin.isatty())
+    assessment = activity.assess(STATE, None, command="setup")
+    activity.confirm(assessment, yes="--yes" in argv, interactive="--json" not in argv and sys.stdin.isatty(),
+                     override_hold=hold.OVERRIDE_FLAG in argv)
     return slices.hold(STATE, None, "setup")
 
 

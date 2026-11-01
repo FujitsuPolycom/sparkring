@@ -100,6 +100,13 @@ def view(state_root: Path) -> dict:
             continue
     document["deployments"] = deployments
     try:
+        from runtime.host import hold
+        standing = hold.current(state_root)
+        document["hold"] = ({key: standing.get(key) for key in ("holder", "reason", "since", "until")}
+                            if standing else None)
+    except OSError:
+        document["hold"] = None
+    try:
         document["recovery_timer"] = recovery.timer_enabled()
     except (OSError, ValueError, RuntimeError, TypeError):
         document["recovery_timer"] = None
@@ -156,6 +163,12 @@ def lines(document: dict, *, now=time.time) -> list[str]:
     age = max(0, int(now() - document.get("written_at", now())))
     node = document.get("node") or {}
     result = [f"Operator view, recorded {age}s ago (an operator's sudo sparkring status refreshes it):"]
+    standing = document.get("hold")
+    if standing:
+        from runtime.host import hold
+        until = standing.get("until")
+        if until is None or until > now():
+            result.append(hold.text(standing))
     result.append((node.get("state") or "unknown") + " | next: " + (node.get("next_action") or "sudo sparkring status"))
     for warning in node.get("warnings") or []:
         result.append("  warning: " + warning)

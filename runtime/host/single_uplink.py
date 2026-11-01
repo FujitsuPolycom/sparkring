@@ -11,7 +11,8 @@ import time
 
 from runtime.common import distribution, fabric_layout, installer
 from runtime.host import (bootstrap, cabling, colour, control, control_node, controller, discovery, fabric,
-                          fabric_bandwidth, lan_peers, node, packages, reform, seed, settings, survey, topology)
+                          fabric_bandwidth, hold, lan_peers, node, packages, reform, seed, settings, survey,
+                          topology)
 from scripts import hairpin_setting
 
 # The approval lines for the ConnectX hairpin setting on fabrics that relay.
@@ -405,6 +406,7 @@ def _arguments(argv):
     parser.add_argument("--reset-links", action="store_true", default=values["SPARKRING_LINK_POLICY"] == "reset")
     parser.add_argument("--plan", action="store_true", help="discover/review with existing SSH access; no host configuration")
     parser.add_argument("--yes", action="store_true", help="accept configuration scope; SSH host identity still requires verification")
+    hold.add_override_argument(parser)
     parser.add_argument("--allow-driver-reload", action="store_true", help=controller.ALLOW_DRIVER_RELOAD)
     parser.add_argument("--stop-workloads", action="store_true",
                         help="stop (never remove) running GPU containers that block fabric preparation")

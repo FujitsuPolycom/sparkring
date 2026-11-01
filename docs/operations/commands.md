@@ -44,6 +44,7 @@ sudo sparkring up --execute                                  # start it again
 | [`storage`](#storage) | Node A | yes | Report disk use; release unused caches |
 | [`up`, `down`, `restart`](#up-down-and-restart) | Node A | yes | Start, stop or restart a model deployment |
 | [`recover`](#recover) | Node A | yes, or the `sparkring` group to read | Show or switch the automatic restart |
+| [`hold`](#hold) | Node A | yes, or the `sparkring` group to read | Reserve the cluster for one operator's longer task |
 | [`node`](#node) | each Spark | yes, except status reports | Per-Spark services; Node A calls most of them |
 | [`init`, `export`](#init-and-export) | any | no | Save a deployment from hosts or a site file; export it as files |
 | [`compose`](#compose-and-validate-compose) | a checkout | no | Render, check, start or stop profile Compose deployments |
@@ -94,6 +95,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. A later `--yes` run stays within the saved plan. Before the first setup, use `sudo sparkring setup --plan` |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch. Unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
+| `--override-hold` | Proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--display-name TEXT` | Set the [ring display name](#name) |
 | `--checkpoint NAME` | Another checkpoint the profile lists ([names](install-reference.md#another-checkpoint-of-a-profile)). Default: the profile's preferred checkpoint on an image whose vLLM reads it, else the profile's own |
 | `--model-path [N=]PATH` | A checkpoint copy to reuse, for every Spark or for Node N; repeatable; never written |
@@ -209,6 +211,7 @@ not a failure. It then verifies the fabric and records the
 |---|---|
 | `--plan` | Discover and review over existing SSH access; configure nothing |
 | `--yes` | Accept the listed changes; unknown SSH host keys still need confirmation, and stopping GPU containers still asks unless you add `--stop-workloads` |
+| `--override-hold` | Proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--env FILE` | Literal preferences file; its keys set the defaults below ([keys](install-reference.md#optional-preferences)) |
 | `--name NAME` | Cluster name: a lowercase letter, then lowercase letters, digits or `-`; at most 35 characters (default `sparkring`) |
 | `--display-name TEXT` | The [ring display name](#name) |
@@ -461,7 +464,10 @@ that image in `sudo sparkring install --image NAME`.
 `sudo sparkring status [PROFILE [--instance NAME]] [flags]` prints Node A's
 state, one line per Spark with the next action for any Spark that needs
 attention, the saved model (the active deployment, or the one named) and
-automatic recovery. On a fabric that serves
+automatic recovery. While an operator [holds the cluster](#hold), the first
+line names the holder, the reason and the times, such as `Held by alice since
+2026-11-02 09:00 UTC until 2026-11-02 18:00 UTC: acceptance run | release: sudo
+sparkring hold --release`. On a fabric that serves
 [several models](install-reference.md#models-on-part-of-the-fabric) it prints
 each group's model under its Sparks, such as `Sparks 0-3:` and `Sparks 4-7:`,
 with a `Group:` line naming its shape, positions and API Spark:
@@ -514,7 +520,7 @@ The model runs on rank 0 (spark-a) but stopped on rank 1 (spark-b) | next: sudo 
 |---|---|
 | `--refresh` | Contact every Spark, inspect the model containers and ask rank 0's API `/health`; needs sudo |
 | `--on ARC` | Only the model on those Sparks |
-| `--json` | Print the full observation as JSON; a fabric with models on part of it adds `slots`, one entry per group with its `placement` and `group`, and a recorded cluster adds `fabric_bandwidth`, `fabric` and `sircl_tuning` |
+| `--json` | Print the full observation as JSON; a fabric with models on part of it adds `slots`, one entry per group with its `placement` and `group`, and a recorded cluster adds `fabric_bandwidth`, `fabric` and `sircl_tuning`; `hold` is the standing [hold](#hold) or null |
 
 ## check
 
@@ -697,6 +703,7 @@ names the base it is derived from; a deployment of it uses both directories.
 |---|---|
 | `--release PATH` | Remove that directory from every Spark; copies it links to are never touched |
 | `--yes` | Approve the release without asking |
+| `--override-hold` | With `--release`: proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--json` | Print one JSON result |
 
 ## storage
@@ -728,6 +735,7 @@ ran out.
 |---|---|
 | `--release PATH` | Remove this unreferenced cache directory or deployment workspace from every Spark that holds it |
 | `--yes` | Approve the release without asking |
+| `--override-hold` | With `--release`: proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--json` | Print one JSON result |
 | `--retain-deployments N` or `off` | Keep the N most recent deployments of each profile at each [automatic release](#automatic-release) (default 2), or turn it off |
 
@@ -820,6 +828,7 @@ runs, and names the `down` command that frees them.
 | `--plan` | Print the steps; change nothing |
 | `--execute` | Apply the printed steps without asking |
 | `--yes` | Proceed despite a warning that another operation on other Sparks may be affected; an operation that holds these Sparks still stops it |
+| `--override-hold` | Proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--json` | Print the result as JSON |
 | `--instance NAME` | With PROFILE: a deployment beside the main one, for example a rehearsal |
 | `--on ARC` | Without PROFILE: the model on those Sparks. With `up PROFILE`: the profile on those Sparks, as instance `on-` and the positions (`on-2-3`, `on-4-5-6-7`) unless `--instance` names another |
@@ -848,6 +857,7 @@ apply to every active deployment, the whole ring's and each group's, unless
 | `--on ARC` | Only the active deployment on those Sparks |
 | `--plan` | With `on` or `off`: print what changes; change nothing |
 | `--yes` | With `on` or `off`: proceed despite a warning about another operation |
+| `--override-hold` | With `on` or `off`: proceed although another operator [holds the cluster](#hold); the override is recorded |
 | `--json` | Print one JSON document |
 
 Each `sparkring install` sets the choice for the model it installs: on, or
@@ -856,6 +866,42 @@ the deployment's choice; a deployment without one starts with recovery on.
 To stop the model and keep it stopped, use `sudo sparkring down --execute`.
 `sparkring-recover.timer` runs `sparkring recover --auto` once a minute; you
 do not run it by hand.
+
+## hold
+
+`sudo sparkring hold --reason TEXT [--until TIME]` reserves the cluster for
+one operator's longer task, such as a checkpoint experiment or an acceptance
+run, between the single operations that `install.lock` already serializes.
+The hold names the holder, the reason, its start and an optional end; it is
+kept with the controller records on Node A and survives a reboot.
+
+While another operator's hold stands, `install`, `setup`, `up`, `down`,
+`restart`, `recover on|off`, `storage --release` and `checkpoints --release`
+refuse before they change anything and name the holder and the reason; the
+JSON result carries the hold. `--yes` does not pass a hold. `--override-hold`
+passes the hold and appends the override (time, operator, command, Sparks and
+the hold) to `/var/lib/sparkring/controller/hold-overrides.jsonl`. The entry
+records that the command passed the hold; the command's other checks and
+prompts still apply, so one that stops at a later check also leaves an entry. Automatic
+recovery never overrides a hold: it keeps checking, reports `held` when
+it would restart a model, and restarts it only after the hold ends. Dashboard actions cannot override
+a hold either.
+
+The holder is the operator's login, as `sudo` records it. Sessions under the
+same login, such as an operator and an agent session on one account, are one
+operator, so the hold does not refuse them. A hold whose `--until` has passed
+refuses nothing. A hold is separate from the dashboard's
+[quiet holds](#dashboard), which pause the page around one measurement and
+only warn.
+
+| Command or flag | Does |
+|---|---|
+| `sparkring hold` | Show the standing hold; a member of the `sparkring` group reads it from the operator view |
+| `--reason TEXT` | Take the hold, or replace your own, with this reason (at most 200 characters) |
+| `--until TIME` | With `--reason`: the hold ends by itself, after a duration such as `90m`, `4h` or `2d`, or at a time such as `2026-11-02T18:00` (Node A's local time unless the time names a zone) |
+| `--release` | Clear the hold |
+| `--override-hold` | With `--reason` or `--release`: replace or clear another operator's hold; the override is recorded |
+| `--json` | Print one JSON document (`sparkring-hold/v1`) |
 
 ## node
 

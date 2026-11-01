@@ -1361,7 +1361,8 @@ def operation_scope(args, state_root):
     selected = (resolve_placement(args, installer.read(state_root / "cluster.json"), state_root)
                 if (state_root / "cluster.json").exists() else None)
     args.activity = activity.assess(state_root, slices.affected(state_root, selected))
-    activity.confirm(args.activity, yes=args.yes, plan=args.plan, interactive=not args.json and sys.stdin.isatty())
+    activity.confirm(args.activity, yes=args.yes, plan=args.plan, interactive=not args.json and sys.stdin.isatty(),
+                     override_hold=getattr(args, "override_hold", False))
     with slices.hold(state_root, selected, "install " + (args.profile or "profile"), expand=True) as owner:
         activity.require_review(state_root, selected, getattr(args, "review", None))
         args.locked_placement = selected
@@ -1801,6 +1802,8 @@ def main(argv=None):
     parser.add_argument("--yes", action="store_true",
                         help="approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an "
                              "idle ring, and model replacement; SSH trust is still required")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
     parser.add_argument("--review", help=argparse.SUPPRESS)
     parser.add_argument("--stop-workloads", action="store_true",
