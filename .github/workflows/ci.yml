@@ -35,7 +35,8 @@ jobs:
   tests:
     name: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # The suite took 26 to 39 minutes in October 2026 runs; 60 leaves room without hiding a hang.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
