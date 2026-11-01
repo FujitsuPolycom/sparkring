@@ -75,6 +75,74 @@ def test_flare_metrics_are_read_by_short_name_and_summed_over_labels():
     assert dashboard.parse_flare_metrics("") == {}
 
 
+def test_flare_json_metrics_use_the_same_short_names():
+    metrics = dashboard.parse_flare_metrics(json.dumps({
+        "flare_generated_tokens_total": 12000, "flare_active_requests": 2,
+        "flare_total_kv_tokens": 4000, "flare_free_kv_tokens": 1000,
+        "flare_unknown_series": 7,
+    }))
+    assert metrics == {"generated_tokens": 12000, "active_requests": 2,
+                       "kv_tokens_total": 4000, "kv_tokens_free": 1000}
+
+
+def test_helios_json_snapshot_fields_are_mapped_without_inventing_absent_series():
+    metrics = dashboard.parse_flare_metrics(json.dumps({
+        "generated_tokens": 12000, "prefill_tokens": 48000, "active": 2, "pending": 0,
+        "completed": 150, "failed": 1, "accepted_drafts": 650, "verification_drafts": 800,
+        "total_pages": 100, "free_pages": 25, "cached_pages": 10, "page_tokens": 128,
+        "learned_drafter": True, "host_hits": 99,
+    }))
+    assert metrics == {"generated_tokens": 12000, "prefill_tokens": 48000, "active_requests": 2,
+                       "pending_requests": 0, "requests_completed": 150, "requests_failed": 1,
+                       "drafts_accepted": 650, "draft_tokens": 800,
+                       "kv_tokens_total": 12800, "kv_tokens_free": 3200, "kv_tokens_cached": 1280}
+
+
+@pytest.mark.parametrize("body", [
+    "{}", "[]", "null", '{"unknown": 1}', '{"flare_generated_tokens_total": true}',
+    '{"generated_tokens": null, "active": "not a number"}',
+    '{"generated_tokens": NaN, "active": Infinity}', '{"generated_tokens":',
+])
+def test_flare_json_without_usable_numbers_has_no_series(body):
+    assert dashboard.parse_flare_metrics(body) == {}
+
+
+def test_json_flare_metrics_feed_the_external_card_and_token_rate(tmp_path):
+    found, api, clock = flare_collector(tmp_path, pairs=())
+    payload = {"generated_tokens": 100, "prefill_tokens": 400, "active": 2, "pending": 0,
+               "completed": 10, "failed": 0, "total_pages": 100, "free_pages": 25, "page_tokens": 128}
+    api.bodies[(FLARE_HOST, FLARE_PORT, "/metrics")] = json.dumps(payload).encode()
+    found.mark_viewed()
+    found.cycle()
+    clock.now += dashboard.METRICS_VIEWED_SECONDS
+    api.bodies[(FLARE_HOST, FLARE_PORT, "/metrics")] = json.dumps({**payload, "generated_tokens": 160}).encode()
+    found.mark_viewed()
+    found.cycle()
+    [card] = found.snapshot()["external"]
+    assert card["state"] == "serving" and card["model"] == "qwen3.8-flash"
+    assert card["stats"]["output_tps"] == 30
+    assert card["stats"]["active_requests"] == 2 and card["stats"]["kv_in_use"] == 0.75
+    assert card["metrics_problem"] is None
+
+
+@pytest.mark.parametrize("body", ["{}", '{"unknown": 1}', "[]", "", "# no Flare series\n"])
+def test_empty_flare_metrics_are_visible_and_recovery_clears_the_warning(tmp_path, body):
+    found, api, clock = flare_collector(tmp_path, pairs=())
+    run_for(found, clock, 4, viewer=True)
+    api.bodies[(FLARE_HOST, FLARE_PORT, "/metrics")] = body.encode()
+    run_for(found, clock, 2, viewer=True)
+    [card] = found.snapshot()["external"]
+    assert card["state"] == "serving" and card["stats"] is None
+    assert card["metrics_problem"] == "No recognized numeric Flare metrics in /metrics response."
+    external = found.externals["flare-spark-6"]
+    assert external.sample is None and external.output_tps is None
+    api.bodies[(FLARE_HOST, FLARE_PORT, "/metrics")] = flare_metrics(generated=12400).encode()
+    run_for(found, clock, 2, viewer=True)
+    [card] = found.snapshot()["external"]
+    assert card["metrics_problem"] is None and card["stats"]["generated_tokens"] == 12400
+    assert card["stats"]["output_tps"] is None
+
+
 def test_the_external_list_is_validated(tmp_path):
     assert dashboard.read_external(tmp_path / "missing.json") == []
     rows = dashboard.read_external(external_file(tmp_path))

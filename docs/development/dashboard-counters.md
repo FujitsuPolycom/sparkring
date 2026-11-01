@@ -117,6 +117,15 @@ and its [collector](https://github.com/sgl-project/sglang/blob/main/python/sglan
 Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/)
 and Flare's `flare run --help`.
 
+The HTTP client sends `Accept: text/plain` only for `/metrics`; model-list
+and runtime-status reads request JSON. The Flare parser also handles JSON
+metric objects and Helios snapshots through the same series-to-short-name
+mapping. Snapshot KV page counts are multiplied by `page_tokens`; missing
+or nonnumeric fields remain unknown. A response with no usable Flare
+series publishes `metrics_problem` and displays **Metrics unavailable**
+instead of silently leaving the card's figures blank. The allowed hosts,
+exact read paths, response bounds and redirect refusal are unchanged.
+
 The agent unit preserves its shared `/run/sparkring` directory across
 stop/start, including package upgrades. Operator quiet files and holder
 records retain their contents and expiry; reboot still clears runtime state.

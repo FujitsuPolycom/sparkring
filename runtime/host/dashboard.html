@@ -1311,9 +1311,11 @@ function card(s, now) {
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
       ${tags.join("")}
       <span class="state"><span class="pill p-${esc(st)}">${esc(s.startup ? startupLabel(s) : s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
+      ${s.metrics_problem ? `<span class="tag warn" title="${esc(s.metrics_problem)}">Metrics unavailable</span>` : ""}
       ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
     </div>${open ? `
     ${startupDetails(s)}
+    ${s.metrics_problem ? `<p class="down-note" role="status">${esc(s.metrics_problem)}</p>` : ""}
     ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${acceptancePct(s.live?.acceptance)} draft acceptance${has(s.live?.accepted_per_step) ? ` · ${acceptedStep(s.live.accepted_per_step)} accepted tok/step` : ""} · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${sub}</div>
@@ -1356,9 +1358,11 @@ function externalCard(e, now) {
       ${serving ? `<span class="model">${model}</span>` : ""}
       <span class="tag${flare ? " flare" : ""}">${flare ? FLAME : ""}${esc(kind)}</span>${where}
       <span class="state"><span class="pill p-${esc(st)}">${esc(e.state_label || "Checking")}</span><span class="since" data-age="${e.state_since || 0}">${e.state_since ? "for " + dur(now - e.state_since) : ""}</span></span>
+      ${e.metrics_problem ? `<span class="tag warn" title="${esc(e.metrics_problem)}">Metrics unavailable</span>` : ""}
       ${!serving ? `<span class="model">${model}</span>` : ""}${endpoint}
     </div>${open ? `
     <div class="sub">${spark}${esc(kind)} at <span class="mono">${esc(e.host)}:${esc(e.port)}</span>${has(e.max_model_len) ? ` · ${int(e.max_model_len)}-token context` : ""}</div>
+    ${e.metrics_problem ? `<p class="down-note" role="status">${esc(e.metrics_problem)}</p>` : ""}
     ${tiles}${line}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${esc(kind)} at ${esc(e.host)}:${esc(e.port)}${e.root ? ` · ${esc(e.root)}` : ""}${e.metrics_url ? ` · metrics ${esc(e.metrics_url)}` : ""}</div>
