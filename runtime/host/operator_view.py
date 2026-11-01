@@ -100,6 +100,15 @@ def view(state_root: Path) -> dict:
             continue
     document["deployments"] = deployments
     try:
+        from runtime.host import rollout
+        # A switch that stopped before it finished, as a group member's status reads it.
+        document["switches"] = [{"placement": list(slot) if slot else None,
+                                 "candidate": Path(record.get("candidate") or "").name,
+                                 "previous": Path(record["previous"]).name if record.get("previous") else None,
+                                 "state": record.get("state")} for slot, record in rollout.unfinished(state_root)]
+    except (OSError, ValueError, KeyError, TypeError):
+        document["switches"] = []
+    try:
         from runtime.host import hold
         standing = hold.current(state_root)
         document["hold"] = ({key: standing.get(key) for key in ("holder", "reason", "since", "until", "invalid") if key in standing}
@@ -198,4 +207,10 @@ def lines(document: dict, *, now=time.time) -> list[str]:
                           + (f", {recovery_record['failures']} failed attempt(s)" if recovery_record.get("failures") else ""))
     if not document.get("deployments"):
         result.append("No model deployment is recorded.")
+    for switch in document.get("switches") or []:
+        where = ("Sparks " + ",".join(map(str, switch["placement"]))
+                 if switch.get("placement") else "every Spark")
+        name = f"{switch['previous']} to {switch['candidate']}" if switch.get("previous") else switch.get("candidate")
+        result.append(f"Model switch: {name} on {where}, recorded {switch['state']}"
+                      " | next: an operator's sudo sparkring install --cancel")
     return result

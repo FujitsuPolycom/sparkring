@@ -90,7 +90,8 @@ def affected(root, positions):
             continue
         journal = placement.journal(root, slot)
         directory = placement.recorded(root, slot)
-        if (placement.exists(directory) and not placement.stopped(directory)) or (journal and not journal.get("complete")):
+        if (placement.exists(directory) and not placement.stopped(directory)) or (
+                journal and not journal.get("complete") and journal.get("state") != placement.CANCELLED):
             if slot is None:
                 return None
             result.update(slot)

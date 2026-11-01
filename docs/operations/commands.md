@@ -54,7 +54,8 @@ sudo sparkring up --execute                                  # start it again
 
 With `--json`, `install`, `hairpin`, `checkpoints` and `storage` print one JSON
 document. They exit with 0 on success or plan, 3 when input is needed and 2 on
-failure.
+failure, and also on a run that `install --cancel` stopped (state
+`cancelled`).
 
 ### Without sudo
 
@@ -93,6 +94,7 @@ serves, it releases what older deployments hold on the Sparks
 | `--profile PROFILE` | Exact profile from `sparkring models`; asked in a terminal when omitted |
 | `--on ARC` | Run the profile on these consecutive Sparks: `0,1`, `0-3`, `4-7`, or `6-1` across the cable to Node A ([models on part of the fabric](install-reference.md#models-on-part-of-the-fabric)). Default: every Spark, or for a profile of fewer Sparks the one group that divides the fabric from Node A and serves no model. The `prepared` transport runs two-Spark models only on a four-Spark ring's halves, `0,1` and `2,3` |
 | `--plan` | Print and save the setup, checkpoint and model plan; change nothing. A later `--yes` run stays within the saved plan. Before the first setup, use `sudo sparkring setup --plan` |
+| `--cancel` | [Stop the running installation](#cancel-an-installation) at its next step boundary, or settle a model switch an interrupted installation left; takes no other option |
 | `--yes` | Approve setup, the checkpoint plan, ConnectX restarts on an idle ring and the model switch. Unknown SSH host keys still need confirmation, and stopping another program's GPU containers still asks unless you add `--stop-workloads` |
 | `--json` | One JSON result on stdout; progress on stderr |
 | `--override-hold` | Proceed although another operator [holds the cluster](#hold); the override is recorded |
@@ -125,6 +127,43 @@ serves, it releases what older deployments hold on the Sparks
 In a terminal, without `--yes` and without the API options, `install` asks
 which address the model's API listens on and which port it uses; Enter keeps
 both ([API endpoint](install-reference.md#api-endpoint)).
+
+### Cancel an installation
+
+`sudo sparkring install --cancel` stops the installation that is running now;
+killing the process leaves the candidate's containers and a switch record
+behind instead. It records the request in
+`/var/lib/sparkring/controller/install-cancel.json` and waits up to two
+minutes. The installation reads the request before each step of its model
+switch, stops there, stops the candidate deployment through that deployment's
+own stop, starts the model the switch replaced again and records the switch as
+`cancelled` with the time and the operator. The active pointer never leaves
+the model that served. The interrupted run prints the reason and exits 2 with
+state `cancelled`; `--cancel` itself exits 0 when it asks, stops or settles a
+switch, and 2 when another command holds the cluster or a switch it tried to
+settle still needs attention.
+
+```bash
+sudo sparkring install --cancel
+```
+
+- A step that cannot be abandoned, such as a checkpoint download, is the
+  boundary: the installation stops when that step ends. The request outlives
+  the command, and `sparkring status` reports the switch until it settles.
+- With no installation running, the same command settles a model switch an
+  earlier installation left unfinished, for example after `SIGTERM`, `Ctrl-C`
+  or a Spark restart. It stops that switch's candidate on every Spark and
+  starts the model the switch replaced, so the candidate's own `sparkring down
+  PROFILE --instance i<hash>` is no longer needed for this.
+- `--cancel` takes no other option and no lock: it ends the operation whose
+  admission already holds them. An operator's [hold](#hold) does not refuse
+  it, because a hold reserves the cluster for work rather than for keeping an
+  unwanted installation. While another command changes the cluster (`up`,
+  `down` or `restart`), it names that command and changes nothing: repeat it
+  when the operation finishes.
+- A switch in progress, or one that stopped before it finished, is reported by
+  [status](#status) as `Model switch: ... | next: ...`, and by the
+  group-readable operator view a member prints without sudo.
 
 ## install.sh
 
@@ -467,7 +506,9 @@ attention, the saved model (the active deployment, or the one named) and
 automatic recovery. While an operator [holds the cluster](#hold), the first
 line names the holder, the reason and the times, such as `Held by alice since
 2026-11-02 09:00 UTC until 2026-11-02 18:00 UTC: acceptance run | release: sudo
-sparkring hold --release`. On a fabric that serves
+sparkring hold --release`. A model switch that is in progress or stopped before
+it finished adds its own line, `Model switch: ... | next: ...`, naming the step
+that [settles](#cancel-an-installation) or resumes it. On a fabric that serves
 [several models](install-reference.md#models-on-part-of-the-fabric) it prints
 each group's model under its Sparks, such as `Sparks 0-3:` and `Sparks 4-7:`,
 with a `Group:` line naming its shape, positions and API Spark:
