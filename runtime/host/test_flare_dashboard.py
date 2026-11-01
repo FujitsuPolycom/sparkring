@@ -222,3 +222,33 @@ def test_flare_metric_adapter_feeds_the_shared_history_keys():
         "accepted": 30.0, "drafts": 40.0, "draft_tokens": 50.0, "pc_hits": 6.0,
         "pc_queries": 10.0, "preemptions": 3.0, "uptime_seconds": 100.0}
     assert metrics["finished"] == {"stop": 10.0, "error": 1.0, "abort": 2.0}
+
+
+def test_discovered_flare_reports_empty_metrics_then_recovers_with_a_json_snapshot(tmp_path):
+    found, api, clock = collector(tmp_path, rows=())
+    found.reload_sources()
+    fabric = found.sources[0].fabric
+    row = flare_row(flare_argv(host="0.0.0.0", port=8001))
+    install_reports(found, [node_doc(fabric, 5, [row], clock.now)], tmp_path)
+    host = fabric["positions"][5]["address"]
+    api.models[(host, 8001)] = "Flare-Model"
+    api.bodies[(host, 8001, "/metrics")] = b"{}"
+    found.mark_viewed()
+    found.cycle()
+    member = found.snapshot()["groups"][0]["members"][0]
+    assert member["flare"] and member["state"] == "serving"
+    assert member["metrics_problem"] == "No recognized numeric Flare metrics in /metrics response."
+    assert member["counters"]["values"] == {}
+    clock.now += dashboard.METRICS_VIEWED_SECONDS
+    api.bodies[(host, 8001, "/metrics")] = json.dumps({
+        "generated_tokens": 500, "prefill_tokens": 2000, "active": 2, "pending": 1,
+        "total_pages": 100, "free_pages": 25, "page_tokens": 128, "completed": 10,
+    }).encode()
+    found.mark_viewed()
+    found.cycle()
+    member = found.snapshot()["groups"][0]["members"][0]
+    assert member["metrics_problem"] is None and member["model"] == "Flare-Model"
+    assert member["counters"]["values"]["gen"] == 500
+    assert member["live"]["running"] == 2 and member["live"]["kv"] == 0.75
+    assert member["totals"]["finished"] == {"stop": 10}
+    assert {urlparse(r.full_url).path for r in api.requests} == {"/metrics", "/v1/models"}

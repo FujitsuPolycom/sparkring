@@ -132,6 +132,8 @@ PAGE = Path(__file__).with_name("dashboard.html")
 # The only paths the collector requests: the model list, vLLM's Prometheus metrics and the
 # runtime-status plugin's JSON report. Each is a GET that runs no model.
 READ_PATHS = frozenset({"/metrics", "/v1/models", "/v1/sparkring/status"})
+READ_ACCEPT = {"/metrics": "text/plain", "/v1/models": "application/json",
+               "/v1/sparkring/status": "application/json"}
 METRICS_VIEWED_SECONDS = 2.0
 HISTORY_SECONDS = 3 * 3600
 HISTORY_SAMPLES = 2161
@@ -246,7 +248,7 @@ class ReadOnlyClient:
     def get(self, host, port, path) -> Fetched:
         url = request_url(host, port, path, self.allowed)
         request = urllib.request.Request(url, method="GET", headers={
-            "User-Agent": "sparkring-dashboard", "Accept": "application/json, text/plain"})
+            "User-Agent": "sparkring-dashboard", "Accept": READ_ACCEPT[path]})
         if request.get_method() != "GET" or request.data is not None:
             raise RequestRefused("the dashboard sends GET requests without a body only")
         with self.lock:
@@ -367,12 +369,43 @@ FLARE_COUNTERS = {"flare_generated_tokens_total": "generated_tokens", "flare_pre
                   "flare_engram_row_cache_hits_total": "row_cache_hits", "flare_engram_row_cache_misses_total": "row_cache_misses",
                   "flare_cache_lookups_total": "prefix_lookups", "flare_cache_hits_total": "prefix_hits",
                   "flare_http_requests_total": "http_requests"}
+FLARE_SERIES = {**FLARE_GAUGES, **FLARE_COUNTERS}
+# Helios JSON snapshots use field names rather than Prometheus series names.
+FLARE_JSON_KEYS = {"flare_generated_tokens_total": "generated_tokens",
+                   "flare_prefill_tokens_total": "prefill_tokens",
+                   "flare_active_requests": "active", "flare_pending_requests": "pending",
+                   "flare_requests_completed_total": "completed", "flare_requests_failed_total": "failed",
+                   "flare_speculative_accepted_drafts_total": "accepted_drafts",
+                   "flare_verification_draft_tokens_total": "verification_drafts"}
+FLARE_METRICS_PROBLEM = "No recognized numeric Flare metrics in /metrics response."
 
 
 def parse_flare_metrics(text: str) -> dict:
-    """The Flare series of FLARE_GAUGES and FLARE_COUNTERS by their short names; a labelled series is summed
-    over its labels. Series that are absent are absent from the result."""
+    """Flare's Prometheus series or JSON snapshot mapped to the same short names.
+
+    Labelled text series are summed over labels. Only recognized numeric JSON fields
+    are used; absent series stay absent, including fields that only the text API emits."""
     out: dict = {}
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        pass
+    else:
+        if not isinstance(document, dict):
+            return out
+        for name, key in FLARE_SERIES.items():
+            value = document.get(name, document.get(FLARE_JSON_KEYS.get(name)))
+            if number(value):
+                out[key] = value
+        page_tokens = document.get("page_tokens")
+        if number(page_tokens):
+            for field, series in (("total_pages", "flare_total_kv_tokens"),
+                                  ("free_pages", "flare_free_kv_tokens"),
+                                  ("cached_pages", "flare_cached_kv_tokens")):
+                pages = document.get(field)
+                if number(pages):
+                    out.setdefault(FLARE_SERIES[series], pages * page_tokens)
+        return out
     for line in text.splitlines():
         if not line or line[0] == "#":
             continue
@@ -384,7 +417,7 @@ def parse_flare_metrics(text: str) -> dict:
             name, rest = line[:brace], line[end + 1:]
         else:
             name, _, rest = line.partition(" ")
-        key = FLARE_GAUGES.get(name) or FLARE_COUNTERS.get(name)
+        key = FLARE_SERIES.get(name)
         if key is None:
             continue
         parts = rest.split()
@@ -408,6 +441,7 @@ def parse_flare_as_metrics(text: str) -> dict:
     """
     flare = parse_flare_metrics(text)
     out: dict = {"finished": {}, "cache_info": None, "model_name": None, "started": None}
+    out["metrics_problem"] = None if flare else FLARE_METRICS_PROBLEM
     for source, key in (("generated_tokens", "gen"), ("prefill_tokens", "prompt"),
                         ("drafts_accepted", "accepted"), ("drafts_offered", "drafts"),
                         ("draft_tokens", "draft_tokens"), ("prefix_hits", "pc_hits"),
@@ -1022,6 +1056,8 @@ class External:
             self.output_tps = (generated - self.sample[0]) / (now - self.sample[1])
         if generated is not None:
             self.sample = (generated, now)
+        else:
+            self.sample, self.output_tps = None, None
         self.metrics, self.metrics_at = metrics, now
 
 
@@ -1463,6 +1499,7 @@ class Collector:
                 "endpoint": f"http://{row['host']}:{row['port']}/v1", "metrics_url": f"http://{row['host']}:{row['port']}/metrics",
                 "state": external.state, "state_label": LABELS[external.state], "state_since": external.state_since,
                 "model": external.model, "root": external.root, "max_model_len": external.max_model_len,
+                "metrics_problem": FLARE_METRICS_PROBLEM if serving and row["kind"] == "flare" and not metrics else None,
                 "metrics_at": external.metrics_at, "stats": stats}
 
     def external_ring_member(self, external: External, source: Source, now: float, color: int) -> dict:
@@ -1773,6 +1810,7 @@ class Collector:
             "spark_startup": spark_starting,
             "state": model.state, "state_label": "GPU in use" if gpu_job else LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
+            "metrics_problem": metrics.get("metrics_problem") if serving else None,
             "endpoint": endpoint,
             # The runtime-status view asks the workers for a report every 5 s while it is open.
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
