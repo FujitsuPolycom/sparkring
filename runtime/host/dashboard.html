@@ -1241,22 +1241,39 @@ function logsPanel(s) {
 
 function unmanagedFacts(s) {
   const f = s.launch || {}, flare = isFlare(s);
-  const api = (c) => c.headless ? "headless"
-    : c.api_bind ? `API ${esc(c.api_bind)}:${c.api_port ?? "unknown"}` : `API port ${c.api_port ?? "unknown"}`;
+  // A fact the page could not read is left out, never named, as the Spark details are:
+  // a GPU compute job shows the container's identity alone, and a Flare process lists
+  // only the rank, rendezvous, served name and API its launch declared.
+  const known = v => has(v) && v !== "" && String(v).toLowerCase() !== "unknown";
+  const tell = (...parts) => parts.filter(Boolean).join(" · ");
+  const rendezvous = c => !known(c.master_addr) ? (known(c.master_port) ? "master port " + esc(c.master_port) : "")
+    : "master " + esc(c.master_addr) + (known(c.master_port) ? ":" + esc(c.master_port) : "");
+  const api = c => c.headless ? "headless" : !known(c.api_port) ? ""
+    : known(c.api_bind) ? "API " + esc(c.api_bind) + ":" + esc(c.api_port) : "API port " + esc(c.api_port);
+  const rank = c => known(c.node_rank) ? "node rank " + esc(c.node_rank) : "";
+  const lines = c => {
+    const identity = tell(`position ${c.position}: ${esc(c.name)}`,
+                          flare ? "flare process" : known(c.image) ? esc(c.image) : "",
+                          known(c.image_id) ? esc(c.image_id) : "");
+    if (flare) {
+      return [identity, tell("engine flare", known(c.served_model) ? "served name " + esc(c.served_model) : "", rank(c)),
+              tell(rendezvous(c), api(c))];
+    }
+    return s.gpu_job ? [identity] : [identity,
+      tell(known(c.engine) ? esc(c.engine) : "", known(c.served_model) ? "served name " + esc(c.served_model) : "",
+           rank(c), known(c.nnodes) ? `${esc(c.nnodes)} node${c.nnodes === 1 ? "" : "s"}` : ""),
+      tell(esc(parallelism(c)), rendezvous(c), api(c))];
+  };
+  const summary = s.gpu_job ? "" : flare
+    ? tell(esc(s.layout.label), "flare process", known(f.served_model) ? esc(f.served_model) : "")
+    : tell(esc(s.layout.label), known(f.engine) ? esc(f.engine) : "",
+           known(f.image_id) ? "image " + esc(f.image_id) : "");
   return `<p class="down-note">${esc(s.ownership_label)}</p>
     ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
     ${s.api_local ? `<p class="down-note">The API is bound to loopback on the head Spark, so this page cannot read live counters. Start it with <code>--host 0.0.0.0</code> to show them.</p>` : ""}
-    ${s.gpu_job ? "" : flare
-      ? `<p>${esc(s.layout.label)} · flare process · ${esc(f.served_model || "model not named yet")}</p>`
-      : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
+    ${summary ? `<p>${summary}</p>` : ""}
     <details class="launch-facts"><summary>${flare ? "Process" : "Container"} launch facts and install records</summary>
-    ${(s.containers || []).map(c => flare
-      ? `<p>position ${c.position}: ${esc(c.name)} · flare process<br>
-        engine flare · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"}<br>
-        master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${api(c)}</p>`
-      : `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}<br>
-        ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
-        ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${api(c)}</p>`).join("")}
+    ${(s.containers || []).map(c => `<p>${lines(c).filter(Boolean).join("<br>")}</p>`).join("")}
     ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
     </details>`;
 }
