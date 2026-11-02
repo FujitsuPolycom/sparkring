@@ -769,7 +769,7 @@ def _lifecycle(argv, *, output, locks):
         # An operator's hold (runtime.host.hold) comes first: other operators' changes refuse while it stands.
         result["hold"] = hold.current(STATE)
         from runtime.host import rollout
-        # A model switch that stopped before it finished, and the step that settles it.
+        # A model switch that has not settled.
         switches = rollout.unfinished(STATE)
         if switches:
             result["switches"] = [{"placement": list(slot) if slot else None,

@@ -267,7 +267,7 @@ if [ "$NODE_RANK" = 0 ] && [ "$SHAPE_WARMUP" = 1 ]; then
         shape_warmup_args+=(--api-key-file "$SHAPE_WARMUP_API_KEY_FILE")
     fi
     printf 'Shape warmup: waiting for rank 0 health, then sweeping request shapes.\n'
-    # The phase is non-fatal: a failure keeps the boot and only logs a warning.
+    # Non-fatal: a sweep failure warns and the container keeps serving.
     if ! command -v python3 >/dev/null 2>&1; then
         echo "deepseek pair launcher: warning: python3 is unavailable; request-shape warmup skipped" >&2
     elif ! python3 "$script_dir/deepseek_v4_shape_warmup.py" "${shape_warmup_args[@]}"; then

@@ -207,10 +207,11 @@ def lines(document: dict, *, now=time.time) -> list[str]:
                           + (f", {recovery_record['failures']} failed attempt(s)" if recovery_record.get("failures") else ""))
     if not document.get("deployments"):
         result.append("No model deployment is recorded.")
+    from runtime.host import rollout
     for switch in document.get("switches") or []:
         where = ("Sparks " + ",".join(map(str, switch["placement"]))
                  if switch.get("placement") else "every Spark")
         name = f"{switch['previous']} to {switch['candidate']}" if switch.get("previous") else switch.get("candidate")
         result.append(f"Model switch: {name} on {where}, recorded {switch['state']}"
-                      " | next: an operator's sudo sparkring install --cancel")
+                      " | next: " + rollout.SWITCH_NEXT)
     return result

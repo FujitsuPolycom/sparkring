@@ -38,9 +38,9 @@ def execute(directory, previous, *, state_root, prepare, apply, verify, supersed
 
     ``cancelled(boundary)`` is asked before each step the switch records, and
     raises ``cancel.Cancelled`` to stop it there. A switch that has not yet
-    stopped anything records ``cancelled``; one that has brings back every
-    deployment it stopped first, and one whose restore fails records
-    ``needs-attention`` with the restore's error.
+    stopped anything records ``cancelled``; one that has stopped something
+    brings back every deployment it stopped first, and one whose restore fails
+    records ``needs-attention`` with the restore's error.
     """
     directory = Path(directory).resolve()
     previous = Path(previous).resolve() if previous else None
@@ -237,7 +237,7 @@ def unfinished(state_root):
 
 
 def switch_line(slot, record, size=None):
-    """The first half of one ``sparkring status`` line for a model switch in progress or stopped."""
+    """``Model switch: OLD to NEW on Sparks ...`` and the record's state, for a switch in progress or stopped."""
     candidate = Path(record.get("candidate") or "").name
     previous = Path(record["previous"]).name if record.get("previous") else None
     switch = f"{previous} to {candidate}" if previous else candidate
@@ -245,7 +245,7 @@ def switch_line(slot, record, size=None):
             f"recorded {record.get('state')}")
 
 
-# What settles a switch that stopped before it finished, appended to switch_line's line.
+# The action that settles a switch which stopped before it finished: cancel it, or install that model again.
 SWITCH_NEXT = "sudo sparkring install --cancel stops it and records it cancelled, or install that model again to resume it"
 
 

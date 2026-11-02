@@ -76,7 +76,7 @@ def entries(state_root):
 
 
 def request(state_root, operations, *, now=None, who=None):
-    """Record that the installations ``operations`` must stop at their next step boundary."""
+    """Record that the installations named in ``operations`` must stop at their next step boundary."""
     ids = sorted({str(item) for item in operations if item})
     if not ids:
         raise ValueError("No installation is running to cancel")
@@ -157,8 +157,9 @@ def run(state_root, *, now=None, who=None, say=print, sleep=time.sleep, active=N
     ``switches`` the model switches this command settled, ``busy`` the slots
     another operation kept, and ``message`` the one line an operator reads.
     ``state`` is ``requested`` while a running installation finishes a step it
-    cannot abandon, ``failed`` when a switch this command settled still needs
-    attention, and otherwise ``cancelled`` or ``idle``.
+    cannot abandon, ``busy`` when another command holds the cluster, ``failed``
+    when a switch this command settled still needs attention, and otherwise
+    ``cancelled`` or ``idle``.
     """
     from runtime.host import placement as placements, slices
     state_root = Path(state_root)

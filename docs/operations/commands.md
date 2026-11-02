@@ -139,31 +139,25 @@ switch, stops there, stops the candidate deployment through that deployment's
 own stop, starts the model the switch replaced again and records the switch as
 `cancelled` with the time and the operator. The active pointer never leaves
 the model that served. The interrupted run prints the reason and exits 2 with
-state `cancelled`; `--cancel` itself exits 0 when it asks, stops or settles a
-switch, and 2 when another command holds the cluster or a switch it tried to
-settle still needs attention.
+state `cancelled`, or `failed` when the restore did not complete. `--cancel`
+itself exits 0 when it asks, stops or settles a switch, and 2 when another
+command holds the cluster or a switch it tried to settle still needs attention.
 
 ```bash
 sudo sparkring install --cancel
 ```
 
-- A step that cannot be abandoned, such as a checkpoint download, is the
-  boundary: the installation stops when that step ends. The request outlives
-  the command, and `sparkring status` reports the switch until it settles.
+- A step that cannot be abandoned, such as a checkpoint download, runs to its
+  end; the installation stops at the next boundary. The request outlives the
+  command, and `sparkring status` reports the switch until it settles.
 - With no installation running, the same command settles a model switch an
   earlier installation left unfinished, for example after `SIGTERM`, `Ctrl-C`
   or a Spark restart. It stops that switch's candidate on every Spark and
-  starts the model the switch replaced, so the candidate's own `sparkring down
-  PROFILE --instance i<hash>` is no longer needed for this.
-- `--cancel` takes no other installation option and no lock: it ends the
-  operation whose admission already holds them. An operator's [hold](#hold)
-  does not refuse it, because a hold reserves the cluster for work rather than
-  for keeping an unwanted installation. While another command changes the
-  cluster (`up`, `down` or `restart`), it names that command and changes
-  nothing: repeat it when the operation finishes.
-- A switch in progress, or one that stopped before it finished, is reported by
-  [status](#status) as `Model switch: ... | next: ...`, and by the
-  group-readable operator view a member prints without sudo.
+  starts the model the switch replaced.
+- `--cancel` takes no other installation option and no installation lock: the
+  operation it ends already holds that lock. A hold does not refuse it. While
+  another command changes the cluster (`up`, `down` or `restart`), it names
+  that command and changes nothing: repeat it when the operation finishes.
 
 ## install.sh
 
