@@ -200,6 +200,22 @@ def test_the_client_sends_bodyless_get_requests_and_counts_them():
     assert client.counters()["requests"] == {"/v1/models": 1}
 
 
+def test_the_client_sends_the_expected_accept_header_for_every_permitted_path():
+    accepts = {"/metrics": "text/plain", "/v1/models": "application/json",
+               "/v1/sparkring/status": "application/json"}
+    assert set(accepts) == dashboard.READ_PATHS
+    api = FakeAPI(Clock())
+    client = dashboard.ReadOnlyClient(opener=api)
+    client.allow({"192.0.2.12"})
+    for path, accept in accepts.items():
+        assert client.get("192.0.2.12", 8015, path).ok
+        request = api.requests[-1]
+        assert request.get_header("Accept") == accept
+        assert request.get_header("User-agent") == "sparkring-dashboard"
+        assert (request.get_method(), request.data) == ("GET", None)
+        assert request.full_url == f"http://192.0.2.12:8015{path}"
+
+
 def test_collection_sends_only_get_requests_to_read_paths_and_starts_no_process(tmp_path, monkeypatch):
     """Two simulated hours: a viewer for half an hour, a model restart, a stopped model, a model
     that starts, an unreachable Spark and on-demand settings reads."""

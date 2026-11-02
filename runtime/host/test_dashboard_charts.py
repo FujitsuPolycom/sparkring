@@ -145,6 +145,24 @@ def update_page(page):
     page.evaluate("async () => { await refresh(); await new Promise(requestAnimationFrame); }")
 
 
+@pytest.mark.parametrize("external", [False, True])
+def test_flare_metrics_warning_is_visible_and_clears_in_both_card_types(smooth_page, external):
+    page, value, _ = smooth_page
+    member = value["groups"][0]["members"][0]
+    member.update(flare=True, unmanaged=True, external=external, kind="flare",
+                  label="Flare endpoint", host="192.0.2.12", port=8000,
+                  metrics_problem=dashboard.FLARE_METRICS_PROBLEM)
+    update_page(page)
+    card = page.locator(f'article.card[data-member="{member["id"]}"]')
+    badge = card.locator(".tag.warn", has_text="Metrics unavailable")
+    assert badge.is_visible() and badge.get_attribute("title") == dashboard.FLARE_METRICS_PROBLEM
+    note = card.get_by_role("status")
+    assert note.is_visible() and note.inner_text() == dashboard.FLARE_METRICS_PROBLEM
+    member["metrics_problem"] = None
+    update_page(page)
+    assert badge.count() == 0 and note.count() == 0
+
+
 @pytest.mark.parametrize("width", [1400, 375])
 def test_thinking_line_renders_and_updates_in_place(smooth_page, width):
     page, value, requests = smooth_page

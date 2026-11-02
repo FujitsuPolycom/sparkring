@@ -132,6 +132,8 @@ PAGE = Path(__file__).with_name("dashboard.html")
 # The only paths the collector requests: the model list, vLLM's Prometheus metrics and the
 # runtime-status plugin's JSON report. Each is a GET that runs no model.
 READ_PATHS = frozenset({"/metrics", "/v1/models", "/v1/sparkring/status"})
+READ_ACCEPT = {"/metrics": "text/plain", "/v1/models": "application/json",
+               "/v1/sparkring/status": "application/json"}
 METRICS_VIEWED_SECONDS = 2.0
 HISTORY_SECONDS = 3 * 3600
 HISTORY_SAMPLES = 2161
@@ -246,7 +248,7 @@ class ReadOnlyClient:
     def get(self, host, port, path) -> Fetched:
         url = request_url(host, port, path, self.allowed)
         request = urllib.request.Request(url, method="GET", headers={
-            "User-Agent": "sparkring-dashboard", "Accept": "application/json, text/plain"})
+            "User-Agent": "sparkring-dashboard", "Accept": READ_ACCEPT[path]})
         if request.get_method() != "GET" or request.data is not None:
             raise RequestRefused("the dashboard sends GET requests without a body only")
         with self.lock:
@@ -359,17 +361,51 @@ FLARE_GAUGES = {"flare_active_requests": "active_requests", "flare_pending_reque
                 "flare_free_kv_tokens": "kv_tokens_free", "flare_cached_kv_tokens": "kv_tokens_cached"}
 FLARE_COUNTERS = {"flare_generated_tokens_total": "generated_tokens", "flare_prefill_tokens_total": "prefill_tokens",
                   "flare_requests_completed_total": "requests_completed", "flare_requests_failed_total": "requests_failed",
+                  "flare_requests_cancelled_total": "requests_cancelled",
+                  "flare_preemptions_total": "preemptions",
                   "flare_speculative_offered_drafts_total": "drafts_offered",
                   "flare_speculative_accepted_drafts_total": "drafts_accepted",
+                  "flare_verification_draft_tokens_total": "draft_tokens",
                   "flare_engram_row_cache_hits_total": "row_cache_hits", "flare_engram_row_cache_misses_total": "row_cache_misses",
                   "flare_cache_lookups_total": "prefix_lookups", "flare_cache_hits_total": "prefix_hits",
                   "flare_http_requests_total": "http_requests"}
+FLARE_SERIES = {**FLARE_GAUGES, **FLARE_COUNTERS}
+# Helios JSON snapshots use field names rather than Prometheus series names.
+FLARE_JSON_KEYS = {"flare_generated_tokens_total": "generated_tokens",
+                   "flare_prefill_tokens_total": "prefill_tokens",
+                   "flare_active_requests": "active", "flare_pending_requests": "pending",
+                   "flare_requests_completed_total": "completed", "flare_requests_failed_total": "failed",
+                   "flare_speculative_accepted_drafts_total": "accepted_drafts",
+                   "flare_verification_draft_tokens_total": "verification_drafts"}
+FLARE_METRICS_PROBLEM = "No recognized numeric Flare metrics in /metrics response."
 
 
 def parse_flare_metrics(text: str) -> dict:
-    """The Flare series of FLARE_GAUGES and FLARE_COUNTERS by their short names; a labelled series is summed
-    over its labels. Series that are absent are absent from the result."""
+    """Flare's Prometheus series or JSON snapshot mapped to the same short names.
+
+    Labelled text series are summed over labels. Only recognized numeric JSON fields
+    are used; absent series stay absent, including fields that only the text API emits."""
     out: dict = {}
+    try:
+        document = json.loads(text)
+    except (ValueError, RecursionError):
+        pass
+    else:
+        if not isinstance(document, dict):
+            return out
+        for name, key in FLARE_SERIES.items():
+            value = document.get(name, document.get(FLARE_JSON_KEYS.get(name)))
+            if number(value):
+                out[key] = value
+        page_tokens = document.get("page_tokens")
+        if number(page_tokens):
+            for field, series in (("total_pages", "flare_total_kv_tokens"),
+                                  ("free_pages", "flare_free_kv_tokens"),
+                                  ("cached_pages", "flare_cached_kv_tokens")):
+                pages = document.get(field)
+                if number(pages):
+                    out.setdefault(FLARE_SERIES[series], pages * page_tokens)
+        return out
     for line in text.splitlines():
         if not line or line[0] == "#":
             continue
@@ -381,7 +417,7 @@ def parse_flare_metrics(text: str) -> dict:
             name, rest = line[:brace], line[end + 1:]
         else:
             name, _, rest = line.partition(" ")
-        key = FLARE_GAUGES.get(name) or FLARE_COUNTERS.get(name)
+        key = FLARE_SERIES.get(name)
         if key is None:
             continue
         parts = rest.split()
@@ -392,6 +428,39 @@ def parse_flare_metrics(text: str) -> dict:
         except ValueError:
             continue
         out[key] = out.get(key, 0.0) + value
+    return out
+
+
+def parse_flare_as_metrics(text: str) -> dict:
+    """Flare's series in the shape the model cards and history already read.
+
+    ``parse_metrics`` serves vLLM and SGLang; this adapter keeps Flare's own
+    names as separate series where they are useful and maps the shared
+    counters. ``started`` stays None: Flare publishes uptime but no start
+    time, and deriving one would split history on every restart.
+    """
+    flare = parse_flare_metrics(text)
+    out: dict = {"finished": {}, "cache_info": None, "model_name": None, "started": None}
+    out["metrics_problem"] = None if flare else FLARE_METRICS_PROBLEM
+    for source, key in (("generated_tokens", "gen"), ("prefill_tokens", "prompt"),
+                        ("drafts_accepted", "accepted"), ("drafts_offered", "drafts"),
+                        ("draft_tokens", "draft_tokens"), ("prefix_hits", "pc_hits"),
+                        ("prefix_lookups", "pc_queries"), ("preemptions", "preemptions")):
+        if source in flare:
+            out[key] = flare[source]
+    for source, key in (("active_requests", "running"), ("pending_requests", "waiting"),
+                        ("request_capacity", "request_capacity"), ("uptime_seconds", "uptime_seconds"),
+                        ("tokens_last_minute", "tokens_last_minute"), ("kv_tokens_total", "kv_tokens_total"),
+                        ("kv_tokens_free", "kv_tokens_free"), ("kv_tokens_cached", "kv_tokens_cached")):
+        if source in flare:
+            out[key] = flare[source]
+    total, free = flare.get("kv_tokens_total"), flare.get("kv_tokens_free")
+    if total and free is not None:
+        out["kv"] = (total - free) / total
+    for source, key in (("requests_completed", "stop"), ("requests_failed", "error"),
+                        ("requests_cancelled", "abort")):
+        if source in flare:
+            out["finished"][key] = flare[source]
     return out
 
 
@@ -842,23 +911,27 @@ def unmanaged_groups(fabric, documents, deployments, now):
         positions = sorted({c["position"] for c in containers})
         ranks = {c["node_rank"] for c in containers if "node_rank" in c}
         expected = max([c.get("nnodes", 1) for c in containers] + [max(ranks, default=0) + 1])
-        heads = [c for c in containers if c.get("engine") in ("vllm", "sglang")
+        heads = [c for c in containers if c.get("engine") in ("vllm", "sglang", "flare")
                  and c.get("node_rank", 0 if expected == 1 else -1) == 0 and not c["headless"]]
         head = heads[0] if len(heads) == 1 else None
         info = head or containers[0]
         head_position = head["position"] if head else None
         head_spark = next((p for p in fabric["positions"] if p["position"] == head_position), {})
         bind = (head or {}).get("api_bind")
+        loopback = bind in ("127.0.0.1", "::1", "localhost")
         host = (head_spark.get("address") if not bind or bind in ("0.0.0.0", "::") else
                 bind if bind in head_spark.get("addresses", [head_spark.get("address")]) else None)
         complete = len(ranks) == expected and len(positions) >= expected
         if expected == 1:
             complete = True
-        summary = None if complete else f"incomplete: {len(positions)} of {expected} Sparks reporting"
+        summary = (None if complete else
+                   "head Spark not reporting" if info.get("engine") == "flare" and 0 not in ranks
+                   else f"incomplete: {len(positions)} of {expected} Sparks reporting")
         digest = hashlib.sha256(json.dumps(key).encode()).hexdigest()[:20]
         result.append({"id": "unmanaged-" + digest, "unmanaged": True, "model": head.get("served_model") if head else None,
                        "positions": positions, "head_position": head_position, "api_host": host,
                        "api_port": head.get("api_port") if head and host else None,
+                       "head_port": head.get("api_port") if head else None, "api_local": loopback,
                        "stopped": False, "containers": containers, "launch": info,
                        "expected_sparks": expected, "group_note": summary,
                        "stopped_records": [r for r in deployments if r["stopped"] and set(r["positions"]) & set(positions)]})
@@ -983,6 +1056,8 @@ class External:
             self.output_tps = (generated - self.sample[0]) / (now - self.sample[1])
         if generated is not None:
             self.sample = (generated, now)
+        else:
+            self.sample, self.output_tps = None, None
         self.metrics, self.metrics_at = metrics, now
 
 
@@ -1276,11 +1351,13 @@ class Collector:
         cadence = METRICS_VIEWED_SECONDS
         if model.state == "serving" and model.metrics_at is not None:
             model.next_metrics = min(model.next_metrics, model.metrics_at + cadence)
+        engine = (row.get("launch") or {}).get("engine")
         if now >= model.next_metrics:
             sent = True
             fetched = self.client.get(host, port, "/metrics")
             if fetched.ok:
-                metrics = parse_metrics(fetched.body.decode("utf-8", "replace"))
+                text = fetched.body.decode("utf-8", "replace")
+                metrics = parse_flare_as_metrics(text) if engine == "flare" else parse_metrics(text)
                 if not row.get("unmanaged") and row.get("model") and metrics.get("model_name") and metrics["model_name"] != row["model"]:
                     state = "idle"
                     with self.lock:
@@ -1328,7 +1405,7 @@ class Collector:
                     model.models_ok_at = now
                     model.model = listed.get("id") or model.model
                     model.max_model_len = listed.get("max_model_len") or model.max_model_len
-        if model.state == "serving" and model.runtime_due:
+        if model.state == "serving" and model.runtime_due and engine != "flare":
             sent = True
             model.runtime_due = False
             fetched = self.client.get(host, port, "/v1/sparkring/status")
@@ -1422,6 +1499,7 @@ class Collector:
                 "endpoint": f"http://{row['host']}:{row['port']}/v1", "metrics_url": f"http://{row['host']}:{row['port']}/metrics",
                 "state": external.state, "state_label": LABELS[external.state], "state_since": external.state_since,
                 "model": external.model, "root": external.root, "max_model_len": external.max_model_len,
+                "metrics_problem": FLARE_METRICS_PROBLEM if serving and row["kind"] == "flare" and not metrics else None,
                 "metrics_at": external.metrics_at, "stats": stats}
 
     def external_ring_member(self, external: External, source: Source, now: float, color: int) -> dict:
@@ -1680,7 +1758,7 @@ class Collector:
         nodes = runtime.get("nodes") or []
         head_position = row.get("head_position", positions[0])
         head = hostnames.get(head_position, {})
-        port = row["api_port"]
+        port = row["api_port"] or row.get("head_port")
         endpoint = row.get("display_url") or f"http://{row['api_host']}:{port}/v1"
         if not row["api_host"] or not port:
             endpoint = None
@@ -1704,8 +1782,10 @@ class Collector:
         capacity = dict(model.capacity) if model.capacity else None
         if capacity and runtime.get("settings"):
             capacity["max_num_seqs"] = runtime["settings"].get("max_num_seqs")
-        container = next((c["name"] for c in row["containers"] if c["position"] == head_position), None)
         launch = row.get("launch") or {}
+        flare = launch.get("engine") == "flare"
+        container = None if flare else next(
+            (c["name"] for c in row["containers"] if c["position"] == head_position), None)
         gpu_job = bool(row.get("unmanaged") and launch.get("engine") == "unknown")
         sparks = []
         for position in positions:
@@ -1713,14 +1793,16 @@ class Collector:
             up = True if serving else (False if model.state == "offline" and position == positions[0] else None)
             sparks.append({"name": spark.get("hostname", str(position)), "address": spark.get("address"),
                            "lan_address": spark.get("lan_address"), "up": up, "position": position,
-                           "container": next((c["name"] for c in row["containers"] if c["position"] == position), None)})
+                           "container": None if flare else next(
+                               (c["name"] for c in row["containers"] if c["position"] == position), None)})
         thought = None if gpu_job else thinking_state(row, runtime.get("settings"))
         return {
             "id": model.id, "name": ("Spark " if len(positions) == 1 else "Sparks ") + ", ".join(map(str, positions))
             if row.get("unmanaged") else run_name(positions),
             "profile": row.get("profile"),
             "start_command": start_command(row),
-            "unmanaged": bool(row.get("unmanaged")), "gpu_job": gpu_job, "launch": launch,
+            "unmanaged": bool(row.get("unmanaged")), "gpu_job": gpu_job, "flare": flare,
+            "api_local": bool(row.get("api_local")), "launch": launch,
             "ownership_label": "Not installed by SparkRing: no automatic recovery, no install record" if row.get("unmanaged") else None,
             "group_note": row.get("group_note"), "containers": row["containers"] if row.get("unmanaged") else [],
             "stopped_records": row.get("stopped_records", []),
@@ -1728,12 +1810,13 @@ class Collector:
             "spark_startup": spark_starting,
             "state": model.state, "state_label": "GPU in use" if gpu_job else LABELS.get(model.state, "Checking"), "state_since": since,
             "model": model.model, "model_short": short_model(model.model), "max_model_len": model.max_model_len,
+            "metrics_problem": metrics.get("metrics_problem") if serving else None,
             "endpoint": endpoint,
             # The runtime-status view asks the workers for a report every 5 s while it is open.
             "details_url": f"http://{row['api_host']}:{port}/v1/sparkring/status/view" if model.runtime else None,
-            "layout": {"label": parallelism(launch)
+            "layout": {"label": "Flare" if flare else parallelism(launch)
                        if row.get("unmanaged") else layout_label(len(positions)) if serving else None, "count": len(positions),
-                       "tp": launch.get("tp") if row.get("unmanaged") else runtime.get("tp"),
+                       "tp": len(positions) if flare else launch.get("tp") if row.get("unmanaged") else runtime.get("tp"),
                        "dcp": launch.get("dcp") if row.get("unmanaged") else
                        (runtime.get("settings") or {}).get("decode_context_parallel_size")},
             "live": {key: metrics.get(key) for key in ("running", "waiting", "kv")} if model.metrics else None,
@@ -1747,7 +1830,9 @@ class Collector:
             "thinking": thinking.deployment_text(thought) if thought else None,
             "thinking_default": thought, "thinking_provenance": thinking.provenance_text(thought),
             "settings": runtime.get("settings"), "nodes": nodes, "capacity": capacity if serving else None,
-            "workers": runtime.get("workers"), "image": runtime.get("image"), "transport": runtime.get("transport"),
+            "workers": ({"received": len(positions), "expected": row.get("expected_sparks") or len(positions)}
+                        if flare else runtime.get("workers")),
+            "image": runtime.get("image"), "transport": runtime.get("transport"),
             "sparks": sparks,
             "history": [],
             "arc": {"positions": positions, "first": positions[0], "last": positions[-1], "size": len(positions),

@@ -50,10 +50,29 @@ SparkRing's `/opt/sparkring/toolchain/toolchain.py serve` wrapper and
 `python3 -m vllm.entrypoints.cli.main serve` supply the same vLLM launch facts.
 Literal defaults are used only for recognized server launches without a
 configuration-file argument. Shell variables are not expanded. Unknown
-GPU containers remain visible with engine `unknown`; absent launch facts
+GPU containers remain visible with engine `unknown` in the observation row;
+the page omits a launch fact it could not read rather than naming it, and a
+GPU compute job shows its container and image alone. Absent launch facts
 cannot establish a cross-Spark group. Bridged Docker port translation and
 launches discoverable only through environment/configuration files are not
 inferred.
+
+A bare `flare run` process is recognized from its GPU PID and bounded argv.
+The parser accepts `flare` and `flare-<hex>` binaries, rejects `flare agent`
+and `flare orbit`, and publishes only rank, rendezvous, HTTP bind/port and
+the served alias. Flare's documented defaults apply: `--host 127.0.0.1`,
+`--port 8000`, rank zero when `--rank` is absent and no HTTP API on peers.
+Package paths, publisher keys, trust stores and API-key paths are not
+published. Ranks sharing a rendezvous form one group; a process without one
+is a one-Spark group. A missing rank zero is named **head Spark not
+reporting** rather than counted as a complete smaller group, including when
+only one peer rank reports. `flare run` has no world-size option; the
+prepared package learns it at rendezvous, so the expected count is the
+highest observed rank plus one and ranks above that highest one are not
+detected as missing. A non-IP `--host` publishes no API facts rather than
+being rewritten as loopback. The same parser runs for a container's
+entrypoint, so a containerized Flare server is found when its launch is in
+`Path`/`Args`.
 
 The recovery timer writes an allowlisted projection to
 `/var/lib/sparkring/dashboard/nodes.json` (`sparkring-dashboard-nodes/v1`).
@@ -90,21 +109,37 @@ Unmanaged models use the same polling, bounded history, rate calculation,
 graph controls and integer token-rate formatting as managed models.
 SGLang's generation/prompt counters, first-token histogram sum/count,
 running/waiting gauges and token-usage gauge map to the shared numeric
-contract. Other absent counters remain unknown. Metric names follow the
+contract. Flare's generated/prefill token counters, active/pending gauges,
+KV page tokens, draft counters, prefix-cache counters and preemptions map to
+the same contract; uptime supplies the up-time line, but Flare publishes no
+start time, so a restart does not begin a new history run. Other absent
+counters remain unknown. Metric names follow the
 [SGLang metrics reference](https://docs.sglang.io/docs/references/production_metrics)
 and its [collector](https://github.com/sgl-project/sglang/blob/main/python/sglang/srt/observability/metrics_collector.py).
-Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/).
+Launch defaults follow the [vLLM serve reference](https://docs.vllm.ai/en/stable/cli/serve/)
+and Flare's `flare run --help`.
+
+The HTTP client sends `Accept: text/plain` only for `/metrics`; model-list
+and runtime-status reads request JSON. The Flare parser also handles JSON
+metric objects and Helios snapshots through the same series-to-short-name
+mapping. Snapshot KV page counts are multiplied by `page_tokens`; missing
+or nonnumeric fields remain unknown. A response with no usable Flare
+series publishes `metrics_problem` and displays **Metrics unavailable**
+instead of silently leaving the card's figures blank. The allowed hosts,
+exact read paths, response bounds and redirect refusal are unchanged.
 
 The agent unit preserves its shared `/run/sparkring` directory across
 stop/start, including package upgrades. Operator quiet files and holder
 records retain their contents and expiry; reboot still clears runtime state.
 
-Offline coverage is in `test_dashboard_unmanaged.py`, `test_dashboard_ring_observation.py` and
-`test_dashboard_charts.py`: both engines, one through eleven Sparks,
-non-contiguous membership, mixed parallel dimensions, incomplete groups,
-stale/stopped records, ownership, bounds, secret exclusion, restricted reads,
-quiet mode and in-place browser updates. These tests do not qualify live
-Docker, SSH latency, GPU serving or recovery on Spark hardware.
+Offline coverage is in `test_dashboard_unmanaged.py`, `test_flare_dashboard.py`,
+`test_dashboard_ring_observation.py` and `test_dashboard_charts.py`: both
+engines, Flare's Orbit/manual/default launch shapes, one through eleven
+Sparks, non-contiguous membership, mixed parallel dimensions, incomplete
+groups, missing heads, stale/stopped records, ownership, bounds, secret
+exclusion, restricted reads, quiet mode and in-place browser updates. These
+tests do not qualify live Docker, SSH latency, GPU serving or recovery on
+Spark hardware.
 
 The initial history response contains raw `counters` and optional
 `plugin_counters` envelopes for replay at their `observed_at` time.

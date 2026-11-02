@@ -434,8 +434,8 @@ const clip = (s, n) => s && s.length > n ? s.slice(0, n - 1).replace(/[-_.]+$/, 
 const PALETTE = ["var(--g1)", "var(--g2)", "var(--g3)", "var(--g4)"];
 const JOB_COLOR = "var(--muted)";
 const gcolor = (i) => PALETTE[(i || 0) % PALETTE.length];
-const memberColor = m => m.unmanaged || m.gpu_job ? JOB_COLOR : m.external && m.kind === "flare" ? "var(--flare)" : gcolor(m.arc?.color);
-const isFlare = m => !!(m && m.external && m.kind === "flare");
+const isFlare = m => !!(m && ((m.external && m.kind === "flare") || (m.unmanaged && (m.flare || m.launch?.engine === "flare"))));
+const memberColor = m => isFlare(m) ? "var(--flare)" : m.unmanaged || m.gpu_job ? JOB_COLOR : gcolor(m.arc?.color);
 const FLAME_PATH = "M12 2c.5 4.2-5 6.6-5 11.4a5 5 0 0 0 10 0c0-2.5-1.3-4.1-2.3-5.2-.2 1.7-1.1 2.8-2 2.8-1.2 0-1.8-1.2-1.3-2.6C12.8 6.6 12.3 4.2 12 2z";
 const FLAME = `<svg class="flame" viewBox="0 0 24 24" aria-hidden="true"><path d="${FLAME_PATH}"/></svg>`;
 // Folded cards, by member id; kept in this browser only.
@@ -1240,14 +1240,40 @@ function logsPanel(s) {
 }
 
 function unmanagedFacts(s) {
-  const f = s.launch || {};
+  const f = s.launch || {}, flare = isFlare(s);
+  // A fact the page could not read is left out, never named, as the Spark details are:
+  // a GPU compute job shows the container's identity alone, and a Flare process lists
+  // only the rank, rendezvous, served name and API its launch declared.
+  const known = v => has(v) && v !== "" && String(v).toLowerCase() !== "unknown";
+  const tell = (...parts) => parts.filter(Boolean).join(" · ");
+  const rendezvous = c => !known(c.master_addr) ? (known(c.master_port) ? "master port " + esc(c.master_port) : "")
+    : "master " + esc(c.master_addr) + (known(c.master_port) ? ":" + esc(c.master_port) : "");
+  const api = c => c.headless ? "headless" : !known(c.api_port) ? ""
+    : known(c.api_bind) ? "API " + esc(c.api_bind) + ":" + esc(c.api_port) : "API port " + esc(c.api_port);
+  const rank = c => known(c.node_rank) ? "node rank " + esc(c.node_rank) : "";
+  const lines = c => {
+    const identity = tell(`position ${c.position}: ${esc(c.name)}`,
+                          flare ? "flare process" : known(c.image) ? esc(c.image) : "",
+                          known(c.image_id) ? esc(c.image_id) : "");
+    if (flare) {
+      return [identity, tell("engine flare", known(c.served_model) ? "served name " + esc(c.served_model) : "", rank(c)),
+              tell(rendezvous(c), api(c))];
+    }
+    return s.gpu_job ? [identity] : [identity,
+      tell(known(c.engine) ? esc(c.engine) : "", known(c.served_model) ? "served name " + esc(c.served_model) : "",
+           rank(c), known(c.nnodes) ? `${esc(c.nnodes)} node${c.nnodes === 1 ? "" : "s"}` : ""),
+      tell(esc(parallelism(c)), rendezvous(c), api(c))];
+  };
+  const summary = s.gpu_job ? "" : flare
+    ? tell(esc(s.layout.label), "flare process", known(f.served_model) ? esc(f.served_model) : "")
+    : tell(esc(s.layout.label), known(f.engine) ? esc(f.engine) : "",
+           known(f.image_id) ? "image " + esc(f.image_id) : "");
   return `<p class="down-note">${esc(s.ownership_label)}</p>
     ${s.group_note ? `<p class="down-note">${esc(s.group_note)}</p>` : ""}
-    ${s.gpu_job ? "" : `<p>${esc(s.layout.label)} · ${esc(f.engine || "unknown")} · image ${esc(f.image_id || "unknown")}</p>`}
-    <details class="launch-facts"><summary>Container launch facts and install records</summary>
-    ${(s.containers || []).map(c => `<p>position ${c.position}: ${esc(c.name)} · ${esc(c.image)} · ${esc(c.image_id || "unknown")}${s.gpu_job ? "" : `<br>
-      ${esc(c.engine || "unknown")} · served name ${esc(c.served_model || "unknown")} · node rank ${c.node_rank ?? "?"} · ${c.nnodes ?? "?"} nodes<br>
-      ${esc(parallelism(c))} · master ${esc(c.master_addr || "unknown")}:${c.master_port ?? "?"} · ${c.headless ? "headless" : "API port " + (c.api_port ?? "unknown")}`}</p>`).join("")}
+    ${s.api_local ? `<p class="down-note">The API is bound to loopback on the head Spark, so this page cannot read live counters. Start it with <code>--host 0.0.0.0</code> to show them.</p>` : ""}
+    ${summary ? `<p>${summary}</p>` : ""}
+    <details class="launch-facts"><summary>${flare ? "Process" : "Container"} launch facts and install records</summary>
+    ${(s.containers || []).map(c => `<p>${lines(c).filter(Boolean).join("<br>")}</p>`).join("")}
     ${(s.stopped_records || []).map(r => `<p>Stopped install record: ${esc(r.id)} · ${esc(r.model)} · ${esc(positionText(r.positions))}</p>`).join("")}
     </details>`;
 }
@@ -1296,15 +1322,17 @@ function card(s, now) {
   const thinking = s.thinking ? `<div class="thinking muted">Thinking: ${esc(s.thinking)}</div>` : "";
   const modelText = s.name === s.model && !s.gpu_job ? (serving ? "" : `<span class="model muted">Last served: same model</span>`) : `<span class="model">${model}</span>`;
   const open = !folded.has(s.id);
-  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}${open ? "" : " collapsed"}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
+  return `<article class="card st-${esc(st)}${serving ? "" : " inactive"}${gc ? " ringed" : ""}${s.unmanaged || s.gpu_job ? " outline" : ""}${isFlare(s) ? " flare" : ""}${open ? "" : " collapsed"}" data-member="${esc(s.id)}"${gc ? ` style="--gc:${gc}"` : ""}>
     <div class="head">
       ${foldButton(s.id, s.name)}<span class="name"><span class="${arc ? "run" : ""}">${esc(s.name)}</span></span>
       ${serving ? modelText + (sizes ? `<span class="tag">${esc(sizes)}</span>` : "") : ""}
       ${tags.join("")}
       <span class="state"><span class="pill p-${esc(st)}">${esc(s.startup ? startupLabel(s) : s.state_label)}</span><span class="since" data-age="${s.state_since || 0}" data-prefix="for ">${esc(since)}</span></span>
+      ${s.metrics_problem ? `<span class="tag warn" title="${esc(s.metrics_problem)}">Metrics unavailable</span>` : ""}
       ${!serving ? modelText : ""}${endpoint}${start}${recoveryChip}
     </div>${open ? `
     ${startupDetails(s)}
+    ${s.metrics_problem ? `<p class="down-note" role="status">${esc(s.metrics_problem)}</p>` : ""}
     ${serving ? thinking + tiles(s) + `<div class="secondary muted">${one(s.live?.steps_ps)} steps/s · ${acceptancePct(s.live?.acceptance)} draft acceptance${has(s.live?.accepted_per_step) ? ` · ${acceptedStep(s.live.accepted_per_step)} accepted tok/step` : ""} · ${sampleSource(s, now)}</div>` + charts(s) + sparks(s) : ""}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${sub}</div>
@@ -1347,9 +1375,11 @@ function externalCard(e, now) {
       ${serving ? `<span class="model">${model}</span>` : ""}
       <span class="tag${flare ? " flare" : ""}">${flare ? FLAME : ""}${esc(kind)}</span>${where}
       <span class="state"><span class="pill p-${esc(st)}">${esc(e.state_label || "Checking")}</span><span class="since" data-age="${e.state_since || 0}">${e.state_since ? "for " + dur(now - e.state_since) : ""}</span></span>
+      ${e.metrics_problem ? `<span class="tag warn" title="${esc(e.metrics_problem)}">Metrics unavailable</span>` : ""}
       ${!serving ? `<span class="model">${model}</span>` : ""}${endpoint}
     </div>${open ? `
     <div class="sub">${spark}${esc(kind)} at <span class="mono">${esc(e.host)}:${esc(e.port)}</span>${has(e.max_model_len) ? ` · ${int(e.max_model_len)}-token context` : ""}</div>
+    ${e.metrics_problem ? `<p class="down-note" role="status">${esc(e.metrics_problem)}</p>` : ""}
     ${tiles}${line}
     <details class="card-details"><summary>Details</summary><div class="detail-body">
       <div class="sub">${esc(kind)} at ${esc(e.host)}:${esc(e.port)}${e.root ? ` · ${esc(e.root)}` : ""}${e.metrics_url ? ` · metrics ${esc(e.metrics_url)}` : ""}</div>
