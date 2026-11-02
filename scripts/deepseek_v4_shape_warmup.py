@@ -7,11 +7,11 @@ program walks the shape buckets a DeepSeek-V4-Flash deployment can schedule
 after its API reports ready and before the launcher hands the endpoint to
 clients.
 
-The bucket rule is provisional. Measurements on an earlier DeepSeek-V4-Flash
-serving image found the DSpark input-preparation kernel keyed by
+The bucket rule is unconfirmed on any pinned image. A measurement on a serving
+image this repository does not pin (its digest was not recorded) found the
+DSpark input-preparation kernel keyed by
 ``min(block_size, next_pow2(scheduled_tokens + num_speculative_tokens + 1))``,
-not by request concurrency; those measurements used a different serving image
-than this repository pins. The sweep covers that rule, and the calibration
+not by request concurrency. The sweep covers that rule, and the calibration
 procedure in ``docs/operations/deepseek-0731.md`` establishes the actual keys
 on a deployment before it enables the phase by default.
 

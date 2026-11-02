@@ -1732,8 +1732,8 @@ def execute(args):
                                      unfinished=installer.unfinished, placement=placement, displaced=displaced,
                                      cancelled=lambda boundary: cancel.check(state_root, operation_id, boundary))
         finally:
-            # Every step a cancel names is behind this run either way, so its
-            # request must not stand for a later installation.
+            # Every step a cancel can name belongs to this run, so the request
+            # must not stand for a later installation.
             cancel.clear(state_root, operation_id)
         # Records the deployment's choice (on unless --no-auto-recover, also
         # after sparkring recover off), resets failures and restarts, records
@@ -1864,9 +1864,8 @@ def main(argv=None):
     args.serving_text = {name: value for name, value in vars(sizes).items() if value is not None}
     colour.set_mode(args.color)
     if args.cancel:
-        # Ending an installation changes nothing an operator holds: the request
-        # takes no installation lock and no hold override, and the command
-        # carries no other option.
+        # The request takes no installation lock and no hold override, and the
+        # command accepts no other option.
         used = sorted(name for name, value in vars(args).items()
                       if name not in ("cancel", "json", "color") and value not in (None, False, {}, []))
         if used:
