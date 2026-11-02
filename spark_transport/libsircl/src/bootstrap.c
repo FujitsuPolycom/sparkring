@@ -21,8 +21,10 @@
 #include <unistd.h>
 
 enum { OK = 0, SYSTEM = 2, ARGUMENT = 4, USAGE = 5, REMOTE = 6, TIMEOUT = 8 };
+/* HELLO_LIMIT_MS: a connection that has not sent its whole hello this long after the root accepted it is
+ * dropped, so idle connections cannot hold the root's MAX_PENDING slots until the join window ends. */
 enum { ID_SIZE = 128, HELLO_SIZE = 136, MAX_RANKS = 8, MAX_PENDING = 32,
-       MAX_ROOTS = 64, FRAME_HEADER = 16, MAX_FRAME = 1 << 20 };
+       MAX_ROOTS = 64, FRAME_HEADER = 16, MAX_FRAME = 1 << 20, HELLO_LIMIT_MS = 1000 };
 enum { VERSION_OFF = 8, IP_OFF = 12, PORT_OFF = 16,
        NONCE_OFF = 20, HASH_OFF = 36, RESERVED_OFF = 68 };
 static const unsigned char id_magic[8] = {'S','C','C','L','B','O','0','1'};
@@ -35,10 +37,15 @@ static const unsigned char frame_magic[4] = {'S','C','F','1'};
 static const unsigned char gather_magic[4] = {'S','C','R','1'};
 static _Thread_local char last_error[192];
 
-struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; };
+/* `failed`: an all-gather on this handle failed after it began sending, so this rank's round count may differ
+ * from the broker's; every later all-gather fails at once instead of matching another round's records.
+ * `lock` is held across each all-gather round, so rounds that threads start on one handle at once run one
+ * after another instead of interleaving their frames on the socket. */
+struct sccl_bootstrap { int fd; int nranks; int rank; uint32_t round; int failed; pthread_mutex_t lock; };
 struct peer {
   int fd;
   int rank;
+  int64_t accepted;  /* CLOCK_MONOTONIC ms when the root accepted it */
   size_t used;
   unsigned char hello[HELLO_SIZE];
   unsigned char frame[FRAME_HEADER];
@@ -108,16 +115,14 @@ static int timeout_ms(int *out) {
 
 /* Deadline of one all-gather round (LIBSIRCL_SETUP_TIMEOUT_MS, 1 ms to 1 h;
  * default 600 s, the startup wait regime: ranks may lag while they allocate,
- * register and connect). */
+ * register and connect). -1 for a value that is not an integer in range. */
 static int frame_deadline_ms(void) {
   const char *value = sccl_env("LIBSIRCL_SETUP_TIMEOUT_MS");
   char *end;
-  if (value && *value) {
-    errno = 0;
-    long parsed = strtol(value, &end, 10);
-    if (!errno && !*end && parsed >= 1 && parsed <= 3600000) return (int)parsed;
-  }
-  return 600000;
+  if (!value || !*value) return 600000;
+  errno = 0;
+  long parsed = strtol(value, &end, 10);
+  return !errno && !*end && parsed >= 1 && parsed <= 3600000 ? (int)parsed : -1;
 }
 
 static int hex_digit(unsigned char c) {
@@ -153,6 +158,9 @@ static uint32_t get32(const unsigned char *p) {
          ((uint32_t)p[2] << 8) | (uint32_t)p[3];
 }
 
+/* Every descriptor the bootstrap creates is close-on-exec from its creation (SOCK_CLOEXEC, accept4,
+ * pipe2), so a concurrent fork and exec in another thread cannot inherit it and keep a broker connection
+ * open after this process's rank left. configure_fd sets the flags again for descriptors of any origin. */
 static int configure_fd(int fd) {
   int flags = fcntl(fd, F_GETFL, 0);
   if (flags < 0 || fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0 ||
@@ -301,9 +309,11 @@ static int finish_round(struct root *r) {
     at += 4 + by_rank[k]->payload_bytes;
   }
   int result = 0;
-  int64_t deadline = now_ms() + frame_deadline_ms();
+  int limit = frame_deadline_ms();
+  int64_t deadline = now_ms() + (limit > 0 ? limit : 600000);
   for (int k = 0; k < r->nranks; ++k) {
-    if (send_all(by_rank[k]->fd, answer, at, deadline, NULL) != OK) result = -1;
+    /* Bounded by the round's deadline, and given up at once when the library unloads (`stopped`). */
+    if (send_all(by_rank[k]->fd, answer, at, deadline, &r->stopped) != OK) result = -1;
     free(by_rank[k]->payload);
     by_rank[k]->payload = NULL;
     by_rank[k]->payload_bytes = 0; by_rank[k]->payload_used = 0;
@@ -332,7 +342,7 @@ static int accept_hello(struct root *r, int index) {
 static void accept_connections(struct root *r) {
   /* Cap each batch so connections cannot starve the absolute deadline. */
   for (int attempt = 0; attempt < MAX_PENDING; ++attempt) {
-    int fd = accept(r->listen_fd, NULL, NULL);
+    int fd = accept4(r->listen_fd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
     if (fd < 0) { if (errno == EINTR) continue; return; }
     if (configure_fd(fd) != 0) { close(fd); continue; }
     int slot;
@@ -342,6 +352,7 @@ static void accept_connections(struct root *r) {
     r->peers[slot].fd = fd;
     r->peers[slot].rank = -1;
     r->peers[slot].used = 0;
+    r->peers[slot].accepted = now_ms();
   }
 }
 
@@ -365,6 +376,20 @@ static void *root_thread(void *arg) {
     if (ready && !r->joined) break;
     int delay = ready ? 100 : remaining_ms(r->deadline);
     if (!ready && !delay) break;
+    /* Pending connections without a whole hello within HELLO_LIMIT_MS are dropped; wake for the next. */
+    if (!ready) {
+      int64_t now = now_ms();
+      for (int i = 0; i < MAX_PENDING; ++i) {
+        struct peer *p = &r->peers[i];
+        if (p->fd < 0 || p->rank >= 0) continue;
+        int64_t left = p->accepted + HELLO_LIMIT_MS - now;
+        if (left <= 0) {
+          drop_peer(r, i, -1);
+          continue;
+        }
+        if (left < delay) delay = (int)left;
+      }
+    }
     int rc = poll(pfds, (nfds_t)n, delay);
     if (rc < 0) { if (errno == EINTR) continue; break; }
     for (int j = 0; j < n; ++j) {
@@ -489,22 +514,29 @@ static int lan_configured(void) {
   return 0;
 }
 
-/* Interface list match: comma-separated prefixes, "=name" for an exact name,
- * "^prefix" entries exclude. */
-static int interface_matches(const char *list, const char *name) {
+/* Interface list match, in NCCL_SOCKET_IFNAME's syntax: comma-separated entries; "prefix" selects the
+ * interfaces whose name starts with it and "=name" exactly that one; "^prefix" and "^=name" exclude them.
+ * Without any selecting entry every interface not excluded matches except a loopback interface, which only
+ * a selecting entry chooses (a remote rank cannot reach the root's loopback address). */
+static int interface_matches(const char *list, const char *name, int loopback) {
   char copy[256];
   snprintf(copy, sizeof copy, "%s", list);
   int included = 0, any_include = 0;
   for (char *save = NULL, *item = strtok_r(copy, ",", &save); item; item = strtok_r(NULL, ",", &save)) {
     while (*item == ' ') ++item;
-    if (*item == '^') {
-      if (!strncmp(name, item + 1, strlen(item + 1))) return 0;
+    int exclude = *item == '^';
+    if (exclude) ++item;
+    int exact = *item == '=';
+    if (exact) ++item;
+    int match = exact ? !strcmp(name, item) : !strncmp(name, item, strlen(item));
+    if (exclude) {
+      if (match) return 0;
       continue;
     }
     any_include = 1;
-    if (*item == '=' ? !strcmp(name, item + 1) : !strncmp(name, item, strlen(item))) included = 1;
+    if (match) included = 1;
   }
-  return any_include ? included : 1;
+  return any_include ? included : !loopback;
 }
 
 /* The IPv4 address a new root listens on and advertises: SIRCL_BOOTSTRAP_ADDR,
@@ -518,15 +550,19 @@ static int root_address(struct in_addr *out) {
       return error_result(ARGUMENT, "SIRCL_BOOTSTRAP_ADDR must be an IPv4 address");
     return OK;
   }
-  const char *list = sccl_env("SIRCL_BOOTSTRAP_IFNAME");
-  if (!list || !*list) list = sccl_env("NCCL_SOCKET_IFNAME");
+  const char *name = "SIRCL_BOOTSTRAP_IFNAME", *list = sccl_env(name);
+  if (!list || !*list) list = sccl_env(name = "NCCL_SOCKET_IFNAME");
   if (!list || !*list) return OK;
+  if (strlen(list) > 255) {
+    (void)snprintf(last_error, sizeof last_error, "%s is longer than 255 characters", name);
+    return ARGUMENT;
+  }
   struct ifaddrs *all = NULL;
   if (getifaddrs(&all) != 0) return error_result(SYSTEM, "cannot list network interfaces");
   int found = 0;
   for (struct ifaddrs *a = all; a && !found; a = a->ifa_next) {
     if (!a->ifa_addr || a->ifa_addr->sa_family != AF_INET || !(a->ifa_flags & IFF_UP)) continue;
-    if (!interface_matches(list, a->ifa_name)) continue;
+    if (!interface_matches(list, a->ifa_name, (a->ifa_flags & IFF_LOOPBACK) != 0)) continue;
     *out = ((struct sockaddr_in *)a->ifa_addr)->sin_addr;
     found = 1;
   }
@@ -582,7 +618,7 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   memcpy(r->id + IP_OFF, &bind_address.s_addr, 4);
   memcpy(r->id + HASH_OFF, hash, 32);
   if (random_nonce(r->id + NONCE_OFF) != 0) goto failed;
-  r->listen_fd = socket(AF_INET, SOCK_STREAM, 0);
+  r->listen_fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (r->listen_fd < 0 || configure_fd(r->listen_fd) != 0) goto failed;
   struct sockaddr_in address;
   memset(&address, 0, sizeof address);
@@ -594,7 +630,7 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   if (getsockname(r->listen_fd, (struct sockaddr *)&address, &length) < 0)
     goto failed;
   memcpy(r->id + PORT_OFF, &address.sin_port, 2);
-  if (pipe(r->wake) != 0 || configure_fd(r->wake[0]) != 0 ||
+  if (pipe2(r->wake, O_CLOEXEC | O_NONBLOCK) != 0 || configure_fd(r->wake[0]) != 0 ||
       configure_fd(r->wake[1]) != 0) goto failed;
   int64_t now = now_ms();
   if (now < 0) goto failed;
@@ -604,7 +640,9 @@ int sccl_bootstrap_id(unsigned char id[ID_SIZE]) {
   for (struct root *entry = roots; entry; entry = entry->next) ++count;
   if (count >= MAX_ROOTS) {
     pthread_mutex_unlock(&roots_lock);
-    result = error_result(USAGE, "at most 64 active bootstrap IDs are supported");
+    /* At most 191 characters: the error text buffer. */
+    result = error_result(USAGE, "this process already holds 64 bootstrap roots, the limit: an id keeps its root until "
+                                 "its communicator is destroyed on every rank or its join window ends");
     goto cleanup;
   }
   if (pthread_create(&r->thread, NULL, root_thread, r) != 0) {
@@ -662,7 +700,7 @@ int sccl_bootstrap_join_cancel(const unsigned char id[ID_SIZE], int nranks, int 
   int64_t now = now_ms();
   if (now < 0) return error_result(SYSTEM, "cannot read monotonic clock");
   int64_t deadline = now + timeout;
-  fd = socket(AF_INET, SOCK_STREAM, 0);
+  fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
   if (fd < 0 || configure_fd(fd) != 0) { result = SYSTEM; goto failed; }
   struct sockaddr_in address;
   memset(&address, 0, sizeof address);
@@ -698,6 +736,8 @@ int sccl_bootstrap_join_cancel(const unsigned char id[ID_SIZE], int nranks, int 
   handle->nranks = nranks;
   handle->rank = rank;
   handle->round = 0;
+  handle->failed = 0;
+  pthread_mutex_init(&handle->lock, NULL);
   *out = handle;
   return OK;
 failed:
@@ -708,7 +748,8 @@ failed:
     case TIMEOUT: return error_result(result, "bootstrap timed out waiting for every rank");
     case USAGE: return error_result(result, "bootstrap rejected a duplicate rank or mismatched world size");
     case ARGUMENT: return error_result(result, "bootstrap rejected invalid rank arguments");
-    case REMOTE: return error_result(result, "bootstrap endpoint rejected the ID or disconnected");
+    case REMOTE: return error_result(result, "bootstrap root rejected the ID or disconnected (its join window, "
+                                             "SIRCL_BOOTSTRAP_TIMEOUT_MS from ncclGetUniqueId, may have ended)");
     default: return error_result(SYSTEM, "bootstrap socket or allocation failure");
   }
 }
@@ -723,7 +764,11 @@ void sccl_bootstrap_close(sccl_bootstrap *handle) {
     (void)error_result(USAGE, "fork after library use is unsupported; exec is required in the child");
     return;
   }
-  if (handle) { close(handle->fd); free(handle); }
+  if (handle) {
+    close(handle->fd);
+    pthread_mutex_destroy(&handle->lock);
+    free(handle);
+  }
   reap_finished();
 }
 
@@ -737,8 +782,16 @@ int sccl_bootstrap_fd(const sccl_bootstrap *handle) {
 
 int sccl_bootstrap_allgather(sccl_bootstrap *handle, const void *data, uint32_t bytes,
                              void **out, uint32_t *lengths, const atomic_int *cancelled) {
-  return sccl_bootstrap_allgather_within(handle, data, bytes, out, lengths, frame_deadline_ms(), cancelled);
+  int limit = frame_deadline_ms();
+  if (limit < 0) {
+    if (out) *out = NULL;
+    return error_result(ARGUMENT, "LIBSIRCL_SETUP_TIMEOUT_MS must be an integer from 1 to 3600000");
+  }
+  return sccl_bootstrap_allgather_within(handle, data, bytes, out, lengths, limit, cancelled);
 }
+
+static int allgather_locked(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
+                            uint32_t *lengths, int timeout_ms, const atomic_int *cancelled);
 
 int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
                                     uint32_t *lengths, int timeout_ms, const atomic_int *cancelled) {
@@ -747,6 +800,17 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
     return error_result(USAGE, "fork after library use is unsupported; exec is required in the child");
   if (!handle || !out || !lengths || (bytes && !data) || bytes > MAX_FRAME || timeout_ms < 1)
     return error_result(ARGUMENT, "all-gather needs a handle, outputs, at most 1 MiB per rank and a timeout");
+  pthread_mutex_lock(&handle->lock);
+  int result = allgather_locked(handle, data, bytes, out, lengths, timeout_ms, cancelled);
+  pthread_mutex_unlock(&handle->lock);
+  return result;
+}
+
+/* One all-gather round with the handle's lock held; its deadline counts from the moment the lock is held. */
+static int allgather_locked(sccl_bootstrap *handle, const void *data, uint32_t bytes, void **out,
+                            uint32_t *lengths, int timeout_ms, const atomic_int *cancelled) {
+  if (handle->failed)
+    return error_result(REMOTE, "an earlier all-gather on this bootstrap failed, so its rounds are out of step");
   int64_t deadline = now_ms() + timeout_ms;
   unsigned char header[FRAME_HEADER];
   memcpy(header, frame_magic, 4);
@@ -762,7 +826,10 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
       get32(header + 8) != (uint32_t)handle->nranks ||
       total > (uint32_t)handle->nranks * (4u + MAX_FRAME)) { result = REMOTE; goto failed; }
   unsigned char *body = malloc(total ? total : 1);
-  if (!body) return error_result(SYSTEM, "cannot allocate the all-gather answer");
+  if (!body) {
+    handle->failed = 1;
+    return error_result(SYSTEM, "cannot allocate the all-gather answer");
+  }
   result = recv_all(handle->fd, body, total, deadline, cancelled);
   if (result != OK) { free(body); goto failed; }
   /* Repack as the contributions back to back, without their length words. */
@@ -780,6 +847,7 @@ int sccl_bootstrap_allgather_within(sccl_bootstrap *handle, const void *data, ui
   *out = body;
   return OK;
 failed:
+  handle->failed = 1;
   switch (result) {
     case TIMEOUT: return error_result(TIMEOUT, "bootstrap all-gather timed out waiting for every rank");
     case USAGE: return error_result(USAGE, "bootstrap all-gather cancelled");

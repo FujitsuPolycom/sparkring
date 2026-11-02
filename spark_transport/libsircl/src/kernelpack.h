@@ -122,9 +122,14 @@ typedef struct {
 } sccl_p2p_args;
 _Static_assert(sizeof(sccl_p2p_args) == 120, "sccl_p2p_args must match the point-to-point pack's P2PParams");
 
-/* Load every pack into `ctx` once (pushing it current for the load); later
- * calls for the same context return at once. 0 on success. */
+/* Load every pack into `ctx` once (pushing it current for the load); later calls for the same context
+ * return at once. Each successful call holds a reference on the context's entry, which sccl_kp_release
+ * drops; at most 16 contexts hold entries at once. 0 on success. */
 int sccl_kp_load(sccl_CUcontext ctx);
+/* Drop a reference sccl_kp_load took. The last one removes the context's entry, so a later context at the
+ * same address loads the packs afresh; with `unload` the modules are unloaded first (the context still
+ * exists and no kernel of the packs runs in it), without it they are left to the context's destruction. */
+void sccl_kp_release(sccl_CUcontext ctx, int unload);
 /* The entry of (kind, dtype, world) in a context the pack is loaded in. */
 int sccl_kp_function(sccl_CUcontext ctx, int kind, int dtype, int world, sccl_CUfunction *out);
 /* One launch of `grid` blocks of `threads` threads on `stream`, from the
@@ -147,8 +152,8 @@ sccl_CUresult sccl_kp_launch_chain(sccl_CUfunction function, const sccl_chain_ar
 /* The link collective entry of a kind (SCCL_LINK_*, SCCL_RING_*), dtype and unroll (1-8). */
 int sccl_kp_link_function(sccl_CUcontext ctx, int kind, int dtype, int unroll, sccl_CUfunction *out);
 /* The ring all-reduce whose relay stores its result to link 3's slot, then copies the slot to the output
- * (sircl_ring_reduce_two_pass_<dtype>_u<U>): the same protocol and bytes as SCCL_RING_REDUCE's one-pass
- * entry; LIBSIRCL_RING_REDUCE_PASSES=2 selects it, for comparisons. */
+ * (sircl_ring_reduce_two_pass_<dtype>_u<U>): the same protocol as SCCL_RING_REDUCE's one-pass entry. The
+ * library launches it by default (LIBSIRCL_RING_REDUCE_PASSES=2); the one-pass entry is research-only. */
 int sccl_kp_ring_reduce_two_pass_function(sccl_CUcontext ctx, int dtype, int unroll, sccl_CUfunction *out);
 /* The pair exchange (sircl_ring_exchange_u<U>): on the wire the ring all-gather of a ring of two, carrying
  * one block each way (input to the peer, the peer's block to output + peer * stride, the local block from

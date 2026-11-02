@@ -1,0 +1,35 @@
+# The vendored SIRCL native sources (src/transport/sircl_roce_proxy.c and sircl_p2p_proxy.c) must be the
+# byte-identical LF copies whose SHA-256 is recorded beside them, with SIRCL change LF's local feature words.
+# CMakeLists.txt includes this file at configure time and runs it as a script (cmake -P, with SOURCE_DIR and
+# P2P_FEATURES set) before every build of the library, as the Makefile's roce_source.ok and p2p_source.ok
+# rules do, so a copy changed after configuration fails the build.
+if(NOT SOURCE_DIR)
+  set(SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
+endif()
+if(NOT DEFINED P2P_FEATURES)
+  set(P2P_FEATURES ${LIBSIRCL_P2P_FEATURES})
+endif()
+foreach(name roce p2p)
+  set(source ${SOURCE_DIR}/src/transport/sircl_${name}_proxy.c)
+  file(SHA256 ${source} found)
+  file(STRINGS ${source}.sha256 recorded LIMIT_COUNT 1)
+  if(NOT found STREQUAL recorded)
+    message(FATAL_ERROR "src/transport/sircl_${name}_proxy.c differs from the vendored SIRCL source recorded in its .sha256")
+  endif()
+  # file(STRINGS) drops carriage returns, so the raw contents are searched.
+  file(READ ${source} contents)
+  string(FIND "${contents}" "\r" carriage_return)
+  if(NOT carriage_return EQUAL -1)
+    message(FATAL_ERROR "src/transport/sircl_${name}_proxy.c has CRLF line endings; vendor SIRCL's LF bytes")
+  endif()
+endforeach()
+file(STRINGS ${SOURCE_DIR}/src/transport/sircl_roce_proxy.c roce_features REGEX "roce_local_features")
+if(NOT roce_features)
+  message(FATAL_ERROR "src/transport/sircl_roce_proxy.c predates SIRCL change LF (no roce_local_features)")
+endif()
+if(P2P_FEATURES)
+  file(STRINGS ${SOURCE_DIR}/src/transport/sircl_p2p_proxy.c p2p_features REGEX "p2p_local_features")
+  if(NOT p2p_features)
+    message(FATAL_ERROR "LIBSIRCL_P2P_FEATURES: src/transport/sircl_p2p_proxy.c predates SIRCL change LF (no p2p_local_features)")
+  endif()
+endif()

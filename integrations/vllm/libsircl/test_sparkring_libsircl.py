@@ -2,6 +2,8 @@
 import hashlib
 import importlib.util
 import os
+import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -82,10 +84,50 @@ def test_a_library_that_is_not_libsircl_or_lacks_pyncclss_functions_fails_instea
         plugin.check_binding("/opt/sparkring/libsircl/lib/libsircl.so.0.6.0", load=load, functions=lambda: functions)
 
 
-def test_outside_vllm_only_the_identity_is_checked():
-    assert plugin.pynccl_functions() is None or isinstance(plugin.pynccl_functions(), list)
-    info = plugin.check_binding("/lib", load=lambda path: Library(functions=()), functions=lambda: None)
+WRAPPER = "vllm.distributed.device_communicators.pynccl_wrapper"
+
+
+def test_outside_vllm_only_the_identity_is_checked(monkeypatch):
+    monkeypatch.delitem(sys.modules, "vllm", raising=False)
+    monkeypatch.setitem(sys.modules, WRAPPER, None)
+    monkeypatch.setattr(plugin.importlib.util, "find_spec", lambda name: None)
+    assert plugin.pynccl_functions() is None
+    info = plugin.check_binding("/lib", load=lambda path: Library(functions=()), functions=plugin.pynccl_functions)
     assert info["library"] == "libsircl"
+
+
+def test_an_importable_vllm_whose_pynccl_wrapper_fails_to_import_is_refused(monkeypatch):
+    # The functions PyNccl binds cannot be listed, so the binding check must not pass with nothing to check.
+    monkeypatch.setitem(sys.modules, "vllm", types.ModuleType("vllm"))
+    monkeypatch.setitem(sys.modules, WRAPPER, None)
+    with pytest.raises(plugin.LibsirclSelectionError, match="PyNccl wrapper is not"):
+        plugin.pynccl_functions()
+    with pytest.raises(plugin.LibsirclSelectionError, match="PyNccl wrapper is not"):
+        plugin.check_binding("/lib", load=lambda path: Library(), functions=plugin.pynccl_functions)
+
+
+def test_a_library_replaced_after_its_check_is_refused(tmp_path):
+    path, digest = library(tmp_path)
+    assert plugin.selected({plugin.LIBRARY: str(path), plugin.DIGEST: digest}) == str(path)
+    plugin.identical(str(path))
+    other = tmp_path / "other.so"
+    other.write_bytes(b"ELF something else")
+    os.replace(other, path)
+    with pytest.raises(plugin.LibsirclSelectionError, match="replaced after its SHA-256 was checked"):
+        plugin.identical(str(path))
+
+
+def test_a_path_through_a_linked_directory_is_not_the_library(tmp_path):
+    real = tmp_path / "real"
+    real.mkdir()
+    path, digest = library(real)
+    linked = tmp_path / "linked"
+    try:
+        linked.symlink_to(real, target_is_directory=True)
+    except OSError:
+        pytest.skip("this host cannot create symbolic links")
+    with pytest.raises(plugin.LibsirclSelectionError, match="not its own real path"):
+        plugin.selected({plugin.LIBRARY: str(linked / path.name), plugin.DIGEST: digest})
 
 
 def test_a_symbolic_link_is_not_the_library(tmp_path):
@@ -104,3 +146,47 @@ def test_the_entry_point_names_the_register_function():
     assert (group, name) == ("vllm.general_plugins", "libsircl")
     module, _, function = value.partition(":")
     assert module == SOURCE.stem and callable(getattr(plugin, function))
+
+
+class FrozenEnvs(types.ModuleType):
+    """A ``vllm.envs`` whose values were read before the plugin ran."""
+
+    def __init__(self, value):
+        super().__init__("vllm.envs")
+        self.VLLM_NCCL_SO_PATH = value
+
+
+class LiveEnvs(types.ModuleType):
+    """A ``vllm.envs`` that reads the environment at each access, as vLLM does without its cache."""
+
+    def __init__(self):
+        super().__init__("vllm.envs")
+
+    def __getattr__(self, name):
+        if name == plugin.TARGET:
+            return os.environ.get(name)
+        raise AttributeError(name)
+
+
+@pytest.mark.parametrize("envs, message", [
+    (LiveEnvs(), None),
+    (FrozenEnvs("/opt/sparkring/toolchain/nccl/lib/libnccl.so.2"), "vLLM resolves VLLM_NCCL_SO_PATH to"),
+    (types.ModuleType("vllm.envs"), "vllm.envs has no VLLM_NCCL_SO_PATH"),
+])
+def test_register_confirms_vllm_resolves_the_library(tmp_path, monkeypatch, envs, message):
+    path, digest = library(tmp_path)
+    monkeypatch.setenv(plugin.LIBRARY, str(path))
+    monkeypatch.setenv(plugin.DIGEST, digest)
+    monkeypatch.setenv(plugin.TARGET, "/opt/sparkring/toolchain/nccl/lib/libnccl.so.2")
+    monkeypatch.setattr(plugin, "LOADER", lambda name: Library())
+    monkeypatch.setattr(plugin, "pynccl_functions", lambda: ["ncclAllReduce"])
+    package = types.ModuleType("vllm")
+    package.envs = envs
+    monkeypatch.setitem(sys.modules, "vllm", package)
+    monkeypatch.setitem(sys.modules, "vllm.envs", envs)
+    if message is None:
+        plugin.register()
+        assert plugin.resolved_target() == str(path)
+    else:
+        with pytest.raises(plugin.LibsirclSelectionError, match=message):
+            plugin.register()
