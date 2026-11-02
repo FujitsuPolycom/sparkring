@@ -975,3 +975,176 @@ def test_cycle_controller_label_and_name_are_inherited(cycle_env, monkeypatch):
     assert result.returncode == 0, result.stderr
     assert "--name custom-r0" in result.stdout
     assert "--label org.sparkring.launch-id=" + "a" * 32 in result.stdout
+
+
+def _fake_docker(path_prefix: Path) -> None:
+    path_prefix.mkdir()
+    docker = path_prefix / "docker"
+    docker.write_text(
+        """#!/bin/sh
+case "$1 $2" in
+  "image inspect") exit 0 ;;
+  "container inspect") exit 1 ;;
+  "run -d") printf '%s\\n' fake-container-id ;;
+  *) exit 94 ;;
+esac
+""",
+        encoding="utf-8",
+        newline="\n",
+    )
+    docker.chmod(0o755)
+
+
+def _unused_port() -> int:
+    import socket
+
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _append_env(env_file: Path, *assignments: str) -> None:
+    with env_file.open("a", encoding="utf-8", newline="\n") as stream:
+        for assignment in assignments:
+            stream.write(assignment + "\n")
+
+
+@pytest.mark.parametrize(
+    ("launcher", "environment_fixture"),
+    [(LAUNCHER, "pair_env"), (CYCLE_LAUNCHER, "cycle_env")],
+)
+def test_shape_warmup_is_off_by_default(
+    launcher: Path, environment_fixture: str, request: pytest.FixtureRequest
+) -> None:
+    env_file = request.getfixturevalue(environment_fixture)
+    result = _run_launcher(env_file, launcher=launcher)
+    assert result.returncode == 0, result.stderr
+    assert "SHAPE_WARMUP: 0" in result.stdout
+
+
+@pytest.mark.parametrize(
+    ("launcher", "environment_fixture"),
+    [(LAUNCHER, "pair_env"), (CYCLE_LAUNCHER, "cycle_env")],
+)
+def test_shape_warmup_gate_rejects_values_outside_zero_and_one(
+    launcher: Path, environment_fixture: str, request: pytest.FixtureRequest
+) -> None:
+    env_file = request.getfixturevalue(environment_fixture)
+    _append_env(env_file, "SHAPE_WARMUP=2")
+    result = _run_launcher(env_file, launcher=launcher)
+    assert result.returncode == 20
+    assert "SHAPE_WARMUP must be 0 or 1: 2" in result.stderr
+
+
+def test_block_size_comes_from_the_rank_env(pair_env: Path) -> None:
+    _append_env(pair_env, "BLOCK_SIZE=128")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 0, result.stderr
+    assert "BLOCK_SIZE: 128" in result.stdout
+    assert "--block-size 128" in result.stdout
+
+
+def test_enabled_warmup_requires_a_readable_key_file(pair_env: Path) -> None:
+    _append_env(
+        pair_env,
+        "SHAPE_WARMUP=1",
+        "SHAPE_WARMUP_API_KEY_FILE=/nonexistent/api-keys",
+    )
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert "SHAPE_WARMUP_API_KEY_FILE is not readable" in result.stderr
+
+
+def test_enabled_warmup_requires_positive_budgets(pair_env: Path) -> None:
+    _append_env(pair_env, "SHAPE_WARMUP=1", "SHAPE_WARMUP_WAIT_SECONDS=0")
+    result = _run_launcher(pair_env)
+    assert result.returncode == 20
+    assert "SHAPE_WARMUP_WAIT_SECONDS must be greater than zero" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("launcher", "environment_fixture"),
+    [(LAUNCHER, "pair_env"), (CYCLE_LAUNCHER, "cycle_env")],
+)
+def test_run_skips_the_warmup_phase_unless_enabled(
+    launcher: Path,
+    environment_fixture: str,
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+) -> None:
+    env_file = request.getfixturevalue(environment_fixture)
+    bin_dir = tmp_path / "bin"
+    _fake_docker(bin_dir)
+    result = _run_launcher(
+        env_file, mode="--run", launcher=launcher, path_prefix=bin_dir
+    )
+    assert result.returncode == 0, result.stderr
+    assert "fake-container-id" in result.stdout
+    assert "Shape warmup" not in result.stdout
+    assert "request-shape warmup" not in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("launcher", "environment_fixture"),
+    [(LAUNCHER, "pair_env"), (CYCLE_LAUNCHER, "cycle_env")],
+)
+def test_warmup_failure_does_not_fail_the_launch(
+    launcher: Path,
+    environment_fixture: str,
+    request: pytest.FixtureRequest,
+    tmp_path: Path,
+) -> None:
+    env_file = request.getfixturevalue(environment_fixture)
+    _append_env(
+        env_file,
+        "SHAPE_WARMUP=1",
+        f"API_PORT={_unused_port()}",
+        "SHAPE_WARMUP_WAIT_SECONDS=1",
+        "SHAPE_WARMUP_TIMEOUT_SECONDS=1",
+    )
+    bin_dir = tmp_path / "bin"
+    _fake_docker(bin_dir)
+    result = _run_launcher(
+        env_file, mode="--run", launcher=launcher, path_prefix=bin_dir
+    )
+    assert result.returncode == 0, result.stderr
+    assert "warning: request-shape warmup did not complete" in result.stderr
+    assert "shape_warmup" in result.stdout
+
+
+def test_enabled_warmup_receives_the_deployment_values(
+    pair_env: Path, tmp_path: Path
+) -> None:
+    key_file = tmp_path / "api-keys"
+    key_file.write_text("secret-key\n", encoding="utf-8")
+    _append_env(
+        pair_env,
+        "SHAPE_WARMUP=1",
+        f"SHAPE_WARMUP_API_KEY_FILE={_bash_path(key_file)}",
+    )
+    bin_dir = tmp_path / "bin"
+    _fake_docker(bin_dir)
+    recorded = tmp_path / "python3-args"
+    python3 = bin_dir / "python3"
+    python3.write_text(
+        "#!/bin/sh\n"
+        f"printf '%s\\n' \"$@\" > {shlex.quote(_bash_path(recorded))}\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    python3.chmod(0o755)
+
+    result = _run_launcher(
+        pair_env, mode="--run", launcher=LAUNCHER, path_prefix=bin_dir
+    )
+
+    assert result.returncode == 0, result.stderr
+    arguments = recorded.read_text(encoding="utf-8").splitlines()
+    assert arguments[arguments.index("--block-size") + 1] == "256"
+    assert arguments[arguments.index("--max-num-seqs") + 1] == "32"
+    assert arguments[arguments.index("--num-speculative-tokens") + 1] == "5"
+    assert arguments[arguments.index("--max-num-batched-tokens") + 1] == "4096"
+    assert arguments[arguments.index("--max-model-len") + 1] == "1048576"
+    assert arguments[arguments.index("--api-key-file") + 1] == _bash_path(key_file)
+    assert arguments[0].endswith("scripts/deepseek_v4_shape_warmup.py")
+    assert "warning" not in result.stderr

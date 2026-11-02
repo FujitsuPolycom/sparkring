@@ -1,0 +1,21 @@
+{
+  "rounds": 8,
+  "n": 256,
+  "degenerate": 0,
+  "wrong": 0,
+  "errors": 0,
+  "seconds": 83.6,
+  "degenerate_items": [],
+  "wrong_ids": [],
+  "wrong_samples": [],
+  "error_samples": [],
+  "ok": true,
+  "dashboard_quiet": {
+    "state": "on",
+    "where": "Node A",
+    "holder": "accept_profile-0-c7f38a6e",
+    "was_on_before": false,
+    "service": "active",
+    "detail": null
+  }
+}

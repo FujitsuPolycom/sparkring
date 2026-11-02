@@ -20,6 +20,7 @@ import json
 import time
 from pathlib import Path
 
+from runtime.common import sparkcache
 from runtime.host import privilege
 
 PATH = Path("/var/lib/sparkring/operator-status.json")
@@ -75,7 +76,11 @@ def view(state_root: Path) -> dict:
             if not placements.exists(directory):
                 continue
             lock = installer.read(directory / "deployment.lock.json")
-            connection = installer.connection(lock)
+            try:
+                connection = installer.connection(lock)
+            except (ValueError, KeyError):
+                # The installed package no longer lists the record's checkpoint or profile.
+                connection = installer.recorded_connection(directory, lock)
             record = recovery.record_of(recovery_document, directory)
             deployments.append({
                 "id": directory.name,
@@ -84,6 +89,8 @@ def view(state_root: Path) -> dict:
                 "positions": list(slot) if slot else list(range(len(lock["site"]["ranks"]))),
                 "api_port": connection["port"],
                 "backend": lock.get("backend"),
+                "sparkcache_size": sparkcache.deployment_budget(lock),
+                **sparkcache.deployment_options(lock),
                 "stopped": placements.stopped(directory),
                 "recovery": {"enabled": bool(record.get("enabled")),
                              "failures": record.get("failures", 0),
@@ -92,6 +99,22 @@ def view(state_root: Path) -> dict:
         except (OSError, ValueError, KeyError, TypeError):
             continue
     document["deployments"] = deployments
+    try:
+        from runtime.host import rollout
+        # A switch that stopped before it finished, as a group member's status reads it.
+        document["switches"] = [{"placement": list(slot) if slot else None,
+                                 "candidate": Path(record.get("candidate") or "").name,
+                                 "previous": Path(record["previous"]).name if record.get("previous") else None,
+                                 "state": record.get("state")} for slot, record in rollout.unfinished(state_root)]
+    except (OSError, ValueError, KeyError, TypeError):
+        document["switches"] = []
+    try:
+        from runtime.host import hold
+        standing = hold.current(state_root)
+        document["hold"] = ({key: standing.get(key) for key in ("holder", "reason", "since", "until", "invalid") if key in standing}
+                            if standing else None)
+    except OSError:
+        document["hold"] = None
     try:
         document["recovery_timer"] = recovery.timer_enabled()
     except (OSError, ValueError, RuntimeError, TypeError):
@@ -149,6 +172,12 @@ def lines(document: dict, *, now=time.time) -> list[str]:
     age = max(0, int(now() - document.get("written_at", now())))
     node = document.get("node") or {}
     result = [f"Operator view, recorded {age}s ago (an operator's sudo sparkring status refreshes it):"]
+    standing = document.get("hold")
+    if standing:
+        from runtime.host import hold
+        until = standing.get("until")
+        if until is None or until > now():
+            result.append(hold.text(standing))
     result.append((node.get("state") or "unknown") + " | next: " + (node.get("next_action") or "sudo sparkring status"))
     for warning in node.get("warnings") or []:
         result.append("  warning: " + warning)
@@ -167,6 +196,9 @@ def lines(document: dict, *, now=time.time) -> list[str]:
                       f" | model {deployment['model']} | API port {deployment['api_port']}"
                       f" | transport {deployment.get('backend') or 'prepared'}")
         recovery_record = deployment.get("recovery") or {}
+        if deployment.get("sparkcache_size") is not None:
+            result.append(sparkcache.status_line(deployment["sparkcache_size"]))
+        result.extend(sparkcache.option_lines(deployment))
         if recovery_record:
             timer = document.get("recovery_timer")
             result.append("  automatic recovery: "
@@ -175,4 +207,10 @@ def lines(document: dict, *, now=time.time) -> list[str]:
                           + (f", {recovery_record['failures']} failed attempt(s)" if recovery_record.get("failures") else ""))
     if not document.get("deployments"):
         result.append("No model deployment is recorded.")
+    for switch in document.get("switches") or []:
+        where = ("Sparks " + ",".join(map(str, switch["placement"]))
+                 if switch.get("placement") else "every Spark")
+        name = f"{switch['previous']} to {switch['candidate']}" if switch.get("previous") else switch.get("candidate")
+        result.append(f"Model switch: {name} on {where}, recorded {switch['state']}"
+                      " | next: an operator's sudo sparkring install --cancel")
     return result

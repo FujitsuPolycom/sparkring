@@ -69,7 +69,7 @@ Find the page for what you want to do.
 - [Release selections](../runtime/releases/README.md): pinned releases and
   preserved inputs. [installer-releases.json](../runtime/releases/installer-releases.json)
   maps each release tag to its installer image; the installer's default is
-  [release 2026.10.4](../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md).
+  [release 2026.10.5](../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md).
 
 ## History
 

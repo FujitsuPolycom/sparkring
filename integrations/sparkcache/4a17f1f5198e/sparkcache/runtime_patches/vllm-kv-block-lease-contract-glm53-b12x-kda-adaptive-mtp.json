@@ -1,0 +1,152 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "vllm_commit": "0b67266a0f37d6146a8403fb8482403c62f412d5",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "7460e0638c0c81808dbdbbad7114db2e840e531e9ce83360c55b9171fcc872b1"
+      },
+      "required_symbols": [
+        "KVConnectorBase_V1.handle_preemptions",
+        "KVConnectorBase_V1.request_finished",
+        "KVConnectorBase_V1.get_finished",
+        "KVConnectorBase_V1.get_recurrent_publication_boundaries"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/multi_connector.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "8741b86b0f3e91af06d01a52240cdc988e3073bf049f72b506f56d6ceebb1ac0"
+      },
+      "required_symbols": [
+        "MultiConnector.supports_recurrent_boundary_blocks",
+        "MultiConnector.get_recurrent_publication_boundaries"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "115512dca36b0711223f55f5ff304abffccc6d078923ba4c6bbb3cdb7fdd39a2"
+      },
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+    "path": "vllm/v1/core/sched/scheduler.py",
+    "accepted_sha256": {
+      "recurrent_boundary_contract": "494bfd8758e32d3b265fe4df92e8c93b91292899baf5fafe8b490d27bd15cd0f"
+      },
+      "required_symbols": [
+        "Scheduler.schedule",
+        "Scheduler._connector_finished",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._finalize_shared_prefix_leases",
+        "Scheduler._update_from_kv_xfer_finished",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._free_blocks",
+        "Scheduler._recurrent_publication_boundaries",
+        "Scheduler._recurrent_publication_boundary_at"
+      ]
+    },
+    {
+    "path": "vllm/v1/core/kv_cache_manager.py",
+    "accepted_sha256": {
+      "recurrent_boundary_contract": "2c646969b750f6cb4e17fe8a6bf12993d01eefbfbe74e5f8c755f7e0d929faf2"
+      },
+      "required_symbols": [
+        "KVCacheManager.get_block_ids",
+        "KVCacheManager.publish_shared_prefix_lease",
+        "KVCacheManager.attach_shared_prefix_lease",
+        "KVCacheManager.mark_shared_prefix_lease_ready",
+        "KVCacheManager.expire_shared_prefix_leases",
+        "KVCacheManager.discard_shared_prefix_lease",
+        "KVCacheManager.evict_shared_prefix_leases_until_free",
+      "KVCacheManager.take_kv_cache_block_copies",
+      "KVCacheManager.take_recurrent_boundary_blocks",
+      "KVCacheManager.allocate_slots"
+      ]
+    },
+    {
+    "path": "vllm/v1/core/sched/output.py",
+    "accepted_sha256": {
+      "recurrent_boundary_contract": "9911b3f9d21815a185285852b5a6176e5484e1ab0ff5c30f7caaa68ea0fab543"
+      },
+      "required_symbols": [
+        "SchedulerOutput.preempted_req_ids",
+      "SchedulerOutput.kv_cache_block_copies",
+      "SchedulerOutput.recurrent_boundary_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "5ac63bf43acc6b254282426a8a9b989cc07fcdbd07223101bdc99f91f4e4ce5f"
+      },
+      "required_symbols": [
+        "GPUModelRunner.execute_model",
+        "GPUModelRunner._update_states"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "ddee56dccb2208411b3a035918e917ce8f56a9858471e9ca12b420d5d79bc69c"
+      },
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_coordinator.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "37be4bb55d40d78e2210b28c0a3f55e1027872af21335de5ca3c61f09c3856af"
+      },
+      "required_symbols": [
+        "KVCacheCoordinator.allocate_new_computed_blocks",
+        "KVCacheCoordinator.free",
+        "KVCacheCoordinator.get_blocks"
+      ]
+    },
+    {
+    "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+    "accepted_sha256": {
+      "recurrent_boundary_contract": "abbedbd7b9165bbb005c9ba7ceb4367ee1987ac47c632a629dd17ed08ae1db0c"
+      },
+      "required_symbols": [
+        "SingleTypeKVCacheManager.add_local_computed_blocks",
+        "SingleTypeKVCacheManager.get_num_skipped_tokens",
+        "SingleTypeKVCacheManager._apply_cow",
+        "SingleTypeKVCacheManager.take_pending_cow_copies",
+        "SingleTypeKVCacheManager.pop_blocks_for_free",
+        "MambaManager.remove_skipped_blocks",
+      "MambaManager.allocate_new_blocks",
+      "SingleTypeKVCacheManager.take_pending_aligned_recurrent_boundaries"
+      ]
+    },
+    {
+      "path": "vllm/v1/kv_cache_interface.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "72acc5ae3f61f7ecbebdb3a3a16b7c69c064d6fd7af23a1fcc3cf946bdaee952"
+      },
+      "required_symbols": [
+        "MambaSpec.max_num_blocks_per_req"
+      ]
+    },
+    {
+      "path": "vllm/model_executor/layers/mamba/gdn/kimi_gdn_linear_attn.py",
+      "accepted_sha256": {
+        "recurrent_boundary_contract": "8bf8bc579dd4a80224dc1633e7513f2a0c58e07db72a736c7e41d28d3c35f3b9"
+      },
+      "required_symbols": [
+        "KimiGatedDeltaNetAttention._initialize_b12x_kda_decode",
+        "KimiGatedDeltaNetAttention._make_b12x_kda_plan",
+        "KimiGatedDeltaNetAttention.bind_kv_cache",
+        "KimiGatedDeltaNetAttention._run_b12x_kda_decode_post_conv"
+      ]
+    }
+  ]
+}

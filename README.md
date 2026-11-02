@@ -75,7 +75,8 @@ research-only; the other rows are implemented. The six-Spark GLM-5.3 profile
 Output tok/s, measured with llm-inference-bench 0.7.6 at temperature 1 on
 release 2026.10.2's image, one start per profile installed without research
 options; decode and prefill at 32K context. The default image, release
-2026.10.4's, has no speed record of its own. Records:
+2026.10.5's, has no speed record of its own, nor has its parent, release
+2026.10.4's. Records:
 [every cell's raw source](performance/records/images/release-2026.10.2-speed-32k-20261012.md),
 [rings of four](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring4-20261012.md),
 [ring of eight](performance/records/images/dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036-release-2026.10.3-plain-ring8-20261012.md),

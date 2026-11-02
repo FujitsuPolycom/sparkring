@@ -46,7 +46,8 @@ logs --on 4-5` selects the latest operation for those Sparks. Unqualified
 ## Activity grades
 
 An operation evaluates activity on demand, before mutation, from live file
-locks, deployment records, benchmark quiet holders and the fabric document.
+locks, an operator's hold, deployment records, benchmark quiet holders and the
+fabric document.
 It never starts a collector. The response uses `sparkring-activity/v1` with
 `grade`, `positions` and a list of reasons containing the slice, activity,
 resource and plain-language message.
@@ -54,6 +55,7 @@ resource and plain-language message.
 | Grade | Rule | Example |
 |---|---|---|
 | `blocked` | A lock overlaps the affected positions, or a ring operation holds the gate | Install on Sparks 4–7 holds Sparks 4–7 needed by restart on 6–7. |
+| `held` | Another operator holds the cluster (`sparkring hold`); `--yes` does not pass it, `--override-hold` proceeds and is recorded | Held by alice since 2026-11-02 09:00 UTC: acceptance run. sparkring up would change what this hold reserves. |
 | `may-be-affected` | Another slice installs, a benchmark holds quiet mode, or shared transfer/relay resources may be busy | Install on Sparks 0–3 shares Node A's download disk and network with Sparks 4–7; this operation may be affected, probably not. |
 | `clear` | No recorded contention is found | No conflicting activity is recorded for Sparks 4–5. |
 

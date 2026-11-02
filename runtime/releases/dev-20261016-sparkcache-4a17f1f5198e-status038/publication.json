@@ -1,0 +1,25 @@
+{
+  "schema": "sparkring-shared-image-publication/v1",
+  "release": "dev-20261016-sparkcache-4a17f1f5198e-status038",
+  "image_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+  "image_config_id": "sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8",
+  "image_reference": "ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd",
+  "tagged_reference": "ghcr.io/fujitsupolycom/sparkring:dev-20261016-sparkcache-4a17f1f5198e-status038",
+  "registry_manifest_digest": "sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd",
+  "platform": "linux/arm64",
+  "base": "eugr/spark-vllm-b12x@sha256:141f46a4a2c3751798f16759cc859648784be430be852a84a21f0c4c427b4052",
+  "toolchain": {
+    "cuda": "13.4.2",
+    "nccl": "2.32.3"
+  },
+  "runtime_status_version": "0.3.8",
+  "derivation": {
+    "parent_release": "dev-20261013-dcp2prefill-status038-sircl-tp6",
+    "parent_image_id": "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502",
+    "layers": [
+      "SparkCache 4a17f1f5198eb2402bcd6669425c62857937d39f for GLM-5.3-Flash, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash, one derived layer: the sparkcache package, its runtime patches and the eleven-file KV-block lease contract in site-packages, the authenticated change-only connector logging transform of vllm/distributed/kv_transfer/kv_connector/v1/metrics.py, and the SparkCache profiles' settings, prepared by runtime/images/prepare_sparkcache.py from runtime/images/compositions/installer-sparkcache-4a17f1f5198e/sources.json and built and recorded by runtime/images/derived_layer.py (runtime/images/compositions/installer-sparkcache-4a17f1f5198e/build.sh); runtime-status 0.3.8, SIRCL 0.3.2, libsircl 0.6.0 and the GLM-5.3 vLLM plugins are the parent's, unchanged"
+    ]
+  },
+  "anonymous_config_verified": true,
+  "qualification_scope": "Development image. Registry verification does not establish serving correctness; each profile states its own evidence scope."
+}

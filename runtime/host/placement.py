@@ -544,6 +544,12 @@ def displaced(state_root, placement):
 
 
 PENDING = ("stopping-previous", "starting", "verifying", "recovering-previous", "needs-attention")
+# The state a switch records when an operator cancelled it: its candidate is
+# stopped and the model it replaced serves, so nothing it left is unfinished.
+CANCELLED = "cancelled"
+# States whose switch left nothing of itself running: no candidate to stop and
+# no model to bring back, so a candidate is not a rollback target.
+SETTLED = frozenset({"complete", "failed", "preparation-failed", "failed-recovered", CANCELLED})
 
 
 def unfinished_switches(state_root, placement):

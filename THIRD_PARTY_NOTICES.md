@@ -538,3 +538,14 @@ layer `installer-libsircl-layer` installs them beside the library under
 
 NVIDIA, NCCL, CUDA, DGX and DGX Spark are trademarks and/or registered
 trademarks of NVIDIA Corporation in the United States and other countries.
+
+## 19. SparkCache combined runtime and deployment tooling (included)
+
+`integrations/sparkcache/4a17f1f5198e/` contains unmodified sources from
+FujitsuPolycom/SparkCache commit `4a17f1f5198eb2402bcd6669425c62857937d39f`,
+licensed under Apache-2.0. Its [LICENSE](integrations/sparkcache/4a17f1f5198e/LICENSE)
+and [file inventory](integrations/sparkcache/4a17f1f5198e/deployment-files.json)
+travel with the deployment gates and recorded 17-group topology fixture. The
+[image inventory](runtime/images/compositions/installer-sparkcache-4a17f1f5198e/sources.json)
+identifies the GLM, Qwen and DeepSeek runtime files and the separately pinned
+vLLM lease contract. No model weights are included.

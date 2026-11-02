@@ -1,0 +1,273 @@
+{
+  "files": {
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/__init__.py": {
+      "sha256": "89ed0a1de2569c19b45c4a65bb643efe244dd81dc5183afd5d01ca295a269785",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/capture_read_leases.py": {
+      "sha256": "52688a3338655396d46f9df4849d928fc972894b528676a43ade199d0aef9cd8",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/capture_read_leases.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/held_inventory.py": {
+      "sha256": "c42e904dcb575d7d70becb90b015f884b962bd8df86443d347b8ea93be727fc9",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/held_inventory.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/page_base_read_flights.py": {
+      "sha256": "d8017196d46310863e413ad6a0ea069585cbdcc0630d55c5179c67beaa4d337d",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/page_base_read_flights.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/persistent_context_cache/__init__.py": {
+      "sha256": "5d45424b051f56bcdfe81534037b07b7a7d52af5ac193d7006694a57480e9bcf",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/persistent_context_cache/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/persistent_context_cache/cache_manifest.py": {
+      "sha256": "dd7720d21b34919db8a1a544cddd86d1b64ad86dcce99a4b13587eb88e576f7a",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/persistent_context_cache/cache_manifest.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/profile_adapters/__init__.py": {
+      "sha256": "31daa46a1583d278e6ddce6fd4cfc88a54b71854d1514d081d2ff74d9118c0ee",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/profile_adapters/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/profile_adapters/glm52_streaming.py": {
+      "sha256": "46191d95f3d1cd72a5d2843558a78b95110d75807459cf6d83a2c875dd8f18d0",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/profile_adapters/glm52_streaming.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/publication_telemetry.py": {
+      "sha256": "cc28145a54c1adb47a993fe98357272ffdc18acc462287c2ee484b56b76df7ec",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/publication_telemetry.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/qualification/__init__.py": {
+      "sha256": "11edb2eb5ae28cbd30ab2bd36135efc6fe6932adb7b0b268261c4cc62dada5ce",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/qualification/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/qualification/fixture.py": {
+      "sha256": "1a115da889a5df1174ec078ec008b9caa40b3ff555c760cbd7cbf65be66f20f6",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/qualification/fixture.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/qualification/harness.py": {
+      "sha256": "eb3c1c7ebdd9c1d2d782815fb4ffe53a30007f25e871cfebe89453d253ffa7e7",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/qualification/harness.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/qualification/receipt.py": {
+      "sha256": "3986a9668fd842ae3bd1c7f0a03b83074b2462d5163d7ca90749a921360c91f3",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/qualification/receipt.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/replication/__init__.py": {
+      "sha256": "5c6db6a668fdebf51ccd03c89bc1c2d326b0da05b20072462e907684ae762fca",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/replication/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/replication/protocol.py": {
+      "sha256": "98fd7445d5cd282496a1bfde87a85bbe1a757d0fa9ce1c5da4ac295125f0c8e6",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/replication/protocol.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/replication/state.py": {
+      "sha256": "9aeb0b3df1d5e932bf62422e3941b1908b9b2961dea30a3f340d54d156ed33a9",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/replication/state.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/request_attribution.py": {
+      "sha256": "1ff59f465665dc0a69eaff2d0cb355df2e75bb7947329967a3ebf6db369fc625",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/request_attribution.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/request_cache_scope.py": {
+      "sha256": "e75d24ac6d9ac7369cef2595654f8abf0e27b1e0e023a7a16ca7c84f8b11b6a1",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/request_cache_scope.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/__init__.py": {
+      "sha256": "15ba3bd96989d9f98b3c8010bcfba197f0409eb1af45c3e1d1d6b24fa625952d",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/generic_connector_contract.py": {
+      "sha256": "543a448294e1b0b118fdd8fa16acb03496d14e0db122f44aea13c5f438405a67",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/generic_connector_contract.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/verify_lease_contract.py": {
+      "sha256": "acfd9a24482887efab21b9b952413406c933d683c478766285c74aa4d6cbfc3e",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/verify_lease_contract.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-gab86b70.json": {
+      "sha256": "ab53c097d7ca408e995bac7c2bc915b64119881ed64b9cec0b3cc3b30ed2f990",
+      "source": "integrations/sparkcache/gab86b70/runtime_patches/vllm-connector-jobs-gab86b70.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json": {
+      "sha256": "ed1c1b911c7d5826c413539d7c41cbc5f4928d65735d52bac0c4c912eff0cd83",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-9b87df5.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json": {
+      "sha256": "6640d4910f2ec29af11f6b7d8742c38505fa3f9b6c89180f01a545815f04b063",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-connector-jobs-hybrid-recovery-df62335.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json": {
+      "sha256": "63ed3306b988daba3dea57ab83b757ef6c74c77d1c2539734dece660cb398889",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-connector-jobs-jj-prefill-abb715f.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json": {
+      "sha256": "96074b239e539206f859bfa3130b669259183b06bed6ec0e6e085b0cf66c996f",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-connector-jobs-r27-prefill-5dede5b.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json": {
+      "sha256": "19955a8097a18b4a13a549adecb7108a8f3be214e3b27785eb3be24418dc2078",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-connector-jobs-source-contract.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-kv-block-lease-contract-da4d7be.json": {
+      "sha256": "b4312c6fe0728963564977fdd68f8ec48d7e0680194d671ae6064179800e279e",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-kv-block-lease-contract-da4d7be.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json": {
+      "sha256": "70cd4e923d049da96bcfa4a5b460e2ff5f7460881d5cfd0621607080fd70f68f",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e10536a.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e2666d9a6.json": {
+      "sha256": "80ff473f6dd7d5aba25afe03264cbfdefed25d967d303c457a4848b7d717c0ee",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-kv-block-lease-contract-e2666d9a6.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json": {
+      "sha256": "8adbdfa3fd4b06b213c3aab45255a0b039f1c9940a4b1fad0efd004d263227c9",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-kv-block-lease-contract-glm53-b12x-kda-adaptive-mtp.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-kv-block-lease-contract.json": {
+      "sha256": "af3621bbf8620ed01aec7975a94604962fb2aceec065b14d8c17359f7c1323c0",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-kv-block-lease-contract.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json": {
+      "sha256": "480bdc463e3722cf28aa460021da689d12d9049ae9fd8238252fcf1db5544b53",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/runtime_patches/vllm-manager-page-async-contract-55969c16.json"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_cache_cuda.py": {
+      "sha256": "7aef15bab52244543ed2f1a2ea1dff25d3ac81639cc226244e2e72ea33bed56b",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_cache_cuda.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_cache_native.py": {
+      "sha256": "12059795cfee0af08516e85bb3387bddbd9825b711a256b1622c49c67e51caed",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_cache_native.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_codec.py": {
+      "sha256": "dd328da4d638c66365e75584942ce59fa81a6fc169f2eaedc56448ea987baa52",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_codec.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_config.py": {
+      "sha256": "d60f02a3d524ac8a5d6844f1e4db4380f3f62412f75eebd3483db1f2776015bd",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_config.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_connector.py": {
+      "sha256": "af05cdd597804cd3a97422b3fb635783479edf05466a5dc340bf7970e9dccd54",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_connector.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_cuda_hybrid_restore.py": {
+      "sha256": "2e0023d4e03ef4eba419d3c1595a014c8a4d360705984f31637df4545d27293a",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_cuda_hybrid_restore.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_cuda_page_restore.py": {
+      "sha256": "6b64a80188875e3e9dfd8514041c4d87026b6f3baad45003dba3670803b11dc5",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_cuda_page_restore.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_cuda_placement.py": {
+      "sha256": "28c610a1becab352ae4b240bed959e3fa58b5df43db1e0c82028f06aa28c1b23",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_cuda_placement.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_cuda_restore.py": {
+      "sha256": "d94daba024b48118197c7c7d4dfe0786029e6ac0bc76028d9bdfb2392928970f",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_cuda_restore.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_hybrid.py": {
+      "sha256": "0a890ddf527154f03a9e2df636e35605a172cc96abc6c946d2c570d0aff91a32",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_hybrid.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_native_hybrid_restore.py": {
+      "sha256": "da155aef3b436e2b3e05c5144a9fe210f8dbbe2e33d9e30888621fd274ec6730",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_native_hybrid_restore.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_native_placement.py": {
+      "sha256": "6a8b5a3c302f4ea0bfe55ecc43eed5bfca9e9601d979868146f1375927263d72",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_native_placement.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_native_restore.py": {
+      "sha256": "69a626c5731944e25d4dc91a7fd6e6686c92014e82f63894b78df6517b35318e",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_native_restore.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_profiles.py": {
+      "sha256": "0a49cfba24a9b7fd0b1ba28b2ebd54929207934e768ffe7311251ad82e5fb7ed",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_profiles.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_restore_timing.py": {
+      "sha256": "5f70cbad90914f0e6855617c269e8746b7da7422d83f1af0e02e37db6a0d6d83",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_restore_timing.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/spark_context_cache_store.py": {
+      "sha256": "ff936a83c20d8c04763536325feb170680518ddcdc018127b29a3081dea360b9",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/spark_context_cache_store.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/__init__.py": {
+      "sha256": "defad2f855ffb6878a3b0345ee2640c9a6ba5c4c945951a7b577d1d1b9470655",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/__init__.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/block_lease.py": {
+      "sha256": "f87ba0e29bd6caa628fc6bed61fa8ea68a6dff752bd58b565967ef66e0eb463b",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/block_lease.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/factory.py": {
+      "sha256": "28551bad25b7ba724dff047223c5438e9f49021b1c18453b09e39d6da3aad0e1",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/factory.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/feature_gate.py": {
+      "sha256": "4d6a7b084d21fd019d53c87b0a5859ce1641ab01b0429fbef6d8ab5c1b208464",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/feature_gate.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_capture.py": {
+      "sha256": "941663750cdee9930c1b74f2cefd853f31f2ead8305696eddfd005838e6628ca",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/manager_page_capture.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_factory.py": {
+      "sha256": "a3a0c24f01339baaeabff29fe3dc4f951301496ede2fd855748ca1b7b63eeef1",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/manager_page_factory.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_native_ring.py": {
+      "sha256": "653ff213efe1c2a7fb798bc21701744e701b78a33b86b4b1ae58fc0856daec5b",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/manager_page_native_ring.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_native_ring_ctypes.py": {
+      "sha256": "aa732472cd5430b48e35972bc8652229eaf81de85866af2cbff503998b39004d",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/manager_page_native_ring_ctypes.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/manager_page_runtime.py": {
+      "sha256": "48525b62ab8be44a0323e00ebe9b9f101fe659ae8d060d8d719c8beaa2657a59",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/manager_page_runtime.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/native_ring.py": {
+      "sha256": "2cdb76437c1c588831121bac771b67b22c7ab256e55e9a2ca1c3e7f5b19703d1",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/native_ring.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/planner.py": {
+      "sha256": "564c22bc6903e06148519805591ff3d2c5fb1e9ff37fe2e27dd72a013521efe2",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/planner.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/publisher.py": {
+      "sha256": "03c753e7d305415b145059bef82a81f1bde2d1a8cda24ad6ba79c62aa41fe92a",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/publisher.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/runtime.py": {
+      "sha256": "8dfbfcfb9d4dac5f06c21dbadca9e655428516a35182d62aed48c28e6c7c5ecd",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/runtime.py"
+    },
+    "/usr/local/lib/python3.12/dist-packages/sparkcache/streaming/timing.py": {
+      "sha256": "5247749e5874724d0329f4c87942059406713a327c3c92e6ed357111487cc94b",
+      "source": "integrations/sparkcache/8abbe9da67b8/sparkcache/streaming/timing.py"
+    }
+  },
+  "id": "sparkcache-8abbe9da67b8",
+  "native_libraries": {
+    "/opt/sparkring/sparkcache/lib/libspark_cache_placement.so": "d89c9fdae8dc99ae3f7a151cc3dd9e92fdc8fd0b994069fc263027fd4d056c93",
+    "/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so": "b50db45123c4faf0fdfb021da0a0f1b7f329869ae5dc13dcc7432dd4ce765b68"
+  },
+  "parent_lock": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json",
+  "parent_lock_sha256": "b20a347028c13da94855397d26b94360184441266e23d0bfbf36636f28c319ef",
+  "provenance": "/opt/sparkring/receipts/derived-sparkcache-8abbe9da67b8.json",
+  "purpose": "SparkCache CRC32 tail-cow-v2 payload integrity and in-arena verification over the release 2026.10.4 installer image.",
+  "schema": "sparkring-sparkcache-layer/v1",
+  "source": {
+    "commit": "8abbe9da67b8143831d21b43d0395c4f347a619a",
+    "native_last_commit": "1388764ae9a8dedcd25c91a1313d56fa321c3388",
+    "native_tree": "9d70fdafe087951277770181fcb4d081f9cc3343",
+    "repository": "https://github.com/FujitsuPolycom/sparkcache.git",
+    "tree": "1ee0294eccbf233d2c8f08d7a91bb43afea724e0"
+  }
+}

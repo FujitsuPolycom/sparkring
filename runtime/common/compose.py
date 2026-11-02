@@ -27,7 +27,8 @@ TOOLCHAIN_TP4 = ("deepseek-v41-flash-tp4", "glm53-flash-nvfp4-spark-tp4", "mimo-
 TOOLCHAIN = ("glm53-flash-nvfp4-spark-tp2", "mimo-v26-flash-mopd-tp2", "swift15-qwen38-flash-next-tp2",
              *TOOLCHAIN_TP4)
 # Four-node profiles require each host's prepared mesh fabric reference.
-TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4)
+# The research SparkCache variant needs the same mesh reference without a public export.
+TP4_PROFILES = (*EXAMPLE_TP4, *TOOLCHAIN_TP4, "deepseek-v41-flash-sparkcache-tp4")
 # Every supported profile has generated public examples under profiles/*/compose.
 SUPPORTED = (*EXAMPLES, *TOOLCHAIN)
 # Installer profiles on the shared toolchain image of an image lock that carries SIRCL
@@ -187,6 +188,8 @@ def source_inventory(profile_id, *, local_source_extension=None):
         "runtime/common/candidate.py",
         "runtime/common/cache_candidate.py",
         "runtime/common/serving.py",
+        "runtime/common/sparkcache.py",
+        "runtime/common/sparkcache-debug-logging.json",
         "runtime/common/thinking.py",
         "scripts/sparkring_compose.py",
         "scripts/deploy_engine.py",
@@ -443,7 +446,8 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
         from runtime.common import installer_image
         release = image_runtime["name"] if image_runtime is not None else Path(metadata["release"]).parent.name
         serving_settings.check_image(settings, release, installer_image.capabilities(release))
-        specs = [serving_settings.container(spec, settings, rank=number, model=(profile_id, checkpoint))
+        specs = [serving_settings.container(spec, settings, rank=number, model=(profile_id, checkpoint),
+                                            source_root=site["ranks"][number]["repository"])
                  for number, spec in enumerate(specs)]
     return specs, image
 

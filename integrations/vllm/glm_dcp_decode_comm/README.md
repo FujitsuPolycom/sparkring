@@ -143,7 +143,7 @@ The pins describe two builds:
   as commit `32c41e7f` has it, the source of the SIRCL layer of release
   2026.10.4's image (Git tree `a385bb72b629` of `sparkring_sircl`).
 
-Version 2.0.1, which the images of releases 2026.10.2 and 2026.10.4 carry,
+Version 2.0.1, which the images of releases 2026.10.2, 2026.10.4 and 2026.10.5 carry,
 pins the same files except `vllm/adapter.py`: it pins that file as release
 2026.10.2's SIRCL layer has it (SHA-256 `7eab095f…`, Git tree `7b40507046a3`
 of `sparkring_sircl`), and 2.0.2 pins it as commit `32c41e7f` has it (SHA-256

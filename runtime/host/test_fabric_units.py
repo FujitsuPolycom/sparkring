@@ -148,7 +148,7 @@ def test_ring_operations_over_the_table_stop_nothing_and_serve_by_restoring_and_
     monkeypatch.setattr(native_mesh.roce_gid, "serve", lambda hcas, gid, call: {"ok": True, "repaired": ["enp1s0f0np0"]})
     checks = []
 
-    def check(*args):
+    def check(*args, fabric_id=None):
         checks.append(args)
         if len(checks) == 1:
             raise ValueError("marker missing")
@@ -171,7 +171,7 @@ def test_a_mesh_service_is_not_started_beside_relay_markers(tmp_path, monkeypatc
 
 def test_the_ring_check_dispatches_on_the_reference(monkeypatch):
     seen = []
-    monkeypatch.setattr(native_mesh.relays, "check_reference", lambda *a: seen.append(("relays", a)))
+    monkeypatch.setattr(native_mesh.relays, "check_reference", lambda *a, fabric_id=None: seen.append(("relays", a)))
     monkeypatch.setattr(native_mesh.qwen_mesh, "check", lambda *a: seen.append(("mesh", a)))
     native_mesh.check_ring({"site_path": fabric_document.HOST_PATH, "site_sha256": "a" * 64, "plan_sha256": "b" * 64},
                            0, [], 3, "192.0.2.10")

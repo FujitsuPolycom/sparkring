@@ -144,6 +144,8 @@ def span_text(positions) -> str:
 def group_color(member: dict) -> int:
     if member.get("unmanaged") or member.get("gpu_job"):
         return MUTED
+    if member.get("external"):
+        return WARN
     arc = member.get("arc")
     return RING_PALETTE[(arc.get("color") or 0) % len(RING_PALETTE)] if arc else 0
 
@@ -196,6 +198,8 @@ def header_segments(snapshot: dict, *, age, interval: float, error=None) -> list
         segs += [sep, (f"{down} down", style(CRIT, bold=True))]
     segs += [sep, (f"{round(running)} reqs", style(WARN, bold=True) if running else style(dim=True)),
              sep, (f"{tps:,.0f} tok/s", style(GOOD, bold=True) if tps >= 0.05 else style(dim=True))]
+    if running >= 1:
+        segs += [sep, (f"{tps / running:,.0f} tok/s each", style(INFO))]
     # `age` is the time since this view's last read of the service, `period` how often the service
     # reads each model's /metrics (5 s while viewed, no API reads without a viewer).
     collector = snapshot.get("collector") or {}
@@ -265,8 +269,8 @@ def model_line(member: dict, now: float, ring_tag: bool = False) -> tuple[str, l
       style(STATE_COLORS.get(state, 4), bold=True))
     arc = member.get("arc") or {}
     if arc:
-        b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") else
-          f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
+        b((member.get("layout") or {}).get("label", "unknown") if member.get("unmanaged") or member.get("external")
+          else f"TP{arc.get('size')}{'?' if arc.get('inferred') else ''}", BLUE)
         where = f"{member.get('ring')}:" if ring_tag and member.get("ring") else ""
         b(f"@{where}{span_text(arc.get('positions'))}", style(group_color(member), bold=True))
         transport = (member.get("transport") or {}).get("label")

@@ -28,7 +28,10 @@ the model's, so applying a choice needs the profile and checkpoint
 import dataclasses
 import ipaddress
 import json
+from pathlib import PurePosixPath
 import re
+
+from runtime.common import sparkcache
 
 # name: (vLLM flag, key in the flag's JSON value or None, value multiplier, minimum, help)
 SETTINGS = {
@@ -41,6 +44,10 @@ SETTINGS = {
     "api_bind": ("--host", None, 1, None, "IPv4 address of the API's Spark that the API listens on alone; "
                                           "default: every address"),
 }
+# Connector sizes update nested capacity fields rather than a scalar vLLM flag.
+SIZES = {"sparkcache_size": "per-Spark SparkCache disk budget (default 32G)"}
+CONNECTOR_CHOICES = {"sparkcache_integrity": (("fast", "sha256", "none"),
+                     "SparkCache payload check: fast, sha256 or none (default fast)")}
 # Settings whose value is an IPv4 address instead of a whole number. Their
 # minimum is None; a value must be an address a Spark can listen on.
 ADDRESSES = frozenset({"api_bind"})
@@ -73,6 +80,7 @@ ABOVE_PROFILE = frozenset({"kv_cache_gib"})
 # (FujitsuPolycom/sparkring#189). Only an image with the shared-memory reader
 # window of runtime/images/derive_spin_wait.py reads the variable (NEEDS).
 SWITCHES = {
+    "sparkcache_debug": ("SPARK_CONTEXT_CACHE_TRACE_REUSE", "1", "detailed SparkCache logs"),
     "save_cpu": ("SPARKRING_SHM_BUSY_LOOP_S", "0.002",
                  "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1 to 2 percent slower decode"),
 }
@@ -105,6 +113,10 @@ def add_arguments(parser):
             group.add_argument(option(name), dest="serving_" + name, metavar="ADDRESS", help=text)
         else:
             group.add_argument(option(name), dest="serving_" + name, type=int, metavar="N", help=text)
+    for name, text in SIZES.items():
+        group.add_argument(option(name), dest="serving_" + name, type=sparkcache.parse_size, metavar="SIZE", help=text)
+    for name, (values, text) in CONNECTOR_CHOICES.items():
+        group.add_argument(option(name), dest="serving_" + name, choices=values, help=text)
     for name, (_, _, text) in SWITCHES.items():
         group.add_argument(option(name), dest="serving_" + name, action="store_true", default=None, help=text)
     for name, (_, values, metavar, text) in CHOICES.items():
@@ -112,7 +124,8 @@ def add_arguments(parser):
 
 
 def from_arguments(args):
-    return normalized({name: getattr(args, "serving_" + name, None) for name in (*SETTINGS, *SWITCHES, *CHOICES)})
+    return normalized({name: getattr(args, "serving_" + name, None)
+                       for name in (*SETTINGS, *SIZES, *SWITCHES, *CHOICES, *CONNECTOR_CHOICES)})
 
 
 def profile_defaults(configuration, *, root=None):
@@ -182,6 +195,14 @@ def normalized(values):
     for name, value in sorted((values or {}).items()):
         if value is None:
             continue
+        if name == "sparkcache_size":
+            result[name] = sparkcache.parse_size(value)
+            continue
+        if name in CONNECTOR_CHOICES:
+            if value not in CONNECTOR_CHOICES[name][0]:
+                raise ValueError(f"{option(name)} takes " + " or ".join(CONNECTOR_CHOICES[name][0]))
+            result[name] = value
+            continue
         if name in SWITCHES:
             if value is not True:
                 raise ValueError(f"{option(name)} is a switch without a value")
@@ -239,6 +260,8 @@ def _position(command, flag):
 
 def profile_value(command, name):
     """The value a command gives setting ``name``, in the setting's unit, or None when the command sets none."""
+    if name == "sparkcache_size":
+        return sparkcache.budget(command)
     flag, key, scale, _, _ = SETTINGS[name]
     position = _position(command, flag)
     if position is None:
@@ -273,7 +296,16 @@ def apply(command, settings, *, model=None, api=True):
     is refused when it is one of the command's ``reserved_ports``.
     """
     command = list(command)
+    for name in sorted(set(settings) & sparkcache.SETTINGS):
+        if sparkcache.connector(command) is None:
+            raise ValueError(f"{option(name)} requires a SparkCache profile")
     for name in sorted(set(settings) - set(SWITCHES) - set(CHOICES)):
+        if name == "sparkcache_size":
+            command = sparkcache.apply(command, settings[name])
+            continue
+        if name == "sparkcache_integrity":
+            command = sparkcache.apply_integrity(command, settings[name])
+            continue
         if name in API_RANK and not api:
             continue
         flag, key, scale, _, _ = SETTINGS[name]
@@ -349,7 +381,7 @@ def template_defaults(command, record, chosen, profile):
     return tuple(command)
 
 
-def container(spec, settings, *, rank, model=None):
+def container(spec, settings, *, rank, model=None, source_root=None):
     """Rank ``rank``'s container specification ``spec`` with the settings applied.
 
     Each setting replaces its vLLM flag's value in the command (``apply``; only
@@ -359,6 +391,8 @@ def container(spec, settings, *, rank, model=None):
     ``api_bind`` it asks at the bound address and the deployment's port, where
     the API then listens. ``model`` is ``(profile, checkpoint)``, which CHOICES
     settings require. Without settings ``spec`` is returned unchanged.
+    SparkCache debug logging mounts its configuration from the retained
+    deployment checkout at ``source_root`` on each host.
     """
     if not settings:
         return spec
@@ -371,13 +405,23 @@ def container(spec, settings, *, rank, model=None):
             raise ValueError("--api-port and --api-bind do not apply to this profile: its health check does not "
                              "ask the API at 127.0.0.1 on its --port")
         health = tuple(part.replace(before, after) for part in health)
-    return dataclasses.replace(spec, command=apply(spec.command, settings, model=model, api=rank == 0),
+    command = apply(spec.command, settings, model=model, api=rank == 0)
+    mounts = spec.mounts
+    if settings.get("sparkcache_debug"):
+        from runtime.common.container_spec import Bind
+        if source_root is None:
+            raise ValueError("SparkCache debug logging requires the deployment source directory")
+        mounts = (*mounts, Bind(str(PurePosixPath(source_root) / sparkcache.DEBUG_SOURCE), sparkcache.DEBUG_TARGET, True))
+    return dataclasses.replace(spec, command=command, mounts=mounts,
                                environment={**spec.environment, **environment(settings)}, health_command=health)
 
 
 def environment(settings):
     """Container environment variables that the named switches set."""
-    return {SWITCHES[name][0]: SWITCHES[name][1] for name in sorted(set(settings) & set(SWITCHES))}
+    result = {SWITCHES[name][0]: SWITCHES[name][1] for name in sorted(set(settings) & set(SWITCHES))}
+    if settings.get("sparkcache_debug"):
+        result["VLLM_LOGGING_CONFIG_PATH"] = sparkcache.DEBUG_TARGET
+    return result
 
 
 def label(name, value):
@@ -386,9 +430,11 @@ def label(name, value):
 
 
 def describe(settings, command, *, model=None):
-    """One line per named setting; thinking choices use only their command-line form."""
+    """Lines for serving settings; SparkCache settings have their own status lines."""
     lines = []
     for name, value in sorted(settings.items()):
+        if name in sparkcache.SETTINGS:
+            continue
         if name in CHOICES:
             lines.append(label(name, value))
             continue

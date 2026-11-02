@@ -468,7 +468,7 @@ def test_an_arc_plan_text_names_what_the_arcs_sparks_write():
     value = spread.plan(document, spread.assets(document, arc_plan(4, {0}), positions=arc,
                                                 card={"download_bytes": 14 * spread.GIB}))
     lines = spread.describe(value, document)
-    assert "  The image from position 0, each Spark forwarding while it writes: 0 → 1 → 2 → 3; positions 1-3 each "            "write 14.0 GiB." in lines
+    assert "  The image from position 0, each Spark forwarding while it writes: 0 → 1 → 2 → 3; positions 1-3 each "            "write 14.0 GiB; sizes are compressed registry blobs, before Docker extraction (disk space is listed separately)." in lines
     assert lines[-1] == "  Positions 4-7 are outside this deployment and write nothing."
 
 
@@ -1215,3 +1215,52 @@ def test_the_spread_check_spreads_test_files_to_every_spark_reports_the_timing_a
     assert saved["received"] == report["received"]
     # Every Spark verified each file against Node A's SHA-256 on arrival; then every copy was removed.
     assert not any((sparks[rank] / "received").exists() for rank in (1, 2, 3)) and not Path(root, "source").exists()
+
+
+def test_image_size_description_distinguishes_blobs_from_docker_space():
+    from runtime.host.test_relays import prepared
+    _, document, _ = prepared("cycle", 8)
+    value = spread.plan(document, [{"asset": "image", "source": 0,
+                                   "writes": {6: 14 * spread.GIB, 7: 14 * spread.GIB},
+                                   "outside": [1, 2, 3, 4, 5]}])
+    line = next(line for line in spread.describe(value, document) if "each write" in line)
+    assert "14.0 GiB" in line
+    assert "compressed registry blobs, before Docker extraction" in line
+    assert "disk space is listed separately" in line
+
+
+def test_spread_reserves_only_used_positions_before_launching_hops():
+    import contextlib
+    reserved, active = [], []
+    @contextlib.contextmanager
+    def reserve(positions):
+        reserved.append(positions)
+        active.append(True)
+        try:
+            yield
+        finally:
+            active.clear()
+    executor = spread.Spread(loopback("cycle", 8), start=lambda *a: None,
+                             send=lambda *a: None, alive=lambda p: True, reserve=reserve)
+    def chain(pipeline, files, needs):
+        assert active
+        return {"hops": {p: {"placed": ["blob"]} for p in pipeline["hops"]}, "lost": [], "cables": []}
+    executor.chain = chain
+    result = executor.run("image", {"blob": (1, "a" * 64)}, 0, {6: {"blob"}, 7: {"blob"}},
+                          outside=[1, 2, 3, 4, 5])
+    assert reserved == [[0, 6, 7]]
+    assert result["remaining"] == {} and active == []
+
+
+def test_spread_conflicting_route_launches_no_hop():
+    import contextlib
+    @contextlib.contextmanager
+    def refuse(positions):
+        raise ValueError("route held by another operation")
+        yield
+    def unexpected(*args):
+        pytest.fail("hop launched before route admission")
+    executor = spread.Spread(loopback("cycle", 8), start=unexpected, send=unexpected,
+                             alive=lambda p: True, reserve=refuse)
+    with pytest.raises(ValueError, match="route held"):
+        executor.run("image", {"blob": (1, "a" * 64)}, 0, {6: {"blob"}}, outside=[1, 2, 3, 4, 5])

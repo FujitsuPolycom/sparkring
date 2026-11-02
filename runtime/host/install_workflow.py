@@ -71,9 +71,11 @@ from runtime.common import (
 )
 from runtime.common import thinking
 from runtime.common import serving as serving_settings
+from runtime.common import sparkcache
 from runtime.common import transport as transports
 from runtime.host import (
     api_endpoint,
+    cancel,
     checkpoint_plan,
     checkpoint_search,
     colour,
@@ -791,6 +793,7 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
                                          **({"placement": list(placement)} if placement is not None else {}),
                                          # Repeat operator choices without pinning inherited profile defaults.
                                          **({"serving": explicit} if explicit else {}),
+                                         "serving_text": getattr(args, "serving_text", {}),
                                          "transport": getattr(args, "transport", None),
                                          "nccl": getattr(args, "nccl", None)},
                                 derivation=derivation_section(selection, rows, surveys),
@@ -1325,10 +1328,17 @@ def summary_lines(result):
     lines.append("    " + colour.cmd(result["example_request"]))
 
     # Single-line commands
+    recovery_text = RECOVERY_TEXT.get(result.get("recovery"))
+    stop = commands.get("stop", "")
+    if recovery_text and "--on " in stop:
+        arc = stop.split("--on ", 1)[1].split()[0]
+        for action in ("on", "off"):
+            recovery_text = recovery_text.replace("sparkring recover " + action,
+                                                  "sparkring recover " + action + " --on " + arc)
     inline_commands = [("Watch logs", colour.cmd("sudo sparkring logs --follow")),
                        ("Stop", colour.cmd(commands["stop"]) if commands.get("stop") else None),
                        ("Start again", colour.cmd(commands["start_again"]) if commands.get("start_again") else None),
-                       ("Recovery", RECOVERY_TEXT.get(result.get("recovery")))]
+                       ("Recovery", recovery_text)]
     for name, value in inline_commands:
         if value:
             lines.append(f"  {name + ':':<{CARD_LABEL_WIDTH}}{value}")
@@ -1352,7 +1362,8 @@ def operation_scope(args, state_root):
     selected = (resolve_placement(args, installer.read(state_root / "cluster.json"), state_root)
                 if (state_root / "cluster.json").exists() else None)
     args.activity = activity.assess(state_root, slices.affected(state_root, selected))
-    activity.confirm(args.activity, yes=args.yes, plan=args.plan, interactive=not args.json and sys.stdin.isatty())
+    activity.confirm(args.activity, yes=args.yes, plan=args.plan, interactive=not args.json and sys.stdin.isatty(),
+                     override_hold=getattr(args, "override_hold", False))
     with slices.hold(state_root, selected, "install " + (args.profile or "profile"), expand=True) as owner:
         activity.require_review(state_root, selected, getattr(args, "review", None))
         args.locked_placement = selected
@@ -1489,12 +1500,19 @@ def execute(args):
         print("Update workers and prepare assets; then " + ("replace the current model." if replaces or displaced
                                                             else "start the selected model."))
         if lock is not None:
+            cache_size = sparkcache.deployment_budget(lock)
+            if cache_size is not None:
+                print(sparkcache.status_line(cache_size))
+            for line in sparkcache.option_lines(sparkcache.deployment_options(lock)):
+                print(line)
             print("Thinking: " + thinking.deployment_text(thinking.deployment_default(
                 thinking.of(lock["selection"]["profile"], lock["selection"]["target_variant"]), lock.get("serving"))))
         if lock is not None and lock.get("serving"):
             base = installer.specifications(dict(lock, serving={}), only_rank=0)[0].command
-            print("Serving settings: " + "; ".join(serving_settings.describe(
-                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))))
+            descriptions = serving_settings.describe(
+                lock["serving"], base, model=(lock["selection"]["profile"], lock["selection"]["target_variant"]))
+            if descriptions:
+                print("Serving settings: " + "; ".join(descriptions))
             for line in serving_settings.warnings(lock["serving"], base):
                 print("Warning: " + line)
         if lock is not None and endpoint_requested(args):
@@ -1641,6 +1659,9 @@ def execute(args):
         assets.allow_package_updates = operation["positions"] is None
         checkpoints = (assets if placement is None else
                        install_assets.Assets(transport.view(placement), directory / "assets", download_limit=limit))
+        from runtime.host import slices
+        assets.reserve_route = checkpoints.reserve_route = lambda route: slices.transfer(
+            state_root, operation["positions"], route, operation=operation["operation"])
         if needs_hairpin:
             record = {}
             cluster = hairpin_step(cluster, assets, state_root, record,
@@ -1704,9 +1725,16 @@ def execute(args):
         # A candidate whose own start did not complete, for example a first
         # installation that failed its readiness check, stops before it is
         # prepared again.
-        result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
-                                 verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
-                                 unfinished=installer.unfinished, placement=placement, displaced=displaced)
+        operation_id = operation.get("id")
+        try:
+            result = rollout.execute(directory, previous, state_root=state_root, prepare=prepare, apply=apply,
+                                     verify=lambda path: apply(path, "verify"), supersede=True, serving=serving,
+                                     unfinished=installer.unfinished, placement=placement, displaced=displaced,
+                                     cancelled=lambda boundary: cancel.check(state_root, operation_id, boundary))
+        finally:
+            # Every step a cancel names is behind this run either way, so its
+            # request must not stand for a later installation.
+            cancel.clear(state_root, operation_id)
         # Records the deployment's choice (on unless --no-auto-recover, also
         # after sparkring recover off), resets failures and restarts, records
         # the generation's boots and enables the timer.
@@ -1779,9 +1807,15 @@ def main(argv=None):
     parser.add_argument("--plan", action="store_true",
                         help="print and save the setup, checkpoint and model plan without changing any Spark; a later "
                              "--yes stays within a saved plan")
+    parser.add_argument("--cancel", action="store_true",
+                        help="stop the running installation at its next step boundary and bring back the model it "
+                             "replaces, or settle a model switch an interrupted installation left behind; takes no "
+                             "other option")
     parser.add_argument("--yes", action="store_true",
                         help="approve the displayed setup, checkpoint plan, the listed ConnectX driver restarts on an "
                              "idle ring, and model replacement; SSH trust is still required")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout; progress stays on stderr")
     parser.add_argument("--review", help=argparse.SUPPRESS)
     parser.add_argument("--stop-workloads", action="store_true",
@@ -1820,8 +1854,31 @@ def main(argv=None):
     # A stock image's vLLM arguments follow --.
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
-    args = parser.parse_args(argv[:argv.index("--")] if "--" in argv else argv)
+    options = argv[:argv.index("--")] if "--" in argv else argv
+    args = parser.parse_args(options)
+    # The validated settings are bytes; repeat commands keep the entered units.
+    size_parser = argparse.ArgumentParser(add_help=False)
+    for name in serving_settings.SIZES:
+        size_parser.add_argument(serving_settings.option(name))
+    sizes, _ = size_parser.parse_known_args(options)
+    args.serving_text = {name: value for name, value in vars(sizes).items() if value is not None}
     colour.set_mode(args.color)
+    if args.cancel:
+        # Ending an installation changes nothing an operator holds: the request
+        # takes no installation lock and no hold override, and the command
+        # carries no other option.
+        used = sorted(name for name, value in vars(args).items()
+                      if name not in ("cancel", "json", "color") and value not in (None, False, {}, []))
+        if used:
+            parser.error("--cancel takes no other option; it stops the running installation")
+        try:
+            document = cancel.run(controller.STATE, say=(lambda line: None) if args.json else print)
+        except (OSError, ValueError, RuntimeError) as error:
+            document = {"schema": cancel.RESULT_SCHEMA, "state": "failed", "message": str(error),
+                        "operations": [], "switches": [], "busy": []}
+        if args.json:
+            print(json.dumps(document, indent=2), file=sys.stdout)
+        return 0 if document["state"] in ("idle", "cancelled", "requested") else 2
     if args.profile:
         # Every later step, and every record, uses the profile's ID (models.ALIASES).
         args.profile = models.canonical(args.profile)
@@ -1861,6 +1918,15 @@ def main(argv=None):
                 result = execute(args)
         except NeedsInput as error:
             result, code = {"schema": "sparkring-install-result/v1", **error.document()}, 3
+        except cancel.Cancelled as stop:
+            # The run stopped where the operator asked it to, so its record is
+            # the outcome: the model the switch replaced serves again.
+            result, code = {"schema": "sparkring-install-result/v1", "state": "cancelled",
+                            "message": str(stop)}, 2
+            for journal in journals():
+                if journal.exists() and journal.read_bytes() != before.get(journal):
+                    result["transaction"] = installer.read(journal)
+                    break
         except (ValueError, RuntimeError, OSError, KeyError, TypeError, subprocess.SubprocessError) as error:
             result, code = {"schema": "sparkring-install-result/v1", "state": "failed", "message": str(error)}, 2
             if getattr(error, "activity", None):
@@ -1885,6 +1951,8 @@ def main(argv=None):
                 print("Model ready: " + result["api_url"])
             for line in summary_lines(result):
                 print(line)
+        elif result["state"] == "cancelled":
+            print(result["message"])
         elif result["state"] == "needs_input":
             print(result["message"])
             # A checkpoint message already names every file, path and size its

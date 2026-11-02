@@ -9,12 +9,14 @@ import re
 import statistics
 
 TRACE_SCHEMA = "sparkcache-reuse-trace/v1"
-MARKER = "spark-context-cache-reuse:"
+MARKER = "sparkcache: reuse "
+MARKERS = (MARKER, "spark-context-cache-reuse:")
 
 
 def parse_trace(line):
     """Accept Docker log prefixes and JSON log envelopes without interpreting prose."""
-    raw = line.split(MARKER, 1)[1].lstrip() if MARKER in line and not line.lstrip().startswith("{") else line.lstrip()
+    marker = next((item for item in MARKERS if item in line), None)
+    raw = line.split(marker, 1)[1].lstrip() if marker and not line.lstrip().startswith("{") else line.lstrip()
     try:
         value, _ = json.JSONDecoder().raw_decode(raw)
     except (ValueError, TypeError):
@@ -24,7 +26,7 @@ def parse_trace(line):
     if value.get("schema") == TRACE_SCHEMA:
         return value
     for field in ("log", "message"):
-        if isinstance(value.get(field), str) and MARKER in value[field]:
+        if isinstance(value.get(field), str) and any(marker in value[field] for marker in MARKERS):
             return parse_trace(value[field])
     return None
 
@@ -214,7 +216,7 @@ def main():
                     record = parse_trace(line)
                     if record:
                         traces.append(record)
-                    elif MARKER in line:
+                    elif any(marker in line for marker in MARKERS):
                         malformed += 1
         result = analyze(receipts, traces, ranks)
         result["inputs"] = {"receipt": str(args.receipt),

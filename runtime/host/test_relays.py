@@ -398,6 +398,64 @@ def test_a_sircl_rank_checks_the_relay_table_at_its_own_fabric_position(tmp_path
         relays.check_position(reference, 1, 3, host_ip, root=tmp_path, call=kernel)
     with pytest.raises(ValueError, match="bootstrap address"):
         relays.check_position(reference, position, 3, "192.0.2.99", root=tmp_path, call=kernel)
+
+
+def test_a_rank_accepts_a_later_record_of_the_cabling_its_deployment_was_made_on(tmp_path):
+    """Every setup rewrites each Spark's copy of the fabric document with a new ``verified`` record, and a
+    deployment keeps the digest of the copy it was planned on; the checks accept a copy that records the cabling
+    identity of the deployment's transport section."""
+    plan, document, relay_plan = prepared("cycle", 8)
+    position = 5
+    config = topology.persistent_config(plan, position, relays=relays.section(relay_plan, position))
+    write_state(tmp_path, document, config)
+    section = config["relays"]
+    netdevs = sorted({r["dev"] for r in section["routes"]} | {f["dev"] for f in section["filters"]})
+    kernel = Kernel(tmp_path, netdevs)
+    for pid, row in enumerate(section["markers"], 200):
+        proc(tmp_path, pid, relays.marker_argv(section, row))
+    relays.restore(section, call=kernel, root=tmp_path)
+    reference = {"site_path": fabric_document.HOST_PATH,
+                 "site_sha256": hashlib.sha256(fabric_document.encoded(document).encode()).hexdigest(),
+                 "plan_sha256": relay_plan["sha256"]}
+    host_ip = document["positions"][position]["management"]["address"]
+    later = dict(document, verified={"at": "2026-10-17T08:09:27Z", "result": "healthy",
+                                     "report": "fabric-verify-20261017T080927Z.json", "after_boot": False})
+    assert fabric_document.digest(later) != reference["site_sha256"] and later["id"] == document["id"]
+    path = Path(tmp_path) / fabric_document.HOST_PATH.lstrip("/")
+    path.write_text(fabric_document.encoded(later), encoding="utf-8", newline="\n")
+    with pytest.raises(ValueError, match="differs from the deployment's"):
+        relays.check_position(reference, position, 3, host_ip, root=tmp_path, call=kernel)
+    rows = relays.check_position(reference, position, 3, host_ip, root=tmp_path, call=kernel, fabric_id=document["id"])
+    assert {row["state"] for row in rows} == {"present"}
+    # A deployment made on other cabling is refused with the remedy that makes a new deployment.
+    with pytest.raises(ValueError, match="was made on fabric 000000000000. Run sudo sparkring install again"):
+        relays.check_position(reference, position, 3, host_ip, root=tmp_path, call=kernel, fabric_id="sha256:" + "0" * 64)
+    assert relays.deployment_fabric_id({"transport": {"backend": "sircl", "fabric": {"id": document["id"]}}}) == document["id"]
+    assert relays.deployment_fabric_id({}) is None and relays.deployment_fabric_id({"transport": None}) is None
+    # The prepared transport's ring check on a four-Spark cycle applies the same rule.
+    plan, document, relay_plan = prepared("cycle", 4)
+    rank, root = 2, tmp_path / "four"
+    root.mkdir()
+    config = topology.persistent_config(plan, rank, relays=relays.section(relay_plan, rank))
+    write_state(root, document, config)
+    section = config["relays"]
+    kernel = Kernel(root, sorted({r["dev"] for r in section["routes"]} | {f["dev"] for f in section["filters"]}))
+    for pid, row in enumerate(section["markers"], 200):
+        proc(root, pid, relays.marker_argv(section, row))
+    relays.restore(section, call=kernel, root=root)
+    reference = {"site_path": fabric_document.HOST_PATH,
+                 "site_sha256": hashlib.sha256(fabric_document.encoded(document).encode()).hexdigest(),
+                 "plan_sha256": relay_plan["sha256"]}
+    hcas = ["rocep1s0f0", "rocep1s0f1", "roceP2p1s0f0", "roceP2p1s0f1"]
+    host_ip = document["positions"][rank]["management"]["address"]
+    later = dict(document, verified={"at": "2026-10-17T08:09:27Z", "result": "healthy",
+                                     "report": "fabric-verify-20261017T080927Z.json", "after_boot": False})
+    (Path(root) / fabric_document.HOST_PATH.lstrip("/")).write_text(fabric_document.encoded(later), encoding="utf-8",
+                                                                     newline="\n")
+    with pytest.raises(ValueError, match="differs from the deployment's"):
+        relays.check_reference(reference, rank, hcas, 3, host_ip, root=root, call=kernel)
+    rows = relays.check_reference(reference, rank, hcas, 3, host_ip, root=root, call=kernel, fabric_id=document["id"])
+    assert {row["state"] for row in rows} == {"present"}
     assert relays.position_devices(position, root=tmp_path) == ["rocep1s0f0", "roceP2p1s0f0", "rocep1s0f1",
                                                                   "roceP2p1s0f1"]
 

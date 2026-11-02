@@ -78,7 +78,7 @@ def test_the_view_shows_the_header_ring_cards_details_and_sparks(tmp_path):
     assert "tp2-prepared" not in text and "RoCEnante" not in text and "bundle" not in text
     assert "spark0:8000 · container sr-0-r0" in text
     assert "of 1M tok (24G) · 4.50× concurrency @ 131k ctx" in text
-    assert "sudo docker logs --tail 200 sr-0-r0  on spark0" in text and "image 0123456789ab" in text
+    assert "sudo docker logs -f --tail 40 sr-0-r0  on spark0" in text and "image 0123456789ab" in text
     sparks = [line for line in lines if "rank " in line and " ram " in line]
     assert len(sparks) == 6        # the recorded runtime status of positions 2-3 reports no host resources
     assert "▲ 0 spark0" in sparks[0] and f" {NODE_A_LAN}  rank 0 · ram 101G/119G · disk free 931G" in sparks[0]

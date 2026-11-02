@@ -47,6 +47,8 @@ FABRIC_UNIT = "sparkring-fabric.service"
 MARKER_UNIT = relay_table.MARKER_UNIT
 # Fields of a fabric record that a setup of the same Sparks may replace in place.
 REFRESHED_FIELDS = ("layout", "relays")
+# Setup hashes change with observations; the saved ID also owns firewall rules.
+COMPARISON_EXCLUDED_FIELDS = (*REFRESHED_FIELDS, "cluster_id")
 # Seconds between the agent's observations, and so between its route and setting checks.
 AGENT_INTERVAL = 30
 # Per-interface IPv4 settings (net.ipv4.conf.IFACE.NAME) of each fabric function
@@ -567,7 +569,16 @@ def _refuse_mesh_beside_markers(config, *, run=subprocess.run):
 
 
 def _comparable(config):
-    return {key: value for key, value in config.items() if key not in REFRESHED_FIELDS}
+    return {key: value for key, value in config.items() if key not in COMPARISON_EXCLUDED_FIELDS}
+
+
+def check_configuration(config, existing):
+    """Compare network identity independently of setup provenance and relay metadata."""
+    validate(config)
+    if existing is not None:
+        validate(existing)
+        if _comparable(existing) != _comparable(config):
+            raise ValueError("Node already has another approved configuration; inspect before replacing it")
 
 
 def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
@@ -575,7 +586,10 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
 
     A recorded configuration that differs is refused, except in the fields
     a setup of the same Sparks refreshes (``REFRESHED_FIELDS``: the layout
-    name and the relay table). A record with relay markers enables and
+    name and relay table). The setup plan ID is excluded from comparison and
+    retained from the saved record to keep firewall rule ownership stable.
+    Node identity, ownership, interfaces, routes and forwarding must match.
+    A record with relay markers enables and
     restarts ``sparkring-relay-marker.service``; one without disables it. A
     record with relay markers is refused while a mesh service runs here.
     """
@@ -583,8 +597,10 @@ def configure(config, *, root="/", collect=_collect_local, run=subprocess.run):
     if config["node_id"] != read(root, "/etc/sparkring/node.json")["node_id"]:
         raise ValueError("Configuration belongs to another node")
     path = location(root, "/etc/sparkring/fabric.json")
-    if path.exists() and _comparable(read(root, "/etc/sparkring/fabric.json")) != _comparable(config):
-        raise ValueError("Node already has another approved configuration; inspect before replacing it")
+    existing = read(root, "/etc/sparkring/fabric.json") if path.exists() else None
+    check_configuration(config, existing)
+    if existing is not None:
+        config = {**config, "cluster_id": existing["cluster_id"]}
     _refuse_mesh_beside_markers(config, run=run)
     observe(config, collect=collect)
     save(root, "/etc/sparkring/fabric.json", config)

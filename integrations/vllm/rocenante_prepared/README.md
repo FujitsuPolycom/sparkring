@@ -12,7 +12,7 @@ replaces this bundle's all-reduce slot.
 
 Release 2026.10.1's installer image,
 `dev-20261004-kraken-cuda1342-nccl2323-status034`, an ancestor of release
-2026.10.4's default image, carries the same transport
+2026.10.5's default image, carries the same transport
 files as `dev-20261001-portgid-cuda1342-nccl2323-status033` and pins transport
 manifest `fee0680b6dc6`; its rollback image,
 `dev-20261001-kraken-cuda1342-nccl2323-status034`, carries the same files and

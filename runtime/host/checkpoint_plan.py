@@ -230,11 +230,15 @@ def install_command(request=None, named=(), *, ignore_local=False):
     if request.get("image_lock"):
         argv += ["--image-lock", str(request["image_lock"])]
     settings = request.get("serving") or {}
-    for name in (*serving.SETTINGS, *serving.SWITCHES, *serving.CHOICES):
+    for name in (*serving.SETTINGS, *serving.SIZES, *serving.SWITCHES, *serving.CHOICES, *serving.CONNECTOR_CHOICES):
         if settings.get(name) is True and name in serving.SWITCHES:
             argv.append(serving.option(name))
         elif settings.get(name) is not None and name not in serving.SWITCHES:
-            argv += [serving.option(name), str(settings[name])]
+            text = (request.get("serving_text") or {}).get(name)
+            # Display spelling cannot change the effective deployment setting.
+            value = (text if name in serving.SIZES and text is not None
+                     and serving.normalized({name: text})[name] == settings[name] else settings[name])
+            argv += [serving.option(name), str(value)]
     if settings.get("api_bind") and ipaddress.ip_address(settings["api_bind"]).is_loopback:
         # A new deployment with a loopback listen address needs this approval.
         argv.append("--allow-loopback-bind")
@@ -815,6 +819,8 @@ def plan(pins, surveys, rows, *, named=(), ignore_local=False, operator="root", 
     if given.get("serving"):
         # Only a deployment with other serving settings than its profile's records them.
         request["serving"] = dict(given["serving"])
+    if given.get("serving_text"):
+        request["serving_text"] = dict(given["serving_text"])
     for key in ("transport", "nccl"):
         # Only a request that names --transport or --nccl records it.
         if given.get(key):

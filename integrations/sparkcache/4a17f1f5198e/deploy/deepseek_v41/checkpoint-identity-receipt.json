@@ -1,0 +1,31 @@
+{
+  "schema": "sparkcache-checkpoint-identity/v1",
+  "inputs": {
+    "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+    "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+    "artifacts": {
+      "manifest_sha256": "89de6bc77d0028b2b61b3cad12885342d0856f4c115c4f9328e91cf025c3d16f"
+    },
+    "quantization": {
+      "method": "b12x_dsv41",
+      "encoding": "safetensors",
+      "load_format": "b12x"
+    },
+    "model_config": {
+      "sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879"
+    },
+    "draft": {
+      "mode": "embedded",
+      "config": {
+        "method": "dspark",
+        "num_speculative_tokens": 5,
+        "draft_sample_method": "probabilistic",
+        "rejection_sample_method": "block",
+        "enable_adaptive_verification": true,
+        "attention_backend": "B12X",
+        "moe_backend": "b12x"
+      }
+    }
+  },
+  "checkpoint_sha256": "0b447c086ca74be5e7ed9e98c424637f1f8015ee38fd1e767370415377ed401e"
+}

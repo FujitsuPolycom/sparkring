@@ -9,10 +9,13 @@ def test_qwen_cache_variant_is_visible_without_replacing_native_profile():
     summary, variants = table.split('## Configuration variants', 1)
     pair_summary = summary.split('### Two Sparks', 1)[1]
     rows = [line for line in pair_summary.splitlines() if line.replace('**', '').startswith('| [Qwen3.8-Flash-Next](')]
-    assert len(rows) == 1
-    # The SparkCache profile pins revision 629bc3218833, not the installer
-    # profile's checkpoint, so the installer row offers no cache option.
-    assert '| No | Development |' in rows[0]
+    assert len(rows) == 2
+    native = next(row for row in rows if '../profiles/qwen38-flash-next-tp2/README.md' in row)
+    csf = next(row for row in rows if '../profiles/qwen38-flash-next-csf-sparkcache-tp2/README.md' in row)
+    # The fixed CSF connector profile is Experimental; the cache-off default
+    # and the separate step-4000 qualification retain their evidence scopes.
+    assert '| No | Development |' in native
+    assert '| Included | Experimental |' in csf
     assert 'Qwen with SparkCache is unsupported' not in table
     assert resolve('qwen38-flash-next-tp2')['serving']['sparkcache'] is False
     cached = resolve('qwen38-flash-next-tp2-sparkcache')

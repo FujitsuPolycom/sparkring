@@ -264,9 +264,11 @@ scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-1.env
 scripts/deepseek_v4_pair_serve.sh --run /path/to/rank-0.env
 ```
 
-The pair environment exposes these operator-facing settings and uses the
-defaults recorded in
-[`recipes/deepseek-v4-flash-0731-pair.json`](../../recipes/deepseek-v4-flash-0731-pair.json):
+The pair environment exposes these operator-facing settings. Serving defaults
+match
+[`recipes/deepseek-v4-flash-0731-pair.json`](../../recipes/deepseek-v4-flash-0731-pair.json);
+the warmup settings default to the values below and are optional in the rank
+env file:
 
 | Variable | Default | Purpose |
 |---|---:|---|
@@ -279,6 +281,11 @@ defaults recorded in
 | `MAX_MODEL_LEN` | 1048576 | Per-request token limit |
 | `MAX_NUM_SEQS` | 32 | Scheduler admission ceiling |
 | `MAX_NUM_BATCHED_TOKENS` | 4096 | Scheduler budget and chunked-prefill size |
+| `BLOCK_SIZE` | 256 | Key-value block size passed to the engine and used by the warmup sweep; change it only with a re-validated KV layout |
+| `SHAPE_WARMUP` | 0 | Run the [request-shape warmup](#26-request-shape-warmup) on rank 0 |
+| `SHAPE_WARMUP_WAIT_SECONDS` | 900 | Readiness budget for the warmup phase |
+| `SHAPE_WARMUP_TIMEOUT_SECONDS` | 600 | Sweep budget after readiness |
+| `SHAPE_WARMUP_API_KEY_FILE` | empty | Rank-0 file whose first non-whitespace line is the warmup bearer |
 
 The checkpoint's `dspark_block_size=5` is the minimum admitted draft depth.
 The [pinned runtime](https://github.com/local-inference-lab/vllm/blob/e2666d9a65f41fc376607531453cbd57c4c71016/vllm/config/speculative.py)
@@ -295,8 +302,9 @@ and inside the running container when diagnosing shared-memory pressure.
 
 The cycle launcher consumes one resolved
 `deepseek-v4-flash-0731.env.example` copy per rank and exposes the same model,
-cache, port, speculation, context, sequence, and scheduler settings as the pair
-launcher. Validate all four ranks and compare their printed serving values:
+cache, port, speculation, context, sequence, scheduler, block-size, and warmup
+settings as the pair launcher. Validate all four ranks and compare their
+printed serving values:
 
 ```bash
 scripts/deepseek_v4_cycle_serve.sh --check /path/to/rank-0.env
@@ -363,6 +371,99 @@ read on rank 0; the controller does not copy the bearer into its own process
 arguments. Containers are removed with `docker rm -f`; there is no persistent
 service state. This controller only orchestrates the existing per-rank
 launcher and does not change the launch contract.
+
+## 2.6 Request-shape warmup
+
+Status: **uncalibrated, disabled by default.** The sweep walks request shapes a
+DeepSeek-V4-Flash deployment can schedule, so a cold compiler cache compiles
+them during boot rather than during client traffic that holds ranks in a
+collective. It does not establish that the covered shapes match the kernels
+this image compiles; [Calibrating the sweep](#calibrating-the-sweep) does.
+
+With `SHAPE_WARMUP=1` in rank 0's env file, `--run` starts the container and then
+runs [`scripts/deepseek_v4_shape_warmup.py`](../../scripts/deepseek_v4_shape_warmup.py)
+in the launcher's foreground. The phase waits for `/health`, then fires these
+arms in order:
+
+| Arm | Requests | Shape |
+|---|---:|---|
+| `concurrency-1` … `concurrency-MAX_NUM_SEQS` | 1, 2, 4, … then the sequence limit | Chat requests fired together |
+| `prefill-medium` | 1 | Completion prompt of half `MAX_NUM_BATCHED_TOKENS` tokens |
+| `prefill-multi-chunk` | 1 | Completion prompt of 8192 + `MAX_NUM_BATCHED_TOKENS` tokens, longer than the 8192-token boundary |
+| `thinking-off` | 1 | Chat request with `chat_template_kwargs {"enable_thinking": false}` |
+| `tokens-…` | 1 per bucket | Completion prompts sized so `min(BLOCK_SIZE, next_pow2(tokens + NUM_SPECULATIVE_TOKENS + 1))` reaches each power-of-two bucket through `BLOCK_SIZE` |
+
+Every request starts with a unique nonce, so prefix caching cannot satisfy the
+prefill from an earlier request. Chat arms report the rendered prompt length
+that `/tokenize` returns. Completion arms search filler length through
+`/tokenize` until the prompt has exactly the bucket's token count; a target the
+nonce alone exceeds is listed under `skipped` in the summary instead of being
+approximated. `MAX_NUM_SEQS`, `BLOCK_SIZE`, `NUM_SPECULATIVE_TOKENS`,
+`MAX_NUM_BATCHED_TOKENS` and `MAX_MODEL_LEN` come from the same rank env file
+the container receives, and the module has no defaults for them.
+
+The phase is non-fatal. A failed request, an exhausted budget, a missing
+`python3` or an unreadable key file logs a warning and the container keeps
+serving; only the container command itself fails the launch. The launcher's
+standard output carries one `shape_warmup` JSON summary with each arm's
+completed and failed request counts, measured prompt lengths, compile buckets
+and every skip. The pinned server serves `/v1/completions` for the
+completion arms; a server that rejects it reports those arms as failures rather
+than silently skipping them.
+
+On a cluster that enforces bearer authentication, set
+`SHAPE_WARMUP_API_KEY_FILE` to the rank-0 file the
+`deepseek_v4_cycle_ctl.py --api-key-file` probe reads. The warmup sends the
+file's first non-whitespace line as `Authorization: Bearer`; `/health` is
+probed without it. `cycle_ctl start` launches rank 0's launcher in the
+background, so its API-ready line can precede the sweep. Before sending client
+traffic, wait for the `shape_warmup` summary in
+`$LOG_DIR/ctl-start-rank0.log`.
+
+### Calibrating the sweep
+
+Run this procedure on each image and topology before setting `SHAPE_WARMUP=1`
+in a deployment. Measurements on an earlier DeepSeek-V4-Flash serving image
+found the DSpark input-preparation kernel keyed by the token-count rule above
+rather than by request concurrency; those measurements used a different
+serving image than this repository pins, so the rule and the arm list both
+need confirmation.
+
+1. Stop the deployment with the recovery procedure. Keep the model and
+   flight-recorder data, and move `CACHE_HOST_PATH/jit` aside so the next
+   launch starts with a cold compiler cache.
+2. Render the exact rank commands with `--check` and add
+   `--jit-monitor-verbose` to the engine arguments on every rank. Run those
+   rendered commands instead of `--run`, starting the workers and then rank 0,
+   with `SHAPE_WARMUP=0`. Replay the intended client mix and record every
+   kernel compilation the rank logs report. This set is the target the sweep
+   must cover.
+3. Stop the deployment and move `CACHE_HOST_PATH/jit` aside again.
+4. Launch the same way, then run the sweep by hand against the ready API:
+
+   ```bash
+   python3 scripts/deepseek_v4_shape_warmup.py \
+       --endpoint http://127.0.0.1:8000 --model deepseek-v4-flash-0731 \
+       --max-num-seqs 32 --block-size 256 --num-speculative-tokens 5 \
+       --max-num-batched-tokens 4096 --max-model-len 1048576
+   ```
+
+   Add `--api-key-file` when the API requires a bearer. The command prints its
+   summary and exits zero only when no arm failed.
+5. Replay the same client mix. Passing evidence is that none of the kernels
+   recorded in step 2 compiles after the sweep. A kernel that still compiles
+   names a bucket the sweep does not cover; record the arm-to-kernel mapping
+   and extend the sweep before claiming coverage. Kernels this profile has
+   compiled during serving include `_prepare_dflash_inputs_kernel`,
+   `_compute_global_topk_indices_and_lens_kernel` and the B12X CuTeDSL MoE
+   kernels. The summary's `skipped` entries state which arms the nonce or
+   request limit excluded.
+6. Compare the same request mix with the phase disabled and enabled: TP rank
+   disconnects and restarts, and first-request time to first token. Record
+   conditions, measurements and the conclusion with the deployment record.
+7. Set `SHAPE_WARMUP=1`, `SHAPE_WARMUP_WAIT_SECONDS` and
+   `SHAPE_WARMUP_TIMEOUT_SECONDS` in every rank env file only after step 5
+   passes for that image and topology.
 
 ## 3. Sizing: four coupled parameters, and one inactive guard
 

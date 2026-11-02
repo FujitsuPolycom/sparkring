@@ -7,6 +7,26 @@
     "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
     "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
   },
+  "checkpoint": "original",
+  "checkpoints": {
+    "original": {
+      "model": {
+        "repository": "deepseek-ai/DeepSeek-V4.1-Flash",
+        "revision": "dba1be0a40aa45a94ad051997016db3960a90277",
+        "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+        "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+      }
+    },
+    "1017": {
+      "model": {
+        "repository": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+        "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+        "config_sha256": "8be45ce0476004a3f529fd896115a4a2e800a129ad2d3ec05b16050f52e21879",
+        "index_sha256": "74b0686a3d2891980d5e303251b075a3bccae2c2ff650747db2620a649b98fa8"
+      },
+      "served_model_name": "DeepSeek-V4.1-Flash-1017-TP4"
+    }
+  },
   "topology": "direct-cycle-4",
   "served_model_name": "DeepSeek-V4.1-Flash-TP4",
   "cache_namespace": "deepseek-v41-flash",

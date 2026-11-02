@@ -72,6 +72,7 @@ except ImportError:  # Non-POSIX development hosts import the module; listing an
 from runtime.host import slices
 
 from runtime.host import checkpoint_place
+from runtime.host import placement as placements
 from runtime.host.install_errors import NeedsInput
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -86,8 +87,8 @@ SEARCH = (("srv", "sparkring", "*", "checkpoints", "*", ".*.sparkring"),
 STATE_SUFFIX = ".sparkring"
 STATE_FILES = frozenset({"owner.json", "journal.json", "lock"})
 _TEMPORARY = re.compile(r"(?:owner|journal)\.json\.[0-9]+\.[0-9]+\.writing")
-# Model-switch states in which a candidate deployment may hold containers or still be started.
-SETTLED = frozenset({"complete", "failed", "preparation-failed", "failed-recovered"})
+# Model-switch states that leave nothing of the switch running (placement.SETTLED).
+SETTLED = placements.SETTLED
 JSON_LIMIT = 16 << 20
 GIB = 1024 ** 3
 
@@ -1025,6 +1026,8 @@ def main(argv=None, *, state_root=None, invoke=None):
                         help="remove this SparkRing checkpoint directory from every Spark that holds it; the copies "
                              "its files were linked from are never written, moved or deleted")
     parser.add_argument("--yes", action="store_true", help="approve the release without a prompt")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout")
     args = parser.parse_args(argv)
     if state_root is None or invoke is None:
@@ -1042,6 +1045,7 @@ def main(argv=None, *, state_root=None, invoke=None):
         if not _administrator():
             raise ValueError("Run sudo sparkring checkpoints")
         if args.release:
+            hold.require(state_root, "sparkring checkpoints --release", override=args.override_hold)
             result = release_cluster(args.release, state_root, invoke, yes=args.yes,
                                      interactive=not args.json and sys.stdin.isatty(), write=write)
         else:

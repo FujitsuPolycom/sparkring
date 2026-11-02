@@ -97,9 +97,30 @@ for name in NUM_SPECULATIVE_TOKENS MAX_MODEL_LEN MAX_NUM_SEQS \
     MAX_NUM_BATCHED_TOKENS; do
     require_positive_integer "$name"
 done
+BLOCK_SIZE=${BLOCK_SIZE:-256}
+require_positive_integer BLOCK_SIZE
 require_port API_PORT
 require_port MASTER_PORT
 [ "$((10#$API_PORT))" -ne "$((10#$MASTER_PORT))" ] || die "API_PORT and MASTER_PORT must differ"
+
+# Request-shape warmup is opt-in until the sweep is calibrated against this
+# image; see docs/operations/deepseek-0731.md#26-request-shape-warmup.
+SHAPE_WARMUP=${SHAPE_WARMUP:-0}
+case "$SHAPE_WARMUP" in
+    0|1) ;;
+    *) die "SHAPE_WARMUP must be 0 or 1: $SHAPE_WARMUP" ;;
+esac
+SHAPE_WARMUP_WAIT_SECONDS=${SHAPE_WARMUP_WAIT_SECONDS:-900}
+SHAPE_WARMUP_TIMEOUT_SECONDS=${SHAPE_WARMUP_TIMEOUT_SECONDS:-600}
+if [ "$SHAPE_WARMUP" = 1 ]; then
+    for name in SHAPE_WARMUP_WAIT_SECONDS SHAPE_WARMUP_TIMEOUT_SECONDS; do
+        require_positive_integer "$name"
+    done
+    if [ -n "${SHAPE_WARMUP_API_KEY_FILE:-}" ] \
+        && [ ! -r "$SHAPE_WARMUP_API_KEY_FILE" ]; then
+        die "SHAPE_WARMUP_API_KEY_FILE is not readable: $SHAPE_WARMUP_API_KEY_FILE"
+    fi
+fi
 
 [ "$NCCL_SOCKET_IFNAME" = "$GLOO_SOCKET_IFNAME" ] \
     || die "NCCL_SOCKET_IFNAME and GLOO_SOCKET_IFNAME must match on a pair"
@@ -140,6 +161,7 @@ fi
 image=ghcr.io/fujitsupolycom/gb10-vllm-serving@sha256:827a8e8c5749b78529cc0015dd174e1b19a0accc116bc142282f8b75428f98bd
 container_name="deepseek-v4-flash-r$NODE_RANK"
 model_container_path=/models/deepseek-v4-flash-0731
+served_model_name=deepseek-v4-flash-0731
 speculative_config=$(printf \
     '{"method":"dspark","num_speculative_tokens":%s,"moe_backend":"b12x"}' \
     "$NUM_SPECULATIVE_TOKENS")
@@ -178,13 +200,13 @@ command=(
     --gpu-memory-utilization 0.70
     --kv-cache-memory-bytes 17179869184
     --kv-cache-dtype fp8_ds_mla
-    --block-size 256
+    --block-size "$BLOCK_SIZE"
     --tokenizer-mode deepseek_v4
     --kernel-config '{"enable_cutedsl_warmup":false}'
     --enable-auto-tool-choice
     --tool-call-parser deepseek_v4
     --speculative-config "$speculative_config"
-    --served-model-name deepseek-v4-flash-0731
+    --served-model-name "$served_model_name"
 )
 
 if [ "$NODE_RANK" = 0 ]; then
@@ -201,6 +223,8 @@ printf '  MAX_MODEL_LEN: %s\n' "$MAX_MODEL_LEN"
 printf '  MAX_NUM_SEQS: %s\n' "$MAX_NUM_SEQS"
 printf '  MAX_NUM_BATCHED_TOKENS: %s\n' "$MAX_NUM_BATCHED_TOKENS"
 printf '  NUM_SPECULATIVE_TOKENS: %s\n' "$NUM_SPECULATIVE_TOKENS"
+printf '  BLOCK_SIZE: %s\n' "$BLOCK_SIZE"
+printf '  SHAPE_WARMUP: %s\n' "$SHAPE_WARMUP"
 printf '  command:'
 printf ' %q' "${command[@]}"
 printf '\n'
@@ -227,3 +251,26 @@ for cache_directory in \
 done
 # Keep the shell alive so its EXIT trap removes the filtered env-file.
 "${command[@]}"
+if [ "$NODE_RANK" = 0 ] && [ "$SHAPE_WARMUP" = 1 ]; then
+    shape_warmup_args=(
+        --endpoint "http://127.0.0.1:$API_PORT"
+        --model "$served_model_name"
+        --max-num-seqs "$MAX_NUM_SEQS"
+        --block-size "$BLOCK_SIZE"
+        --num-speculative-tokens "$NUM_SPECULATIVE_TOKENS"
+        --max-num-batched-tokens "$MAX_NUM_BATCHED_TOKENS"
+        --max-model-len "$MAX_MODEL_LEN"
+        --wait-seconds "$SHAPE_WARMUP_WAIT_SECONDS"
+        --timeout-seconds "$SHAPE_WARMUP_TIMEOUT_SECONDS"
+    )
+    if [ -n "${SHAPE_WARMUP_API_KEY_FILE:-}" ]; then
+        shape_warmup_args+=(--api-key-file "$SHAPE_WARMUP_API_KEY_FILE")
+    fi
+    printf 'Shape warmup: waiting for rank 0 health, then sweeping request shapes.\n'
+    # The phase is non-fatal: a failure keeps the boot and only logs a warning.
+    if ! command -v python3 >/dev/null 2>&1; then
+        echo "deepseek pair launcher: warning: python3 is unavailable; request-shape warmup skipped" >&2
+    elif ! python3 "$script_dir/deepseek_v4_shape_warmup.py" "${shape_warmup_args[@]}"; then
+        echo "deepseek pair launcher: warning: request-shape warmup did not complete; continuing to serve" >&2
+    fi
+fi
