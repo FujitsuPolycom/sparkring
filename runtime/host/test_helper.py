@@ -90,6 +90,7 @@ def _start_helper_server(path, child):
     server.bind(str(path))
     server.listen(4)
     audits = []
+    audited = threading.Event()
 
     def loop():
         while True:
@@ -98,18 +99,21 @@ def _start_helper_server(path, child):
             except OSError:
                 return
             audits.append(_serve_once(connection, child))
+            audited.set()
 
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
-    return server, audits
+    return server, audits, audited
 
 
 def test_request_runs_one_validated_command_end_to_end(tmp_path, capsys):
     path = tmp_path / "helper.sock"
     child = Child(code=0, out="Up complete")
-    server, audits = _start_helper_server(path, child)
+    server, audits, audited = _start_helper_server(path, child)
     try:
         assert helper.request(["up", "glm53", "--execute"], socket_path=str(path)) == 0
+        # The exit reply can arrive before the server publishes its audit line.
+        assert audited.wait(timeout=5)
     finally:
         server.close()
     out = capsys.readouterr()
@@ -120,7 +124,7 @@ def test_request_runs_one_validated_command_end_to_end(tmp_path, capsys):
 def test_request_reports_a_refusal_as_an_error(tmp_path, capsys):
     path = tmp_path / "helper.sock"
     child = Child()
-    server, _ = _start_helper_server(path, child)
+    server, _, _ = _start_helper_server(path, child)
     try:
         assert helper.request(["down", "does-not-exist"], socket_path=str(path)) == 2
     finally:

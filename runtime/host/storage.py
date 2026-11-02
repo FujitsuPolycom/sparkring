@@ -1539,6 +1539,8 @@ def main(argv=None, *, state_root=None, invoke=None):
                         help="remove this unreferenced cache directory or deployment workspace from every Spark that "
                              "holds it")
     parser.add_argument("--yes", action="store_true", help="approve the release without a prompt")
+    from runtime.host import hold
+    hold.add_override_argument(parser)
     parser.add_argument("--json", action="store_true", help="emit one JSON result on stdout")
     parser.add_argument("--retain-deployments", metavar="N|off",
                         help="after each install and up, keep the N most recent deployments of each profile and "
@@ -1567,6 +1569,7 @@ def main(argv=None, *, state_root=None, invoke=None):
             result = {"schema": SCHEMA, "state": "saved", "retain_deployments": "off" if retain is None else retain}
             write(retention.setting_text(retain))
         elif args.release:
+            hold.require(state_root, "sparkring storage --release", override=args.override_hold)
             result = release_cluster(args.release, state_root, invoke, yes=args.yes,
                                      interactive=not args.json and sys.stdin.isatty(), write=write)
         else:

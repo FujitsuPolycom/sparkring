@@ -68,10 +68,14 @@ def assert_totals(page, output, running, queued):
     block = page.locator('.ring-totals').first
     assert f"{output} tok/s" in block.text_content()
     assert f"{running} running · {queued} queued" in block.text_content()
+    # The mean rate per running request follows the queue count once anything runs.
+    assert (" each" in block.text_content()) == (int(running) >= 1)
     assert page.locator('#strip .tile').nth(1).locator('.v').inner_text() == f"{output}tok/s"
     requests = page.locator('#strip .tile').nth(2)
     assert requests.locator('.v').inner_text() == f"{running}running"
-    assert requests.locator('.s').inner_text() == f"{queued} waiting"
+    sub = requests.locator('.s').inner_text()
+    assert sub.startswith(f"{queued} waiting")
+    assert sub.endswith(" tok/s each") == (int(running) >= 1)
 
 
 def test_totals_share_card_snapshot_and_exclude_nonserving(smooth_page):  # noqa: F811

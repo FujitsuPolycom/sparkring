@@ -140,6 +140,10 @@ class Sites:
                 chosen[row["name"]] = self.rng.randint(1, row["maximum"])
             elif row["name"] == "context_length":
                 chosen[row["name"]] = self.rng.randint(1024, row["profile"])
+            elif row.get("size"):
+                chosen[row["name"]] = self.rng.choice([row["profile"], row["minimum"], "48G", "64GiB", "1000M"])
+            elif row.get("choice"):
+                chosen[row["name"]] = self.rng.choice(row["values"])
             else:
                 chosen[row["name"]] = self.rng.randint(row["minimum"], max(row["minimum"], row["profile"] * 2))
         return chosen

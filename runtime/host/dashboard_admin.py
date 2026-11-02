@@ -180,12 +180,20 @@ def operation_times(directory: Path) -> dict:
 
 
 def deployment_row(directory, slot=None, size=None):
-    """Public deployment fields shared by site export and active installation progress."""
+    """Public deployment fields shared by site export and active installation progress.
+
+    A record the installed package cannot render again (its checkpoint or
+    profile is no longer listed) takes its API and model from its own
+    rank-0 container record (``installer.recorded_connection``).
+    """
     from runtime.common import installer
     from runtime.host import api_endpoint
     from runtime.host import placement as placements
     lock = installer.read(Path(directory) / "deployment.lock.json")
-    connection = installer.connection(lock)
+    try:
+        connection = installer.connection(lock)
+    except (ValueError, KeyError):
+        connection = installer.recorded_connection(directory, lock)
     host = urllib.parse.urlsplit(connection["api_url"]).hostname
     positions = list(slot) if slot else list(range(size or len(lock["site"]["ranks"])))
     shown = api_endpoint.recorded(directory)
@@ -227,10 +235,56 @@ def site_from_records(state_root: Path) -> dict:
         directory = placements.recorded(state_root, slot)
         if not placements.exists(directory):
             continue
-        rows.append(deployment_row(directory, slot, size))
+        try:
+            rows.append(deployment_row(directory, slot, size))
+        except (ValueError, KeyError, OSError, TypeError, IndexError) as error:
+            # One record the controller cannot describe must not keep every other deployment off the page.
+            _stderr(f"Dashboard: deployment {Path(directory).name} is not shown ({type(error).__name__}: {error})")
     from runtime.host import ring_name
     return {"schema": SITE_SCHEMA, "written_at": time.time(), "deployments": rows,
             "display_name": ring_name.read(state_root)}
+
+
+def external_rows(path) -> list:
+    """The endpoints the external list names (dashboard.read_external); [] without the file."""
+    from runtime.host import dashboard
+    return dashboard.read_external(path)
+
+
+def write_external(path, rows) -> None:
+    """Write the external list file with ``rows``, world-readable, replacing it atomically."""
+    from runtime.host import dashboard, node
+    path = Path(path)
+    document = {"schema": dashboard.EXTERNAL_SCHEMA, "endpoints": rows}
+    node.save(path.parent, path.name, document, mode=0o644)
+
+
+def external(args) -> int:
+    """``sparkring dashboard external list|add|remove``: the endpoints shown as read-only cards.
+
+    ``add`` validates the entry as the service does and replaces an entry of the same id; ``remove``
+    drops one. The service re-reads the file within FILES_SECONDS; no restart. Prints the list."""
+    from runtime.host import dashboard
+    path = Path(args.file)
+    rows = external_rows(path)
+    if args.action == "add":
+        entry = {"id": args.id, "label": args.label, "kind": args.kind, "host": args.host, "port": args.port}
+        if getattr(args, "position", None) is not None:
+            entry["position"] = args.position
+        rows = dashboard.external_rows({"schema": dashboard.EXTERNAL_SCHEMA,
+                                        "endpoints": [r for r in rows if r["id"] != args.id] + [entry]}, str(path))
+        write_external(path, rows)
+    elif args.action == "remove":
+        if not any(r["id"] == args.id for r in rows):
+            raise ValueError(f"no endpoint {args.id} in {path}")
+        write_external(path, [r for r in rows if r["id"] != args.id])
+        rows = dashboard.read_external(path)
+    if not rows:
+        print(f"No endpoints listed in {path}.")
+    for row in rows:
+        where = f" on position {row['position']}" if row.get("position") is not None else ""
+        print(f"{row['id']}: {row['label']} ({row['kind']}) at http://{row['host']}:{row['port']}{where}")
+    return 0
 
 
 def write_site(output: Path | None = None) -> dict:

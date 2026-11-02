@@ -1,0 +1,16 @@
+{
+ "schema": "sparkring-release-selection/v1",
+ "id": "dev-20261016-sparkcache-4a17f1f5198e-status038",
+ "selection": "published-immutable-reference",
+ "image": "ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd",
+ "inputs": [
+  {
+   "path": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/publication.json",
+   "sha256": "33fac125cd29b13a84aa0434803781874f036555e6732a04503c5a5ddff41b96"
+  },
+  {
+   "path": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
+   "sha256": "39c81df0cda3dc07c8368b33a7e3c09b4a4be5a9164bf3d551d5eeb2dbaf5733"
+  }
+ ]
+}

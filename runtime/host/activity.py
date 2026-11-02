@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 from runtime.common import installer
-from runtime.host import dashboard, placement, slices
+from runtime.host import dashboard, hold, placement, slices
 from runtime.host.install_errors import NeedsInput
 
 SCHEMA = "sparkring-activity/v1"
@@ -82,8 +82,18 @@ def read_metrics(url):
         return None
 
 
-def assess(root, positions, *, metrics=None, quiet_path=None, probe=True):
-    """Inspect locks, benchmark holders and neighbours once at an operator's request."""
+def assess(root, positions, *, metrics=None, quiet_path=None, probe=True, operation="install", who=None,
+           command=None):
+    """Inspect locks, an operator's hold, benchmark holders and neighbours once at an operator's request.
+
+    Grades, most severe first: ``blocked`` (a lock on these Sparks; nothing
+    bypasses it), ``held`` (another operator's hold, ``runtime.host.hold``;
+    ``confirm`` needs ``override_hold``), ``may-be-affected`` (advisory;
+    ``confirm`` needs ``yes`` or a terminal answer) and ``clear``. ``command``
+    names the operation in a hold's refusal and override record when it is not
+    ``operation`` itself, such as ``setup`` or ``recover on``.
+    """
+    command = command or operation
     root = Path(root)
     reasons = []
     def reason(grade, where, activity, resource):
@@ -96,16 +106,24 @@ def assess(root, positions, *, metrics=None, quiet_path=None, probe=True):
         where = owner.get("positions")
         if placement.overlap(positions, where):
             reason("blocked", where, owner["operation"], slices.label(where))
-        elif owner["operation"].startswith("install"):
+        elif operation == "install" and owner["operation"].startswith("install"):
             reason("may-be-affected", where, owner["operation"],
                    transfer_resource(root, where, positions))
+    try:
+        standing = hold.foreign(root, who=who)
+    except OSError:
+        standing = None
+    if standing is not None:
+        reasons.append({"grade": "held", "positions": None, "activity": "hold by " + standing["holder"],
+                        "resource": "the cluster", "message": hold.refusal(standing, "sparkring " + command),
+                        "hold": standing, "override_log": str(root / hold.OVERRIDES), "operation": command})
     quiet = dashboard.quiet_state(Path(quiet_path or dashboard.QUIET_PATH), time.time())
-    for holder in quiet["holders"]:
+    for holder in quiet["holders"] if operation != "down" else ():
         reason("may-be-affected", None, "benchmark " + str(holder.get("label") or "measurement"), "the fabric network")
-    if quiet["operator"]:
+    if quiet["operator"] and operation != "down":
         reason("may-be-affected", None, "dashboard quiet mode (traffic is not sampled)", "the fabric network")
     observations = []
-    if not any(row["grade"] == "blocked" for row in reasons):
+    if operation != "down" and not any(row["grade"] == "blocked" for row in reasons):
         try:
             cluster = installer.read(root / "cluster.json")
             layout = placement.layout_of(cluster)
@@ -130,15 +148,38 @@ def assess(root, positions, *, metrics=None, quiet_path=None, probe=True):
                 observations.append({"positions": sorted(other), "traffic": "unknown" if value is None else "sampled"})
                 if value and (value.get("running", 0) >= 4 or value.get("waiting", 0) > 0):
                     reason("may-be-affected", sorted(other), "heavy serving traffic", "neighbouring fabric links")
-    grade = next((name for name in ("blocked", "may-be-affected")
+    grade = next((name for name in ("blocked", "held", "may-be-affected")
                   if any(row["grade"] == name for row in reasons)), "clear")
-    return {"schema": SCHEMA, "grade": grade, "positions": list(positions) if positions is not None else None,
+    return {"schema": SCHEMA, "grade": grade,
+            "positions": list(positions) if positions is not None else None,
             "reasons": reasons, "observations": observations,
             "message": " ".join(row["message"] for row in reasons) or
                        f"No conflicting activity is recorded for {slices.label(positions)}."}
 
 
-def confirm(document, *, yes=False, plan=False, interactive=None):
+def refuse_hold(document, override_hold=False):
+    """Raise ``NeedsInput`` (field ``hold``) when another operator's hold stands and ``override_hold`` is not set."""
+    held = [row for row in document["reasons"] if row["grade"] == "held"]
+    if held and not override_hold:
+        raise NeedsInput(" ".join(row["message"] for row in held), field="hold", details={"activity": document})
+
+
+def record_hold_overrides(document):
+    """Append an override for each hold in ``document``; call once this assessment's checks have passed."""
+    for row in document["reasons"]:
+        if row["grade"] == "held":
+            hold.record_override(row["override_log"], row["hold"], row["operation"],
+                                 positions=document.get("positions"))
+            print(f"Proceeding with {hold.OVERRIDE_FLAG}; the override is recorded.", file=sys.stderr)
+
+
+def confirm(document, *, yes=False, plan=False, interactive=None, override_hold=False):
+    """Proceed, or raise ``NeedsInput``, for an ``assess`` document.
+
+    ``yes`` approves advisory warnings only; another operator's hold needs
+    ``override_hold``, which is recorded once this assessment's checks have passed; a
+    lock is never bypassed.
+    """
     if document["grade"] == "clear":
         return
     print(document["message"], file=sys.stderr)
@@ -146,11 +187,12 @@ def confirm(document, *, yes=False, plan=False, interactive=None):
         return
     if document["grade"] == "blocked":
         raise NeedsInput(document["message"], field="activity", details={"activity": document})
-    if yes:
-        return
-    interactive = sys.stdin.isatty() if interactive is None else interactive
-    if not interactive:
-        raise NeedsInput("Review the activity warning and repeat with --yes to proceed.", field="activity",
-                         details={"activity": document})
-    if input("Continue despite this activity? [y/N]: ").strip().lower() not in ("y", "yes"):
-        raise NeedsInput("Operation cancelled.", field="activity", details={"activity": document})
+    refuse_hold(document, override_hold)
+    if any(row["grade"] == "may-be-affected" for row in document["reasons"]) and not yes:
+        interactive = sys.stdin.isatty() if interactive is None else interactive
+        if not interactive:
+            raise NeedsInput("Review the activity warning and repeat with --yes to proceed.", field="activity",
+                             details={"activity": document})
+        if input("Continue despite this activity? [y/N]: ").strip().lower() not in ("y", "yes"):
+            raise NeedsInput("Operation cancelled.", field="activity", details={"activity": document})
+    record_hold_overrides(document)

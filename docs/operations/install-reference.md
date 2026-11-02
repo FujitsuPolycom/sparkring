@@ -248,6 +248,10 @@ are host settings that SparkRing neither applies nor has measured
   resumes the switch. Another profile or checkpoint replaces it instead: after
   the GPU check, the installer stops the unfinished model through its own
   deployment and switches from the last model that served.
+  `sudo sparkring install --cancel` settles it without installing anything: it
+  stops the unfinished candidate on every Spark, starts the model the switch
+  replaced again and records the switch as `cancelled`
+  ([cancel an installation](commands.md#cancel-an-installation)).
 - **Selected model's last start did not complete**, for example when a first
   installation failed its readiness check or a restart of the installed model
   failed: the same command first stops that model on every Spark, then
@@ -459,26 +463,28 @@ sudo sparkring logs --follow
 ## Serving image and profiles
 
 Without `--image`, every installer profile runs on one shared ARM64 serving
-image, the image of release 2026.10.4, pinned by its
-[installer image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
+image, the image of release 2026.10.5, pinned by its
+[installer image lock](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json)
 (`sparkring-installer-image/v3`):
 
 | Item | Identifier |
 |---|---|
-| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f` |
-| Tag | `dev-20261013-dcp2prefill-status038-sircl-tp6` |
-| Configuration | `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502` |
-| Parent image | Release 2026.10.2's `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`, configuration `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| Image | `ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd` |
+| Tag | `dev-20261016-sparkcache-4a17f1f5198e-status038` |
+| Configuration | `sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8` |
+| Parent image | Release 2026.10.4's `dev-20261013-dcp2prefill-status038-sircl-tp6`, configuration `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502`; its parent is release 2026.10.2's `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036` |
 | Transports | `sircl` (SIRCL 0.3.2, ABI 9), `prepared` and `libsircl` (libsircl 0.6.0) |
 | vLLM build | `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads the CSF checkpoints and admits GLM-5.3-Flash at TP2/DCP2 |
 | vLLM plugins | `glm53full_speedups` 1.1.0, `glm_dcp_decode_comm` 2.0.1, `glm_dsa_indexer_split` 1.1.0 |
 | Runtime-status dashboard | 0.3.8 |
-| Size recorded in the lock | 15,283,036,575 bytes to download, 31,895,394,449 bytes unpacked |
+| Size recorded in the lock | 15,283,745,437 bytes to download, 31,898,421,029 bytes unpacked |
 
-The image adds layers to its parent: the TP2/DCP2 prefill admission,
+The image adds one layer to its parent: SparkCache for GLM-5.3-Flash,
+Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash, with the connector logging the
+dashboard reads. Its parent added the TP2/DCP2 prefill admission,
 runtime-status 0.3.7 and 0.3.8, and a SIRCL layer whose ring sessions admit
-GLM-5.3 on six Sparks. The
-[release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md) states its layers, evidence and limitations.
+GLM-5.3 on six Sparks to release 2026.10.2's image. The
+[release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md) states its layers, evidence and limitations.
 `sparkring install` picks the newest published, unarchived v3 image that
 carries SIRCL (`default_row` in
 [image_lock.py](../../runtime/common/image_lock.py)); without one it falls
@@ -534,6 +540,9 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
 | `qwen38-flash-next-tp2` | Qwen3.8-Flash-Next NVFP4-MXFP8 CSF QAD, revision `dc5b8ab2fa14`, on an image whose vLLM reads it, the default image among them; Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`), on every other image, 2026.10.1's among them | MTP, three tokens, probabilistic drafting |
 | `qwen38-flash-next-qad-tp4` | Qwen3.8 Flash Next NVFP4 QAD step 5500, revision `60215d26cf5e` (branch `qad-step5500-ple1000`) | MTP, three tokens, probabilistic drafting |
 | `glm53-flash-nvfp4-spark-tp2`, `glm53-flash-nvfp4-spark-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, on an image whose vLLM reads it, the default image among them; GLM-5.3-Flash NVFP4-Spark, revision `a608241037e4`, on every other image, 2026.10.1's among them | MTP, three tokens (MTP3) |
+| `deepseek-v41-flash-sparkcache-tp4` | DeepSeek V4.1 TP4/DCP1 with SparkCache; Experimental (research-only), admitted by the default image, release 2026.10.5's; the [hardware gates](../../profiles/deepseek-v41-flash-sparkcache-tp4/HARDWARE.md) state what remains open; same checkpoints (`original`, `1017`) and API port 8015 as the cache-off profile | DSpark5 |
+| `qwen38-flash-next-csf-sparkcache-tp2`, `qwen38-flash-next-step5500-sparkcache-tp4` | Qwen CSF TP2 and QAD step-5500 TP4 with SparkCache; Experimental (research-only), admitted by the default image, release 2026.10.5's; the [hardware plan](../research/qwen38-sparkcache.md) states the gates | MTP3 |
+| `glm53-flash-nvfp4-sparkcache-crc32-tp2`, `glm53-flash-nvfp4-sparkcache-crc32-tp4` | GLM-5.3-Flash CSF TP2 and TP4 with SparkCache; Experimental (research-only), admitted by the default image, release 2026.10.5's | MTP3 |
 | `glm53-flash-nvfp4-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-tp4` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with SparkCache persistent context; research-only, installs only on an image whose lock lists it (the derived layer of `runtime/images/compositions/installer-sparkcache-gab86b70`) | MTP, three tokens (MTP3) |
 | `glm53-flash-nvfp4-spark-tp2-dcp2` | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, revision `dec48abd33ef`, with decode-context parallelism 2; research-only, installs only on an image whose lock lists it | MTP, three tokens (MTP3) |
 | `mimo-v26-flash-mopd-tp2`, `mimo-v26-flash-mopd-tp4` | MiMo-V2.6-Flash-MOPD, revision `2479e2d0029e` | DFlash5 |
@@ -582,7 +591,7 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   about twice the tokens of the same memory at decode-context parallelism 1
   ([guide](../../profiles/glm53-flash-nvfp4-spark-tp2-dcp2/README.md)). It
   installs on an image whose lock lists it, such as the default image of
-  release 2026.10.4; `sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2`
+  release 2026.10.5; `sparkring images --profile glm53-flash-nvfp4-spark-tp2-dcp2`
   shows which, and `--image NAME` selects another.
   That image's vLLM is the pinned TP2/DCP2 prefill build
   `sparkring-kraken-bc9ea774-tp2-dcp2-prefill`, which reads CSF; the
@@ -601,13 +610,13 @@ installer-supported; family names such as `qwen` are ambiguous and rejected:
   the plan states that its checkpoint is research-only. No image lock this
   package carries lists it: it installs with `--image-lock FILE`, a lock
   that lists it.
-- All installer profiles run with vLLM's native prefix cache on and
-  SparkCache off. SparkCache is the external connector that keeps the prefix
-  KV cache on disk across restarts.
+- Installer profiles run with vLLM's native prefix cache on. SparkCache is
+  enabled only by the explicitly named SparkCache variants. It keeps the
+  prefix KV cache on disk across restarts.
 - The eight-Spark profiles (`-tp8`, research-only) run on every Spark of an
   eight-Spark ring and only on SIRCL ring sessions. They install on an image
   lock (`sparkring-installer-image/v3`) whose image carries the SIRCL layer
-  and lists them: the default image's, release 2026.10.4's, lists every one
+  and lists them: the default image's, release 2026.10.5's, lists every one
   except `qwen38-flash-next-qad-tp8` and `glm53-nvfp4-csf-tp8`; a
   development lock is selected with `--image-lock FILE`. They are listed in the research catalog,
   [research-catalog.json](../../profiles/research-catalog.json), outside every
@@ -788,6 +797,19 @@ on Node A under `receipts/<time>/`; `sudo sparkring status` prints the last
 verdict and `sudo sparkring check` repeats the check.
 
 ### Serving settings
+
+For a SparkCache profile, `--sparkcache-size 64G` sets the disk budget per
+Spark. `--sparkcache-integrity fast|sha256|none` selects the payload check;
+the default is `fast`. `--sparkcache-debug` enables detailed SparkCache logs
+and reuse tracing while vLLM stays at INFO. These settings persist through
+`up`, `restart` and automatic recovery, and appear in the plan and status.
+Other profiles refuse them.
+
+Integrity mode selects the stored-entry identity: `fast` uses
+`page-tail-cow-v3-fast`, `none` uses `page-tail-cow-v3-none`, and `sha256`
+uses `page-tail-cow-v2`. Entries written in another mode miss cleanly.
+Disk budget and debug logging do not change cache identity. `none` checks
+lengths and geometry but does not detect payload corruption.
 
 `sudo sparkring install`, `sudo sparkring up PROFILE`, `sparkring init` and
 `sparkring compose render` accept optional settings, each of which replaces
@@ -2328,9 +2350,9 @@ The parts are:
     missing layers. SparkRing loads them with `docker load`, whose own check
     needs four times their download size plus 4 GiB; the plan bounds that
     download by the larger of the two releases' unpacked-size and
-    download-size differences. The default image, `dev-20261013-dcp2prefill-status038-sircl-tp6`,
-    derives from 2026.10.2's: a Spark that holds 2026.10.2's image loads at
-    most 9.9 MiB of layers and needs 4.0 GiB;
+    download-size differences. The default image, `dev-20261016-sparkcache-4a17f1f5198e-status038`,
+    derives from 2026.10.4's: a Spark that holds 2026.10.4's image loads at
+    most 2.9 MiB of layers and needs 4.0 GiB;
   - no image it derives from: the unpacked size plus the download size plus
     8 GiB for Docker's metadata and allocation, 51.9 GiB for the default image. The
     same applies on Docker's containerd image store, into which SparkRing
@@ -2381,7 +2403,7 @@ records no image sizes, and the compile cache allowance. The per-repository
 checkpoint allowances of storage planning apply only to a revision without a
 pin manifest.
 
-The default serving image `dev-20261013-dcp2prefill-status038-sircl-tp6` is a
+The default serving image `dev-20261016-sparkcache-4a17f1f5198e-status038` is a
 14.2 GiB download, 29.7 GiB unpacked. The last column below adds the whole
 image, 51.9 GiB, and the 4 GiB compile cache allowance to the checkpoint
 figure: the need of a Spark holding neither the image nor a checkpoint file,
@@ -2398,6 +2420,7 @@ with the checkpoint, Docker and the cache on one filesystem. Node A needs
 | Qwen `--checkpoint jmni-qad5500-hybrid`, `JMNI-Labs/Qwen3.8-Flash-Next-NVFP4-QAD5500-Hybrid` @ `87c8f2fb738b` | 99.1 GiB | 103.0 GiB | 158.9 GiB |
 | Qwen `csf` (two Sparks), `local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD` @ `dc5b8ab2fa14` | 95.2 GiB | 99.9 GiB | 155.8 GiB |
 | DeepSeek, `deepseek-ai/DeepSeek-V4.1-Flash` @ `dba1be0a40aa` | 475.3 GiB | 491.3 GiB | 547.2 GiB |
+| DeepSeek `--checkpoint 1017`, `deepseek-ai/DeepSeek-V4.1-Flash-1017` @ `1bae0e108899` | 475.3 GiB | 491.3 GiB | 547.1 GiB |
 | GLM-5.3, `local-inference-lab/GLM-5.3-NVFP4` @ `b472e4ee53f6` (eight Sparks) | 433.0 GiB | 449.0 GiB | 504.8 GiB |
 | GLM-5.3 NVFP4-CSF, `local-inference-lab/GLM-5.3-NVFP4-CSF` @ `a4d406932f2d` (eight Sparks) | 412.5 GiB | 428.5 GiB | 484.4 GiB |
 | GLM `csf` and the eight-Spark GLM-5.3-Flash profile, `local-inference-lab/GLM-5.3-Flash-NVFP4-MXFP8-CSF-QAD` @ `dec48abd33ef` | 165.5 GiB | 170.2 GiB | 226.1 GiB |
@@ -2711,6 +2734,7 @@ sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint jmni-qad5500
 sudo sparkring install --profile qwen38-flash-next-tp2 --checkpoint qad-step5500-ple1000
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp4 --checkpoint nvidia-nvfp4
 sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-qad
+sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017
 ```
 
 | Profiles | `--checkpoint` | Checkpoint | Settings that differ from the default |
@@ -2727,7 +2751,21 @@ sudo sparkring install --profile glm53-flash-nvfp4-spark-tp2 --checkpoint nvfp4-
 | `glm53-flash-nvfp4-spark-tp2` | `csf` (default on an image that reads it) | GLM-5.3-Flash NVFP4-MXFP8 CSF QAD, as above | `--quantization nvfp4_csf --load-format nvfp4_csf`; W4A16 decode with two CTAs per SM for small-M experts; KDA prefill coalescing (`VLLM_B12X_KDA_PREFILL_COALESCING=1`); the draft's experts on the Marlin MoE backend instead of Humming, with the four-Spark profile's draft tensor parallelism, probabilistic draft sampling and standard rejection; the pair's 10 GiB of KV cache per Spark and 1,048,576-token context window; served as `GLM-5.3-Flash-CSF-TP2` |
 | `glm53-flash-nvfp4-spark-tp2` | `nvfp4-qad` | GLM-5.3-Flash NVFP4 QAD, as above | 5 GiB of KV cache per Spark; a 524,288-token context window; served as `GLM-5.3-Flash-NVFP4-QAD-TP2`. The pair's draft already runs its experts on the Humming MoE backend |
 | `glm53-flash-nvfp4-spark-tp4` | `nvidia-nvfp4` | [GLM-5.3-Flash NVFP4](https://huggingface.co/nvidia/GLM-5.3-Flash-NVFP4/tree/da920bb0b9f4a06727223a349e55468e38352348) by NVIDIA (ModelOpt), revision `da920bb0b9f4` | `--quantization modelopt_fp4` and `--load-format safetensors`; the draft's BF16 experts on vLLM's unquantized MoE kernel; 36 GiB of KV cache per Spark; served as `GLM-5.3-Flash-NVFP4-NVIDIA-TP4` |
+| `deepseek-v41-flash-tp4` | `original` (default) | [DeepSeek-V4.1-Flash](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash/tree/dba1be0a40aa45a94ad051997016db3960a90277) by DeepSeek, revision `dba1be0a40aa` | — |
+| `deepseek-v41-flash-sparkcache-tp4` | `original` (default) | DeepSeek-V4.1-Flash, as above | — |
+| `deepseek-v41-flash-sparkcache-tp4` | `1017` | DeepSeek-V4.1-Flash-1017, as below | Served as `DeepSeek-V4.1-Flash-1017-TP4`; the connector's checkpoint identity `642667f8…` and the cache root `/cache/deepseek-v41-flash-sparkcache-ab53c097d7ca-1bae0e108899`, so each revision's cache is its own. Research-only: the 1017 weights served under this profile on 2026-10-17 as a research configuration ([record](../../performance/records/images/dev-20261016-sparkcache-4a17f1f5198e-status038-installer-fixes-ring8-20261017.md)); no run with the entry itself yet. |
+| `deepseek-v41-flash-tp4` | `1017` | [DeepSeek-V4.1-Flash-1017](https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/tree/1bae0e1088993b9b82de08f59de5be5a34e42170) by DeepSeek, revision `1bae0e108899`: new weights with the original's architecture, `config.json`, weight index and tokenizer files | Served as `DeepSeek-V4.1-Flash-1017-TP4`. The release's reference prompt encoder (`encoding/encoding.py`) changed how tool results are rendered; the image's vLLM encoder predates that change |
 
+- The DeepSeek `1017` entry is **implemented** on installer image
+  `dev-20261013-dcp2prefill-status038-sircl-tp6` on four Sparks: `sudo sparkring
+  install --checkpoint 1017` installed it on one ring, where it passed all 7
+  functional checks and a 256-request correctness screen with no degenerate,
+  failed or wrong response
+  ([record](../../performance/records/images/dev-20261013-dcp2prefill-status038-sircl-tp6-deepseek-v41-flash-tp4-1017-20261017.md)).
+  With tool definitions in a request, the image's vLLM encoder renders the
+  same prompt as the 1017 release's reference encoder; without them and with
+  thinking on, the reference keeps the reasoning of earlier tool steps and
+  the image's encoder drops it.
 - The Qwen `qad-step5500-mxfp8-attention` entry is **implemented** on the
   installer image on two and four Sparks. On one pair and one four-Spark
   ring, `sudo sparkring install` derived it on the Sparks (on the pair,

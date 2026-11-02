@@ -60,9 +60,13 @@
       const where = E.arcs(size, p.nodes);
       const fields = (cp?.settings || []).filter(row => E.offered(p, row)).map(row => {
         const id = `model-${i}-${row.name}`, value = slot.entries[row.name];
-        return `<label for="${id}">${esc(row.option)}${row.profile !== undefined ? ' · default ' + esc(row.profile) : ''}</label>`
-          + (row.switch ? `<input type="checkbox" id="${id}" data-setting="${row.name}"${value ? ' checked' : ''}>`
-            : `<input id="${id}" data-setting="${row.name}" value="${esc(value ?? '')}" placeholder="${esc(row.profile ?? '')}"${row.address ? '' : ' inputmode="numeric"'}>`)
+        let field;
+        if (row.switch) field = `<input type="checkbox" id="${id}" data-setting="${row.name}"${value ? ' checked' : ''}>`;
+        // A SparkCache payload check (export._setting_rows `choice`): a list whose first, empty entry keeps the profile's value.
+        else if (row.choice) field = `<select id="${id}" data-setting="${row.name}">${option('', row.profile + ' (default)', !value)}${row.values.filter(v => v !== row.profile).map(v => option(v, v, value === v)).join('')}</select>`;
+        // A SparkCache size (`size`) takes a unit letter, such as 48G; the whole-number settings get the numeric keyboard.
+        else field = `<input id="${id}" data-setting="${row.name}" value="${esc(value ?? '')}" placeholder="${esc(row.profile ?? '')}"${row.address || row.size ? '' : ' inputmode="numeric"'}>`;
+        return `<label for="${id}">${esc(row.option)}${row.profile !== undefined ? ' · default ' + esc(row.profile) : ''}</label>` + field
           + `<p class="hint">${esc(row.help)}</p>`;
       }).join('');
       return `<div class="planner-card model-row" data-slot="${i}" style="border-left-color:var(--g${i % 4 + 1})">

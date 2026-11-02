@@ -2740,6 +2740,12 @@ def enrolled_ring(ring, monkeypatch):
     monkeypatch.setattr(node, "read", lambda root, name: {"node_id": head}
                         if (str(root), name) == ("/", "/etc/sparkring/node.json") else read(root, name))
     apply = controller.apply
+    preflight = controller.preflight_configuration
+    overrides = controller.refuse_unit_overrides
+    monkeypatch.setattr(controller, "preflight_configuration",
+                        lambda plan, **options: preflight(plan, invoke=options.get("invoke", ring.setup_invoke)))
+    monkeypatch.setattr(controller, "refuse_unit_overrides",
+                        lambda plan, **options: overrides(plan, invoke=options.get("invoke", ring.setup_invoke)))
 
     def configured(plan, directory, **options):
         return apply(plan, directory, run=lambda *a: {"returncode": 0, "stdout": '{"checked":true}', "stderr": ""},

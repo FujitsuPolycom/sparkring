@@ -570,9 +570,9 @@ def test_status_says_the_model_runs_on_one_spark_only(pair, monkeypatch, capsys)
     assert "  API: HTTP 503 from /health: the model engine has stopped" in lines
 
 
-def test_status_of_a_serving_model_keeps_node_a_first(pair, monkeypatch, capsys):
+def test_status_headline_reflects_a_serving_model(pair, monkeypatch, capsys):
     lines = status(monkeypatch, capsys)
-    assert lines[:2] == ["Ring: test", "network-configured | next: sparkring models"]
+    assert lines[:2] == ["Ring: test", f"Serving: {PROFILE} (0-1) | next: sparkring status"]
     assert "Model: The model runs on every Spark and its API answers" in lines
     assert controller.lifecycle(["status", "--refresh", "--json"]) == 0
     assert json.loads(capsys.readouterr().out)["model"]["state"] == "serving"
@@ -922,3 +922,25 @@ def test_up_checks_a_new_deployment_s_listen_address_on_its_api_spark(pair, monk
     assert installer.connection(lock)["api_url"] == "http://203.0.113.7:9100/v1"
     assert reports == ["root@192.0.2.10"] * 3
     assert "Serving settings: --api-bind 203.0.113.7, --api-port 9100" in capsys.readouterr().out
+
+
+def test_a_terminal_down_without_execute_refuses_another_operators_hold(pair, monkeypatch):
+    """A terminal run asks before applying; a hold refuses it first, and an override is recorded once approved."""
+    import sys
+
+    from runtime.host import hold
+    monkeypatch.setenv("SUDO_USER", "alice")
+    hold.take(controller.STATE, "acceptance run")
+    monkeypatch.setenv("SUDO_USER", "bob")
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = []
+    monkeypatch.setattr("builtins.input", lambda prompt: answers.append(prompt) or "y")
+    from runtime.host.install_errors import NeedsInput
+    with pytest.raises(NeedsInput, match="ask alice") as refused:
+        controller.lifecycle(["down"])
+    assert refused.value.field == "hold"
+    assert answers == [] and pair.operations == [] and not (controller.STATE / hold.OVERRIDES).exists()
+    assert controller.lifecycle(["down", "--override-hold"]) == 0
+    assert len(answers) == 1 and pair.operations
+    [entry] = [json.loads(line) for line in (controller.STATE / hold.OVERRIDES).read_text().splitlines()]
+    assert entry["operator"] == "bob" and entry["operation"] == "down"

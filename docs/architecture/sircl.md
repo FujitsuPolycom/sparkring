@@ -8,7 +8,7 @@ Sparks' ConnectX-7 cables. There is no switch, so SIRCL also reaches Sparks
 that share no cable, through the Sparks between them.
 
 `sparkring install` uses SIRCL by default on an image that carries it, such
-as release 2026.10.4's. The [architecture overview](overview.md) shows where
+as release 2026.10.5's. The [architecture overview](overview.md) shows where
 SIRCL sits; this page explains how it works and where each part is used.
 
 ## How SIRCL reaches every Spark

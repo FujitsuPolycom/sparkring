@@ -828,7 +828,7 @@ def ring_stopped(reference, rank, hcas, gid, host_ip, *, call=node.call, check=q
     return {"ok": True}
 
 
-def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwen_mesh.check,
+def serve_ring(reference, rank, hcas, gid, host_ip, *, fabric_id=None, call=node.call, check=qwen_mesh.check,
                stale=qwen_mesh.stale_gid_ports, sleep=time.sleep, clock=time.monotonic, code=update_code,
                unpark=_unpark):
     """Serve the pinned four-Spark mesh on this Spark and wait until its ring check passes.
@@ -852,7 +852,8 @@ def serve_ring(reference, rank, hcas, gid, host_ip, *, call=node.call, check=qwe
     RDMA transmit packets, so such a deployment must be installed again.
     """
     if relays.is_reference(reference):
-        return serve_relays(reference, rank, hcas, gid, host_ip, call=call, sleep=sleep, clock=clock)
+        return serve_relays(reference, rank, hcas, gid, host_ip, fabric_id=fabric_id, call=call, sleep=sleep,
+                            clock=clock)
     if relay_markers_recorded():
         raise ValueError("This Spark's fabric relay table carries the four-Spark two-hop paths, and this "
                          "deployment's mesh service would conflict with its markers. Install the model again with "
@@ -894,15 +895,20 @@ def relay_markers_recorded(*, root="/"):
     return bool((record.get("relays") or {}).get("markers")) if isinstance(record, dict) else False
 
 
-def check_ring(reference, rank, hcas, gid, host_ip):
-    """The read-only ring check of a deployment's ``fabric`` reference: the relay table or a mesh."""
+def check_ring(reference, rank, hcas, gid, host_ip, *, fabric_id=None):
+    """The read-only ring check of a deployment's ``fabric`` reference: the relay table or a mesh.
+
+    ``fabric_id`` is the cabling identity the deployment's transport section
+    records (``relays.deployment_fabric_id``), which a relay table check
+    accepts in place of the referenced digest.
+    """
     if relays.is_reference(reference):
-        return relays.check_reference(reference, rank, hcas, gid, host_ip)
+        return relays.check_reference(reference, rank, hcas, gid, host_ip, fabric_id=fabric_id)
     return qwen_mesh.check(reference, rank, hcas, gid, host_ip)
 
 
-def serve_relays(reference, rank, hcas, gid, host_ip, *, call=node.call, check=relays.check_reference,
-                 sleep=time.sleep, clock=time.monotonic, root="/"):
+def serve_relays(reference, rank, hcas, gid, host_ip, *, fabric_id=None, call=node.call,
+                 check=relays.check_reference, sleep=time.sleep, clock=time.monotonic, root="/"):
     """Prepare this Spark's relay table for a four-Spark deployment and wait until its ring check passes.
 
     Ports whose RoCE GID index 3 lost the IPv4 address, as on the neighbors
@@ -917,7 +923,7 @@ def serve_relays(reference, rank, hcas, gid, host_ip, *, call=node.call, check=r
     deadline = clock() + RING_READY_SECONDS
     while True:
         try:
-            check(reference, rank, hcas, gid, host_ip)
+            check(reference, rank, hcas, gid, host_ip, fabric_id=fabric_id)
             break
         except CHECK_FAILURES as error:
             if clock() >= deadline:
@@ -935,14 +941,16 @@ def group_position(lock, rank):
     return placement[rank] if placement else rank
 
 
-def serve_group(reference, position, gid, host_ip, *, call=node.call, check=relays.check_position,
-                sleep=time.sleep, clock=time.monotonic, root="/"):
+def serve_group(reference, position, gid, host_ip, *, fabric_id=None, call=node.call,
+                check=relays.check_position, sleep=time.sleep, clock=time.monotonic, root="/"):
     """Prepare this Spark's relay table for a SIRCL group and wait until its relay check passes.
 
     The SIRCL counterpart of ``serve_relays``: the ports of this position's
     cabled functions whose RoCE GID index 3 lost the IPv4 address get it
     again, the record's missing relay objects are added (``relays.restore``),
     and ``relays.check_position`` must pass within RING_READY_SECONDS.
+    ``fabric_id`` is the cabling identity the deployment's transport section
+    records, which the check accepts in place of the referenced digest.
     """
     repaired = roce_gid.serve(relays.position_devices(position, root=root), gid, call=call)
     table = node.read(root, "/etc/sparkring/fabric.json").get("relays") or {}
@@ -950,7 +958,7 @@ def serve_group(reference, position, gid, host_ip, *, call=node.call, check=rela
     deadline = clock() + RING_READY_SECONDS
     while True:
         try:
-            check(reference, position, gid, host_ip, root=root)
+            check(reference, position, gid, host_ip, root=root, fabric_id=fabric_id)
             break
         except CHECK_FAILURES as error:
             if clock() >= deadline:
@@ -970,11 +978,12 @@ def group_operation(operation, lock, rank):
     """
     row = lock["site"]["ranks"][rank]
     position = group_position(lock, rank)
+    fabric_id = relays.deployment_fabric_id(lock)
     if operation in ("ring-stop", "ring-stopped"):
         return {"ok": True, "unit": None, "action": "none", "relays": "fabric", "repaired": []}
     if operation == "ring-serve":
-        return serve_group(row["fabric"], position, row["gid"], row["host_ip"])
-    relays.check_position(row["fabric"], position, row["gid"], row["host_ip"])
+        return serve_group(row["fabric"], position, row["gid"], row["host_ip"], fabric_id=fabric_id)
+    relays.check_position(row["fabric"], position, row["gid"], row["host_ip"], fabric_id=fabric_id)
     return {"ok": True}
 
 

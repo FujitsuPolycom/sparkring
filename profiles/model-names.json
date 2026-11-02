@@ -26,6 +26,7 @@
     "deepseek-ai/DeepSeek-V4-Flash-0731": "Stock",
     "deepseek-ai/DeepSeek-V4-Flash-Vision-Exp": "Stock",
     "deepseek-ai/DeepSeek-V4.1-Flash": "FP8/MXFP4",
+    "deepseek-ai/DeepSeek-V4.1-Flash-1017": "FP8/MXFP4",
     "malaiwah/Qwen3.8-27B-EXL3-K5K6-hydrated": "EXL3 K5/K6",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4": "NVFP4",
     "local-inference-lab/Qwen3.8-Flash-Next-NVFP4-MXFP8-CSF-QAD": "NVFP4/MXFP8 CSF",

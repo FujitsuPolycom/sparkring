@@ -7,17 +7,18 @@ runs the right image for you ([Install SparkRing](install.md)).
 
 | Image | Used by | Registry reference | Image ID |
 |---|---|---|---|
-| Installer image, release 2026.10.4 | `sparkring install` without `--image`, for the 15 profiles its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f` | `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502` |
-| Installer image, release 2026.10.2 | `sparkring install --image 2026.10.2`, the rollback | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
-| Installer image, release 2026.10.1 | `sparkring install --image 2026.10.1`, and [Compose](compose.md) exports | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
+| Installer image, release 2026.10.5 | `sparkring install` without `--image`, for the 20 profiles its lock lists | `ghcr.io/fujitsupolycom/sparkring@sha256:ac313f040fe3e04238ad8ff152cf7fb427a050f40e0848c2e326c5b6b8717dfd` | `sha256:f625053225d4b57bfd7d0bb2e8348fea38e69472b10cef87c4701928abc7c4a8` |
+| Installer image, release 2026.10.4 | `sparkring install --image 2026.10.4`, the rollback | `ghcr.io/fujitsupolycom/sparkring@sha256:e21ba936d4fd6bfeb6e7a651e54a03ac461bf4e1e6f5721c1a34845c80acd76f` | `sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502` |
+| Installer image, release 2026.10.2 | `sparkring install --image 2026.10.2` | `ghcr.io/fujitsupolycom/sparkring@sha256:4fffc4dc3074d5539f4e9d3a013ff9ef4e0be570a95b74d4646ee341da1f6911` | `sha256:d52737a109e083d3eef05c0fc0db4d09fc1bf34485a13467382130963ecfe66b` |
+| Installer image, release 2026.10.1 | `sparkring install --image 2026.10.1` | `ghcr.io/fujitsupolycom/sparkring@sha256:71d410571407fef3ce2959c6d392f5a2c3f44b757b856e853a71f6e3295620ad` | `sha256:aba309e4610c711fda219ed7478a1d68d9bf16dfbd83a0653e32afcbd8f0106f` |
 | Shared 2026.09.3 image | The [manual setup](setup.md) profiles whose release is `shared-2026.09.3` | `ghcr.io/fujitsupolycom/sparkring@sha256:2375f876bc9ea065e85ae10cebad7a8db8a2ec0e6862b4441c269c5bf56365c6` | `sha256:bc16a9819d853b42c28823c9c937638b545787a7d305917ff00f2ff902d04855` |
 
 Installer images are built in layers, each on the one below it in the table:
-release 2026.10.4's image is 2026.10.2's with four layers added, and
-2026.10.2's is 2026.10.1's with five. Each is a 14 GiB download and 30 GiB
-unpacked, but a Spark that already holds the parent image downloads only the
-added layers: 3 MiB for 2026.10.4 over 2026.10.2, 8 MiB for 2026.10.2 over
-2026.10.1.
+release 2026.10.5's image is 2026.10.4's with one layer added, 2026.10.4's is
+2026.10.2's with four, and 2026.10.2's is 2026.10.1's with five. Each is a
+14 GiB download and 30 GiB unpacked, but a Spark that already holds the parent
+image downloads only the added layers: 692 KiB for 2026.10.5 over 2026.10.4,
+3 MiB for 2026.10.4 over 2026.10.2, 8 MiB for 2026.10.2 over 2026.10.1.
 
 `sparkring images` lists every installer image this package can run, the
 default first, with the GitHub release that published it, its transports and
@@ -27,7 +28,34 @@ image name, or a part of the name that only one image has
 
 ## Installer image
 
-Release 2026.10.4, image `dev-20261013-dcp2prefill-status038-sircl-tp6`. It
+Release 2026.10.5, image `dev-20261016-sparkcache-4a17f1f5198e-status038`. It adds
+one layer to the [2026.10.4 image](#2026104-installer-image):
+
+| Layer | Adds |
+|---|---|
+| SparkCache 4a17f1f5198e | SparkCache, the persistent KV cache, for GLM-5.3-Flash, Qwen3.8-Flash-Next and DeepSeek-V4.1-Flash, with the connector logging the dashboard reads ([composition](../../runtime/images/compositions/installer-sparkcache-4a17f1f5198e/README.md)) |
+
+Its lock admits the 2026.10.4 image's 15 profiles with their settings and
+five SparkCache profiles (research-only):
+`deepseek-v41-flash-sparkcache-tp4`, `qwen38-flash-next-step5500-sparkcache-tp4`,
+`qwen38-flash-next-csf-sparkcache-tp2`, `glm53-flash-nvfp4-sparkcache-crc32-tp2`
+and `glm53-flash-nvfp4-sparkcache-crc32-tp4`, which take `--sparkcache-size`,
+`--sparkcache-integrity` and `--sparkcache-debug`
+([install reference](install-reference.md#serving-image-and-profiles)).
+Transports and default checkpoints are the 2026.10.4 image's.
+
+Status: **implemented**, release maturity candidate. Two SparkCache profiles
+were installed and served on this image; the others passed the installer's
+image checks without being started. The
+[release record](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/README.md)
+states the evidence and limitations, and the
+[installer image lock](../../runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json)
+(`sparkring-installer-image/v3`) lists its 20 profiles and pins its identity.
+
+## 2026.10.4 installer image
+
+Release 2026.10.4, image `dev-20261013-dcp2prefill-status038-sircl-tp6`: the
+parent of the 2026.10.5 image and its rollback (`--image 2026.10.4`). It
 adds these layers to the [2026.10.2 image](#2026102-installer-image):
 
 | Layer | Adds |
@@ -45,9 +73,8 @@ The GLM-5.3-Flash two- and four-Spark profiles and `qwen38-flash-next-tp2`
 install their CSF checkpoints by default
 ([default checkpoint by profile](../../profiles/glm53-checkpoints.md#default-checkpoint-by-profile)).
 
-Status: **implemented**, release maturity candidate. Three profiles were
-installed and served on this image; the others passed the installer's image
-checks without being started. The
+Three profiles were installed and served on this image; the others passed
+the installer's image checks without being started. The
 [release record](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/README.md)
 states the evidence and limitations, and the
 [installer image lock](../../runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/installer-image.json)
@@ -57,8 +84,8 @@ states the evidence and limitations, and the
 
 Release 2026.10.2, image
 `dev-20261010-kraken-csf-sircl032-libsircl060cd-plugins-status036`: the
-parent of the 2026.10.4 image and its rollback (`--image 2026.10.2`). It runs
-profiles on the same transports. Over the 2026.10.1 image it adds:
+parent of the 2026.10.4 image (`--image 2026.10.2`). It runs profiles on the
+same transports. Over the 2026.10.1 image it adds:
 
 - the vLLM and B12X sources that read GLM-5.3-Flash's CSF checkpoint;
 - SIRCL 0.3.2 ring sessions and their two prebuilt native libraries

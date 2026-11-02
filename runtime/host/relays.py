@@ -587,7 +587,9 @@ def group_reference(state_dir, cluster):
     SHA-256) for any layout whose fabric document, Node A's
     ``state_dir/fabric.json``, describes this cluster, lists the ``sircl``
     transport and records a relay table that boot units restore. Each rank's
-    relay check (``check_position``) compares its own copies with it. Raises
+    relay check (``check_position``) compares its own copies with it; a copy
+    written by a later setup of the same cabling passes when the deployment's
+    transport section names that cabling (``deployment_fabric_id``). Raises
     ValueError when the document is missing, unreadable, describes other
     Sparks or records no such table.
     """
@@ -611,23 +613,49 @@ def group_reference(state_dir, cluster):
             "plan_sha256": relays["plan_sha256"]}
 
 
-def check_position(reference, position, gid, host_ip, *, root="/", call=None):
+def deployment_fabric_id(lock):
+    """The identity of the fabric a deployment was made on, from its lock's transport section, or None."""
+    section = lock.get("transport")
+    value = section.get("fabric") if isinstance(section, dict) else None
+    return value.get("id") if isinstance(value, dict) else None
+
+
+def _referenced_document(reference, fabric_id, *, root):
+    """This Spark's copy of the fabric document, which must be the deployment's.
+
+    The copy has the referenced digest, or, when ``fabric_id`` names the
+    cabling the deployment was made on, it records that cabling: every setup
+    rewrites the copies with a new ``verified`` record, and a deployment
+    keeps the digest of the copy it was planned on.
+    """
+    path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
+    text = path.read_text(encoding="utf-8")
+    if hashlib.sha256(text.encode()).hexdigest() == reference["site_sha256"]:
+        return fabric_document.validate(json.loads(text))
+    if fabric_id is None:
+        raise ValueError("This Spark's fabric document differs from the deployment's; run sudo sparkring setup")
+    document = fabric_document.validate(json.loads(text))
+    if document["id"] != fabric_id:
+        raise ValueError(f"This Spark's fabric document describes fabric {document['id'][7:19]}; the deployment "
+                         f"was made on fabric {fabric_id[7:19]}. Run sudo sparkring install again")
+    return document
+
+
+def check_position(reference, position, gid, host_ip, *, fabric_id=None, root="/", call=None):
     """The read-only relay check of one rank of a SIRCL group at fabric ``position``.
 
-    This Spark's copy of the fabric document must have the referenced digest,
-    its fabric record the referenced relay plan and the position; RoCE GID
-    index 3; ``host_ip`` this position's management address, over which the
-    group's ranks bootstrap. Then every route, neighbor and filter of the
-    record's relay table and every marker must be in place. Raises ValueError
-    naming the first difference; returns the rows.
+    This Spark's copy of the fabric document must be the deployment's
+    (``_referenced_document``; ``fabric_id`` is the cabling identity its
+    transport section records), its fabric record the referenced relay plan
+    and the position; RoCE GID index 3; ``host_ip`` this position's
+    management address, over which the group's ranks bootstrap. Then every
+    route, neighbor and filter of the record's relay table and every marker
+    must be in place. Raises ValueError naming the first difference; returns
+    the rows.
     """
     from runtime.host import node
     call = call or node.call
-    path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
-    text = path.read_text(encoding="utf-8")
-    if hashlib.sha256(text.encode()).hexdigest() != reference["site_sha256"]:
-        raise ValueError("This Spark's fabric document differs from the deployment's; run sudo sparkring setup")
-    document = fabric_document.validate(json.loads(text))
+    document = _referenced_document(reference, fabric_id, root=root)
     record = _fabric_record(root)
     value = record.get("relays") or {}
     if value.get("plan_sha256") != reference["plan_sha256"] or record.get("rank") != position:
@@ -663,11 +691,12 @@ def _fabric_record(root):
     return json.loads((Path(root) / "etc/sparkring/fabric.json").read_text(encoding="utf-8"))
 
 
-def check_reference(reference, rank, hcas, gid, host_ip, *, root="/", call=None):
+def check_reference(reference, rank, hcas, gid, host_ip, *, fabric_id=None, root="/", call=None):
     """The read-only ring check of a ``prepared`` four-Spark deployment over the relay table.
 
-    The fabric document copy must have the referenced digest and this
-    Spark's fabric record the referenced relay plan; ``hcas`` must list
+    The fabric document copy must be the deployment's (``_referenced_document``;
+    ``fabric_id`` is the cabling identity its transport section records) and
+    this Spark's fabric record the referenced relay plan; ``hcas`` must list
     port 0's then port 1's primary, then the secondaries, as the mesh check
     expects; RoCE GID index 3; ``host_ip`` this position's management
     address. Then every route, neighbor and filter of the record's relay
@@ -676,11 +705,7 @@ def check_reference(reference, rank, hcas, gid, host_ip, *, root="/", call=None)
     """
     from runtime.host import node
     call = call or node.call
-    path = Path(root) / fabric_document.HOST_PATH.lstrip("/")
-    text = path.read_text(encoding="utf-8")
-    if hashlib.sha256(text.encode()).hexdigest() != reference["site_sha256"]:
-        raise ValueError("This Spark's fabric document differs from the deployment's; run sudo sparkring setup")
-    document = fabric_document.validate(json.loads(text))
+    document = _referenced_document(reference, fabric_id, root=root)
     record = _fabric_record(root)
     value = record.get("relays") or {}
     if value.get("plan_sha256") != reference["plan_sha256"] or record.get("rank") != rank:

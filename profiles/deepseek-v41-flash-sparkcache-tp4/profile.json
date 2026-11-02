@@ -1,0 +1,26 @@
+{
+  "schema": "sparkring-deployment/v1",
+  "id": "deepseek-v41-flash-sparkcache-tp4",
+  "title": "DeepSeek-V4.1-Flash with SparkCache on 4 Sparks (Experimental)",
+  "recommendation": "alternative",
+  "status": "research-only",
+  "configuration": {
+    "format": "serving-profile",
+    "path": "profiles/deepseek-v41-flash-sparkcache-tp4/config.json"
+  },
+  "release": "runtime/releases/dev-20261013-dcp2prefill-status038-sircl-tp6/release.json",
+  "guide": "profiles/deepseek-v41-flash-sparkcache-tp4/README.md",
+  "evidence_scope": "Research-only. The 2026-10-15 hardware inventory records 17 worker groups; scheduler startup failed with SparkCache a5940102c99e. Role-independent alignment is CPU validated in SparkCache 4a17f1f5198eb2402bcd6669425c62857937d39f; installer-sparkcache-4a17f1f5198e awaits image build and serving qualification. An image lock must explicitly admit this ID. Hardware gates H0-H11 are in profiles/deepseek-v41-flash-sparkcache-tp4/HARDWARE.md.",
+  "overrides": [],
+  "launcher": {
+    "kind": "python",
+    "path": "runtime/common/toolchain_profiles.py",
+    "actions": [
+      "plan"
+    ],
+    "fixed_args": [
+      "--profile",
+      "profiles/deepseek-v41-flash-sparkcache-tp4/config.json"
+    ]
+  }
+}

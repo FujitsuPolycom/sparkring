@@ -49,18 +49,18 @@ On top it enables the SparkCache KV connector:
   through `/opt/sparkring/sparkcache/lib/libspark_cache_snapshot.so`, both with
   their pinned SHA-256;
 - 64K-token spans (`spark_cache_min_span_tokens` 4096,
-  `spark_cache_max_span_tokens` 65536), 8 GiB of cache bytes with a 6 GiB
+  `spark_cache_max_span_tokens` 65536), 32 GiB of cache bytes with a 28 GiB
   low watermark, and two capture slots of 512 MiB, the value of the qualified
   shared-2026.09.3 profile `glm53-flash-spark-tp2-dcp1-sparkcache`. Beside the
   base profile's 84.5 GiB of weights and 10 GiB of KV cache per Spark, two
   8 GiB slots would leave about 0.7 GiB for compilation and the API server
   ([record](../../performance/records/images/dev-20261010-sparkcache-gab86b70-plugins-status036-glm53-flash-nvfp4-sparkcache-tp4-path4-20261011.md#two-sparks-with-8-gib-capture-slots));
 - the checkpoint identity
-  `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`, which
-  `deploy/glm53_flash/profile.py` in the external SparkCache repository derives
-  from the checkpoint's pin manifest; stored entries of the CSF checkpoint
-  never restore into another checkpoint, and no other checkpoint's entries
-  restore into this one;
+  `6af0343976eefbfa0fb59d87befcf6d10f02fef90ba0e7881dd1201fe0ecd76e`,
+  a recorded value whose original derivation is not available. The external
+  SparkCache helper `deploy/glm53_flash/profile.py` validates a supplied digest;
+  it does not derive one from the checkpoint pin manifest. The recorded value
+  remains pinned;
 - the rank-local root `SPARK_CONTEXT_CACHE_ROOT=/cache/glm53-flash-sparkcache-ab53c097d7ca-dec48abd33ef`,
   which `sparkring storage` classifies as `cache` and which the deployment
   names, so automatic release sees it referenced.
@@ -76,7 +76,7 @@ variant only on an image whose lock lists it. No lock in this package lists
 it; the lock that
 [runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/](../../runtime/releases/dev-20261010-sparkcache-gab86b70-plugins-status036/README.md)
 records when a Spark builds the derived layer does. On every other image, including
-the default image of release 2026.10.4, the installer refuses the profile. The
+the default image of release 2026.10.5, the installer refuses the profile. The
 variant has no Compose exports: a Compose deployment runs the default image,
 whose lock does not list the profile.
 
@@ -118,3 +118,7 @@ are recorded in the [thinking records](../thinking.json) and
 Recorded measurements that omitted an effort choice used the chat template's
 `max` default. They do not measure this profile's `high` deployment default.
 Measurements with explicit request settings retain those stated conditions.
+
+The [CRC32 variant](../glm53-flash-nvfp4-sparkcache-crc32-tp2/README.md) uses a
+separate profile ID and the SparkCache source layer over release 2026.10.4.
+This profile retains its earlier image composition and evidence.

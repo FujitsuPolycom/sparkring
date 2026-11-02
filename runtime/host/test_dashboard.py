@@ -589,7 +589,7 @@ def test_the_status_document_has_the_fields_the_page_reads(tmp_path):
         assert member["arc"]["source"] == "deployment" and not member["arc"]["inferred"]
         assert member["capacity"]["kv_tokens"] == 1179648
     assert snapshot["ring"]["positions"][2]["member"] == members[1]["id"]
-    assert members[0]["logs"]["commands"][0] == "sudo docker logs --tail 200 sr-0-r0"
+    assert members[0]["logs"]["commands"][0] == "sudo docker logs -f --tail 40 sr-0-r0"
     assert members[0]["head"] == {"position": 0, "name": "spark0", "address": NODE_A_LAN, "port": 8000,
                                   "container": "sr-0-r0"}
 
@@ -618,7 +618,7 @@ def test_the_page_loads_nothing_from_elsewhere_and_its_script_is_admitted_by_has
 
 def test_log_viewing_is_a_command_for_the_operator():
     assert dashboard.log_commands("spark2", None) == {"enabled": False, "host": "spark2", "commands": []}
-    assert dashboard.log_commands("spark2", "sr-2-r0")["commands"][0] == "sudo docker logs --tail 200 sr-2-r0"
+    assert dashboard.log_commands("spark2", "sr-2-r0")["commands"][0] == "sudo docker logs -f --tail 40 sr-2-r0"
 
 
 # -- the web server ------------------------------------------------------------------------------

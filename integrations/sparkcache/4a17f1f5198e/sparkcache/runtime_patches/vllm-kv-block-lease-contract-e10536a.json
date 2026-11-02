@@ -1,0 +1,123 @@
+{
+  "schema": "sparkring-vllm-kv-block-lease-contract/v1",
+  "vllm_commit": "e10536aadf02a18fccddda7ec939c33147e8b0b3",
+  "files": [
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/v1/base.py",
+      "accepted_sha256": {
+        "source_built_e105": "cda4487271a81e3280e6b46d46076b8ac625768452c508517b1664536be9a9e8"
+      },
+      "required_symbols": [
+        "KVConnectorBase_V1.handle_preemptions",
+        "KVConnectorBase_V1.request_finished",
+        "KVConnectorBase_V1.get_finished"
+      ]
+    },
+    {
+      "path": "vllm/distributed/kv_transfer/kv_connector/utils.py",
+      "accepted_sha256": {
+        "source_built_e105": "f8f055e87448f2e908331c98a5201b1987fa47370a110a7881ff67a9d3d127cf"
+      },
+      "required_symbols": [
+        "KVOutputAggregator.from_connector",
+        "KVOutputAggregator.aggregate"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/scheduler.py",
+      "accepted_sha256": {
+        "source_built_e105": "95f276ac252555a51618a5a98573d0a6f9692d68cb4bf5f03469e8359b73e855"
+      },
+      "required_symbols": [
+        "Scheduler.schedule",
+        "Scheduler._connector_finished",
+        "Scheduler._update_waiting_for_remote_kv",
+        "Scheduler._finalize_shared_prefix_leases",
+        "Scheduler._update_from_kv_xfer_finished",
+        "Scheduler._update_requests_with_invalid_blocks",
+        "Scheduler._free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_manager.py",
+      "accepted_sha256": {
+        "source_built_e105": "25495df250fc3a308e94e7818edd5aa4ee1806c80439b22a618239286a6835e9"
+      },
+      "required_symbols": [
+        "KVCacheManager.get_block_ids",
+        "KVCacheManager.publish_shared_prefix_lease",
+        "KVCacheManager.attach_shared_prefix_lease",
+        "KVCacheManager.mark_shared_prefix_lease_ready",
+        "KVCacheManager.expire_shared_prefix_leases",
+        "KVCacheManager.discard_shared_prefix_lease",
+        "KVCacheManager.evict_shared_prefix_leases_until_free",
+        "KVCacheManager.take_kv_cache_block_copies"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/sched/output.py",
+      "accepted_sha256": {
+        "source_built_e105": "26a8fe3968bfc3bc50eca23ade1a7a2e1a8cea4c95f0f1bb3dc73ac5dad3ecb1"
+      },
+      "required_symbols": [
+        "SchedulerOutput.preempted_req_ids",
+        "SchedulerOutput.kv_cache_block_copies"
+      ]
+    },
+    {
+      "path": "vllm/v1/worker/gpu_model_runner.py",
+      "accepted_sha256": {
+        "source_built_e105": "c5e004e368c392db071c8a4c08fa3a13b9b724f339d15a9bdd5db5f94778abac"
+      },
+      "required_symbols": [
+        "GPUModelRunner.execute_model",
+        "GPUModelRunner._update_states"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/block_pool.py",
+      "accepted_sha256": {
+        "source_built_e105": "426e488ae0c7dd41f1c197f7681fa11fafc008347e6f9cdbeea7412ec0db9151"
+      },
+      "required_symbols": [
+        "BlockPool.touch",
+        "BlockPool.free_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/kv_cache_coordinator.py",
+      "accepted_sha256": {
+        "source_built_e105": "dce51ce7f09355d89abf727da10a9fa2ee18fc41df75a3eee39e63ab3fe1ad15"
+      },
+      "required_symbols": [
+        "KVCacheCoordinator.allocate_new_computed_blocks",
+        "KVCacheCoordinator.free",
+        "KVCacheCoordinator.get_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/core/single_type_kv_cache_manager.py",
+      "accepted_sha256": {
+        "source_built_e105": "5bccde201dc7741e1056d36b098cde38087a30b0521a74d1c9d437d32470a04a"
+      },
+      "required_symbols": [
+        "SingleTypeKVCacheManager.add_local_computed_blocks",
+        "SingleTypeKVCacheManager.get_num_skipped_tokens",
+        "SingleTypeKVCacheManager._apply_cow",
+        "SingleTypeKVCacheManager.take_pending_cow_copies",
+        "SingleTypeKVCacheManager.pop_blocks_for_free",
+        "MambaManager.remove_skipped_blocks",
+        "MambaManager.allocate_new_blocks"
+      ]
+    },
+    {
+      "path": "vllm/v1/kv_cache_interface.py",
+      "accepted_sha256": {
+        "source_built_e105": "d6f560d1669563aef92c145d2814882622a837cefd199b75adffe68cef4bd6dc"
+      },
+      "required_symbols": [
+        "MambaSpec.max_num_blocks_per_req"
+      ]
+    }
+  ]
+}
