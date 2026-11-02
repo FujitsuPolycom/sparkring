@@ -45,6 +45,7 @@ static void load(void) {
   SYM(LaunchKernel, "cuLaunchKernel");
   SYM(MemAlloc, "cuMemAlloc_v2");
   SYM(MemFree, "cuMemFree_v2");
+  SYM(PointerGetAttribute, "cuPointerGetAttribute");
   SYM(MemsetD32Async, "cuMemsetD32Async");
   SYM(MemsetD8Async, "cuMemsetD8Async");
   SYM(MemcpyDtoDAsync, "cuMemcpyDtoDAsync_v2");
@@ -65,6 +66,7 @@ static void load(void) {
   SYM(EventRecord, "cuEventRecord");
   SYM(EventDestroy, "cuEventDestroy_v2");
   SYM(EventSynchronize, "cuEventSynchronize");
+  SYM(EventQuery, "cuEventQuery");
 #undef SYM
   *(void **)(&table.MemAllocAsync) = dlsym(handle, "cuMemAllocAsync");
   *(void **)(&table.MemFreeAsync) = dlsym(handle, "cuMemFreeAsync");

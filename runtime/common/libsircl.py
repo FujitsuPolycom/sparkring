@@ -89,8 +89,9 @@ SIRCL_ROOT = ROOT / "spark_transport" / "sircl"
 # The kernel packs every libsircl build carries (runtime/images/libsircl_layer.py builds each from its CUDA
 # source); a layer receipt that records another set describes another libsircl build.
 KERNEL_PACKS = ("sircl_kernels", "sircl_fold", "sircl_links", "sircl_p2p")
-ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_FORWARD_WINDOWS",
-                   "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES")
+ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_RELAYED_LANES",
+                   "LIBSIRCL_FORWARD_WINDOWS", "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS",
+                   "SIRCL_P2P_CHUNK_BYTES")
 LIBRARY_VARIABLE = "SPARKRING_LIBSIRCL_LIBRARY"
 DIGEST_VARIABLE = "SPARKRING_LIBSIRCL_SHA256"
 # Every communicator's receipt, <prefix>.rank<r>.<pid>.c<n>.json, in the deployment's receipt directory.

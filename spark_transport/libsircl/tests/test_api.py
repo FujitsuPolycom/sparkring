@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import importlib.util
 import ctypes as C
 import json
 import os
@@ -53,6 +54,7 @@ def initialize_library() -> None:
         "CommInitRank": ([C.POINTER(C.c_void_p), C.c_int, UniqueId, C.c_int], C.c_int),
         "CommInitRankConfig": ([C.POINTER(C.c_void_p), C.c_int, UniqueId, C.c_int, C.POINTER(Config)], C.c_int),
         "CommInitAll": ([C.POINTER(C.c_void_p), C.c_int, C.POINTER(C.c_int)], C.c_int),
+        "CommSplit": ([C.c_void_p, C.c_int, C.c_int, C.POINTER(C.c_void_p), C.c_void_p], C.c_int),
         "CommRevoke": ([C.c_void_p, C.c_int], C.c_int),
         "CommGetAsyncError": ([C.c_void_p, C.POINTER(C.c_int)], C.c_int),
         "CommCount": ([C.c_void_p, C.POINTER(C.c_int)], C.c_int),
@@ -153,6 +155,8 @@ if pid==0:
     child_uid=U(); assert l.ncclGetUniqueId(C.byref(child_uid))==5
     child_comm=C.c_void_p(); assert l.ncclCommInitRank(C.byref(child_comm),1,uid,0)==5
     assert child_comm.value is None
+    # The fork check comes first, before any argument check.
+    l.ncclCommRevoke.argtypes=[C.c_void_p,C.c_int]; assert l.ncclCommRevoke(None,1)==5
     # libc.exit invokes DSO destructors, unlike os._exit. The inherited wake
     # pipe must not be written, because it would stop the parent's broker.
     libc=C.CDLL(None); libc.exit.argtypes=[C.c_int]; libc.exit(0)
@@ -242,7 +246,11 @@ assert libc.mprotect(base+p,p,3)==0
         self.assertEqual(LIB.ncclCommFinalize(handle), INVALID_USAGE)
         self.assertEqual(LIB.ncclCommAbort(handle), SUCCESS)
         self.assertEqual(LIB.ncclCommAbort(handle), INVALID_ARGUMENT)
-        self.assertEqual(LIB.ncclCommAbort(None), INVALID_ARGUMENT)
+        # NULL is a no-op for destroy and abort, as in NVIDIA NCCL 2.32.3; finalize refuses it.
+        for prefix in ("", "p"):
+            self.assertEqual(getattr(LIB, prefix + "ncclCommAbort")(None), SUCCESS)
+            self.assertEqual(getattr(LIB, prefix + "ncclCommDestroy")(None), SUCCESS)
+            self.assertEqual(getattr(LIB, prefix + "ncclCommFinalize")(None), INVALID_ARGUMENT)
 
     def test_thread_local_nested_group_and_error(self):
         barrier = threading.Barrier(2)
@@ -265,23 +273,33 @@ assert libc.mprotect(base+p,p,3)==0
         f = LIB.ncclCommGetUniqueId
         f.argtypes = [C.c_void_p, C.c_void_p]
         self.assertEqual(f(None, None), INVALID_USAGE)
-        self.assertEqual(LIB.ncclGroupEnd(), INVALID_USAGE)
-        self.assertEqual(LIB.ncclGroupStart(), SUCCESS)
+        # An unsupported function enqueues nothing, so its refusal leaves the group's result alone.
         self.assertEqual(LIB.ncclGroupEnd(), SUCCESS)
+        self.assertIn(b"unsupported", LIB.ncclGetLastError(None))
 
-    def test_unsupported_surface_preserves_every_output(self):
-        sentinel = C.create_string_buffer(b"Q" * 256)
-        before = bytes(sentinel)
+    def test_unsupported_surface_zeroes_its_outputs_and_preserves_every_input(self):
+        """Every unsupported function returns ncclInvalidUsage naming itself, zeroes the handle, value and
+        length outputs tools/generate_api.py lists (a NULL communicator, an all-zero unique id) and leaves every
+        other pointed-to byte as it was."""
+        spec = importlib.util.spec_from_file_location("generate_api", ROOT / "tools/generate_api.py")
+        generator = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(generator)
+        sizes = {"ncclUniqueId*": 128, "int8_t*": 1, "uint8_t*": 1, "int16_t*": 2, "uint16_t*": 2, "int32_t*": 4,
+                 "uint32_t*": 4, "int*": 4}
         for api in MANIFEST["functions"]:
             # ncclRedOpCreatePreMulSum writes its op (test_premulsum_refusal_returns_a_refused_op).
             if api["implemented"] or api["name"] == "ncclRedOpCreatePreMulSum":
                 continue
+            zeroed = generator.ZEROED_OUTPUTS.get(api["name"], [])
             for prefix in ["", "p"]:
                 with self.subTest(function=prefix + api["name"]):
-                    args, types = [], []
+                    args, types, buffers = [], [], []
                     for argument in api["arguments"]:
                         kind = argument["type"].removeprefix("const ")
                         if "*" in kind or kind in ("ncclComm_t", "ncclWindow_t", "ncclParamHandle_t", "cudaStream_t"):
+                            sentinel = C.create_string_buffer(b"Q" * 256)
+                            size = sizes.get(kind.replace(" ", ""), 8) if argument["name"] in zeroed else 0
+                            buffers.append((argument["name"], sentinel, size))
                             types.append(C.c_void_p)
                             args.append(C.cast(sentinel, C.c_void_p))
                         elif kind == "size_t":
@@ -298,7 +316,8 @@ assert libc.mprotect(base+p,p,3)==0
                     function.restype = None if api["return"] == "void" else C.c_int
                     result = function(*args)
                     self.assertEqual(result, None if api["return"] == "void" else INVALID_USAGE)
-                    self.assertEqual(bytes(sentinel), before)
+                    for name, sentinel, size in buffers:
+                        self.assertEqual(bytes(sentinel), bytes(size) + b"Q" * (256 - size) + b"\0", name)
                     diagnostic = LIB.ncclGetLastError(None)
                     self.assertTrue(diagnostic and api["name"].encode() in diagnostic)
 
@@ -315,8 +334,8 @@ assert libc.mprotect(base+p,p,3)==0
             self.assertEqual(function(None, C.byref(scalar), 7, 1, None), INVALID_USAGE)
 
     def test_invalid_argument_inside_a_group_leaves_the_group(self):
-        # A refused call did nothing: ncclGroupEnd still succeeds (an unsupported call, ncclInvalidUsage,
-        # remains the group's result; test_thread_local_nested_group_and_error).
+        # A refused call did nothing: ncclGroupEnd still succeeds (as after an unsupported call, which
+        # enqueues nothing either; test_thread_local_nested_group_and_error).
         LIB.ncclAllReduce.argtypes = [C.c_void_p, C.c_void_p, C.c_size_t, C.c_int, C.c_int, C.c_void_p,
                                       C.c_void_p]
         LIB.ncclSend.argtypes = [C.c_void_p, C.c_size_t, C.c_int, C.c_int, C.c_void_p, C.c_void_p]

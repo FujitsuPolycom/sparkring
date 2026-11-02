@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
@@ -249,6 +250,25 @@ def test_vllm_features_libsircl_does_not_carry_are_refused(flags, message):
 def test_two_pipeline_stages_and_expert_parallelism_on_grouped_all_gathers_pass():
     assert libsircl.capability_problems(["serve", "-pp", "2", "--enable-expert-parallel", "--all2all-backend",
                                          "allgather_reducescatter"]) == []
+
+
+def test_the_lane_runs_in_the_startup_wait_regime_at_the_librarys_limit():
+    """The lane sets no wait variable, so every communicator runs in the startup regime at libsircl's default
+    limit; the architecture document's fail-stop section states that regime and limit, so the document, the
+    adapter and the library change together."""
+    _, section = deployment(TP2, "pair", 2, [0, 1])
+    environment = libsircl.library_environment(section["libsircl"])
+    assert not {"LIBSIRCL_WAIT_REGIME", "SIRCL_STARTUP_WAIT_S", "SIRCL_SERVING_WAIT_S",
+                "LIBSIRCL_SETUP_TIMEOUT_MS"} & set(environment)
+    root = Path(__file__).resolve().parents[2]
+    engine = (root / "spark_transport/libsircl/src/engine.c").read_text(encoding="utf-8")
+    limit = re.search(r"#define DEFAULT_STARTUP_WAIT_S (\d+)\.0", engine).group(1)
+    text = (root / "docs/architecture/libsircl.md").read_text(encoding="utf-8")
+    fail_stop = text[text.index("### Fail-stop"):text.index("### Container settings")]
+    words = " ".join(fail_stop.split())
+    assert "startup wait regime" in words and f"limit of {limit} s" in words
+    plugin = (root / "integrations/vllm/libsircl/sparkring_libsircl.py").read_text(encoding="utf-8")
+    assert "sirclSetWaitRegime" not in plugin
 
 
 def test_a_library_without_the_fail_stop_mode_is_refused():

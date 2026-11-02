@@ -17,6 +17,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 enum comm_state { INIT, READY, FINALIZED, REVOKED, FAILED };
 struct ncclComm {
@@ -31,8 +32,9 @@ struct ncclComm {
   sccl_engine *engine;
   char error_message[1024];
   pthread_mutex_t error_lock;    /* an error published after the status (publish_error) with its text */
-  int quiesced;                  /* the close began (ncclCommFinalize, or ncclCommDestroy) */
+  int quiesced;                  /* the close ran (ncclCommFinalize, or ncclCommDestroy); under close_lock */
   int close_result;              /* its result, returned again by a repeated ncclCommFinalize or destroy */
+  pthread_mutex_t close_lock;    /* held across the close, so a concurrent second close waits for its result */
   uint64_t serial;               /* creation number in this process: tells a reused address apart */
   atomic_int state, error, grouped, cancelled;
 };
@@ -53,6 +55,37 @@ typedef struct {
 } queued_p2p;
 static _Thread_local queued_p2p *p2p_queue;
 static _Thread_local unsigned p2p_count, p2p_capacity;
+
+/* A thread that used group state gets a thread-exit hook (a pthread key's destructor): it frees the thread's
+ * point-to-point queue and fails the initializations still pending in the thread's open group, which no
+ * other thread may start or destroy, so their handles can be destroyed. The library destructor deletes the
+ * key, so no hook runs into an unloaded library. */
+static pthread_key_t group_key;
+static pthread_once_t group_key_once = PTHREAD_ONCE_INIT;
+static atomic_int group_key_ready;
+static void group_thread_exit(void *unused) {
+  (void)unused;
+  for (unsigned i = 0; i < pending_count; ++i) {
+    struct ncclComm *comm = pending[i];
+    snprintf(comm->error_message, sizeof(comm->error_message),
+             "the thread that initialized this communicator in a group exited before its ncclGroupEnd");
+    atomic_store(&comm->state, FAILED);
+    atomic_store(&comm->error, ncclInvalidUsage);
+    atomic_store(&comm->grouped, 0);
+  }
+  pending_count = 0;
+  group_depth = 0;
+  free(p2p_queue);
+  p2p_queue = NULL;
+  p2p_count = p2p_capacity = 0;
+}
+static void group_key_create(void) {
+  if (!pthread_key_create(&group_key, group_thread_exit)) atomic_store(&group_key_ready, 1);
+}
+static void group_thread_watch(void) {
+  pthread_once(&group_key_once, group_key_create);
+  if (atomic_load(&group_key_ready) && !pthread_getspecific(group_key)) pthread_setspecific(group_key, &group_key);
+}
 
 /* Make `result` the communicator's terminal error with `message` as its text, unless it already has one;
  * 1 when this call set it. The text is written under the error lock, and readers copy it under the same
@@ -75,18 +108,33 @@ static int debug_errors(void) {
   const char *debug = sccl_env("NCCL_DEBUG");
   return debug && (!strcasecmp(debug, "WARN") || !strcasecmp(debug, "INFO") || !strcasecmp(debug, "TRACE"));
 }
+/* A failed call: its result and text for this thread. A call that enqueues nothing into the thread's group
+ * (a query, a registration, ncclGetUniqueId, a lifecycle call, an unsupported function) fails this way and
+ * leaves the group as it was. */
 static ncclResult_t fail(ncclResult_t result, const char *message) {
   snprintf(last_error, sizeof(last_error), "%s", message);
-  if (group_depth && group_error == ncclSuccess) group_error = result;
   if (debug_errors()) fprintf(stderr, "libsircl: %s: %s\n", ncclGetErrorString(result), message);
   return result;
+}
+/* A failed call that belongs to the thread's group (a communicator creation, a collective or point-to-point
+ * call refused other than as an invalid argument, the group calls themselves): its result also becomes the
+ * group's, unless the group already has one. ncclInProgress never becomes a group's result: ncclGroupEnd
+ * would record it as the terminal error of the group's pending initializations, which would then read as in
+ * progress forever. */
+static _Thread_local char group_reason[400];  /* the text of the call that set group_error */
+static ncclResult_t group_fail(ncclResult_t result, const char *message) {
+  if (group_depth && group_error == ncclSuccess && result != ncclInProgress) {
+    group_error = result;
+    snprintf(group_reason, sizeof group_reason, "%s", message);
+  }
+  return fail(result, message);
 }
 /* A communicator that cannot be created (ncclCommInitRank*, ncclCommSplit): its reason goes to stderr
  * whatever NCCL_DEBUG says, once, because the frameworks that create communicators commonly report only
  * ncclGetErrorString, and the text ncclGetLastError keeps is otherwise lost with the process. */
 static ncclResult_t creation_failed(ncclResult_t result, const char *message) {
   int printed = debug_errors();
-  fail(result, message);
+  group_fail(result, message);
   if (!printed) fprintf(stderr, "libsircl: communicator creation failed (%s): %s\n", ncclGetErrorString(result),
                         message);
   return result;
@@ -95,7 +143,7 @@ static ncclResult_t creation_failed(ncclResult_t result, const char *message) {
  * leaves the calling thread's group as it was (the call did nothing, and the work queued before it still
  * runs at ncclGroupEnd); any other error also becomes the group's result. */
 static ncclResult_t refuse(ncclResult_t result, const char *message) {
-  if (result != ncclInvalidArgument) return fail(result, message);
+  if (result != ncclInvalidArgument) return group_fail(result, message);
   snprintf(last_error, sizeof(last_error), "%s", message);
   return result;
 }
@@ -126,12 +174,14 @@ const char *sirclGetInfo(void) {
          "\"ops\":[\"sum\",\"prod\",\"max\",\"min\",\"avg\"],\"transport_reductions\":[\"float16/sum\","
          "\"bfloat16/sum\",\"float32/sum\"],\"all_gather\":\"every datatype\",\"broadcast\":"
          "\"every datatype\",\"all_to_all\":\"every datatype\",\"gather\":\"every datatype\",\"scatter\":"
-         "\"every datatype\",\"send_recv\":\"two-rank communicators, and a rank to itself\",\"split\":true},"
+         "\"every datatype\",\"send_recv\":\"two-rank communicators, a rank to itself, and point-to-point "
+         "channels on communicators of three or more ranks (LIBSIRCL_P2P_CHANNELS=on)\",\"split\":true},"
          "\"schedules\":{\"large_all_reduce\":[\"pieces\",\"chain\",\"auto\",\"ring\"],\"all_gather\":"
          "[\"pieces\",\"chain\",\"auto\",\"ring\"],\"reduce_scatter\":[\"pieces\",\"chain\",\"auto\",\"ring\"],"
-         "\"default\":\"pieces\"},"
+         "\"default\":\"pieces; the pair plan on a cabled pair; the cycle plan on a ring that closes over "
+         "cables\"},"
          "\"transports\":[\"verbs\",\"emulation\"],\"kernels\":\"ahead-of-time CUDA C++ "
-         "(sm_120, sm_121): transport, fold and link packs\",\"bootstrap\":"
+         "(sm_120, sm_121): transport, fold, link and point-to-point packs\",\"bootstrap\":"
          "\"tcp (loopback or SIRCL_BOOTSTRAP_ADDR/IFNAME)\",\"world\":\"1-8\"}";
 }
 ncclResult_t ncclGetVersion(int *version) {
@@ -182,6 +232,14 @@ const char *ncclGetLastError(ncclComm_t handle) {
   struct ncclComm *comm = acquire(handle);
   if (comm) {
     int error = atomic_load(&comm->error);
+    if (error == ncclSuccess && comm->engine) {
+      /* As ncclCommGetAsyncError: an asynchronous failure the engine found and the communicator has not yet
+       * recorded becomes its terminal error, with its description. */
+      char message[512];
+      ncclResult_t failure = sccl_engine_async_error(comm->engine, message, sizeof message);
+      if (failure != ncclSuccess && publish_error(comm, failure, message)) atomic_store(&comm->state, FAILED);
+      error = atomic_load(&comm->error);
+    }
     if (error != ncclSuccess && error != ncclInProgress) read_error(comm, last_error, sizeof(last_error));
     release(comm);
   }
@@ -197,8 +255,16 @@ static void *initialize(void *arg) {
                                 &comm->cancelled, &comm->engine, comm->error_message, sizeof(comm->error_message));
     if (!result) comm->device = sccl_engine_device(comm->engine);
   }
-  atomic_store(&comm->state, result == 0 ? READY : FAILED);
+  if (result && comm->bootstrap) {
+    /* A failed communicator keeps no bootstrap connection: it would hold a socket, and on the root's process
+     * a broker thread and one of the 64 root slots, until the caller destroys the handle. */
+    sccl_bootstrap_close(comm->bootstrap);
+    comm->bootstrap = NULL;
+  }
+  /* The result first (both stores sequentially consistent): a reader that sees READY or FAILED also sees
+   * the result that goes with it. */
   atomic_store(&comm->error, result);
+  atomic_store(&comm->state, result == 0 ? READY : FAILED);
   return NULL;
 }
 static ncclResult_t start(struct ncclComm *comm) {
@@ -206,10 +272,48 @@ static ncclResult_t start(struct ncclComm *comm) {
     atomic_store(&comm->state, FAILED);
     snprintf(comm->error_message, sizeof(comm->error_message), "cannot start bootstrap worker");
     atomic_store(&comm->error, ncclSystemError);
-    return fail(ncclSystemError, "cannot start bootstrap worker");
+    return group_fail(ncclSystemError, "cannot start bootstrap worker");
   }
   comm->worker_started = 1;
   return ncclSuccess;
+}
+/* libsircl honors only `blocking` of ncclConfig_t. Under NCCL_DEBUG (WARN, INFO or TRACE) the first config
+ * of the process that sets another field (an int not NCCL_CONFIG_UNDEF_INT, a name not NULL) within its
+ * `size` writes one stderr line naming that field. */
+static void log_ignored_config(const ncclConfig_t *config, size_t size) {
+  static atomic_int logged;
+  if (!debug_errors() || atomic_load(&logged)) return;
+  static const struct { const char *name; size_t offset; int pointer; } fields[] = {
+#define INT_FIELD(f) {#f, offsetof(ncclConfig_t, f), 0}
+#define NAME_FIELD(f) {#f, offsetof(ncclConfig_t, f), 1}
+      INT_FIELD(cgaClusterSize), INT_FIELD(minCTAs), INT_FIELD(maxCTAs), NAME_FIELD(netName),
+      INT_FIELD(splitShare), INT_FIELD(trafficClass), NAME_FIELD(commName), INT_FIELD(collnetEnable),
+      INT_FIELD(CTAPolicy), INT_FIELD(shrinkShare), INT_FIELD(nvlsCTAs), INT_FIELD(nChannelsPerNetPeer),
+      INT_FIELD(nvlinkCentricSched), INT_FIELD(graphUsageMode), INT_FIELD(numRmaCtx), INT_FIELD(maxP2pPeers),
+      INT_FIELD(graphStreamOrdering), INT_FIELD(launchOrderImplicit), INT_FIELD(numRmaSig),
+      INT_FIELD(rmaEagerInit), INT_FIELD(hostCftMode), INT_FIELD(nvlsHostMode),
+#undef INT_FIELD
+#undef NAME_FIELD
+  };
+  for (size_t i = 0; i < sizeof fields / sizeof fields[0]; ++i) {
+    size_t width = fields[i].pointer ? sizeof(const char *) : sizeof(int);
+    if (fields[i].offset + width > size) continue;
+    int set;
+    if (fields[i].pointer) {
+      const char *name;
+      memcpy(&name, (const char *)config + fields[i].offset, sizeof name);
+      set = name != NULL;
+    } else {
+      int value;
+      memcpy(&value, (const char *)config + fields[i].offset, sizeof value);
+      set = value != NCCL_CONFIG_UNDEF_INT;
+    }
+    if (set && !atomic_exchange(&logged, 1)) {
+      fprintf(stderr, "libsircl: ncclConfig_t.%s is set and ignored: libsircl honors only blocking\n",
+              fields[i].name);
+      return;
+    }
+  }
 }
 /* The blocking mode of a new communicator: the config's, or `inherited` when the config is NULL or leaves the
  * field undefined (1 for ncclCommInitRank*, the parent's for ncclCommSplit). */
@@ -227,6 +331,7 @@ static ncclResult_t config_blocking(const ncclConfig_t *config, int inherited, i
   if (magic != NCCL_API_MAGIC || version < 21400)
     return fail(ncclInvalidArgument, "config magic or version is invalid");
   memcpy(blocking, (const char *)config + offsetof(ncclConfig_t, blocking), sizeof(*blocking));
+  log_ignored_config(config, size);
   if (*blocking == NCCL_CONFIG_UNDEF_INT) *blocking = inherited;
   if (*blocking != 0 && *blocking != 1)
     return fail(ncclInvalidArgument, "config blocking must be 0, 1, or UNDEF");
@@ -297,6 +402,7 @@ static ncclResult_t init_rank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   struct ncclComm *comm = calloc(1, sizeof(*comm));
   if (!comm) return creation_failed(ncclSystemError, "communicator allocation failed");
   pthread_mutex_init(&comm->error_lock, NULL);
+  pthread_mutex_init(&comm->close_lock, NULL);
   comm->nranks = nranks; comm->rank = rank; comm->blocking = blocking;
   comm->bootstrap_only = bootstrap_only; comm->ctx = ctx; comm->position = position;
   memcpy(comm->id, id.internal, 128);
@@ -332,6 +438,24 @@ ncclResult_t ncclCommInitRank(ncclComm_t *out, int nranks, ncclUniqueId id, int 
   return ncclCommInitRankConfig(out, nranks, id, rank, NULL);
 }
 
+/* The result of a split whose all-gather failed, as the engine's setup exchanges report theirs: a peer that
+ * did not arrive in time or a lost broker is ncclRemoteError; a cancellation (abort) ncclInvalidUsage; an
+ * invalid setting ncclInvalidArgument; a local socket or allocation failure ncclSystemError. */
+static ncclResult_t split_exchange_result(int bootstrap_result) {
+  switch (bootstrap_result) {
+    case ncclInvalidUsage: return ncclInvalidUsage;
+    case ncclInvalidArgument: return ncclInvalidArgument;
+    case ncclSystemError: return ncclSystemError;
+    default: return ncclRemoteError;
+  }
+}
+/* A failed split: its reason is recorded before the parent's reference is dropped, so that a library unload
+ * waiting for the reference finds the call already past its library work. */
+static ncclResult_t split_failed(struct ncclComm *parent, ncclResult_t result, const char *message) {
+  creation_failed(result, message);
+  release(parent);
+  return result;
+}
 /* ncclCommSplit: two rounds over the parent's bootstrap. Round 1 gathers every rank's (color, key); the
  * ranks of one color form a communicator ordered by key, then parent rank. Round 2 gathers the unique id
  * each new rank 0 created; every member then joins its communicator with that id, keeping the parent's
@@ -351,11 +475,17 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   int32_t mine[2] = {color, key};
   void *all = NULL;
   unsigned lengths[64];
-  if (sccl_bootstrap_allgather(parent->bootstrap, mine, sizeof mine, &all, lengths, &parent->cancelled)) {
+  int gathered = sccl_bootstrap_allgather(parent->bootstrap, mine, sizeof mine, &all, lengths, &parent->cancelled);
+  if (gathered) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging colors: %s", sccl_bootstrap_error());
-    release(parent);
-    return creation_failed(ncclSystemError, message);
+    return split_failed(parent, split_exchange_result(gathered), message);
+  }
+  for (int r = 0; r < parent->nranks; ++r) {
+    if (lengths[r] != sizeof mine) {
+      free(all);
+      return split_failed(parent, ncclRemoteError, "ncclCommSplit: invalid color record length");
+    }
   }
   const int32_t *records = all;
   int members[64], count = 0, rank = -1;
@@ -372,22 +502,49 @@ ncclResult_t ncclCommSplit(ncclComm_t handle, int color, int key, ncclComm_t *ne
   for (int i = 0; i < count; ++i)
     if (members[i] == parent->rank) rank = i;
   free(all);
+  /* Every rank takes part in round 2, including a leader whose unique id could not be created: it sends a
+   * failure record instead (no id magic; bytes 8-11 its result, big-endian), so its members fail with the
+   * same result at once and every rank's bootstrap stays in step. */
   ncclUniqueId id;
   memset(&id, 0, sizeof id);
   ncclResult_t result = ncclSuccess;
-  if (rank == 0) result = ncclGetUniqueId(&id);
-  if (result != ncclSuccess) {
-    release(parent);
-    return result;
+  char reason[512] = {0};
+  if (rank == 0) {
+    result = ncclGetUniqueId(&id);
+    if (result != ncclSuccess) {
+      snprintf(reason, sizeof reason, "%s", last_error);
+      memset(&id, 0, sizeof id);
+      id.internal[8] = (unsigned char)((unsigned)result >> 24); id.internal[9] = (unsigned char)((unsigned)result >> 16);
+      id.internal[10] = (unsigned char)((unsigned)result >> 8); id.internal[11] = (unsigned char)result;
+    }
   }
-  if (sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths, &parent->cancelled)) {
+  gathered = sccl_bootstrap_allgather(parent->bootstrap, id.internal, sizeof id.internal, &all, lengths,
+                                      &parent->cancelled);
+  if (gathered) {
     char message[700];
     snprintf(message, sizeof message, "ncclCommSplit: exchanging unique ids: %s", sccl_bootstrap_error());
-    release(parent);
-    return creation_failed(ncclSystemError, message);
+    return split_failed(parent, split_exchange_result(gathered), message);
+  }
+  for (int r = 0; r < parent->nranks; ++r) {
+    if (lengths[r] != sizeof id.internal) {
+      free(all);
+      return split_failed(parent, ncclRemoteError, "ncclCommSplit: invalid unique-id record length");
+    }
   }
   if (rank >= 0) memcpy(id.internal, (const unsigned char *)all + 128 * (size_t)members[0], 128);
   free(all);
+  if (rank > 0 && id.internal[0] == 0) {
+    unsigned code = (unsigned)id.internal[8] << 24 | (unsigned)id.internal[9] << 16 | (unsigned)id.internal[10] << 8 |
+                    id.internal[11];
+    result = code > ncclSuccess && code < ncclNumResults && code != ncclInProgress ? (ncclResult_t)code : ncclRemoteError;
+    snprintf(reason, sizeof reason, "the split leader (parent rank %d) could not create the unique id (%s)",
+             members[0], ncclGetErrorString(result));
+  }
+  if (result != ncclSuccess) {
+    char message[700];
+    snprintf(message, sizeof message, "ncclCommSplit: %s", reason);
+    return split_failed(parent, result, message);
+  }
   int position = parent->position, blocking = parent->blocking;
   release(parent);
   if (rank < 0) return ncclSuccess;
@@ -467,6 +624,28 @@ static ncclResult_t point_to_point(const char *what, int send, const void *buff,
   }
   sccl_p2p_op op = {send, peer, buff, count * item, stream};
   if (group_depth) {
+    /* The group rules the engine applies at ncclGroupEnd, refused at the call that breaks them: the calls of
+     * one group on one communicator use one stream, and there are at most MAX_GROUP_P2P of them. */
+    enum { MAX_GROUP_P2P = 1024 };
+    unsigned same = 0;
+    const queued_p2p *first = NULL;
+    for (unsigned i = 0; i < p2p_count; ++i)
+      if (p2p_queue[i].comm == comm && p2p_queue[i].serial == comm->serial) {
+        if (!first) first = &p2p_queue[i];
+        ++same;
+      }
+    if (first && first->op.stream != op.stream) {
+      release(comm);
+      snprintf(message, sizeof message, "%s: the point-to-point calls of one group on one communicator must use "
+               "one stream", what);
+      return refuse(ncclInvalidUsage, message);
+    }
+    if (same >= MAX_GROUP_P2P) {
+      release(comm);
+      snprintf(message, sizeof message, "%s: a group carries at most %d point-to-point calls on one communicator",
+               what, MAX_GROUP_P2P);
+      return refuse(ncclInvalidUsage, message);
+    }
     if (p2p_count == p2p_capacity) {
       unsigned capacity = p2p_capacity ? 2 * p2p_capacity : 64;
       queued_p2p *grown = realloc(p2p_queue, sizeof(*grown) * capacity);
@@ -501,8 +680,9 @@ ncclResult_t ncclRecv(void *recvbuff, size_t count, ncclDataType_t datatype, int
 
 ncclResult_t ncclGroupStart(void) {
   CHECK_PROCESS();
-  if (group_depth == 256) return fail(ncclInvalidUsage, "group nesting exceeds 256");
-  if (group_depth++ == 0) { group_error = ncclSuccess; pending_count = 0; }
+  if (group_depth == 256) return group_fail(ncclInvalidUsage, "group nesting exceeds 256");
+  if (group_depth++ == 0) { group_error = ncclSuccess; group_reason[0] = 0; pending_count = 0; }
+  group_thread_watch();
   return ncclSuccess;
 }
 ncclResult_t ncclGroupEnd(void) {
@@ -510,11 +690,15 @@ ncclResult_t ncclGroupEnd(void) {
   if (!group_depth) return fail(ncclInvalidUsage, "GroupEnd without GroupStart");
   if (--group_depth) return ncclSuccess;
   ncclResult_t result = group_error;
+  /* The reason the group failed: the first failing call's text, else the first initialization's. */
+  char reason[sizeof group_reason + 64];
+  snprintf(reason, sizeof reason, "%s", group_reason);
   for (unsigned i = 0; i < pending_count; ++i) {
     if (result != ncclSuccess) {
-      atomic_store(&pending[i]->state, FAILED);
-      snprintf(pending[i]->error_message, sizeof(pending[i]->error_message), "group initialization rejected");
+      snprintf(pending[i]->error_message, sizeof(pending[i]->error_message), "group initialization rejected: %s",
+               reason);
       atomic_store(&pending[i]->error, result);
+      atomic_store(&pending[i]->state, FAILED);
     } else {
       ncclResult_t r = start(pending[i]);
       if (r != ncclSuccess) result = r;
@@ -529,6 +713,13 @@ ncclResult_t ncclGroupEnd(void) {
     if (comm->blocking && comm->worker_started) {
       pthread_join(comm->worker, NULL); comm->worker_started = 0;
       ncclResult_t r = (ncclResult_t)atomic_load(&comm->error);
+      if (r != ncclSuccess && !atomic_load(&comm->cancelled)) {
+        /* A group-deferred creation that failed reports its reason as an ungrouped one does. */
+        char message[1200];
+        snprintf(message, sizeof message, "communicator initialization failed: %s", comm->error_message);
+        creation_failed(r, message);
+        if (!reason[0]) snprintf(reason, sizeof reason, "%s", message);
+      }
       if ((result == ncclSuccess || result == ncclInProgress) && r != ncclSuccess) result = r;
     } else if (!comm->blocking && result == ncclSuccess) result = ncclInProgress;
     atomic_store(&comm->grouped, 0);
@@ -536,20 +727,39 @@ ncclResult_t ncclGroupEnd(void) {
   pending_count = 0;
   if (result != ncclSuccess && result != ncclInProgress) {
     flush_p2p(0);
-    return fail(result, "group initialization failed");
+    char text[sizeof reason + 64];
+    snprintf(text, sizeof text, "group initialization failed%s%s", reason[0] ? ": " : "", reason);
+    return fail(result, text);
   }
   ncclResult_t sent = flush_p2p(1);
   return sent != ncclSuccess ? sent : result;
 }
 ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
   CHECK_PROCESS();
-  if (!out || ndev < 1 || ndev > 8) return fail(ncclInvalidArgument, "InitAll requires 1 to 8 output handles");
+  if (!out || ndev < 1 || ndev > 8)
+    return group_fail(ncclInvalidArgument, "InitAll requires 1 to 8 output handles");
   for (int i = 0; i < ndev; ++i) out[i] = NULL;
   for (int i = 0; i < ndev; ++i) if (devlist && devlist[i] < 0)
-    return fail(ncclInvalidArgument, "negative device number");
+    return group_fail(ncclInvalidArgument, "negative device number");
+  const char *only = sccl_env("LIBSIRCL_BOOTSTRAP_ONLY");
+  if (!only || strcmp(only, "1")) {
+    int device = devlist ? devlist[0] : 0;
+    for (int i = 1; i < ndev; ++i)
+      if ((devlist ? devlist[i] : i) != device)
+        return creation_failed(ncclInvalidUsage, "InitAll with distinct devices is unsupported; initialize each rank on its device");
+    char why[512];
+    sccl_CUcontext ctx = sccl_engine_current_context();
+    if (!ctx) ctx = sccl_engine_device_context(why, sizeof why);
+    if (!ctx) return creation_failed(ncclInvalidUsage, why);
+    const sccl_cuda *driver = sccl_cuda_get();
+    sccl_CUdevice current = -1;
+    if (!driver || driver->CtxGetDevice(&current) != SCCL_CUDA_SUCCESS || current != device)
+      return creation_failed(ncclInvalidUsage, "InitAll requires the requested device's context to be current");
+  }
   ncclUniqueId id;
   ncclResult_t result = ncclGetUniqueId(&id);
   if (result != ncclSuccess) return result;
+  int nested = group_depth != 0;
   result = ncclGroupStart();
   if (result != ncclSuccess) return result;
   for (int i = 0; i < ndev; ++i) {
@@ -558,7 +768,20 @@ ncclResult_t ncclCommInitAll(ncclComm_t *out, int ndev, const int *devlist) {
     out[i]->device = devlist ? devlist[i] : i;
   }
   ncclResult_t end = ncclGroupEnd();
-  return result != ncclSuccess ? result : end;
+  if (result == ncclSuccess) result = end;
+  /* A failed InitAll leaves no handle: every communicator it created is aborted and its output cleared.
+   * Inside the caller's own group the handles belong to that group until its ncclGroupEnd, which reports
+   * their failure. */
+  if (result != ncclSuccess && result != ncclInProgress && !nested) {
+    char reason[sizeof last_error];
+    snprintf(reason, sizeof reason, "%s", last_error);
+    for (int i = 0; i < ndev; ++i) {
+      if (out[i]) ncclCommAbort(out[i]);
+      out[i] = NULL;
+    }
+    snprintf(last_error, sizeof last_error, "%s", reason);
+  }
+  return result;
 }
 static ncclResult_t query(ncclComm_t handle, int *out, int field) {
   CHECK_PROCESS();
@@ -567,8 +790,11 @@ static ncclResult_t query(ncclComm_t handle, int *out, int field) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
   if (result == ncclSuccess) *out = field == 0 ? comm->nranks : field == 1 ? comm->rank : comm->device;
+  /* A failed communicator's result comes with its text, so ncclGetLastError(NULL) says why. */
+  char text[sizeof comm->error_message] = {0};
+  if (result != ncclSuccess && result != ncclInProgress) read_error(comm, text, sizeof text);
   release(comm);
-  return result;
+  return text[0] ? fail(result, text) : result;
 }
 ncclResult_t ncclCommCount(ncclComm_t comm, int *out) { return query(comm, out, 0); }
 
@@ -825,12 +1051,18 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   int state = atomic_load(&comm->state);
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
-  if (result == ncclSuccess) {
-    if (state == READY || (state == next)) atomic_store(&comm->state, next);
-    else result = ncclInvalidUsage;
+  const char *why = "communicator is not ready for this lifecycle operation";
+  if (result == ncclInProgress) {
+    /* As collective_ready refuses an enqueue: the initialization has not finished. */
+    result = ncclInvalidUsage;
+    why = "communicator initialization is still in progress";
+  } else if (result == ncclSuccess) {
+    /* Compare-exchange: a state another thread stored in between is seen, not overwritten. */
+    while ((state == READY || state == next) && !atomic_compare_exchange_weak(&comm->state, &state, next)) {}
+    if (state != READY && state != next) result = ncclInvalidUsage;
   }
   release(comm);
-  return result == ncclSuccess ? result : fail(result, "communicator is not ready for this lifecycle operation");
+  return result == ncclSuccess ? result : fail(result, why);
 }
 /* Teardown of a communicator of two or more ranks, so that no rank frees what a peer still writes. This rank's
  * enqueued work completes; round 1 over the bootstrap carries every rank's status (its wait, then its health:
@@ -838,17 +1070,26 @@ static ncclResult_t transition(ncclComm_t handle, int next) {
  * rank's work completed, so every item and flag any rank's kernels wait for has landed; this rank's progress
  * thread stops and posts nothing more; round 2 proves every progress thread stopped, so nothing is posted
  * toward this rank's queue pairs or regions any more and destroy may free them. Each round is bounded by the
- * session's wait limit. The close is terminal: from its start the communicator refuses new work, and its
+ * session's wait limit plus 5 s. The close is terminal: from its start the communicator refuses new work, and its
  * result (this rank's own error first, else ncclRemoteError naming the first rank that reported one, or a
  * round that not every rank reached) is kept, becomes the communicator's error when it failed, and is what a
  * repeated ncclCommFinalize or the destroy returns. */
+static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call);
 static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
+  pthread_mutex_lock(&comm->close_lock);
+  ncclResult_t result = quiesce_locked(comm, call);
+  pthread_mutex_unlock(&comm->close_lock);
+  return result;
+}
+static ncclResult_t quiesce_locked(struct ncclComm *comm, const char *call) {
   if (comm->quiesced) return (ncclResult_t)comm->close_result;
   if (!comm->engine || comm->bootstrap_only || comm->nranks < 2 || !comm->bootstrap) return ncclSuccess;
+  /* A revoked communicator runs the rounds too: revoke stops new work, not the kernels and forwards already
+   * in flight, so freeing without the rounds could pull queue pairs and regions from under a peer's writes. */
   int state = atomic_load(&comm->state);
-  if (state != READY && state != FINALIZED && state != FAILED) return ncclSuccess;
+  if (state == INIT) return ncclSuccess;
   comm->quiesced = 1;
-  if (state == READY) atomic_store(&comm->state, FINALIZED);
+  if (state == READY) atomic_compare_exchange_strong(&comm->state, &state, FINALIZED);
   char message[700] = {0};
   ncclResult_t result = (ncclResult_t)atomic_load(&comm->error);
   if (result != ncclSuccess) read_error(comm, message, sizeof message);
@@ -858,8 +1099,11 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
     snprintf(message, sizeof message, "%s: waiting for this rank's enqueued work failed", call);
   }
   if (result == ncclSuccess) result = sccl_engine_async_error(comm->engine, message, sizeof message);
-  const atomic_int never = 0;
-  int limit_ms = sccl_engine_wait_limit_ms(comm->engine), arrived = 0;
+  /* The wait limit plus TEARDOWN_SLACK_MS: a rank whose own work ended at its wait limit (a timed-out flag
+   * wait) reaches the round just after its peers began waiting, not before. */
+  enum { TEARDOWN_SLACK_MS = 5000 };
+  int wait_ms = sccl_engine_wait_limit_ms(comm->engine), arrived = 0;
+  int limit_ms = wait_ms > INT_MAX - TEARDOWN_SLACK_MS ? INT_MAX : wait_ms + TEARDOWN_SLACK_MS;
   for (int round = 1; round <= 2; ++round) {
     if (round == 2) sccl_engine_teardown_stop(comm->engine);
     if (round == 2 && !arrived) break;
@@ -867,7 +1111,7 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
     void *all = NULL;
     unsigned lengths[64] = {0};
     arrived = sccl_bootstrap_allgather_within(comm->bootstrap, &mine, sizeof mine, &all, lengths, limit_ms,
-                                              &never) == 0;
+                                              &comm->cancelled) == 0;
     if (arrived && round == 1 && result == ncclSuccess) {
       for (int r = 0; r < comm->nranks; ++r) {
         int32_t theirs = 0;
@@ -885,7 +1129,7 @@ static ncclResult_t quiesce(struct ncclComm *comm, const char *call) {
       if (result == ncclSuccess) {
         result = ncclRemoteError;
         snprintf(message, sizeof message, "%s: teardown round %d: not every rank arrived within the wait limit "
-                 "(%d ms): %s", call, round, limit_ms, sccl_bootstrap_error());
+                 "plus 5 s (%d ms): %s", call, round, limit_ms, sccl_bootstrap_error());
       }
       if (round == 1) sccl_engine_teardown_stop(comm->engine);
       break;
@@ -909,17 +1153,27 @@ ncclResult_t ncclCommFinalize(ncclComm_t handle) {
   if (!comm) return fail(ncclInvalidArgument, "unknown communicator handle");
   ncclResult_t flushed = comm->engine && atomic_load(&comm->state) == READY ? sccl_engine_finalize(comm->engine)
                                                                              : ncclSuccess;
-  if (flushed == ncclSuccess) flushed = quiesce(comm, "ncclCommFinalize");
+  /* The failure's own text: this rank's wait, else the close's result as the communicator recorded it (a
+   * repeated finalize returns the first close's result and text). Copied before fail() writes the thread's
+   * text, which it must not read from. */
+  char reason[sizeof last_error] = "ncclCommFinalize: waiting for this rank's enqueued work failed";
+  if (flushed == ncclSuccess) {
+    flushed = quiesce(comm, "ncclCommFinalize");
+    if (flushed != ncclSuccess) read_error(comm, reason, sizeof reason);
+  }
   release(comm);
-  if (flushed != ncclSuccess) return fail(flushed, last_error[0] ? last_error : "ncclCommFinalize failed");
+  if (flushed != ncclSuccess) return fail(flushed, reason);
   return transition(handle, FINALIZED);
 }
 ncclResult_t ncclCommRevoke(ncclComm_t comm, int flags) {
+  CHECK_PROCESS();
   if (flags) return fail(ncclInvalidArgument, "revoke flags must be zero");
   return transition(comm, REVOKED);
 }
 static ncclResult_t dispose(ncclComm_t handle, int abort) {
   CHECK_PROCESS();
+  /* NVIDIA NCCL 2.32.3's ncclCommDestroy and ncclCommAbort return ncclSuccess for a NULL communicator. */
+  if (!handle) return ncclSuccess;
   /* Group-owned pending handles cannot be removed before GroupEnd consumes them. */
   for (unsigned i = 0; i < pending_count; ++i) if (pending[i] == handle)
     return fail(ncclInvalidUsage, "communicator initialization is pending in a group");
@@ -936,9 +1190,10 @@ static ncclResult_t dispose(ncclComm_t handle, int abort) {
     return fail(ncclInvalidUsage, "communicator initialization is pending in a group");
   }
   *link = comm->next;
+  if (abort) atomic_store(&comm->cancelled, 1);
   while (comm->refs) pthread_cond_wait(&registry_idle, &registry_lock);
   pthread_mutex_unlock(&registry_lock);
-  atomic_store(&comm->cancelled, 1);
+  if (atomic_load(&comm->state) == INIT) atomic_store(&comm->cancelled, 1);
   if (comm->worker_started) pthread_join(comm->worker, NULL);
   ncclResult_t result = abort ? ncclSuccess : quiesce(comm, "ncclCommDestroy");
   char message[sizeof comm->error_message];
@@ -951,25 +1206,49 @@ static ncclResult_t dispose(ncclComm_t handle, int abort) {
   }
   sccl_bootstrap_close(comm->bootstrap);
   pthread_mutex_destroy(&comm->error_lock);
+  pthread_mutex_destroy(&comm->close_lock);
   free(comm);
   return result == ncclSuccess ? ncclSuccess : fail(result, message);
 }
 ncclResult_t ncclCommDestroy(ncclComm_t comm) { return dispose(comm, 0); }
 ncclResult_t ncclCommAbort(ncclComm_t comm) { return dispose(comm, 1); }
 
-/* A library unload must not leave a worker executing code in an unmapped DSO.
- * dlclose concurrent with API calls is outside the supported caller contract. */
+/* A library unload (dlclose, or the destructors exit runs) must not leave a worker executing code in an
+ * unmapped DSO, nor free a communicator that a call on another thread still uses. Every communicator is
+ * cancelled first, which ends its bootstrap waits within one poll slice (50 ms); calls still inside the
+ * library hold references, and the unload waits up to UNLOAD_WAIT_MS for them to leave. A communicator still
+ * referenced after that stays allocated with its bootstrap open: freeing it would pull memory from under the
+ * call. dlclose concurrent with API calls remains outside the supported caller contract, since a call that
+ * has released its reference still returns through library code. */
+enum { UNLOAD_WAIT_MS = 1000 };
+static int referenced(const struct ncclComm *list) {
+  for (const struct ncclComm *entry = list; entry; entry = entry->next)
+    if (entry->refs) return 1;
+  return 0;
+}
 __attribute__((destructor)) static void shutdown_communicators(void) {
   if (!sccl_bootstrap_process_valid()) return;
+  if (atomic_exchange(&group_key_ready, 0)) pthread_key_delete(group_key);
   sccl_engine_fail_stop_shutdown();
   pthread_mutex_lock(&registry_lock);
   struct ncclComm *comm = registry;
   registry = NULL;
   for (struct ncclComm *entry = comm; entry; entry = entry->next)
     atomic_store(&entry->cancelled, 1);
+  struct timespec deadline;
+  clock_gettime(CLOCK_REALTIME, &deadline);
+  deadline.tv_sec += UNLOAD_WAIT_MS / 1000;
+  deadline.tv_nsec += (long)(UNLOAD_WAIT_MS % 1000) * 1000000L;
+  if (deadline.tv_nsec >= 1000000000L) { ++deadline.tv_sec; deadline.tv_nsec -= 1000000000L; }
+  while (referenced(comm))
+    if (pthread_cond_timedwait(&registry_idle, &registry_lock, &deadline) == ETIMEDOUT) break;
   pthread_mutex_unlock(&registry_lock);
   while (comm) {
     struct ncclComm *next = comm->next;
+    pthread_mutex_lock(&registry_lock);
+    int busy = comm->refs != 0;
+    pthread_mutex_unlock(&registry_lock);
+    if (busy) { comm = next; continue; }
     if (comm->worker_started) pthread_join(comm->worker, NULL);
     /* At unload only the native threads stop; CUDA may already be torn down. */
     sccl_engine_shutdown(comm->engine);

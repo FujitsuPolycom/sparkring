@@ -39,7 +39,10 @@ the size mismatch; every rank's ncclCommGetAsyncError then reports the channels'
 the others rank 1 as its origin) and ncclCommAbort returns. ``--case gone``: four ranks with
 LIBSIRCL_FAIL_STOP=1 and a 3 s wait limit; rank 3 ends its process after setup, rank 0 receives from it:
 its wait times out, and ranks 0, 1 and 2 end with status 70 (rank 0 by its own timeout, 1 and 2 by the abort
-notice). ``--case setup``: three groups of three ranks whose setup must fail on every rank, naming the
+notice). ``--case abort``: four ranks with a 60 s wait limit; rank 1 enqueues a receive from rank 0 that no
+send matches and calls ncclCommAbort 0.5 s later: the abort returns within 2 s, the receive's kernel stops
+within 5 s, and ranks 0, 2 and 3 report the channels' failure naming rank 1 within 20 s, long before the wait
+limit, because the abort poisons the channels and their progress thread posts abort notices. ``--case setup``: three groups of three ranks whose setup must fail on every rank, naming the
 reason: LIBSIRCL_P2P_CHANNELS on rank 0 only, SIRCL_P2P_THREADS=1024 on rank 1 (the pack runs at most 512),
 and a malformed LIBSIRCL_P2P_WINDOWS on rank 2.
 
@@ -160,6 +163,35 @@ def run_rank(args) -> int:
         want = "different sizes" if rank == 1 else "failure on rank 1"
         report(f"the channels' failure reported within {time.monotonic() - started:.2f} s", status.value != 0 and
                want in message, f"result {status.value}: {message}")
+        report("ncclCommAbort", lib.ncclCommAbort(comm) == 0, last_error())
+        save()
+        return 0
+    if args.case == "abort":
+        x = torch.zeros(4096, dtype=torch.uint8, device="cuda")
+        torch.cuda.synchronize()
+        if rank == 1:
+            code = call(False, x, 0)
+            report("a receive that no send matches enqueues", code == 0, last_error() if code else "")
+            time.sleep(0.5)
+            started = time.monotonic()
+            aborted = lib.ncclCommAbort(comm)
+            seconds = time.monotonic() - started
+            report(f"ncclCommAbort returned within {seconds:.2f} s", aborted == 0 and seconds < 2, last_error())
+            started = time.monotonic()
+            stream.synchronize()
+            seconds = time.monotonic() - started
+            report(f"the receive's kernel stopped {seconds:.2f} s after the abort", seconds < 5)
+            save()
+            return 0
+        status, message, started = ctypes.c_int(0), "", time.monotonic()
+        while time.monotonic() - started < 20:
+            lib.ncclCommGetAsyncError(comm, ctypes.byref(status))
+            if status.value:
+                message = last_error(comm)
+                break
+            time.sleep(0.05)
+        report(f"rank 1's abort reported within {time.monotonic() - started:.2f} s",
+               status.value != 0 and "failure on rank 1" in message, f"result {status.value}: {message}")
         report("ncclCommAbort", lib.ncclCommAbort(comm) == 0, last_error())
         save()
         return 0
@@ -392,6 +424,8 @@ def run_group(args, extra_env=None, label="") -> int:
     })
     if args.case == "gone":
         base.update({"SIRCL_STARTUP_WAIT_S": "3", "LIBSIRCL_FAIL_STOP": "1"})
+    if args.case == "abort":
+        base.update({"SIRCL_STARTUP_WAIT_S": "60"})
     base.update(item.split("=", 1) for item in args.env)
     started = time.perf_counter()
     processes = []
@@ -485,7 +519,7 @@ def main(argv=None) -> int:
     parser.add_argument("--world", type=int, default=4)
     parser.add_argument("--lanes", type=int, default=2)
     parser.add_argument("--layout", choices=("none", "ring8", "ring8-alone", "path4"), default="none")
-    parser.add_argument("--case", choices=("traffic", "size", "gone", "setup"), default="traffic")
+    parser.add_argument("--case", choices=("traffic", "size", "gone", "abort", "setup"), default="traffic")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=1200)
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
