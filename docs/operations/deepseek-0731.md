@@ -374,11 +374,12 @@ launcher and does not change the launch contract.
 
 ## 2.6 Request-shape warmup
 
-Status: **uncalibrated, disabled by default.** The sweep walks request shapes a
-DeepSeek-V4-Flash deployment can schedule, so a cold compiler cache compiles
-them during boot rather than during client traffic that holds ranks in a
-collective. It does not establish that the covered shapes match the kernels
-this image compiles; [Calibrating the sweep](#calibrating-the-sweep) does.
+Status: **Development**; off by default and uncalibrated on every image. The
+sweep walks request shapes a DeepSeek-V4-Flash deployment can schedule, so a
+cold compiler cache compiles them during boot rather than during client traffic
+that holds ranks in a collective. It does not establish that the covered shapes
+match the kernels the image the launcher pins compiles;
+[Calibrating the sweep](#calibrating-the-sweep) does.
 
 With `SHAPE_WARMUP=1` in rank 0's env file, `--run` starts the container and then
 runs [`scripts/deepseek_v4_shape_warmup.py`](../../scripts/deepseek_v4_shape_warmup.py)
@@ -389,27 +390,20 @@ arms in order:
 |---|---:|---|
 | `concurrency-1` … `concurrency-MAX_NUM_SEQS` | 1, 2, 4, … then the sequence limit | Chat requests fired together |
 | `prefill-medium` | 1 | Completion prompt of half `MAX_NUM_BATCHED_TOKENS` tokens |
-| `prefill-multi-chunk` | 1 | Completion prompt of 8192 + `MAX_NUM_BATCHED_TOKENS` tokens, longer than the 8192-token boundary |
+| `prefill-multi-chunk` | 1 | Completion prompt of 8192 + `MAX_NUM_BATCHED_TOKENS` tokens, past the 8,193-token longest request the pair's serving record completed |
 | `thinking-off` | 1 | Chat request with `chat_template_kwargs {"enable_thinking": false}` |
 | `tokens-…` | 1 per bucket | Completion prompts sized so `min(BLOCK_SIZE, next_pow2(tokens + NUM_SPECULATIVE_TOKENS + 1))` reaches each power-of-two bucket through `BLOCK_SIZE` |
 
-Every request starts with a unique nonce, so prefix caching cannot satisfy the
-prefill from an earlier request. Chat arms report the rendered prompt length
-that `/tokenize` returns. Completion arms search filler length through
-`/tokenize` until the prompt has exactly the bucket's token count; a target the
-nonce alone exceeds is listed under `skipped` in the summary instead of being
-approximated. `MAX_NUM_SEQS`, `BLOCK_SIZE`, `NUM_SPECULATIVE_TOKENS`,
+`MAX_NUM_SEQS`, `BLOCK_SIZE`, `NUM_SPECULATIVE_TOKENS`,
 `MAX_NUM_BATCHED_TOKENS` and `MAX_MODEL_LEN` come from the same rank env file
 the container receives, and the module has no defaults for them.
 
-The phase is non-fatal. A failed request, an exhausted budget, a missing
-`python3` or an unreadable key file logs a warning and the container keeps
-serving; only the container command itself fails the launch. The launcher's
-standard output carries one `shape_warmup` JSON summary with each arm's
-completed and failed request counts, measured prompt lengths, compile buckets
-and every skip. The pinned server serves `/v1/completions` for the
-completion arms; a server that rejects it reports those arms as failures rather
-than silently skipping them.
+The phase is non-fatal. A failed request, an exhausted budget or a missing
+`python3` logs a warning and the container keeps serving. An unreadable
+`SHAPE_WARMUP_API_KEY_FILE` stops the launch before the container starts. The
+launcher's standard output carries one `shape_warmup` JSON summary with each
+arm's completed and failed request counts, measured prompt lengths, compile
+buckets and every skip.
 
 On a cluster that enforces bearer authentication, set
 `SHAPE_WARMUP_API_KEY_FILE` to the rank-0 file the
@@ -423,11 +417,10 @@ traffic, wait for the `shape_warmup` summary in
 ### Calibrating the sweep
 
 Run this procedure on each image and topology before setting `SHAPE_WARMUP=1`
-in a deployment. Measurements on an earlier DeepSeek-V4-Flash serving image
-found the DSpark input-preparation kernel keyed by the token-count rule above
-rather than by request concurrency; those measurements used a different
-serving image than this repository pins, so the rule and the arm list both
-need confirmation.
+in a deployment. A measurement on a serving image this repository does not pin
+(its digest was not recorded) found the DSpark input-preparation kernel keyed
+by the token-count rule above rather than by request concurrency. The rule and
+the arm list both need confirmation on the pinned image.
 
 1. Stop the deployment with the recovery procedure. Keep the model and
    flight-recorder data, and move `CACHE_HOST_PATH/jit` aside so the next
@@ -453,11 +446,7 @@ need confirmation.
 5. Replay the same client mix. Passing evidence is that none of the kernels
    recorded in step 2 compiles after the sweep. A kernel that still compiles
    names a bucket the sweep does not cover; record the arm-to-kernel mapping
-   and extend the sweep before claiming coverage. Kernels this profile has
-   compiled during serving include `_prepare_dflash_inputs_kernel`,
-   `_compute_global_topk_indices_and_lens_kernel` and the B12X CuTeDSL MoE
-   kernels. The summary's `skipped` entries state which arms the nonce or
-   request limit excluded.
+   and extend the sweep before claiming coverage.
 6. Compare the same request mix with the phase disabled and enabled: TP rank
    disconnects and restarts, and first-request time to first token. Record
    conditions, measurements and the conclusion with the deployment record.
