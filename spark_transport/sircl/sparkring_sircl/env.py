@@ -127,6 +127,8 @@ VARIABLES = (
     Variable("SIRCL_FORWARD_PROOF", "1: bytes of a relayed lane that the op order proves delivered leave its "
              "forward window at once; 0: only their completions free the window", "1"),
     Variable("SIRCL_FORWARD_CHUNK_BYTES", "chunk of a windowed lane's stripe (multiple of 16)", "32768"),
+    Variable("SIRCL_SUBSET_RING", "1: experimental direct chain for flat all-gather shards >= 4 MiB on a "
+             "contiguous cycle subset leaving at most two adjacent non-members; other ops keep pieces", "0"),
     Variable("SIRCL_HAIRPIN_QUEUE_BYTES", "bytes of one relay hairpin queue (windows keep 75 % of it)", "524288"),
     Variable("SIRCL_PACKS_PER_THREAD", "16-byte packs per thread when sizing the grid, 1-64", "2"),
     Variable("SIRCL_POST_ORDER", "posting order of the progress thread's lanes: rank, ring-farthest, farthest "

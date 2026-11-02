@@ -727,6 +727,7 @@ def ring_window(
     chunk: int = DEFAULT_FORWARD_CHUNK,
     queue_bytes: int = DEFAULT_HAIRPIN_QUEUE,
     roles: Mapping[str, Role] | None = None,
+    subset_ring: bool = False,
 ) -> tuple[int, list[str]]:
     """``(window, problems)`` of the ring over ``order``: the bytes each ring lane through relays
     keeps unacknowledged (0 when every ring edge is a cable), and why the ring cannot run.
@@ -735,14 +736,19 @@ def ring_window(
     holds the bytes of the ring lanes through it; the window is the largest multiple of ``chunk``
     within ``RELAY_QUEUE_SHARE`` of a queue when every queue carries at most one ring lane (relays
     forward each function's lanes through that function's own queue). A queue that carries two
-    ring lanes is a problem.
+    ring lanes is a problem. Subset mode uses the smaller shared packet envelope
+    from subset.payload_budget instead of the legacy payload share.
     """
     queues = ring_queues(layout, route_maps, order, roles=roles)
+    allowance = int(RELAY_QUEUE_SHARE * queue_bytes)
+    if subset_ring:
+        from . import subset
+        allowance = subset.payload_budget(layout, route_maps, queue_bytes=queue_bytes)
     problems = [f"relay {key[0]} {'secondary' if key[1] else 'primary'} function toward port {key[2]} carries "
                 f"ring lanes {members}" for key, members in sorted(queues.items()) if len(members) > 1]
     if not queues:
         return 0, problems
-    window = int(RELAY_QUEUE_SHARE * queue_bytes) // chunk * chunk
+    window = allowance // chunk * chunk
     if window < chunk:
         problems.append(f"a relay queue of {queue_bytes} bytes holds less than one {chunk}-byte chunk")
     return window, problems
@@ -757,17 +763,25 @@ def forward_windows(
     chunk: int = DEFAULT_FORWARD_CHUNK,
     queue_bytes: int = DEFAULT_HAIRPIN_QUEUE,
     roles: Mapping[str, Role] | None = None,
+    subset_ring: bool = False,
 ) -> list[list[int]]:
     """Forward window in bytes of every lane of ``rank`` (``[peer][lane]``; 0 for direct lanes).
 
     A lane through relays gets the largest multiple of ``chunk`` that is at
     most ``max_window`` and, for every relay queue it crosses, at most
     ``RELAY_QUEUE_SHARE * queue_bytes / n``, where ``n`` lanes share that queue;
-    never less than one chunk. A ``max_window`` of 0 disables windows.
+    never less than one chunk. A ``max_window`` of 0 disables windows. Subset
+    mode instead rejects disabled windows and shares smaller than a chunk.
     """
     world = layout.world
     lanes = max((len(devices) for devices in route_maps[rank].values()), default=0)
     table = [[0] * lanes for _ in range(world)]
+    allowance = int(RELAY_QUEUE_SHARE * queue_bytes)
+    if subset_ring:
+        from . import subset
+        allowance = subset.payload_budget(layout, route_maps, queue_bytes=queue_bytes)
+        if max_window <= 0:
+            raise RouteError("subset ring requires forward windows")
     if max_window <= 0:
         return table
     if chunk <= 0 or chunk % 16 or max_window < chunk:
@@ -782,7 +796,9 @@ def forward_windows(
             sharing = load.get((rank, peer, lane), 0)
             if sharing == 0:
                 continue
-            limit = min(max_window, int(RELAY_QUEUE_SHARE * queue_bytes / sharing))
+            limit = min(max_window, allowance // sharing)
+            if subset_ring and limit < chunk:
+                raise RouteError(f"subset relay allowance {allowance} cannot hold {sharing} chunks of {chunk} bytes")
             table[peer][lane] = max(chunk, limit // chunk * chunk)
     return table
 
@@ -792,10 +808,12 @@ def chain_order(
     route_maps: Sequence[Mapping[int, Sequence[str]]],
     *,
     roles: Mapping[str, Role] | None = None,
+    subset_ring: bool = False,
 ) -> tuple[int, ...] | None:
     """The ranks in chain order when the group's ranks form a chain of cable neighbors, else None.
 
-    Every Spark of the fabric must host a rank. On a path the chain starts at the
+    Every Spark of the fabric must host a rank unless subset_ring admits a
+    bounded, isolated arc through subset.validate. On a path the chain starts at the
     end with the smaller position; on a cycle it starts at rank 0 and follows
     port 0, leaving the cable that closes the cycle unused. Every lane between
     consecutive ranks of the chain, in both directions, must be a direct lane
@@ -803,7 +821,10 @@ def chain_order(
     """
     fabric = layout.fabric
     if sorted(layout.positions) != list(fabric.positions):
-        return None
+        if not subset_ring:
+            return None
+        from . import subset
+        return subset.validate(layout, route_maps)
     rank_at = {position: rank for rank, position in enumerate(layout.positions)}
     if fabric.kind == "path":
         degree: dict[int, int] = {}

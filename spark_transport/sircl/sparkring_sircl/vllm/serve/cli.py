@@ -851,7 +851,7 @@ def contexts_from_args(args: argparse.Namespace, *, run: Runner = default_runner
         gid_index=args.gid_index, nccl_mode=args.nccl, large_allreduce=args.large_allreduce, dcp_size=args.dcp_size,
         mhc_prefill_shard=args.mhc_prefill_shard, extra_env=plan_mod.parse_env(args.env or []),
         large_schedule=args.large_schedule, gather_schedule=args.gather_schedule,
-        scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
+        subset_ring=args.subset_ring, scatter_schedule=args.scatter_schedule, ring_min=args.ring_min, chain_min=args.chain_min,
         link_sizes=plan_mod.link_values(args), link_slots=args.link_slots,
         ring_gather_stagger=args.ring_gather_stagger,
         tuning_tables=tuple(args.tuning_table or ()),

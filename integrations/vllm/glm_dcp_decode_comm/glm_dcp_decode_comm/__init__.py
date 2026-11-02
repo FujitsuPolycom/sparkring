@@ -131,7 +131,7 @@ from pathlib import Path
 from types import CodeType, FunctionType, ModuleType
 
 PLUGIN_NAME = "glm_dcp_decode_comm"
-PLUGIN_VERSION = "2.0.2"
+PLUGIN_VERSION = "2.0.3"
 MARKER = "__glm_dcp_decode_comm__"
 HELPER_PREFIX = "_glm_dcp_decode_comm_"
 IMAGE = "816c6d6a7e96"
@@ -314,7 +314,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "bebd8e7117ae5ec462b1871a12ebde30eadbebf89a45dc4bf645fa076f2b9411",
               "the scatter piece rules that decide when an all-to-all is one op"),
     FileCheck("sparkring_sircl", "oneshot/runtime.py",
-              "631cc65241508e60ed48d30b9f6dbedbef831f025661f8d355350834d7ea5645",
+              "308e278b87cb352d71efeb647907156d600d289c8b3fca757bf3a145df6b73e9",
               "RoceOneshotAllReduce: all_gather(out=), the arena view, _counter_addresses, _order_stream, "
               "_mark_stream, _tuned_op, _lock, check_health and the launch geometry"),
     FileCheck("sparkring_sircl", "oneshot/_scatter_ops.py",

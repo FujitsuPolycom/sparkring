@@ -1260,6 +1260,7 @@ class Harness:
             return ({**choice, "blocks": blocks}, {**variant, key: blocks}) if blocks else (choice, variant)
 
         ring = bool(getattr(session, "ring_available", False))
+        subset_chain = bool(getattr(session, "subset_ring", False))
         if collective == "all_reduce":
             if size <= session.max_size:
                 for algorithm in ("oneshot", "twoshot"):
@@ -1298,7 +1299,8 @@ class Harness:
                 for grid in grids:
                     found.append((grid_choice({"schedule": "pieces"}, grid), "all_gather_large", shape,
                                   {"gather_schedule": "pieces", **({"grid": grid} if grid else {})}))
-                if large and session.link_available:
+                from .. import subset
+                if large and session.link_available and (not subset_chain or size >= subset.GATHER_MIN_BYTES):
                     for piece in pieces:
                         for blocks in link_blocks:
                             choice, variant = with_blocks({"schedule": "chain", "piece": piece},
@@ -1321,7 +1323,7 @@ class Harness:
             for grid in grids:
                 found.append((grid_choice({"schedule": "pieces"}, grid), "reduce_scatter", shape,
                               {"scatter_schedule": "pieces", **({"grid": grid} if grid else {})}))
-            if large and session.link_available and self.scatter_through == "session":
+            if large and session.link_available and self.scatter_through == "session" and not subset_chain:
                 for piece in pieces:
                     for blocks in link_blocks:
                         choice, variant = with_blocks({"schedule": "chain", "piece": piece},
