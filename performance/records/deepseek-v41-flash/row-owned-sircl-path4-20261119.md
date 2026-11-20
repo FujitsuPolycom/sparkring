@@ -100,3 +100,11 @@ Both fixed prompts returned the reference first token. Prefix continuation
 reused 7,936 tokens and a concurrent 64-token decode finished during an
 unaligned prefill. The serving trial used manual containers. The installer
 plan was verified offline. [Sample data](row-owned-sircl-path4-20261119.jsonl)
+
+Two temperature-one requests per workload measured 59.45 short-prompt
+and 49.84 8K decode tok/s after the first token. The earlier probe
+measured 75.50 and 68.03. Median draft acceptance fell from 48.05% to
+34.25% for the short prompt and from 43.50% to 29.05% at 8K. The 8K probe
+generates fresh prompt IDs on each run. Pure decode and the 11-token short
+prefill do not use row-owned scatter. These results show a decode difference
+between starts. Its cause remains unverified.

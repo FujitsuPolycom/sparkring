@@ -35,3 +35,7 @@
 {"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 63.58}
 {"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 125.04}
 {"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 62.55}
+{"suite": "native_scatter_decode_probe", "output_tokens": 384, "case": "short_t1", "temperature": 1, "prompt_tokens": 11, "cached": 0, "ttft_s": 0.21, "decode_tok_s": 55.96, "end_to_end_tok_s": 54.43, "accepted_pct": 31.0, "accepted_per_step": 1.18}
+{"suite": "native_scatter_decode_probe", "output_tokens": 384, "case": "8k_t1", "temperature": 1, "prompt_tokens": 8192, "cached": 0, "ttft_s": 1.295, "decode_tok_s": 47.02, "end_to_end_tok_s": 40.68, "accepted_pct": 28.6, "accepted_per_step": 1.1}
+{"suite": "native_scatter_decode_probe", "output_tokens": 384, "case": "short_t1", "temperature": 1, "prompt_tokens": 11, "cached": 0, "ttft_s": 0.206, "decode_tok_s": 62.94, "end_to_end_tok_s": 61.04, "accepted_pct": 37.5, "accepted_per_step": 1.54}
+{"suite": "native_scatter_decode_probe", "output_tokens": 384, "case": "8k_t1", "temperature": 1, "prompt_tokens": 8192, "cached": 0, "ttft_s": 1.312, "decode_tok_s": 52.67, "end_to_end_tok_s": 44.74, "accepted_pct": 29.5, "accepted_per_step": 1.13}
