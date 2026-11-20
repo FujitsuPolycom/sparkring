@@ -3,5 +3,5 @@
   "profile": "deepseek-v41-flash-tp4",
   "checkpoint": "original",
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "daf9d8e9b8433083c7b3fadf221b7210e8280f0a9a390c9b880df3123808ceb7"
+  "deployment": "a44b79689c6e8b12da473add95e6a18947929e2d79068d894abeb1003ac1c680"
 }

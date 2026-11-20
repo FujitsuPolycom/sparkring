@@ -688,6 +688,11 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     unreadable = image_lock.checkpoint_problem(image, card)
     if unreadable:
         raise NeedsInput(f"{unreadable}. Nothing has been changed.", field="checkpoint_name")
+    try:
+        serving_settings.check_row_owned_prefill(serving_settings.from_arguments(args), (profile, card["target_variant"]),
+                                                view, choice["section"])
+    except ValueError as error:
+        raise NeedsInput(str(error), field="serving") from None
     notice = image_lock.checkpoint_notice(image, profile, card,
                                           preferred=args.checkpoint is None and requested_checkpoint is not None)
     if notice:
@@ -1850,7 +1855,7 @@ def main(argv=None):
     parser.add_argument("--libsircl-library", metavar="PATH",
                         help="with --image REF --transport libsircl: the host build of libsircl every Spark holds "
                              "(runtime/images/libsircl_layer.py host-library)")
-    serving_settings.add_arguments(parser)
+    serving_settings.add_arguments(parser, install=True)
     # A stock image's vLLM arguments follow --.
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
@@ -1883,6 +1888,8 @@ def main(argv=None):
         args.profile = models.canonical(args.profile)
     from runtime.common import stock_image
     stock = args.image is not None and stock_image.is_reference(args.image)
+    if stock and args.serving_row_owned_prefill:
+        parser.error("--row-owned-prefill requires a SparkRing installer image name")
     if vllm_arguments and not stock:
         parser.error("arguments after -- are a stock image's vLLM arguments: use them with --image REF")
     if args.nccl is not None:

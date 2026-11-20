@@ -459,6 +459,15 @@ with its pinned CUTLASS, CCCL and spdlog submodules. No FlashInfer source is inc
 model files are included; operators fetch the checkpoint themselves.
 
 
+### 15e. vLLM DeepSeek-V4.1 decoder and Engram reference code
+
+`integrations/vllm/ds41_row_shard/` adapts the DeepSeek-V4.1 decoder layer
+and Engram forward paths from the installer image's pinned vLLM tree
+(Apache-2.0, copyright contributors to the vLLM project). Two test fixtures
+retain the reference methods from vLLM commit
+`d51b4181acc06622357c81dc8e0be46ad96a0779` with their SPDX notices. The
+plugin records source file hashes and verifies them before installing hooks.
+
 ## 16. Mia DeepSeek V4.1 SGLang adapter (external build input)
 
 `runtime/deepseek-v41-sglang/build-image.sh` clones

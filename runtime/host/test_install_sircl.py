@@ -7,13 +7,14 @@ carries the receipt verdict and the summary card its Transport line.
 """
 import json
 from pathlib import Path
+import zipfile
 
 import pytest
 
-from runtime.common import fabric_document, installer
+from runtime.common import fabric_document, installer, serving
 from runtime.common.test_image_lock import sircl_lock
-from runtime.host import colour, controller, fabric, install_workflow as flow, relays
-from runtime.host.test_install_workflow import PROFILE, machine, sparks  # noqa: F401  (pytest fixtures)
+from runtime.host import colour, controller, fabric, install_workflow as flow, node, relays
+from runtime.host.test_install_workflow import PROFILE, cluster, machine, sparks  # noqa: F401  (pytest fixtures)
 from scripts import sparkring
 
 MARKER = {"binary": relays.MARKER_BINARY, "sha256": "ab" * 32}
@@ -136,6 +137,85 @@ def test_the_nccl_transport_installs_on_a_pair_without_sircl(machine, capsys):  
     assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", "--transport", "nccl",
                            "--nccl", "auto"]) == 3
     assert json.loads(capsys.readouterr().out)["field"] == "transport"
+
+
+def test_row_owned_prefill_is_a_locked_deepseek_nccl_experiment(machine, sparks, monkeypatch, capsys, tmp_path):  # noqa: F811
+    value = cluster(4)
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    topology, _ = fabric.prepare(value["plan"], cluster="test", marker=MARKER)
+    (controller.STATE / "fabric.json").write_text(fabric_document.encoded(topology))
+    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                                "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    request = ["install", "--profile", "deepseek-v41-flash-tp4", "--checkpoint", "1017",
+               "--image", serving.ROW_OWNED_PREFILL_IMAGE, "--transport", "nccl", "--plan", "--json"]
+
+    assert sparkring.main(request) == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert sparkring.main([*request, "--row-owned-prefill"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["deployment"] != plain["deployment"]
+    assert plan["serving"] == {"row_owned_prefill": True}
+    assert "--row-owned-prefill" in plan["checkpoint"]["command"]
+    saved = deployment(plan)
+    assert saved["transport"]["backend"] == "nccl"
+    assert saved["image_runtime"]["image_id"] == serving.ROW_OWNED_PREFILL_IMAGE_ID
+
+    for rank, (plain_spec, spec) in enumerate(zip(installer.specifications(deployment(plain)),
+                                                  installer.specifications(saved), strict=True)):
+        assert spec.entrypoint == plain_spec.entrypoint
+        assert "DS41_ROW_SHARD_PREFILL" not in plain_spec.environment
+        assert spec.environment["DS41_ROW_SHARD_PREFILL"] == "1"
+        assert "DS41_ROW_SHARD_INDEXER" not in plain_spec.environment
+        assert spec.environment["DS41_ROW_SHARD_INDEXER"] == "1"
+        for flag in (
+            "DS41_ROW_SHARD_COMPACT_ROUTES",
+            "DS41_ROW_SHARD_LOCAL_QUERIES",
+            "DS41_ROW_SHARD_KV_LATENTS",
+            "DS41_ROW_SHARD_COMPRESSOR_LATENTS",
+        ):
+            assert flag not in plain_spec.environment
+            assert spec.environment[flag] == "1"
+        assert spec.environment["VLLM_PLUGINS"].split(",") == [
+            *plain_spec.environment["VLLM_PLUGINS"].split(","), "ds41_row_shard"]
+        assert spec.environment["PYTHONPATH"].split(":") == [
+            "/opt/ds41_row_shard", "/opt/sparkring/toolchain/python", "/opt/sparkring/addons/python"]
+        assert spec.environment["VLLM_ENABLE_ROCE_ALLREDUCE"] == "0"
+        assert spec.mounts[:2] == plain_spec.mounts[:2]
+        assert [mount.target for mount in spec.mounts[:-1]] == [mount.target for mount in plain_spec.mounts]
+        plugin = spec.mounts[-1]
+        assert (plugin.source, plugin.target, plugin.read_only) == (
+            saved["site"]["ranks"][rank]["repository"] + "/integrations/vllm/ds41_row_shard",
+            "/opt/ds41_row_shard", True)
+        assert "--enforce-eager" in spec.command and "--disable-custom-all-reduce" in spec.command
+        assert "--compilation-config" not in spec.command and "--max-cudagraph-capture-size" not in spec.command
+        assert ("--headless" in spec.command) == bool(rank)
+        assert serving.profile_value(spec.command, "context_length") == 262144
+        batch_tokens = spec.command.index("--max-num-batched-tokens") + 1
+        assert spec.command[batch_tokens] == plain_spec.command[batch_tokens] == "8192"
+        engram = json.loads(spec.command[spec.command.index("--engram-config") + 1])
+        assert engram == {"table_memory": "disk", "disk_resident_scales": True, "projection_tp": False}
+        draft = json.loads(spec.command[spec.command.index("--speculative-config") + 1])
+        assert draft["num_speculative_tokens"] == 5 and draft["enable_adaptive_verification"] is False
+
+    # A shareable template repeats the install command that stages the plugin.
+    output = tmp_path / "template.zip"
+    installer.export(plan["deployment"], output, share=True)
+    with zipfile.ZipFile(output) as template:
+        text = template.read("README.txt").decode()
+    assert "sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017" in text
+    assert "--transport nccl --row-owned-prefill" in text
+
+    surveyed = len(sparks.surveys)
+    for extra, complaint in ((["--checkpoint", "original"], "requires --profile"),
+                             (["--image", "plainstatus"], "requires --image"),
+                             (["--transport", "prepared"], "requires --transport nccl"),
+                             (["--context-length", "262145"], "up to 262144 tokens")):
+        assert sparkring.main([*request, "--row-owned-prefill", *extra]) == 3
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["field"] == "serving" and complaint in refused["message"]
+    assert len(sparks.surveys) == surveyed
 
 
 def test_a_failed_receipt_check_is_reported_and_the_model_keeps_serving(sircl, monkeypatch, capsys):

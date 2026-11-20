@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: ds41_row_shard
+Version: 0.1.0
+Summary: Row-owned prefill for DeepSeek-V4.1-Flash on SparkRing vLLM (research)
+License: Apache-2.0
