@@ -90,7 +90,8 @@ def facts(**changes):
 
 def binding(**changes):
     return {"vllm_nccl_so_path": TARGET, "pynccl_provider": TARGET, "global_provider": TARGET,
-            "torch_nccl_version": [2, 27, 5], "mapped": [TARGET], **changes}
+            "torch_provider": TARGET, "torch_runtime_nccl_version": 22705, "torch_nccl_version": [2, 27, 5],
+            "mapped": [TARGET], **changes}
 
 
 # The probe.
@@ -105,6 +106,24 @@ def test_the_elf_reader_finds_the_soname_dependencies_and_newest_glibc_version(t
     (tmp_path / "text").write_text("not elf")
     with pytest.raises(ValueError, match="not a 64-bit"):
         stock_image_probe.elf_facts(tmp_path / "text")
+
+
+def test_nccl_libraries_discovers_image_libnccl_soname_realpaths_and_excludes_libsircl(tmp_path):
+    wheel_dir = tmp_path / "site" / "nvidia" / "nccl" / "lib"
+    sys_dir = tmp_path / "usr" / "lib"
+    wheel_dir.mkdir(parents=True)
+    sys_dir.mkdir(parents=True)
+    wheel_nccl = build_elf(wheel_dir / "libnccl.so.2", soname="libnccl.so.2")
+    sys_nccl = build_elf(sys_dir / "libnccl.so.2.32.3", soname="libnccl.so.2")
+    other = build_elf(sys_dir / "libnccl.so.99", soname="libother.so.1")
+    libsircl_file = build_elf(tmp_path / "libsircl.so.0.6.0", soname="libnccl.so.2")
+    (sys_dir / "not_nccl.so").write_text("ignored")
+    assert other.is_file()
+    found = stock_image_probe.nccl_libraries(
+        exclude=str(libsircl_file),
+        search_dirs=[str(wheel_dir), str(sys_dir), str(tmp_path)],
+    )
+    assert found == sorted([str(wheel_nccl.resolve()), str(sys_nccl.resolve())])
 
 
 def test_the_probe_reads_pyncclss_bound_functions_and_the_library_selector_from_vllms_sources(tmp_path, monkeypatch):
@@ -147,6 +166,8 @@ def test_the_probe_runs_with_the_standard_library_alone_and_prints_one_record(tm
 def test_an_image_libsircl_can_run_passes_the_preflight():
     assert stock_image.preflight(image(), facts(), ["--served-model-name", "m"]) == []
     assert stock_image.binding_problems(binding(), "0.6.0") == []
+    # torch.cuda.nccl.version() reflects compile-time NCCL headers; runtime binding is checked via libtorch_cuda.so.
+    assert stock_image.binding_problems(binding(torch_nccl_version=[2, 29, 7]), "0.6.0") == []
 
 
 @pytest.mark.parametrize("changes, arguments, message", [
@@ -184,7 +205,10 @@ def test_the_architecture_of_the_image_record_counts_too():
 @pytest.mark.parametrize("changes, message", [
     ({"pynccl_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "PyNccl's load"),
     ({"global_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "global scope"),
-    ({"torch_nccl_version": [2, 29, 7]}, "torch reports NCCL [2, 29, 7]"),
+    ({"torch_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "libtorch_cuda.so resolves ncclGetVersion"),
+    ({"torch_runtime_nccl_version": 22907}, "torch's runtime ncclGetVersion reports 22907"),
+    ({"torch_error": "ImportError('libtorch_cuda.so: undefined symbol: ncclGetPeerDeviceLeInfo')"},
+     "importing torch with libsircl failed"),
     ({"mapped": [TARGET, "/usr/lib/aarch64-linux-gnu/libnccl.so.2"]}, "not libsircl alone"),
 ])
 def test_a_caller_bound_to_another_nccl_is_refused(changes, message):
@@ -314,7 +338,8 @@ def sglang_facts(**changes):
 
 def sglang_binding(**changes):
     return {"vllm_nccl_so_path": None, "sglang_nccl_so_path": TARGET, "pynccl_provider": TARGET,
-            "global_provider": TARGET, "torch_nccl_version": [2, 27, 5], "mapped": [TARGET], **changes}
+            "global_provider": TARGET, "torch_provider": TARGET, "torch_runtime_nccl_version": 22705,
+            "torch_nccl_version": [2, 29, 7], "mapped": [TARGET], **changes}
 
 
 def test_the_probe_reads_sglang_pynccl_and_server_args_without_importing_sglang(tmp_path, monkeypatch):
@@ -439,4 +464,25 @@ def test_every_sglang_rank_runs_launch_server_with_libsircl_as_nccl(shape, size,
         assert "--disable-custom-all-reduce" in command and "--mem-fraction-static" in command
         assert ("--host" in command) == (rank == 0) and ("--port" in command) == (rank == 0)
         assert "--headless" not in command and "--compilation-config" not in command
+
+
+def test_shadow_mounts_cover_discovered_image_nccl_libraries_in_probe_and_rank_spec():
+    wheel = "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2"
+    system = "/usr/lib/aarch64-linux-gnu/libnccl.so.2.32.3"
+    found = sglang_facts(**{"torch.nccl_libraries": [wheel, system, TARGET, wheel]})
+    shadows = stock_image.nccl_shadow_paths(found, "0.6.0")
+    assert shadows == (wheel, system)
+    command = stock_image.probe_command(SGLANG_REFERENCE, LIBRARY, "0.6.0", binding=True, shadow_paths=shadows)
+    assert f"type=bind,src={LIBRARY},dst={wheel},readonly" in command
+    assert f"type=bind,src={LIBRARY},dst={system},readonly" in command
+    ranks, _ = specs("pair", 2, [0, 1], found=found)
+    for spec in ranks:
+        mounts = {mount.target: (mount.source, mount.read_only) for mount in spec.mounts}
+        assert mounts[TARGET] == (LIBRARY, True)
+        assert mounts[wheel] == (LIBRARY, True)
+        assert mounts[system] == (LIBRARY, True)
+    rendered = yaml.safe_load(stock_image.compose_text(ranks[0], SGLANG_REFERENCE))
+    targets = {item["target"]: (item["source"], item["read_only"])
+               for item in rendered["services"]["model"]["volumes"]}
+    assert targets[wheel] == (LIBRARY, True) and targets[system] == (LIBRARY, True)
 

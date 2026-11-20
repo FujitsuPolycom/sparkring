@@ -34,10 +34,13 @@ the library mounted) show:
   runtime's libsircl refusals.
 
 ``binding_problems`` then checks a second probe, run with the planned
-``VLLM_NCCL_SO_PATH`` or ``SGLANG_NCCL_SO_PATH`` and ``LD_PRELOAD``:
-PyNccl's load and the process's global scope must resolve ``ncclGetVersion``
-in libsircl, torch must report NCCL 2.27.5 (libsircl's API level 22705),
-and libsircl must be the only mapped file with the SONAME ``libnccl.so.2``.
+``VLLM_NCCL_SO_PATH`` or ``SGLANG_NCCL_SO_PATH``, ``LD_PRELOAD`` and
+read-only shadow mounts of libsircl over the image's ``libnccl.so.2`` files:
+PyNccl's load, ``libtorch_cuda.so`` and the process's global scope must
+resolve ``ncclGetVersion`` in libsircl, ``libtorch_cuda.so``'s runtime
+``ncclGetVersion`` must report libsircl's API level 22705 (not compile-time
+``torch.cuda.nccl.version()``), and libsircl must be the only mapped file
+with the SONAME ``libnccl.so.2``.
 """
 import json
 from pathlib import Path, PurePosixPath
@@ -127,12 +130,34 @@ def library_target(version):
     return libsircl.library_path(version)
 
 
-def probe_command(reference, host_library, version, *, environment=None, binding=False):
+def nccl_shadow_paths(facts, version):
+    """Image ``libnccl.so.2`` real paths to shadow with read-only bind mounts of libsircl.
+
+    PyTorch wheels and some base images ``dlopen`` their bundled ``libnccl.so.2``
+    by absolute path (such as ``torch._preload_cuda_deps``), which bypasses
+    ``LD_PRELOAD`` SONAME matching. Binding the same host libsircl file over
+    each discovered path gives both paths the same inode, so glibc reuses the
+    preloaded libsircl and never maps the image's NCCL.
+    """
+    target = library_target(version)
+    torch = (facts or {}).get("torch") or {}
+    seen, result = set(), []
+    for path in torch.get("nccl_libraries") or ():
+        if not isinstance(path, str) or not path.startswith("/") or path == target or path in seen:
+            continue
+        seen.add(path)
+        result.append(path)
+    return tuple(result)
+
+
+def probe_command(reference, host_library, version, *, environment=None, binding=False, shadow_paths=()):
     """``docker run`` of the probe in a network-less, read-only container of ``reference``; the program is stdin."""
     target = library_target(version)
     command = ["sudo", "-n", "docker", "run", "--rm", "-i", "--pull", "never", "--network", "none", "--read-only",
                "--tmpfs", "/tmp", "--gpus", "all",
                "--mount", f"type=bind,src={host_library},dst={target},readonly"]
+    for path in shadow_paths:
+        command += ["--mount", f"type=bind,src={host_library},dst={path},readonly"]
     for key, value in sorted((environment or {}).items()):
         command += ["--env", f"{key}={value}"]
     command += ["--entrypoint", "python3", reference, "-I", "-", target]
@@ -322,9 +347,15 @@ def binding_problems(found, version, facts=None):
     if found.get("global_provider") != target:
         problems.append(f"the process's global scope resolves ncclGetVersion in {found.get('global_provider')}, "
                         f"not {target}")
-    if found.get("torch_nccl_version") != [2, 27, 5]:
-        problems.append(f"torch reports NCCL {found.get('torch_nccl_version') or found.get('torch_error')}, not "
-                        "libsircl's 2.27.5")
+    if found.get("torch_error"):
+        problems.append(f"importing torch with libsircl failed: {found['torch_error']}")
+    else:
+        if found.get("torch_provider") != target:
+            problems.append(f"torch's libtorch_cuda.so resolves ncclGetVersion in {found.get('torch_provider')}, "
+                            f"not {target}")
+        if found.get("torch_runtime_nccl_version") != libsircl.NCCL_API_VERSION:
+            problems.append(f"torch's runtime ncclGetVersion reports {found.get('torch_runtime_nccl_version')}, "
+                            f"not libsircl's {libsircl.NCCL_API_VERSION}")
     if found.get("mapped") != [target]:
         problems.append(f"the files mapped with the SONAME libnccl.so.2 are {found.get('mapped')}, not libsircl alone")
     return problems
@@ -412,7 +443,8 @@ def rank_spec(image, facts, arguments, *, name, reference, rank, row, master, si
         "GLOO_SOCKET_IFNAME": row["interface"], "NCCL_SOCKET_IFNAME": row["interface"],
         "NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT",
     }
-    mounts = (Bind(host_library, library_target(version), True), Bind(model_path, MODEL_TARGET, True),
+    shadows = tuple(Bind(host_library, path, True) for path in nccl_shadow_paths(facts, version))
+    mounts = (Bind(host_library, library_target(version), True), *shadows, Bind(model_path, MODEL_TARGET, True),
               Bind(str(PurePosixPath(directory) / RECEIPTS), transport.RECEIPT_TARGET, False))
     security = ()
     if loader_policy_needed(facts, arguments):

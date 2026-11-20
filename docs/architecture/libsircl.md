@@ -371,11 +371,16 @@ check fails:
 | Same bytes | every Spark holds the same image ID and library SHA-256 |
 
 When those pass, a second probe runs on every Spark with the planned
-`VLLM_NCCL_SO_PATH` or `SGLANG_NCCL_SO_PATH` and `LD_PRELOAD`. It refuses
-unless PyNccl's load and the process's global scope both resolve
-`ncclGetVersion` in libsircl, `torch.cuda.nccl.version()` is 2.27.5
-(libsircl's API level 22705), and libsircl is the only mapped file with the
-SONAME `libnccl.so.2`. This verifies the binding, not a collective.
+`VLLM_NCCL_SO_PATH` or `SGLANG_NCCL_SO_PATH`, `LD_PRELOAD` and read-only
+shadow bind mounts of the host library over each `libnccl.so.2` file the
+first probe found in the image (so absolute-path `dlopen` calls such as
+`torch._preload_cuda_deps` reuse the preloaded libsircl inode rather than
+mapping the image's NCCL). It refuses unless PyNccl's load,
+`libtorch_cuda.so` and the process's global scope all resolve
+`ncclGetVersion` in libsircl, `libtorch_cuda.so`'s runtime `ncclGetVersion`
+reports 22705 (libsircl's API level; `torch.cuda.nccl.version()` reports
+PyTorch's compile-time headers), and libsircl is the only mapped file with
+the SONAME `libnccl.so.2`. This verifies the binding, not a collective.
 
 ### Each rank's container
 
@@ -390,7 +395,8 @@ SONAME `libnccl.so.2`. This verifies the binding, not a collective.
   `--dist-init-addr <master>:29511`, `--disable-custom-all-reduce`, `--host
   0.0.0.0 --port 8000` on rank 0, and `RUNTIME_ARGUMENTS`.
 - **Library:** mounted read-only at
-  `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, named by
+  `/opt/sparkring/libsircl/lib/libsircl.so.<version>` and shadowed read-only
+  over each `libnccl.so.2` file discovered in the image, named by
   `VLLM_NCCL_SO_PATH` (vLLM) or `SGLANG_NCCL_SO_PATH` (SGLang), and first in
   `LD_PRELOAD` with the image's other `libnccl.so` entries removed.
 - **Settings:** the `LIBSIRCL_*`, routing, bootstrap, receipt and

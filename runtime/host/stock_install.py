@@ -88,7 +88,8 @@ def survey(invoke, rows, reference, library, version, arguments):
         if not found:
             bound = stock_image.parse(_ssh(invoke, host, stock_image.probe_command(
                 reference, library, version, environment=stock_image.binding_environment(image, version, facts),
-                binding=True), data=stock_image.PROBE_SOURCE))
+                binding=True, shadow_paths=stock_image.nccl_shadow_paths(facts, version)),
+                data=stock_image.PROBE_SOURCE))
             found = stock_image.binding_problems(bound, version, facts)
         if found:
             problems[f"rank {rank} ({host})"] = found
@@ -177,7 +178,8 @@ def plan(args, arguments, *, state, invoke):
                              "vllm": (report["facts"].get("vllm") or {}).get("version"),
                              "sglang": (report["facts"].get("sglang") or {}).get("version"),
                              "torch": (report["facts"].get("torch") or {}).get("version"),
-                             "torch_nccl": (report["binding"] or {}).get("torch_nccl_version")}
+                             "torch_nccl": (report["binding"] or {}).get("torch_nccl_version"),
+                             "torch_runtime_nccl": (report["binding"] or {}).get("torch_runtime_nccl_version")}
                             for report in reports]}
     (output / "plan.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8",
                                       newline="\n")
