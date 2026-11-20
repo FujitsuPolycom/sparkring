@@ -37,6 +37,10 @@ NCCL:
   bounded handle encoding, PCI-root selection, and CPU compatibility tests
 - `nccl-2.30.7-switchless-cycle.patch` — against NCCL v2.30.7-1,
   `src/transport/generic.cc` and `src/transport/net_ib/connect.cc`
+- `nccl-2.31.2-switchless-cycle.patch` ports SparkRing's 2.30.7 two-GID cycle patch to
+  `src/transport/generic.cc` and `src/transport/net_ib/connect.cc` at
+  [NCCL revision `7b83616`](https://github.com/NVIDIA/nccl/tree/7b83616df3ae082a1f32bb74c27458bfe8153a13).
+  Labski contributed the port under Apache-2.0.
 
 The context and removed lines in these unified diffs are verbatim NVIDIA NCCL
 source code:
