@@ -456,20 +456,20 @@ def container(spec, settings, *, rank, model=None, source_root=None):
 
 
 def _row_owned_prefill_arguments(command):
-    """Select eager prefill and the replicated Engram projection on the pinned profile."""
+    """Keep prefill eager and capture uniform decode on the pinned profile."""
     command = list(command)
-    for flag in ("--compilation-config", "--max-cudagraph-capture-size"):
-        index = command.index(flag)
-        del command[index:index + 2]
-    for flag, key in (("--engram-config", "projection_tp"),
-                      ("--speculative-config", "enable_adaptive_verification")):
+    for flag, overrides in (
+        ("--compilation-config", {"mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"}),
+        ("--engram-config", {"projection_tp": False}),
+        ("--speculative-config", {"enable_adaptive_verification": True}),
+    ):
         index = command.index(flag) + 1
         config = json.loads(command[index])
-        config[key] = False
+        config.update(overrides)
         command[index] = json.dumps(config, separators=(",", ":"))
     context = command.index("--max-model-len") + 1
     command[context] = str(min(int(command[context]), ROW_OWNED_PREFILL_CONTEXT))
-    command += ["--enforce-eager", "--disable-custom-all-reduce"]
+    command.append("--disable-custom-all-reduce")
     return tuple(command)
 
 

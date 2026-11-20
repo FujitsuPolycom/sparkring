@@ -39,7 +39,7 @@ samples ranged from 6,113 to 6,145 tok/s. [Samples](row-owned-full-head-ring-202
 The Engram banding experiment split each replicated-projection lookup
 reduction into feature bands of at most 80 MiB. The counters recorded four
 Engram reductions per chunk. The unbanded compressor build had the highest
-median at each length and is the selected installer configuration.
+median at each length and supplied the plugin settings for the decode-graph trial.
 
 ## Serving checks
 
@@ -57,3 +57,30 @@ cover one direct NCCL cycle. The installer was tested through plan
 generation, and the measured deployment used manual containers.
 Sustained decode, multimodal behavior, open-chain throughput and
 full numerical parity across arbitrary prompts remain unqualified.
+
+## Decode-only graph trial
+
+On the same four-Spark cycle and pinned image, the candidate used
+`FULL_DECODE_ONLY` with compilation mode `NONE`, the TP4 profile's capture
+sizes through 96, and DSpark5 with adaptive verification enabled. The
+8,192-token chunk size and the unbanded compressor plugin settings carried
+over from the eager baseline.
+
+| Measurement | Eager baseline | Decode graphs and adaptive verification |
+|---|---:|---:|
+| 16K cold prefill, median tok/s | 6,344.01 | 6,289.94 |
+| 64K cold prefill, median tok/s | 6,228.71 | 6,148.72 |
+| 128K cold prefill, median tok/s | 6,081.04 | 6,027.25 |
+| Single-request decode, median tok/s | 18.16 | 71.50 |
+
+Medians are from three runs per cell. The prefill requests were cold with
+one output token. Decode used one short prompt, temperature zero, and 384
+output tokens, with timing after the first token. The candidate's 16K
+prefill samples included one at 5,936 tok/s. A later probe found 56.88
+tok/s median decode for the same short prompt at temperature one across
+two runs, with sampling seeds set. Decode rates vary with workload and
+draft acceptance.
+
+The candidate recorded row-owned prefill, captured decode graphs, reused
+7,936 tokens on prefix continuation, and completed an unaligned prefill
+and a concurrent 64-token decode. The trial used manual containers.

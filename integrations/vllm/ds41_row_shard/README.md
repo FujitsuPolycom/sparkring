@@ -37,14 +37,16 @@ sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017 \
 
 Run the command with `--yes` in place of `--plan` to apply the plan. The
 installer stages its retained source on each rank and mounts the plugin
-read-only. The setting selects eager execution, disk-resident Engram tables
-with replicated projection, 8,192-token prefill chunks, DSpark5 with adaptive
-verification off, and a 262,144-token context limit. Use `--context-length`
+read-only. The setting selects eager prefill, full CUDA graphs for uniform
+decode, disk-resident Engram tables with replicated projection, 8,192-token
+prefill chunks, DSpark5 with adaptive verification, and a 262,144-token
+context limit. Use `--context-length`
 for a smaller limit.
 
 The installer enables compact routing, full-head local-query attention,
 narrow KV gathers, and packed compressor projections. At 8K chunks, these
-settings cleared 6,000 prompt tokens/s at all three tested prompt lengths.
+settings cleared 6,000 prompt tokens/s on median at all three tested
+prompt lengths with decode-only graphs enabled.
 Full-head prefill holds additional weights per rank. [Four-Spark cycle record](../../../performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md)
 The install planner has offline coverage. Hardware validation of the install
 path and sustained decode is pending.

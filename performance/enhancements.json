@@ -1818,7 +1818,7 @@
         {"env": "DS41_ROW_SHARD_KV_LATENTS", "equals": "1"},
         {"env": "DS41_ROW_SHARD_COMPRESSOR_LATENTS", "equals": "1"},
         {"env": "VLLM_ENABLE_ROCE_ALLREDUCE", "equals": "0"},
-        {"arg": "--enforce-eager", "present": true},
+        {"arg": "--compilation-config", "json": "cudagraph_mode", "equals": "FULL_DECODE_ONLY"},
         {"arg": "--engram-config", "json": "projection_tp", "equals": false},
         {"arg": "--max-num-batched-tokens", "equals": 8192}
       ],
@@ -1826,7 +1826,8 @@
       "status": "research-only",
       "gain": {"percent": 17.0, "summary": "Median 128K cold prefill rose from 5,234 to 6,124 tok/s with full-head attention, compact routes and packed projections, both at 8K chunks on one NCCL cycle"},
       "measurements": [
-        {"image": "dev-20261013-dcp2prefill-status038-sircl-tp6", "tp": 4, "dcp": 1, "streams": "1", "context": "16K, 64K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash-1017@1bae0e10", "result": "Three cold requests per length on one four-Spark NCCL cycle. Median prompt tok/s at 16K / 64K / 128K were 5,445 / 5,361 / 5,234 with distributed scoring and 6,334 / 6,250 / 6,124 with full-head local-query attention, compact routes and packed projections. All requests used 8K prefill chunks.", "evidence": "performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md"}
+        {"image": "dev-20261013-dcp2prefill-status038-sircl-tp6", "tp": 4, "dcp": 1, "streams": "1", "context": "16K, 64K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash-1017@1bae0e10", "result": "Three cold requests per length on one four-Spark NCCL cycle with eager execution. Median prompt tok/s at 16K / 64K / 128K were 5,445 / 5,361 / 5,234 with distributed scoring and 6,334 / 6,250 / 6,124 with full-head local-query attention, compact routes and packed projections. All requests used 8K prefill chunks.", "evidence": "performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md"},
+        {"image": "dev-20261013-dcp2prefill-status038-sircl-tp6", "tp": 4, "dcp": 1, "streams": "1", "context": "16K, 64K, 128K", "checkpoint": "deepseek-ai/DeepSeek-V4.1-Flash-1017@1bae0e10", "result": "With decode-only graphs and adaptive verification, three cold samples per length gave medians of 6,290 / 6,149 / 6,027 prompt tok/s at 16K / 64K / 128K. Three single-request runs of one short prompt at temperature zero gave median 71.50 output tok/s after the first token against 18.16 in the eager baseline.", "evidence": "performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md#decode-only-graph-trial"}
       ],
       "evidence": ["performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md", "integrations/vllm/ds41_row_shard/README.md"],
       "profiles": []

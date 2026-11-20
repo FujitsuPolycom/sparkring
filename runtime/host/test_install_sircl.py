@@ -188,8 +188,12 @@ def test_row_owned_prefill_is_a_locked_deepseek_nccl_experiment(machine, sparks,
         assert (plugin.source, plugin.target, plugin.read_only) == (
             saved["site"]["ranks"][rank]["repository"] + "/integrations/vllm/ds41_row_shard",
             "/opt/ds41_row_shard", True)
-        assert "--enforce-eager" in spec.command and "--disable-custom-all-reduce" in spec.command
-        assert "--compilation-config" not in spec.command and "--max-cudagraph-capture-size" not in spec.command
+        assert "--enforce-eager" not in spec.command and "--disable-custom-all-reduce" in spec.command
+        plain_graphs = json.loads(plain_spec.command[plain_spec.command.index("--compilation-config") + 1])
+        graphs = json.loads(spec.command[spec.command.index("--compilation-config") + 1])
+        assert plain_graphs["cudagraph_mode"] == "FULL_AND_PIECEWISE"
+        assert graphs == {**plain_graphs, "mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"}
+        assert spec.command[spec.command.index("--max-cudagraph-capture-size") + 1] == "96"
         assert ("--headless" in spec.command) == bool(rank)
         assert serving.profile_value(spec.command, "context_length") == 262144
         batch_tokens = spec.command.index("--max-num-batched-tokens") + 1
@@ -197,7 +201,7 @@ def test_row_owned_prefill_is_a_locked_deepseek_nccl_experiment(machine, sparks,
         engram = json.loads(spec.command[spec.command.index("--engram-config") + 1])
         assert engram == {"table_memory": "disk", "disk_resident_scales": True, "projection_tp": False}
         draft = json.loads(spec.command[spec.command.index("--speculative-config") + 1])
-        assert draft["num_speculative_tokens"] == 5 and draft["enable_adaptive_verification"] is False
+        assert draft["num_speculative_tokens"] == 5 and draft["enable_adaptive_verification"] is True
 
     # A shareable template repeats the install command that stages the plugin.
     output = tmp_path / "template.zip"

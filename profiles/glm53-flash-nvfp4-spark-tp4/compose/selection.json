@@ -3,5 +3,5 @@
   "profile": "glm53-flash-nvfp4-spark-tp4",
   "checkpoint": "csf",
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "16ef9cc52dc436a9ff6c0c56852034565d03bfede81cd7e81005aa676a425b9f"
+  "deployment": "e907b3cc481ea82de11406a220b236fce152693a8ee3f9e0e2814908032ec5e5"
 }
