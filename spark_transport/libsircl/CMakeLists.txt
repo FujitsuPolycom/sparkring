@@ -46,7 +46,14 @@ foreach(pack kernels fold links p2p)
     COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py ${FATBIN}
             ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c --symbol sccl_${pack}_fatbin
     DEPENDS ${FATBIN} ${CMAKE_CURRENT_SOURCE_DIR}/tools/embed_fatbin.py)
+  list(APPEND LIBSIRCL_KERNEL_PACK_SOURCES ${CMAKE_CURRENT_BINARY_DIR}/${pack}_fatbin.c)
 endforeach()
+
+# Share the generated pack objects so parallel Make targets cannot regenerate
+# and read the same fatbin source at the same time.
+add_library(sircl_kernel_packs OBJECT ${LIBSIRCL_KERNEL_PACK_SOURCES})
+set_target_properties(sircl_kernel_packs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_compile_options(sircl_kernel_packs PRIVATE -O0 -w)
 
 # The engine's setup check of the library's local feature word (p2p_local_features bit 0: p2p_destroy counts
 # failed verbs calls; SIRCL change LF), on by default as in the Makefile (P2P_FEATURES).
@@ -78,9 +85,8 @@ foreach(target transport_hw transport_emu)
 endforeach()
 
 add_library(sircl SHARED src/api.c src/bootstrap.c src/stubs.c src/aliases.c src/device_api.c src/fabric.c src/engine.c
-            src/cuda_api.c src/kernelpack.c ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c
-            ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c
-            ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c $<TARGET_OBJECTS:transport_hw> $<TARGET_OBJECTS:transport_emu>)
+            src/cuda_api.c src/kernelpack.c $<TARGET_OBJECTS:sircl_kernel_packs>
+            $<TARGET_OBJECTS:transport_hw> $<TARGET_OBJECTS:transport_emu>)
 target_compile_features(sircl PRIVATE c_std_11)
 target_compile_definitions(sircl PUBLIC LIBSIRCL_CPU_ONLY NCCL_OS_LINUX
                            PRIVATE LIBSIRCL_VERSION="${PROJECT_VERSION}"
@@ -90,9 +96,6 @@ if(LIBSIRCL_P2P_FEATURES)
 endif()
 target_include_directories(sircl PUBLIC include PRIVATE src)
 target_compile_options(sircl PRIVATE -Wall -Wextra -Werror -Wno-format-truncation ${LIBSIRCL_HARDENING_COMPILE})
-set_source_files_properties(${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
-                            ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c
-                            PROPERTIES COMPILE_OPTIONS "-O0;-w")
 target_link_libraries(sircl PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
 set_target_properties(sircl PROPERTIES NO_SONAME TRUE SUFFIX ".so.${PROJECT_VERSION}")
 target_link_options(sircl PRIVATE -Wl,-soname,libnccl.so.2 -Wl,-Bsymbolic-functions -Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map
@@ -108,8 +111,7 @@ set_target_properties(fake_cuda PROPERTIES OUTPUT_NAME cuda NO_SONAME TRUE SUFFI
 target_link_options(fake_cuda PRIVATE -Wl,-soname,libcuda.so.1)
 target_compile_options(fake_cuda PRIVATE -Wall -Wextra -Werror)
 add_executable(check_entries tests/check_entries.c src/kernelpack.c src/cuda_api.c
-               ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
-               ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c)
+               $<TARGET_OBJECTS:sircl_kernel_packs>)
 target_include_directories(check_entries PRIVATE include src)
 target_compile_definitions(check_entries PRIVATE LIBSIRCL_CPU_ONLY NCCL_OS_LINUX)
 target_link_libraries(check_entries PRIVATE Threads::Threads ${CMAKE_DL_LIBS})
@@ -131,8 +133,7 @@ target_include_directories(test_link_plan PRIVATE src)
 target_compile_options(test_link_plan PRIVATE -Wall -Wextra -Werror)
 add_test(NAME link_plan COMMAND test_link_plan)
 add_executable(test_kernelpack_cache tests/test_kernelpack_cache.c src/kernelpack.c src/cuda_api.c
-               ${CMAKE_CURRENT_BINARY_DIR}/kernels_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/fold_fatbin.c
-               ${CMAKE_CURRENT_BINARY_DIR}/links_fatbin.c ${CMAKE_CURRENT_BINARY_DIR}/p2p_fatbin.c)
+               $<TARGET_OBJECTS:sircl_kernel_packs>)
 target_include_directories(test_kernelpack_cache PRIVATE include src)
 target_compile_definitions(test_kernelpack_cache PRIVATE LIBSIRCL_CPU_ONLY NCCL_OS_LINUX)
 target_link_libraries(test_kernelpack_cache PRIVATE Threads::Threads ${CMAKE_DL_LIBS})

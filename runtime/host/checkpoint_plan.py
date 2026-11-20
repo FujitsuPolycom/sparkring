@@ -230,10 +230,11 @@ def install_command(request=None, named=(), *, ignore_local=False):
     if request.get("image_lock"):
         argv += ["--image-lock", str(request["image_lock"])]
     settings = request.get("serving") or {}
-    for name in (*serving.SETTINGS, *serving.SIZES, *serving.SWITCHES, *serving.CHOICES, *serving.CONNECTOR_CHOICES):
-        if settings.get(name) is True and name in serving.SWITCHES:
+    switches = serving.INSTALL_SWITCHES
+    for name in (*serving.SETTINGS, *serving.SIZES, *switches, *serving.CHOICES, *serving.CONNECTOR_CHOICES):
+        if settings.get(name) is True and name in switches:
             argv.append(serving.option(name))
-        elif settings.get(name) is not None and name not in serving.SWITCHES:
+        elif settings.get(name) is not None and name not in switches:
             text = (request.get("serving_text") or {}).get(name)
             # Display spelling cannot change the effective deployment setting.
             value = (text if name in serving.SIZES and text is not None

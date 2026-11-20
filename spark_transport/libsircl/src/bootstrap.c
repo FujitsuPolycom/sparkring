@@ -72,7 +72,7 @@ struct root {
 };
 static pthread_mutex_t roots_lock = PTHREAD_MUTEX_INITIALIZER;
 static struct root *roots;
-static atomic_long process_owner = ATOMIC_VAR_INIT(0);
+static atomic_long process_owner = 0;
 
 int sccl_bootstrap_process_valid(void) {
   long pid = (long)getpid();

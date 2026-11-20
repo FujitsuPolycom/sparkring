@@ -7,12 +7,15 @@ carries the receipt verdict and the summary card its Transport line.
 """
 import json
 from pathlib import Path
+import zipfile
 
 import pytest
 
-from runtime.common import fabric_document, installer
+from runtime.common import fabric_document, installer, serving
 from runtime.common.test_image_lock import sircl_lock
-from runtime.host import colour, controller, fabric, install_workflow as flow, relays
+from runtime.host import colour, controller, fabric, install_workflow as flow, node, relays, topology
+from runtime.host.test_appliance import nodes
+from runtime.host.test_hairpin_ring import document as hairpin_document
 from runtime.host.test_install_workflow import PROFILE, machine, sparks  # noqa: F401  (pytest fixtures)
 from scripts import sparkring
 
@@ -136,6 +139,109 @@ def test_the_nccl_transport_installs_on_a_pair_without_sircl(machine, capsys):  
     assert sparkring.main(["install", "--profile", PROFILE, "--yes", "--json", "--transport", "nccl",
                            "--nccl", "auto"]) == 3
     assert json.loads(capsys.readouterr().out)["field"] == "transport"
+
+
+def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks, monkeypatch, capsys, tmp_path):  # noqa: F811
+    found = nodes(4)
+    for rank, direction in ((0, "ccw_"), (3, "cw_")):
+        closing_link = {port["netdev"] for role, port in topology.endpoints(found[rank]).items()
+                        if role.startswith(direction)}
+        for interface in found[rank]["facts"]["interfaces"]:
+            if interface["name"] in closing_link:
+                interface["operstate"] = "DOWN"
+        reports = found[rank]["lldp"]["lldp"]["interface"]
+        found[rank]["lldp"]["lldp"]["interface"] = [row for row in reports if closing_link.isdisjoint(row)]
+    path = topology.build_spec(found, found[0]["node_id"])
+    for rank in (1, 2):
+        path["nodes"][rank]["hairpin"] = hairpin_document(path, rank)
+    value = {"name": "test", "plan": path}
+    node.save(controller.STATE, "cluster.json", value)
+    monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
+    fabric_record, _ = fabric.prepare(value["plan"], cluster="test", marker=MARKER)
+    (controller.STATE / "fabric.json").write_text(fabric_document.encoded(fabric_record))
+    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                                "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    request = ["install", "--profile", "deepseek-v41-flash-tp4", "--checkpoint", "1017",
+               "--image", serving.ROW_OWNED_PREFILL_IMAGE, "--transport", "sircl", "--nccl", "never", "--plan", "--json"]
+
+    assert sparkring.main(request) == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert sparkring.main([*request, "--row-owned-prefill"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["deployment"] != plain["deployment"]
+    assert plan["serving"] == {"row_owned_prefill": True}
+    assert "--row-owned-prefill" in plan["checkpoint"]["command"]
+    saved = deployment(plan)
+    assert saved["transport"]["backend"] == "sircl" and saved["transport"]["nccl"] == "never"
+    assert saved["transport"]["group"]["name"] == "path-4"
+    assert saved["image_runtime"]["image_id"] == serving.ROW_OWNED_PREFILL_IMAGE_ID
+
+    for rank, (plain_spec, spec) in enumerate(zip(installer.specifications(deployment(plain)),
+                                                  installer.specifications(saved), strict=True)):
+        assert spec.entrypoint == plain_spec.entrypoint
+        assert "DS41_ROW_SHARD_PREFILL" not in plain_spec.environment
+        assert spec.environment["DS41_ROW_SHARD_PREFILL"] == "1"
+        assert "DS41_ROW_SHARD_INDEXER" not in plain_spec.environment
+        assert spec.environment["DS41_ROW_SHARD_INDEXER"] == "1"
+        for flag in (
+            "DS41_ROW_SHARD_COMPACT_ROUTES",
+            "DS41_ROW_SHARD_LOCAL_QUERIES",
+            "DS41_ROW_SHARD_KV_LATENTS",
+            "DS41_ROW_SHARD_COMPRESSOR_LATENTS",
+        ):
+            assert flag not in plain_spec.environment
+            assert spec.environment[flag] == "1"
+        assert spec.environment["VLLM_PLUGINS"].split(",") == [
+            *plain_spec.environment["VLLM_PLUGINS"].split(","), "ds41_row_shard"]
+        assert spec.environment["PYTHONPATH"].split(":") == [
+            "/opt/ds41_row_shard", "/opt/sparkring/toolchain/python", "/opt/sparkring/addons/python"]
+        assert spec.environment["VLLM_ENABLE_ROCE_ALLREDUCE"] == "0"
+        assert spec.environment["SIRCL_NCCL"] == "never"
+        assert spec.environment["SIRCL_FABRIC"] == "path:4"
+        assert "sircl" in spec.environment["VLLM_PLUGINS"].split(",")
+        assert spec.mounts[:2] == plain_spec.mounts[:2]
+        assert [(mount.target, mount.read_only) for mount in spec.mounts[:-2]] == [
+            (mount.target, mount.read_only) for mount in plain_spec.mounts]
+        plugin, adapter = spec.mounts[-2:]
+        assert (plugin.source, plugin.target, plugin.read_only) == (
+            saved["site"]["ranks"][rank]["repository"] + "/integrations/vllm/ds41_row_shard",
+            "/opt/ds41_row_shard", True)
+        assert (adapter.source, adapter.target, adapter.read_only) == (
+            saved["site"]["ranks"][rank]["repository"] + "/spark_transport/sircl/sparkring_sircl/vllm/adapter.py",
+            "/usr/local/lib/python3.12/dist-packages/sparkring_sircl/vllm/adapter.py", True)
+        assert "--enforce-eager" not in spec.command and "--disable-custom-all-reduce" in spec.command
+        plain_graphs = json.loads(plain_spec.command[plain_spec.command.index("--compilation-config") + 1])
+        graphs = json.loads(spec.command[spec.command.index("--compilation-config") + 1])
+        assert plain_graphs["cudagraph_mode"] == "FULL_AND_PIECEWISE"
+        assert graphs == {**plain_graphs, "mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"}
+        assert spec.command[spec.command.index("--max-cudagraph-capture-size") + 1] == "96"
+        assert ("--headless" in spec.command) == bool(rank)
+        assert serving.profile_value(spec.command, "context_length") == 262144
+        batch_tokens = spec.command.index("--max-num-batched-tokens") + 1
+        assert spec.command[batch_tokens] == plain_spec.command[batch_tokens] == "8192"
+        engram = json.loads(spec.command[spec.command.index("--engram-config") + 1])
+        assert engram == {"table_memory": "disk", "disk_resident_scales": True, "projection_tp": False}
+        draft = json.loads(spec.command[spec.command.index("--speculative-config") + 1])
+        assert draft["num_speculative_tokens"] == 5 and draft["enable_adaptive_verification"] is True
+
+    # A shareable template repeats the install command that stages the plugin.
+    output = tmp_path / "template.zip"
+    installer.export(plan["deployment"], output, share=True)
+    with zipfile.ZipFile(output) as template:
+        text = template.read("README.txt").decode()
+    assert "sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017" in text
+    assert "--transport sircl --nccl never --row-owned-prefill" in text
+
+    surveyed = len(sparks.surveys)
+    for extra, complaint in ((["--checkpoint", "original"], "requires --profile"),
+                             (["--image", "2026.10.2"], "requires --image"),
+                             (["--nccl", "auto"], "requires --transport sircl --nccl never"),
+                             (["--context-length", "262145"], "up to 262144 tokens")):
+        assert sparkring.main([*request, "--row-owned-prefill", *extra]) == 3
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["field"] == "serving" and complaint in refused["message"]
+    assert len(sparks.surveys) == surveyed
 
 
 def test_a_failed_receipt_check_is_reported_and_the_model_keeps_serving(sircl, monkeypatch, capsys):

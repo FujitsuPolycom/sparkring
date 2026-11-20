@@ -822,6 +822,7 @@ flag, the profile's value applies.
 | `--max-concurrency N` | `--max-num-seqs` | requests served at the same time |
 | `--kv-cache-gib N` | `--kv-cache-memory-bytes` | GiB of KV cache on each Spark, at most a tenth above the profile's value |
 | `--save-cpu` | vLLM's shared-memory reader window (container variable `SPARKRING_SHM_BUSY_LOOP_S`) | a switch: readers poll 2 ms after a read instead of one second |
+| `--row-owned-prefill` | Eager prefill with replicated Engram projection and decode-only CUDA graphs | experimental [DeepSeek V4.1-Flash-1017 on a four-Spark SIRCL path](../../integrations/vllm/ds41_row_shard/README.md#install-on-a-four-spark-sircl-path), via `sparkring install` |
 | `--reasoning-effort LEVEL` | the model's default effort level, in `--default-chat-template-kwargs` on Node A | one of the model's [levels](#thinking) |
 | `--thinking off` | the model's default thinking, in `--default-chat-template-kwargs` on Node A | thinking stays off unless a request turns it on |
 | `--api-port N` | `--port` | the TCP port of the model's API, 1024 to 65535 ([API endpoint](#api-endpoint)) |

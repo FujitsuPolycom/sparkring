@@ -29,7 +29,8 @@ def printed_help(capsys, command, argv):
 def test_help_prints_each_serving_setting_as_written(capsys, command, argv):
     text = printed_help(capsys, command, argv)
     assert "'container':" not in text and "'prog':" not in text
-    for name, row in (*serving.SETTINGS.items(), *serving.SWITCHES.items()):
+    switches = serving.INSTALL_SWITCHES if command is install_workflow.main else serving.SWITCHES
+    for name, row in (*serving.SETTINGS.items(), *switches.items()):
         assert serving.option(name) in text
         assert compact(row[-1]) in compact(text), name
 

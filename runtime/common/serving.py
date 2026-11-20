@@ -32,6 +32,7 @@ from pathlib import PurePosixPath
 import re
 
 from runtime.common import sparkcache
+from runtime.common.container_spec import Bind
 
 # name: (vLLM flag, key in the flag's JSON value or None, value multiplier, minimum, help)
 SETTINGS = {
@@ -72,6 +73,15 @@ RESERVED_PORTS = {2222: "the port of SparkRing's administration SSH", 5255: "the
 # value up to a tenth above the profile's, and at least one unit above it, is
 # accepted with a warning, and a larger one is refused.
 ABOVE_PROFILE = frozenset({"kv_cache_gib"})
+# The experiment uses the pinned installer image and the deployment's retained source.
+ROW_OWNED_PREFILL = "row_owned_prefill"
+ROW_OWNED_PREFILL_IMAGE = "dev-20261013-dcp2prefill-status038-sircl-tp6"
+ROW_OWNED_PREFILL_IMAGE_ID = "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502"
+ROW_OWNED_PREFILL_CONTEXT = 262144
+ROW_OWNED_PREFILL_SOURCE = "integrations/vllm/ds41_row_shard"
+ROW_OWNED_PREFILL_TARGET = "/opt/ds41_row_shard"
+ROW_OWNED_SIRCL_SOURCE = "spark_transport/sircl/sparkring_sircl/vllm/adapter.py"
+ROW_OWNED_SIRCL_TARGET = "/usr/local/lib/python3.12/dist-packages/sparkring_sircl/vllm/adapter.py"
 # name: (container environment variable, value, help). save_cpu shortens the
 # time vLLM's shared-memory readers poll after a read from one second to 2 ms,
 # so between decode steps they sleep until notified instead of keeping CPU
@@ -83,6 +93,11 @@ SWITCHES = {
     "sparkcache_debug": ("SPARK_CONTEXT_CACHE_TRACE_REUSE", "1", "detailed SparkCache logs"),
     "save_cpu": ("SPARKRING_SHM_BUSY_LOOP_S", "0.002",
                  "let vLLM's waiting processes sleep between decode steps: less CPU use, about 1 to 2 percent slower decode"),
+}
+INSTALL_SWITCHES = {
+    **SWITCHES,
+    ROW_OWNED_PREFILL: ("DS41_ROW_SHARD_PREFILL", "1",
+                        "experimental DeepSeek V4.1-Flash-1017 prefill with token rows split across four Sparks"),
 }
 # The installer image capability (installer_image.capabilities) that each
 # switch needs: on an image without it, the switch's variable would change nothing.
@@ -106,7 +121,7 @@ def option(name):
     return "--" + name.replace("_", "-")
 
 
-def add_arguments(parser):
+def add_arguments(parser, *, install=False):
     group = parser.add_argument_group("serving settings", "replace the profile's value; without a flag the profile's value applies")
     for name, (_, _, _, _, text) in SETTINGS.items():
         if name in ADDRESSES:
@@ -117,7 +132,8 @@ def add_arguments(parser):
         group.add_argument(option(name), dest="serving_" + name, type=sparkcache.parse_size, metavar="SIZE", help=text)
     for name, (values, text) in CONNECTOR_CHOICES.items():
         group.add_argument(option(name), dest="serving_" + name, choices=values, help=text)
-    for name, (_, _, text) in SWITCHES.items():
+    switches = INSTALL_SWITCHES if install else SWITCHES
+    for name, (_, _, text) in switches.items():
         group.add_argument(option(name), dest="serving_" + name, action="store_true", default=None, help=text)
     for name, (_, values, metavar, text) in CHOICES.items():
         group.add_argument(option(name), dest="serving_" + name, choices=values, metavar=metavar, help=text)
@@ -125,7 +141,7 @@ def add_arguments(parser):
 
 def from_arguments(args):
     return normalized({name: getattr(args, "serving_" + name, None)
-                       for name in (*SETTINGS, *SIZES, *SWITCHES, *CHOICES, *CONNECTOR_CHOICES)})
+                       for name in (*SETTINGS, *SIZES, *INSTALL_SWITCHES, *CHOICES, *CONNECTOR_CHOICES)})
 
 
 def profile_defaults(configuration, *, root=None):
@@ -203,7 +219,7 @@ def normalized(values):
                 raise ValueError(f"{option(name)} takes " + " or ".join(CONNECTOR_CHOICES[name][0]))
             result[name] = value
             continue
-        if name in SWITCHES:
+        if name in INSTALL_SWITCHES:
             if value is not True:
                 raise ValueError(f"{option(name)} is a switch without a value")
             result[name] = True
@@ -233,6 +249,22 @@ def check_image(settings, image, capabilities):
         if NEEDS[name] not in capabilities:
             raise ValueError(f"{option(name)} needs an image whose vLLM reads {SWITCHES[name][0]}, and "
                              f"{image} does not. Leave out {option(name)} or choose another image.")
+
+
+def check_row_owned_prefill(settings, model, image, transport):
+    """Admit the row-owned prefill experiment for the measured image, model and transport."""
+    if not settings.get(ROW_OWNED_PREFILL):
+        return
+    flag = option(ROW_OWNED_PREFILL)
+    if model != ("deepseek-v41-flash-tp4", "1017"):
+        raise ValueError(f"{flag} requires --profile deepseek-v41-flash-tp4 --checkpoint 1017")
+    if not image or image["image_id"] != ROW_OWNED_PREFILL_IMAGE_ID:
+        raise ValueError(f"{flag} requires --image {ROW_OWNED_PREFILL_IMAGE}")
+    if (not transport or transport.get("backend") != "sircl" or transport.get("nccl") != "never"
+            or transport["group"]["name"] != "path-4" or transport["group"]["dcp"] != 1):
+        raise ValueError(f"{flag} requires --transport sircl --nccl never on a four-Spark path")
+    if settings.get("context_length", ROW_OWNED_PREFILL_CONTEXT) > ROW_OWNED_PREFILL_CONTEXT:
+        raise ValueError(f"{flag} supports --context-length up to {ROW_OWNED_PREFILL_CONTEXT} tokens")
 
 
 def choice(name, value):
@@ -299,7 +331,7 @@ def apply(command, settings, *, model=None, api=True):
     for name in sorted(set(settings) & sparkcache.SETTINGS):
         if sparkcache.connector(command) is None:
             raise ValueError(f"{option(name)} requires a SparkCache profile")
-    for name in sorted(set(settings) - set(SWITCHES) - set(CHOICES)):
+    for name in sorted(set(settings) - set(INSTALL_SWITCHES) - set(CHOICES)):
         if name == "sparkcache_size":
             command = sparkcache.apply(command, settings[name])
             continue
@@ -391,8 +423,8 @@ def container(spec, settings, *, rank, model=None, source_root=None):
     ``api_bind`` it asks at the bound address and the deployment's port, where
     the API then listens. ``model`` is ``(profile, checkpoint)``, which CHOICES
     settings require. Without settings ``spec`` is returned unchanged.
-    SparkCache debug logging mounts its configuration from the retained
-    deployment checkout at ``source_root`` on each host.
+    SparkCache debug logging and DeepSeek row-owned prefill mount their assets
+    from the retained deployment checkout at ``source_root`` on each host.
     """
     if not settings:
         return spec
@@ -407,26 +439,65 @@ def container(spec, settings, *, rank, model=None, source_root=None):
         health = tuple(part.replace(before, after) for part in health)
     command = apply(spec.command, settings, model=model, api=rank == 0)
     mounts = spec.mounts
+    env = {**spec.environment, **environment(settings)}
     if settings.get("sparkcache_debug"):
-        from runtime.common.container_spec import Bind
         if source_root is None:
             raise ValueError("SparkCache debug logging requires the deployment source directory")
         mounts = (*mounts, Bind(str(PurePosixPath(source_root) / sparkcache.DEBUG_SOURCE), sparkcache.DEBUG_TARGET, True))
+    if settings.get(ROW_OWNED_PREFILL):
+        if source_root is None:
+            raise ValueError(f"{option(ROW_OWNED_PREFILL)} requires the deployment source directory")
+        command = _row_owned_prefill_arguments(command)
+        plugins = env.get("VLLM_PLUGINS")
+        python_path = env.get("PYTHONPATH", "/opt/sparkring/toolchain/python:/opt/sparkring/addons/python")
+        env["VLLM_PLUGINS"] = ",".join(filter(None, (plugins, "ds41_row_shard")))
+        env["PYTHONPATH"] = f"{ROW_OWNED_PREFILL_TARGET}:{python_path}"
+        source = PurePosixPath(source_root)
+        mounts = (*mounts,
+                  Bind(str(source / ROW_OWNED_PREFILL_SOURCE), ROW_OWNED_PREFILL_TARGET, True),
+                  Bind(str(source / ROW_OWNED_SIRCL_SOURCE), ROW_OWNED_SIRCL_TARGET, True))
     return dataclasses.replace(spec, command=command, mounts=mounts,
-                               environment={**spec.environment, **environment(settings)}, health_command=health)
+                               environment=env, health_command=health)
+
+
+def _row_owned_prefill_arguments(command):
+    """Keep prefill eager and capture uniform decode on the pinned profile."""
+    command = list(command)
+    for flag, overrides in (
+        ("--compilation-config", {"mode": 0, "cudagraph_mode": "FULL_DECODE_ONLY"}),
+        ("--engram-config", {"projection_tp": False}),
+        ("--speculative-config", {"enable_adaptive_verification": True}),
+    ):
+        index = command.index(flag) + 1
+        config = json.loads(command[index])
+        config.update(overrides)
+        command[index] = json.dumps(config, separators=(",", ":"))
+    context = command.index("--max-model-len") + 1
+    command[context] = str(min(int(command[context]), ROW_OWNED_PREFILL_CONTEXT))
+    command.append("--disable-custom-all-reduce")
+    return tuple(command)
 
 
 def environment(settings):
     """Container environment variables that the named switches set."""
-    result = {SWITCHES[name][0]: SWITCHES[name][1] for name in sorted(set(settings) & set(SWITCHES))}
+    result = {INSTALL_SWITCHES[name][0]: INSTALL_SWITCHES[name][1]
+              for name in sorted(set(settings) & set(INSTALL_SWITCHES))}
     if settings.get("sparkcache_debug"):
         result["VLLM_LOGGING_CONFIG_PATH"] = sparkcache.DEBUG_TARGET
+    if settings.get(ROW_OWNED_PREFILL):
+        result.update(
+            DS41_ROW_SHARD_INDEXER="1",
+            DS41_ROW_SHARD_COMPACT_ROUTES="1",
+            DS41_ROW_SHARD_LOCAL_QUERIES="1",
+            DS41_ROW_SHARD_KV_LATENTS="1",
+            DS41_ROW_SHARD_COMPRESSOR_LATENTS="1",
+        )
     return result
 
 
 def label(name, value):
     """A setting as its command-line form: ``--max-images 8``, or ``--save-cpu`` for a switch."""
-    return option(name) if name in SWITCHES else f"{option(name)} {value}"
+    return option(name) if name in INSTALL_SWITCHES else f"{option(name)} {value}"
 
 
 def describe(settings, command, *, model=None):
@@ -438,7 +509,8 @@ def describe(settings, command, *, model=None):
         if name in CHOICES:
             lines.append(label(name, value))
             continue
-        lines.append(label(name, value) + (" (profile: off)" if name in SWITCHES else f" (profile: {profile_value(command, name)})"))
+        before = "off" if name in INSTALL_SWITCHES else profile_value(command, name)
+        lines.append(f"{label(name, value)} (profile: {before})")
     return lines
 
 

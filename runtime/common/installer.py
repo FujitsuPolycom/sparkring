@@ -374,6 +374,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
     elif card["profile"] in compose.FABRIC_PROFILES:
         raise ValueError(f"{card['profile']} runs only on SIRCL ring sessions; its deployment needs a transport "
                          "section")
+    serving.check_row_owned_prefill(settings, (profile, card["target_variant"]), image_runtime, value.get("transport"))
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -816,11 +817,20 @@ def export(directory, output, *, share=False):
         flags = "".join(" " + serving.label(name, value) for name, value in sorted(settings.items()))
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])
-        files["README.txt"] = ("Portable profile template, not a configured deployment. Fill site.example.json, then run "
-                               "sparkring init --profile " + lock["selection"]["profile"] + " --site site.example.json"
-                               + (" --image-lock image-lock.json" if runtime else "") + flags + ".\n"
-                               "Compose files below contain example hosts/paths. Re-render for your site. A separate "
-                               "Compose project runs on each rank; Compose alone does not configure RDMA or coordinate hosts.\n")
+        if settings.get(serving.ROW_OWNED_PREFILL):
+            files["README.txt"] = (
+                "Configure a four-Spark path with sparkring setup. Then run sudo sparkring install --profile "
+                + lock["selection"]["profile"] + " --checkpoint " + lock["selection"]["target_variant"]
+                + " --image " + runtime["name"] + " --transport sircl --nccl never" + flags + ".\n"
+                "The installer stages the plugin and SIRCL adapter from its retained source checkout on every rank. "
+                "The Compose files show the resulting rank settings with example paths.\n"
+            )
+        else:
+            files["README.txt"] = ("Portable profile template, not a configured deployment. Fill site.example.json, then run "
+                                   "sparkring init --profile " + lock["selection"]["profile"] + " --site site.example.json"
+                                   + (" --image-lock image-lock.json" if runtime else "") + flags + ".\n"
+                                   "Compose files below contain example hosts/paths. Re-render for your site. A separate "
+                                   "Compose project runs on each rank; Compose alone does not configure RDMA or coordinate hosts.\n")
         if settings:
             files["README.txt"] += "Serving settings, applied in the Compose files in place of the profile's values:" + flags + ".\n"
         if runtime:

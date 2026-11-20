@@ -1,0 +1,2 @@
+[vllm.general_plugins]
+ds41_row_shard = ds41_row_shard:register

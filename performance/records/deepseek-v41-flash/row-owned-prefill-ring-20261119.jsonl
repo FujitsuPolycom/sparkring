@@ -1,0 +1,11 @@
+{"kind":"conditions","date":"2026-11-19","status":"research-only","image_id":"sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502","checkpoint":"1bae0e1088993b9b82de08f59de5be5a34e42170","hardware":"4 DGX Spark GB10","topology":"direct-cycle-4","tp":4,"dcp":1,"transport":"SparkRing patched NCCL over RoCE","moe_backend":"b12x","attention_backend":"B12X","context_limit":262144,"max_num_batched_tokens":8192,"max_num_seqs":16,"gpu_memory_utilization":0.83,"enforce_eager":true,"engram_table_memory":"disk","engram_projection_tp":false,"dspark_tokens":5,"adaptive_verification":false,"temperature":0,"concurrency":1,"timing":"loopback submission to first non-empty text delta, monotonic client clock","cold_repetitions":1}
+{"kind":"request","case":"short","prompt_tokens":12,"completion_tokens":2,"finish_reason":"length","cached_tokens":0,"ttft_s":0.3094,"has_output":true}
+{"kind":"request","case":"cold_prefill","prompt_tokens":8192,"completion_tokens":2,"finish_reason":"length","cached_tokens":0,"ttft_s":3.9518,"has_output":true}
+{"kind":"request","case":"prefix_continuation","prompt_tokens":8200,"completion_tokens":2,"finish_reason":"length","cached_tokens":7936,"ttft_s":0.2785,"has_output":true}
+{"kind":"request","case":"cold_16384","prompt_tokens":16384,"completion_tokens":1,"finish_reason":"length","cached_tokens":0,"ttft_s":3.0794,"has_output":true}
+{"kind":"request","case":"cold_65536","prompt_tokens":65536,"completion_tokens":1,"finish_reason":"length","cached_tokens":0,"ttft_s":12.8977,"has_output":true}
+{"kind":"request","case":"cold_131072","prompt_tokens":131072,"completion_tokens":1,"finish_reason":"length","cached_tokens":0,"ttft_s":28.1192,"has_output":true}
+{"kind":"owned_forward","rank":0,"rows":8192,"owned_rows":2048,"reduce_scatters":42,"all_gathers":41,"compactions":4,"engram_layers":2,"engram_reduce_scatters":2}
+{"kind":"owned_forward","rank":1,"rows":8192,"owned_rows":2048,"reduce_scatters":42,"all_gathers":41,"compactions":4,"engram_layers":2,"engram_reduce_scatters":2}
+{"kind":"owned_forward","rank":2,"rows":8192,"owned_rows":2048,"reduce_scatters":42,"all_gathers":41,"compactions":4,"engram_layers":2,"engram_reduce_scatters":2}
+{"kind":"owned_forward","rank":3,"rows":8192,"owned_rows":2048,"reduce_scatters":42,"all_gathers":41,"compactions":4,"engram_layers":2,"engram_reduce_scatters":2}
