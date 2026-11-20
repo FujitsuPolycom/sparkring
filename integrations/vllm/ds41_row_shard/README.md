@@ -24,14 +24,13 @@ With a column-parallel projection, the input rows still need to match on all
 ranks for the output gather. The plugin preserves the full-row Engram
 reduction and projection for that configuration.
 
-## Install on a four-Spark cycle
+## Install on a four-Spark SIRCL path
 
-On a directly cabled four-Spark cycle that SparkRing has set up, review the
-deployment with:
+Review the deployment on a four-Spark path with a recorded SIRCL fabric.
 
 ```sh
 sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017 \
-  --image dev-20261013-dcp2prefill-status038-sircl-tp6 --transport nccl \
+  --image dev-20261013-dcp2prefill-status038-sircl-tp6 --transport sircl --nccl never \
   --row-owned-prefill --plan
 ```
 
@@ -44,12 +43,9 @@ context limit. Use `--context-length`
 for a smaller limit.
 
 The installer enables compact routing, full-head local-query attention,
-narrow KV gathers, and packed compressor projections. At 8K chunks, these
-settings cleared 6,000 prompt tokens/s on median at all three tested
-prompt lengths with decode-only graphs enabled.
-Full-head prefill holds additional weights per rank. [Four-Spark cycle record](../../../performance/records/deepseek-v41-flash/row-owned-full-head-ring-20261119.md)
-The install planner has offline coverage. Hardware validation of the install
-path and sustained decode is pending.
+narrow KV gathers, and packed compressor projections. Full-head prefill
+holds additional weights per rank. The SIRCL hardware trial used manual
+containers. The installer plan has offline coverage. [SIRCL trial](../../../performance/records/deepseek-v41-flash/row-owned-sircl-path4-20261119.md)
 
 ### Configure a development container
 

@@ -258,9 +258,9 @@ def check_row_owned_prefill(settings, model, image, transport):
         raise ValueError(f"{flag} requires --profile deepseek-v41-flash-tp4 --checkpoint 1017")
     if not image or image["image_id"] != ROW_OWNED_PREFILL_IMAGE_ID:
         raise ValueError(f"{flag} requires --image {ROW_OWNED_PREFILL_IMAGE}")
-    if (not transport or transport.get("backend") != "nccl"
-            or transport["group"]["shape"] != "cycle" or transport["group"]["dcp"] != 1):
-        raise ValueError(f"{flag} requires --transport nccl on a directly cabled four-Spark cycle")
+    if (not transport or transport.get("backend") != "sircl" or transport.get("nccl") != "never"
+            or transport["group"]["name"] != "path-4" or transport["group"]["dcp"] != 1):
+        raise ValueError(f"{flag} requires --transport sircl --nccl never on a four-Spark path")
     if settings.get("context_length", ROW_OWNED_PREFILL_CONTEXT) > ROW_OWNED_PREFILL_CONTEXT:
         raise ValueError(f"{flag} supports --context-length up to {ROW_OWNED_PREFILL_CONTEXT} tokens")
 
