@@ -23,3 +23,15 @@
 {"suite": "decode_workload_probe", "output_tokens": 2048, "case": "8k_t1_2048_output", "temperature": 1, "prompt_tokens": 8192, "cached": 0, "ttft_s": 1.437, "decode_tok_s": 82.67, "end_to_end_tok_s": 78.17, "accepted_pct": 54.6, "accepted_per_step": 2.44}
 {"case": "fixed_first_token_parity", "prompt_tokens": 16384, "first_token_equal": true}
 {"case": "fixed_first_token_parity", "prompt_tokens": 131072, "first_token_equal": true}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 16384, "tok_s": 6353.54}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 65536, "tok_s": 6225.15}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 131072, "tok_s": 6082.54}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 16384, "tok_s": 6308.33}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 65536, "tok_s": 6221.1}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 131072, "tok_s": 6089.56}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 16384, "tok_s": 6362.12}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 65536, "tok_s": 6203.49}
+{"suite": "native_scatter", "case": "cold_prefill", "prompt_tokens": 131072, "tok_s": 6048.56}
+{"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 63.58}
+{"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 125.04}
+{"suite": "native_scatter", "case": "short_greedy_decode", "output_tokens": 384, "tok_s": 62.55}

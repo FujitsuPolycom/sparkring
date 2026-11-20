@@ -74,3 +74,29 @@ Hardware validation used manually staged containers. The installer
 renders the same serving options with `--transport sircl --nccl never`
 in its offline path-4 tests. A live installer rollout and a SIRCL
 cycle-4 run remain unverified.
+
+## Native TP reduce-scatter
+
+The initial SIRCL launch reported 352 `allreduce_slice` calls per rank
+for a cold 128K prompt. The adapter prepared native TP reduce-scatter for
+GLM and Qwen row sharding. It now prepares BF16 and FP32 scatter when the
+DeepSeek row-owned flag is enabled and the TP group forbids NCCL.
+
+The follow-up reused the checkpoint, image, physical path, SIRCL settings
+and serving command. It bind-mounted the updated adapter into the pinned
+image, as the installer now renders for this opt-in preset. All four TP
+receipts reported native `scatter` and zero `allreduce_slice` calls.
+TP and EP again reported `nccl=none`, `pynccl=skipped` and zero NCCL calls.
+
+| Prompt | Before, median tok/s | Native scatter samples (tok/s) | Native scatter median tok/s |
+|---|---:|---|---:|
+| 16K | 6,017.88 | 6,353.54, 6,308.33, 6,362.12 | 6,353.54 |
+| 64K | 5,916.96 | 6,225.15, 6,221.10, 6,203.49 | 6,221.10 |
+| 128K | 5,786.05 | 6,082.54, 6,089.56, 6,048.56 | 6,082.54 |
+
+9 of nine cold requests cleared 6,000 prompt tok/s. Three short
+384-token greedy runs gave a median of 63.58 tok/s after the first token.
+Both fixed prompts returned the reference first token. Prefix continuation
+reused 7,936 tokens and a concurrent 64-token decode finished during an
+unaligned prefill. The serving trial used manual containers. The installer
+plan was verified offline. [Sample data](row-owned-sircl-path4-20261119.jsonl)

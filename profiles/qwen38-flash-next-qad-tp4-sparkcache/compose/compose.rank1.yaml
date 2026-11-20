@@ -171,7 +171,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/qwen-flash-next-bc16a9819d85-629bc3218833
     labels:
-      io.sparkring.deployment: d231bfa9b7e1d32841c668db45c49e1f44a622ffa46a0dd303753dd2437e2787
+      io.sparkring.deployment: 1c2ca62bba16af82a2f513d05cad8fce49340ccd5e483991cf2b2ec7e09786b9
       io.sparkring.rank: '1'
     network_mode: host
     ipc: host

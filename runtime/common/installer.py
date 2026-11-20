@@ -822,7 +822,7 @@ def export(directory, output, *, share=False):
                 "Configure a four-Spark path with sparkring setup. Then run sudo sparkring install --profile "
                 + lock["selection"]["profile"] + " --checkpoint " + lock["selection"]["target_variant"]
                 + " --image " + runtime["name"] + " --transport sircl --nccl never" + flags + ".\n"
-                "The installer stages the plugin from its retained source checkout on every rank. "
+                "The installer stages the plugin and SIRCL adapter from its retained source checkout on every rank. "
                 "The Compose files show the resulting rank settings with example paths.\n"
             )
         else:

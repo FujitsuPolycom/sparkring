@@ -103,6 +103,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import logging
+import os
 import threading
 import time
 import weakref
@@ -559,21 +560,17 @@ class GroupAdapter:
                                        gather=slot.size_limits.gather_bytes)
 
     def _prepare_tp_scatter(self, environ) -> tuple[str, ...]:
-        """BF16 session reduce-scatter for prefill row ownership, when the session has it.
-
-        GLM-5.3-Flash's mHC rows (``VLLM_GLM53_MHC_PREFILL_SHARD``) and Qwen3.8's
-        hyper-connection rows (``VLLM_QWEN3_8_HC_PREFILL_MODE=shard``)
-        reduce-scatter every sublayer output. Without the session's
-        reduce-scatter the planner composes it as an all-reduce and this rank's
-        rows (same bits). Prepared only on a group NCCL may not run, with one of
-        the two settings and ``scatter_available`` on every rank (voted, like
-        every preparation).
-        """
+        """Prepare the TP scatter dtypes used by row-owned prefill before graph capture."""
         from . import mhc, qwen_hc
 
-        if self.placement.policy is not NcclPolicy.NONE or not (mhc.requested(environ)
-                                                                or qwen_hc.requested(environ)):
+        if self.placement.policy is not NcclPolicy.NONE:
             return ()
+        env = os.environ if environ is None else environ
+        deepseek = env.get("DS41_ROW_SHARD_PREFILL", "").strip() == "1"
+        if not (deepseek or mhc.requested(env) or qwen_hc.requested(env)):
+            return ()
+        # DeepSeek stages Engram rows in BF16 and may defer the MoE sum in FP32.
+        dtypes = (torch.bfloat16, torch.float32) if deepseek else (torch.bfloat16,)
         available = bool(getattr(self.session, "scatter_available", False))
         verdict = groupops.vote(self.cpu_group, (None, available), compare=True)
         if verdict is not None:
@@ -581,18 +578,16 @@ class GroupAdapter:
                                   f"{verdict}")
         if not available:
             return ()
-        import torch
-
         error = None
         try:
-            self.session.prepare((torch.bfloat16,), scatter=True, **sessionapi.link_keywords(self.session))
+            self.session.prepare(dtypes, scatter=True, **sessionapi.link_keywords(self.session))
         except Exception as exc:  # noqa: BLE001 - voted below
             error = f"{type(exc).__name__}: {exc}"
         verdict = groupops.vote(self.cpu_group, error, compare=False)
         if verdict is not None:
-            raise SirclSetupError(f"SIRCL could not prepare the BF16 reduce-scatter of {self.placement.name}: "
+            raise SirclSetupError(f"SIRCL could not prepare reduce-scatter of {self.placement.name}: "
                                   f"{verdict}")
-        return ("bfloat16",)
+        return tuple(str(dtype).removeprefix("torch.") for dtype in dtypes)
 
     def _share_session(self) -> None:
         """Share the session of this rank's group with the same global ranks in the same order (voted)."""

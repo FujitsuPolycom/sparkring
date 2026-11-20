@@ -426,6 +426,26 @@ def test_mhc_prefill_sharding_on_a_path_reduce_scatters_and_gathers_through_sirc
     assert sum(calls for (collective, _), calls in rows.items() if collective == "all_gather") == 3
 
 
+@pytest.mark.parametrize("enabled", [False, True])
+def test_deepseek_row_owned_prefill_prepares_native_tp_scatter(stub, monkeypatch, enabled):
+    module = emulation.session_module("sircl_emulated_deepseek_scatter", scatter_available=True)
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    stub.environ.update({"SIRCL_SESSION_MODULE": module.__name__, "SIRCL_NCCL": "never",
+                         "DS41_ROW_SHARD_PREFILL": str(int(enabled))})
+    plugin.register()
+    comms = _communicators("tp:0", [0, 1, 2, 3])
+    for dtype in (torch.bfloat16, torch.float32):
+        partials = [(torch.arange(16 * 64).reshape(16, 64) % 31 + rank).to(dtype) for rank in range(4)]
+        expected = reference_sum(partials).chunk(4, dim=0)
+        outputs = run_ranks(4, lambda rank: comms[rank].reduce_scatter(partials[rank], dim=0))
+        assert all(torch.equal(actual, owned) for actual, owned in zip(outputs, expected, strict=True))
+    method = "scatter" if enabled else "allreduce_slice"
+    for comm in comms:
+        rows = [row for row in comm.sircl.counters.snapshot() if row["collective"] == "reduce_scatter"]
+        assert [(row["backend"], row["method"], row["calls"]) for row in rows] == [("sircl", method, 2)]
+        assert comm.pynccl_comm.disabled
+
+
 def test_mhc_prefill_sharding_is_refused_where_sircl_cannot_carry_it(stub, monkeypatch):
     stub.environ["VLLM_GLM53_MHC_PREFILL_SHARD"] = "1"
     plugin.register()

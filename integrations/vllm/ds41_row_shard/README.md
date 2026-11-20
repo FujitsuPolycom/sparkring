@@ -35,8 +35,9 @@ sudo sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017 \
 ```
 
 Run the command with `--yes` in place of `--plan` to apply the plan. The
-installer stages its retained source on each rank and mounts the plugin
-read-only. The setting selects eager prefill, full CUDA graphs for uniform
+installer stages the retained source on each rank and mounts the plugin
+and its SIRCL adapter read-only. The adapter prepares native TP
+reduce-scatter for the row-owned prefill path. The setting selects eager prefill, full CUDA graphs for uniform
 decode, disk-resident Engram tables with replicated projection, 8,192-token
 prefill chunks, DSpark5 with adaptive verification, and a 262,144-token
 context limit. Use `--context-length`

@@ -80,6 +80,8 @@ ROW_OWNED_PREFILL_IMAGE_ID = "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51
 ROW_OWNED_PREFILL_CONTEXT = 262144
 ROW_OWNED_PREFILL_SOURCE = "integrations/vllm/ds41_row_shard"
 ROW_OWNED_PREFILL_TARGET = "/opt/ds41_row_shard"
+ROW_OWNED_SIRCL_SOURCE = "spark_transport/sircl/sparkring_sircl/vllm/adapter.py"
+ROW_OWNED_SIRCL_TARGET = "/usr/local/lib/python3.12/dist-packages/sparkring_sircl/vllm/adapter.py"
 # name: (container environment variable, value, help). save_cpu shortens the
 # time vLLM's shared-memory readers poll after a read from one second to 2 ms,
 # so between decode steps they sleep until notified instead of keeping CPU
@@ -450,7 +452,10 @@ def container(spec, settings, *, rank, model=None, source_root=None):
         python_path = env.get("PYTHONPATH", "/opt/sparkring/toolchain/python:/opt/sparkring/addons/python")
         env["VLLM_PLUGINS"] = ",".join(filter(None, (plugins, "ds41_row_shard")))
         env["PYTHONPATH"] = f"{ROW_OWNED_PREFILL_TARGET}:{python_path}"
-        mounts = (*mounts, Bind(str(PurePosixPath(source_root) / ROW_OWNED_PREFILL_SOURCE), ROW_OWNED_PREFILL_TARGET, True))
+        source = PurePosixPath(source_root)
+        mounts = (*mounts,
+                  Bind(str(source / ROW_OWNED_PREFILL_SOURCE), ROW_OWNED_PREFILL_TARGET, True),
+                  Bind(str(source / ROW_OWNED_SIRCL_SOURCE), ROW_OWNED_SIRCL_TARGET, True))
     return dataclasses.replace(spec, command=command, mounts=mounts,
                                environment=env, health_command=health)
 

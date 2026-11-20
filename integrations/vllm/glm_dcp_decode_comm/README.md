@@ -1,6 +1,6 @@
 # glm_dcp_decode_comm
 
-A vLLM general plugin (distribution `glm-dcp-decode-comm` 2.0.3, entry point
+A vLLM general plugin (distribution `glm-dcp-decode-comm` 2.0.4, entry point
 `glm_dcp_decode_comm = glm_dcp_decode_comm:register`) that changes how
 GLM-5.3's DSA attention layers run their decode context parallel (DCP)
 collectives when those collectives run on a SIRCL DCP session. Every item is
@@ -89,7 +89,7 @@ GLM_DCP_DECODE_A2A_FUSED=1
 GLM_DCP_DECODE_AUDIT=1
 ```
 
-It passes when every rank logs the startup line `glm_dcp_decode_comm 2.0.3:
+It passes when every rank logs the startup line `glm_dcp_decode_comm 2.0.4:
 enabled ...` naming the five items and audit mode, no `PatchRefused`, and
 every `glm_dcp_decode_comm audit cuda:N: CHECK: ...` line of every rank
 reports `0 differ` with a nonzero call count for each of the five checks
@@ -141,7 +141,8 @@ The pins describe two builds:
 - SIRCL: package version 0.3.2, SparkRing's
   [`spark_transport/sircl/sparkring_sircl`](../../../spark_transport/sircl/sparkring_sircl)
   as commit `ab9e2888` has it, with the opt-in `SIRCL_SUBSET_RING` subset
-  mode (Git tree `462e000619e1` of `sparkring_sircl`).
+  mode (Git tree `462e000619e1` of `sparkring_sircl`) and the adapter change
+  in version 2.0.4.
 
 Version 2.0.1, which the images of releases 2026.10.2, 2026.10.4 and 2026.10.5 carry,
 pins the same files except `vllm/adapter.py`: it pins that file as release
@@ -161,6 +162,9 @@ Every member the file's reason names (`all_gather(out=)`, the arena view,
 and its call order, and every subset statement runs only when
 `SIRCL_SUBSET_RING=1`, so a session that leaves the variable unset takes the
 ops and settings 2.0.2's build takes.
+
+Version 2.0.4 updates the `vllm/adapter.py` pin for DeepSeek native TP
+reduce-scatter. The DCP interface stays the same.
 
 Each version therefore refuses an item flag on the other release's image.
 With every item flag `0`, registration patches nothing and compares no pin,
@@ -219,7 +223,7 @@ and the qualification run again.
 | `glm_dcp_decode_comm/_scatter_pack_cute.py` | the CuTe DSL packed all-to-all, the pinned SIRCL build's scatter op with the pack in its staging |
 | `glm_dcp_decode_comm/layout.py` | the query and wire-format geometry and the kernel's index helpers (pure Python) |
 | `glm_dcp_decode_comm/reference.py` | torch references of the image's computations and of the plugin's replacements |
-| `dist-info/glm_dcp_decode_comm-2.0.3.dist-info/` | the installed distribution's metadata and its `vllm.general_plugins` entry point |
+| `dist-info/glm_dcp_decode_comm-2.0.4.dist-info/` | the installed distribution's metadata and its `vllm.general_plugins` entry point |
 | `tools/refresh_pins.py` | records or checks every pin against vLLM, b12x and SIRCL trees |
 | `tests/` | the CPU suite (`test_dcp_decode_*.py`), the subprocess driver over SIRCL's CUDA stand-in (`scatter_driver.py`) and the GPU checks (`gpu_checks.py`) |
 

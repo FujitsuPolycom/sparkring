@@ -201,11 +201,15 @@ def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks
         assert spec.environment["SIRCL_FABRIC"] == "path:4"
         assert "sircl" in spec.environment["VLLM_PLUGINS"].split(",")
         assert spec.mounts[:2] == plain_spec.mounts[:2]
-        assert [mount.target for mount in spec.mounts[:-1]] == [mount.target for mount in plain_spec.mounts]
-        plugin = spec.mounts[-1]
+        assert [(mount.target, mount.read_only) for mount in spec.mounts[:-2]] == [
+            (mount.target, mount.read_only) for mount in plain_spec.mounts]
+        plugin, adapter = spec.mounts[-2:]
         assert (plugin.source, plugin.target, plugin.read_only) == (
             saved["site"]["ranks"][rank]["repository"] + "/integrations/vllm/ds41_row_shard",
             "/opt/ds41_row_shard", True)
+        assert (adapter.source, adapter.target, adapter.read_only) == (
+            saved["site"]["ranks"][rank]["repository"] + "/spark_transport/sircl/sparkring_sircl/vllm/adapter.py",
+            "/usr/local/lib/python3.12/dist-packages/sparkring_sircl/vllm/adapter.py", True)
         assert "--enforce-eager" not in spec.command and "--disable-custom-all-reduce" in spec.command
         plain_graphs = json.loads(plain_spec.command[plain_spec.command.index("--compilation-config") + 1])
         graphs = json.loads(spec.command[spec.command.index("--compilation-config") + 1])
