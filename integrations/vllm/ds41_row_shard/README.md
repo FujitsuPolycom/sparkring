@@ -48,6 +48,14 @@ narrow KV gathers, and packed compressor projections. Full-head prefill
 holds additional weights per rank. The SIRCL hardware trial used manual
 containers. The installer plan has offline coverage. [SIRCL trial](../../../performance/records/deepseek-v41-flash/row-owned-sircl-path4-20261119.md)
 
+### Use direct-link all-gather on a chain
+
+On a four-Spark SIRCL path, add `--chain-all-gather` to the
+`--row-owned-prefill` install command. This selects direct-link all-gather
+and uses the path tuning row. A matching TP tuning table can select its own
+all-gather schedule, so the option requires a path without such a table.
+[SIRCL chain measurements](../../../performance/records/deepseek-v41-flash/row-owned-sircl-path4-20261119.md#direct-link-all-gather-on-a-four-spark-chain)
+
 ### Configure a development container
 
 Mount this directory, including its plugin metadata, at `/opt/ds41_row_shard`

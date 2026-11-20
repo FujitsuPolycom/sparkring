@@ -75,6 +75,7 @@ RESERVED_PORTS = {2222: "the port of SparkRing's administration SSH", 5255: "the
 ABOVE_PROFILE = frozenset({"kv_cache_gib"})
 # The experiment uses the pinned installer image and the deployment's retained source.
 ROW_OWNED_PREFILL = "row_owned_prefill"
+CHAIN_ALL_GATHER = "chain_all_gather"
 ROW_OWNED_PREFILL_IMAGE = "dev-20261013-dcp2prefill-status038-sircl-tp6"
 ROW_OWNED_PREFILL_IMAGE_ID = "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502"
 ROW_OWNED_PREFILL_CONTEXT = 262144
@@ -98,6 +99,8 @@ INSTALL_SWITCHES = {
     **SWITCHES,
     ROW_OWNED_PREFILL: ("DS41_ROW_SHARD_PREFILL", "1",
                         "experimental DeepSeek V4.1-Flash-1017 prefill with token rows split across four Sparks"),
+    CHAIN_ALL_GATHER: ("SIRCL_GATHER_SCHEDULE", "chain",
+                       "use direct-link SIRCL all-gather with --row-owned-prefill"),
 }
 # The installer image capability (installer_image.capabilities) that each
 # switch needs: on an image without it, the switch's variable would change nothing.
@@ -253,7 +256,10 @@ def check_image(settings, image, capabilities):
 
 def check_row_owned_prefill(settings, model, image, transport):
     """Admit the row-owned prefill experiment for the measured image, model and transport."""
+    chain = settings.get(CHAIN_ALL_GATHER)
     if not settings.get(ROW_OWNED_PREFILL):
+        if chain:
+            raise ValueError(f"{option(CHAIN_ALL_GATHER)} requires {option(ROW_OWNED_PREFILL)}")
         return
     flag = option(ROW_OWNED_PREFILL)
     if model != ("deepseek-v41-flash-tp4", "1017"):
@@ -263,6 +269,8 @@ def check_row_owned_prefill(settings, model, image, transport):
     if (not transport or transport.get("backend") != "sircl" or transport.get("nccl") != "never"
             or transport["group"]["name"] != "path-4" or transport["group"]["dcp"] != 1):
         raise ValueError(f"{flag} requires --transport sircl --nccl never on a four-Spark path")
+    if chain and any("tp" in entry["sessions"] for entry in transport["tuning"]["tables"]):
+        raise ValueError(f"{option(CHAIN_ALL_GATHER)} requires a SIRCL path without a TP tuning table")
     if settings.get("context_length", ROW_OWNED_PREFILL_CONTEXT) > ROW_OWNED_PREFILL_CONTEXT:
         raise ValueError(f"{flag} supports --context-length up to {ROW_OWNED_PREFILL_CONTEXT} tokens")
 

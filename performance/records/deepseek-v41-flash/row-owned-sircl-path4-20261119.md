@@ -108,3 +108,23 @@ measured 75.50 and 68.03. Median draft acceptance fell from 48.05% to
 generates fresh prompt IDs on each run. Pure decode and the 11-token short
 prefill do not use row-owned scatter. These results show a decode difference
 between starts. Its cause remains unverified.
+
+## Direct-link all-gather on a four-Spark chain
+
+On the same four-Spark SIRCL path, `SIRCL_GATHER_SCHEDULE=chain` selected
+large direct-link all-gather. The run used the same image, checkpoint,
+8K chunks, adaptive DSpark5, decode-only graphs, and native reduce-scatter.
+The all-reduce and reduce-scatter schedules were `ring`.
+
+| Prompt | Median cold prefill tok/s | Samples |
+|---|---:|---:|
+| 16K | 6,215.08 | 3 |
+| 64K | 6,102.33 | 3 |
+| 128K | 5,963.67 | 3 |
+
+The short greedy decode median was 86.85 tok/s after the first token over
+three 384-token runs. All ranks recorded native chain column gathers and
+zero NCCL calls. The two fixed prompts matched their reference first
+tokens. Prefix continuation reused 7,936 tokens, and an unaligned prefill
+completed during a concurrent 64-token decode.
+[Sample data](row-owned-sircl-path4-20261119.jsonl)

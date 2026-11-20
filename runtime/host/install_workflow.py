@@ -1890,6 +1890,8 @@ def main(argv=None):
     stock = args.image is not None and stock_image.is_reference(args.image)
     if stock and args.serving_row_owned_prefill:
         parser.error("--row-owned-prefill requires a SparkRing installer image name")
+    if stock and args.serving_chain_all_gather:
+        parser.error("--chain-all-gather requires --row-owned-prefill on a SparkRing installer image")
     if vllm_arguments and not stock:
         parser.error("arguments after -- are a stock image's vLLM arguments: use them with --image REF")
     if args.nccl is not None:
