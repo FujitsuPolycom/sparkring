@@ -225,13 +225,33 @@ def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks
         draft = json.loads(spec.command[spec.command.index("--speculative-config") + 1])
         assert draft["num_speculative_tokens"] == 5 and draft["enable_adaptive_verification"] is True
 
+    assert sparkring.main([*request, "--row-owned-prefill", "--chain-all-gather"]) == 0
+    chain = json.loads(capsys.readouterr().out)
+    assert chain["deployment"] != plan["deployment"]
+    assert chain["serving"] == {"row_owned_prefill": True, "chain_all_gather": True}
+    assert "--chain-all-gather" in chain["checkpoint"]["command"]
+    chain_lock = deployment(chain)
+    assert chain_lock["transport"] == saved["transport"]
+    for ring_spec, chain_spec in zip(installer.specifications(saved), installer.specifications(chain_lock), strict=True):
+        assert ring_spec.environment["SIRCL_GATHER_SCHEDULE"] == "ring"
+        assert chain_spec.environment == {
+            **ring_spec.environment,
+            "SIRCL_GATHER_SCHEDULE": "chain",
+            "SPARKRING_STATS_DEPLOYMENT": chain_lock["id"],
+        }
+        assert chain_spec.command == ring_spec.command
+
+    assert sparkring.main([*request, "--chain-all-gather"]) == 3
+    refused = json.loads(capsys.readouterr().out)
+    assert refused["field"] == "serving" and "requires --row-owned-prefill" in refused["message"]
+
     # A shareable template repeats the install command that stages the plugin.
     output = tmp_path / "template.zip"
-    installer.export(plan["deployment"], output, share=True)
+    installer.export(chain["deployment"], output, share=True)
     with zipfile.ZipFile(output) as template:
         text = template.read("README.txt").decode()
     assert "sparkring install --profile deepseek-v41-flash-tp4 --checkpoint 1017" in text
-    assert "--transport sircl --nccl never --row-owned-prefill" in text
+    assert "--transport sircl --nccl never --chain-all-gather --row-owned-prefill" in text
 
     surveyed = len(sparks.surveys)
     for extra, complaint in ((["--checkpoint", "original"], "requires --profile"),
