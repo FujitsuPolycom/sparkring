@@ -18,10 +18,12 @@
 #include "shm_verbs.h"
 
 int sccl_emu_roce_layout(int, uint64_t, uint64_t *);
+int sccl_emu_roce_link_layout(int, int, uint64_t, uint64_t *);
 unsigned sccl_emu_roce_local_features(void);
 uint64_t sccl_emu_roce_blob_bytes(void);
 void *sccl_emu_roce_create(int, int, const char *const *, int, const int *, int, const int *, int, void *, uint64_t,
                            uint64_t, char *, uint64_t);
+int sccl_emu_roce_set_links(void *, int, int, int, int, int, uint32_t, int, uint64_t, uint64_t);
 int sccl_emu_roce_local_blob(void *, void *, uint64_t);
 int sccl_emu_roce_connect(void *, const void *, uint64_t);
 int sccl_emu_roce_lane_check(void *, int);
@@ -60,17 +62,27 @@ static void barrier_file(const char *dir, const char *name, int world, int rank,
 }
 
 int main(int argc, char **argv) {
-  if (argc != 6) return 2;
+  if (argc != 6 && argc != 7) return 2;
   int world = atoi(argv[1]), rank = atoi(argv[2]), lanes = atoi(argv[3]), ops = atoi(argv[4]);
   const char *dir = argv[5];
+  const char *mode = argc == 7 ? argv[6] : "mesh";
+  int ring_only = !strcmp(mode, "ring-only");
+  int asymmetric = !strcmp(mode, "asymmetric");
   char err[512] = {0};
   if (sccl_emu_attach(err, sizeof err)) fail("attach", err);
-  /* SIRCL change LF: bit 0 (roce_destroy counts failed verbs calls) and bit 1 (flags-only own items). */
-  if ((sccl_emu_roce_local_features() & 3u) != 3u) fail("local features (roce_local_features bits 0 and 1)", NULL);
+  /* SIRCL change LF + sparse neighbor-only peers: bits 0, 1 and 2. */
+  if ((sccl_emu_roce_local_features() & 7u) != 7u) fail("local features (roce_local_features bits 0, 1 and 2)", NULL);
   const uint64_t slot = 65536;
-  uint64_t layout[7];
+  uint64_t layout[7], link_layout[9] = {0};
   if (sccl_emu_roce_layout(world, slot, layout)) fail("layout", NULL);
-  uint8_t *arena = sccl_emu_segment_alloc(layout[4], err, sizeof err);
+  uint64_t region_bytes = layout[4];
+  uint64_t link_off = 0;
+  if (ring_only) {
+    if (sccl_emu_roce_link_layout(lanes, 8, slot, link_layout)) fail("link_layout", NULL);
+    link_off = (region_bytes + 4095u) & ~4095ull;
+    region_bytes = link_off + link_layout[8];
+  }
+  uint8_t *arena = sccl_emu_segment_alloc(region_bytes, err, sizeof err);
   if (!arena) fail("arena", err);
   char names[2][64];
   const char *list[2];
@@ -84,22 +96,69 @@ int main(int argc, char **argv) {
     if (sccl_emu_add_device(names[d], gid) < 0) fail("device", names[d]);
     list[d] = names[d];
   }
+  int prev = (rank + world - 1) % world;
+  int next = (rank + 1) % world;
   int lane_devices[32];
-  for (int p = 0; p < world; ++p)
-    for (int l = 0; l < lanes; ++l) lane_devices[p * lanes + l] = p == rank ? -1 : l;
-  void *proxy = sccl_emu_roce_create(world, rank, list, lanes, lane_devices, lanes, gids, 0, arena, layout[4], slot,
+  for (int p = 0; p < world; ++p) {
+    int connected = p != rank;
+    if (ring_only) connected = (p == prev || p == next);
+    if (asymmetric && rank == 0 && p == 2) connected = 0;
+    for (int l = 0; l < lanes; ++l) lane_devices[p * lanes + l] = connected ? l : -1;
+  }
+  void *proxy = sccl_emu_roce_create(world, rank, list, lanes, lane_devices, lanes, gids, 0, arena, region_bytes, slot,
                                      err, sizeof err);
   if (!proxy) fail("create", err);
+  if (ring_only) {
+    int diag = (rank + 2) % world;
+    if (sccl_emu_roce_set_links(proxy, rank > 0 ? prev : -1, rank < world - 1 ? next : -1, rank, prev, diag, 0, 8,
+                                slot, link_off) == 0)
+      fail("set_links unexpectedly accepted unconnected diagonal peer", NULL);
+    if (sccl_emu_roce_set_links(proxy, rank > 0 ? prev : -1, rank < world - 1 ? next : -1, rank, prev, next, 0, 8,
+                                slot, link_off) != 0)
+      fail("set_links", sccl_emu_roce_error(proxy));
+  }
   uint64_t blob_bytes = sccl_emu_roce_blob_bytes();
   void *blob = calloc(1, blob_bytes), *blobs = calloc((size_t)world, blob_bytes);
   if (sccl_emu_roce_local_blob(proxy, blob, blob_bytes)) fail("blob", NULL);
   barrier_file(dir, "blob", world, rank, blob, blob_bytes, blobs);
-  if (sccl_emu_roce_connect(proxy, blobs, blob_bytes * (uint64_t)world)) fail("connect", sccl_emu_roce_error(proxy));
+  int connect_rc = sccl_emu_roce_connect(proxy, blobs, blob_bytes * (uint64_t)world);
+  if (asymmetric) {
+    if (connect_rc == 0) fail("connect unexpectedly accepted asymmetric sparse records", NULL);
+    printf("rank %d: asymmetric rejected (%s)\n", rank, sccl_emu_roce_error(proxy));
+    int done = 1, dones[64];
+    barrier_file(dir, "done", world, rank, &done, sizeof done, dones);
+    sccl_emu_roce_destroy(proxy);
+    sccl_emu_segment_free(arena);
+    free(blob);
+    free(blobs);
+    return 0;
+  }
+  if (connect_rc) fail("connect", sccl_emu_roce_error(proxy));
   int ready = 1, readies[64];
   barrier_file(dir, "connected", world, rank, &ready, sizeof ready, readies);
   if (sccl_emu_roce_lane_check(proxy, 20000)) fail("lane check", sccl_emu_roce_error(proxy));
   if (sccl_emu_roce_start(proxy)) fail("start", sccl_emu_roce_error(proxy));
   volatile uint32_t *ctrl = (volatile uint32_t *)(arena + layout[3]);
+  if (ring_only) {
+    /* Triggering an arena one-shot op on a sparse ring-only proxy must fail cleanly via post_lane_write. */
+    ctrl[1] = 16;
+    ctrl[4 + 1] = 16;
+    __atomic_thread_fence(__ATOMIC_SEQ_CST);
+    __atomic_store_n((uint32_t *)&ctrl[0], 1u, __ATOMIC_RELEASE);
+    time_t start = time(NULL);
+    while (!sccl_emu_roce_failed(proxy)) {
+      if (time(NULL) - start > 10) fail("expected sparse post_lane_write failure", NULL);
+      usleep(1000);
+    }
+    printf("rank %d: sparse ring-only connected and guarded (%s)\n", rank, sccl_emu_roce_error(proxy));
+    int done = 1, dones[64];
+    barrier_file(dir, "done", world, rank, &done, sizeof done, dones);
+    sccl_emu_roce_destroy(proxy);
+    sccl_emu_segment_free(arena);
+    free(blob);
+    free(blobs);
+    return 0;
+  }
   for (uint32_t seq = 1; seq <= (uint32_t)ops; ++seq) {
     uint32_t s = seq & 1u;
     uint32_t packs = 1 + (seq * 977u + 13u) % (uint32_t)(slot / 16 - 1);
@@ -140,5 +199,7 @@ int main(int argc, char **argv) {
   barrier_file(dir, "done", world, rank, &done, sizeof done, dones);
   sccl_emu_roce_destroy(proxy);
   sccl_emu_segment_free(arena);
+  free(blob);
+  free(blobs);
   return 0;
 }

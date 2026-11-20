@@ -40,7 +40,10 @@ The library, version 0.6.0 ([`VERSION`](../../spark_transport/libsircl/VERSION))
 - four kernel packs (transport, fold, link and point-to-point), compiled for
   `sm_120` and `sm_121` by its build;
 - ring schedules from 8 MiB on a communicator whose ring closes over cables
-  (the *cycle plan*);
+  (the *cycle plan*), plus a neighbor-only ring mode (`LIBSIRCL_RING_ONLY=1`,
+  planned by `tools/site_routes.py --ring-only`) for direct-cable cycles with
+  no ConnectX relay table, connecting only ring neighbors (1 or 2 lanes per
+  neighbor) and running all collectives over ring links;
 - SIRCL's point-to-point channels between ranks of a communicator of three or
   more, off by default (`LIBSIRCL_P2P_CHANNELS=on`);
 - a route planner, [`tools/site_routes.py`](../../spark_transport/libsircl/tools/site_routes.py),

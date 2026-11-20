@@ -47,7 +47,9 @@ def test_a_library_without_the_destroy_count_feature_is_refused():
 
 def test_the_source_build_reports_its_local_features(simulator_library):
     lib = _proxy.load(simulator_library)
-    assert _proxy.local_features(lib) == _proxy.FEATURE_DESTROY_COUNT | _proxy.FEATURE_OWN_FLAGS
+    assert _proxy.local_features(lib) == (
+        _proxy.FEATURE_DESTROY_COUNT | _proxy.FEATURE_OWN_FLAGS | _proxy.FEATURE_SPARSE_PEERS
+    )
 
 
 def test_a_mismatched_library_is_refused(simulator_library, monkeypatch):

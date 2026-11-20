@@ -134,7 +134,8 @@
  * a library built from an earlier source of the same wire ABI is refused when it lacks them. */
 #define ROCE_FEATURE_DESTROY_COUNT 1u /* roce_destroy returns the number of verbs calls that failed */
 #define ROCE_FEATURE_OWN_FLAGS 2u     /* link op word bit 24: the op's own items go out as their flags only */
-#define ROCE_LOCAL_FEATURES (ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS)
+#define ROCE_FEATURE_SPARSE_PEERS 4u  /* unconnected non-neighbor peers (-1 on every lane) are allowed */
+#define ROCE_LOCAL_FEATURES (ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS | ROCE_FEATURE_SPARSE_PEERS)
 /* First word of every connection record ("SRCL" in byte order). */
 #define ROCE_RECORD_MAGIC 0x4c435253u
 #define ROCE_MAX_PEERS 16
@@ -771,12 +772,15 @@ static int open_device(roce_ctx_t *c, int d, const char *name, int gid_index) {
     return 0;
 }
 
-/* Route table rules of one rank as far as the native layer sees them: every
- * other rank has lane_count lanes, the own rank none, and every lane names an
- * opened device. */
+/* Route table rules of one rank as far as the native layer sees them: the own
+ * rank has no lanes (-1), and every other rank either has lane_count distinct
+ * opened devices or no lanes at all (-1 on every lane, for neighbor-only ring
+ * sessions with no diagonal queue pairs). At least one peer must be connected. */
 static int check_route_table(int world, int rank, int n_dev, const int *lane_devices,
                              int lane_count, char *err, uint64_t err_len) {
+    int connected = 0;
     for (int p = 0; p < world; p++) {
+        int absent = 0;
         for (int l = 0; l < lane_count; l++) {
             int d = lane_devices[p * lane_count + l];
             if (p == rank) {
@@ -784,6 +788,10 @@ static int check_route_table(int world, int rank, int n_dev, const int *lane_dev
                     snprintf(err, (size_t)err_len, "rank %d names a device for its own lane %d", rank, l);
                     return -1;
                 }
+                continue;
+            }
+            if (d == -1) {
+                absent++;
                 continue;
             }
             if (d < 0 || d >= n_dev) {
@@ -800,6 +808,18 @@ static int check_route_table(int world, int rank, int n_dev, const int *lane_dev
                 }
             }
         }
+        if (p != rank) {
+            if (absent != 0 && absent != lane_count) {
+                snprintf(err, (size_t)err_len,
+                         "rank %d leaves some but not all lanes toward rank %d unconnected", rank, p);
+                return -1;
+            }
+            if (absent == 0) connected++;
+        }
+    }
+    if (connected == 0) {
+        snprintf(err, (size_t)err_len, "rank %d has no connected peer lanes", rank);
+        return -1;
     }
     return 0;
 }
@@ -937,6 +957,7 @@ static int validate_records(roce_ctx_t *c, const roce_record_t *all) {
             return -1;
         }
         for (int q = 0; q < c->world; q++) {
+            int absent = 0;
             for (int l = 0; l < c->lane_count; l++) {
                 uint8_t d = r->lane_device[q][l];
                 if (q == p) {
@@ -946,10 +967,29 @@ static int validate_records(roce_ctx_t *c, const roce_record_t *all) {
                     }
                     continue;
                 }
+                if (d == ROCE_NO_DEVICE) {
+                    absent++;
+                    continue;
+                }
                 if (d >= r->n_devices || r->qp_num[d][q] == 0) {
                     FAIL(c, "rank %d record has no queue pair for lane %d toward rank %d", p, l, q);
                     return -1;
                 }
+            }
+            if (q != p && absent != 0 && absent != c->lane_count) {
+                FAIL(c, "rank %d record leaves some but not all lanes toward rank %d unconnected", p, q);
+                return -1;
+            }
+        }
+    }
+    for (int p = 0; p < c->world; p++) {
+        for (int q = p + 1; q < c->world; q++) {
+            int p_has = all[p].lane_device[q][0] != ROCE_NO_DEVICE;
+            int q_has = all[q].lane_device[p][0] != ROCE_NO_DEVICE;
+            if (p_has != q_has) {
+                FAIL(c, "asymmetric peer routes: rank %d %s lanes toward rank %d, while rank %d %s",
+                     p, p_has ? "has" : "has no", q, q, q_has ? "has" : "has none");
+                return -1;
             }
         }
     }
@@ -1019,7 +1059,7 @@ int roce_connect(roce_ctx_t *c, const void *blobs, uint64_t blobs_len) {
     const roce_record_t *all = (const roce_record_t *)blobs;
     if (validate_records(c, all) != 0) return -1;
     for (int p = 0; p < c->world; p++) {
-        if (p == c->rank) continue;
+        if (p == c->rank || c->lane_device[p][0] < 0) continue;
         c->peer_addr[p] = all[p].region_addr;
         for (int l = 0; l < c->lane_count; l++) {
             if (connect_lane(c, p, l, &all[p]) != 0) return -1;
@@ -1177,6 +1217,11 @@ int roce_set_forward(roce_ctx_t *c, const uint32_t *lane_window_bytes, uint32_t 
             if (w == 0) continue;
             if (p == c->rank) {
                 FAIL(c, "rank %d sets a forward window on its own lane %d", c->rank, l);
+                memset(c->fwd_window, 0, sizeof(c->fwd_window));
+                return -1;
+            }
+            if (c->lane_device[p][l] < 0) {
+                FAIL(c, "rank %d sets a forward window on unconnected rank %d lane %d", c->rank, p, l);
                 memset(c->fwd_window, 0, sizeof(c->fwd_window));
                 return -1;
             }
@@ -1451,6 +1496,10 @@ int roce_set_chain(roce_ctx_t *c, int prev, int next, int slots, uint64_t slot_b
     if ((prev < -1 || prev >= c->world || prev == c->rank) || (next < -1 || next >= c->world || next == c->rank) ||
         (prev < 0 && next < 0) || (prev >= 0 && prev == next)) {
         FAIL(c, "chain neighbors %d and %d of rank %d in a session of %d", prev, next, c->rank, c->world);
+        return -1;
+    }
+    if ((prev >= 0 && c->lane_device[prev][0] < 0) || (next >= 0 && c->lane_device[next][0] < 0)) {
+        FAIL(c, "chain neighbors %d and %d of rank %d must have connected lanes", prev, next, c->rank);
         return -1;
     }
     if (roce_chain_layout(c->lane_count, slots, slot_bytes, c->chain_layout) != 0) {
@@ -1781,6 +1830,13 @@ int roce_set_links(roce_ctx_t *c, int prev, int next, int index, int ring_prev, 
         (ring_next >= 0 && ((next >= 0 && ring_next != next) || (prev >= 0 && ring_prev != prev)))) {
         FAIL(c, "ring neighbors %d and %d of rank %d (chain neighbors %d and %d)", ring_prev, ring_next, c->rank,
              prev, next);
+        return -1;
+    }
+    if ((prev >= 0 && c->lane_device[prev][0] < 0) || (next >= 0 && c->lane_device[next][0] < 0) ||
+        (ring_prev >= 0 && c->lane_device[ring_prev][0] < 0) ||
+        (ring_next >= 0 && c->lane_device[ring_next][0] < 0)) {
+        FAIL(c, "link neighbors %d/%d and ring neighbors %d/%d of rank %d must have connected lanes", prev, next,
+             ring_prev, ring_next, c->rank);
         return -1;
     }
     if (ring_window != 0 && (ring_next < 0 || ring_window < ROCE_LINK_WINDOW_CHUNK ||
@@ -2375,6 +2431,10 @@ static int link_service(roce_ctx_t *c) {
 static int post_lane_write(roce_ctx_t *c, uint32_t seq, int p, int lane, uint8_t *send,
                            uint64_t byte_offset, uint32_t bytes, int flag_line) {
     int d = c->lane_device[p][lane];
+    if (d < 0 || c->dev[d].qp[p] == NULL) {
+        FAIL(c, "cannot post arena write on lane %d to unconnected rank %d at sequence %u", lane, p, seq);
+        return -1;
+    }
     roce_dev_t *dev = &c->dev[d];
     uint32_t slot = seq & 1u;
     uint64_t remote = c->peer_addr[p];
@@ -2674,7 +2734,7 @@ int roce_lane_check(roce_ctx_t *c, int timeout_ms) {
     }
     memset(pending, 0, sizeof(pending));
     for (int p = 0; p < c->world; p++) {
-        if (p == c->rank) continue;
+        if (p == c->rank || c->lane_device[p][0] < 0) continue;
         for (int l = 0; l < c->lane_count; l++) {
             int d = c->lane_device[p][l];
             roce_dev_t *dev = &c->dev[d];

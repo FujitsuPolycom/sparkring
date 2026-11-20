@@ -581,10 +581,79 @@ print(json.dumps({"before": before, "after": state()}))
 
     def test_setup_checks_the_native_proxy_feature_word(self):
         """Every build checks the native proxy's local feature word (roce_local_features, SIRCL change LF) at
-        communicator setup: bits 0 and 1, whose refusal names both."""
+        communicator setup: bits 0, 1 and 2, whose refusal names all three."""
         text = (b"this library needs 0x%x (bit 0: roce_destroy counts failed verbs calls; bit 1: flags-only own "
-                b"items)")
+                b"items; bit 2: sparse neighbor-only peers)")
         self.assertIn(text, LIBRARY.read_bytes())
+
+    def test_ring_only_settings_and_refusals(self):
+        """LIBSIRCL_RING_ONLY accepts 0 or 1, appears in receipts, and fails setup when combined with
+        conflicting schedules, nonzero ring windows, or relayed lanes."""
+        single = '''u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+c=C.c_void_p(); r=l.ncclCommInitRank(C.byref(c),1,u,0)
+receipt=None
+if r==0:
+    need=C.c_size_t(0); assert l.sirclGetReceipt(c,None,0,C.byref(need))==0
+    buf=C.create_string_buffer(need.value+1); assert l.sirclGetReceipt(c,buf,len(buf),C.byref(need))==0
+    receipt=json.loads(buf.value.decode())
+print(json.dumps({"r":r,"err":l.ncclGetLastError(None).decode(),"ring_only":receipt["ring_only"] if receipt else None}))
+if c.value: l.ncclCommDestroy(c)
+'''
+        base = {"LIBSIRCL_BOOTSTRAP_ONLY": "", "LIBSIRCL_TRANSPORT": "verbs", "LD_LIBRARY_PATH": str(FAKE_DRIVER)}
+        out = run(single, {**base, "LIBSIRCL_RING_ONLY": "1"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        self.assertEqual(data["r"], 0, data["err"])
+        self.assertTrue(data["ring_only"])
+
+        out = run(single, {**base, "LIBSIRCL_RING_ONLY": "2"})
+        self.assertEqual(out.returncode, 0, out.stderr)
+        data = json.loads(out.stdout)
+        self.assertNotEqual(data["r"], 0)
+        self.assertIn("LIBSIRCL_RING_ONLY=2: 0 or 1", data["err"])
+
+        broker_script = '''import socket, struct, threading
+u=U(); assert l.ncclGetUniqueId(C.byref(u))==0
+server=socket.socket(); server.bind(("127.0.0.1", 0)); server.listen()
+u.b[16:18]=struct.pack("!H",server.getsockname()[1])
+records=[]
+def broker():
+    peer,_=server.accept(); peer.settimeout(3)
+    def read(n):
+        data=b""
+        while len(data)<n:
+            part=peer.recv(n-len(data))
+            assert part
+            data+=part
+        return data
+    read(136); peer.sendall(b"SCC1"+struct.pack("!I",0))
+    for number in range(2):
+        h=read(16); size=struct.unpack("!I",h[8:12])[0]; mine=read(size)
+        records.append(mine)
+        other=struct.pack("=iiQ",1,0,0) if number==0 else bytes(size)
+        body=struct.pack("!I",len(mine))+mine+struct.pack("!I",len(other))+other
+        peer.sendall(b"SCR1"+struct.pack("!III",number,2,len(body))+body)
+    peer.close()
+t=threading.Thread(target=broker); t.start()
+c=C.c_void_p(); result=l.ncclCommInitRank(C.byref(c),2,u,0)
+t.join(); server.close()
+print(json.dumps({"result":result,"local":records[1][:400].split(bytes([0]))[0].decode()}))
+if c.value: l.ncclCommAbort(c)
+'''
+        two_rank = {**base, "NCCL_SOCKET_IFNAME": "lo", "LIBSIRCL_SETUP_TIMEOUT_MS": "1000", "LIBSIRCL_RING_ONLY": "1"}
+        cases = [
+            ({"SIRCL_LARGE_SCHEDULE": "pieces"}, "conflicts with SIRCL_LARGE_SCHEDULE=pieces"),
+            ({"SIRCL_GATHER_SCHEDULE": "chain"}, "conflicts with SIRCL_GATHER_SCHEDULE=chain"),
+            ({"LIBSIRCL_RING_WINDOW": "32768"}, "LIBSIRCL_RING_WINDOW must be 0 or unset"),
+            ({"LIBSIRCL_RELAYED_LANES": "1=1"}, "does not use relays"),
+        ]
+        for extra_env, needle in cases:
+            with self.subTest(extra_env=extra_env):
+                out = run(broker_script, {**two_rank, **extra_env})
+                self.assertEqual(out.returncode, 0, out.stderr)
+                data = json.loads(out.stdout)
+                self.assertNotEqual(data["result"], 0)
+                self.assertIn(needle, data["local"])
 
 
 if __name__ == "__main__":

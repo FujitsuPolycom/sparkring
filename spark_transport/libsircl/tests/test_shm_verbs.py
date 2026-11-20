@@ -94,6 +94,36 @@ class ShmVerbsTests(unittest.TestCase):
             for path in stale:
                 path.unlink(missing_ok=True)
 
+    def test_four_ranks_ring_only_sparse_and_guarded(self):
+        for lanes in (1, 2):
+            with self.subTest(lanes=lanes):
+                with tempfile.TemporaryDirectory(prefix="sircl-shm-ring-") as directory:
+                    env = dict(os.environ, SIRCL_EMU_FABRIC=f"/sircl-emu-ring-{os.getpid()}-{lanes}")
+                    processes = [subprocess.Popen([str(self.probe), "4", str(rank), str(lanes), "1", directory, "ring-only"],
+                                                  env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                                 for rank in range(4)]
+                    results = [p.communicate(timeout=120) for p in processes]
+                    fabric = Path("/dev/shm") / env["SIRCL_EMU_FABRIC"].lstrip("/")
+                    if fabric.exists():
+                        fabric.unlink()
+                for rank, (process, (out, err)) in enumerate(zip(processes, results)):
+                    self.assertEqual(process.returncode, 0, f"rank {rank}: {err}")
+                    self.assertIn("sparse ring-only connected and guarded", out)
+
+    def test_asymmetric_sparse_records_are_refused(self):
+        with tempfile.TemporaryDirectory(prefix="sircl-shm-asym-") as directory:
+            env = dict(os.environ, SIRCL_EMU_FABRIC=f"/sircl-emu-asym-{os.getpid()}")
+            processes = [subprocess.Popen([str(self.probe), "4", str(rank), "1", "1", directory, "asymmetric"],
+                                          env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                         for rank in range(4)]
+            results = [p.communicate(timeout=120) for p in processes]
+            fabric = Path("/dev/shm") / env["SIRCL_EMU_FABRIC"].lstrip("/")
+            if fabric.exists():
+                fabric.unlink()
+        for rank, (process, (out, err)) in enumerate(zip(processes, results)):
+            self.assertEqual(process.returncode, 0, f"rank {rank}: {err}")
+            self.assertIn("asymmetric rejected", out)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
