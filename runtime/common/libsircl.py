@@ -90,8 +90,8 @@ SIRCL_ROOT = ROOT / "spark_transport" / "sircl"
 # source); a layer receipt that records another set describes another libsircl build.
 KERNEL_PACKS = ("sircl_kernels", "sircl_fold", "sircl_links", "sircl_p2p")
 ROUTE_VARIABLES = ("LIBSIRCL_POSITION", "SIRCL_PEER_ROUTES", "LIBSIRCL_CHAIN_ORDER", "LIBSIRCL_RELAYED_LANES",
-                   "LIBSIRCL_FORWARD_WINDOWS", "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW", "LIBSIRCL_P2P_WINDOWS",
-                   "SIRCL_P2P_CHUNK_BYTES")
+                   "LIBSIRCL_FORWARD_WINDOWS", "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_RING_WINDOW",
+                   "LIBSIRCL_RING_ONLY", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES")
 LIBRARY_VARIABLE = "SPARKRING_LIBSIRCL_LIBRARY"
 DIGEST_VARIABLE = "SPARKRING_LIBSIRCL_SHA256"
 # Every communicator's receipt, <prefix>.rank<r>.<pid>.c<n>.json, in the deployment's receipt directory.
@@ -220,14 +220,14 @@ def check_layer(image_id, parent_receipt_sha256, block, *, run):
 
 # Where the transport runs.
 
-def unavailable(image_value, document):
+def unavailable(image_value, document, *, ring_only=False):
     """Why libsircl cannot run for this image and fabric, or None."""
     if BACKEND not in image_lock.transports(image_value):
         return f"image {image_value.get('name')} carries no libsircl layer"
     block = image_lock.libsircl(image_value)
     if not block["fail_stop"]:
         return fail_stop_missing(image_library(block))
-    return fabric_unavailable(document)
+    return fabric_unavailable(document, ring_only=ring_only)
 
 
 def source_text(block):
@@ -248,29 +248,29 @@ def fail_stop_missing(library):
             f"use a libsircl build whose library reads {FAIL_STOP_VARIABLE}")
 
 
-def fabric_unavailable(document):
+def fabric_unavailable(document, *, ring_only=False):
     """Why the recorded fabric cannot carry libsircl, or None."""
     if document is None:
         return "this cluster has no fabric document; sudo sparkring setup records one"
-    if "sircl" not in document["transports"]:
+    if not ring_only and "sircl" not in document["transports"]:
         return "the fabric's relay table is not installed; sudo sparkring setup installs it"
     if not fabric_document.uniform_names(document):
         return "the Sparks name their fabric devices differently, which SIRCL's route maps do not support"
     return None
 
 
-def choose(image_value, document, *, nccl=None):
+def choose(image_value, document, *, nccl=None, ring_only=False):
     """``(backend, nccl, reason)`` for an explicit ``--transport libsircl``; LibsirclError where it cannot run."""
     _require(nccl is None, "--nccl applies to deployments on SIRCL; with --transport libsircl, vLLM's PyNccl "
                            "carries every collective on libsircl")
-    reason = unavailable(image_value, document)
+    reason = unavailable(image_value, document, ring_only=ring_only)
     _require(reason is None, f"--transport libsircl cannot run here: {reason}")
     return BACKEND, None, None
 
 
 # The routing settings.
 
-def site_routes(document, layout, lanes, *, run=subprocess.run):
+def site_routes(document, layout, lanes, *, ring_only=False, run=subprocess.run):
     """libsircl's ``tools/site_routes.py --json`` for ``layout``, with the fabric document's device names.
 
     The tool runs in its own interpreter with SIRCL's package on
@@ -285,8 +285,10 @@ def site_routes(document, layout, lanes, *, run=subprocess.run):
                        "PATH": os.environ.get("PATH", "")}
         if "SYSTEMROOT" in os.environ:
             environment["SYSTEMROOT"] = os.environ["SYSTEMROOT"]
-        done = run([sys.executable, "-B", "-s", str(SITE_ROUTES), "--layout", layout, "--lanes", str(lanes), "--json"],
-                   capture_output=True, text=True, env=environment, cwd=directory, timeout=120)
+        command = [sys.executable, "-B", "-s", str(SITE_ROUTES), "--layout", layout, "--lanes", str(lanes), "--json"]
+        if ring_only:
+            command.append("--ring-only")
+        done = run(command, capture_output=True, text=True, env=environment, cwd=directory, timeout=120)
     if done.returncode:
         detail = (done.stderr or done.stdout or "").strip().splitlines()
         raise LibsirclError(f"libsircl's {SITE_ROUTES_TOOL} failed for {layout}: "
@@ -304,14 +306,16 @@ def peer_routes(text):
     return result
 
 
-def group(document, positions, *, dcp=1, run=subprocess.run):
+def group(document, positions, *, dcp=1, ring_only=False, run=subprocess.run):
     """``(group, devices, routes, planner)`` of a libsircl group on ``positions`` of ``document``.
 
     The installer's route code places the group (``transport.group_topology``,
     SIRCL's ``describe_group``), which refuses positions that are not
     consecutive Sparks or the whole cycle and lanes through more than three
     relays; libsircl's ``tools/site_routes.py`` gives every rank's routing
-    settings for the group's explicit layout.
+    settings for the group's explicit layout. With ``ring_only=True``, only
+    direct-cable pairs and whole cycles are accepted and every rank connects
+    only to its ring neighbors (``LIBSIRCL_RING_ONLY=1``, no relay table).
     """
     _require(dcp == 1, f"the profile sets decode-context parallelism {dcp}; no libsircl evidence covers vLLM's "
                        "decode-context-parallel groups, so libsircl runs profiles without it")
@@ -320,23 +324,27 @@ def group(document, positions, *, dcp=1, run=subprocess.run):
     topology = transport.group_topology(layout, positions)
     shape, size = topology.fabric.kind, len(topology.members)
     explicit = topology.session_layout()
-    planned = site_routes(document, explicit, topology.lane_count, run=run)
+    planned = site_routes(document, explicit, topology.lane_count, ring_only=ring_only, run=run)
     _require(len(planned["ranks"]) == size, f"{SITE_ROUTES_TOOL} planned {len(planned['ranks'])} ranks, not {size}")
     value = {"layout": layout, "positions": [int(position) for position in positions], "shape": shape, "size": size,
-             "name": transport.group_name(shape, size), "max_relays": topology.max_relays(),
+             "name": transport.group_name(shape, size), "max_relays": 0 if ring_only else topology.max_relays(),
              "lanes": topology.lane_count, "cabling": topology.nccl_policy.value}
+    if ring_only:
+        value["ring_only"] = True
     devices = [transport.rank_devices(document, topology, rank) for rank in range(size)]
     routes = [dict(row["env"]) for row in planned["ranks"]]
     planner = {"tool": SITE_ROUTES_TOOL, "layout": explicit, "lanes": topology.lane_count,
                "chain_order": planned["chain_order"], "ring_problems": list(planned["ring_problems"])}
+    if ring_only:
+        planner["ring_only"] = True
     return value, devices, routes, planner
 
 
-def section(image_value, document, positions, *, dcp=1, run=subprocess.run):
+def section(image_value, document, positions, *, dcp=1, ring_only=False, run=subprocess.run):
     """The deployment lock's ``transport`` section of a libsircl deployment on ``positions`` of ``document``."""
-    reason = unavailable(image_value, document)
+    reason = unavailable(image_value, document, ring_only=ring_only)
     _require(reason is None, f"libsircl cannot run: {reason}")
-    value, devices, routes, planner = group(document, positions, dcp=dcp, run=run)
+    value, devices, routes, planner = group(document, positions, dcp=dcp, ring_only=ring_only, run=run)
     return {"schema": transport.SECTION_SCHEMA, "backend": BACKEND, "status": STATUS, "image": image_value["name"],
             "fabric": {"id": document["id"], "shape": document["shape"], "size": document["size"]},
             "group": value, "devices": devices, "routes": routes, "planner": planner,
@@ -349,18 +357,31 @@ def check_routes(value, devices, routes, planner, nodes):
              and all(isinstance(row, list) and row and all(isinstance(name, str) for name in row) for row in devices),
              "The libsircl group lists each rank's RDMA devices")
     _require(isinstance(routes, list) and len(routes) == nodes, "The libsircl group lists each rank's routing settings")
+    ring_only = bool(value.get("ring_only"))
     for rank, row in enumerate(routes):
         _require(isinstance(row, dict) and set(row) <= set(ROUTE_VARIABLES)
                  and all(isinstance(setting, str) for setting in row.values())
                  and row.get("LIBSIRCL_POSITION") == str(rank) and "SIRCL_PEER_ROUTES" in row,
                  f"Rank {rank}'s libsircl routing settings are those of {SITE_ROUTES_TOOL} at position {rank}")
         peers = peer_routes(row["SIRCL_PEER_ROUTES"])
-        _require(sorted(peers) == [peer for peer in range(nodes) if peer != rank]
+        if ring_only:
+            _require(row.get("LIBSIRCL_RING_ONLY") == "1" and row.get("LIBSIRCL_RING_WINDOW") == "0"
+                     and "LIBSIRCL_FORWARD_WINDOWS" not in row and "LIBSIRCL_RELAYED_LANES" not in row,
+                     f"Rank {rank}'s ring-only routing settings set LIBSIRCL_RING_ONLY=1 and no relay settings")
+            expected_peers = sorted({(rank - 1) % nodes, (rank + 1) % nodes})
+        else:
+            _require("LIBSIRCL_RING_ONLY" not in row,
+                     f"Rank {rank}'s routing settings set LIBSIRCL_RING_ONLY outside ring-only mode")
+            expected_peers = [peer for peer in range(nodes) if peer != rank]
+        _require(sorted(peers) == expected_peers
                  and all(len(lanes) == value["lanes"] and set(lanes) <= set(devices[rank]) for lanes in peers.values()),
-                 f"Rank {rank}'s route map names every other rank over its own RDMA devices")
+                 f"Rank {rank}'s route map names {'its ring neighbors' if ring_only else 'every other rank'} "
+                 "over its own RDMA devices")
     topology = transport.group_topology(value["layout"], value["positions"])
-    _require(isinstance(planner, dict) and set(planner) == PLANNER_FIELDS and planner["tool"] == SITE_ROUTES_TOOL
-             and planner["layout"] == topology.session_layout() and planner["lanes"] == value["lanes"],
+    expected_planner = PLANNER_FIELDS | ({"ring_only"} if ring_only else set())
+    _require(isinstance(planner, dict) and set(planner) == expected_planner and planner["tool"] == SITE_ROUTES_TOOL
+             and planner["layout"] == topology.session_layout() and planner["lanes"] == value["lanes"]
+             and (not ring_only or planner.get("ring_only") is True),
              "The libsircl group names the route tool and the group's explicit layout it planned")
 
 
@@ -376,14 +397,19 @@ def validate_section(value, card, image_runtime):
              and fabric["id"].startswith("sha256:") and len(fabric["id"]) == 71,
              "The transport section names the fabric document's identity, shape and size")
     group_ = value["group"]
-    _require(isinstance(group_, dict) and set(group_) == GROUP_FIELDS,
+    ring_only = bool(isinstance(group_, dict) and group_.get("ring_only"))
+    expected_group = GROUP_FIELDS | ({"ring_only"} if ring_only else set())
+    _require(isinstance(group_, dict) and set(group_) == expected_group
+             and (not ring_only or group_.get("ring_only") is True),
              "The transport section's group has " + ", ".join(sorted(GROUP_FIELDS)))
     _require(group_["size"] == len(group_["positions"]) == card["nodes"],
              f"The transport group has {card['nodes']} positions, one per rank")
     topology = transport.group_topology(group_["layout"], group_["positions"])
+    expected_relays = 0 if ring_only else topology.max_relays()
     _require(group_["layout"] == transport.sircl_layout(fabric) and topology.fabric.kind == group_["shape"]
-             and topology.max_relays() == group_["max_relays"] and topology.lane_count == group_["lanes"]
+             and expected_relays == group_["max_relays"] and topology.lane_count == group_["lanes"]
              and topology.nccl_policy.value == group_["cabling"]
+             and (not ring_only or topology.fabric.kind in ("pair", "cycle"))
              and group_["name"] == transport.group_name(group_["shape"], group_["size"]),
              "The transport group differs from its layout and positions")
     check_routes(group_, value["devices"], value["routes"], value["planner"], card["nodes"])
@@ -532,6 +558,8 @@ def adapt(specs, lock):
 # Text and identities.
 
 def relays_text(value):
+    if value.get("ring_only"):
+        return "no relays (ring-only)"
     relays = value["max_relays"]
     return f"at most {relays} relay{'s' if relays != 1 else ''} on a lane" if relays else "no relays"
 
@@ -554,7 +582,10 @@ def plan_lines(value, notes=()):
 
 def request_identity(value):
     """The part of an installation request that a libsircl section adds to the deployment's identity."""
-    return {"backend": BACKEND, "fabric": value["fabric"]["id"], "library": value["libsircl"]["library"]["sha256"]}
+    identity = {"backend": BACKEND, "fabric": value["fabric"]["id"], "library": value["libsircl"]["library"]["sha256"]}
+    if value["group"].get("ring_only"):
+        identity["ring_only"] = True
+    return identity
 
 
 def summary(value):

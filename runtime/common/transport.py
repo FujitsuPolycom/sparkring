@@ -573,18 +573,19 @@ def unavailable(image_value, document):
     return None
 
 
-def choose(image_value, document, *, backend=None, nccl=None):
+def choose(image_value, document, *, backend=None, nccl=None, ring_only=False):
     """``(backend, nccl, reason)``: ``sircl`` with NCCL ``never`` wherever SIRCL can run, else ``prepared``.
 
     ``backend`` and ``nccl`` are the operator's ``--transport`` and ``--nccl``
     or None; ``reason`` says why SIRCL cannot run (None when it can). An
     explicit ``--transport sircl`` that cannot run, ``--nccl`` with the
-    prepared or nccl transport, and ``--transport nccl`` without a fabric
-    document are refused.
+    prepared or nccl transport, ``--ring-only`` without ``--transport
+    libsircl``, and ``--transport nccl`` without a fabric document are refused.
     """
     if backend == LIBSIRCL:
         from runtime.common import libsircl
-        return libsircl.choose(image_value, document, nccl=nccl_mode(nccl))
+        return libsircl.choose(image_value, document, nccl=nccl_mode(nccl), ring_only=ring_only)
+    _require(not ring_only, "--ring-only applies only with --transport libsircl")
     _require(backend in (None, *BACKENDS), f"--transport takes sircl, prepared, nccl or libsircl, not {backend!r}")
     nccl = nccl_mode(nccl)
     reason = unavailable(image_value, document)
