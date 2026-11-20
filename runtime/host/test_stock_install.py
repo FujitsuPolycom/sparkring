@@ -187,4 +187,6 @@ def test_an_sglang_stock_image_plan_writes_launch_server_compose_files(stock, ca
         assert service["command"][:5] == ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]
         assert "--context-length" in service["command"]
     assert "SGLang's PyNccl and torch's ProcessGroupNCCL" in out.err
+    assert "Off: SGLang's custom all-reduce, so PyNccl carries the device collectives;" in out.err
+    assert "vLLM" not in out.err
 

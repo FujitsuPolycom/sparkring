@@ -367,7 +367,7 @@ check fails:
 | PyNccl's functions | every function `NCCLLibrary` binds resolves in the library, and none is one libsircl exports only as a refusal ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)), except vLLM's `ncclCommSuspend` and `ncclCommResume`, which only sleep mode calls |
 | Multi-node launch | for vLLM, the CLI accepts `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` and `--headless` with a `vllm` command; for SGLang, `server_args.py` carries `nnodes`, `node_rank`, `dist_init_addr`, `tp_size` and `disable_custom_all_reduce` with `sglang/launch_server.py` present |
 | torch's NCCL | torch's `libtorch_cuda.so` needs `libnccl.so.2`; a static or absent NCCL is refused, because `LD_PRELOAD` cannot redirect it |
-| Arguments | `RUNTIME_ARGUMENTS` set none of the options the plan owns and pass the runtime's refusals (for vLLM, the installer transport's [refusals](#refusals); for SGLang, pipeline, data and expert parallelism above 1, DP attention, disaggregation, memory saver, symmetric memory, `instanttensor` and `SGLANG_DISABLE_PYNCCL`) |
+| Arguments | `RUNTIME_ARGUMENTS` set none of the options the plan owns and pass the runtime's refusals (for vLLM, the installer transport's [refusals](#refusals); for SGLang, pipeline, data and expert parallelism above 1, DP attention, disaggregation, memory saver, symmetric memory, MSCCL++, FlashInfer all-reduce fusion, `instanttensor` and `SGLANG_DISABLE_PYNCCL`) |
 | Same bytes | every Spark holds the same image ID and library SHA-256 |
 
 When those pass, a second probe runs on every Spark with the planned

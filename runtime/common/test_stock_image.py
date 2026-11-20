@@ -363,6 +363,10 @@ def test_an_sglang_image_libsircl_can_run_passes_the_preflight_and_binding():
     ({}, ["--enable-dp-attention"], "--enable-dp-attention"),
     ({}, ["--enable-memory-saver"], "--enable-memory-saver"),
     ({}, ["--enable-symm-mem"], "--enable-symm-mem"),
+    ({}, ["--enable-torch-symm-mem"], "--enable-torch-symm-mem"),
+    ({}, ["--enable-mscclpp"], "--enable-mscclpp"),
+    ({}, ["--enable-flashinfer-allreduce-fusion"], "--enable-flashinfer-allreduce-fusion"),
+    ({}, ["--flashinfer-allreduce-fusion-backend", "trtllm"], "--flashinfer-allreduce-fusion-backend"),
     ({}, ["--load-format", "instanttensor"], "instanttensor"),
 ])
 def test_an_sglang_image_or_arguments_libsircl_cannot_serve_are_refused(changes, arguments, message):

@@ -69,7 +69,9 @@ OWNED_ARGUMENTS = ("--model", "--tensor-parallel-size", "-tp", "--nnodes", "--no
 SGLANG_OWNED_ARGUMENTS = ("--model-path", "--tp-size", "--tensor-parallel-size", "--tp", "--nnodes", "--node-rank",
                           "--dist-init-addr", "--host", "--port", libsircl.CUSTOM_ALL_REDUCE_OFF)
 SGLANG_REFUSED_FLAGS = ("--enable-dp-attention", "--enable-ep-moe", "--enable-dp-lm-head", "--disaggregation-mode",
-                        "--enable-memory-saver", "--enable-symm-mem")
+                        "--enable-memory-saver", "--enable-symm-mem", "--enable-torch-symm-mem", "--enable-mscclpp",
+                        "--enable-flashinfer-allreduce-fusion", "--flashinfer-allreduce-fusion-backend")
+SGLANG_OFF_TEXT = "SGLang's custom all-reduce, so PyNccl carries the device collectives"
 # Load formats whose loader uses io_uring, which SparkRing's loader seccomp policy admits.
 IO_URING_FORMATS = ("fastsafetensors", "instanttensor")
 MODEL_TARGET = "/model"

@@ -187,12 +187,14 @@ def plan(args, arguments, *, state, invoke):
 def lines(result):
     """What the plan prints."""
     group = result["group"]
-    label = "SGLang's PyNccl" if result.get("framework") == "sglang" else "vLLM's PyNccl"
+    is_sglang = result.get("framework") == "sglang"
+    label = "SGLang's PyNccl" if is_sglang else "vLLM's PyNccl"
+    off_text = stock_image.SGLANG_OFF_TEXT if is_sglang else libsircl.OFF_TEXT
     printed = [f"Stock image {result['image']['reference']} ({result['image']['id'][7:19]}) on libsircl "
                f"({result['status']}): {label} and torch's ProcessGroupNCCL on {result['library']['path']}",
                f"  libsircl group: {group['name']} at positions {', '.join(map(str, group['positions']))}; "
                f"{group['lanes']} lanes per peer, {libsircl.relays_text(group)}",
-               f"  Off: {libsircl.OFF_TEXT}; fail-stop on ({libsircl.FAIL_STOP_VARIABLE}=1)",
+               f"  Off: {off_text}; fail-stop on ({libsircl.FAIL_STOP_VARIABLE}=1)",
                f"  Files: {result['directory']['node_a']}; SparkRing does not start, stop or switch this deployment",
                "  Copy them to every Spark:"]
     printed += ["    " + command for command in result["commands"]["prepare"]]
