@@ -198,12 +198,25 @@ def vllm_facts():
             "general_plugins": _general_plugins()}
 
 
+def _read_tree(directory):
+    if not os.path.isdir(directory):
+        return ""
+    parts = []
+    for base, dirs, files in os.walk(directory):
+        dirs.sort()
+        for name in sorted(files):
+            if name.endswith(".py"):
+                parts.append(_read(os.path.join(base, name)))
+    return "\n".join(parts)
+
+
 def sglang_facts():
     root = _package("sglang")
     if root is None:
         return None
     wrapper = _read(os.path.join(root, "srt", "distributed", "device_communicators", "pynccl_wrapper.py"))
-    server_args = _read(os.path.join(root, "srt", "server_args.py"))
+    server_args = "\n".join((_read(os.path.join(root, "srt", "server_args.py")),
+                             _read_tree(os.path.join(root, "srt", "arg_groups"))))
     return {"version": _metadata_version("sglang"), "root": root,
             "launch_server": os.path.isfile(os.path.join(root, "launch_server.py")),
             "nccl_so_path": '"SGLANG_NCCL_SO_PATH"' in wrapper or "'SGLANG_NCCL_SO_PATH'" in wrapper,

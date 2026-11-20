@@ -338,6 +338,25 @@ def test_the_probe_reads_sglang_pynccl_and_server_args_without_importing_sglang(
     assert found["pynccl_functions"] == ["ncclAllReduce", "ncclCommInitRankConfig"]
 
 
+def test_the_probe_reads_sglang_multinode_args_from_modular_arg_groups(tmp_path, monkeypatch):
+    root = tmp_path / "site" / "sglang"
+    for relative, text in (
+            ("__init__.py", "raise RuntimeError('the probe never imports sglang')\n"),
+            ("launch_server.py", "# entry module\n"),
+            ("srt/distributed/device_communicators/pynccl_wrapper.py",
+             'def find_nccl_library():\n    return os.environ.get("SGLANG_NCCL_SO_PATH", None)\n'
+             'class NCCLLibrary:\n    exported_functions = [Function("ncclAllReduce", 0, [])]\n'),
+            ("srt/server_args.py", "nnodes dist_init_addr tp_size\n"),
+            ("srt/arg_groups/groups/parallel.py", "node_rank: int = 0\n"),
+            ("srt/arg_groups/groups/exec_.py", "disable_custom_all_reduce: bool = False\n")):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    monkeypatch.delitem(sys.modules, "sglang", raising=False)
+    assert stock_image_probe.sglang_facts()["multinode"]
+
+
 def test_an_sglang_image_libsircl_can_run_passes_the_preflight_and_binding():
     found = sglang_facts()
     assert stock_image.framework(found) == "sglang"
