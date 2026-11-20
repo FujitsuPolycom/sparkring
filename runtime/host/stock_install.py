@@ -1,7 +1,7 @@
-"""``sparkring install --image REF --transport libsircl --plan -- VLLM_ARGUMENTS``: a stock vLLM image on libsircl.
+"""``sparkring install --image REF --transport libsircl --plan -- RUNTIME_ARGUMENTS``: a stock vLLM or SGLang image on libsircl.
 
-The option plans a deployment of an unmodified ARM64 vLLM image with
-libsircl, SIRCL's NCCL-compatible C library, as the NCCL of both vLLM's
+The option plans a deployment of an unmodified ARM64 vLLM or SGLang image
+with libsircl, SIRCL's NCCL-compatible C library, as the NCCL of both
 PyNccl and torch's ProcessGroupNCCL (``runtime/common/stock_image.py``).
 Status: research-only. It plans and checks only:
 
@@ -13,9 +13,9 @@ Status: research-only. It plans and checks only:
    (``docker image inspect``; it never pulls), hashes the host build of
    libsircl named by ``--libsircl-library``, and runs the stock-image probe
    twice in network-less, read-only containers of the image: once for the
-   image's facts and once with the planned ``VLLM_NCCL_SO_PATH`` and
-   ``LD_PRELOAD`` for the library each caller binds. Every Spark must hold
-   the same image and library bytes.
+   image's facts and once with the planned ``VLLM_NCCL_SO_PATH`` or
+   ``SGLANG_NCCL_SO_PATH`` and ``LD_PRELOAD`` for the library each caller
+   binds. Every Spark must hold the same image and library bytes.
 3. It refuses with every reason ``stock_image.preflight`` and
    ``stock_image.binding_problems`` give, or writes each rank's Compose file
    (and SparkRing's loader seccomp policy where the image's loader needs it)
@@ -46,11 +46,12 @@ def _needs(message, field, details=None):
 def request(args):
     """``(reference, library path, version, model path)`` of a stock-image request, refusing what it cannot plan."""
     if args.transport != libsircl.BACKEND:
-        _needs(f"--image {args.image} names a stock vLLM image, which runs only with --transport libsircl", "transport")
+        _needs(f"--image {args.image} names a stock image, which runs only with --transport libsircl", "transport")
     if args.nccl is not None:
         _needs("--nccl applies to deployments on SIRCL; a stock image runs every collective on libsircl", "transport")
     if args.profile:
-        _needs("--image REF runs the image's own vLLM with the arguments after --; it takes no --profile", "profile")
+        _needs("--image REF runs the image's own vLLM or SGLang with the arguments after --; it takes no --profile",
+               "profile")
     if not args.plan:
         _needs("The stock-image option is research-only and plans only: add --plan. It writes each rank's Compose "
                "file and the commands that start them", "plan")
@@ -86,9 +87,9 @@ def survey(invoke, rows, reference, library, version, arguments):
         bound = None
         if not found:
             bound = stock_image.parse(_ssh(invoke, host, stock_image.probe_command(
-                reference, library, version, environment=stock_image.binding_environment(image, version),
+                reference, library, version, environment=stock_image.binding_environment(image, version, facts),
                 binding=True), data=stock_image.PROBE_SOURCE))
-            found = stock_image.binding_problems(bound, version)
+            found = stock_image.binding_problems(bound, version, facts)
         if found:
             problems[f"rank {rank} ({host})"] = found
         reports.append({"host": host, "image": image, "library_sha256": digest, "facts": facts, "binding": bound})
@@ -134,6 +135,7 @@ def plan(args, arguments, *, state, invoke):
                details={"problems": problems})
     image = reports[0]["image"]
     digest = reports[0]["library_sha256"]
+    runtime = stock_image.framework(reports[0]["facts"])
     identity = {"image": image["Id"], "library": digest, "positions": positions, "model": model,
                 "arguments": list(arguments), "fabric": document["id"]}
     if ring_only:
@@ -164,13 +166,16 @@ def plan(args, arguments, *, state, invoke):
     for file_name, text in files.items():
         (output / file_name).write_text(text, encoding="utf-8", newline="\n")
     result = {"schema": stock_image.SCHEMA, "state": "planned", "status": libsircl.STATUS, "name": name,
-              "image": {"reference": reference, "id": image["Id"]}, "library": {"path": library, "sha256": digest},
+              "framework": runtime, "image": {"reference": reference, "id": image["Id"]},
+              "library": {"path": library, "sha256": digest},
               "group": group, "positions": positions, "routes": routes, "planner": planner,
               "directory": {"node_a": str(output), "sparks": spark_directory}, "files": sorted(files),
               "commands": commands, "api_url": f"http://{rows[0]['fabric_ip']}:{stock_image.API_PORT}/v1",
-              "preflight": [{"host": report["host"], "glibc": report["facts"].get("glibc"),
+              "preflight": [{"host": report["host"], "framework": stock_image.framework(report["facts"]),
+                             "glibc": report["facts"].get("glibc"),
                              "cuda_driver_api": (report["facts"].get("cuda") or {}).get("driver_api"),
                              "vllm": (report["facts"].get("vllm") or {}).get("version"),
+                             "sglang": (report["facts"].get("sglang") or {}).get("version"),
                              "torch": (report["facts"].get("torch") or {}).get("version"),
                              "torch_nccl": (report["binding"] or {}).get("torch_nccl_version")}
                             for report in reports]}
@@ -182,8 +187,9 @@ def plan(args, arguments, *, state, invoke):
 def lines(result):
     """What the plan prints."""
     group = result["group"]
+    label = "SGLang's PyNccl" if result.get("framework") == "sglang" else "vLLM's PyNccl"
     printed = [f"Stock image {result['image']['reference']} ({result['image']['id'][7:19]}) on libsircl "
-               f"({result['status']}): vLLM's PyNccl and torch's ProcessGroupNCCL on {result['library']['path']}",
+               f"({result['status']}): {label} and torch's ProcessGroupNCCL on {result['library']['path']}",
                f"  libsircl group: {group['name']} at positions {', '.join(map(str, group['positions']))}; "
                f"{group['lanes']} lanes per peer, {libsircl.relays_text(group)}",
                f"  Off: {libsircl.OFF_TEXT}; fail-stop on ({libsircl.FAIL_STOP_VARIABLE}=1)",

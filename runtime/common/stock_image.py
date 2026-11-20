@@ -1,12 +1,13 @@
-"""A stock ARM64 vLLM image with libsircl as its NCCL: the preflight and each rank's container.
+"""A stock ARM64 vLLM or SGLang image with libsircl as its NCCL: the preflight and each rank's container.
 
 ``sparkring install --image REF --transport libsircl --plan`` (the host flow
 is ``runtime/host/stock_install.py``) plans a deployment of an unmodified
-vLLM image, such as one of the community images built from
-``eugr/spark-vllm-docker``, with libsircl in place of NCCL for both vLLM's
-PyNccl and torch's ProcessGroupNCCL. The image is not an installer image:
-it carries no SparkRing receipts, and SparkRing does not pin or pull it.
-Status: research-only. docs/architecture/libsircl.md describes the option.
+vLLM or SGLang image, such as one of the community images built from
+``eugr/spark-vllm-docker`` or an ARM64 SGLang image, with libsircl in place
+of NCCL for both PyNccl and torch's ProcessGroupNCCL. The image is not an
+installer image: it carries no SparkRing receipts, and SparkRing does not
+pin or pull it. Status: research-only. docs/architecture/libsircl.md
+describes the option.
 
 libsircl comes from the host: a build of the committed source
 (``libsircl_layer.py host-library``) at ``libsircl.host_library_path``,
@@ -21,21 +22,22 @@ the library mounted) show:
   identifies itself as libsircl and has the fail-stop mode;
 - a CUDA driver API of 13000 or later, and GPUs whose compute capability the
   kernel packs carry (``sm_120``, ``sm_121``);
-- a vLLM that reads ``VLLM_NCCL_SO_PATH``, whose PyNccl binds only functions
-  the library exports and that libsircl implements (``tests/api_manifest.json``;
-  ``ncclCommSuspend`` and ``ncclCommResume`` are refused through
-  ``--enable-sleep-mode`` instead), and whose CLI takes the multi-node
-  options;
+- one serving runtime — either vLLM (reading ``VLLM_NCCL_SO_PATH``) or
+  SGLang (reading ``SGLANG_NCCL_SO_PATH``) — whose PyNccl binds only
+  functions the library exports and that libsircl implements
+  (``tests/api_manifest.json``; for vLLM, ``ncclCommSuspend`` and
+  ``ncclCommResume`` are refused through ``--enable-sleep-mode`` instead),
+  and whose CLI takes the multi-node options;
 - a torch whose ``libtorch_cuda.so`` needs ``libnccl.so.2``, so that
   ``LD_PRELOAD`` points its ProcessGroupNCCL at libsircl;
-- vLLM arguments that set none of the options the plan owns and pass the
-  installer transport's refusals (``libsircl.refusals``).
+- runtime arguments that set none of the options the plan owns and pass the
+  runtime's libsircl refusals.
 
 ``binding_problems`` then checks a second probe, run with the planned
-``VLLM_NCCL_SO_PATH`` and ``LD_PRELOAD``: PyNccl's load and the process's
-global scope must resolve ``ncclGetVersion`` in libsircl, torch must report
-NCCL 2.27.5 (libsircl's API level 22705), and libsircl must be the only
-mapped file with the SONAME ``libnccl.so.2``.
+``VLLM_NCCL_SO_PATH`` or ``SGLANG_NCCL_SO_PATH`` and ``LD_PRELOAD``:
+PyNccl's load and the process's global scope must resolve ``ncclGetVersion``
+in libsircl, torch must report NCCL 2.27.5 (libsircl's API level 22705),
+and libsircl must be the only mapped file with the SONAME ``libnccl.so.2``.
 """
 import json
 from pathlib import Path, PurePosixPath
@@ -50,16 +52,24 @@ API_MANIFEST = TREE / "tests" / "api_manifest.json"
 PROBE_SOURCE = Path(stock_image_probe.__file__).read_text(encoding="utf-8")
 SCHEMA = "sparkring-stock-plan/v1"
 REQUIRED_DRIVER_API = 13000
-# Functions every PyNccl communicator calls; libsircl must implement each of them.
+# Functions every vLLM PyNccl communicator calls; libsircl must implement each of them.
 CORE_FUNCTIONS = ("ncclGetErrorString", "ncclGetVersion", "ncclGetUniqueId", "ncclCommInitRank", "ncclAllReduce",
                   "ncclAllGather", "ncclReduceScatter", "ncclReduce", "ncclBroadcast", "ncclGroupStart",
                   "ncclGroupEnd", "ncclCommDestroy", "ncclCommAbort")
-# Functions PyNccl calls only in a mode the plan refuses by its own rule: sleep mode (capability_problems).
+# Functions SGLang's PyNccl communicator calls; libsircl must implement each of them.
+SGLANG_CORE_FUNCTIONS = ("ncclGetErrorString", "ncclGetVersion", "ncclGetUniqueId", "ncclCommInitRank",
+                         "ncclCommInitRankConfig", "ncclAllReduce", "ncclAllGather", "ncclReduceScatter",
+                         "ncclReduce", "ncclBroadcast", "ncclGroupStart", "ncclGroupEnd", "ncclCommDestroy")
+# Functions vLLM's PyNccl calls only in a mode the plan refuses by its own rule: sleep mode (capability_problems).
 CONDITIONAL_FUNCTIONS = ("ncclCommSuspend", "ncclCommResume")
-# Options the plan sets on every rank's command; VLLM_ARGUMENTS may not set them.
+# Options the plan sets on every rank's command; user arguments after -- may not set them.
 OWNED_ARGUMENTS = ("--model", "--tensor-parallel-size", "-tp", "--nnodes", "--node-rank", "--master-addr",
                    "--master-port", "--headless", "--host", "--port", "--distributed-executor-backend",
                    libsircl.CUSTOM_ALL_REDUCE_OFF)
+SGLANG_OWNED_ARGUMENTS = ("--model-path", "--tp-size", "--tensor-parallel-size", "--tp", "--nnodes", "--node-rank",
+                          "--dist-init-addr", "--host", "--port", libsircl.CUSTOM_ALL_REDUCE_OFF)
+SGLANG_REFUSED_FLAGS = ("--enable-dp-attention", "--enable-ep-moe", "--enable-dp-lm-head", "--disaggregation-mode",
+                        "--enable-memory-saver", "--enable-symm-mem")
 # Load formats whose loader uses io_uring, which SparkRing's loader seccomp policy admits.
 IO_URING_FORMATS = ("fastsafetensors", "instanttensor")
 MODEL_TARGET = "/model"
@@ -80,6 +90,24 @@ def _require(condition, text):
 def is_reference(text):
     """Whether ``--image`` names an image by registry reference or local image ID, not an installer release."""
     return isinstance(text, str) and ("/" in text or ":" in text)
+
+
+def framework(facts):
+    """The serving runtime detected by the probe: ``"vllm"``, ``"sglang"``, ``"both"`` or None."""
+    has_vllm = bool((facts or {}).get("vllm"))
+    has_sglang = bool((facts or {}).get("sglang"))
+    if has_vllm and has_sglang:
+        return "both"
+    if has_vllm:
+        return "vllm"
+    if has_sglang:
+        return "sglang"
+    return None
+
+
+def nccl_so_path_variable(facts=None):
+    """The environment variable the detected runtime's PyNccl reads for its NCCL library path."""
+    return "SGLANG_NCCL_SO_PATH" if framework(facts) == "sglang" else "VLLM_NCCL_SO_PATH"
 
 
 def api_manifest(path=API_MANIFEST):
@@ -131,8 +159,94 @@ def preloads(image, version):
     return ":".join([library_target(version), *(item for item in own if "libnccl.so" not in PurePosixPath(item).name)])
 
 
-def owned_arguments(arguments):
-    return sorted({flag for flag in OWNED_ARGUMENTS for item in arguments if item == flag or item.startswith(flag + "=")})
+def owned_arguments(arguments, runtime="vllm"):
+    flags = SGLANG_OWNED_ARGUMENTS if runtime == "sglang" else OWNED_ARGUMENTS
+    return sorted({flag for flag in flags for item in arguments if item == flag or item.startswith(flag + "=")})
+
+
+def sglang_refusals(environment, arguments):
+    """Why an SGLang stock image or its arguments cannot run with libsircl; empty when it can."""
+    problems = []
+    owned = libsircl.owned_settings(environment)
+    if owned:
+        problems.append(f"the image sets {owned}, which the libsircl transport owns")
+    if environment.get("SGLANG_DISABLE_PYNCCL", "").lower() in ("1", "true", "yes"):
+        problems.append("the image sets SGLANG_DISABLE_PYNCCL, which bypasses PyNccl")
+    for label, flags in (("pipeline parallelism", ("--pp-size", "--pipeline-parallel-size")),
+                         ("data parallelism", ("--dp-size", "--data-parallel-size")),
+                         ("expert parallelism", ("--ep-size", "--expert-parallel-size"))):
+        try:
+            count = libsircl._count(arguments, *flags)
+        except libsircl.LibsirclError as error:
+            problems.append(str(error))
+            continue
+        if count > 1:
+            problems.append(f"{label} {count} is not covered by libsircl stock-image SGLang plans")
+    for flag in SGLANG_REFUSED_FLAGS:
+        if any(item == flag or item.startswith(flag + "=") for item in arguments):
+            problems.append(f"{flag} is not covered by libsircl stock-image SGLang plans")
+    if libsircl.argument(arguments, "--load-format") == "instanttensor":
+        problems.append("--load-format instanttensor uses its own collectives outside libsircl")
+    return problems
+
+
+def _check_vllm(image, facts, arguments, library, manifest):
+    problems = []
+    vllm = facts["vllm"]
+    if not (vllm.get("nccl_so_path") and vllm.get("find_reads_nccl_so_path")):
+        problems.append(f"the image's vLLM {vllm.get('version')} does not select PyNccl's library with "
+                        "VLLM_NCCL_SO_PATH")
+    bound = vllm.get("pynccl_functions") or []
+    if not bound:
+        problems.append("the image's vLLM has no PyNccl function list (pynccl_wrapper.py)")
+    missing = library.get("missing") or []
+    if missing:
+        problems.append(f"vLLM's PyNccl binds {', '.join(missing)}, which the host libsircl does not export")
+    for name in CORE_FUNCTIONS:
+        if name in bound and manifest.get(name) is False:
+            problems.append(f"vLLM's PyNccl calls {name}, which libsircl exports only as a refusal")
+    for name in bound:
+        if manifest.get(name) is False and name not in CORE_FUNCTIONS and name not in CONDITIONAL_FUNCTIONS:
+            problems.append(f"vLLM's PyNccl binds {name}, which libsircl exports only as a refusal")
+    if not vllm.get("multinode"):
+        problems.append("the image's vLLM CLI lacks --nnodes, --node-rank, --master-addr or --headless")
+    if not vllm.get("command"):
+        problems.append("the image has no vllm command")
+    owned = owned_arguments(arguments, "vllm")
+    if owned:
+        problems.append(f"the vLLM arguments set {', '.join(owned)}, which the plan sets on every rank")
+    problems += libsircl.refusals(image_environment(image), arguments)
+    return problems
+
+
+def _check_sglang(image, facts, arguments, library, manifest):
+    problems = []
+    sglang = facts["sglang"]
+    if not (sglang.get("nccl_so_path") and sglang.get("find_reads_nccl_so_path")):
+        problems.append(f"the image's SGLang {sglang.get('version')} does not select PyNccl's library with "
+                        "SGLANG_NCCL_SO_PATH")
+    bound = sglang.get("pynccl_functions") or []
+    if not bound:
+        problems.append("the image's SGLang has no PyNccl function list (pynccl_wrapper.py)")
+    missing = library.get("missing") or []
+    if missing:
+        problems.append(f"SGLang's PyNccl binds {', '.join(missing)}, which the host libsircl does not export")
+    for name in SGLANG_CORE_FUNCTIONS:
+        if name in bound and manifest.get(name) is False:
+            problems.append(f"SGLang's PyNccl calls {name}, which libsircl exports only as a refusal")
+    for name in bound:
+        if manifest.get(name) is False and name not in SGLANG_CORE_FUNCTIONS:
+            problems.append(f"SGLang's PyNccl binds {name}, which libsircl exports only as a refusal")
+    if not sglang.get("multinode"):
+        problems.append("the image's SGLang server args lack nnodes, node_rank, dist_init_addr, tp_size or "
+                        "disable_custom_all_reduce")
+    if not sglang.get("launch_server"):
+        problems.append("the image's SGLang package has no launch_server.py entry module")
+    owned = owned_arguments(arguments, "sglang")
+    if owned:
+        problems.append(f"the SGLang arguments set {', '.join(owned)}, which the plan sets on every rank")
+    problems += sglang_refusals(image_environment(image), arguments)
+    return problems
 
 
 def preflight(image, facts, arguments, *, packs=None, manifest=None):
@@ -172,52 +286,36 @@ def preflight(image, facts, arguments, *, packs=None, manifest=None):
         if "sm_" + capability.replace(".", "") not in packs:
             problems.append(f"a GPU of compute capability {capability} runs none of the kernel packs' "
                             f"architectures ({', '.join(packs)})")
-    vllm = facts.get("vllm")
-    if not vllm:
-        problems.append("the image has no vllm package")
-    else:
-        if not (vllm.get("nccl_so_path") and vllm.get("find_reads_nccl_so_path")):
-            problems.append(f"the image's vLLM {vllm.get('version')} does not select PyNccl's library with "
-                            "VLLM_NCCL_SO_PATH")
-        bound = vllm.get("pynccl_functions") or []
-        if not bound:
-            problems.append("the image's vLLM has no PyNccl function list (pynccl_wrapper.py)")
-        missing = library.get("missing") or []
-        if missing:
-            problems.append(f"vLLM's PyNccl binds {', '.join(missing)}, which the host libsircl does not export")
-        for name in CORE_FUNCTIONS:
-            if name in bound and manifest.get(name) is False:
-                problems.append(f"vLLM's PyNccl calls {name}, which libsircl exports only as a refusal")
-        for name in bound:
-            if manifest.get(name) is False and name not in CORE_FUNCTIONS and name not in CONDITIONAL_FUNCTIONS:
-                problems.append(f"vLLM's PyNccl binds {name}, which libsircl exports only as a refusal")
-        if not vllm.get("multinode"):
-            problems.append("the image's vLLM CLI lacks --nnodes, --node-rank, --master-addr or --headless")
-        if not vllm.get("command"):
-            problems.append("the image has no vllm command")
     torch = facts.get("torch")
     if not torch or torch.get("nccl") != "dynamic":
         problems.append(f"the image's torch NCCL is {(torch or {}).get('nccl', 'missing')}: only a torch whose "
                         "libtorch_cuda.so needs libnccl.so.2 can be pointed at libsircl, and torch's own collectives "
                         "would otherwise reach another NCCL")
-    owned = owned_arguments(arguments)
-    if owned:
-        problems.append(f"the vLLM arguments set {', '.join(owned)}, which the plan sets on every rank")
-    problems += libsircl.refusals(image_environment(image), arguments)
+    runtime = framework(facts)
+    if runtime is None:
+        problems.append("the image has no vllm or sglang package")
+    elif runtime == "both":
+        problems.append("the image has both vllm and sglang packages; stock-image plans require one serving runtime")
+    elif runtime == "sglang":
+        problems += _check_sglang(image, facts, arguments, library, manifest)
+    else:
+        problems += _check_vllm(image, facts, arguments, library, manifest)
     return problems
 
 
-def binding_environment(image, version):
-    return {"VLLM_NCCL_SO_PATH": library_target(version), "LD_PRELOAD": preloads(image, version),
+def binding_environment(image, version, facts=None):
+    return {nccl_so_path_variable(facts): library_target(version), "LD_PRELOAD": preloads(image, version),
             "LIBSIRCL_NCCL_API_VERSION": str(libsircl.NCCL_API_VERSION)}
 
 
-def binding_problems(found, version):
+def binding_problems(found, version, facts=None):
     """What the binding probe (``stock_image_probe.binding``) found bound to another library than libsircl."""
     target = library_target(version)
+    variable = (nccl_so_path_variable(facts) if facts is not None
+                else ("SGLANG_NCCL_SO_PATH" if found.get("sglang_nccl_so_path") else "VLLM_NCCL_SO_PATH"))
     problems = []
     if found.get("pynccl_provider") != target:
-        problems.append(f"PyNccl's load of VLLM_NCCL_SO_PATH resolves ncclGetVersion in "
+        problems.append(f"PyNccl's load of {variable} resolves ncclGetVersion in "
                         f"{found.get('pynccl_provider') or found.get('pynccl_error')}, not {target}")
     if found.get("global_provider") != target:
         problems.append(f"the process's global scope resolves ncclGetVersion in {found.get('global_provider')}, "
@@ -240,6 +338,16 @@ def serve_command(entrypoint, arguments):
     return ["vllm", "serve", *arguments]
 
 
+def sglang_command(entrypoint, arguments):
+    """The command after the image's own entrypoint that runs ``python3 -m sglang.launch_server``."""
+    words = [PurePosixPath(word).name for word in entrypoint or ()]
+    if words[-2:] == ["-m", "sglang.launch_server"]:
+        return list(arguments)
+    if words[-1:] in (["python3"], ["python"]):
+        return ["-m", "sglang.launch_server", *arguments]
+    return ["python3", "-m", "sglang.launch_server", *arguments]
+
+
 def compilation_arguments(arguments, facts):
     """``--compilation-config`` turning off the communication fusions the image's vLLM has, unless the arguments
     give their own (which ``libsircl.refusals`` checks)."""
@@ -253,10 +361,17 @@ def compilation_arguments(arguments, facts):
 
 
 def rank_command(image, facts, arguments, *, rank, size, master):
+    entrypoint = (image.get("Config") or {}).get("Entrypoint") or []
+    if framework(facts) == "sglang":
+        distributed = ["--model-path", MODEL_TARGET, "--tp-size", str(size), "--nnodes", str(size),
+                       "--node-rank", str(rank), "--dist-init-addr", f"{master}:{MASTER_PORT}",
+                       libsircl.CUSTOM_ALL_REDUCE_OFF]
+        if rank == 0:
+            distributed += ["--host", "0.0.0.0", "--port", str(API_PORT)]
+        return sglang_command(entrypoint, [*distributed, *arguments])
     distributed = ["--tensor-parallel-size", str(size), "--nnodes", str(size), "--node-rank", str(rank),
                    "--master-addr", master, "--master-port", str(MASTER_PORT), libsircl.CUSTOM_ALL_REDUCE_OFF]
     distributed += ["--headless"] if rank else ["--host", "0.0.0.0", "--port", str(API_PORT)]
-    entrypoint = (image.get("Config") or {}).get("Entrypoint") or []
     return serve_command(entrypoint, [MODEL_TARGET, *arguments, *distributed,
                                       *compilation_arguments(arguments, facts)])
 
@@ -276,17 +391,23 @@ def rank_spec(image, facts, arguments, *, name, reference, rank, row, master, si
     ``directory`` the plan's directory on every Spark, which holds the
     receipts and, when the loader needs it, the seccomp policy.
     """
-    switches = (facts.get("vllm") or {}).get("switches") or []
-    off = {key: value for key, value in libsircl.INDEPENDENT_TRANSPORTS_OFF.items() if key in switches}
-    if "VLLM_ENABLE_ROCE_ALLREDUCE" in switches:
-        off["VLLM_ENABLE_ROCE_ALLREDUCE"] = "0"
+    runtime = framework(facts)
+    if runtime == "sglang":
+        off = {}
+        runtime_env = {"SGLANG_NCCL_SO_PATH": library_target(version)}
+    else:
+        switches = (facts.get("vllm") or {}).get("switches") or []
+        off = {key: value for key, value in libsircl.INDEPENDENT_TRANSPORTS_OFF.items() if key in switches}
+        if "VLLM_ENABLE_ROCE_ALLREDUCE" in switches:
+            off["VLLM_ENABLE_ROCE_ALLREDUCE"] = "0"
+        runtime_env = {"VLLM_NCCL_SO_PATH": library_target(version), "VLLM_HOST_IP": row["fabric_ip"]}
     library = {libsircl.FAIL_STOP_VARIABLE: "1", "LIBSIRCL_NCCL_API_VERSION": str(libsircl.NCCL_API_VERSION),
                "LIBSIRCL_TRANSPORT": "verbs", "LIBSIRCL_RECEIPT": libsircl.RECEIPT_PREFIX}
     environment = {
-        **image_environment(image), **library, **off, **routes,
-        "VLLM_NCCL_SO_PATH": library_target(version), "LD_PRELOAD": preloads(image, version),
+        **image_environment(image), **library, **off, **routes, **runtime_env,
+        "LD_PRELOAD": preloads(image, version),
         "SIRCL_BOOTSTRAP_ADDR": row["fabric_ip"], "SIRCL_GID_INDEX": str(gid),
-        "VLLM_HOST_IP": row["fabric_ip"], "GLOO_SOCKET_IFNAME": row["interface"], "NCCL_SOCKET_IFNAME": row["interface"],
+        "GLOO_SOCKET_IFNAME": row["interface"], "NCCL_SOCKET_IFNAME": row["interface"],
         "NCCL_DEBUG": "INFO", "NCCL_DEBUG_SUBSYS": "INIT",
     }
     mounts = (Bind(host_library, library_target(version), True), Bind(model_path, MODEL_TARGET, True),

@@ -309,14 +309,15 @@ Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on li
 
 ```bash
 sudo sparkring install --image REF --transport libsircl --libsircl-library LIBRARY \
-  --model-path PATH [--on POSITIONS] [--ring-only] --plan -- VLLM_ARGUMENTS
+  --model-path PATH [--on POSITIONS] [--ring-only] --plan -- RUNTIME_ARGUMENTS
 ```
 
-This plans a deployment of an unmodified ARM64 vLLM image with libsircl as the
-NCCL of both vLLM's PyNccl and torch's ProcessGroupNCCL. `REF` is a registry
-reference or local image ID (it contains `/` or `:`), such as
-`eugr/spark-vllm-b12x:nightly-20261001`. It is not an installer release:
-it carries no SparkRing receipts, and SparkRing does not pin or pull it.
+This plans a deployment of an unmodified ARM64 vLLM or SGLang image with
+libsircl as the NCCL of both PyNccl and torch's ProcessGroupNCCL. `REF` is a
+registry reference or local image ID (it contains `/` or `:`), such as
+`eugr/spark-vllm-b12x:nightly-20261001` or an ARM64 SGLang image. It is not an
+installer release: it carries no SparkRing receipts, and SparkRing does not pin
+or pull it.
 
 Status: **research-only**; no stock-image deployment has run on Sparks. The
 option only plans and checks. It writes each rank's Compose file and prints
@@ -351,7 +352,9 @@ On every Spark, over SSH and read-only,
 hashes the library and runs a probe
 ([stock_image_probe.py](../../runtime/common/stock_image_probe.py)) in a
 network-less, read-only container of the image with the GPUs and the library
-mounted. It refuses, naming each reason and Spark, when any check fails:
+mounted. It detects whether the image carries `vllm` or `sglang` (refusing an
+image with neither or both) and refuses, naming each reason and Spark, when any
+check fails:
 
 | Check | Rule |
 |---|---|
@@ -360,38 +363,42 @@ mounted. It refuses, naming each reason and Spark, when any check fails:
 | glibc | the image's glibc is at least the newest `GLIBC_x.y` version the library needs |
 | CUDA driver API | 13000 or later: the kernel packs hold `sm_120` and `sm_121` code from a CUDA 13 nvcc and no PTX |
 | GPU architecture | the container sees a GPU, and every visible GPU's compute capability is one the packs carry (GB10 is 12.1) |
-| `VLLM_NCCL_SO_PATH` | the image's vLLM defines it and `find_nccl_library` reads it (read from the sources, not by importing vLLM) |
-| PyNccl's functions | every function vLLM's `NCCLLibrary` binds resolves in the library, and none is one libsircl exports only as a refusal ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)), except `ncclCommSuspend` and `ncclCommResume`, which only sleep mode calls |
-| Multi-node launch | the CLI accepts `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` and `--headless`, and the image has a `vllm` command |
+| PyNccl library selector | for vLLM, `VLLM_NCCL_SO_PATH` is defined and read by `find_nccl_library`; for SGLang, `SGLANG_NCCL_SO_PATH` is read by `find_nccl_library` in `pynccl_wrapper.py` (read from the sources without importing vLLM or SGLang) |
+| PyNccl's functions | every function `NCCLLibrary` binds resolves in the library, and none is one libsircl exports only as a refusal ([tests/api_manifest.json](../../spark_transport/libsircl/tests/api_manifest.json)), except vLLM's `ncclCommSuspend` and `ncclCommResume`, which only sleep mode calls |
+| Multi-node launch | for vLLM, the CLI accepts `--nnodes`, `--node-rank`, `--master-addr`, `--master-port` and `--headless` with a `vllm` command; for SGLang, `server_args.py` carries `nnodes`, `node_rank`, `dist_init_addr`, `tp_size` and `disable_custom_all_reduce` with `sglang/launch_server.py` present |
 | torch's NCCL | torch's `libtorch_cuda.so` needs `libnccl.so.2`; a static or absent NCCL is refused, because `LD_PRELOAD` cannot redirect it |
-| Arguments | `VLLM_ARGUMENTS` set none of the options the plan owns and pass the installer transport's [refusals](#refusals) |
+| Arguments | `RUNTIME_ARGUMENTS` set none of the options the plan owns and pass the runtime's refusals (for vLLM, the installer transport's [refusals](#refusals); for SGLang, pipeline, data and expert parallelism above 1, DP attention, disaggregation, memory saver, symmetric memory, `instanttensor` and `SGLANG_DISABLE_PYNCCL`) |
 | Same bytes | every Spark holds the same image ID and library SHA-256 |
 
 When those pass, a second probe runs on every Spark with the planned
-`VLLM_NCCL_SO_PATH` and `LD_PRELOAD`. It refuses unless PyNccl's load and
-the process's global scope both resolve `ncclGetVersion` in libsircl,
-`torch.cuda.nccl.version()` is 2.27.5 (libsircl's API level 22705), and
-libsircl is the only mapped file with the SONAME `libnccl.so.2`. This verifies
-the binding, not a collective.
+`VLLM_NCCL_SO_PATH` or `SGLANG_NCCL_SO_PATH` and `LD_PRELOAD`. It refuses
+unless PyNccl's load and the process's global scope both resolve
+`ncclGetVersion` in libsircl, `torch.cuda.nccl.version()` is 2.27.5
+(libsircl's API level 22705), and libsircl is the only mapped file with the
+SONAME `libnccl.so.2`. This verifies the binding, not a collective.
 
 ### Each rank's container
 
-- **Command:** the image's own entrypoint with `vllm serve /model`,
-  `VLLM_ARGUMENTS`, the multi-node arguments (tensor-parallel size and
+- **Command:** for vLLM, the image's own entrypoint with `vllm serve /model`,
+  `RUNTIME_ARGUMENTS`, the multi-node arguments (tensor-parallel size and
   `--nnodes` equal to the group size, `--master-port 29511`, `--headless`
   above rank 0, port 8000 on rank 0), `--disable-custom-all-reduce` and,
-  unless `VLLM_ARGUMENTS` give their own, a `--compilation-config` that turns
-  off the communication fusions the image's vLLM has.
+  unless `RUNTIME_ARGUMENTS` give their own, a `--compilation-config` that
+  turns off the communication fusions the image's vLLM has. For SGLang, the
+  image's own entrypoint with `python3 -m sglang.launch_server --model-path
+  /model`, `--tp-size` and `--nnodes` equal to the group size, `--node-rank`,
+  `--dist-init-addr <master>:29511`, `--disable-custom-all-reduce`, `--host
+  0.0.0.0 --port 8000` on rank 0, and `RUNTIME_ARGUMENTS`.
 - **Library:** mounted read-only at
   `/opt/sparkring/libsircl/lib/libsircl.so.<version>`, named by
-  `VLLM_NCCL_SO_PATH`, and first in `LD_PRELOAD` with the image's other
-  `libnccl.so` entries removed.
+  `VLLM_NCCL_SO_PATH` (vLLM) or `SGLANG_NCCL_SO_PATH` (SGLang), and first in
+  `LD_PRELOAD` with the image's other `libnccl.so` entries removed.
 - **Settings:** the `LIBSIRCL_*`, routing, bootstrap, receipt and
   `NCCL_DEBUG` values of the installer transport's
-  [container settings](#container-settings), with `SIRCL_GID_INDEX=3`; `0`
-  for each bypassing collective switch the image's vLLM defines (others are
-  not set); and `VLLM_HOST_IP`, `GLOO_SOCKET_IFNAME` and `NCCL_SOCKET_IFNAME`
-  for the rank's fabric address and interface.
+  [container settings](#container-settings), with `SIRCL_GID_INDEX=3`; for
+  vLLM, `0` for each bypassing collective switch the image's vLLM defines
+  (others are not set) and `VLLM_HOST_IP`; and `GLOO_SOCKET_IFNAME` and
+  `NCCL_SOCKET_IFNAME` for the rank's fabric address and interface.
 - **Access:** `/dev/infiniband`, all GPUs, host networking and IPC, unlimited
   memlock and `IPC_LOCK`; SparkRing's loader seccomp policy only when the
   image's loader needs io_uring (`--load-format fastsafetensors` or

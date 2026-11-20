@@ -282,5 +282,138 @@ def test_a_registry_reference_or_image_id_is_a_stock_image_and_a_release_name_is
 def test_the_api_manifest_marks_the_functions_pynccl_calls_implemented():
     manifest = stock_image.api_manifest()
     assert all(manifest[name] for name in stock_image.CORE_FUNCTIONS)
+    assert all(manifest[name] for name in stock_image.SGLANG_CORE_FUNCTIONS)
     assert manifest["ncclCommSuspend"] is False and manifest["ncclCommResume"] is False
     assert stock_image.architectures() == ["sm_120", "sm_121"]
+
+
+# SGLang stock images.
+
+SGLANG_REFERENCE = "lmsysorg/sglang:spark-arm64@sha256:" + "6" * 64
+SGLANG_FUNCTIONS = ["ncclAllGather", "ncclAllReduce", "ncclBroadcast", "ncclCommDestroy", "ncclCommInitRank",
+                    "ncclCommInitRankConfig", "ncclCommWindowDeregister", "ncclCommWindowRegister",
+                    "ncclGetErrorString", "ncclGetUniqueId", "ncclGetVersion", "ncclGroupEnd", "ncclGroupStart",
+                    "ncclMemAlloc", "ncclMemFree", "ncclRecv", "ncclReduce", "ncclReduceScatter", "ncclSend"]
+
+
+def sglang_facts(**changes):
+    """The probe's facts of a stock SGLang image that libsircl can run on."""
+    value = facts()
+    value["vllm"] = None
+    value["sglang"] = {"version": "0.5.6", "root": "/usr/local/lib/python3.12/dist-packages/sglang",
+                       "launch_server": True, "nccl_so_path": True, "find_reads_nccl_so_path": True,
+                       "pynccl_functions": list(SGLANG_FUNCTIONS), "multinode": True}
+    for path, setting in changes.items():
+        target = value
+        *parents, last = path.split(".")
+        for key in parents:
+            target = target[key]
+        target[last] = setting
+    return value
+
+
+def sglang_binding(**changes):
+    return {"vllm_nccl_so_path": None, "sglang_nccl_so_path": TARGET, "pynccl_provider": TARGET,
+            "global_provider": TARGET, "torch_nccl_version": [2, 27, 5], "mapped": [TARGET], **changes}
+
+
+def test_the_probe_reads_sglang_pynccl_and_server_args_without_importing_sglang(tmp_path, monkeypatch):
+    root = tmp_path / "site" / "sglang"
+    for relative, text in (
+            ("__init__.py", "raise RuntimeError('the probe never imports sglang')\n"),
+            ("launch_server.py", "# entry module\n"),
+            ("srt/distributed/device_communicators/pynccl_wrapper.py",
+             'def find_nccl_library():\n    return os.environ.get("SGLANG_NCCL_SO_PATH", None)\n'
+             'class NCCLLibrary:\n    exported_functions = [Function("ncclAllReduce", 0, []), '
+             'Function("ncclCommInitRankConfig", 0, [])]\n'),
+            ("srt/server_args.py", "nnodes node_rank dist_init_addr tp_size disable_custom_all_reduce\n")):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    monkeypatch.delitem(sys.modules, "sglang", raising=False)
+    found = stock_image_probe.sglang_facts()
+    assert found["launch_server"] and found["nccl_so_path"] and found["find_reads_nccl_so_path"]
+    assert found["multinode"]
+    assert found["pynccl_functions"] == ["ncclAllReduce", "ncclCommInitRankConfig"]
+
+
+def test_an_sglang_image_libsircl_can_run_passes_the_preflight_and_binding():
+    found = sglang_facts()
+    assert stock_image.framework(found) == "sglang"
+    assert stock_image.preflight(image(), found, ["--context-length", "32768"]) == []
+    assert stock_image.binding_environment(image(), "0.6.0", found) == {
+        "SGLANG_NCCL_SO_PATH": TARGET, "LD_PRELOAD": TARGET, "LIBSIRCL_NCCL_API_VERSION": "22705",
+    }
+    assert stock_image.binding_problems(sglang_binding(), "0.6.0", found) == []
+
+
+@pytest.mark.parametrize("changes, arguments, message", [
+    ({"sglang.nccl_so_path": False}, [], "does not select PyNccl's library with SGLANG_NCCL_SO_PATH"),
+    ({"sglang.find_reads_nccl_so_path": False}, [], "does not select PyNccl's library with SGLANG_NCCL_SO_PATH"),
+    ({"sglang.pynccl_functions": [*SGLANG_FUNCTIONS, "ncclRedOpCreatePreMulSum"]}, [],
+     "binds ncclRedOpCreatePreMulSum, which libsircl exports only as a refusal"),
+    ({"sglang.multinode": False}, [], "lack nnodes, node_rank, dist_init_addr"),
+    ({"sglang.launch_server": False}, [], "no launch_server.py"),
+    ({}, ["--tp-size", "4"], "the SGLang arguments set --tp-size"),
+    ({}, ["--dist-init-addr=192.0.2.20:20000"], "the SGLang arguments set --dist-init-addr"),
+    ({}, ["--pp-size", "2"], "pipeline parallelism 2"),
+    ({}, ["--dp-size=2"], "data parallelism 2"),
+    ({}, ["--ep-size", "4"], "expert parallelism 4"),
+    ({}, ["--enable-dp-attention"], "--enable-dp-attention"),
+    ({}, ["--enable-memory-saver"], "--enable-memory-saver"),
+    ({}, ["--enable-symm-mem"], "--enable-symm-mem"),
+    ({}, ["--load-format", "instanttensor"], "instanttensor"),
+])
+def test_an_sglang_image_or_arguments_libsircl_cannot_serve_are_refused(changes, arguments, message):
+    problems = stock_image.preflight(image(), sglang_facts(**copy.deepcopy(changes)), arguments)
+    assert any(message in problem for problem in problems), problems
+
+
+def test_preflight_refuses_an_image_with_neither_or_both_serving_runtimes():
+    neither = facts()
+    neither["vllm"] = None
+    assert any("no vllm or sglang" in p for p in stock_image.preflight(image(), neither, []))
+    both = facts()
+    both["sglang"] = sglang_facts()["sglang"]
+    assert any("both vllm and sglang" in p for p in stock_image.preflight(image(), both, []))
+
+
+def test_sglang_binding_failure_names_sglang_nccl_so_path():
+    problems = stock_image.binding_problems(
+        sglang_binding(pynccl_provider="/usr/lib/aarch64-linux-gnu/libnccl.so.2"), "0.6.0", sglang_facts(),
+    )
+    assert len(problems) == 1 and "SGLANG_NCCL_SO_PATH" in problems[0]
+
+
+@pytest.mark.parametrize("entrypoint, expected", [
+    (("/opt/nvidia/nvidia_entrypoint.sh",), ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]),
+    ((), ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]),
+    (("/usr/bin/python3",), ["-m", "sglang.launch_server", "--model-path", "/model"]),
+    (("python3", "-m", "sglang.launch_server"), ["--model-path", "/model"]),
+])
+def test_the_sglang_command_runs_launch_server_after_the_images_own_entrypoint(entrypoint, expected):
+    assert stock_image.sglang_command(entrypoint, ["--model-path", "/model"]) == expected
+
+
+@pytest.mark.parametrize("shape, size, positions", [("pair", 2, [0, 1]), ("cycle", 4, [0, 1, 2, 3])])
+def test_every_sglang_rank_runs_launch_server_with_libsircl_as_nccl(shape, size, positions):
+    ranks, routes = specs(shape, size, positions, found=sglang_facts(), arguments=["--mem-fraction-static", "0.85"])
+    assert len(ranks) == size
+    for rank, spec in enumerate(ranks):
+        environment = spec.environment
+        assert environment["SGLANG_NCCL_SO_PATH"] == TARGET and environment["LD_PRELOAD"] == TARGET
+        assert "VLLM_NCCL_SO_PATH" not in environment and "VLLM_HOST_IP" not in environment
+        assert environment["LIBSIRCL_FAIL_STOP"] == "1" and environment["LIBSIRCL_NCCL_API_VERSION"] == "22705"
+        assert environment["LIBSIRCL_TRANSPORT"] == "verbs" and environment["SIRCL_GID_INDEX"] == "3"
+        assert {key: environment[key] for key in libsircl.ROUTE_VARIABLES if key in environment} == routes[rank]
+        assert environment["SIRCL_BOOTSTRAP_ADDR"] == f"192.0.2.{20 + positions[rank]}"
+        command = list(spec.command)
+        assert command[:5] == ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]
+        assert command[command.index("--tp-size") + 1] == command[command.index("--nnodes") + 1] == str(size)
+        assert command[command.index("--node-rank") + 1] == str(rank)
+        assert command[command.index("--dist-init-addr") + 1] == f"192.0.2.{20 + positions[0]}:29511"
+        assert "--disable-custom-all-reduce" in command and "--mem-fraction-static" in command
+        assert ("--host" in command) == (rank == 0) and ("--port" in command) == (rank == 0)
+        assert "--headless" not in command and "--compilation-config" not in command
+
