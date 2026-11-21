@@ -233,15 +233,30 @@ def patch_attention(module) -> None:
         )
 
 
+def _ep_moe_deferral_allowed() -> bool:
+    return os.environ.get("SIRCL_B12X_EP_MOE", "").strip().lower() in (
+        "1",
+        "true",
+        "on",
+        "yes",
+    )
+
+
 # -- MoE deferral at TP8 -----------------------------------------------------
 def _validate_moe_deferral(runner: Any) -> None:
-    """GLM's ``validate_moe_deferral`` with TP8 admitted beside TP2 and TP4."""
+    """GLM's ``validate_moe_deferral`` with TP8 and TP+EP (no all2all) admitted."""
     config = runner.moe_config
     parallel = config.moe_parallel_config
+    tp_only_ok = config.tp_size in SUPPORTED_WORLDS and config.ep_size == 1
+    tp_ep_ok = (
+        _ep_moe_deferral_allowed()
+        and config.ep_size in SUPPORTED_WORLDS
+        and config.tp_size * config.ep_size in SUPPORTED_WORLDS
+        and not parallel.use_all2all_kernels
+    )
     if (
-        config.tp_size not in SUPPORTED_WORLDS
+        not (tp_only_ok or tp_ep_ok)
         or config.dp_size != 1
-        or config.ep_size != 1
         or config.pcp_size != 1
         or config.is_sequence_parallel
         or config.skip_final_all_reduce
@@ -284,13 +299,14 @@ def _static_error(model, world: int) -> str | None:
         if (
             get_pp_group().world_size != 1
             or parallel.data_parallel_size != 1
-            or parallel.enable_expert_parallel
+            or (parallel.enable_expert_parallel and not _ep_moe_deferral_allowed())
             or getattr(parallel, "enable_eplb", False)
             or model.use_sequence_parallel
             or model.use_mega_moe
         ):
             raise RowShardRefused(
-                "row ownership requires PP1, DP1, no expert parallelism, "
+                "row ownership requires PP1, DP1, no expert parallelism "
+                "(unless SIRCL_B12X_EP_MOE=1 without all2all), "
                 "no sequence parallelism and no mega-MoE"
             )
         layers = owned_layers(
@@ -317,8 +333,9 @@ def _static_error(model, world: int) -> str | None:
             if ffn.use_mega_moe:
                 raise RowShardRefused(f"layer {index} uses mega-MoE")
             _validate_moe_deferral(ffn.experts)
-            if ffn.experts.moe_config.tp_size != world:
-                raise RowShardRefused(f"layer {index} MoE TP size differs")
+            moe_cfg = ffn.experts.moe_config
+            if moe_cfg.tp_size * moe_cfg.ep_size != world:
+                raise RowShardRefused(f"layer {index} MoE TP*EP size differs")
             engram = getattr(layer, "engram", None)
             if engram is not None:
                 kind = type(engram.wkv).__name__

@@ -103,8 +103,24 @@ def _bind_ep_prototypes(lib: ctypes.CDLL) -> bool:
         ctypes.c_void_p,  # stream
     ]
     lib.sirclEpCombine.restype = ctypes.c_int
+    if hasattr(lib, "ncclGetLastError"):
+        lib.ncclGetLastError.argtypes = [ctypes.c_void_p]
+        lib.ncclGetLastError.restype = ctypes.c_char_p
     lib._sircl_ep_bound = True
     return True
+
+
+def _last_error(lib: ctypes.CDLL, comm: Any) -> str:
+    if not hasattr(lib, "ncclGetLastError"):
+        return ""
+    try:
+        raw = lib.ncclGetLastError(comm)
+        if not raw:
+            return ""
+        return raw.decode("utf-8", errors="replace") if isinstance(raw, bytes) else str(raw)
+    except Exception:
+        return ""
+
 
 
 def _is_linear_expert_map(expert_map: torch.Tensor, world: int, rank: int) -> bool:
@@ -158,6 +174,7 @@ def install_sircl_ep_all2all() -> bool:
             self._device_comm = device_comm
             self._workspace: torch.Tensor | None = None
             self._workspace_bytes: int = 0
+            self._retired_workspaces: list[torch.Tensor] = []
             self._linear_map_cache: dict[tuple[int, int, int, int], bool] = {}
             self._active_call: _ActiveEpCall | None = None
             self._max_tokens_cap = _parse_int_env(ENV_MAX_TOKENS, 4096)
@@ -211,6 +228,8 @@ def install_sircl_ep_all2all() -> bool:
                 return None
             alloc_tokens = max(max_tokens, min(self._prealloc_tokens, self._max_tokens_cap))
             alloc_bytes = int(lib.sirclEpWorkspaceBytes(world, alloc_tokens, hidden_bytes))
+            if self._workspace is not None:
+                self._retired_workspaces.append(self._workspace)
             self._workspace = torch.empty((alloc_bytes,), dtype=torch.uint8, device=device)
             self._workspace_bytes = alloc_bytes
             return self._workspace
@@ -326,8 +345,11 @@ def install_sircl_ep_all2all() -> bool:
                 )
             )
             if rc != 0:
+                err_text = _last_error(lib, comm)
                 if self.sircl_dispatches == 0:
-                    self._disabled_reason = f"sirclEpDispatch returned rc={rc}"
+                    self._disabled_reason = f"sirclEpDispatch returned rc={rc}" + (
+                        f" ({err_text})" if err_text else ""
+                    )
                     logger.warning(
                         "SirclEpAll2AllManager falling back to AgRs (%s)", self._disabled_reason
                     )
@@ -340,7 +362,15 @@ def install_sircl_ep_all2all() -> bool:
                         is_sequence_parallel=is_sequence_parallel,
                         extra_tensors=extra_tensors,
                     )
-                raise RuntimeError(f"sirclEpDispatch failed with rc={rc}")
+                raise RuntimeError(
+                    f"sirclEpDispatch failed with rc={rc}"
+                    f" (rank={rank} num_tokens={num_tokens} max_tokens={max_tokens}"
+                    f" sizes={list(sizes)} hidden_bytes={hidden_bytes} top_k={top_k}"
+                    f" num_experts={num_experts} dispatches={self.sircl_dispatches}"
+                    f" combines={self.sircl_combines}"
+                    + (f" err={err_text!r}" if err_text else "")
+                    + ")"
+                )
 
             self.sircl_dispatches += 1
             self._active_call = _ActiveEpCall(
@@ -385,7 +415,15 @@ def install_sircl_ep_all2all() -> bool:
                 )
             )
             if rc != 0:
-                raise RuntimeError(f"sirclEpCombine failed with rc={rc}")
+                err_text = _last_error(call.lib, call.comm)
+                raise RuntimeError(
+                    f"sirclEpCombine failed with rc={rc}"
+                    f" (num_tokens={call.num_tokens} max_tokens={call.max_tokens}"
+                    f" hidden_dim={call.hidden_dim} dispatches={self.sircl_dispatches}"
+                    f" combines={self.sircl_combines}"
+                    + (f" err={err_text!r}" if err_text else "")
+                    + ")"
+                )
             self.sircl_combines += 1
             return h_out
 

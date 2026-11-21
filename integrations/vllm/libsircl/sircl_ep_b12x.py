@@ -1,19 +1,30 @@
-"""Opt-in b12x Expert-Parallel (EP) W4A16 MoE integration for vLLM.
+"""Opt-in b12x Expert-Parallel (EP) W4A8/W4A16 MoE integration for vLLM.
 
 Activated when ``SIRCL_B12X_EP_MOE=1`` is set and the ``libsircl`` vLLM plugin
 runs. Enables ``B12xExperts`` to run with ``--enable-expert-parallel`` in both:
 
-- Stage 1 (TP + EP, replicated activations + ``expert_map`` + 1 AllReduce)
+- Stage 1 (TP + EP, replicated activations + ``expert_map`` + 1 AllReduce or
+  deferred reduce-scatter for ``ds41_row_shard``)
 - Stage 3 (DP + EP with ``allgather_reducescatter`` or ``SirclEpAll2AllManager``)
 
-using ``b12x.moe.ep_moe`` and ``b12x.moe._shared.kernels.w4a16.kernel.run_w4a16_moe``
-for MXFP4 W4A16 BF16 weights.
+Supports:
+
+- **MXFP4 W4A8 (``w4a8_mx``)**: remaps global ``topk_ids`` through ``expert_map``
+  on GPU (CUDA-graph safe, clamping out-of-range / ``-1`` padding slots to
+  ``-1``) and invokes ``b12x.moe.fused_moe`` directly (whose kernels skip
+  ``-1`` routes and write exact zeros for tokens with zero local experts).
+- **MXFP4 W4A16 BF16 (``w4a16``)**: runs ``b12x.moe.ep_moe`` /
+  ``run_w4a16_moe`` with native ``expert_map``.
 """
 from __future__ import annotations
 
+import dataclasses
+import inspect
 import logging
+import math
 import os
 import sys
+import threading
 from typing import Any
 
 import torch
@@ -27,6 +38,7 @@ except ImportError:
 
 ENV_FLAG = "SIRCL_B12X_EP_MOE"
 _INSTALLED = False
+_NEG_ONE_CACHE: dict[tuple[int, torch.dtype], torch.Tensor] = {}
 
 
 def enabled(environ=None) -> bool:
@@ -36,6 +48,60 @@ def enabled(environ=None) -> bool:
 
 def _is_capturing() -> bool:
     return bool(torch.cuda.is_available() and torch.cuda.is_current_stream_capturing())
+
+
+def _neg_one_scalar(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
+    dev_idx = -1 if device.index is None else int(device.index)
+    key = (dev_idx, dtype)
+    cached = _NEG_ONE_CACHE.get(key)
+    if cached is not None and cached.device == device:
+        return cached
+    tensor = torch.tensor(-1, dtype=dtype, device=device)
+    _NEG_ONE_CACHE[key] = tensor
+    return tensor
+
+
+def _remap_expert_ids(
+    topk_ids: torch.Tensor,
+    expert_map: torch.Tensor,
+    global_num_experts: int,
+) -> torch.Tensor:
+    """Map global ``topk_ids`` to rank-local IDs (``-1`` for non-local/padding).
+
+    Guards against negative or out-of-range IDs (e.g. ``-1`` padding rows from
+    DP all2all dispatch) before indexing ``expert_map`` so negative indices
+    never wrap around to the last expert on rank ``EP-1``. CUDA-graph safe.
+    """
+    neg_one = _neg_one_scalar(expert_map.device, expert_map.dtype)
+    valid = (topk_ids >= 0) & (topk_ids < global_num_experts)
+    safe_ids = topk_ids.clamp(0, max(global_num_experts - 1, 0))
+    return torch.where(valid, expert_map[safe_ids], neg_one).contiguous()
+
+
+def _widen_workload_for_ep(workload: Any, ep_mult: int, cap: int = 32768) -> Any:
+    """Scale a ``B12xWorkload`` by ``ep_mult`` for DP+EP all2all dispatch."""
+    if ep_mult <= 1:
+        return workload
+    max_base = int(workload.max_tokens)
+    max_target = min(max(max_base * ep_mult, max_base), cap)
+    fixed_set = {int(c) for c in workload.fixed_token_counts if 0 < int(c) < max_target}
+    for c in list(fixed_set):
+        scaled = c * ep_mult
+        if 0 < scaled < max_target:
+            fixed_set.add(scaled)
+    counts_set = {int(c) for c in workload.token_counts if 0 < int(c) <= max_target}
+    counts_set.update(fixed_set)
+    counts_set.add(max_target)
+    for c in list(counts_set):
+        scaled = c * ep_mult
+        if 0 < scaled <= max_target:
+            counts_set.add(scaled)
+    return dataclasses.replace(
+        workload,
+        max_tokens=max_target,
+        token_counts=tuple(sorted(counts_set)),
+        fixed_token_counts=tuple(sorted(fixed_set)),
+    )
 
 
 def _is_ep_parallel_supported(moe_parallel_config: Any) -> bool:
@@ -54,7 +120,7 @@ def _is_ep_parallel_supported(moe_parallel_config: Any) -> bool:
 
 
 def install_b12x_ep_moe() -> bool:
-    """Patch vLLM's ``B12xExperts`` to support EP via ``b12x.moe.ep_moe``."""
+    """Patch vLLM's ``B12xExperts`` to support W4A8 and W4A16 EP."""
     global _INSTALLED
     if _INSTALLED:
         return True
@@ -85,10 +151,14 @@ def install_b12x_ep_moe() -> bool:
     orig_workspace_shapes = B12xExperts.workspace_shapes
     orig_apply = B12xExperts.apply
     kMxfp4Static = vllm_b12x.kMxfp4Static
+    kMxfp8Dynamic = vllm_b12x.kMxfp8Dynamic
     normalize_topk_weights = vllm_b12x._normalize_topk_weights
 
     def _use_ep(self: Any) -> bool:
         return bool(self.moe_config.moe_parallel_config.use_ep)
+
+    def _is_w4a8_ep(self: Any) -> bool:
+        return _use_ep(self) and getattr(self, "_quant_mode", None) != "w4a16"
 
     def _ep_layout_for(self: Any, tokens: int, activation: Any, route_ids_workspace: bool):
         cache = getattr(self, "_sircl_ep_layout_cache", None)
@@ -155,10 +225,13 @@ def install_b12x_ep_moe() -> bool:
         activation_format: Any,
     ) -> tuple[bool, str | None]:
         if moe_config.moe_parallel_config.use_ep:
-            if weight_key != kMxfp4Static or activation_key is not None:
+            if (weight_key, activation_key) not in (
+                (kMxfp4Static, kMxfp8Dynamic),
+                (kMxfp4Static, None),
+            ):
                 return (
                     False,
-                    "b12x EP MoE supports only MXFP4 W4A16 BF16 (kMxfp4Static, None)",
+                    "b12x EP MoE supports only MXFP4 W4A8/W4A16 BF16",
                 )
             if moe_config.in_dtype != torch.bfloat16:
                 return False, "b12x EP MoE requires bfloat16 activations"
@@ -293,10 +366,27 @@ def install_b12x_ep_moe() -> bool:
     def get_b12x_preparation_units(self: Any, layer: Any, workload: Any):
         if not _use_ep(self):
             return orig_get_prep_units(self, layer, workload)
-        _patch_deepseek_v4_ced_dp_metadata()
+        ep_cfg = self.moe_config.moe_parallel_config
+        if int(getattr(ep_cfg, "dp_size", 1)) > 1:
+            _patch_deepseek_v4_ced_dp_metadata()
+            _patch_dp_sync_cudagraph_num_reqs()
+            _patch_dp_speculator_propose_sync()
+        if _is_w4a8_ep(self):
+            # Pre-populate cached -1 scalar before CUDA graph capture.
+            if torch.cuda.is_available():
+                _neg_one_scalar(
+                    torch.device("cuda", torch.cuda.current_device()),
+                    torch.int32,
+                )
+            ep_mult = int(ep_cfg.ep_size) if ep_cfg.use_all2all_kernels else 1
+            prep_workload = (
+                _widen_workload_for_ep(workload, ep_mult)
+                if getattr(workload, "stage", None) == "weights" and ep_mult > 1
+                else workload
+            )
+            return orig_get_prep_units(self, layer, prep_workload)
         # Pre-populate layout cache and eagerly compile b12x W4A16 EP kernels
         # before vLLM freezes b12x kernel resolution for CUDA graph capture.
-        ep_cfg = self.moe_config.moe_parallel_config
         ep_mult = int(ep_cfg.ep_size) if ep_cfg.use_all2all_kernels else 1
         num_experts = int(self.moe_config.num_experts)
         topk = int(self.moe_config.experts_per_token)
@@ -327,7 +417,7 @@ def install_b12x_ep_moe() -> bool:
         expert_tokens_meta: Any,
         activation: Any,
     ):
-        if not _use_ep(self):
+        if not _use_ep(self) or _is_w4a8_ep(self):
             return orig_workspace_shapes(
                 self, M, N, K, topk, global_num_experts, local_num_experts, expert_tokens_meta, activation
             )
@@ -379,13 +469,35 @@ def install_b12x_ep_moe() -> bool:
             )
         if expert_map is None:
             raise ValueError("b12x EP MoE requires an expert_map tensor")
+        m = int(hidden_states.shape[0])
+        if m == 0:
+            return
+        if _is_w4a8_ep(self):
+            local_topk_ids = _remap_expert_ids(
+                topk_ids, expert_map, int(global_num_experts)
+            )
+            return orig_apply(
+                self,
+                output,
+                hidden_states,
+                w1,
+                w2,
+                topk_weights,
+                local_topk_ids,
+                activation,
+                global_num_experts,
+                None,
+                a1q_scale,
+                a2_scale,
+                workspace13,
+                workspace2,
+                expert_tokens_meta,
+                apply_router_weight_on_input,
+            )
         if bool(apply_router_weight_on_input) != self._apply_router_weight_on_input:
             raise ValueError(
                 "apply_router_weight_on_input does not match the prepared b12x EP MoE plan"
             )
-        m = int(hidden_states.shape[0])
-        if m == 0:
-            return
         if (
             topk_ids.dtype not in (torch.int32, torch.int64)
             or not topk_ids.is_contiguous()
@@ -447,15 +559,75 @@ def install_b12x_ep_moe() -> bool:
 
     _patch_b12x_dp_global_rank()
     _patch_modular_kernel_dp_workspace()
-    _patch_deepseek_v4_ced_dp_metadata()
+    _patch_dp_sync_cudagraph_num_reqs()
+    _patch_dp_speculator_propose_sync()
 
     _INSTALLED = True
-    logger.info("Installed SIRCL b12x EP W4A16 MoE extension on B12xExperts")
+    logger.info("Installed SIRCL b12x EP W4A8/W4A16 MoE extension on B12xExperts")
     return True
 
 
+def _resize_dp_workspace(
+    fused_experts: Any,
+    workspace: tuple[torch.Tensor, torch.Tensor, torch.Tensor],
+    *,
+    in_dtype: torch.dtype,
+    device: torch.device,
+    m_full: int,
+    n_dim: int,
+    k_dim: int,
+    top_k: int,
+    global_num_experts: int,
+    local_num_experts: int,
+    expert_tokens_meta: Any,
+    activation: Any,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Expand an ``M_local`` workspace to ``m_full`` without re-leasing the shared arena.
+
+    ``prepare_workspace`` leases routed workspace and ``shared_workspace`` from
+    the same ``WorkspaceManager`` arena so ``shared_experts`` can overlap on an
+    aux stream. Dropping ``workspace=None`` would force ``_allocate_buffers`` to
+    lease from that same arena a second time, colliding with or freeing
+    ``shared_workspace`` while the aux stream is executing. Instead, reuse any
+    already-large-enough routed slices (e.g. W4A8's pre-sized ``workspace2``)
+    and allocate only undersized tensors directly via ``torch.empty``.
+    """
+    ws13, ws2, fused_out = workspace
+    ws_dtype = fused_experts.workspace_dtype(in_dtype)
+    out_dtype = fused_experts.output_dtype
+    ws13_shape, ws2_shape, out_shape = fused_experts.workspace_shapes(
+        m_full,
+        n_dim,
+        k_dim,
+        top_k,
+        global_num_experts,
+        local_num_experts,
+        expert_tokens_meta,
+        activation,
+    )
+
+    if ws13.shape != ws13_shape or ws13.dtype != ws_dtype:
+        need13 = math.prod(ws13_shape)
+        if ws13.dtype == ws_dtype and ws13.is_contiguous() and ws13.numel() >= need13:
+            ws13 = ws13.view(-1)[:need13].view(ws13_shape)
+        else:
+            ws13 = torch.empty(ws13_shape, dtype=ws_dtype, device=device)
+
+    if ws2.shape != ws2_shape or ws2.dtype != ws_dtype:
+        need2 = math.prod(ws2_shape)
+        if ws2.dtype == ws_dtype and ws2.is_contiguous() and ws2.numel() >= need2:
+            ws2 = ws2.view(-1)[:need2].view(ws2_shape)
+        else:
+            ws2 = torch.empty(ws2_shape, dtype=ws_dtype, device=device)
+
+    if fused_out.shape != out_shape or fused_out.dtype != out_dtype:
+        fused_out = torch.empty(out_shape, dtype=out_dtype, device=device)
+
+    return ws13, ws2, fused_out
+
+
 def _patch_modular_kernel_dp_workspace() -> None:
-    """Drop pre-allocated M_local workspace when DP all2all dispatch expands M_full."""
+    """Resize pre-allocated M_local workspace when DP all2all expands M_full."""
     try:
         from vllm.model_executor.layers.fused_moe.modular_kernel import (
             FusedMoEKernelModularImpl,
@@ -467,26 +639,53 @@ def _patch_modular_kernel_dp_workspace() -> None:
         return
 
     orig_fe = FusedMoEKernelModularImpl._fused_experts
+    sig = inspect.signature(orig_fe)
+    param_names = list(sig.parameters)[1:]  # exclude self
+    ws_pos = param_names.index("workspace") if "workspace" in param_names else 14
+
+    def _get_arg(name: str, pos: int, args: tuple[Any, ...], kwargs: dict[str, Any]) -> Any:
+        if name in kwargs:
+            return kwargs[name]
+        return args[pos]
 
     def _wrapped_fused_experts(self, *args, **kwargs):
         workspace = kwargs.get("workspace")
         ws_in_args = False
-        if workspace is None and len(args) >= 13:
-            workspace = args[12]
+        if workspace is None and len(args) > ws_pos:
+            workspace = args[ws_pos]
             ws_in_args = True
         if workspace is not None:
-            a1q = kwargs["a1q"] if "a1q" in kwargs else args[1]
-            w1 = kwargs["w1"] if "w1" in kwargs else args[3]
-            w2 = kwargs["w2"] if "w2" in kwargs else args[4]
-            topk_ids = kwargs["topk_ids"] if "topk_ids" in kwargs else args[6]
-            _, m_full, _, _, _ = self.fused_experts.moe_problem_size(
+            a1q = _get_arg("a1q", 1, args, kwargs)
+            w1 = _get_arg("w1", 3, args, kwargs)
+            w2 = _get_arg("w2", 4, args, kwargs)
+            topk_ids = _get_arg("topk_ids", 6, args, kwargs)
+            _, m_full, n_dim, k_dim, top_k = self.fused_experts.moe_problem_size(
                 a1q, w1, w2, topk_ids
             )
-            if workspace[2].shape[0] != m_full:
+            if m_full > 0 and workspace[2].shape[0] != m_full:
+                in_dtype = _get_arg("in_dtype", 0, args, kwargs)
+                activation = _get_arg("activation", 7, args, kwargs)
+                global_num_experts = _get_arg("global_num_experts", 8, args, kwargs)
+                local_num_experts = _get_arg("local_num_experts", 9, args, kwargs)
+                expert_tokens_meta = _get_arg("expert_tokens_meta", 12, args, kwargs)
+                resized = _resize_dp_workspace(
+                    self.fused_experts,
+                    workspace,
+                    in_dtype=in_dtype,
+                    device=a1q.device,
+                    m_full=m_full,
+                    n_dim=n_dim,
+                    k_dim=k_dim,
+                    top_k=top_k,
+                    global_num_experts=global_num_experts,
+                    local_num_experts=local_num_experts,
+                    expert_tokens_meta=expert_tokens_meta,
+                    activation=activation,
+                )
                 if ws_in_args:
-                    args = (*args[:12], None, *args[13:])
+                    args = (*args[:ws_pos], resized, *args[ws_pos + 1 :])
                 else:
-                    kwargs["workspace"] = None
+                    kwargs["workspace"] = resized
         return orig_fe(self, *args, **kwargs)
 
     _wrapped_fused_experts._sircl_dp_ws_patched = True
@@ -651,4 +850,178 @@ def _patch_deepseek_v4_ced_dp_metadata() -> None:
     _wrapped_model_forward._sircl_ced_dp_patched = True
     model_cls.forward = _wrapped_model_forward
     logger.info("Patched DeepseekV4Model.forward for CED DP metadata synchronization")
+
+
+def _patch_dp_sync_cudagraph_num_reqs() -> None:
+    """Ensure DP>1 FULL CUDA-graph dispatch agrees on ``num_reqs`` across ranks.
+
+    Upstream ``dp_utils.sync_cudagraph_and_dp_padding`` passes each rank's local
+    ``num_reqs`` to ``cudagraph_manager.dispatch(...)``. With ``varlen_decode``
+    (e.g. DSpark adaptive verification), multiple FULL graphs can share the same
+    ``synced_num_tokens`` with different ``num_reqs``; ranks with different local
+    ``num_reqs`` then select different descriptors and store divergent
+    ``DPSyncState.num_reqs`` values, causing downstream drafters (DSpark/DFlash)
+    to replay different batch sizes across DP ranks.
+    """
+    try:
+        from vllm.config.compilation import CUDAGraphMode
+        from vllm.v1.worker.gpu import dp_utils
+    except ImportError:
+        return
+
+    if getattr(dp_utils.sync_cudagraph_and_dp_padding, "_sircl_dp_num_reqs_patched", False):
+        return
+
+    tls = threading.local()
+    orig_dist = dp_utils.dist
+
+    class _DistProxy:
+        def __getattr__(self, name: str) -> Any:
+            return getattr(orig_dist, name)
+
+        def all_reduce(self, tensor: Any, *args: Any, **kwargs: Any) -> Any:
+            res = orig_dist.all_reduce(tensor, *args, **kwargs)
+            if (
+                getattr(tls, "active", False)
+                and isinstance(tensor, torch.Tensor)
+                and tensor.ndim == 2
+                and tensor.shape[0] >= 6
+            ):
+                tls.max_num_reqs = int(tensor[5].max().item())
+            return res
+
+    class _SyncedNumReqsManagerProxy:
+        def __init__(self, manager: Any, get_min_num_reqs: Any) -> None:
+            self._manager = manager
+            self._get_min_num_reqs = get_min_num_reqs
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self._manager, name)
+
+        def dispatch(self, num_reqs: int, *args: Any, **kwargs: Any) -> Any:
+            synced = self._get_min_num_reqs()
+            eff = max(int(num_reqs), int(synced)) if synced is not None else num_reqs
+            desc = self._manager.dispatch(eff, *args, **kwargs)
+            if (
+                synced is not None
+                and desc.cg_mode != CUDAGraphMode.FULL
+                and desc.num_reqs is not None
+                and desc.num_reqs != num_reqs
+            ):
+                desc = dataclasses.replace(desc, num_reqs=num_reqs)
+            return desc
+
+    orig_sync = dp_utils.sync_cudagraph_and_dp_padding
+    orig_dispatch = dp_utils.dispatch_cg_and_sync_dp
+    dispatch_params = list(inspect.signature(orig_dispatch).parameters)
+    dp_sync_pos = (
+        dispatch_params.index("dp_sync") - 1 if "dp_sync" in dispatch_params else 11
+    )
+
+    def _wrapped_sync(cudagraph_manager: Any, *args: Any, **kwargs: Any):
+        prev_active = getattr(tls, "active", False)
+        prev_max = getattr(tls, "max_num_reqs", None)
+        tls.active = True
+        tls.max_num_reqs = None
+        cm = (
+            _SyncedNumReqsManagerProxy(
+                cudagraph_manager, lambda: getattr(tls, "max_num_reqs", None)
+            )
+            if cudagraph_manager is not None
+            else None
+        )
+        try:
+            return orig_sync(cm, *args, **kwargs)
+        finally:
+            tls.active = prev_active
+            tls.max_num_reqs = prev_max
+
+    def _wrapped_dispatch(cudagraph_manager: Any, *args: Any, **kwargs: Any):
+        dp_sync = kwargs.get("dp_sync")
+        if dp_sync is None and len(args) > dp_sync_pos:
+            dp_sync = args[dp_sync_pos]
+        if dp_sync is not None and cudagraph_manager is not None:
+            min_reqs = int(dp_sync.num_reqs)
+            cudagraph_manager = _SyncedNumReqsManagerProxy(
+                cudagraph_manager, lambda: min_reqs
+            )
+        return orig_dispatch(cudagraph_manager, *args, **kwargs)
+
+    _wrapped_sync._sircl_dp_num_reqs_patched = True
+    _wrapped_dispatch._sircl_dp_num_reqs_patched = True
+    dp_utils.dist = _DistProxy()
+    dp_utils.sync_cudagraph_and_dp_padding = _wrapped_sync
+    dp_utils.dispatch_cg_and_sync_dp = _wrapped_dispatch
+
+    for mod_name in (
+        "vllm.v1.worker.gpu.model_runner",
+        "vllm.v1.worker.gpu.spec_decode.dflash.speculator",
+        "vllm.v1.worker.gpu.spec_decode.autoregressive.speculator",
+    ):
+        mod = sys.modules.get(mod_name)
+        if mod is not None and getattr(mod, "dispatch_cg_and_sync_dp", None) is orig_dispatch:
+            mod.dispatch_cg_and_sync_dp = _wrapped_dispatch
+
+    logger.info("Patched dp_utils CUDA-graph DP sync to agree on num_reqs across ranks")
+
+
+def _patch_dp_speculator_propose_sync() -> None:
+    """Keep DP>1 speculator ``propose()`` in lockstep when ``num_spec_tokens_to_schedule == 0``.
+
+    Idle DP ranks in ``execute_dummy_batch()`` unconditionally call
+    ``speculator.propose(..., dummy_run=True)`` to stay synchronized on MoE
+    drafter collectives, whereas ``GPUModelRunner.sample_tokens()`` skips
+    ``propose()`` when ``num_spec_tokens_to_schedule == 0`` (e.g. intermediate
+    chunked-prefill steps or ``max_tokens=1`` requests). Under DP>1, force a
+    ``dummy_run=True`` propose call and discard its output so every DP rank
+    executes the same drafter collectives before entering the next step.
+    """
+    mod = sys.modules.get("vllm.v1.worker.gpu.model_runner")
+    if mod is None:
+        return
+    runner_cls = getattr(mod, "GPUModelRunner", None)
+    if runner_cls is None or getattr(
+        runner_cls.sample_tokens, "_sircl_dp_spec_sync_patched", False
+    ):
+        return
+
+    orig_sample_tokens = runner_cls.sample_tokens
+
+    def _wrapped_sample_tokens(self: Any, *args: Any, **kwargs: Any):
+        state = getattr(self, "execute_model_state", None)
+        spec = getattr(self, "speculator", None)
+        dp_size = int(getattr(self, "dp_size", 1))
+        if (
+            dp_size > 1
+            and spec is not None
+            and state is not None
+            and int(getattr(state, "num_spec_tokens_to_schedule", 1)) == 0
+            and not getattr(state, "boundary_logits_only", False)
+            and hasattr(state, "_replace")
+        ):
+            self.execute_model_state = state._replace(num_spec_tokens_to_schedule=1)
+            orig_propose = spec.propose
+            orig_adaptive = getattr(self, "adaptive_verification", None)
+
+            def _sync_only_propose(*p_args: Any, **p_kwargs: Any):
+                p_kwargs["dummy_run"] = True
+                out = orig_propose(*p_args, **p_kwargs)
+                return out[:, :0]
+
+            spec.propose = _sync_only_propose
+            if orig_adaptive is not None:
+                self.adaptive_verification = None
+            try:
+                return orig_sample_tokens(self, *args, **kwargs)
+            finally:
+                spec.propose = orig_propose
+                if orig_adaptive is not None:
+                    self.adaptive_verification = orig_adaptive
+        return orig_sample_tokens(self, *args, **kwargs)
+
+    _wrapped_sample_tokens._sircl_dp_spec_sync_patched = True
+    runner_cls.sample_tokens = _wrapped_sample_tokens
+    logger.info("Patched GPUModelRunner.sample_tokens for DP>1 speculator propose sync")
+
+
 

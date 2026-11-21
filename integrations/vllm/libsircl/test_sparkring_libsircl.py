@@ -252,3 +252,289 @@ def test_sircl_ep_b12x_parallel_config_matrix():
     assert mod._is_ep_parallel_supported(cfg(use_ep=True, ep_size=4, enable_eplb=True)) is False
     assert mod._is_ep_parallel_supported(cfg(use_ep=True, ep_size=1)) is False
 
+
+def test_sircl_ep_b12x_remap_and_widen():
+    import dataclasses
+
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_w4a8", mod_path)
+    try:
+        import torch
+
+        mod = importlib.util.module_from_spec(spec_b12x)
+        spec_b12x.loader.exec_module(mod)
+    except ImportError:
+        pytest.skip("torch not installed in local test env")
+
+    # Rank 3 of EP4 owns experts 6, 7 out of 8: negative -1 MUST stay -1, not wrap to expert_map[-1] == 1!
+    emap = torch.tensor([-1, -1, -1, -1, -1, -1, 0, 1], dtype=torch.int32)
+    ids = torch.tensor([[6, -1, 7, 8], [0, -5, 7, 6]], dtype=torch.int64)
+    remapped = mod._remap_expert_ids(ids, emap, global_num_experts=8)
+    assert remapped.dtype == torch.int32
+    assert remapped.is_contiguous()
+    assert remapped.tolist() == [[0, -1, 1, -1], [-1, -1, 1, 0]]
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeWorkload:
+        stage: str
+        token_counts: tuple[int, ...]
+        fixed_token_counts: tuple[int, ...]
+        max_tokens: int
+
+    wl = FakeWorkload(stage="weights", token_counts=(5, 6, 96, 8192), fixed_token_counts=(5, 6, 96), max_tokens=8192)
+    widened = mod._widen_workload_for_ep(wl, ep_mult=4, cap=32768)
+    assert widened.max_tokens == 32768
+    assert widened.fixed_token_counts == (5, 6, 20, 24, 96, 384)
+    assert set(widened.fixed_token_counts) <= set(widened.token_counts)
+    assert widened.token_counts[-1] == 32768
+    assert mod._widen_workload_for_ep(wl, ep_mult=1) == wl
+
+
+def test_sircl_ep_b12x_resize_dp_workspace():
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_ws", mod_path)
+    try:
+        import torch
+
+        mod = importlib.util.module_from_spec(spec_b12x)
+        spec_b12x.loader.exec_module(mod)
+    except ImportError:
+        pytest.skip("torch not installed in local test env")
+
+    class FakeExperts:
+        def __init__(self, ws2_len_fn):
+            self._ws2_len_fn = ws2_len_fn
+            self.output_dtype = torch.bfloat16
+
+        def workspace_dtype(self, in_dtype):
+            return in_dtype
+
+        def workspace_shapes(self, m, n, k, topk, ge, le, meta, act):
+            return (0,), (self._ws2_len_fn(m),), (m, k)
+
+    # W4A8 case: workspace2 is already pre-sized for max_tokens (independent of M).
+    # Must reuse ws13 and ws2 in place and only allocate a disjoint fused_out.
+    ws13 = torch.empty((0,), dtype=torch.bfloat16)
+    ws2 = torch.empty((1024,), dtype=torch.bfloat16)
+    out_small = torch.empty((16, 64), dtype=torch.bfloat16)
+    new_ws13, new_ws2, new_out = mod._resize_dp_workspace(
+        FakeExperts(lambda _m: 1024),
+        (ws13, ws2, out_small),
+        in_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+        m_full=64,
+        n_dim=128,
+        k_dim=64,
+        top_k=6,
+        global_num_experts=384,
+        local_num_experts=96,
+        expert_tokens_meta=None,
+        activation="silu",
+    )
+    assert new_ws13 is ws13
+    assert new_ws2 is ws2
+    assert new_out.shape == (64, 64)
+    assert new_out.dtype == torch.bfloat16
+    assert new_out.data_ptr() != out_small.data_ptr()
+
+    # W4A16 case: workspace2 grows with M. Must allocate fresh ws2 + fused_out.
+    new_ws13_b, new_ws2_b, new_out_b = mod._resize_dp_workspace(
+        FakeExperts(lambda m: m * 32),
+        (ws13, ws2, out_small),
+        in_dtype=torch.bfloat16,
+        device=torch.device("cpu"),
+        m_full=64,
+        n_dim=128,
+        k_dim=64,
+        top_k=6,
+        global_num_experts=384,
+        local_num_experts=96,
+        expert_tokens_meta=None,
+        activation="silu",
+    )
+    assert new_ws13_b is ws13
+    assert new_ws2_b is not ws2
+    assert new_ws2_b.shape == (2048,)
+    assert new_out_b.shape == (64, 64)
+
+
+def test_sircl_ep_b12x_dp_sync_num_reqs(monkeypatch):
+    torch = pytest.importorskip("torch")
+    import dataclasses
+    import enum
+    import types
+
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_dp_sync", mod_path)
+    mod = importlib.util.module_from_spec(spec_b12x)
+    spec_b12x.loader.exec_module(mod)
+
+    class FakeCGMode(enum.IntEnum):
+        NONE = 0
+        PIECEWISE = 1
+        FULL = 2
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeDesc:
+        cg_mode: FakeCGMode
+        num_tokens: int
+        num_reqs: int | None
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeDPSync:
+        num_reqs: int
+
+    class FakeDist:
+        def all_reduce(self, tensor, group=None):
+            # Simulate rank 0 having num_reqs=2 and rank 3 having num_reqs=1.
+            tensor[5, 0] = 2
+            tensor[5, 1] = 1
+            tensor[5, 2] = 1
+            tensor[5, 3] = 1
+
+    fake_comp = types.ModuleType("vllm.config.compilation")
+    fake_comp.CUDAGraphMode = FakeCGMode
+    fake_dp = types.ModuleType("vllm.v1.worker.gpu.dp_utils")
+    fake_dp.dist = FakeDist()
+
+    def orig_sync(cm, desired_desc, num_tokens, num_reqs, uniform_tok, dp_size, dp_rank):
+        tensor = torch.zeros(6, dp_size, dtype=torch.int32)
+        tensor[5, dp_rank] = num_reqs
+        fake_dp.dist.all_reduce(tensor)
+        desc = cm.dispatch(num_reqs, 6, None)
+        return desc, FakeDPSync(
+            num_reqs=desc.num_reqs if desc.cg_mode == FakeCGMode.FULL else int(tensor[5].max())
+        )
+
+    def orig_dispatch(cm, num_reqs, num_tokens, uniform_tok, dp_size, dp_rank, dp_sync=None):
+        desc = cm.dispatch(num_reqs, num_tokens, uniform_tok)
+        return desc, dp_sync
+
+    fake_dp.sync_cudagraph_and_dp_padding = orig_sync
+    fake_dp.dispatch_cg_and_sync_dp = orig_dispatch
+
+    for name, m in (
+        ("vllm", types.ModuleType("vllm")),
+        ("vllm.config", types.ModuleType("vllm.config")),
+        ("vllm.config.compilation", fake_comp),
+        ("vllm.v1", types.ModuleType("vllm.v1")),
+        ("vllm.v1.worker", types.ModuleType("vllm.v1.worker")),
+        ("vllm.v1.worker.gpu", types.ModuleType("vllm.v1.worker.gpu")),
+        ("vllm.v1.worker.gpu.dp_utils", fake_dp),
+    ):
+        monkeypatch.setitem(sys.modules, name, m)
+    sys.modules["vllm.v1.worker.gpu"].dp_utils = fake_dp
+
+    mod._patch_dp_sync_cudagraph_num_reqs()
+
+    seen_full = []
+
+    class FakeFullManager:
+        def dispatch(self, num_reqs, num_tokens, uniform_tok):
+            seen_full.append((num_reqs, num_tokens))
+            return FakeDesc(FakeCGMode.FULL, num_tokens, num_reqs)
+
+    # Rank 3 has local num_reqs=1 while rank 0 has num_reqs=2; FULL graph must agree on 2.
+    desc_r3, sync_r3 = fake_dp.sync_cudagraph_and_dp_padding(
+        FakeFullManager(), FakeDesc(FakeCGMode.FULL, 6, 1), 6, 1, None, 4, 3
+    )
+    assert desc_r3.num_reqs == 2
+    assert sync_r3.num_reqs == 2
+    assert seen_full == [(2, 6)]
+
+    # DSpark reuse path with dp_sync.num_reqs=2 must also dispatch with num_reqs=2 on rank 3.
+    seen_full.clear()
+    dspark_desc, _ = fake_dp.dispatch_cg_and_sync_dp(
+        FakeFullManager(), 1, 10, 5, 4, 3, dp_sync=FakeDPSync(num_reqs=2)
+    )
+    assert dspark_desc.num_reqs == 2
+    assert seen_full == [(2, 10)]
+
+    # Eager (NONE) fallback must preserve local num_reqs=1 on the returned descriptor.
+    class FakeNoneManager:
+        def dispatch(self, num_reqs, num_tokens, uniform_tok):
+            return FakeDesc(FakeCGMode.NONE, num_tokens, num_reqs)
+
+    desc_none, sync_none = fake_dp.sync_cudagraph_and_dp_padding(
+        FakeNoneManager(), FakeDesc(FakeCGMode.FULL, 6, 1), 6, 1, None, 4, 3
+    )
+    assert desc_none.num_reqs == 1
+    assert sync_none.num_reqs == 2
+
+
+def test_sircl_ep_b12x_dp_speculator_propose_sync(monkeypatch):
+    torch = pytest.importorskip("torch")
+    import types
+    from typing import NamedTuple
+
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_spec_sync", mod_path)
+    mod = importlib.util.module_from_spec(spec_b12x)
+    spec_b12x.loader.exec_module(mod)
+
+    class FakeExecState(NamedTuple):
+        num_spec_tokens_to_schedule: int
+        boundary_logits_only: bool = False
+
+    propose_calls = []
+    adaptive_calls = []
+
+    class FakeSpec:
+        def propose(self, dummy_run=False):
+            propose_calls.append(dummy_run)
+            return torch.ones((2, 5), dtype=torch.int32)
+
+    class FakeAdaptive:
+        def record_confidences(self):
+            adaptive_calls.append(True)
+
+    class FakeRunner:
+        def __init__(self, dp_size):
+            self.dp_size = dp_size
+            self.speculator = FakeSpec()
+            self.adaptive_verification = FakeAdaptive()
+            self.execute_model_state = None
+
+        def sample_tokens(self, grammar_output):
+            st = self.execute_model_state
+            self.execute_model_state = None
+            if st.num_spec_tokens_to_schedule > 0:
+                draft = self.speculator.propose()
+                if self.adaptive_verification is not None:
+                    self.adaptive_verification.record_confidences()
+                return draft
+            return torch.empty((2, 0), dtype=torch.int32)
+
+    fake_mr = types.ModuleType("vllm.v1.worker.gpu.model_runner")
+    fake_mr.GPUModelRunner = FakeRunner
+    monkeypatch.setitem(sys.modules, "vllm.v1.worker.gpu.model_runner", fake_mr)
+
+    mod._patch_dp_speculator_propose_sync()
+
+    # DP=4, num_spec_tokens_to_schedule=0: must run propose(dummy_run=True), return 0 draft tokens,
+    # skip adaptive_verification, and restore speculator.propose + adaptive_verification afterwards.
+    r_dp4 = FakeRunner(dp_size=4)
+    r_dp4.execute_model_state = FakeExecState(num_spec_tokens_to_schedule=0)
+    out = r_dp4.sample_tokens(None)
+    assert out.shape == (2, 0)
+    assert propose_calls == [True]
+    assert adaptive_calls == []
+    assert r_dp4.adaptive_verification is not None
+
+    # Subsequent normal decode step (num_spec_tokens_to_schedule=5) runs normal propose + adaptive.
+    propose_calls.clear()
+    r_dp4.execute_model_state = FakeExecState(num_spec_tokens_to_schedule=5)
+    out2 = r_dp4.sample_tokens(None)
+    assert out2.shape == (2, 5)
+    assert propose_calls == [False]
+    assert adaptive_calls == [True]
+
+    # DP=1, num_spec_tokens_to_schedule=0: must NOT force propose.
+    propose_calls.clear()
+    r_dp1 = FakeRunner(dp_size=1)
+    r_dp1.execute_model_state = FakeExecState(num_spec_tokens_to_schedule=0)
+    out3 = r_dp1.sample_tokens(None)
+    assert out3.shape == (2, 0)
+    assert propose_calls == []
+
+
