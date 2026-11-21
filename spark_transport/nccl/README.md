@@ -28,6 +28,22 @@ selected cycle devices for both to be advertised. Despite the
 Profiles selecting four functions across two PCIe domains instead use the
 [four-GID routing contract](DUAL_PCI_DOMAIN.md).
 
+### NCCL 2.31.2 on a two-HCA cycle with SGLang
+
+For a four-Spark cycle with one HCA facing each neighbor, apply the [2.31.2 patch](nccl-2.31.2-switchless-cycle.patch)
+to [NCCL commit `7b83616`](https://github.com/NVIDIA/nccl/tree/7b83616df3ae082a1f32bb74c27458bfe8153a13).
+It ports the two-listener-GID and ring-only initialization changes from the [2.30.7 cycle patch](nccl-2.30.7-switchless-cycle.patch).
+
+Set `NCCL_IB_HCA` to the two neighbor devices, `NCCL_ALGO=Ring` and `NCCL_SWITCHLESS_RING_ONLY=1`.
+For SGLang, point both `SGLANG_NCCL_SO_PATH` and `LD_PRELOAD` at the resulting library on every rank.
+The tested fleet used one /30 subnet per cable and host-staged RoCE. The build and launch commands include
+the remaining transport settings. [Build and launch instructions](https://github.com/looskis/labski/tree/b4874b107855f9e56e41df923ccd9f3466aaa2e4/inference-recipes/transport/nccl-switchless/)
+
+On that fleet, the Inkling SGLang image timed out during its first all-reduce with stock NCCL 2.30.7 and stock
+2.31.2. With the patched library and ring-only initialization, all four ranks returned the expected sum on
+eight calls each at 1 KiB, 64 KiB and 1 MiB. The same configuration served six chat requests with the native
+Inkling 2 Small checkpoint. [Controls, per-port counters and serving results](https://github.com/looskis/labski/tree/b4874b107855f9e56e41df923ccd9f3466aaa2e4/inference-recipes/results/inkling2-gb10-runtime-2026-11-19/)
+
 ## Runtime contract
 
 Use the patched NCCL library selected by the profile, either embedded in its
