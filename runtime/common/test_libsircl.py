@@ -14,7 +14,7 @@ import sys
 
 import pytest
 
-from runtime.common import fabric_document, image_lock, installer, libsircl, transport
+from runtime.common import fabric_document, image_lock, installer, installer_image, libsircl, serving, transport
 from runtime.common.test_image_lock import libsircl_lock, sircl_lock
 from runtime.common.test_transport import TP2, TP4, document, install_site
 from spark_transport.sircl.sparkring_sircl.vllm.serve import plan as serve_plan
@@ -250,6 +250,76 @@ def test_vllm_features_libsircl_does_not_carry_are_refused(flags, message):
 def test_two_pipeline_stages_and_expert_parallelism_on_grouped_all_gathers_pass():
     assert libsircl.capability_problems(["serve", "-pp", "2", "--enable-expert-parallel", "--all2all-backend",
                                          "allgather_reducescatter"]) == []
+
+
+def pinned_image():
+    """The v3 lock of the image the DeepSeek expert-parallel deployment is measured on."""
+    return json.loads(installer_image.lock_path(serving.ROW_OWNED_PREFILL_IMAGE).read_text(encoding="utf-8"))
+
+
+def test_the_expert_parallel_switch_reaches_the_container_beside_libsircls_own_settings():
+    """R1: the pinned TP4+EP4 deployment keeps both plugins, vLLM's loader and every libsircl setting.
+
+    ``libsircl.adapt`` drops a profile's ``SIRCL_*`` variables, since they
+    configure SIRCL's own adapter, which this transport does not run. The
+    expert-parallel switch is the libsircl plugin's (``SIRCL_B12X_EP_MOE``) and
+    the link geometry is libsircl's own, so the serving settings apply after the
+    transport and both survive beside the transport's route variables.
+    """
+    value = pinned_image()
+    section = libsircl.section(value, document("path", 4), [0, 1, 2, 3], dcp=1)
+    model = (serving.ROW_OWNED_PREFILL_PROFILE, serving.ROW_OWNED_PREFILL_CHECKPOINT)
+    common = dict(image_runtime=image_lock.v2_view(value), transport=section)
+    plain = installer.make_lock(model[0], install_site(4), "1" * 40, "2" * 64, model[1], **common)
+    expert = installer.make_lock(model[0], install_site(4), "1" * 40, "2" * 64, model[1],
+                                 settings={"expert_parallel": True}, **common)
+    r1 = installer.make_lock(model[0], install_site(4), "1" * 40, "2" * 64, model[1],
+                             settings={"expert_parallel": True, "row_owned_prefill": True}, **common)
+    assert len({plain["id"], expert["id"], r1["id"]}) == 3 and installer.validate(r1) == r1
+    assert r1["serving"] == {"expert_parallel": True, "row_owned_prefill": True}
+    assert r1["selection"]["profile"] == model[0] and r1["selection"]["target_variant"] == model[1]
+    for rank, (base, only, both) in enumerate(zip(installer.specifications(plain),
+                                                  installer.specifications(expert),
+                                                  installer.specifications(r1), strict=True)):
+        assert "SIRCL_B12X_EP_MOE" not in base.environment and only.environment["SIRCL_B12X_EP_MOE"] == "1"
+        assert both.environment["SIRCL_B12X_EP_MOE"] == "1"
+        plugins = base.environment["VLLM_PLUGINS"].split(",")
+        assert plugins[0] == "b12x_loader" and plugins[-1] == libsircl.PLUGIN_NAME
+        assert only.environment["VLLM_PLUGINS"].split(",") == [name for name in plugins if name != "b12x_loader"]
+        assert both.environment["VLLM_PLUGINS"].split(",") == [
+            *[name for name in plugins if name != "b12x_loader"], "ds41_row_shard"]
+        assert (only.command[only.command.index("--load-format") + 1],
+                base.command[base.command.index("--load-format") + 1]) == ("auto", "b12x")
+        for spec in (only, both):
+            assert spec.command.count("--enable-expert-parallel") == 1
+            assert libsircl.argument(spec.command, "--all2all-backend") == serving.EXPERT_ALL2ALL
+            # The transport turns vLLM's custom all-reduce off, as the row-owned experiment does.
+            assert spec.command.count(libsircl.CUSTOM_ALL_REDUCE_OFF) == 1
+            # libsircl's own checks pass on the command the experiment serves.
+            assert libsircl.refusals(spec.environment, spec.command) == []
+        assert both.environment["PYTHONPATH"].split(":")[0] == serving.ROW_OWNED_PREFILL_TARGET
+        assert [(mount.target, mount.read_only) for mount in both.mounts][-2:] == [
+            (serving.ROW_OWNED_PREFILL_TARGET, True), (serving.ROW_OWNED_SIRCL_TARGET, True)]
+        # libsircl's own settings are the transport's, and only the two serving
+        # settings differ from `common_settings`' containers.
+        block = section["libsircl"]
+        assert (both.environment["SPARKRING_LIBSIRCL_LIBRARY"], both.environment["SPARKRING_LIBSIRCL_SHA256"]) == (
+            block["library"]["path"], block["library"]["sha256"])
+        assert (both.environment["LIBSIRCL_TRANSPORT"], both.environment["LIBSIRCL_FAIL_STOP"],
+                both.environment["LIBSIRCL_NCCL_API_VERSION"]) == ("verbs", "1", "22705")
+        assert both.environment["SIRCL_BOOTSTRAP_ADDR"] == both.environment["VLLM_HOST_IP"]
+        assert {key for key in both.environment if key.startswith("SIRCL_") and key not in ROUTES} == {
+            "SIRCL_GID_INDEX", "SIRCL_BOOTSTRAP_ADDR", "SIRCL_ENABLED", "SIRCL_B12X_EP_MOE",
+            *serving.EXPERT_PARALLEL_LINK}
+        # The link geometry of the measured deployment is the row-owned pairing's;
+        # expert parallelism alone keeps libsircl's defaults.
+        assert {name: both.environment[name] for name in serving.EXPERT_PARALLEL_LINK} == serving.EXPERT_PARALLEL_LINK
+        assert not set(only.environment) & set(serving.EXPERT_PARALLEL_LINK)
+        assert not set(base.environment) & set(serving.EXPERT_PARALLEL_LINK)
+        assert (both.command[both.command.index("--max-model-len") + 1],
+                base.command[base.command.index("--max-model-len") + 1]) == (str(serving.ROW_OWNED_PREFILL_CONTEXT),
+                                                                             "1048576")
+        assert ("--headless" in both.command) == bool(rank)
 
 
 def test_the_lane_runs_in_the_startup_wait_regime_at_the_librarys_limit():

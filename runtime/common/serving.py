@@ -76,6 +76,8 @@ ABOVE_PROFILE = frozenset({"kv_cache_gib"})
 # The experiment uses the pinned installer image and the deployment's retained source.
 ROW_OWNED_PREFILL = "row_owned_prefill"
 CHAIN_ALL_GATHER = "chain_all_gather"
+ROW_OWNED_PREFILL_PROFILE = "deepseek-v41-flash-tp4"
+ROW_OWNED_PREFILL_CHECKPOINT = "1017"
 ROW_OWNED_PREFILL_IMAGE = "dev-20261013-dcp2prefill-status038-sircl-tp6"
 ROW_OWNED_PREFILL_IMAGE_ID = "sha256:3cc9a81fd344fe52fe9cc261b46dc051e3c3f494e51b8142846a5f854835c502"
 ROW_OWNED_PREFILL_CONTEXT = 262144
@@ -83,6 +85,45 @@ ROW_OWNED_PREFILL_SOURCE = "integrations/vllm/ds41_row_shard"
 ROW_OWNED_PREFILL_TARGET = "/opt/ds41_row_shard"
 ROW_OWNED_SIRCL_SOURCE = "spark_transport/sircl/sparkring_sircl/vllm/adapter.py"
 ROW_OWNED_SIRCL_TARGET = "/usr/local/lib/python3.12/dist-packages/sparkring_sircl/vllm/adapter.py"
+# Expert parallelism holds each rank's experts whole beside the batch's tokens:
+# every rank keeps a copy of the activations, gathers the rows its experts take
+# and reduce-scatters the result, so its grouped collectives are all-gathers and
+# reduce-scatters (integrations/vllm/libsircl/sircl_ep_b12x.py, which the
+# libsircl vLLM plugin installs when SIRCL_B12X_EP_MOE is set). The image's B12X
+# weight loader shards this checkpoint for an expert-parallel rank through
+# vLLM's expert map and read the same target-model weights in 13.70 s against
+# vLLM's own loader's 115.99 s on ring 4-7. Its effect on total startup and on
+# the served outputs is unmeasured, so an expert-parallel deployment loads with
+# vLLM's own loader and leaves that plugin out until a launch with
+# EXPERT_LOADER_EP measures both
+# (performance/records/deepseek-v41-flash/row-owned-tp4-ep4-libsircl-20261121.md).
+EXPERT_PARALLEL = "expert_parallel"
+EXPERT_ALL2ALL = "allgather_reducescatter"
+EXPERT_LOADER_EP = False
+EXPERT_LOADER_PLUGINS = ("b12x_loader",)
+# The libsircl link geometry of the row-owned expert-parallel deployment on ring
+# 4-7: a 1 MiB link slot, 1 MiB pieces for the grouped all-gather, reduce-scatter
+# and all-reduce, and a 64 KiB one-shot ceiling, against the untuned deployment's
+# 4 MiB slot and pieces and 131,072-byte ceiling. The `path-4` row of
+# `runtime/common/sircl-tuning-defaults.json` records the same geometry for SIRCL
+# sessions; libsircl applies no tuning row, so a libsircl deployment takes these
+# values from its environment alone. On the row-owned expert-parallel deployment
+# the geometry raised cold-prefill medians of seven samples by 5.6%, 9.7% and
+# 11.5% at 16,384, 65,536 and 131,072 tokens, left decode at parity (87.95,
+# 192.16, 279.43 and 404.22 tok/s at one, four, eight and sixteen requests,
+# against 86.55, 185.11, 255.41 and 418.76) and the KV pool 0.05 GiB larger (17.77
+# against 17.72 GiB)
+# (performance/records/deepseek-v41-flash/row-owned-tp4-ep4-libsircl-20261121.md).
+# A 16,384-token prefill batch on top of it measured 0.8 to 5.1 points higher
+# but cost 10 to 17% of decode at one, four and sixteen requests, so the batch
+# stays the profile's 8,192.
+EXPERT_PARALLEL_LINK = {
+    "SIRCL_ONESHOT_MAX_BYTES": "65536",
+    "SIRCL_LINK_SLOT_BYTES": "1048576",
+    "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+    "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+    "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+}
 # name: (container environment variable, value, help). save_cpu shortens the
 # time vLLM's shared-memory readers poll after a read from one second to 2 ms,
 # so between decode steps they sleep until notified instead of keeping CPU
@@ -101,6 +142,9 @@ INSTALL_SWITCHES = {
                         "experimental DeepSeek V4.1-Flash-1017 prefill with token rows split across four Sparks"),
     CHAIN_ALL_GATHER: ("SIRCL_GATHER_SCHEDULE", "chain",
                        "use direct-link SIRCL all-gather with --row-owned-prefill"),
+    EXPERT_PARALLEL: ("SIRCL_B12X_EP_MOE", "1",
+                      "experimental DeepSeek V4.1-Flash-1017 expert parallelism over libsircl's all-gather and "
+                      "reduce-scatter, with or without --row-owned-prefill"),
 }
 # The installer image capability (installer_image.capabilities) that each
 # switch needs: on an image without it, the switch's variable would change nothing.
@@ -262,17 +306,46 @@ def check_row_owned_prefill(settings, model, image, transport):
             raise ValueError(f"{option(CHAIN_ALL_GATHER)} requires {option(ROW_OWNED_PREFILL)}")
         return
     flag = option(ROW_OWNED_PREFILL)
-    if model != ("deepseek-v41-flash-tp4", "1017"):
-        raise ValueError(f"{flag} requires --profile deepseek-v41-flash-tp4 --checkpoint 1017")
+    if model != (ROW_OWNED_PREFILL_PROFILE, ROW_OWNED_PREFILL_CHECKPOINT):
+        raise ValueError(f"{flag} requires --profile {ROW_OWNED_PREFILL_PROFILE} "
+                         f"--checkpoint {ROW_OWNED_PREFILL_CHECKPOINT}")
     if not image or image["image_id"] != ROW_OWNED_PREFILL_IMAGE_ID:
         raise ValueError(f"{flag} requires --image {ROW_OWNED_PREFILL_IMAGE}")
-    if (not transport or transport.get("backend") != "sircl" or transport.get("nccl") != "never"
-            or transport["group"]["name"] != "path-4" or transport["group"]["dcp"] != 1):
-        raise ValueError(f"{flag} requires --transport sircl --nccl never on a four-Spark path")
-    if chain and any("tp" in entry["sessions"] for entry in transport["tuning"]["tables"]):
-        raise ValueError(f"{option(CHAIN_ALL_GATHER)} requires a SIRCL path without a TP tuning table")
+    if settings.get(EXPERT_PARALLEL):
+        # Expert parallelism carries the row-owned MoE output's single reduction
+        # on libsircl's all-gather and reduce-scatter; SIRCL's own adapter, and
+        # its schedule and tuning table, run only the tensor-parallel experiment.
+        if (transport or {}).get("backend") != "libsircl":
+            raise ValueError(f"{flag} with {option(EXPERT_PARALLEL)} requires --transport libsircl")
+        if chain:
+            raise ValueError(f"{option(CHAIN_ALL_GATHER)} selects SIRCL's own all-gather schedule, which a libsircl "
+                             f"deployment does not run; leave it out with {option(EXPERT_PARALLEL)}")
+    else:
+        if (not transport or transport.get("backend") != "sircl" or transport.get("nccl") != "never"
+                or transport["group"]["name"] != "path-4" or transport["group"]["dcp"] != 1):
+            raise ValueError(f"{flag} requires --transport sircl --nccl never on a four-Spark path")
+        if chain and any("tp" in entry["sessions"] for entry in transport["tuning"]["tables"]):
+            raise ValueError(f"{option(CHAIN_ALL_GATHER)} requires a SIRCL path without a TP tuning table")
     if settings.get("context_length", ROW_OWNED_PREFILL_CONTEXT) > ROW_OWNED_PREFILL_CONTEXT:
         raise ValueError(f"{flag} supports --context-length up to {ROW_OWNED_PREFILL_CONTEXT} tokens")
+
+
+def check_expert_parallel(settings, model, image, transport):
+    """Admit the expert-parallel MoE build for the measured image, model and transport."""
+    if not settings.get(EXPERT_PARALLEL):
+        return
+    flag = option(EXPERT_PARALLEL)
+    if model != (ROW_OWNED_PREFILL_PROFILE, ROW_OWNED_PREFILL_CHECKPOINT):
+        raise ValueError(f"{flag} requires --profile {ROW_OWNED_PREFILL_PROFILE} "
+                         f"--checkpoint {ROW_OWNED_PREFILL_CHECKPOINT}")
+    if not image or image["image_id"] != ROW_OWNED_PREFILL_IMAGE_ID:
+        raise ValueError(f"{flag} requires --image {ROW_OWNED_PREFILL_IMAGE}")
+    if (transport or {}).get("backend") != "libsircl":
+        raise ValueError(f"{flag} requires --transport libsircl: the expert-parallel MoE build runs in libsircl's "
+                         "vLLM plugin, and its all-gather and reduce-scatter carry the grouped collectives")
+    if settings.get(CHAIN_ALL_GATHER):
+        raise ValueError(f"{option(CHAIN_ALL_GATHER)} selects SIRCL's own all-gather schedule, which a libsircl "
+                         f"deployment does not run; leave it out with {flag}")
 
 
 def choice(name, value):
@@ -433,6 +506,11 @@ def container(spec, settings, *, rank, model=None, source_root=None):
     settings require. Without settings ``spec`` is returned unchanged.
     SparkCache debug logging and DeepSeek row-owned prefill mount their assets
     from the retained deployment checkout at ``source_root`` on each host.
+    Expert parallelism names the grouped all-to-all backend and, while the
+    image's B12X loader's total startup is unmeasured, loads with vLLM's loader
+    and leaves that plugin out (``_expert_parallel_arguments``); with
+    ``row_owned_prefill`` it also sets the link geometry measured on that
+    deployment (``EXPERT_PARALLEL_LINK``).
     """
     if not settings:
         return spec
@@ -452,6 +530,17 @@ def container(spec, settings, *, rank, model=None, source_root=None):
         if source_root is None:
             raise ValueError("SparkCache debug logging requires the deployment source directory")
         mounts = (*mounts, Bind(str(PurePosixPath(source_root) / sparkcache.DEBUG_SOURCE), sparkcache.DEBUG_TARGET, True))
+    if settings.get(EXPERT_PARALLEL):
+        command = _expert_parallel_arguments(command)
+        if not EXPERT_LOADER_EP:
+            # The image's B12X loader reads a checkpoint for one tensor-parallel
+            # rank's experts, so expert parallelism leaves its plugin out.
+            names = [name for name in (env.get("VLLM_PLUGINS") or "").split(",")
+                     if name and name not in EXPERT_LOADER_PLUGINS]
+            if names:
+                env["VLLM_PLUGINS"] = ",".join(names)
+            else:
+                env.pop("VLLM_PLUGINS", None)
     if settings.get(ROW_OWNED_PREFILL):
         if source_root is None:
             raise ValueError(f"{option(ROW_OWNED_PREFILL)} requires the deployment source directory")
@@ -468,6 +557,28 @@ def container(spec, settings, *, rank, model=None, source_root=None):
                                environment=env, health_command=health)
 
 
+def _expert_parallel_arguments(command):
+    """Expert parallelism at the tensor width, on the grouped all-gather and reduce-scatter."""
+    command = list(command)
+    if not EXPERT_LOADER_EP:
+        # vLLM's own loader stays in place until the image's B12X loader has a
+        # measured total startup on an expert-parallel rank; it already reads
+        # that rank's share of the checkpoint.
+        position = _position(command, "--load-format")
+        if position is None:
+            raise ValueError(f"{option(EXPERT_PARALLEL)} requires a profile that loads the image's B12X weights")
+        command[position] = "auto"
+    if "--enable-expert-parallel" not in command:
+        command.append("--enable-expert-parallel")
+    if _position(command, "--all2all-backend") is None:
+        # The grouped all-gather and reduce-scatter that libsircl carries, and the
+        # only all-to-all the row-owned MoE deferral admits: it runs no all-to-all
+        # kernels (integrations/vllm/ds41_row_shard). A version's own default is
+        # not recorded here, so the backend is always named.
+        command += ["--all2all-backend", EXPERT_ALL2ALL]
+    return tuple(command)
+
+
 def _row_owned_prefill_arguments(command):
     """Keep prefill eager and capture uniform decode on the pinned profile."""
     command = list(command)
@@ -482,7 +593,9 @@ def _row_owned_prefill_arguments(command):
         command[index] = json.dumps(config, separators=(",", ":"))
     context = command.index("--max-model-len") + 1
     command[context] = str(min(int(command[context]), ROW_OWNED_PREFILL_CONTEXT))
-    command.append("--disable-custom-all-reduce")
+    if "--disable-custom-all-reduce" not in command:
+        # The libsircl transport turns vLLM's custom all-reduce off as well.
+        command.append("--disable-custom-all-reduce")
     return tuple(command)
 
 
@@ -500,6 +613,10 @@ def environment(settings):
             DS41_ROW_SHARD_KV_LATENTS="1",
             DS41_ROW_SHARD_COMPRESSOR_LATENTS="1",
         )
+    if settings.get(EXPERT_PARALLEL) and settings.get(ROW_OWNED_PREFILL):
+        # The link geometry was measured on this pairing only; expert
+        # parallelism alone keeps libsircl's defaults until a run measures it.
+        result.update(EXPERT_PARALLEL_LINK)
     return result
 
 

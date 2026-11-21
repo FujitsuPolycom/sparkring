@@ -141,7 +141,14 @@ def test_the_nccl_transport_installs_on_a_pair_without_sircl(machine, capsys):  
     assert json.loads(capsys.readouterr().out)["field"] == "transport"
 
 
-def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks, monkeypatch, capsys, tmp_path):  # noqa: F811
+def four_spark_path(shell, monkeypatch):
+    """The surveyed four-Spark path the DeepSeek experiment runs on, with its fabric document recorded.
+
+    ``shell`` is the test's simulated Sparks SSH boundary (the ``sparks``
+    fixture). Its two end Sparks have their closing link down, so the arc is a
+    path rather than a cycle; sparks 1 and 2 need the hairpin setting, and
+    every Spark joins the managed mesh the four-Spark profiles refer to.
+    """
     found = nodes(4)
     for rank, direction in ((0, "ccw_"), (3, "cw_")):
         closing_link = {port["netdev"] for role, port in topology.endpoints(found[rank]).items()
@@ -159,9 +166,14 @@ def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks
     monkeypatch.setattr(controller, "collect", lambda _: value["plan"]["nodes"])
     fabric_record, _ = fabric.prepare(value["plan"], cluster="test", marker=MARKER)
     (controller.STATE / "fabric.json").write_text(fabric_document.encoded(fabric_record))
-    sparks.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
-                                              "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
-                                "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0", "unit": "sparkring-mesh.service"}
+    shell.mesh = lambda rank: {"reference": {"site_path": "/etc/sparkring/managed-mesh/site.json",
+                                             "site_sha256": "c" * 64, "plan_sha256": "d" * 64},
+                               "host_ip": f"192.0.2.{110 + rank}", "interface": "eth0",
+                               "unit": "sparkring-mesh.service"}
+
+
+def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks, monkeypatch, capsys, tmp_path):  # noqa: F811
+    four_spark_path(sparks, monkeypatch)
     request = ["install", "--profile", "deepseek-v41-flash-tp4", "--checkpoint", "1017",
                "--image", serving.ROW_OWNED_PREFILL_IMAGE, "--transport", "sircl", "--nccl", "never", "--plan", "--json"]
 
@@ -259,6 +271,84 @@ def test_row_owned_prefill_is_a_locked_deepseek_sircl_experiment(machine, sparks
                              (["--nccl", "auto"], "requires --transport sircl --nccl never"),
                              (["--context-length", "262145"], "up to 262144 tokens")):
         assert sparkring.main([*request, "--row-owned-prefill", *extra]) == 3
+        refused = json.loads(capsys.readouterr().out)
+        assert refused["field"] == "serving" and complaint in refused["message"]
+    assert len(sparks.surveys) == surveyed
+
+
+def test_expert_parallel_is_a_locked_deepseek_libsircl_experiment(machine, sparks, monkeypatch, capsys,  # noqa: F811
+                                                                 tmp_path):
+    """TP4+EP4 runs on the pinned image's libsircl layer, alone and with the row-owned prefill (R1)."""
+    four_spark_path(sparks, monkeypatch)
+    request = ["install", "--profile", "deepseek-v41-flash-tp4", "--checkpoint", "1017",
+               "--image", serving.ROW_OWNED_PREFILL_IMAGE, "--transport", "libsircl", "--plan", "--json"]
+
+    assert sparkring.main(request) == 0
+    plain = json.loads(capsys.readouterr().out)
+    assert "expert_parallel" not in (plain.get("serving") or {})
+    base = deployment(plain)["transport"]
+    assert base["backend"] == "libsircl" and base["group"]["name"] == "path-4"
+
+    assert sparkring.main([*request, "--expert-parallel"]) == 0
+    alone = json.loads(capsys.readouterr().out)
+    assert alone["serving"] == {"expert_parallel": True} and alone["deployment"] != plain["deployment"]
+    assert "--expert-parallel" in alone["checkpoint"]["command"]
+    plain_specs = installer.specifications(deployment(plain))
+    for base_spec, spec in zip(plain_specs, installer.specifications(deployment(alone)), strict=True):
+        assert spec.command[spec.command.index("--load-format") + 1] == "auto"
+        assert base_spec.command[base_spec.command.index("--load-format") + 1] == "b12x"
+        assert spec.command[-3:] == ("--enable-expert-parallel", "--all2all-backend", "allgather_reducescatter")
+        assert spec.command.count("--disable-custom-all-reduce") == 1
+        assert spec.environment["SIRCL_B12X_EP_MOE"] == "1" and "SIRCL_B12X_EP_MOE" not in base_spec.environment
+        assert spec.environment["VLLM_PLUGINS"].split(",") == [
+            name for name in base_spec.environment["VLLM_PLUGINS"].split(",") if name != "b12x_loader"]
+        assert "DS41_ROW_SHARD_PREFILL" not in spec.environment
+        # Expert parallelism alone keeps libsircl's link defaults.
+        assert not set(spec.environment) & set(serving.EXPERT_PARALLEL_LINK)
+        assert [mount.target for mount in spec.mounts] == [mount.target for mount in base_spec.mounts]
+
+    assert sparkring.main([*request, "--expert-parallel", "--row-owned-prefill"]) == 0
+    combined = json.loads(capsys.readouterr().out)
+    assert combined["serving"] == {"expert_parallel": True, "row_owned_prefill": True}
+    assert combined["deployment"] not in (plain["deployment"], alone["deployment"])
+    r1 = deployment(combined)
+    assert "--expert-parallel" in combined["checkpoint"]["command"] and "--row-owned-prefill" in (
+        combined["checkpoint"]["command"])
+    for rank, (base_spec, spec) in enumerate(zip(plain_specs, installer.specifications(r1), strict=True)):
+        plugins = spec.environment["VLLM_PLUGINS"].split(",")
+        assert plugins == [*[name for name in base_spec.environment["VLLM_PLUGINS"].split(",")
+                             if name != "b12x_loader"], "ds41_row_shard"]
+        assert plugins[-2:] == ["libsircl", "ds41_row_shard"]
+        assert "b12x_loader" not in plugins
+        assert spec.environment["PYTHONPATH"].split(":") == [
+            "/opt/ds41_row_shard", "/opt/sparkring/toolchain/python", "/opt/sparkring/addons/python"]
+        for flag in ("DS41_ROW_SHARD_PREFILL", "DS41_ROW_SHARD_INDEXER", "DS41_ROW_SHARD_COMPACT_ROUTES",
+                     "DS41_ROW_SHARD_LOCAL_QUERIES", "DS41_ROW_SHARD_KV_LATENTS", "DS41_ROW_SHARD_COMPRESSOR_LATENTS"):
+            assert spec.environment[flag] == "1"
+        # The link geometry the transport sweep measured on this deployment.
+        assert {name: spec.environment[name] for name in serving.EXPERT_PARALLEL_LINK} == serving.EXPERT_PARALLEL_LINK
+        assert (spec.mounts[-2].target, spec.mounts[-2].read_only) == ("/opt/ds41_row_shard", True)
+        assert spec.mounts[-1].target.endswith("sparkring_sircl/vllm/adapter.py")
+        # The libsircl layer's own settings survive the serving settings.
+        assert spec.environment["SPARKRING_LIBSIRCL_LIBRARY"] == r1["transport"]["libsircl"]["library"]["path"]
+        assert spec.environment["LIBSIRCL_FAIL_STOP"] == "1"
+        assert spec.command[spec.command.index("--max-model-len") + 1] == "262144"
+        assert json.loads(spec.command[spec.command.index("--compilation-config") + 1])["cudagraph_mode"] == "FULL_DECODE_ONLY"
+
+    # A shareable template repeats the install command, with the transport the experiment runs on.
+    output = tmp_path / "template.zip"
+    installer.export(combined["deployment"], output, share=True)
+    with zipfile.ZipFile(output) as template:
+        readme = template.read("README.txt").decode()
+    assert "--transport libsircl --expert-parallel --row-owned-prefill" in readme
+    assert "sircl --nccl never" not in readme
+
+    surveyed = len(sparks.surveys)
+    for extra, complaint in ((["--transport", "sircl", "--nccl", "never"], "requires --transport libsircl"),
+                             (["--checkpoint", "original"], "requires --profile deepseek-v41-flash-tp4"),
+                             (["--context-length", "262145"], "up to 262144 tokens"),
+                             (["--chain-all-gather"], "which a libsircl deployment does not run")):
+        assert sparkring.main([*request, "--expert-parallel", "--row-owned-prefill", *extra]) == 3
         refused = json.loads(capsys.readouterr().out)
         assert refused["field"] == "serving" and complaint in refused["message"]
     assert len(sparks.surveys) == surveyed

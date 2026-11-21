@@ -351,3 +351,85 @@ def test_without_thinking_settings_commands_compose_files_and_locks_are_unchange
     # The other serving settings render as before.
     tuned = installer.make_lock(QWEN, site(), "1" * 40, "2" * 64, settings={"max_images": 8})
     assert all(KWARGS not in spec.command for spec in installer.specifications(tuned))
+
+
+PINNED = {"image_id": serving.ROW_OWNED_PREFILL_IMAGE_ID}
+EXPERIMENT = (serving.ROW_OWNED_PREFILL_PROFILE, serving.ROW_OWNED_PREFILL_CHECKPOINT)
+
+
+def test_expert_parallel_is_a_switch_that_names_the_grouped_all_to_all():
+    assert serving.normalized({"expert_parallel": True, "max_images": None}) == {"expert_parallel": True}
+    with pytest.raises(ValueError, match="--expert-parallel is a switch without a value"):
+        serving.normalized({"expert_parallel": 1})
+    assert serving.environment({"expert_parallel": True, "max_images": 2}) == {"SIRCL_B12X_EP_MOE": "1"}
+    args = profile_args(DEEPSEEK)
+    assert serving.apply(args, {"expert_parallel": True}) == tuple(args)
+    assert serving.describe({"expert_parallel": True, "max_images": 2}, tuple(args)) == [
+        "--expert-parallel (profile: off)", "--max-images 2 (profile: 4)"]
+
+
+def test_the_row_owned_expert_parallel_pairing_sets_the_measured_link_geometry():
+    # The geometry of the deployment the transport sweep left running: a 1 MiB
+    # link slot and pieces with a 64 KiB one-shot ceiling.
+    link = {"SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576",
+            "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+            "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
+    assert serving.EXPERT_PARALLEL_LINK == link
+    assert {name: value for name, value in serving.environment(
+        {"expert_parallel": True, "row_owned_prefill": True}).items() if name in link} == link
+    # Each switch alone keeps libsircl's defaults: the sweep measured the pairing.
+    for settings in ({"expert_parallel": True}, {"row_owned_prefill": True}):
+        assert not set(serving.environment(settings)) & set(link)
+
+
+def test_expert_parallel_needs_the_pinned_image_the_deepseek_checkpoint_and_libsircl():
+    serving.check_expert_parallel({"expert_parallel": True}, EXPERIMENT, PINNED, {"backend": "libsircl"})
+    # A deployment without the switch is not checked against the experiment's conditions.
+    serving.check_expert_parallel({"max_images": 2}, EXPERIMENT, PINNED, {"backend": "sircl"})
+    for settings, model, image, transport, message in (
+        ({"expert_parallel": True}, (serving.ROW_OWNED_PREFILL_PROFILE, "original"), PINNED, {"backend": "libsircl"},
+         "--expert-parallel requires --profile deepseek-v41-flash-tp4 --checkpoint 1017"),
+        ({"expert_parallel": True}, EXPERIMENT, {"image_id": "sha256:" + "0" * 64}, {"backend": "libsircl"},
+         f"--expert-parallel requires --image {serving.ROW_OWNED_PREFILL_IMAGE}"),
+        ({"expert_parallel": True}, EXPERIMENT, None, {"backend": "libsircl"}, "--expert-parallel requires --image"),
+        ({"expert_parallel": True}, EXPERIMENT, PINNED, {"backend": "sircl"},
+         "--expert-parallel requires --transport libsircl: the expert-parallel MoE build runs in libsircl's vLLM "
+         "plugin"),
+        ({"expert_parallel": True}, EXPERIMENT, PINNED, None, "--expert-parallel requires --transport libsircl"),
+        ({"expert_parallel": True, "chain_all_gather": True}, EXPERIMENT, PINNED, {"backend": "libsircl"},
+         "--chain-all-gather selects SIRCL's own all-gather schedule, which a libsircl deployment does not run"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            serving.check_expert_parallel(settings, model, image, transport)
+
+
+def test_expert_parallel_moves_the_row_owned_prefill_from_sircl_to_libsircl():
+    path = {"backend": "sircl", "nccl": "never", "group": {"name": "path-4", "dcp": 1}, "tuning": {"tables": []}}
+    row_owned = {"row_owned_prefill": True}
+    expert = {"expert_parallel": True}
+    serving.check_row_owned_prefill(row_owned, EXPERIMENT, PINNED, path)
+    serving.check_row_owned_prefill({**row_owned, **expert}, EXPERIMENT, PINNED, {"backend": "libsircl"})
+    for settings, transport, message in (
+        ({**row_owned, **expert}, path, "--row-owned-prefill with --expert-parallel requires --transport libsircl"),
+        ({**row_owned, **expert, "chain_all_gather": True}, {"backend": "libsircl"},
+         "--chain-all-gather selects SIRCL's own all-gather schedule, which a libsircl deployment does not run"),
+        ({**row_owned, **expert, "context_length": 262145}, {"backend": "libsircl"},
+         "--row-owned-prefill supports --context-length up to 262144 tokens"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            serving.check_row_owned_prefill(settings, EXPERIMENT, PINNED, transport)
+
+
+def test_expert_parallel_is_an_install_option_and_not_a_compose_setting():
+    import argparse
+    install = argparse.ArgumentParser()
+    serving.add_arguments(install, install=True)
+    assert serving.from_arguments(install.parse_args(["--expert-parallel"])) == {"expert_parallel": True}
+    assert serving.from_arguments(install.parse_args([])) == {}
+    with pytest.raises(SystemExit):
+        install.parse_args(["--expert-parallel", "yes"])
+    # A deployment that does not run the installer takes no install switch.
+    rendered = argparse.ArgumentParser()
+    serving.add_arguments(rendered)
+    with pytest.raises(SystemExit):
+        rendered.parse_args(["--expert-parallel"])

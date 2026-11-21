@@ -3,5 +3,5 @@
   "profile": "qwen38-flash-next-tp2",
   "checkpoint": "csf",
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "69d8190bd56a9d464a054d8c40ddb959c56bb3a0f2b0ad55df421f6e8f85e494"
+  "deployment": "6230c5d40ab6704e3912d334b45e9fabd5bb022668ac83c14d1cc7e342aea08c"
 }

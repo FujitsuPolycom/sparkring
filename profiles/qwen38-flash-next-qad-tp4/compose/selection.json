@@ -3,5 +3,5 @@
   "profile": "qwen38-flash-next-qad-tp4",
   "checkpoint": "qad-step5500-ple1000",
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "d9933be41fe5865980162aedbc5af1a51c9f648a2e26b2265e240cd7f1a17f0e"
+  "deployment": "ac8c28f6ad3532625ed3597a4695dc37df3e5e4a795bba5e4aa5bbbcb6d49db8"
 }
