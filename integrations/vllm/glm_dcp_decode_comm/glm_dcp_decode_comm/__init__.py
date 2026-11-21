@@ -324,7 +324,7 @@ FILE_CHECKS: tuple[FileCheck, ...] = (
               "ec1b3e9d71347ef04f267869ff8aa4a02a1f2001627de02b8eb7cb5b43fc8c9d",
               "the scatter kernel whose wire protocol _scatter_pack_cute.py restates"),
     FileCheck("sparkring_sircl", "oneshot/_roce_proxy.c",
-              "09db871538819191838bc17d6aafe8bc436c2af505263b609851f6062d9f025b",
+              "6b367e194b9f6b58c96544be8b1159ed8d5d2f7b9e5b69eb9b7a4cef475611ea",
               "the progress thread's op code 3: chunk p to peer p on p's lanes, no later phase"),
     FileCheck("sparkring_sircl", "oneshot/_compile.py",
               "6b2378acc34032e19b07159a4a1d3fc034f4cea898dbd40577b0bb42891839b1",
