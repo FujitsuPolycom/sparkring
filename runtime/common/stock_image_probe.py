@@ -1,4 +1,4 @@
-"""The facts of a vLLM image that libsircl's stock-image option checks, read inside a container of the image.
+"""The facts of a vLLM or SGLang image that libsircl's stock-image option checks, read inside a container of the image.
 
 This program uses only the Python standard library, so it runs in any image
 with Python 3.8 or later: ``runtime/common/stock_image.py`` sends its source
@@ -7,7 +7,7 @@ the GPUs and the host build of libsircl mounted as serving mounts them and
 the library's container path as the first argument. It prints one line,
 ``STOCK-IMAGE-PROBE <json>``.
 
-Without ``--binding`` it reads files and imports neither torch nor vLLM:
+Without ``--binding`` it reads files and imports none of torch, vLLM or SGLang:
 
 - ``machine``, ``python`` and ``glibc``: ``platform.machine()``, the
   interpreter version and ``os.confstr("CS_GNU_LIBC_VERSION")``;
@@ -15,8 +15,8 @@ Without ``--binding`` it reads files and imports neither torch nor vLLM:
   bytes name ``LIBSIRCL_FAIL_STOP`` (the fail-stop mode), whether it loads
   here (``load``: ``ok``, or the loader's error such as a missing
   ``GLIBC_x.y`` version), ``ncclGetVersion``'s value, ``sirclGetInfo``'s
-  library name and version, and the functions vLLM's PyNccl binds that it
-  lacks;
+  library name and version, and the functions the serving runtime's PyNccl
+  binds that it lacks;
 - ``cuda``: ``cuDriverGetVersion`` through the container's ``libcuda.so.1``
   and the compute capability of every visible GPU, or the error;
 - ``vllm``: its version and directory, the ``vllm`` command, whether
@@ -26,17 +26,25 @@ Without ``--binding`` it reads files and imports neither torch nor vLLM:
   multi-node options, which switches of collective paths ``vllm/envs.py``
   defines, which communication-fusion fields the compilation configuration
   has, and the ``vllm.general_plugins`` entry-point names;
-- ``torch``: its version and whether ``libtorch_cuda.so`` needs
+- ``sglang``: its version and directory, whether ``sglang/launch_server.py``
+  exists, whether ``pynccl_wrapper.py`` defines ``SGLANG_NCCL_SO_PATH`` and
+  ``find_nccl_library`` reads it, the functions PyNccl's ``NCCLLibrary``
+  binds, and whether ``server_args.py`` carries the multi-node options;
+- ``torch``: its version, whether ``libtorch_cuda.so`` needs
   ``libnccl.so.2`` (``dynamic``), carries NCCL itself (``static``) or neither
-  (``absent``);
+  (``absent``), and the real paths of any ``libnccl.so.2`` files present in
+  the image (``nccl_libraries``);
 - ``loader``: whether ``fastsafetensors`` is installed.
 
-With ``--binding``, run with the planned ``VLLM_NCCL_SO_PATH`` and
-``LD_PRELOAD``, it imports torch and reports which library each caller bound
-(``binding``): the file that provides ``ncclGetVersion`` to a ``ctypes``
-load of ``VLLM_NCCL_SO_PATH`` (PyNccl's load) and to the process's global
-scope, ``torch.cuda.nccl.version()``, and every mapped file whose SONAME is
-``libnccl.so.2``.
+With ``--binding``, run with the planned ``VLLM_NCCL_SO_PATH`` or
+``SGLANG_NCCL_SO_PATH``, ``LD_PRELOAD`` and read-only shadow mounts of
+libsircl over the image's ``libnccl.so.2`` files, it imports torch and
+reports which library each caller bound (``binding``): the file that provides
+``ncclGetVersion`` to a ``ctypes`` load of the selected library variable
+(PyNccl's load), to ``libtorch_cuda.so`` (``torch_provider``) and to the
+process's global scope, ``libtorch_cuda.so``'s runtime ``ncclGetVersion()``
+(``torch_runtime_nccl_version``), ``torch.cuda.nccl.version()`` (compile-time
+NCCL headers), and every mapped file whose SONAME is ``libnccl.so.2``.
 """
 import ast
 import ctypes
@@ -57,6 +65,9 @@ SWITCHES = ("VLLM_DISABLE_PYNCCL", "VLLM_ALLREDUCE_USE_SYMM_MEM", "VLLM_USE_NCCL
             "VLLM_ENABLE_ROCE_ALLREDUCE")
 FUSIONS = ("fuse_allreduce_rms", "fuse_gemm_comms", "enable_sp")
 MULTINODE = ("nnodes", "node_rank", "master_addr", "master_port", "headless")
+SGLANG_MULTINODE = ("nnodes", "node_rank", "dist_init_addr", "tp_size", "disable_custom_all_reduce")
+SYSTEM_LIBRARY_DIRS = ("/usr/lib/aarch64-linux-gnu", "/usr/local/lib", "/usr/lib", "/usr/lib64",
+                       "/usr/local/cuda/lib64", "/usr/local/cuda/targets/sbsa-linux/lib")
 
 
 def elf_facts(path):
@@ -192,8 +203,35 @@ def vllm_facts():
             "general_plugins": _general_plugins()}
 
 
+def _read_tree(directory):
+    if not os.path.isdir(directory):
+        return ""
+    parts = []
+    for base, dirs, files in os.walk(directory):
+        dirs.sort()
+        for name in sorted(files):
+            if name.endswith(".py"):
+                parts.append(_read(os.path.join(base, name)))
+    return "\n".join(parts)
+
+
+def sglang_facts():
+    root = _package("sglang")
+    if root is None:
+        return None
+    wrapper = _read(os.path.join(root, "srt", "distributed", "device_communicators", "pynccl_wrapper.py"))
+    server_args = "\n".join((_read(os.path.join(root, "srt", "server_args.py")),
+                             _read_tree(os.path.join(root, "srt", "arg_groups"))))
+    return {"version": _metadata_version("sglang"), "root": root,
+            "launch_server": os.path.isfile(os.path.join(root, "launch_server.py")),
+            "nccl_so_path": '"SGLANG_NCCL_SO_PATH"' in wrapper or "'SGLANG_NCCL_SO_PATH'" in wrapper,
+            "find_reads_nccl_so_path": _reads_variable(wrapper, "find_nccl_library", "SGLANG_NCCL_SO_PATH"),
+            "pynccl_functions": bound_functions(wrapper),
+            "multinode": all(word in server_args for word in SGLANG_MULTINODE)}
+
+
 def library_facts(path, functions):
-    """The mounted library's facts; ``functions`` are the names vLLM's PyNccl binds."""
+    """The mounted library's facts; ``functions`` are the names PyNccl binds."""
     result = {"path": path}
     try:
         result.update(elf_facts(path))
@@ -243,12 +281,74 @@ def cuda_facts():
     return result
 
 
-def torch_facts():
+def _ld_conf_dirs():
+    directories = []
+    conf_dir = "/etc/ld.so.conf.d"
+    if not os.path.isdir(conf_dir):
+        return directories
+    try:
+        names = sorted(os.listdir(conf_dir))
+    except OSError:
+        return directories
+    for name in names:
+        if not name.endswith(".conf"):
+            continue
+        for line in _read(os.path.join(conf_dir, name)).splitlines():
+            entry = line.strip()
+            if entry.startswith("/"):
+                directories.append(entry)
+    return directories
+
+
+def nccl_libraries(torch_root=None, *, exclude=None, search_dirs=None):
+    """Real paths of existing ``libnccl.so.2`` files in the image, excluding ``exclude``."""
+    excluded = os.path.realpath(exclude) if exclude else None
+    if search_dirs is None:
+        directories = []
+        if torch_root:
+            directories += [os.path.join(os.path.dirname(torch_root), "nvidia", "nccl", "lib"),
+                            os.path.join(torch_root, "lib")]
+        nccl_package = _package("nvidia.nccl")
+        if nccl_package:
+            directories.append(os.path.join(nccl_package, "lib"))
+        directories.append(os.path.join(sys.prefix, "lib"))
+        directories += [item for item in os.environ.get("LD_LIBRARY_PATH", "").split(":") if item]
+        for item in re.split(r"[:\s]+", os.environ.get("LD_PRELOAD", "")):
+            if item.startswith("/"):
+                directories.append(os.path.dirname(item))
+        directories += _ld_conf_dirs()
+        directories += list(SYSTEM_LIBRARY_DIRS)
+    else:
+        directories = list(search_dirs)
+    found = set()
+    for directory in directories:
+        if not directory or not os.path.isdir(directory):
+            continue
+        try:
+            names = os.listdir(directory)
+        except OSError:
+            continue
+        for name in names:
+            if name != "libnccl.so" and not name.startswith("libnccl.so."):
+                continue
+            real = os.path.realpath(os.path.join(directory, name))
+            if real == excluded or real in found or not os.path.isfile(real):
+                continue
+            try:
+                if elf_facts(real)["soname"] == "libnccl.so.2":
+                    found.add(real)
+            except (OSError, ValueError, struct.error, IndexError):
+                continue
+    return sorted(found)
+
+
+def torch_facts(exclude=None):
     root = _package("torch")
     if root is None:
         return None
     library = os.path.join(root, "lib", "libtorch_cuda.so")
-    result = {"version": _metadata_version("torch"), "libtorch_cuda": library}
+    result = {"version": _metadata_version("torch"), "libtorch_cuda": library,
+              "nccl_libraries": nccl_libraries(root, exclude=exclude)}
     if not os.path.isfile(library):
         result["nccl"] = "absent"
         return result
@@ -273,10 +373,12 @@ def glibc():
 
 
 def probe(library=None):
-    vllm = vllm_facts()
+    vllm, sglang = vllm_facts(), sglang_facts()
+    functions = sorted(set((vllm or {}).get("pynccl_functions") or [])
+                       | set((sglang or {}).get("pynccl_functions") or []))
     return {"machine": platform.machine(), "python": platform.python_version(), "glibc": glibc(),
-            "library": library_facts(library, (vllm or {}).get("pynccl_functions") or []) if library else None,
-            "cuda": cuda_facts(), "vllm": vllm, "torch": torch_facts(),
+            "library": library_facts(library, functions) if library else None,
+            "cuda": cuda_facts(), "vllm": vllm, "sglang": sglang, "torch": torch_facts(exclude=library),
             "loader": {"fastsafetensors": _package("fastsafetensors") is not None
                        or importlib.util.find_spec("fastsafetensors") is not None}}
 
@@ -330,17 +432,29 @@ def mapped_nccl():
 
 def binding():
     """Which library PyNccl's load and torch bound, in a process started with the planned loader settings."""
-    result = {"vllm_nccl_so_path": os.environ.get("VLLM_NCCL_SO_PATH"), "ld_preload": os.environ.get("LD_PRELOAD")}
+    vllm_so = os.environ.get("VLLM_NCCL_SO_PATH")
+    sglang_so = os.environ.get("SGLANG_NCCL_SO_PATH")
+    result = {"vllm_nccl_so_path": vllm_so, "sglang_nccl_so_path": sglang_so,
+              "ld_preload": os.environ.get("LD_PRELOAD")}
     try:
-        result["pynccl_provider"] = provider(ctypes.CDLL(result["vllm_nccl_so_path"] or "libnccl.so.2"))
+        result["pynccl_provider"] = provider(ctypes.CDLL(sglang_so or vllm_so or "libnccl.so.2"))
     except OSError as error:
         result["pynccl_provider"] = None
         result["pynccl_error"] = str(error)
     try:
         import torch
         result["torch_nccl_version"] = list(torch.cuda.nccl.version())
+        torch_cuda = os.path.join(os.path.dirname(torch.__file__), "lib", "libtorch_cuda.so")
+        handle = ctypes.CDLL(torch_cuda)
+        result["torch_provider"] = provider(handle, "ncclGetVersion")
+        version = ctypes.c_int()
+        result["torch_runtime_nccl_version"] = (
+            version.value if handle.ncclGetVersion(ctypes.byref(version)) == 0 else None
+        )
     except Exception as error:
-        result["torch_nccl_version"] = None
+        result.setdefault("torch_nccl_version", None)
+        result["torch_provider"] = None
+        result["torch_runtime_nccl_version"] = None
         result["torch_error"] = repr(error)
     result["global_provider"] = provider(ctypes.CDLL(None))
     result["mapped"] = mapped_nccl()

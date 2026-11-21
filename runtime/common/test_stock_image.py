@@ -90,7 +90,8 @@ def facts(**changes):
 
 def binding(**changes):
     return {"vllm_nccl_so_path": TARGET, "pynccl_provider": TARGET, "global_provider": TARGET,
-            "torch_nccl_version": [2, 27, 5], "mapped": [TARGET], **changes}
+            "torch_provider": TARGET, "torch_runtime_nccl_version": 22705, "torch_nccl_version": [2, 27, 5],
+            "mapped": [TARGET], **changes}
 
 
 # The probe.
@@ -105,6 +106,24 @@ def test_the_elf_reader_finds_the_soname_dependencies_and_newest_glibc_version(t
     (tmp_path / "text").write_text("not elf")
     with pytest.raises(ValueError, match="not a 64-bit"):
         stock_image_probe.elf_facts(tmp_path / "text")
+
+
+def test_nccl_libraries_discovers_image_libnccl_soname_realpaths_and_excludes_libsircl(tmp_path):
+    wheel_dir = tmp_path / "site" / "nvidia" / "nccl" / "lib"
+    sys_dir = tmp_path / "usr" / "lib"
+    wheel_dir.mkdir(parents=True)
+    sys_dir.mkdir(parents=True)
+    wheel_nccl = build_elf(wheel_dir / "libnccl.so.2", soname="libnccl.so.2")
+    sys_nccl = build_elf(sys_dir / "libnccl.so.2.32.3", soname="libnccl.so.2")
+    other = build_elf(sys_dir / "libnccl.so.99", soname="libother.so.1")
+    libsircl_file = build_elf(tmp_path / "libsircl.so.0.6.0", soname="libnccl.so.2")
+    (sys_dir / "not_nccl.so").write_text("ignored")
+    assert other.is_file()
+    found = stock_image_probe.nccl_libraries(
+        exclude=str(libsircl_file),
+        search_dirs=[str(wheel_dir), str(sys_dir), str(tmp_path)],
+    )
+    assert found == sorted([str(wheel_nccl.resolve()), str(sys_nccl.resolve())])
 
 
 def test_the_probe_reads_pyncclss_bound_functions_and_the_library_selector_from_vllms_sources(tmp_path, monkeypatch):
@@ -147,6 +166,8 @@ def test_the_probe_runs_with_the_standard_library_alone_and_prints_one_record(tm
 def test_an_image_libsircl_can_run_passes_the_preflight():
     assert stock_image.preflight(image(), facts(), ["--served-model-name", "m"]) == []
     assert stock_image.binding_problems(binding(), "0.6.0") == []
+    # torch.cuda.nccl.version() reflects compile-time NCCL headers; runtime binding is checked via libtorch_cuda.so.
+    assert stock_image.binding_problems(binding(torch_nccl_version=[2, 29, 7]), "0.6.0") == []
 
 
 @pytest.mark.parametrize("changes, arguments, message", [
@@ -184,7 +205,10 @@ def test_the_architecture_of_the_image_record_counts_too():
 @pytest.mark.parametrize("changes, message", [
     ({"pynccl_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "PyNccl's load"),
     ({"global_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "global scope"),
-    ({"torch_nccl_version": [2, 29, 7]}, "torch reports NCCL [2, 29, 7]"),
+    ({"torch_provider": "/usr/lib/aarch64-linux-gnu/libnccl.so.2"}, "libtorch_cuda.so resolves ncclGetVersion"),
+    ({"torch_runtime_nccl_version": 22907}, "torch's runtime ncclGetVersion reports 22907"),
+    ({"torch_error": "ImportError('libtorch_cuda.so: undefined symbol: ncclGetPeerDeviceLeInfo')"},
+     "importing torch with libsircl failed"),
     ({"mapped": [TARGET, "/usr/lib/aarch64-linux-gnu/libnccl.so.2"]}, "not libsircl alone"),
 ])
 def test_a_caller_bound_to_another_nccl_is_refused(changes, message):
@@ -282,5 +306,184 @@ def test_a_registry_reference_or_image_id_is_a_stock_image_and_a_release_name_is
 def test_the_api_manifest_marks_the_functions_pynccl_calls_implemented():
     manifest = stock_image.api_manifest()
     assert all(manifest[name] for name in stock_image.CORE_FUNCTIONS)
+    assert all(manifest[name] for name in stock_image.SGLANG_CORE_FUNCTIONS)
     assert manifest["ncclCommSuspend"] is False and manifest["ncclCommResume"] is False
     assert stock_image.architectures() == ["sm_120", "sm_121"]
+
+
+# SGLang stock images.
+
+SGLANG_REFERENCE = "lmsysorg/sglang:spark-arm64@sha256:" + "6" * 64
+SGLANG_FUNCTIONS = ["ncclAllGather", "ncclAllReduce", "ncclBroadcast", "ncclCommDestroy", "ncclCommInitRank",
+                    "ncclCommInitRankConfig", "ncclCommWindowDeregister", "ncclCommWindowRegister",
+                    "ncclGetErrorString", "ncclGetUniqueId", "ncclGetVersion", "ncclGroupEnd", "ncclGroupStart",
+                    "ncclMemAlloc", "ncclMemFree", "ncclRecv", "ncclReduce", "ncclReduceScatter", "ncclSend"]
+
+
+def sglang_facts(**changes):
+    """The probe's facts of a stock SGLang image that libsircl can run on."""
+    value = facts()
+    value["vllm"] = None
+    value["sglang"] = {"version": "0.5.6", "root": "/usr/local/lib/python3.12/dist-packages/sglang",
+                       "launch_server": True, "nccl_so_path": True, "find_reads_nccl_so_path": True,
+                       "pynccl_functions": list(SGLANG_FUNCTIONS), "multinode": True}
+    for path, setting in changes.items():
+        target = value
+        *parents, last = path.split(".")
+        for key in parents:
+            target = target[key]
+        target[last] = setting
+    return value
+
+
+def sglang_binding(**changes):
+    return {"vllm_nccl_so_path": None, "sglang_nccl_so_path": TARGET, "pynccl_provider": TARGET,
+            "global_provider": TARGET, "torch_provider": TARGET, "torch_runtime_nccl_version": 22705,
+            "torch_nccl_version": [2, 29, 7], "mapped": [TARGET], **changes}
+
+
+def test_the_probe_reads_sglang_pynccl_and_server_args_without_importing_sglang(tmp_path, monkeypatch):
+    root = tmp_path / "site" / "sglang"
+    for relative, text in (
+            ("__init__.py", "raise RuntimeError('the probe never imports sglang')\n"),
+            ("launch_server.py", "# entry module\n"),
+            ("srt/distributed/device_communicators/pynccl_wrapper.py",
+             'def find_nccl_library():\n    return os.environ.get("SGLANG_NCCL_SO_PATH", None)\n'
+             'class NCCLLibrary:\n    exported_functions = [Function("ncclAllReduce", 0, []), '
+             'Function("ncclCommInitRankConfig", 0, [])]\n'),
+            ("srt/server_args.py", "nnodes node_rank dist_init_addr tp_size disable_custom_all_reduce\n")):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    monkeypatch.delitem(sys.modules, "sglang", raising=False)
+    found = stock_image_probe.sglang_facts()
+    assert found["launch_server"] and found["nccl_so_path"] and found["find_reads_nccl_so_path"]
+    assert found["multinode"]
+    assert found["pynccl_functions"] == ["ncclAllReduce", "ncclCommInitRankConfig"]
+
+
+def test_the_probe_reads_sglang_multinode_args_from_modular_arg_groups(tmp_path, monkeypatch):
+    root = tmp_path / "site" / "sglang"
+    for relative, text in (
+            ("__init__.py", "raise RuntimeError('the probe never imports sglang')\n"),
+            ("launch_server.py", "# entry module\n"),
+            ("srt/distributed/device_communicators/pynccl_wrapper.py",
+             'def find_nccl_library():\n    return os.environ.get("SGLANG_NCCL_SO_PATH", None)\n'
+             'class NCCLLibrary:\n    exported_functions = [Function("ncclAllReduce", 0, [])]\n'),
+            ("srt/server_args.py", "nnodes dist_init_addr tp_size\n"),
+            ("srt/arg_groups/groups/parallel.py", "node_rank: int = 0\n"),
+            ("srt/arg_groups/groups/exec_.py", "disable_custom_all_reduce: bool = False\n")):
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text)
+    monkeypatch.syspath_prepend(str(tmp_path / "site"))
+    monkeypatch.delitem(sys.modules, "sglang", raising=False)
+    assert stock_image_probe.sglang_facts()["multinode"]
+
+
+def test_an_sglang_image_libsircl_can_run_passes_the_preflight_and_binding():
+    found = sglang_facts()
+    assert stock_image.framework(found) == "sglang"
+    assert stock_image.preflight(image(), found, ["--context-length", "32768"]) == []
+    assert stock_image.binding_environment(image(), "0.6.0", found) == {
+        "SGLANG_NCCL_SO_PATH": TARGET, "LD_PRELOAD": TARGET, "LIBSIRCL_NCCL_API_VERSION": "22705",
+    }
+    assert stock_image.binding_problems(sglang_binding(), "0.6.0", found) == []
+
+
+@pytest.mark.parametrize("changes, arguments, message", [
+    ({"sglang.nccl_so_path": False}, [], "does not select PyNccl's library with SGLANG_NCCL_SO_PATH"),
+    ({"sglang.find_reads_nccl_so_path": False}, [], "does not select PyNccl's library with SGLANG_NCCL_SO_PATH"),
+    ({"sglang.pynccl_functions": [*SGLANG_FUNCTIONS, "ncclRedOpCreatePreMulSum"]}, [],
+     "binds ncclRedOpCreatePreMulSum, which libsircl exports only as a refusal"),
+    ({"sglang.multinode": False}, [], "lack nnodes, node_rank, dist_init_addr"),
+    ({"sglang.launch_server": False}, [], "no launch_server.py"),
+    ({}, ["--tp-size", "4"], "the SGLang arguments set --tp-size"),
+    ({}, ["--dist-init-addr=192.0.2.20:20000"], "the SGLang arguments set --dist-init-addr"),
+    ({}, ["--pp-size", "2"], "pipeline parallelism 2"),
+    ({}, ["--dp-size=2"], "data parallelism 2"),
+    ({}, ["--ep-size", "4"], "expert parallelism 4"),
+    ({}, ["--enable-dp-attention"], "--enable-dp-attention"),
+    ({}, ["--enable-memory-saver"], "--enable-memory-saver"),
+    ({}, ["--enable-symm-mem"], "--enable-symm-mem"),
+    ({}, ["--enable-torch-symm-mem"], "--enable-torch-symm-mem"),
+    ({}, ["--enable-mscclpp"], "--enable-mscclpp"),
+    ({}, ["--enable-flashinfer-allreduce-fusion"], "--enable-flashinfer-allreduce-fusion"),
+    ({}, ["--flashinfer-allreduce-fusion-backend", "trtllm"], "--flashinfer-allreduce-fusion-backend"),
+    ({}, ["--load-format", "instanttensor"], "instanttensor"),
+])
+def test_an_sglang_image_or_arguments_libsircl_cannot_serve_are_refused(changes, arguments, message):
+    problems = stock_image.preflight(image(), sglang_facts(**copy.deepcopy(changes)), arguments)
+    assert any(message in problem for problem in problems), problems
+
+
+def test_preflight_refuses_an_image_with_neither_or_both_serving_runtimes():
+    neither = facts()
+    neither["vllm"] = None
+    assert any("no vllm or sglang" in p for p in stock_image.preflight(image(), neither, []))
+    both = facts()
+    both["sglang"] = sglang_facts()["sglang"]
+    assert any("both vllm and sglang" in p for p in stock_image.preflight(image(), both, []))
+
+
+def test_sglang_binding_failure_names_sglang_nccl_so_path():
+    problems = stock_image.binding_problems(
+        sglang_binding(pynccl_provider="/usr/lib/aarch64-linux-gnu/libnccl.so.2"), "0.6.0", sglang_facts(),
+    )
+    assert len(problems) == 1 and "SGLANG_NCCL_SO_PATH" in problems[0]
+
+
+@pytest.mark.parametrize("entrypoint, expected", [
+    (("/opt/nvidia/nvidia_entrypoint.sh",), ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]),
+    ((), ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]),
+    (("/usr/bin/python3",), ["-m", "sglang.launch_server", "--model-path", "/model"]),
+    (("python3", "-m", "sglang.launch_server"), ["--model-path", "/model"]),
+])
+def test_the_sglang_command_runs_launch_server_after_the_images_own_entrypoint(entrypoint, expected):
+    assert stock_image.sglang_command(entrypoint, ["--model-path", "/model"]) == expected
+
+
+@pytest.mark.parametrize("shape, size, positions", [("pair", 2, [0, 1]), ("cycle", 4, [0, 1, 2, 3])])
+def test_every_sglang_rank_runs_launch_server_with_libsircl_as_nccl(shape, size, positions):
+    ranks, routes = specs(shape, size, positions, found=sglang_facts(), arguments=["--mem-fraction-static", "0.85"])
+    assert len(ranks) == size
+    for rank, spec in enumerate(ranks):
+        environment = spec.environment
+        assert environment["SGLANG_NCCL_SO_PATH"] == TARGET and environment["LD_PRELOAD"] == TARGET
+        assert environment["EP_SUPPRESS_NCCL_CHECK"] == "1"
+        assert "VLLM_NCCL_SO_PATH" not in environment and "VLLM_HOST_IP" not in environment
+        assert environment["LIBSIRCL_FAIL_STOP"] == "1" and environment["LIBSIRCL_NCCL_API_VERSION"] == "22705"
+        assert environment["LIBSIRCL_TRANSPORT"] == "verbs" and environment["SIRCL_GID_INDEX"] == "3"
+        assert {key: environment[key] for key in libsircl.ROUTE_VARIABLES if key in environment} == routes[rank]
+        assert environment["SIRCL_BOOTSTRAP_ADDR"] == f"192.0.2.{20 + positions[rank]}"
+        command = list(spec.command)
+        assert command[:5] == ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]
+        assert command[command.index("--tp-size") + 1] == command[command.index("--nnodes") + 1] == str(size)
+        assert command[command.index("--node-rank") + 1] == str(rank)
+        assert command[command.index("--dist-init-addr") + 1] == f"192.0.2.{20 + positions[0]}:29511"
+        assert "--disable-custom-all-reduce" in command and "--mem-fraction-static" in command
+        assert ("--host" in command) == (rank == 0) and ("--port" in command) == (rank == 0)
+        assert "--headless" not in command and "--compilation-config" not in command
+
+
+def test_shadow_mounts_cover_discovered_image_nccl_libraries_in_probe_and_rank_spec():
+    wheel = "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2"
+    system = "/usr/lib/aarch64-linux-gnu/libnccl.so.2.32.3"
+    found = sglang_facts(**{"torch.nccl_libraries": [wheel, system, TARGET, wheel]})
+    shadows = stock_image.nccl_shadow_paths(found, "0.6.0")
+    assert shadows == (wheel, system)
+    command = stock_image.probe_command(SGLANG_REFERENCE, LIBRARY, "0.6.0", binding=True, shadow_paths=shadows)
+    assert f"type=bind,src={LIBRARY},dst={wheel},readonly" in command
+    assert f"type=bind,src={LIBRARY},dst={system},readonly" in command
+    ranks, _ = specs("pair", 2, [0, 1], found=found)
+    for spec in ranks:
+        mounts = {mount.target: (mount.source, mount.read_only) for mount in spec.mounts}
+        assert mounts[TARGET] == (LIBRARY, True)
+        assert mounts[wheel] == (LIBRARY, True)
+        assert mounts[system] == (LIBRARY, True)
+    rendered = yaml.safe_load(stock_image.compose_text(ranks[0], SGLANG_REFERENCE))
+    targets = {item["target"]: (item["source"], item["read_only"])
+               for item in rendered["services"]["model"]["volumes"]}
+    assert targets[wheel] == (LIBRARY, True) and targets[system] == (LIBRARY, True)
+

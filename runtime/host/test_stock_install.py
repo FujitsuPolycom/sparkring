@@ -11,7 +11,9 @@ import pytest
 import yaml
 
 from runtime.common import fabric_document, installer
-from runtime.common.test_stock_image import FUNCTIONS, LIBRARY, REFERENCE, TARGET, binding, facts, image
+from runtime.common.test_stock_image import (
+    FUNCTIONS, LIBRARY, REFERENCE, SGLANG_REFERENCE, TARGET, binding, facts, image, sglang_binding, sglang_facts,
+)
 from runtime.host import controller, fabric, install_workflow as flow, relays
 from runtime.host.test_install_workflow import machine, sparks  # noqa: F401  (pytest fixtures)
 from scripts import sparkring
@@ -34,10 +36,14 @@ class Sparks:
         assert argv[:4] == ["sudo", "-n", "docker", "run"] and "--network" in argv and "--read-only" in argv
         assert data is not None and "--pull" in argv and argv[argv.index("--pull") + 1] == "never"
         if "--binding" in argv:
+            host_facts = self.facts.get(host, facts())
+            expected_key = "SGLANG_NCCL_SO_PATH" if host_facts.get("sglang") else "VLLM_NCCL_SO_PATH"
             environment = dict(item.split("=", 1) for item in argv[argv.index("--entrypoint") - 1::-1]
-                               if "=" in item and item.startswith(("VLLM_NCCL_SO_PATH=", "LD_PRELOAD=")))
-            assert environment == {"VLLM_NCCL_SO_PATH": TARGET, "LD_PRELOAD": TARGET}
-            return "STOCK-IMAGE-PROBE " + json.dumps(self.binding.get(host, binding())) + "\n"
+                               if "=" in item and item.startswith(("VLLM_NCCL_SO_PATH=", "SGLANG_NCCL_SO_PATH=",
+                                                                   "LD_PRELOAD=")))
+            assert environment == {expected_key: TARGET, "LD_PRELOAD": TARGET}
+            default_binding = sglang_binding() if host_facts.get("sglang") else binding()
+            return "STOCK-IMAGE-PROBE " + json.dumps(self.binding.get(host, default_binding)) + "\n"
         return "STOCK-IMAGE-PROBE " + json.dumps(self.facts.get(host, facts())) + "\n"
 
 
@@ -114,11 +120,11 @@ def test_a_spark_whose_image_libsircl_cannot_run_on_is_refused_with_each_reason(
 def test_a_torch_that_bound_another_nccl_and_differing_bytes_across_sparks_are_refused(stock, capsys):
     value, _ = stock
     hosts = [host["host"] for host in installer.read(controller.STATE / "cluster.json")["plan"]["spec"]["hosts"]]
-    value.binding[hosts[0]] = binding(torch_nccl_version=[2, 29, 7])
+    value.binding[hosts[0]] = binding(torch_runtime_nccl_version=22907)
     value.digests[hosts[1]] = "c" * 64
     assert plan("--plan") == 3
     problems = json.loads(capsys.readouterr().out)["details"]["problems"]
-    assert "torch reports NCCL [2, 29, 7]" in problems[f"rank 0 ({hosts[0]})"][0]
+    assert "torch's runtime ncclGetVersion reports 22907" in problems[f"rank 0 ({hosts[0]})"][0]
     assert problems["library"] == [f"the Sparks hold different bytes at {LIBRARY}"]
 
 
@@ -159,4 +165,35 @@ def test_ring_only_requires_transport_libsircl(machine, capsys):  # noqa: F811
         sparkring.main(["install", "--image", REFERENCE, "--ring-only", "--plan", "--libsircl-library", LIBRARY,
                         "--model-path", "/srv/models/m"])
     assert "--ring-only applies only with --transport libsircl" in capsys.readouterr().err
+
+
+def test_an_sglang_stock_image_plan_writes_launch_server_compose_files(stock, capsys):
+    value, _ = stock
+    wheel_nccl = "/opt/sglang/lib/python3.12/site-packages/nvidia/nccl/lib/libnccl.so.2"
+    hosts = [host["host"] for host in installer.read(controller.STATE / "cluster.json")["plan"]["spec"]["hosts"]]
+    for host in hosts:
+        value.facts[host] = sglang_facts(**{"torch.nccl_libraries": [wheel_nccl]})
+    assert sparkring.main(["install", "--image", SGLANG_REFERENCE, "--transport", "libsircl",
+                           "--libsircl-library", LIBRARY, "--model-path", "/srv/models/m", "--plan", "--json",
+                           "--", "--context-length", "32768"]) == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["state"] == "planned" and result["framework"] == "sglang"
+    assert all(row["framework"] == "sglang" and row["sglang"] == "0.5.6"
+               and row["torch_runtime_nccl"] == 22705 for row in result["preflight"])
+    binding_calls = [argv for _, argv, _ in value.calls if "--binding" in argv]
+    assert len(binding_calls) == 2
+    assert all(f"type=bind,src={LIBRARY},dst={wheel_nccl},readonly" in argv for argv in binding_calls)
+    directory = Path(result["directory"]["node_a"])
+    for rank in (0, 1):
+        service = yaml.safe_load((directory / f"compose.rank{rank}.yaml").read_text())["services"]["model"]
+        assert service["environment"]["SGLANG_NCCL_SO_PATH"] == service["environment"]["LD_PRELOAD"] == TARGET
+        assert "VLLM_NCCL_SO_PATH" not in service["environment"]
+        assert service["command"][:5] == ["python3", "-m", "sglang.launch_server", "--model-path", "/model"]
+        assert "--context-length" in service["command"]
+        volumes = {v["target"]: (v["source"], v["read_only"]) for v in service["volumes"]}
+        assert volumes[wheel_nccl] == (LIBRARY, True)
+    assert "SGLang's PyNccl and torch's ProcessGroupNCCL" in out.err
+    assert "Off: SGLang's custom all-reduce, so PyNccl carries the device collectives;" in out.err
+    assert "vLLM" not in out.err
 
