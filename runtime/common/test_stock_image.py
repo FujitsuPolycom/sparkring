@@ -451,6 +451,7 @@ def test_every_sglang_rank_runs_launch_server_with_libsircl_as_nccl(shape, size,
     for rank, spec in enumerate(ranks):
         environment = spec.environment
         assert environment["SGLANG_NCCL_SO_PATH"] == TARGET and environment["LD_PRELOAD"] == TARGET
+        assert environment["EP_SUPPRESS_NCCL_CHECK"] == "1"
         assert "VLLM_NCCL_SO_PATH" not in environment and "VLLM_HOST_IP" not in environment
         assert environment["LIBSIRCL_FAIL_STOP"] == "1" and environment["LIBSIRCL_NCCL_API_VERSION"] == "22705"
         assert environment["LIBSIRCL_TRANSPORT"] == "verbs" and environment["SIRCL_GID_INDEX"] == "3"

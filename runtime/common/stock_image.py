@@ -427,7 +427,9 @@ def rank_spec(image, facts, arguments, *, name, reference, rank, row, master, si
     runtime = framework(facts)
     if runtime == "sglang":
         off = {}
-        runtime_env = {"SGLANG_NCCL_SO_PATH": library_target(version)}
+        # SGLang unconditionally imports deep_ep at server startup; deep_ep.check_nccl_so scans
+        # /proc/self/maps for the literal substring "libnccl" and crashes when only libsircl is mapped.
+        runtime_env = {"SGLANG_NCCL_SO_PATH": library_target(version), "EP_SUPPRESS_NCCL_CHECK": "1"}
     else:
         switches = (facts.get("vllm") or {}).get("switches") or []
         off = {key: value for key, value in libsircl.INDEPENDENT_TRANSPORTS_OFF.items() if key in switches}
