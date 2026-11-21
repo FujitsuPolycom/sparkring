@@ -189,6 +189,17 @@ starts:
   NVIDIA's `nvidia-cdi-refresh.service`, which DGX OS ships disabled, so the
   specification is written at every boot, and starts it when the
   specification is missing.
+
+  If startup reports `Unit file nvidia-cdi-refresh.service does not exist`,
+  check the NVIDIA Container Toolkit installation on the Spark named in the
+  error. Run `nvidia-ctk --version` and
+  `systemctl show -p LoadState nvidia-cdi-refresh.service` on that host.
+  If the unit is missing, install or update the host Toolkit to a version that
+  provides automatic CDI refresh. Follow the
+  [NVIDIA CDI guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html).
+  Confirm that `/var/run/cdi/nvidia.yaml` exists and that `nvidia-ctk cdi list`
+  lists NVIDIA GPU devices before retrying the installation.
+
 - **Memory.** A GB10's GPU allocates from the same memory as the CPU, so the
   page cache that checkpoint reads and the previous model leave behind counts
   against the free memory vLLM checks at startup (`--gpu-memory-utilization`
