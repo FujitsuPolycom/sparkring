@@ -247,6 +247,14 @@ def assignment(groups, world):
     2-3 and the data-parallel pairs on 1-2 and 3-0. The search is exhaustive
     over the ring's positions, pruned as each group completes: it is exact,
     and eight positions are at most 40,320 orders.
+
+    The map is realised through the Spark each rank runs on, not through the
+    position list a plan hands to the route tool: that list traces the cable
+    ring (consecutive entries are cabled neighbours) and ``tools/site_routes.py``
+    numbers each row by its index in it (``"LIBSIRCL_POSITION": str(rank)``), so
+    a permuted list would describe a ring over cables that do not exist. The
+    installer therefore orders the ranks' Sparks by this map and leaves the
+    trace alone.
     """
     world = len(range(world))
     by_rank = [[] for _ in range(world)]
