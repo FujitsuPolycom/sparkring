@@ -110,17 +110,32 @@ _Static_assert(sizeof(sccl_link_args) == 176, "sccl_link_args must match the lin
  * for at most SCCL_P2P_MAX_THREADS threads per block. */
 enum { SCCL_P2P_MAX_UNROLL = 8, SCCL_P2P_MAX_THREADS = 512, SCCL_P2P_MIN_THREADS = 64 };
 /* One point-to-point launch: the message (`data`, a 16-byte-aligned device address; `packs` 16-byte packs;
- * `tail` its bytes modulo 16), the channel's first item and the message's items, the peer's block and the
- * control line of the channel arena (device addresses), the peer, the slot geometry and the block offsets of
- * the native layer's p2p_layout (receive, send, flag, desc, ready, consumed, sent). Mirrors the device-side
+ * `tail` its bytes modulo 16), the message's items, the peer's block, the control line and the channel's
+ * device counter pair ({seq, arrival}, 8 bytes), the peer, the slot geometry and the block offsets of the
+ * native layer's p2p_layout (receive, send, flag, desc, ready, consumed, sent). Mirrors the device-side
  * P2PParams (120 bytes). */
 typedef struct {
-  uint64_t data, block_base, ctrl_base, slot_bytes;
+  uint64_t data, block_base, ctrl_base, slot_bytes, counter_ptr;
   int32_t packs, tail, items, peer;
-  uint32_t first, slots, lanes, reserved;
+  uint32_t slots, lanes;
   uint64_t recv_off, send_off, flag_off, desc_off, ready_off, consumed_off, sent_off;
 } sccl_p2p_args;
 _Static_assert(sizeof(sccl_p2p_args) == 120, "sccl_p2p_args must match the point-to-point pack's P2PParams");
+
+/* SIRCL-EP kernels in the point-to-point pack (kernels/sircl_p2p.cu): GPU-driven dynamic variable-length
+ * MoE dispatch, combine transfer, and rank-ordered combine reduction. Mirrors sircl_ep::EpParams (200 bytes). */
+enum { SCCL_EP_THREADS = 256, SCCL_EP_MAX_TOPK = 16 };
+typedef struct {
+  uint64_t hidden_in, topk_ids_in, topk_weights_in;
+  uint64_t hidden_out, topk_ids_out, topk_weights_out;
+  uint64_t recv_counts_out, workspace;
+  uint64_t p2p_dev, p2p_counters;
+  uint64_t layout_control, layout_block, slot_bytes;
+  uint64_t recv_off, send_off, flag_off, desc_off, ready_off, consumed_off, sent_off;
+  int32_t world, rank, num_tokens, max_tokens, hidden_bytes, top_k, num_experts;
+  uint32_t slots, lanes, wire_row_bytes;
+} sccl_ep_args;
+_Static_assert(sizeof(sccl_ep_args) == 200, "sccl_ep_args must match the point-to-point pack's EpParams");
 
 /* Load every pack into `ctx` once (pushing it current for the load); later calls for the same context
  * return at once. Each successful call holds a reference on the context's entry, which sccl_kp_release
@@ -169,6 +184,11 @@ sccl_CUresult sccl_kp_launch_link(sccl_CUfunction function, const sccl_link_args
 int sccl_kp_p2p_function(sccl_CUcontext ctx, int send, int unroll, sccl_CUfunction *out);
 sccl_CUresult sccl_kp_launch_p2p(sccl_CUfunction function, const sccl_p2p_args *args, unsigned grid,
                                  unsigned threads, sccl_CUstream stream);
+/* SIRCL-EP entries (from the point-to-point pack). */
+int sccl_kp_ep_functions(sccl_CUcontext ctx, sccl_CUfunction *dispatch, sccl_CUfunction *combine_xfer,
+                         sccl_CUfunction reduce[SCCL_DT_COUNT]);
+sccl_CUresult sccl_kp_launch_ep(sccl_CUfunction function, const sccl_ep_args *args, unsigned grid, unsigned threads,
+                                sccl_CUstream stream);
 /* SHA-256 of the embedded transport, fold, link and point-to-point fatbins, hexadecimal; part of the setup
  * agreement. */
 const char *sccl_kp_hash(void);

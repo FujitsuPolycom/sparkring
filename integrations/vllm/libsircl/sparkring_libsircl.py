@@ -130,6 +130,17 @@ def resolved_target():
                                      "names") from None
 
 
+def _register_ep_extensions():
+    """Install opt-in b12x EP MoE and SIRCL-EP all2all hooks when requested by env."""
+    for env_flag, module_name, fn_name in (
+        ("SIRCL_B12X_EP_MOE", "sircl_ep_b12x", "install_b12x_ep_moe"),
+        ("SIRCL_EP_ALL2ALL", "sircl_ep_all2all", "install_sircl_ep_all2all"),
+    ):
+        if os.environ.get(env_flag, "").strip().lower() in ("1", "true", "on", "yes"):
+            mod = __import__(module_name)
+            getattr(mod, fn_name)()
+
+
 def register():
     """Point vLLM's PyNccl at the checked libsircl library; vLLM may call this more than once."""
     path = selected()
@@ -140,3 +151,5 @@ def register():
     if found is not None and found != path:
         raise LibsirclSelectionError(f"vLLM resolves {TARGET} to {found!r}, not {path}: it read its environment "
                                      "before the plugin set the variable, so PyNccl would load that library")
+    _register_ep_extensions()
+

@@ -78,6 +78,16 @@ typedef struct {
  * itself in order and are local copies. */
 ncclResult_t sccl_engine_p2p(sccl_engine *engine, const sccl_p2p_op *ops, unsigned count, char *err,
                              size_t err_len);
+/* SIRCL-EP: GPU-driven dynamic variable-length MoE token dispatch and combine over point-to-point channels. */
+size_t sccl_engine_ep_workspace_bytes(int world, int max_tokens, size_t hidden_bytes);
+ncclResult_t sccl_engine_ep_dispatch(sccl_engine *engine, const void *hidden_in, const int *topk_ids_in,
+                                     const float *topk_weights_in, void *hidden_out, int *topk_ids_out,
+                                     float *topk_weights_out, int *recv_counts_out, void *workspace,
+                                     size_t workspace_bytes, int num_tokens, int max_tokens, size_t hidden_bytes,
+                                     int top_k, int num_experts, cudaStream_t stream, char *err, size_t err_len);
+ncclResult_t sccl_engine_ep_combine(sccl_engine *engine, const void *expert_out_in, void *hidden_out, void *workspace,
+                                    size_t workspace_bytes, int num_tokens, int max_tokens, size_t hidden_dim,
+                                    ncclDataType_t datatype, cudaStream_t stream, char *err, size_t err_len);
 /* Bytes per element of an NCCL datatype; 0 for an invalid one. */
 size_t sccl_engine_type_size(ncclDataType_t datatype);
 /* ncclMemAlloc and ncclMemFree: device memory of the calling thread's current CUDA context (cuMemAlloc),
