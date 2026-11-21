@@ -63,9 +63,10 @@ class HostAbiTests(unittest.TestCase):
         expected |= {"p" + name for name in expected}
         self.assertEqual({name for name in exported if name.startswith(("nccl", "pnccl"))}, expected)
         self.assertFalse({name for name in exported if name.startswith("sccl_")}, "Internal helpers must be hidden")
-        # Beyond the NCCL API, exactly the three extension functions, by name (no sircl_fabric_* helpers).
+        # Beyond the NCCL API, the libsircl extension functions, by name (no sircl_fabric_* helpers).
         self.assertEqual({name for name in exported if not name.startswith(("nccl", "pnccl"))},
-                         {"sirclGetInfo", "sirclSetWaitRegime", "sirclGetReceipt"})
+                         {"sirclGetInfo", "sirclSetWaitRegime", "sirclGetReceipt",
+                          "sirclEpWorkspaceBytes", "sirclEpDispatch", "sirclEpCombine"})
 
     def test_soname_and_runtime_dependencies(self):
         dynamic = run("readelf", "-d", str(LIBRARY))

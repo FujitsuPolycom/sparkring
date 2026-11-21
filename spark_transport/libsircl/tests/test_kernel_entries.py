@@ -38,7 +38,8 @@ class KernelEntries(unittest.TestCase):
 
     def test_a_missing_entry_fails_and_is_named(self):
         for name in ("sircl_twoshot_bf16_w8", "sircl_fold_d11_o4", "sircl_chain_f16_u3", "sircl_ring_gather_u8",
-                     "sircl_ring_reduce_bf16_u8", "sircl_p2p_recv_u5", "sircl_p2p_send_u8"):
+                     "sircl_ring_reduce_bf16_u8", "sircl_p2p_recv_u5", "sircl_p2p_send_u8", "sircl_ep_dispatch",
+                     "sircl_ep_combine_reduce_bf16"):
             with self.subTest(name=name):
                 result = run(hide=name)
                 self.assertEqual(result.returncode, 1, result.stdout)

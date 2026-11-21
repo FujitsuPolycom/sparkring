@@ -190,3 +190,65 @@ def test_register_confirms_vllm_resolves_the_library(tmp_path, monkeypatch, envs
     else:
         with pytest.raises(plugin.LibsirclSelectionError, match=message):
             plugin.register()
+
+
+def test_register_invokes_opt_in_ep_extensions_only_when_enabled(tmp_path, monkeypatch):
+    path, digest = library(tmp_path)
+    monkeypatch.setenv(plugin.LIBRARY, str(path))
+    monkeypatch.setenv(plugin.DIGEST, digest)
+    monkeypatch.setattr(plugin, "LOADER", lambda name: Library())
+    monkeypatch.setattr(plugin, "pynccl_functions", lambda: ["ncclAllReduce"])
+    monkeypatch.setattr(plugin, "resolved_target", lambda: str(path))
+    called = []
+    fake_b12x = types.ModuleType("sircl_ep_b12x")
+    fake_b12x.install_b12x_ep_moe = lambda: called.append("b12x")
+    fake_a2a = types.ModuleType("sircl_ep_all2all")
+    fake_a2a.install_sircl_ep_all2all = lambda: called.append("a2a")
+    monkeypatch.setitem(sys.modules, "sircl_ep_b12x", fake_b12x)
+    monkeypatch.setitem(sys.modules, "sircl_ep_all2all", fake_a2a)
+
+    monkeypatch.delenv("SIRCL_B12X_EP_MOE", raising=False)
+    monkeypatch.delenv("SIRCL_EP_ALL2ALL", raising=False)
+    plugin.register()
+    assert called == []
+
+    monkeypatch.setenv("SIRCL_B12X_EP_MOE", "1")
+    plugin.register()
+    assert called == ["b12x"]
+
+    monkeypatch.setenv("SIRCL_EP_ALL2ALL", "on")
+    plugin.register()
+    assert called == ["b12x", "b12x", "a2a"]
+
+
+def test_sircl_ep_b12x_parallel_config_matrix():
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test", mod_path)
+    try:
+        mod = importlib.util.module_from_spec(spec_b12x)
+        spec_b12x.loader.exec_module(mod)
+    except ImportError:
+        pytest.skip("torch not installed in local test env")
+
+    def cfg(**kw):
+        defaults = {
+            "use_ep": False,
+            "ep_size": 1,
+            "use_all2all_kernels": False,
+            "use_ag_rs_all2all_kernels": False,
+            "enable_eplb": False,
+        }
+        defaults.update(kw)
+        return types.SimpleNamespace(**defaults)
+
+    assert mod._is_ep_parallel_supported(cfg()) is True
+    assert mod._is_ep_parallel_supported(cfg(use_ep=True, ep_size=4)) is True
+    assert mod._is_ep_parallel_supported(
+        cfg(use_ep=True, ep_size=4, use_all2all_kernels=True, use_ag_rs_all2all_kernels=True)
+    ) is True
+    assert mod._is_ep_parallel_supported(
+        cfg(use_ep=True, ep_size=4, use_all2all_kernels=True, use_ag_rs_all2all_kernels=False)
+    ) is False
+    assert mod._is_ep_parallel_supported(cfg(use_ep=True, ep_size=4, enable_eplb=True)) is False
+    assert mod._is_ep_parallel_supported(cfg(use_ep=True, ep_size=1)) is False
+

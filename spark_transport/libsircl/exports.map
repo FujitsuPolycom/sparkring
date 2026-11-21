@@ -1,4 +1,4 @@
 {
-  global: nccl*; pnccl*; sirclGetInfo; sirclSetWaitRegime; sirclGetReceipt;
+  global: nccl*; pnccl*; sirclGetInfo; sirclSetWaitRegime; sirclGetReceipt; sirclEpWorkspaceBytes; sirclEpDispatch; sirclEpCombine;
   local: *;
 };

@@ -37,6 +37,7 @@ typedef struct {
   sccl_CUfunction ring_exchange[SCCL_CHAIN_MAX_UNROLL + 1];
   sccl_CUfunction ring_exchange_reduce[SCCL_DT_COUNT][SCCL_CHAIN_MAX_UNROLL + 1];
   sccl_CUfunction p2p[2][SCCL_P2P_MAX_UNROLL + 1];
+  sccl_CUfunction ep_dispatch, ep_combine_xfer, ep_combine_reduce[SCCL_DT_COUNT];
 } loaded_pack;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
@@ -202,6 +203,28 @@ int sccl_kp_load(sccl_CUcontext ctx) {
                  sccl_cuda_result_text(r));
       }
     }
+  if (!failed) {
+    static const char *const ep_names[2] = {"sircl_ep_dispatch", "sircl_ep_combine_xfer"};
+    sccl_CUfunction *ep_dst[2] = {&p->ep_dispatch, &p->ep_combine_xfer};
+    for (int i = 0; !failed && i < 2; ++i) {
+      r = cu->ModuleGetFunction(ep_dst[i], p->p2p_module, ep_names[i]);
+      if (r != SCCL_CUDA_SUCCESS) {
+        failed = 1;
+        snprintf(error_text, sizeof error_text, "point-to-point pack has no entry %s: %s", ep_names[i],
+                 sccl_cuda_result_text(r));
+      }
+    }
+    for (int d = 0; !failed && d < SCCL_DT_COUNT; ++d) {
+      char name[64];
+      snprintf(name, sizeof name, "sircl_ep_combine_reduce_%s", dt_names[d]);
+      r = cu->ModuleGetFunction(&p->ep_combine_reduce[d], p->p2p_module, name);
+      if (r != SCCL_CUDA_SUCCESS) {
+        failed = 1;
+        snprintf(error_text, sizeof error_text, "point-to-point pack has no entry %s: %s", name,
+                 sccl_cuda_result_text(r));
+      }
+    }
+  }
   if (failed && p->p2p_module) cu->ModuleUnload(p->p2p_module);
   if (failed && p->links_module) cu->ModuleUnload(p->links_module);
   if (failed && p->fold_module) cu->ModuleUnload(p->fold_module);
@@ -392,6 +415,31 @@ sccl_CUresult sccl_kp_launch_p2p(sccl_CUfunction function, const sccl_p2p_args *
                                  unsigned threads, sccl_CUstream stream) {
   const sccl_cuda *cu = sccl_cuda_get();
   sccl_p2p_args a = *args;
+  void *params[] = {&a};
+  return cu->LaunchKernel(function, grid, 1, 1, threads, 1, 1, 0, stream, params, NULL);
+}
+
+int sccl_kp_ep_functions(sccl_CUcontext ctx, sccl_CUfunction *dispatch, sccl_CUfunction *combine_xfer,
+                         sccl_CUfunction reduce[SCCL_DT_COUNT]) {
+  pthread_mutex_lock(&lock);
+  loaded_pack *p = find(ctx);
+  if (p) {
+    *dispatch = p->ep_dispatch;
+    *combine_xfer = p->ep_combine_xfer;
+    for (int d = 0; d < SCCL_DT_COUNT; ++d) reduce[d] = p->ep_combine_reduce[d];
+  }
+  pthread_mutex_unlock(&lock);
+  if (!p) {
+    snprintf(error_text, sizeof error_text, "the kernel packs are not loaded in this context");
+    return -1;
+  }
+  return 0;
+}
+
+sccl_CUresult sccl_kp_launch_ep(sccl_CUfunction function, const sccl_ep_args *args, unsigned grid, unsigned threads,
+                                sccl_CUstream stream) {
+  const sccl_cuda *cu = sccl_cuda_get();
+  sccl_ep_args a = *args;
   void *params[] = {&a};
   return cu->LaunchKernel(function, grid, 1, 1, threads, 1, 1, 0, stream, params, NULL);
 }

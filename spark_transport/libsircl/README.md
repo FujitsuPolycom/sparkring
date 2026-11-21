@@ -130,9 +130,18 @@ session's sequence, so pairs proceed independently while other ranks idle. Each 
 has a stream of its own, so a receive waiting for its peer holds back only later items of its own channel;
 a group's sends are queued before its receives, each channel stream starts after the caller's stream reached
 the group, and the caller's stream then waits for every channel stream the group used. A buffer that is
-not 16-byte aligned, or a size that is not whole 16-byte packs, goes through staging. Channel items are not
-captured in CUDA graphs (a replay would reuse item numbers fixed at enqueue): such a call is refused with
-`ncclInvalidUsage`. A pair has a channel when every lane between them in both directions is direct or
+not 16-byte aligned, or a size that is not whole 16-byte packs, goes through staging. Channel items are
+capturable in CUDA graphs: each channel direction advances its item counter in device memory at replay
+time (via an atomic counter update on the GPU), so replays advance through the channel's slots without
+reusing item numbers fixed at enqueue; unaligned or non-pack sizes under capture use stream-ordered
+staging allocations on the channel stream (forked from and joined back to the capturing stream with
+graph events). On communicators with point-to-point channels, the SIRCL-EP extension
+(`sirclEpWorkspaceBytes`, `sirclEpDispatch`, `sirclEpCombine`) carries GPU-driven dynamic
+variable-length MoE token dispatch and combine over the same RDMA channels and arena: dispatch computes
+per-peer token counts on the GPU, sends variable-length payloads only to peers that receive tokens (with
+zero RDMA payload bytes for local-only routing), and combine scatters expert outputs back to each source
+rank with top-k weighted reduction, both capturable in CUDA graphs with routing that changes on every
+replay; receipts record EP dispatch and combine counts under `channels.ep`. A pair has a channel when every lane between them in both directions is direct or
 has a point-to-point window (`LIBSIRCL_P2P_WINDOWS`, which `tools/site_routes.py` prints from SIRCL's
 point-to-point budget): relayed lanes post within their windows, and a pair without one is refused on both
 ranks, naming the lane. A kernel that times out or meets a message of another size, or a failure to enqueue
@@ -362,7 +371,7 @@ all-gather and the fold pack, so the link and pair settings do not reach them.
 windows and ring plan from SIRCL's route planner for a layout such as `path:0-3` or `ring:8`.
 
 Extension API (`include/sircl.h`), exported by exact name: `sirclGetInfo`, `sirclSetWaitRegime`,
-`sirclGetReceipt`.
+`sirclGetReceipt`, `sirclEpWorkspaceBytes`, `sirclEpDispatch`, `sirclEpCombine`.
 
 ## Sources, licences and boundaries
 

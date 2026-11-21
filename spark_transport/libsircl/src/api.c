@@ -1045,6 +1045,42 @@ ncclResult_t sirclGetReceipt(ncclComm_t handle, char *out, size_t length, size_t
   if (needed) *needed = need;
   return result == ncclSuccess ? result : fail(result, "sirclGetReceipt: no SIRCL session on this communicator");
 }
+
+size_t sirclEpWorkspaceBytes(int world, int max_tokens, size_t hidden_bytes) {
+  return sccl_engine_ep_workspace_bytes(world, max_tokens, hidden_bytes);
+}
+
+ncclResult_t sirclEpDispatch(const void *hidden_in, const int *topk_ids_in, const float *topk_weights_in,
+                             void *hidden_out, int *topk_ids_out, float *topk_weights_out, int *recv_counts_out,
+                             void *workspace, size_t workspace_bytes, int num_tokens, int max_tokens,
+                             size_t hidden_bytes, int top_k, int num_experts, ncclComm_t handle, cudaStream_t stream) {
+  CHECK_PROCESS();
+  struct ncclComm *comm = acquire(handle);
+  if (!comm) return refuse(ncclInvalidArgument, "sirclEpDispatch: unknown communicator handle");
+  char message[512] = {0};
+  ncclResult_t result = collective_ready(comm, "sirclEpDispatch", ncclUint8, ncclSum, message, sizeof message);
+  if (result == ncclSuccess)
+    result = sccl_engine_ep_dispatch(comm->engine, hidden_in, topk_ids_in, topk_weights_in, hidden_out, topk_ids_out,
+                                     topk_weights_out, recv_counts_out, workspace, workspace_bytes, num_tokens,
+                                     max_tokens, hidden_bytes, top_k, num_experts, stream, message, sizeof message);
+  release(comm);
+  return result == ncclSuccess ? result : refuse(result, message);
+}
+
+ncclResult_t sirclEpCombine(const void *expert_out_in, void *hidden_out, void *workspace, size_t workspace_bytes,
+                            int num_tokens, int max_tokens, size_t hidden_dim, ncclDataType_t datatype,
+                            ncclComm_t handle, cudaStream_t stream) {
+  CHECK_PROCESS();
+  struct ncclComm *comm = acquire(handle);
+  if (!comm) return refuse(ncclInvalidArgument, "sirclEpCombine: unknown communicator handle");
+  char message[512] = {0};
+  ncclResult_t result = collective_ready(comm, "sirclEpCombine", datatype, ncclSum, message, sizeof message);
+  if (result == ncclSuccess)
+    result = sccl_engine_ep_combine(comm->engine, expert_out_in, hidden_out, workspace, workspace_bytes, num_tokens,
+                                    max_tokens, hidden_dim, datatype, stream, message, sizeof message);
+  release(comm);
+  return result == ncclSuccess ? result : refuse(result, message);
+}
 static ncclResult_t transition(ncclComm_t handle, int next) {
   CHECK_PROCESS();
   struct ncclComm *comm = acquire(handle);

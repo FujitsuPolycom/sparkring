@@ -44,7 +44,13 @@ send matches and calls ncclCommAbort 0.5 s later: the abort returns within 2 s, 
 within 5 s, and ranks 0, 2 and 3 report the channels' failure naming rank 1 within 20 s, long before the wait
 limit, because the abort poisons the channels and their progress thread posts abort notices. ``--case setup``: three groups of three ranks whose setup must fail on every rank, naming the
 reason: LIBSIRCL_P2P_CHANNELS on rank 0 only, SIRCL_P2P_THREADS=1024 on rank 1 (the pack runs at most 512),
-and a malformed LIBSIRCL_P2P_WINDOWS on rank 2.
+and a malformed LIBSIRCL_P2P_WINDOWS on rank 2. ``--case graph``: CUDA graph capture of grouped
+ncclSend/ncclRecv across channel peers (aligned multi-slot and unaligned/staged), 10 replays with mutated
+inputs plus eager traffic before and after, checking every byte and the receipt's captured_calls.
+``--case ep``: GPU-driven dynamic MoE token dispatch and combine (sirclEpWorkspaceBytes, sirclEpDispatch,
+sirclEpCombine) across asymmetric eager rounds (BF16/FP16/FP32 and all-local routing) plus CUDA graph
+capture and 8 dynamic-routing replays including an all-local toggle, checking bit-exactness against a
+PyTorch reference and the receipt's ep counters.
 
 Status: research-only test infrastructure (the emulation gives every pair a shared-memory lane; relays are
 modeled by the windows' chunked posting, not by relay queues).
@@ -71,7 +77,7 @@ LAYOUTS = {"ring8": DATA / "site_routes_ring8_l2.json", "ring8-alone": DATA / "s
 # rank's settings, path:0-3's closing edge (position 3 to 0) crosses relays, and without a layout no rank
 # has a ring plan.
 CYCLE_PLAN = {"ring8": True, "ring8-alone": True, "path4": False, "none": False}
-U8, F32 = 1, 7
+U8, F16, F32, BF16 = 1, 6, 7, 9
 SLOT_BYTES = 512 << 10
 INVALID_USAGE = 5
 SIZES = (0, 1, 15, 4096, 65539, 1000003, 5 << 20, (8 << 20) + 16)
@@ -94,6 +100,20 @@ def bind(lib):
     lib.ncclCommGetAsyncError.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int)]
     lib.ncclCommDestroy.argtypes = [ctypes.c_void_p]
     lib.ncclCommAbort.argtypes = [ctypes.c_void_p]
+    if hasattr(lib, "sirclEpWorkspaceBytes"):
+        lib.sirclEpWorkspaceBytes.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_size_t]
+        lib.sirclEpWorkspaceBytes.restype = ctypes.c_size_t
+        lib.sirclEpDispatch.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p,
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int,
+            ctypes.c_int, ctypes.c_size_t, ctypes.c_int, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+        ]
+        lib.sirclEpDispatch.restype = ctypes.c_int
+        lib.sirclEpCombine.argtypes = [
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.c_int,
+            ctypes.c_int, ctypes.c_size_t, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p,
+        ]
+        lib.sirclEpCombine.restype = ctypes.c_int
 
 
 def channel_peers(layout: str, world: int, rank: int) -> set:
@@ -236,6 +256,263 @@ def run_rank(args) -> int:
     channels = receipt["channels"]
     report("channels on, context open, peers as the layout gives them", channels["on"] and channels["context"] and
            set(channels["peers"]) == peers, json.dumps({k: channels[k] for k in ("on", "context", "peers")}))
+
+    if args.case == "graph":
+        def run_eager(tag):
+            keep_e, calls_e, expect_e = [], [], []
+            for peer in sorted(peers):
+                n_out = 4096 if (rank + peer) % 2 == 0 else 1029
+                off_out = 0 if (rank + peer) % 2 == 0 else 3
+                whole, view = placed(payload(rank, peer, tag, n_out), off_out)
+                keep_e.append(whole)
+                calls_e.append((True, view, peer))
+                n_in = 4096 if (peer + rank) % 2 == 0 else 1029
+                off_in = 0 if (peer + rank) % 2 == 0 else 5
+                whole, view = empty(n_in, off_in)
+                keep_e.append(whole)
+                calls_e.append((False, view, peer))
+                expect_e.append((view, payload(peer, rank, tag, n_in)))
+            torch.cuda.synchronize()
+            codes = [lib.ncclGroupStart()] + [call(*c) for c in calls_e] + [lib.ncclGroupEnd()]
+            stream.synchronize()
+            bad = [i for i, (view, want) in enumerate(expect_e) if not torch.equal(view.cpu(), want)]
+            return not any(codes) and not bad, f"codes {codes}, {len(bad)} differ; {last_error() if any(codes) else ''}"
+
+        ok, detail = run_eager(500)
+        report("eager grouped exchange before CUDA graph capture", ok, detail)
+
+        # Mix aligned multi-slot ((1 MiB) + 16), aligned small (4096), and unaligned/staged (1029 @ offset 3).
+        graph_sizes = (4096, (1 << 20) + 16, 1029)
+        keep_g, send_views, recv_views, graph_calls = [], [], [], []
+        for peer in sorted(peers):
+            idx_out = (rank * 3 + peer * 5) % len(graph_sizes)
+            n_out = graph_sizes[idx_out]
+            off_out = 3 if idx_out == 2 else 0
+            whole, sview = placed(payload(rank, peer, 600, n_out), off_out)
+            keep_g.append(whole)
+            send_views.append((peer, n_out, sview))
+            graph_calls.append((True, sview, peer))
+
+            idx_in = (peer * 3 + rank * 5) % len(graph_sizes)
+            n_in = graph_sizes[idx_in]
+            off_in = 5 if idx_in == 2 else 0
+            whole, rview = empty(n_in, off_in)
+            keep_g.append(whole)
+            recv_views.append((peer, n_in, rview))
+            graph_calls.append((False, rview, peer))
+
+        torch.cuda.synchronize()
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(graph, stream=stream):
+            codes = [lib.ncclGroupStart()] + [call(*c) for c in graph_calls] + [lib.ncclGroupEnd()]
+        stream.synchronize()
+        report("grouped P2P channel calls capture into a CUDA graph", not any(codes),
+               f"codes {codes}; {last_error() if any(codes) else ''}")
+
+        bad_replays = []
+        for rep in range(10):
+            for peer, n_out, sview in send_views:
+                sview.copy_(payload(rank, peer, 1000 + rep, n_out).cuda())
+            for _, _, rview in recv_views:
+                rview.fill_(0x5A)
+            torch.cuda.synchronize()
+            with torch.cuda.stream(stream):
+                graph.replay()
+            stream.synchronize()
+            for peer, n_in, rview in recv_views:
+                want = payload(peer, rank, 1000 + rep, n_in)
+                if not torch.equal(rview.cpu(), want):
+                    bad_replays.append(f"replay {rep} from rank {peer}")
+        report("10 CUDA graph replays with mutated inputs are bit-exact", not bad_replays, "; ".join(bad_replays[:4]))
+
+        ok, detail = run_eager(700)
+        report("eager grouped exchange after CUDA graph replays", ok, detail)
+
+        barrier = torch.full((16,), float(rank + 1), dtype=torch.float32, device="cuda")
+        torch.cuda.synchronize()
+        bcode = lib.ncclAllReduce(ctypes.c_void_p(barrier.data_ptr()), ctypes.c_void_p(barrier.data_ptr()),
+                                  barrier.numel(), F32, 0, comm, handle)
+        stream.synchronize()
+        report("all-reduce barrier after graph replays", bcode == 0, last_error() if bcode else "")
+
+        receipt = receipt_of(lib, comm)
+        captured = receipt["all_reduce"]["captured_calls"]
+        report("receipt records captured P2P channel calls and healthy state",
+               captured >= len(graph_calls) and receipt["healthy"],
+               f"captured_calls={captured}, healthy={receipt['healthy']}, error={receipt.get('error')}")
+        report("ncclCommDestroy", lib.ncclCommDestroy(comm) == 0, last_error())
+        save()
+        return 0 if all(ok for _, ok, _ in checks) else 1
+
+    if args.case == "ep":
+        num_experts = world * 8
+        local_e = num_experts // world
+        top_k = 4
+        hidden_dim = 256
+
+        def make_ep_inputs(seed, n_tok, td, all_local=False):
+            g = np.random.default_rng(seed)
+            if n_tok == 0:
+                h = torch.empty((0, hidden_dim), dtype=td, device="cuda")
+                ids = torch.empty((0, top_k), dtype=torch.int32, device="cuda")
+                wts = torch.empty((0, top_k), dtype=torch.float32, device="cuda")
+                return h, ids, wts
+            h_np = g.normal(0.0, 1.0, (n_tok, hidden_dim)).astype(np.float32)
+            h = torch.from_numpy(h_np).to(dtype=td, device="cuda").contiguous()
+            if all_local:
+                lo = rank * local_e
+                ids_np = np.stack([g.choice(local_e, size=top_k, replace=False) + lo for _ in range(n_tok)]).astype(
+                    np.int32
+                )
+            else:
+                ids_np = np.stack([g.choice(num_experts, size=top_k, replace=False) for _ in range(n_tok)]).astype(
+                    np.int32
+                )
+            wts_np = g.uniform(0.1, 1.0, (n_tok, top_k)).astype(np.float32)
+            wts_np /= wts_np.sum(axis=1, keepdims=True)
+            return h, torch.from_numpy(ids_np).cuda().contiguous(), torch.from_numpy(wts_np).cuda().contiguous()
+
+        def ref_combine(h_in, ids_in, wts_in, td):
+            n_tok = h_in.shape[0]
+            if n_tok == 0:
+                return torch.empty((0, hidden_dim), dtype=td, device="cuda")
+            acc = torch.zeros((n_tok, hidden_dim), dtype=torch.float32, device="cuda")
+            h_f = h_in.float()
+            for dst in range(world):
+                lo, hi = dst * local_e, (dst + 1) * local_e
+                mask = (ids_in >= lo) & (ids_in < hi)
+                active = mask.any(dim=1)
+                if active.any():
+                    scale = (wts_in * mask.to(torch.float32)).sum(dim=1, keepdim=True) * (1.0 + 0.25 * dst)
+                    contrib = (h_f * scale).to(td).float()
+                    acc += torch.where(active.unsqueeze(1), contrib, torch.zeros_like(contrib))
+            return acc.to(td)
+
+        def run_expert(h_out, ids_out, wts_out, td):
+            lo, hi = rank * local_e, (rank + 1) * local_e
+            mask = (ids_out >= lo) & (ids_out < hi)
+            scale = (wts_out * mask.to(torch.float32)).sum(dim=1, keepdim=True) * (1.0 + 0.25 * rank)
+            return (h_out.float() * scale).to(td).contiguous()
+
+        # 1. Asymmetric eager rounds across BF16, FP16, FP32 + all-local round.
+        eager_specs = [
+            (BF16, torch.bfloat16, "bf16-asym", [0, 3, 7, 1], False),
+            (F16, torch.float16, "fp16-asym", [5, 0, 2, 6], False),
+            (F32, torch.float32, "fp32-asym", [4, 2, 1, 3], False),
+            (BF16, torch.bfloat16, "bf16-all-local", [4, 4, 4, 4], True),
+        ]
+        for idx, (nccl_dt, td, label, counts, all_local) in enumerate(eager_specs):
+            n_tok = counts[rank % len(counts)]
+            max_tok = max(counts)
+            hidden_bytes = hidden_dim * torch.empty((), dtype=td).element_size()
+            ws_bytes = int(lib.sirclEpWorkspaceBytes(world, max_tok, hidden_bytes))
+            ws = torch.empty(ws_bytes, dtype=torch.uint8, device="cuda")
+            h_in, ids_in, wts_in = make_ep_inputs(2000 + idx * 100 + rank, n_tok, td, all_local=all_local)
+            total_rows = world * max_tok
+            h_out = torch.empty((total_rows, hidden_dim), dtype=td, device="cuda")
+            ids_out = torch.empty((total_rows, top_k), dtype=torch.int32, device="cuda")
+            wts_out = torch.empty((total_rows, top_k), dtype=torch.float32, device="cuda")
+            recv_counts = torch.full((world,), -1, dtype=torch.int32, device="cuda")
+            comb_out = torch.empty((n_tok, hidden_dim), dtype=td, device="cuda")
+            torch.cuda.synchronize()
+            c1 = lib.sirclEpDispatch(
+                ctypes.c_void_p(h_in.data_ptr() if n_tok else 0),
+                ctypes.c_void_p(ids_in.data_ptr() if n_tok else 0),
+                ctypes.c_void_p(wts_in.data_ptr() if n_tok else 0),
+                ctypes.c_void_p(h_out.data_ptr()),
+                ctypes.c_void_p(ids_out.data_ptr()),
+                ctypes.c_void_p(wts_out.data_ptr()),
+                ctypes.c_void_p(recv_counts.data_ptr()),
+                ctypes.c_void_p(ws.data_ptr()),
+                ws_bytes, n_tok, max_tok, hidden_bytes, top_k, num_experts, comm, handle,
+            )
+            with torch.cuda.stream(stream):
+                expert_out = run_expert(h_out, ids_out, wts_out, td)
+            c2 = lib.sirclEpCombine(
+                ctypes.c_void_p(expert_out.data_ptr()),
+                ctypes.c_void_p(comb_out.data_ptr() if n_tok else 0),
+                ctypes.c_void_p(ws.data_ptr()),
+                ws_bytes, n_tok, max_tok, hidden_dim, nccl_dt, comm, handle,
+            )
+            stream.synchronize()
+            want = ref_combine(h_in, ids_in, wts_in, td)
+            rc_list = recv_counts.cpu().tolist()
+            local_ok = (not all_local) or all(rc_list[s] == (n_tok if s == rank else 0) for s in range(world))
+            exact = (c1 == 0 and c2 == 0 and local_ok and torch.equal(comb_out, want))
+            report(f"SIRCL-EP eager {label}", exact,
+                   f"codes=({c1},{c2}) recv_counts={rc_list}; {last_error() if (c1 or c2) else ''}")
+
+        # 2. CUDA graph capture of dispatch -> expert -> combine, 8 dynamic-routing replays including all-local toggle.
+        g_tok = 8
+        g_td, g_dt = torch.bfloat16, BF16
+        g_hbytes = hidden_dim * 2
+        g_ws_bytes = int(lib.sirclEpWorkspaceBytes(world, g_tok, g_hbytes))
+        g_ws = torch.empty(g_ws_bytes, dtype=torch.uint8, device="cuda")
+        g_hin = torch.zeros((g_tok, hidden_dim), dtype=g_td, device="cuda")
+        g_ids = torch.zeros((g_tok, top_k), dtype=torch.int32, device="cuda")
+        g_wts = torch.full((g_tok, top_k), 1.0 / top_k, dtype=torch.float32, device="cuda")
+        g_hout = torch.empty((world * g_tok, hidden_dim), dtype=g_td, device="cuda")
+        g_idsout = torch.empty((world * g_tok, top_k), dtype=torch.int32, device="cuda")
+        g_wtsout = torch.empty((world * g_tok, top_k), dtype=torch.float32, device="cuda")
+        g_rc = torch.empty((world,), dtype=torch.int32, device="cuda")
+        g_comb = torch.empty((g_tok, hidden_dim), dtype=g_td, device="cuda")
+
+        torch.cuda.synchronize()
+        ep_graph = torch.cuda.CUDAGraph()
+        with torch.cuda.graph(ep_graph, stream=stream):
+            gc1 = lib.sirclEpDispatch(
+                ctypes.c_void_p(g_hin.data_ptr()), ctypes.c_void_p(g_ids.data_ptr()),
+                ctypes.c_void_p(g_wts.data_ptr()), ctypes.c_void_p(g_hout.data_ptr()),
+                ctypes.c_void_p(g_idsout.data_ptr()), ctypes.c_void_p(g_wtsout.data_ptr()),
+                ctypes.c_void_p(g_rc.data_ptr()), ctypes.c_void_p(g_ws.data_ptr()),
+                g_ws_bytes, g_tok, g_tok, g_hbytes, top_k, num_experts, comm, handle,
+            )
+            g_exp = run_expert(g_hout, g_idsout, g_wtsout, g_td)
+            gc2 = lib.sirclEpCombine(
+                ctypes.c_void_p(g_exp.data_ptr()), ctypes.c_void_p(g_comb.data_ptr()),
+                ctypes.c_void_p(g_ws.data_ptr()), g_ws_bytes, g_tok, g_tok, hidden_dim, g_dt, comm, handle,
+            )
+        stream.synchronize()
+        report("SIRCL-EP dispatch + expert + combine captures into a CUDA graph", gc1 == 0 and gc2 == 0,
+               f"codes=({gc1},{gc2}); {last_error() if (gc1 or gc2) else ''}")
+
+        bad_ep = []
+        for rep in range(8):
+            all_local = rep in (2, 5)
+            h_s, ids_s, wts_s = make_ep_inputs(4000 + rep * 100 + rank, g_tok, g_td, all_local=all_local)
+            g_hin.copy_(h_s)
+            g_ids.copy_(ids_s)
+            g_wts.copy_(wts_s)
+            g_comb.zero_()
+            torch.cuda.synchronize()
+            with torch.cuda.stream(stream):
+                ep_graph.replay()
+            stream.synchronize()
+            want = ref_combine(g_hin, g_ids, g_wts, g_td)
+            rc_list = g_rc.cpu().tolist()
+            if all_local and any(rc_list[s] != (g_tok if s == rank else 0) for s in range(world)):
+                bad_ep.append(f"replay {rep} all-local recv_counts={rc_list}")
+            elif not torch.equal(g_comb, want):
+                bad_ep.append(f"replay {rep} mismatch")
+        report("8 SIRCL-EP CUDA graph replays with dynamic routing (including all-local toggle) are bit-exact",
+               not bad_ep, "; ".join(bad_ep[:4]))
+
+        barrier = torch.full((16,), float(rank + 1), dtype=torch.float32, device="cuda")
+        torch.cuda.synchronize()
+        bcode = lib.ncclAllReduce(ctypes.c_void_p(barrier.data_ptr()), ctypes.c_void_p(barrier.data_ptr()),
+                                  barrier.numel(), F32, 0, comm, handle)
+        stream.synchronize()
+        report("all-reduce barrier after SIRCL-EP", bcode == 0, last_error() if bcode else "")
+
+        receipt = receipt_of(lib, comm)
+        ep_rec = receipt["channels"]["ep"]
+        captured = receipt["all_reduce"]["captured_calls"]
+        report("receipt records SIRCL-EP dispatches, combines, captured calls and healthy state",
+               ep_rec["dispatches"] >= 5 and ep_rec["combines"] >= 5 and captured >= 2 and receipt["healthy"],
+               json.dumps({"ep": ep_rec, "captured_calls": captured, "healthy": receipt["healthy"]}))
+        report("ncclCommDestroy", lib.ncclCommDestroy(comm) == 0, last_error())
+        save()
+        return 0 if all(ok for _, ok, _ in checks) else 1
 
     # 1. Every ordered pair with a channel at once.
     for round_ in range(args.rounds):
@@ -519,7 +796,8 @@ def main(argv=None) -> int:
     parser.add_argument("--world", type=int, default=4)
     parser.add_argument("--lanes", type=int, default=2)
     parser.add_argument("--layout", choices=("none", "ring8", "ring8-alone", "path4"), default="none")
-    parser.add_argument("--case", choices=("traffic", "size", "gone", "abort", "setup"), default="traffic")
+    parser.add_argument("--case", choices=("traffic", "size", "gone", "abort", "setup", "graph", "ep"),
+                        default="traffic")
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--timeout", type=float, default=1200)
     parser.add_argument("--env", action="append", default=[], metavar="NAME=VALUE",
