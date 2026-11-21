@@ -201,21 +201,17 @@ def owned_arguments(arguments, runtime="vllm"):
 
 
 def expert_parallel_problems(arguments, size):
-    """Why this expert width does not run on the deployment's ring; empty when it does.
+    """Why this expert width does not match the tensor-parallel width; empty when it does.
 
-    The plan sets the tensor width to the group's Spark count (``rank_command``
-    passes ``--tp-size`` ``size``), so the whole ring is one tensor-parallel
-    group. Expert parallelism keeps to the plan's one route map only where
-    SGLang's expert group *is* that group, which happens at ``--ep-size`` equal
-    to ``--tp-size`` (``parallel_state.py``: ``if moe_ep_size ==
-    tensor_model_parallel_size: _MOE_EP = _TP``). Every narrower width forms
-    expert groups of every ``moe_tp``-th rank; no order of the ring makes those
-    one arc (``parallel_groups.assignment`` finds none), so the child's setup
-    would fail on a rank with no route to its group peer.
+    SGLang makes the expert group the tensor-parallel group itself only when
+    ``--ep-size`` equals ``--tp-size`` (``parallel_state.py``: ``if moe_ep_size
+    == tensor_model_parallel_size: _MOE_EP = _TP``), adding no communicator.
+    Every narrower width forms strided or open-arc expert groups that fail under
+    ``LIBSIRCL_RING_ONLY=1`` (``parallel_groups.assignment`` finds no order).
 
-    ``size`` is the group's Spark count, which the caller knows and the
-    arguments do not (the plan owns ``--tp-size``). Without it the width cannot
-    be compared, and any ``--ep-size`` above one is refused.
+    ``size`` is the group's Spark count; when pipeline parallelism is set, the
+    tensor width is ``size // pp`` (``size`` when ``pp == 1``). Without ``size``
+    the width cannot be compared, and any ``--ep-size`` above one is refused.
     """
     try:
         ep = libsircl._count(arguments, *SGLANG_EP_FLAGS)
@@ -224,8 +220,18 @@ def expert_parallel_problems(arguments, size):
     if ep <= 1:
         return []
     if size is None:
-        return [f"expert parallelism {ep} runs at the deployment's tensor width, which the plan sets to the "
+        return [f"expert parallelism {ep} runs at the deployment's tensor width, which the plan sets from the "
                 "group's Spark count; this check has no group to compare it with"]
+    try:
+        pp = libsircl._count(arguments, "--pp-size", "--pipeline-parallel-size")
+    except libsircl.LibsirclError:
+        pp = 1
+    if pp > 1 and size % pp == 0:
+        tp = size // pp
+        if ep == tp:
+            return []
+        return [f"expert parallelism {ep} against tensor width {tp} (group of {size} Sparks with pipeline "
+                f"parallelism {pp}): the expert group aliases the tensor-parallel group only at --ep-size {tp}"]
     if ep == size:
         return []
     return [f"expert parallelism {ep} against a group of {size} Sparks: the plan sets the tensor width to the "
@@ -234,12 +240,16 @@ def expert_parallel_problems(arguments, size):
 
 def moe_a2a_problems(arguments):
     """Why this MoE dispatch backend is not PyNccl's; empty when it is (``none`` or unset)."""
-    backend = libsircl.argument(arguments, "--moe-a2a-backend")
-    if backend is None or backend in SGLANG_MOE_A2A_BACKENDS:
-        return []
-    return [f"--moe-a2a-backend {backend} dispatches MoE tokens through a library the image does not carry "
+    problems = []
+    for flag in ("--moe-a2a-backend", "--speculative-moe-a2a-backend"):
+        backend = libsircl.argument(arguments, flag)
+        if backend is None or backend in SGLANG_MOE_A2A_BACKENDS:
+            continue
+        problems.append(
+            f"{flag} {backend} dispatches MoE tokens through a library the image does not carry "
             "(DeepEP's NVSHMEM, NIXL, Mooncake, MORI or FlashInfer symmetric memory); the plan runs "
-            "--moe-a2a-backend none, whose dispatch is PyNccl all-gathers and reduce-scatters"]
+            "--moe-a2a-backend none, whose dispatch is PyNccl all-gathers and reduce-scatters")
+    return problems
 
 
 def sglang_refusals(environment, arguments, *, size=None):

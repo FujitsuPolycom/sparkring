@@ -419,11 +419,14 @@ def test_an_sglang_image_or_arguments_libsircl_cannot_serve_are_refused(changes,
 
 
 def test_expert_parallel_at_the_group_width_runs_on_the_deployments_ring():
-    # The plan sets --tp-size to the group's Spark count, so EP at that width is the tensor-parallel
-    # group itself: one communicator, the whole ring, and no argument the plan owns.
+    # The plan sets --tp-size to the group's Spark count (size // pp), so EP at that width is the
+    # tensor-parallel group itself: one communicator, no extra group, and no argument the plan owns.
     found = sglang_facts()
     assert stock_image.preflight(image(), found, ["--enable-ep-moe", "--ep-size", "4"], size=4) == []
     assert stock_image.preflight(image(), found, ["--ep", "4", "--moe-a2a-backend", "none"], size=4) == []
+    assert stock_image.expert_parallel_problems(["--pp-size", "2", "--ep-size", "2"], size=4) == []
+    mismatch = stock_image.expert_parallel_problems(["--pp-size", "2", "--ep-size", "4"], size=4)
+    assert any("tensor width 2" in problem and "--ep-size 2" in problem for problem in mismatch), mismatch
 
 
 @pytest.mark.parametrize("arguments, size, message", [
@@ -440,6 +443,8 @@ def test_expert_parallel_below_the_group_width_is_refused(arguments, size, messa
 def test_a_moe_dispatch_backend_off_pynccl_is_refused(backend):
     problems = stock_image.preflight(image(), sglang_facts(), ["--moe-a2a-backend", backend], size=4)
     assert any(f"--moe-a2a-backend {backend} dispatches MoE tokens" in problem for problem in problems), problems
+    draft = stock_image.preflight(image(), sglang_facts(), ["--speculative-moe-a2a-backend", backend], size=4)
+    assert any(f"--speculative-moe-a2a-backend {backend} dispatches MoE tokens" in problem for problem in draft), draft
 
 
 def test_preflight_refuses_an_image_with_neither_or_both_serving_runtimes():
