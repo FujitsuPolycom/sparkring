@@ -211,6 +211,37 @@ class SiteRoutesP2PTests(unittest.TestCase):
                 recorded = json.loads((ROOT / "tests" / "data" / name).read_text())
                 self.assertEqual(recorded, plan(*arguments, "--lanes", "2"))
 
+    def test_ring_only_emits_neighbor_routes_without_relays(self):
+        for lanes in (1, 2):
+            with self.subTest(lanes=lanes):
+                result = plan("--layout", "ring:8", "--lanes", str(lanes), "--ring-only")
+                self.assertTrue(result["ring_only"])
+                self.assertEqual(result["ring_problems"], [])
+                order = result["chain_order"]
+                self.assertEqual(len(order), 8)
+                for row in result["ranks"]:
+                    rank, env = row["rank"], row["env"]
+                    idx = order.index(rank)
+                    expected_neighbors = {order[(idx - 1) % 8], order[(idx + 1) % 8]}
+                    entries = dict(item.split("=", 1) for item in env["SIRCL_PEER_ROUTES"].split(","))
+                    self.assertEqual({int(k) for k in entries}, expected_neighbors)
+                    for devices in entries.values():
+                        self.assertEqual(len(devices.split("/")), lanes)
+                    self.assertEqual(env["LIBSIRCL_RING_ONLY"], "1")
+                    self.assertEqual(env["LIBSIRCL_RING_WINDOW"], "0")
+                    for forbidden in ("LIBSIRCL_RELAYED_LANES", "LIBSIRCL_FORWARD_WINDOWS",
+                                      "SIRCL_FORWARD_CHUNK_BYTES", "LIBSIRCL_P2P_WINDOWS", "SIRCL_P2P_CHUNK_BYTES"):
+                        self.assertNotIn(forbidden, env)
+
+    def test_ring_only_refuses_relayed_closing_edge(self):
+        process = subprocess.run([sys.executable, str(ROOT / "tools" / "site_routes.py"), "--layout", "path:0-3",
+                                  "--lanes", "2", "--ring-only"],
+                                 env=dict(os.environ, PYTHONPATH=PACKAGE), capture_output=True, text=True,
+                                 timeout=120)
+        self.assertEqual(process.returncode, 1, process.stdout)
+        self.assertIn("--ring-only", process.stderr)
+        self.assertEqual(process.stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

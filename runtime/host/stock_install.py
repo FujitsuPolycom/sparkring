@@ -109,7 +109,8 @@ def plan(args, arguments, *, state, invoke):
     except OSError:
         _needs("Run sudo sparkring setup first: a stock image runs on the recorded fabric", "setup")
     document = install_workflow.recorded_fabric(state, cluster)
-    reason = libsircl.fabric_unavailable(document)
+    ring_only = bool(getattr(args, "ring_only", False))
+    reason = libsircl.fabric_unavailable(document, ring_only=ring_only)
     if reason:
         _needs(f"--transport libsircl cannot run here: {reason}", "transport")
     layout = placements.layout_of(cluster)
@@ -119,10 +120,11 @@ def plan(args, arguments, *, state, invoke):
         _needs(str(error), "placement")
     positions = list(placement) if placement is not None else list(range(len(cluster["plan"]["spec"]["hosts"])))
     try:
-        group, devices, routes, planner = libsircl.group(document, positions)
+        group, devices, routes, planner = libsircl.group(document, positions, ring_only=ring_only)
     except transport.TransportError as error:
         _needs(f"--transport libsircl cannot run on positions {positions}: {error}", "placement")
-    reference_document = relays.group_reference(state, cluster) if placements.relayed(layout, placement) else None
+    reference_document = (relays.group_reference(state, cluster)
+                          if (not ring_only and placements.relayed(layout, placement)) else None)
     site = controller.model_site(cluster, "stock-libsircl", "main", placement, fabric=reference_document)
     rows = site["hosts"]
     reports, problems = survey(invoke, rows, reference, library, version, list(arguments))
@@ -134,6 +136,8 @@ def plan(args, arguments, *, state, invoke):
     digest = reports[0]["library_sha256"]
     identity = {"image": image["Id"], "library": digest, "positions": positions, "model": model,
                 "arguments": list(arguments), "fabric": document["id"]}
+    if ring_only:
+        identity["ring_only"] = True
     name = "sr-stock-" + hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()[:12]
     spark_directory = f"{SPARK_DIRECTORY}/{name}"
     output = Path(state) / "stock" / name

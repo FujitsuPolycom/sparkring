@@ -122,7 +122,13 @@ def note_cycle_plan(receipt: dict, world: int) -> bool:
     return CYCLE_PLANS[world]
 
 
+def ring_only(world: int = 0) -> bool:
+    return os.environ.get("LIBSIRCL_RING_ONLY") == "1" and (not world or world > 1)
+
+
 def cycle_plan(world: int) -> bool:
+    if ring_only(world):
+        return False
     if world in CYCLE_PLANS:
         return CYCLE_PLANS[world]
     if world < 3 or os.environ.get("SIRCL_LARGE_SCHEDULE"):
@@ -135,8 +141,14 @@ def cycle_plan(world: int) -> bool:
 
 
 def setting(name: str, world: int = 0):
-    """A schedule setting as the library runs it: the environment's value, or under the cycle plan its
-    values for the unset ones (the ring schedules from CYCLE_RING_MIN_BYTES)."""
+    """A schedule setting as the library runs it: LIBSIRCL_RING_ONLY=1 forces every ring schedule from zero,
+    else the environment's value, or under the cycle plan its values for the unset ones (the ring schedules
+    from CYCLE_RING_MIN_BYTES)."""
+    if ring_only(world):
+        if name in ("SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE"):
+            return "ring"
+        if name == "SIRCL_RING_MIN_BYTES":
+            return "0"
     value = os.environ.get(name)
     if value or not world or not cycle_plan(world):
         return value
@@ -160,9 +172,10 @@ def _minimum(name: str, collective: str, defaults, world: int = 0) -> int:
 
 def _schedule(name: str, nbytes: int, collective: str, world: int = 0) -> str:
     """The schedule variable `name` as the library runs it for a collective of `nbytes`: ring runs as auto
-    without the ring plan (LIBSIRCL_RING_WINDOW) or below SIRCL_RING_MIN_BYTES."""
+    without the ring plan (LIBSIRCL_RING_WINDOW or LIBSIRCL_RING_ONLY=1) or below SIRCL_RING_MIN_BYTES."""
     schedule = setting(name, world) or "pieces"
-    if schedule == "ring" and (not (os.environ.get("LIBSIRCL_RING_WINDOW") or os.environ.get("SIRCL_CCL_RING_WINDOW"))
+    if schedule == "ring" and (not (ring_only(world) or os.environ.get("LIBSIRCL_RING_WINDOW")
+                                    or os.environ.get("SIRCL_CCL_RING_WINDOW"))
                                or nbytes < _minimum("SIRCL_RING_MIN_BYTES", collective, RING_MINS, world)):
         return "auto"
     return schedule
@@ -176,8 +189,9 @@ PAIR_RING_MIN_BYTES = 2 << 20
 def pair_default(world: int):
     """The all-reduce schedule the library's pair default gives: "ring" for a pair joined by cables (no
     forward window in LIBSIRCL_FORWARD_WINDOWS) or given a ring plan (LIBSIRCL_RING_WINDOW), "auto" for a
-    relayed pair without one; None for other groups or when SIRCL_LARGE_SCHEDULE is set."""
-    if world != 2 or os.environ.get("SIRCL_LARGE_SCHEDULE"):
+    relayed pair without one; None for other groups, under LIBSIRCL_RING_ONLY=1, or when SIRCL_LARGE_SCHEDULE
+    is set."""
+    if ring_only(world) or world != 2 or os.environ.get("SIRCL_LARGE_SCHEDULE"):
         return None
     ring_plan = os.environ.get("LIBSIRCL_RING_WINDOW") or os.environ.get("SIRCL_CCL_RING_WINDOW")
     windows = os.environ.get("LIBSIRCL_FORWARD_WINDOWS") or os.environ.get("SIRCL_CCL_FORWARD_WINDOWS") or ""
@@ -2038,19 +2052,22 @@ def main(argv=None) -> int:
     receipt = receipt_of(lib, comm)
     calls = receipt["all_reduce"]["calls"]
     ops = sum(receipt["all_reduce"]["ops"].values())
-    # The fold ran for 57 (datatype, op) pairs: all 60 but the three sums the transport kernels reduce.
+    # The fold ran for 57 (datatype, op) pairs normally (all 60 but the three transport-kernel sums), or all 60
+    # under LIBSIRCL_RING_ONLY=1 where tails below 16*W bytes of those three sums also go through the fold.
+    expected_fold_ops = 60 if ring_only(world) else 57
     report("receipt", calls > 0 and receipt["refused"]["op"] == 2 and receipt["forwarded"] == 0
            and receipt["all_reduce"]["captured_calls"] == captured and receipt["healthy"]
+           and bool(receipt.get("ring_only")) == ring_only(world)
            and receipt["all_gather"]["calls"] > 0 and receipt["reduce_scatter"]["calls"] > 0
            and receipt["broadcast"]["calls"] == 10 and receipt["reduce"]["calls"] == 6
            and receipt["all_to_all"]["calls"] == 8 + alternating_alltoalls and receipt["gather"]["calls"] == 5
-           and receipt["scatter"]["calls"] == 5 and len(receipt["fold"]["ops"]) == 57
+           and receipt["scatter"]["calls"] == 5 and len(receipt["fold"]["ops"]) == expected_fold_ops
            and receipt["point_to_point"]["sends"] + receipt["point_to_point"]["receives"] == (24 if world == 2 else 2)
            # One send to another rank refused on a larger communicator without point-to-point channels.
            and receipt["channels"]["refused"] == (1 if world != 2 and os.environ.get("LIBSIRCL_P2P_CHANNELS") != "on"
                                                   else 0),
-           json.dumps({k: receipt[k] for k in ("refused", "channels", "all_reduce", "all_gather", "reduce_scatter",
-                                               "all_to_all", "fold")}))
+           json.dumps({k: receipt[k] for k in ("ring_only", "refused", "channels", "all_reduce", "all_gather",
+                                               "reduce_scatter", "all_to_all", "fold")}))
     if any((setting(name, world) or "pieces") != "pieces"
            for name in ("SIRCL_GATHER_SCHEDULE", "SIRCL_SCATTER_SCHEDULE")) or \
             setting("SIRCL_LARGE_SCHEDULE", world) == "ring" or pair_default(world) == "ring":

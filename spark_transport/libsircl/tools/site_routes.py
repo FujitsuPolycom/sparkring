@@ -56,9 +56,13 @@ checked.
 Limit: the windows are one plan per process, as libsircl reads them; communicators that run at once
 through the same relay queues are not budgeted against each other.
 
+``--ring-only`` emits neighbor-only routes with ``LIBSIRCL_RING_ONLY=1`` and ``LIBSIRCL_RING_WINDOW=0`` for a
+layout whose ring closes over direct cables (zero relay rules, zero diagonal routes or queue pairs). Layouts
+whose ring has a relayed edge (such as ``path:0-3``) are refused with exit status 1.
+
 Usage (SIRCL's package on PYTHONPATH, or installed):
-  python3 tools/site_routes.py --layout ring:8 --lanes 2 [--p2p-reserve session|none] [--ring-schedules]
-      [--session-share F] [--json]
+  python3 tools/site_routes.py --layout ring:8 --lanes 2 [--ring-only] [--p2p-reserve session|none]
+      [--ring-schedules] [--session-share F] [--json]
 """
 from __future__ import annotations
 
@@ -93,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--p2p-chunk", type=int, default=None, help="SIRCL_P2P_CHUNK_BYTES (SIRCL's default)")
     parser.add_argument("--ring-schedules", action="store_true",
                         help="the site runs the ring schedules: the point-to-point windows leave room for the ring windows")
+    parser.add_argument("--ring-only", action="store_true",
+                        help="emit neighbor-only routes with LIBSIRCL_RING_ONLY=1 for a direct-cable cycle without relays")
     parser.add_argument("--session-share", type=share_value, default=1.0,
                         help="the fraction of every relay queue's share the collective session is sized against")
     parser.add_argument("--json", action="store_true")
@@ -119,6 +125,32 @@ def main(argv: list[str] | None = None) -> int:
                                                    queue_bytes=session_queue)
         ring_window = min(ring_window, RING_MAX_CHUNKS * protocol.LINK_WINDOW_CHUNK)
         relayed = {rank for members in routes.ring_queues(layout, maps, order).values() for rank, _, _ in members}
+    if args.ring_only:
+        if order is None or problems or relayed:
+            reason = "; ".join(problems) if problems else "one or more ring neighbor edges cross relays"
+            print(f"site_routes.py: --ring-only requires every ring neighbor edge to be a direct cable "
+                  f"({args.layout}: {reason})", file=sys.stderr)
+            return 1
+        rows = []
+        for rank in range(world):
+            idx = order.index(rank)
+            neighbors = {order[(idx - 1) % world], order[(idx + 1) % world]}
+            neighbor_routes = {peer: devices for peer, devices in sorted(maps[rank].items()) if peer in neighbors}
+            env = {
+                "LIBSIRCL_POSITION": str(rank),
+                "SIRCL_PEER_ROUTES": ",".join(f"{peer}={'/'.join(devices)}" for peer, devices in neighbor_routes.items()),
+                "LIBSIRCL_CHAIN_ORDER": ",".join(str(r) for r in order),
+                "LIBSIRCL_RING_WINDOW": "0",
+                "LIBSIRCL_RING_ONLY": "1",
+            }
+            rows.append({"rank": rank, "env": env})
+        if args.json:
+            print(json.dumps({"layout": args.layout, "lanes": args.lanes, "chain_order": order,
+                              "ring_problems": [], "ring_only": True, "ranks": rows}, indent=1))
+        else:
+            for row in rows:
+                print(" ".join(f"{name}={value}" for name, value in row["env"].items()))
+        return 0
     # Point-to-point windows of every ordered pair's relayed lanes (SIRCL's p2p/budget.py).
     p2p_max = p2p_protocol.DEFAULT_WINDOW_BYTES if args.p2p_max_window is None else args.p2p_max_window
     p2p_chunk = p2p_protocol.DEFAULT_CHUNK_BYTES if args.p2p_chunk is None else args.p2p_chunk

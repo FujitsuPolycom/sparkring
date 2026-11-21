@@ -442,3 +442,30 @@ def test_the_receipt_check_reports_that_libsircl_receipts_are_not_judged(tmp_pat
     assert transport_receipts.text(verdict).startswith("Transport: libsircl (research-only); receipts not judged")
     assert not (Path(tmp_path) / transport_receipts.LATEST).exists()
     assert libsircl.summary(section)["expected"] == libsircl.EXPECTED
+
+
+def test_ring_only_plans_a_cycle_without_relays_and_refuses_paths():
+    no_relay = copy.deepcopy(document("cycle", 4))
+    no_relay["transports"] = [name for name in no_relay["transports"] if name != "sircl"]
+    assert libsircl.fabric_unavailable(no_relay) is not None
+    assert libsircl.fabric_unavailable(no_relay, ring_only=True) is None
+    assert transport.choose(image(TP4), no_relay, backend="libsircl", ring_only=True) == ("libsircl", None, None)
+    with pytest.raises(transport.TransportError, match="--ring-only applies only with --transport libsircl"):
+        transport.choose(image(TP4), no_relay, backend="sircl", ring_only=True)
+    section = libsircl.section(image(TP4), no_relay, [0, 1, 2, 3], dcp=1, ring_only=True)
+    assert section["group"]["ring_only"] is True and section["group"]["max_relays"] == 0
+    assert section["planner"]["ring_only"] is True
+    lock = installer.make_lock(TP4, install_site(4), "1" * 40, "2" * 64,
+                               image_runtime=image_lock.v2_view(image(TP4)), transport=section)
+    assert installer.validate(lock) == lock
+    specs = installer.specifications(lock)
+    for rank, spec in enumerate(specs):
+        env = spec.environment
+        assert env["LIBSIRCL_RING_ONLY"] == "1" and env["LIBSIRCL_RING_WINDOW"] == "0"
+        assert "LIBSIRCL_FORWARD_WINDOWS" not in env and "LIBSIRCL_RELAYED_LANES" not in env
+        assert sorted(libsircl.peer_routes(env["SIRCL_PEER_ROUTES"])) == sorted({(rank - 1) % 4, (rank + 1) % 4})
+    assert any("no relays (ring-only)" in line for line in transport.plan_lines(section))
+    assert libsircl.request_identity(section)["ring_only"] is True
+    with pytest.raises(libsircl.LibsirclError, match="ring-only"):
+        libsircl.section(image(TP4), document("path", 4), [0, 1, 2, 3], dcp=1, ring_only=True)
+

@@ -82,9 +82,10 @@ typedef struct {
 
 /* The local features of SIRCL's native proxy this library relies on: bit 0, roce_destroy returns the number
  * of verbs calls that failed (a failed release keeps the arena allocated); bit 1, link op word bit 24 makes
- * the proxy post the op's own items as their flags only (the pair exchange with no input). */
-enum { ROCE_FEATURE_DESTROY_COUNT = 1u, ROCE_FEATURE_OWN_FLAGS = 2u,
-       ROCE_FEATURES_NEEDED = ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS };
+ * the proxy post the op's own items as their flags only (the pair exchange with no input); bit 2, sparse
+ * peer route tables allow unconnected non-neighbor peers (-1 on every lane) for LIBSIRCL_RING_ONLY=1. */
+enum { ROCE_FEATURE_DESTROY_COUNT = 1u, ROCE_FEATURE_OWN_FLAGS = 2u, ROCE_FEATURE_SPARSE_PEERS = 4u,
+       ROCE_FEATURES_NEEDED = ROCE_FEATURE_DESTROY_COUNT | ROCE_FEATURE_OWN_FLAGS | ROCE_FEATURE_SPARSE_PEERS };
 
 #define PROXY_OPS(tag, label)                                                                          \
   {label, sccl_##tag##_roce_abi_version, sccl_##tag##_roce_layout, sccl_##tag##_roce_blob_bytes,         \
@@ -325,8 +326,9 @@ typedef struct {
    * sets link_blocks; pair_plan when the pair plan chooses the rest by size. */
   uint32_t chunk_set[COLLECTIVES], coll_blocks[COLLECTIVES], blocks_set, pair_plan;
   /* The cycle plan (see CYCLE_RING_MIN_BYTES) applies; the ring all-reduce's relay form
-   * (LIBSIRCL_RING_REDUCE_PASSES, see sccl_engine.ring_reduce_passes). */
-  uint32_t cycle_plan, ring_reduce_passes;
+   * (LIBSIRCL_RING_REDUCE_PASSES, see sccl_engine.ring_reduce_passes); neighbor-only ring mode
+   * (LIBSIRCL_RING_ONLY=1: direct ring neighbor queue pairs only, zero diagonal queue pairs or relays). */
+  uint32_t cycle_plan, ring_reduce_passes, ring_only;
   /* Point-to-point channels: on (LIBSIRCL_P2P_CHANNELS on a communicator of three or more ranks), the native
    * library's ABI, SIRCL's channel geometry (SIRCL_P2P_*) and the point-to-point pack. */
   uint32_t p2p_on, p2p_abi, p2p_slots, p2p_blocks, p2p_threads, p2p_unroll, p2p_chunk, p2p_reserved;
@@ -766,7 +768,7 @@ static int link_settings(sccl_engine *e, shared_settings *s, int pair_plan, char
    * printed by tools/site_routes.py): LIBSIRCL_RING_WINDOW is this rank's ring window, the bytes each lane
    * toward the next rank of the ring keeps unacknowledged through relays (0: a cable). */
   const char *ring = sccl_env("LIBSIRCL_RING_WINDOW");
-  s->ring_on = (ring && *ring) || pair_plan;
+  s->ring_on = (ring && *ring) || pair_plan || (s->ring_only && e->world > 1);
   e->ring_window = 0;
   if (ring && *ring) {
     if (env_u64("LIBSIRCL_RING_WINDOW", 0, 0, 0xFFFFFFFFu, &v, err, len)) return -1;
@@ -1067,6 +1069,17 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   if (minimum_setting("SIRCL_CHAIN_MIN_BYTES", default_chain_mins, s->chain_mins, err, len) ||
       minimum_setting("SIRCL_RING_MIN_BYTES", default_ring_mins, s->ring_mins, err, len))
     return -1;
+  const char *ring_only_text = sccl_env("LIBSIRCL_RING_ONLY");
+  if (ring_only_text && *ring_only_text) {
+    if (!strcmp(ring_only_text, "1")) {
+      s->ring_only = 1;
+    } else if (!strcmp(ring_only_text, "0")) {
+      s->ring_only = 0;
+    } else {
+      put_error(err, len, "LIBSIRCL_RING_ONLY=%s: 0 or 1", ring_only_text);
+      return -1;
+    }
+  }
   /* Pairs without SIRCL_LARGE_SCHEDULE (see PAIR_RING_MIN_BYTES): a cabled pair, or a relayed one given a
    * ring plan, runs the ring schedule from its pair minimums; a relayed pair without one runs the chain
    * from the chain minimum. On two ranks the ring and the chain add the same two values once, so their bits
@@ -1075,9 +1088,9 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
   int pair_plan = 0;
   const char *large = sccl_env("SIRCL_LARGE_SCHEDULE");
   const char *ring_plan = sccl_env("LIBSIRCL_RING_WINDOW");
-  int cycle_candidate = (!large || !*large) && e->world >= 3 && ring_plan && *ring_plan &&
+  int cycle_candidate = !s->ring_only && (!large || !*large) && e->world >= 3 && ring_plan && *ring_plan &&
                         s->threads >= SCCL_LINK_MIN_THREADS;
-  if ((!large || !*large) && e->world == 2 && s->threads >= SCCL_LINK_MIN_THREADS) {
+  if (!s->ring_only && (!large || !*large) && e->world == 2 && s->threads >= SCCL_LINK_MIN_THREADS) {
     const char *ring = sccl_env("LIBSIRCL_RING_WINDOW"), *ring_min = sccl_env("SIRCL_RING_MIN_BYTES");
     const char *gather = sccl_env("SIRCL_GATHER_SCHEDULE"), *scatter = sccl_env("SIRCL_SCATTER_SCHEDULE");
     const char *chain_min = sccl_env("SIRCL_CHAIN_MIN_BYTES");
@@ -1098,6 +1111,22 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
       s->large_schedule = SCHEDULE_AUTO;
     }
   }
+  if (s->ring_only && e->world > 1) {
+    static const char *const sched_names[COLLECTIVES] = {"SIRCL_LARGE_SCHEDULE", "SIRCL_GATHER_SCHEDULE",
+                                                         "SIRCL_SCATTER_SCHEDULE"};
+    for (int c = 0; c < COLLECTIVES; ++c) {
+      const char *val = sccl_env(sched_names[c]);
+      if (val && *val && strcmp(val, "ring")) {
+        put_error(err, len, "LIBSIRCL_RING_ONLY=1 conflicts with %s=%s (unset it or set it to ring)",
+                  sched_names[c], val);
+        return -1;
+      }
+    }
+    s->large_schedule = SCHEDULE_RING;
+    s->gather_schedule = SCHEDULE_RING;
+    s->scatter_schedule = SCHEDULE_RING;
+    for (int c = 0; c < COLLECTIVES; ++c) s->ring_mins[c] = 0;
+  }
   int links = s->gather_schedule != SCHEDULE_PIECES || s->scatter_schedule != SCHEDULE_PIECES ||
               s->large_schedule == SCHEDULE_RING;
   if ((s->large_schedule != SCHEDULE_PIECES || links) && s->threads < SCCL_LINK_MIN_THREADS) {
@@ -1106,6 +1135,18 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
     return -1;
   }
   if (link_settings(e, s, pair_plan, err, len)) return -1;
+  if (s->ring_only && e->world > 1) {
+    if (e->ring_window != 0) {
+      put_error(err, len, "LIBSIRCL_RING_ONLY=1 requires direct cable ring neighbors "
+                          "(LIBSIRCL_RING_WINDOW must be 0 or unset)");
+      return -1;
+    }
+    if (e->relayed[e->rank]) {
+      put_error(err, len, "LIBSIRCL_RING_ONLY=1 does not use relays "
+                          "(unset LIBSIRCL_RELAYED_LANES and LIBSIRCL_FORWARD_WINDOWS)");
+      return -1;
+    }
+  }
   if (p2p_settings(e, s, err, len)) return -1;
   e->link_on = e->world > 1 && links;
   if (!s->ring_on && (s->large_schedule == SCHEDULE_RING || s->gather_schedule == SCHEDULE_RING ||
@@ -1177,7 +1218,7 @@ static int read_settings(sccl_engine *e, int emulation, char *err, size_t len) {
         if (s->chain_mins[c] < s->ring_mins[c]) s->chain_mins[c] = s->ring_mins[c];
     e->link_on = 1;
   }
-  e->chain_on = e->world > 1 && s->large_schedule != SCHEDULE_PIECES;
+  e->chain_on = e->world > 1 && !s->ring_only && s->large_schedule != SCHEDULE_PIECES;
   int classes = 0;
   uint32_t largest = s->blocks > s->large_blocks ? s->blocks : s->large_blocks;
   if (largest < 32) largest = 32;
@@ -1226,6 +1267,7 @@ static const char *settings_difference(const shared_settings *a, const shared_se
   SAME(pair_plan, "the pair plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
   SAME(cycle_plan, "the cycle plan (SIRCL_LARGE_SCHEDULE, LIBSIRCL_FORWARD_WINDOWS, LIBSIRCL_RING_WINDOW)");
   SAME(ring_reduce_passes, "LIBSIRCL_RING_REDUCE_PASSES");
+  SAME(ring_only, "LIBSIRCL_RING_ONLY");
   SAME(p2p_on, "LIBSIRCL_P2P_CHANNELS");
   SAME(p2p_abi, "point-to-point native ABI");
   SAME(p2p_slots, "SIRCL_P2P_SLOTS");
@@ -1492,7 +1534,8 @@ static int p2p_windows(sccl_engine *e, char *err, size_t len) {
   if (relayed_lanes(relayed, err, len)) return -1;
   e->p2p_out = 0;
   for (int p = 0; p < e->world; ++p) {
-    int ok = p != e->rank, position = e->positions[p];
+    int ok = p != e->rank && (!e->shared.ring_only || p == e->ring_prev || p == e->ring_next);
+    int position = e->positions[p];
     for (int l = 0; ok && l < e->lanes; ++l)
       if ((e->forward[p][l] || (position >= 0 && position < MAX_POSITIONS && relayed[position][l])) &&
           !e->p2p_window[p][l])
@@ -1513,16 +1556,19 @@ typedef struct {
 } route_table;
 
 /* SIRCL_PEER_ROUTES: <position>=<device>[/<device>],... naming the position of every other rank of the
- * communicator (`positions[r]` is rank r's); entries for positions outside the communicator are ignored, so
- * one map serves every communicator a process joins. */
-static int parse_routes(int world, int rank, const int *positions, route_table *t, char *err, size_t len) {
+ * communicator (`positions[r]` is rank r's), or only the ring neighbors (`ring_prev`, `ring_next`) under
+ * LIBSIRCL_RING_ONLY=1; entries for positions outside the active peer set are ignored, so one map serves
+ * every communicator a process joins and ring-only mode opens zero diagonal queue pairs. */
+static int parse_routes(int world, int rank, const int *positions, int ring_only, int ring_prev, int ring_next,
+                        route_table *t, char *err, size_t len) {
   const char *text = sccl_env("SIRCL_PEER_ROUTES");
   memset(t, 0, sizeof *t);
   for (int p = 0; p < MAX_WORLD; ++p)
     for (int l = 0; l < MAX_LANES; ++l) t->lane_device[p][l] = -1;
   if (!text || !*text) {
     put_error(err, len, "the verbs transport needs a route map: set SIRCL_PEER_ROUTES "
-                        "(<peer>=<device>[/<device>],... for every other rank)");
+                        "(<peer>=<device>[/<device>],... for every %s)",
+              ring_only ? "ring neighbor" : "other rank");
     return -1;
   }
   char names[MAX_POSITIONS][MAX_LANES][64];
@@ -1553,9 +1599,11 @@ static int parse_routes(int world, int rank, const int *positions, route_table *
   }
   for (int p = 0; p < world; ++p) {
     if (p == rank) continue;
+    if (ring_only && p != ring_prev && p != ring_next) continue;
     int at = positions[p];
     if (!seen[at] || !counts[at]) {
-      put_error(err, len, "SIRCL_PEER_ROUTES names no device toward rank %d (position %d)", p, at);
+      put_error(err, len, "SIRCL_PEER_ROUTES names no device toward %srank %d (position %d)",
+                ring_only ? "ring neighbor " : "", p, at);
       return -1;
     }
     if (!t->lanes) t->lanes = counts[at];
@@ -1678,8 +1726,11 @@ static int traffic_class(int *out, char *err, size_t len) {
   return 0;
 }
 
-/* Emulation: lane l of every peer leaves through this process's device emu<pid>.<l>. */
-static int emulated_routes(int world, int rank, route_table *t, char *err, size_t len) {
+/* Emulation: lane l of every connected peer leaves through this process's device emu<pid>.<l>. Under
+ * LIBSIRCL_RING_ONLY=1 only ring neighbors (ring_prev, ring_next) are connected, leaving diagonal peers
+ * unconnected (-1) so emulation exercises the same zero-diagonal-QP graph as bare ring hardware. */
+static int emulated_routes(int world, int rank, int ring_only, int ring_prev, int ring_next, route_table *t,
+                           char *err, size_t len) {
   uint64_t lanes;
   if (env_u64("LIBSIRCL_EMU_LANES", 1, 1, 2, &lanes, err, len)) return -1;
   memset(t, 0, sizeof *t);
@@ -1701,8 +1752,10 @@ static int emulated_routes(int world, int rank, route_table *t, char *err, size_
     }
     t->gid_index[d] = 0;
   }
-  for (int p = 0; p < MAX_WORLD; ++p)
-    for (int l = 0; l < MAX_LANES; ++l) t->lane_device[p][l] = (p < world && p != rank && l < t->lanes) ? l : -1;
+  for (int p = 0; p < MAX_WORLD; ++p) {
+    int connected = p < world && p != rank && (!ring_only || p == ring_prev || p == ring_next);
+    for (int l = 0; l < MAX_LANES; ++l) t->lane_device[p][l] = (connected && l < t->lanes) ? l : -1;
+  }
   return 0;
 }
 
@@ -2308,7 +2361,7 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
     if ((features & ROCE_FEATURES_NEEDED) != ROCE_FEATURES_NEEDED) {
       put_error(local, sizeof local,
                 "the native proxy's local feature word is 0x%x and this library needs 0x%x (bit 0: roce_destroy "
-                "counts failed verbs calls; bit 1: flags-only own items)",
+                "counts failed verbs calls; bit 1: flags-only own items; bit 2: sparse neighbor-only peers)",
                 features, (unsigned)ROCE_FEATURES_NEEDED);
       break;
     }
@@ -2335,13 +2388,16 @@ int sccl_engine_create(sccl_bootstrap *bootstrap, int nranks, int rank, int posi
       break;
     }
     if (emulation) {
-      if (emulated_routes(nranks, rank, &routes, local, sizeof local)) break;
+      if (emulated_routes(nranks, rank, (int)e->shared.ring_only, e->ring_prev, e->ring_next, &routes, local,
+                          sizeof local))
+        break;
     } else {
       if (!sccl_verbs_available()) {
         put_error(local, sizeof local, "libibverbs.so.1 is not loadable; the verbs transport needs rdma-core");
         break;
       }
-      if (parse_routes(nranks, rank, e->positions, &routes, local, sizeof local) ||
+      if (parse_routes(nranks, rank, e->positions, (int)e->shared.ring_only, e->ring_prev, e->ring_next, &routes,
+                       local, sizeof local) ||
           gid_indices(&routes, local, sizeof local))
         break;
     }
@@ -3296,6 +3352,16 @@ static ncclResult_t launch_gather(sccl_engine *e, sccl_CUdeviceptr src, sccl_CUd
   return ncclSuccess;
 }
 
+static int overlaps(sccl_CUdeviceptr a, sccl_CUdeviceptr b, uint64_t bytes) { return a < b + bytes && b < a + bytes; }
+
+/* One ring all-gather of `padded` bytes per rank (a positive multiple of 16, at most slot_bytes) from
+ * 16-byte-aligned `in` into 16-byte-aligned `out` (rank r at out + r * padded), using only ring links. */
+static ncclResult_t ring_gather_padded(sccl_engine *e, sccl_CUdeviceptr in, sccl_CUdeviceptr out, uint64_t padded,
+                                       sccl_CUstream stream, char *err, size_t len) {
+  return launch_link(e, SCCL_RING_GATHER, 0, in, out, padded, padded, link_piece(e, COLL_GATHER, padded),
+                     link_blocks_for(e, COLL_GATHER, padded), stream, err, len);
+}
+
 ncclResult_t sccl_engine_allgather(sccl_engine *e, const void *sendbuff, void *recvbuff, size_t count,
                                    ncclDataType_t datatype, cudaStream_t stream_handle, char *err, size_t len) {
   size_t item = nccl_type_size(datatype);
@@ -3324,7 +3390,7 @@ ncclResult_t sccl_engine_allgather(sccl_engine *e, const void *sendbuff, void *r
      * every shard's place receives the gathered rows in scratch[1], copied to their places. */
     uint64_t tile = gather_tile(e);
     unsigned cap = shard <= tile ? e->shared.blocks : e->shared.large_blocks;
-    int direct_out = dst % PACK == 0 && shard % PACK == 0;
+    int direct_out = !e->shared.ring_only && dst % PACK == 0 && shard % PACK == 0;
     if (!direct_out || src % PACK) atomic_fetch_add_explicit(&e->gather_padded, 1, memory_order_relaxed);
     for (uint64_t column = 0; result == ncclSuccess && column < shard; column += tile) {
       uint64_t piece = shard - column < tile ? shard - column : tile;
@@ -3341,7 +3407,8 @@ ncclResult_t sccl_engine_allgather(sccl_engine *e, const void *sendbuff, void *r
         result = launch_gather(e, in, dst + column, piece, shard, cap, stream, err, len);
         continue;
       }
-      result = launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
+      result = e->shared.ring_only ? ring_gather_padded(e, in, e->scratch[1], padded, stream, err, len)
+                                   : launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
       for (int r = 0; result == ncclSuccess && r < e->world; ++r)
         if (cuda_check(copy_async(e, dst + (uint64_t)r * shard + column, e->scratch[1] + (uint64_t)r * padded, piece,
                                   stream),
@@ -3408,11 +3475,43 @@ static ncclResult_t stage_chunks(sccl_engine *e, sccl_CUdeviceptr src, uint64_t 
   return ncclSuccess;
 }
 
-/* The generic reduce-scatter: tiles of every rank's chunks exchanged by the all-to-all kernel into the
- * rows of scratch[1], then folded in rank order into `dst`. */
+/* The generic reduce-scatter: tiles of every rank's chunks exchanged by the all-to-all kernel (or ring
+ * all-gathers per target chunk when LIBSIRCL_RING_ONLY=1) into the rows of scratch[1], then folded in rank
+ * order into `dst`. */
 static ncclResult_t fold_scatter(sccl_engine *e, ncclDataType_t datatype, ncclRedOp_t op, size_t item,
-                                 sccl_CUdeviceptr src, sccl_CUdeviceptr dst, uint64_t chunk, sccl_CUstream stream,
-                                 char *err, size_t len) {
+                                 sccl_CUdeviceptr src, sccl_CUdeviceptr dst, uint64_t chunk, int capturing,
+                                 sccl_CUstream stream, char *err, size_t len) {
+  if (e->shared.ring_only) {
+    ncclResult_t result = ncclSuccess;
+    sccl_CUdeviceptr in_src = src;
+    uint64_t total = chunk * (uint64_t)e->world;
+    if (overlaps(src, dst, total)) {
+      result = stage_buffer(e, total, capturing, stream, &in_src, err, len);
+      if (result == ncclSuccess &&
+          cuda_check(copy_async(e, in_src, src, total, stream), "staging the input", err, len))
+        result = ncclUnhandledCudaError;
+    }
+    uint64_t tile = gather_tile(e);
+    for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
+      uint64_t piece = chunk - column < tile ? chunk - column : tile;
+      uint64_t padded = (piece + PACK - 1) / PACK * PACK;
+      for (int target = 0; result == ncclSuccess && target < e->world; ++target) {
+        sccl_CUdeviceptr in = in_src + (uint64_t)target * chunk + column;
+        if (in % PACK || piece % PACK) {
+          if (cuda_check(copy_async(e, e->scratch[0], in, piece, stream), "staging a chunk", err, len)) {
+            result = ncclUnhandledCudaError;
+            break;
+          }
+          in = e->scratch[0];
+        }
+        result = ring_gather_padded(e, in, e->scratch[1], padded, stream, err, len);
+        if (result == ncclSuccess && target == e->rank)
+          result = fold_into(e, datatype, op, item, e->scratch[1], padded, dst + column, piece / item, stream, err,
+                             len);
+      }
+    }
+    return result;
+  }
   uint64_t tile = scatter_tile(e);
   int direct_in = src % PACK == 0 && chunk % PACK == 0;
   ncclResult_t result = ncclSuccess;
@@ -3452,7 +3551,8 @@ static ncclResult_t fold_reduce(sccl_engine *e, ncclDataType_t datatype, ncclRed
         return ncclUnhandledCudaError;
       in = e->scratch[0];
     }
-    result = launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
+    result = e->shared.ring_only ? ring_gather_padded(e, in, e->scratch[1], padded, stream, err, len)
+                                 : launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
     if (result == ncclSuccess && dst)
       result = fold_into(e, datatype, op, item, e->scratch[1], padded, dst + column, piece / item, stream, err, len);
   }
@@ -3503,9 +3603,11 @@ ncclResult_t sccl_engine_reducescatter(sccl_engine *e, const void *sendbuff, voi
     if (src != dst && cuda_check(copy_async(e, dst, src, chunk, stream), "one-rank reduce-scatter copy", err, len))
       result = ncclUnhandledCudaError;
   } else if (dtype == SCCL_FOLD_PATH) {
-    result = fold_scatter(e, datatype, op, item, src, dst, chunk, stream, err, len);
+    result = fold_scatter(e, datatype, op, item, src, dst, chunk, call.capturing, stream, err, len);
   } else if (scatter_link_kind(e, chunk) >= 0) {
     result = scatter_link(e, scatter_link_kind(e, chunk), dtype, src, dst, chunk, call.capturing, stream, err, len);
+  } else if (e->shared.ring_only) {
+    result = fold_scatter(e, datatype, op, item, src, dst, chunk, call.capturing, stream, err, len);
   } else if (chunk % PACK == 0 && src % PACK == 0 && dst % PACK == 0) {
     for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
       uint64_t piece = chunk - column < tile ? chunk - column : tile;
@@ -3616,6 +3718,12 @@ static ncclResult_t reduce_into(sccl_engine *e, const char *what, const void *se
       start = link_bytes;
     }
   }
+  if (e->shared.ring_only) {
+    if (result == ncclSuccess && start < nbytes)
+      result = fold_reduce(e, datatype, op, item, src + start, dst ? dst + start : 0, nbytes - start, stream, err,
+                           len);
+    goto counted;
+  }
   for (uint64_t offset = start; result == ncclSuccess && offset < body; offset += e->shared.large_piece) {
     uint64_t piece = body - offset < e->shared.large_piece ? body - offset : e->shared.large_piece;
     /* A zero dst (ncclReduce off the root) discards every piece; it never becomes an offset address. */
@@ -3703,8 +3811,10 @@ ncclResult_t sccl_engine_broadcast(sccl_engine *e, const void *sendbuff, void *r
         result = ncclUnhandledCudaError;
         break;
       }
-      result = launch_gather(e, e->scratch[0], e->scratch[1], padded, padded, e->shared.large_blocks, stream, err,
-                             len);
+      result = e->shared.ring_only
+                   ? ring_gather_padded(e, e->scratch[0], e->scratch[1], padded, stream, err, len)
+                   : launch_gather(e, e->scratch[0], e->scratch[1], padded, padded, e->shared.large_blocks, stream, err,
+                                   len);
       if (result == ncclSuccess && cuda_check(copy_async(e, dst + column, e->scratch[1] + (uint64_t)root * padded,
                                                          piece, stream),
                                               "placing the root's bytes", err, len))
@@ -3717,8 +3827,6 @@ ncclResult_t sccl_engine_broadcast(sccl_engine *e, const void *sendbuff, void *r
   }
   return end_call(e, &call, result, err, len);
 }
-
-static int overlaps(sccl_CUdeviceptr a, sccl_CUdeviceptr b, uint64_t bytes) { return a < b + bytes && b < a + bytes; }
 
 ncclResult_t sccl_engine_alltoall(sccl_engine *e, const void *sendbuff, void *recvbuff, size_t count,
                                   ncclDataType_t datatype, cudaStream_t stream_handle, char *err, size_t len) {
@@ -3758,6 +3866,35 @@ ncclResult_t sccl_engine_alltoall(sccl_engine *e, const void *sendbuff, void *re
     if (result == ncclSuccess && out != dst &&
         cuda_check(copy_async(e, dst, out, total, stream), "returning the output", err, len))
       result = ncclUnhandledCudaError;
+  } else if (e->shared.ring_only) {
+    sccl_CUdeviceptr in_src = src;
+    if (overlaps(src, dst, total)) {
+      result = stage_buffer(e, total, call.capturing, stream, &in_src, err, len);
+      if (result == ncclSuccess &&
+          cuda_check(copy_async(e, in_src, src, total, stream), "staging the input", err, len))
+        result = ncclUnhandledCudaError;
+    }
+    uint64_t tile = gather_tile(e);
+    for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
+      uint64_t piece = chunk - column < tile ? chunk - column : tile;
+      uint64_t padded = (piece + PACK - 1) / PACK * PACK;
+      for (int target = 0; result == ncclSuccess && target < e->world; ++target) {
+        sccl_CUdeviceptr in = in_src + (uint64_t)target * chunk + column;
+        if (in % PACK || piece % PACK) {
+          if (cuda_check(copy_async(e, e->scratch[0], in, piece, stream), "staging a chunk", err, len)) {
+            result = ncclUnhandledCudaError;
+            break;
+          }
+          in = e->scratch[0];
+        }
+        result = ring_gather_padded(e, in, e->scratch[1], padded, stream, err, len);
+        for (int r = 0; result == ncclSuccess && e->rank == target && r < e->world; ++r)
+          if (cuda_check(copy_async(e, dst + (uint64_t)r * chunk + column, e->scratch[1] + (uint64_t)r * padded, piece,
+                                    stream),
+                         "placing a received chunk", err, len))
+            result = ncclUnhandledCudaError;
+      }
+    }
   } else {
     /* Tiles of every chunk. Direct when every chunk is whole 16-byte packs, both buffers are aligned and they
      * do not overlap (a kernel writes received chunks while other blocks may still read the input); otherwise
@@ -3860,7 +3997,7 @@ ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recv
     /* The all-gather's tiles; every rank receives every shard and only the root keeps them. */
     uint64_t tile = gather_tile(e);
     unsigned cap = shard <= tile ? e->shared.blocks : e->shared.large_blocks;
-    int root_direct = e->rank == root && dst % PACK == 0 && shard % PACK == 0;
+    int root_direct = !e->shared.ring_only && e->rank == root && dst % PACK == 0 && shard % PACK == 0;
     for (uint64_t column = 0; result == ncclSuccess && column < shard; column += tile) {
       uint64_t piece = shard - column < tile ? shard - column : tile;
       uint64_t padded = (piece + PACK - 1) / PACK * PACK;
@@ -3876,7 +4013,8 @@ ncclResult_t sccl_engine_gather(sccl_engine *e, const void *sendbuff, void *recv
         result = launch_gather(e, in, dst + column, piece, shard, cap, stream, err, len);
         continue;
       }
-      result = launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
+      result = e->shared.ring_only ? ring_gather_padded(e, in, e->scratch[1], padded, stream, err, len)
+                                   : launch_gather(e, in, e->scratch[1], padded, padded, cap, stream, err, len);
       for (int r = 0; result == ncclSuccess && e->rank == root && r < e->world; ++r)
         if (cuda_check(copy_async(e, dst + (uint64_t)r * shard + column, e->scratch[1] + (uint64_t)r * padded, piece,
                                   stream),
@@ -3922,6 +4060,33 @@ ncclResult_t sccl_engine_scatter(sccl_engine *e, const void *sendbuff, void *rec
     result = e->rank == root ? exchange_root(e, src + peer * chunk, src + (uint64_t)root * chunk, dst, chunk,
                                              call.capturing, stream, err, len)
                              : exchange_staged(e, 0, dst, chunk, call.capturing, stream, err, len);
+  } else if (e->shared.ring_only) {
+    sccl_CUdeviceptr in_src = src;
+    uint64_t total = chunk * (uint64_t)e->world;
+    if (e->rank == root && overlaps(src, dst, total)) {
+      result = stage_buffer(e, total, call.capturing, stream, &in_src, err, len);
+      if (result == ncclSuccess &&
+          cuda_check(copy_async(e, in_src, src, total, stream), "staging the root's chunks", err, len))
+        result = ncclUnhandledCudaError;
+    }
+    uint64_t tile = gather_tile(e);
+    for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
+      uint64_t piece = chunk - column < tile ? chunk - column : tile;
+      uint64_t padded = (piece + PACK - 1) / PACK * PACK;
+      for (int target = 0; result == ncclSuccess && target < e->world; ++target) {
+        if (e->rank == root &&
+            cuda_check(copy_async(e, e->scratch[0], in_src + (uint64_t)target * chunk + column, piece, stream),
+                       "staging the root's chunk", err, len)) {
+          result = ncclUnhandledCudaError;
+          break;
+        }
+        result = ring_gather_padded(e, e->scratch[0], e->scratch[1], padded, stream, err, len);
+        if (result == ncclSuccess && e->rank == target &&
+            cuda_check(copy_async(e, dst + column, e->scratch[1] + (uint64_t)root * padded, piece, stream),
+                       "placing the root's chunk", err, len))
+          result = ncclUnhandledCudaError;
+      }
+    }
   } else {
     /* The all-to-all's tiles: the root sends chunk p to rank p; the other ranks send whatever scratch[0]
      * holds. Every rank keeps the root's row. */
@@ -4056,6 +4221,29 @@ static ncclResult_t p2p_exchange(sccl_engine *e, sccl_CUdeviceptr sent, uint64_t
     if (result == ncclSuccess) atomic_fetch_add_explicit(&e->p2p_exchanges, 1, memory_order_relaxed);
     return result;
   }
+  if (e->shared.ring_only) {
+    uint64_t tile = gather_tile(e);
+    uint64_t peer = (uint64_t)(1 - e->rank);
+    ncclResult_t result = ncclSuccess;
+    for (uint64_t column = 0; result == ncclSuccess && column < chunk; column += tile) {
+      uint64_t piece = chunk - column < tile ? chunk - column : tile;
+      uint64_t padded = (piece + PACK - 1) / PACK * PACK;
+      if (column < sent_bytes) {
+        uint64_t n = sent_bytes - column < piece ? sent_bytes - column : piece;
+        if (cuda_check(copy_async(e, e->scratch[0], sent + column, n, stream), "staging a send", err, len))
+          return ncclUnhandledCudaError;
+      }
+      result = ring_gather_padded(e, e->scratch[0], e->scratch[1], padded, stream, err, len);
+      if (result == ncclSuccess && column < received_bytes) {
+        uint64_t n = received_bytes - column < piece ? received_bytes - column : piece;
+        if (cuda_check(copy_async(e, received + column, e->scratch[1] + peer * padded, n, stream), "placing a receive",
+                       err, len))
+          result = ncclUnhandledCudaError;
+      }
+    }
+    if (result == ncclSuccess) atomic_fetch_add_explicit(&e->p2p_exchanges, 1, memory_order_relaxed);
+    return result;
+  }
   uint64_t tile = scatter_tile(e);
   uint64_t peer = (uint64_t)(1 - e->rank);
   ncclResult_t result = ncclSuccess;
@@ -4093,6 +4281,11 @@ static const char *p2p_refusal(const sccl_engine *e, int peer, char *out, size_t
     return out;
   }
   if (e->p2p && (e->p2p_channels >> peer & 1u)) return NULL;
+  if (e->shared.ring_only && peer != e->ring_prev && peer != e->ring_next) {
+    snprintf(out, len, "no point-to-point channel with rank %d (position %d): LIBSIRCL_RING_ONLY=1 connects only "
+             "ring neighbors", peer, e->positions[peer]);
+    return out;
+  }
   if (!(e->p2p_masks[e->rank] >> peer & 1u)) {
     int lane = 0;
     while (lane < e->lanes - 1 && !(e->forward[peer][lane] && !e->p2p_window[peer][lane])) ++lane;
@@ -4583,7 +4776,7 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       "\"slot_bytes\":%" PRIu64
       ",\"capacity\":%" PRIu64
       ",\"large_piece_bytes\":%" PRIu64 ",\"oneshot_max_bytes\":%" PRIu64 ",\"wait_regime\":\"%s\",\"fail_stop\":%s,"
-      "\"progress_cpus\":\"%s\",\"pair_exchange\":{\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64 "},\"pair_plan\":%s,\"cycle_plan\":%s,\"link_blocks\":{\"session\":%u,\"reduce\":%u,"
+      "\"progress_cpus\":\"%s\",\"pair_exchange\":{\"ops\":%" PRIu64 ",\"bytes\":%" PRIu64 "},\"pair_plan\":%s,\"cycle_plan\":%s,\"ring_only\":%s,\"link_blocks\":{\"session\":%u,\"reduce\":%u,"
       "\"gather\":%u,\"scatter\":%u,\"ops_by_blocks\":{%s}},"
       "\"all_reduce\":{\"calls\":%" PRIu64 ",\"captured_calls\":%" PRIu64 ",\"bytes\":%" PRIu64
       ",\"ops\":{%s},\"padded_tails\":%" PRIu64 ",\"unaligned_staged\":%" PRIu64 ",\"local_copies\":%" PRIu64
@@ -4611,7 +4804,8 @@ size_t sccl_engine_receipt(sccl_engine *e, char *out, size_t len) {
       e->serving ? "serving" : "startup", e->fail_stop ? "true" : "false",
       e->progress_cpus[0] ? e->progress_cpus : "none",
       atomic_load(&e->exchange_ops), atomic_load(&e->exchange_bytes),
-      e->shared.pair_plan ? "true" : "false", e->shared.cycle_plan ? "true" : "false", e->shared.link_blocks, e->shared.coll_blocks[COLL_REDUCE],
+      e->shared.pair_plan ? "true" : "false", e->shared.cycle_plan ? "true" : "false",
+      e->shared.ring_only ? "true" : "false", e->shared.link_blocks, e->shared.coll_blocks[COLL_REDUCE],
       e->shared.coll_blocks[COLL_GATHER], e->shared.coll_blocks[COLL_SCATTER], by_blocks,
       atomic_load(&e->calls), atomic_load(&e->captured_calls),
       atomic_load(&e->bytes), ops, atomic_load(&e->padded_tails), atomic_load(&e->staged_unaligned),

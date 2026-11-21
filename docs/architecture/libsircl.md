@@ -40,7 +40,10 @@ The library, version 0.6.0 ([`VERSION`](../../spark_transport/libsircl/VERSION))
 - four kernel packs (transport, fold, link and point-to-point), compiled for
   `sm_120` and `sm_121` by its build;
 - ring schedules from 8 MiB on a communicator whose ring closes over cables
-  (the *cycle plan*);
+  (the *cycle plan*), plus a neighbor-only ring mode (`LIBSIRCL_RING_ONLY=1`,
+  planned by `tools/site_routes.py --ring-only`) for direct-cable cycles with
+  no ConnectX relay table, connecting only ring neighbors (1 or 2 lanes per
+  neighbor) and running all collectives over ring links;
 - SIRCL's point-to-point channels between ranks of a communicator of three or
   more, off by default (`LIBSIRCL_P2P_CHANNELS=on`);
 - a route planner, [`tools/site_routes.py`](../../spark_transport/libsircl/tools/site_routes.py),
@@ -306,7 +309,7 @@ Transport: libsircl (research-only): vLLM's PyNccl carries its collectives on li
 
 ```bash
 sudo sparkring install --image REF --transport libsircl --libsircl-library LIBRARY \
-  --model-path PATH [--on POSITIONS] --plan -- VLLM_ARGUMENTS
+  --model-path PATH [--on POSITIONS] [--ring-only] --plan -- VLLM_ARGUMENTS
 ```
 
 This plans a deployment of an unmodified ARM64 vLLM image with libsircl as the
@@ -335,7 +338,11 @@ Every Spark of the group needs:
 
 Group placement, routing settings and shape refusals are those of the
 [installer transport](#installer-transport): pairs, paths and whole cycles of
-two to eight Sparks.
+two to eight Sparks. Passing `--ring-only` (on either the installer transport
+or the stock-image option) passes `--ring-only` to `tools/site_routes.py`,
+emits `LIBSIRCL_RING_ONLY=1` with neighbor-only routes for direct-cable pairs
+and whole cycles, refuses paths or partial arcs, and does not require a
+ConnectX relay table in `fabric.json`.
 
 ### Preflight
 

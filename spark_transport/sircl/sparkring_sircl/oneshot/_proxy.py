@@ -34,6 +34,7 @@ ABI_VERSION = 9
 # the identity or its bits and is refused before any context exists.
 FEATURE_DESTROY_COUNT = 1      # roce_destroy returns the number of verbs calls that failed (an arena kept on failure)
 FEATURE_OWN_FLAGS = 2          # link op word bit 24 (protocol.ring_op_word(own_flags=True)) is accepted
+FEATURE_SPARSE_PEERS = 4       # unconnected peers (all lanes -1 / ROCE_NO_DEVICE) are accepted when symmetric
 REQUIRED_FEATURES = FEATURE_DESTROY_COUNT
 _LOCK = threading.Lock()
 _LIBRARIES: dict[str, ctypes.CDLL] = {}

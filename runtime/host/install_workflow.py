@@ -570,8 +570,10 @@ def transport_choice(args, cluster, state_root, image, placement, profile=None):
     else:
         unreadable = None
     requested_backend, requested_nccl = getattr(args, "transport", None), getattr(args, "nccl", None)
+    ring_only = bool(getattr(args, "ring_only", False))
     try:
-        backend, nccl, reason = transports.choose(image, document, backend=requested_backend, nccl=requested_nccl)
+        backend, nccl, reason = transports.choose(image, document, backend=requested_backend, nccl=requested_nccl,
+                                                  ring_only=ring_only)
         if unreadable and backend == "prepared" and not requested_backend:
             reason = f"the recorded fabric document cannot be read ({unreadable})"
         if backend == "prepared":
@@ -586,7 +588,8 @@ def transport_choice(args, cluster, state_root, image, placement, profile=None):
         positions = list(placement) if placement is not None else list(range(len(hosts)))
         if backend == transports.LIBSIRCL:
             from runtime.common import libsircl
-            section = libsircl.section(image, document, positions, dcp=transports.profile_dcp(profile or args.profile))
+            section = libsircl.section(image, document, positions, dcp=transports.profile_dcp(profile or args.profile),
+                                       ring_only=ring_only)
             return {"section": section, "backend": backend, "reason": None, "notes": [], "explicit": True}
         if backend == "nccl":
             section = transports.nccl_section(image, document, positions,
@@ -1792,8 +1795,8 @@ def main(argv=None):
     images.add_argument("--image", metavar="NAME",
                         help="run the profile on another installer image: a name or release tag that sparkring images "
                              "lists; default: the installer's own image. A registry reference or local image ID "
-                             "(REF, with / or :) instead plans a stock vLLM image with --transport libsircl --plan "
-                             "and the vLLM arguments after -- (research-only)")
+                             "(REF, with / or :) instead plans a stock vLLM or SGLang image with --transport libsircl "
+                             "--plan and the runtime arguments after -- (research-only)")
     images.add_argument("--image-lock", type=Path, help="development image lock replacing the shared installer image")
     parser.add_argument("--display-name", type=controller.ring_name.validate,
                         help="set the ring display name (1 to 40 printable characters)")
@@ -1855,8 +1858,11 @@ def main(argv=None):
     parser.add_argument("--libsircl-library", metavar="PATH",
                         help="with --image REF --transport libsircl: the host build of libsircl every Spark holds "
                              "(runtime/images/libsircl_layer.py host-library)")
+    parser.add_argument("--ring-only", action="store_true",
+                        help="with --transport libsircl: connect only ring neighbors with LIBSIRCL_RING_ONLY=1 "
+                             "(direct-cable pairs and whole cycles, no ConnectX relay table required)")
     serving_settings.add_arguments(parser, install=True)
-    # A stock image's vLLM arguments follow --.
+    # A stock image's runtime arguments follow --.
     argv = list(sys.argv[1:] if argv is None else argv)
     vllm_arguments = argv[argv.index("--") + 1:] if "--" in argv else []
     options = argv[:argv.index("--")] if "--" in argv else argv
@@ -1894,6 +1900,8 @@ def main(argv=None):
         parser.error("--chain-all-gather requires --row-owned-prefill on a SparkRing installer image")
     if vllm_arguments and not stock:
         parser.error("arguments after -- are a stock image's vLLM arguments: use them with --image REF")
+    if args.ring_only and args.transport != transports.LIBSIRCL:
+        parser.error("--ring-only applies only with --transport libsircl")
     if args.nccl is not None:
         args.nccl = transports.nccl_mode(args.nccl)
     if args.events is not None and not args.events.parent.is_dir():

@@ -132,3 +132,31 @@ def test_the_fixture_functions_are_twenty_distinct_names():
     # The 20 names of PyNccl's NCCLLibrary in Local Inference Lab's integration/karmic-kraken-beta at 57a80980bb.
     assert len(FUNCTIONS) == 20 and len(set(FUNCTIONS)) == 20
     assert copy.deepcopy(facts())["vllm"]["pynccl_functions"] == FUNCTIONS
+
+
+def test_a_stock_image_plan_with_ring_only_runs_without_a_relay_table(stock, capsys):
+    value, document = stock
+    no_relay = copy.deepcopy(document)
+    no_relay["transports"] = [name for name in no_relay["transports"] if name != "sircl"]
+    (controller.STATE / "fabric.json").write_text(fabric_document.encoded(no_relay))
+    assert sparkring.main(["install", "--image", REFERENCE, "--transport", "libsircl", "--ring-only",
+                           "--libsircl-library", LIBRARY, "--model-path", "/srv/models/m", "--plan", "--json"]) == 0
+    out = capsys.readouterr()
+    result = json.loads(out.out)
+    assert result["state"] == "planned" and result["group"]["ring_only"] is True
+    assert result["group"]["max_relays"] == 0 and result["planner"]["ring_only"] is True
+    directory = Path(result["directory"]["node_a"])
+    for rank in (0, 1):
+        service = yaml.safe_load((directory / f"compose.rank{rank}.yaml").read_text())["services"]["model"]
+        assert service["environment"]["LIBSIRCL_RING_ONLY"] == "1"
+        assert service["environment"]["LIBSIRCL_RING_WINDOW"] == "0"
+        assert "LIBSIRCL_FORWARD_WINDOWS" not in service["environment"]
+    assert "no relays (ring-only)" in out.err
+
+
+def test_ring_only_requires_transport_libsircl(machine, capsys):  # noqa: F811
+    with pytest.raises(SystemExit):
+        sparkring.main(["install", "--image", REFERENCE, "--ring-only", "--plan", "--libsircl-library", LIBRARY,
+                        "--model-path", "/srv/models/m"])
+    assert "--ring-only applies only with --transport libsircl" in capsys.readouterr().err
+
