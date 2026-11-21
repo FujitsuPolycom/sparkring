@@ -469,3 +469,21 @@ def test_ring_only_plans_a_cycle_without_relays_and_refuses_paths():
     with pytest.raises(libsircl.LibsirclError, match="ring-only"):
         libsircl.section(image(TP4), document("path", 4), [0, 1, 2, 3], dcp=1, ring_only=True)
 
+
+def test_a_positions_list_traces_the_cable_ring_and_rows_are_numbered_by_index():
+    """The route tool numbers every row by its index, so a group's positions trace its ring.
+
+    ``tools/site_routes.py`` emits ``LIBSIRCL_POSITION`` as the row's index in
+    the layout, and the route maps of row ``i`` are the lanes of the Spark at
+    ``positions[i]``. A list that is not a cable trace (here 0-1-3-2 on a cycle
+    of four, where 1 and 3 share no cable) describes a ring that relays; it
+    does not renumber the ranks. A planner that needs a rank-to-Spark order
+    therefore orders the Sparks, not this list (runtime/common/parallel_groups.py).
+    """
+    value = document("cycle", 4)
+    _, _, traced, _ = libsircl.group(value, [0, 1, 2, 3])
+    _, _, relaid, _ = libsircl.group(value, [0, 1, 3, 2])
+    assert [row["LIBSIRCL_POSITION"] for row in traced] == ["0", "1", "2", "3"]
+    assert [row["LIBSIRCL_POSITION"] for row in relaid] == ["0", "1", "2", "3"]
+    # Rank 2's route map is the Spark now listed second, so the trace changed what each rank reaches.
+    assert traced[2]["SIRCL_PEER_ROUTES"] != relaid[2]["SIRCL_PEER_ROUTES"]

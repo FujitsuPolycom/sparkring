@@ -83,7 +83,7 @@ def survey(invoke, rows, reference, library, version, arguments):
         digest = _ssh(invoke, host, ["sha256sum", library]).split()[0]
         facts = stock_image.parse(_ssh(invoke, host, stock_image.probe_command(reference, library, version),
                                        data=stock_image.PROBE_SOURCE))
-        found = stock_image.preflight(image, facts, arguments)
+        found = stock_image.preflight(image, facts, arguments, size=len(rows))
         bound = None
         if not found:
             bound = stock_image.parse(_ssh(invoke, host, stock_image.probe_command(
