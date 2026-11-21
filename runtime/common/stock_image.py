@@ -71,9 +71,18 @@ OWNED_ARGUMENTS = ("--model", "--tensor-parallel-size", "-tp", "--nnodes", "--no
                    libsircl.CUSTOM_ALL_REDUCE_OFF)
 SGLANG_OWNED_ARGUMENTS = ("--model-path", "--tp-size", "--tensor-parallel-size", "--tp", "--nnodes", "--node-rank",
                           "--dist-init-addr", "--host", "--port", libsircl.CUSTOM_ALL_REDUCE_OFF)
-SGLANG_REFUSED_FLAGS = ("--enable-dp-attention", "--enable-ep-moe", "--enable-dp-lm-head", "--disaggregation-mode",
+SGLANG_REFUSED_FLAGS = ("--enable-dp-attention", "--enable-dp-lm-head", "--disaggregation-mode",
                         "--enable-memory-saver", "--enable-symm-mem", "--enable-torch-symm-mem", "--enable-mscclpp",
                         "--enable-flashinfer-allreduce-fusion", "--flashinfer-allreduce-fusion-backend")
+# Expert parallelism runs at the tensor width: SGLang makes the expert group the tensor-parallel group
+# itself when --ep-size equals --tp-size (parallel_state.py, "if moe_ep_size == tensor_model_parallel_size:
+# _MOE_EP = _TP"), so it adds no communicator, and the deployment's own ring carries it. A narrower width
+# forms groups of every moe_tp-th rank, which no ring order connects (parallel_groups.assignment finds none).
+SGLANG_EP_FLAGS = ("--ep-size", "--expert-parallel-size", "--ep")
+# The MoE dispatch backend PyNccl alone carries: SGLang's own all-gatherv and reduce_scatterv, grouped
+# broadcasts and reductions. Every other backend dispatches through DeepEP's NVSHMEM, NIXL, Mooncake, MORI
+# or FlashInfer's symmetric memory, none of which an image without them can run.
+SGLANG_MOE_A2A_BACKENDS = ("none",)
 SGLANG_OFF_TEXT = "SGLang's custom all-reduce, so PyNccl carries the device collectives"
 # Load formats whose loader uses io_uring, which SparkRing's loader seccomp policy admits.
 IO_URING_FORMATS = ("fastsafetensors", "instanttensor")
@@ -191,7 +200,49 @@ def owned_arguments(arguments, runtime="vllm"):
     return sorted({flag for flag in flags for item in arguments if item == flag or item.startswith(flag + "=")})
 
 
-def sglang_refusals(environment, arguments):
+def expert_parallel_problems(arguments, size):
+    """Why this expert width does not run on the deployment's ring; empty when it does.
+
+    The plan sets the tensor width to the group's Spark count (``rank_command``
+    passes ``--tp-size`` ``size``), so the whole ring is one tensor-parallel
+    group. Expert parallelism keeps to the plan's one route map only where
+    SGLang's expert group *is* that group, which happens at ``--ep-size`` equal
+    to ``--tp-size`` (``parallel_state.py``: ``if moe_ep_size ==
+    tensor_model_parallel_size: _MOE_EP = _TP``). Every narrower width forms
+    expert groups of every ``moe_tp``-th rank; no order of the ring makes those
+    one arc (``parallel_groups.assignment`` finds none), so the child's setup
+    would fail on a rank with no route to its group peer.
+
+    ``size`` is the group's Spark count, which the caller knows and the
+    arguments do not (the plan owns ``--tp-size``). Without it the width cannot
+    be compared, and any ``--ep-size`` above one is refused.
+    """
+    try:
+        ep = libsircl._count(arguments, *SGLANG_EP_FLAGS)
+    except libsircl.LibsirclError as error:
+        return [str(error)]
+    if ep <= 1:
+        return []
+    if size is None:
+        return [f"expert parallelism {ep} runs at the deployment's tensor width, which the plan sets to the "
+                "group's Spark count; this check has no group to compare it with"]
+    if ep == size:
+        return []
+    return [f"expert parallelism {ep} against a group of {size} Sparks: the plan sets the tensor width to the "
+            f"group's Spark count, so the expert group is the deployment's ring only at --ep-size {size}"]
+
+
+def moe_a2a_problems(arguments):
+    """Why this MoE dispatch backend is not PyNccl's; empty when it is (``none`` or unset)."""
+    backend = libsircl.argument(arguments, "--moe-a2a-backend")
+    if backend is None or backend in SGLANG_MOE_A2A_BACKENDS:
+        return []
+    return [f"--moe-a2a-backend {backend} dispatches MoE tokens through a library the image does not carry "
+            "(DeepEP's NVSHMEM, NIXL, Mooncake, MORI or FlashInfer symmetric memory); the plan runs "
+            "--moe-a2a-backend none, whose dispatch is PyNccl all-gathers and reduce-scatters"]
+
+
+def sglang_refusals(environment, arguments, *, size=None):
     """Why an SGLang stock image or its arguments cannot run with libsircl; empty when it can."""
     problems = []
     owned = libsircl.owned_settings(environment)
@@ -200,8 +251,7 @@ def sglang_refusals(environment, arguments):
     if environment.get("SGLANG_DISABLE_PYNCCL", "").lower() in ("1", "true", "yes"):
         problems.append("the image sets SGLANG_DISABLE_PYNCCL, which bypasses PyNccl")
     for label, flags in (("pipeline parallelism", ("--pp-size", "--pipeline-parallel-size")),
-                         ("data parallelism", ("--dp-size", "--data-parallel-size")),
-                         ("expert parallelism", ("--ep-size", "--expert-parallel-size"))):
+                         ("data parallelism", ("--dp-size", "--data-parallel-size"))):
         try:
             count = libsircl._count(arguments, *flags)
         except libsircl.LibsirclError as error:
@@ -209,6 +259,8 @@ def sglang_refusals(environment, arguments):
             continue
         if count > 1:
             problems.append(f"{label} {count} is not covered by libsircl stock-image SGLang plans")
+    problems += expert_parallel_problems(arguments, size)
+    problems += moe_a2a_problems(arguments)
     for flag in SGLANG_REFUSED_FLAGS:
         if any(item == flag or item.startswith(flag + "=") for item in arguments):
             problems.append(f"{flag} is not covered by libsircl stock-image SGLang plans")
@@ -246,7 +298,7 @@ def _check_vllm(image, facts, arguments, library, manifest):
     return problems
 
 
-def _check_sglang(image, facts, arguments, library, manifest):
+def _check_sglang(image, facts, arguments, library, manifest, *, size=None):
     problems = []
     sglang = facts["sglang"]
     if not (sglang.get("nccl_so_path") and sglang.get("find_reads_nccl_so_path")):
@@ -272,11 +324,11 @@ def _check_sglang(image, facts, arguments, library, manifest):
     owned = owned_arguments(arguments, "sglang")
     if owned:
         problems.append(f"the SGLang arguments set {', '.join(owned)}, which the plan sets on every rank")
-    problems += sglang_refusals(image_environment(image), arguments)
+    problems += sglang_refusals(image_environment(image), arguments, size=size)
     return problems
 
 
-def preflight(image, facts, arguments, *, packs=None, manifest=None):
+def preflight(image, facts, arguments, *, packs=None, manifest=None, size=None):
     """What stops ``image`` with ``facts`` (``stock_image_probe.probe``) from running ``arguments`` on libsircl;
     empty when nothing does."""
     packs = architectures() if packs is None else packs
@@ -324,7 +376,7 @@ def preflight(image, facts, arguments, *, packs=None, manifest=None):
     elif runtime == "both":
         problems.append("the image has both vllm and sglang packages; stock-image plans require one serving runtime")
     elif runtime == "sglang":
-        problems += _check_sglang(image, facts, arguments, library, manifest)
+        problems += _check_sglang(image, facts, arguments, library, manifest, size=size)
     else:
         problems += _check_vllm(image, facts, arguments, library, manifest)
     return problems

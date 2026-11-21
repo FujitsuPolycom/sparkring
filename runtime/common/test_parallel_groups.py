@@ -5,6 +5,8 @@ transcribed from SGLang v0.5.21 ``initialize_model_parallel`` and vLLM
 v0.19.1 ``initialize_model_parallel``; the ring picture in each test says why
 the listed communicators are or are not one arc.
 """
+import itertools
+
 import pytest
 
 from runtime.common import parallel_groups as groups
@@ -156,3 +158,32 @@ def test_widths_must_divide_the_tensor_width():
         groups.sglang_groups(tp=4, dp=3, enable_dp_attention=True)
     with pytest.raises(ValueError):
         groups.vllm_groups(tp=4, dcp=3)
+
+
+def brute_assignment(found, world):
+    """Every order of the ring, for the cross-check below: 4! or 6! orders, not a planner."""
+    for order in itertools.permutations(range(world)):
+        if not problems(found, list(order)):
+            return list(order)
+    return None
+
+
+@pytest.mark.parametrize("world, found", [
+    (4, groups.vllm_groups(tp=2, dp=2)),
+    (4, groups.vllm_groups(tp=2, dp=2, enable_expert_parallel=True)),
+    (4, groups.vllm_groups(tp=1, dp=4)),
+    (4, groups.vllm_groups(tp=4)),
+    (4, groups.sglang_groups(tp=4, moe_ep=4)),
+    (4, groups.sglang_groups(tp=4, dp=2, enable_dp_attention=True)),
+    (4, groups.sglang_groups(tp=4, moe_ep=2)),
+    (6, groups.vllm_groups(tp=3, dp=2)),
+    (6, groups.vllm_groups(tp=2, dp=3)),
+    (6, groups.sglang_groups(tp=6, moe_ep=2)),
+    (6, groups.sglang_groups(tp=6, moe_ep=3)),
+    (6, groups.sglang_groups(tp=6, moe_ep=6)),
+])
+def test_the_search_agrees_with_trying_every_order(world, found):
+    placed = groups.assignment(found, world)
+    assert (placed is None) == (brute_assignment(found, world) is None)
+    if placed is not None:
+        assert problems(found, [placed[rank] for rank in range(world)]) == []
