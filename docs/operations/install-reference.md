@@ -191,14 +191,17 @@ starts:
   specification is missing.
 
   If startup reports `Unit file nvidia-cdi-refresh.service does not exist`,
-  check the NVIDIA Container Toolkit installation on the Spark named in the
-  error. Run `nvidia-ctk --version` and
-  `systemctl show -p LoadState nvidia-cdi-refresh.service` on that host.
-  If the unit is missing, install or update the host Toolkit to a version that
-  provides automatic CDI refresh. Follow the
+  use the `Stopped: Node N: Start model` line to identify the failing rank
+  and match it to its Spark in the deployment. On that host, run
+  `nvidia-ctk --version` and
+  `systemctl show -p LoadState nvidia-cdi-refresh.service`.
+  `LoadState=not-found` means the unit is missing. Install or update the host
+  NVIDIA Container Toolkit to a release with automatic CDI refresh, which
+  NVIDIA introduced in Toolkit 1.18.0. Follow the
   [NVIDIA CDI guide](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/cdi-support.html).
-  Confirm that `/var/run/cdi/nvidia.yaml` exists and that `nvidia-ctk cdi list`
-  lists NVIDIA GPU devices before retrying the installation.
+  Before retrying, confirm that the unit reports `LoadState=loaded`,
+  `/var/run/cdi/nvidia.yaml` exists, and `nvidia-ctk cdi list` includes
+  `nvidia.com/gpu=all`.
 
 - **Memory.** A GB10's GPU allocates from the same memory as the CPU, so the
   page cache that checkpoint reads and the previous model leave behind counts
