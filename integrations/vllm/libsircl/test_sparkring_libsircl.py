@@ -538,3 +538,95 @@ def test_sircl_ep_b12x_dp_speculator_propose_sync(monkeypatch):
     assert propose_calls == []
 
 
+def test_sircl_ep_b12x_router_skip_padding(monkeypatch):
+    torch = pytest.importorskip("torch")
+    import types
+
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_pad", mod_path)
+    mod = importlib.util.module_from_spec(spec_b12x)
+    spec_b12x.loader.exec_module(mod)
+
+    seen_kwargs = []
+    pad_tensor = torch.tensor([False, False, True, True])
+
+    def fake_dsv4_topk(gating_output, *args, **kwargs):
+        seen_kwargs.append(kwargs.copy())
+        return gating_output
+
+    fake_router = types.ModuleType(
+        "vllm.model_executor.layers.fused_moe.router.fused_topk_bias_router"
+    )
+    fake_router.dsv4_topk = fake_dsv4_topk
+    fake_router._get_padding_mask = lambda n: pad_tensor[:n]
+
+    for name, m in (
+        ("vllm", types.ModuleType("vllm")),
+        ("vllm.model_executor", types.ModuleType("vllm.model_executor")),
+        ("vllm.model_executor.layers", types.ModuleType("vllm.model_executor.layers")),
+        (
+            "vllm.model_executor.layers.fused_moe",
+            types.ModuleType("vllm.model_executor.layers.fused_moe"),
+        ),
+        (
+            "vllm.model_executor.layers.fused_moe.router",
+            types.ModuleType("vllm.model_executor.layers.fused_moe.router"),
+        ),
+        (
+            "vllm.model_executor.layers.fused_moe.router.fused_topk_bias_router",
+            fake_router,
+        ),
+    ):
+        monkeypatch.setitem(sys.modules, name, m)
+    sys.modules["vllm.model_executor.layers.fused_moe.router"].fused_topk_bias_router = (
+        fake_router
+    )
+
+    monkeypatch.setenv("SIRCL_EP_ROUTER_SKIP_PADDING", "1")
+    mod._patch_router_skip_padding()
+
+    x = torch.zeros((4, 8))
+    fake_router.dsv4_topk(x)
+    assert len(seen_kwargs) == 1
+    assert torch.equal(seen_kwargs[0]["is_padding"], pad_tensor)
+
+    # Explicit caller is_padding must be preserved.
+    custom = torch.tensor([True, False, False, False])
+    fake_router.dsv4_topk(x, is_padding=custom)
+    assert torch.equal(seen_kwargs[1]["is_padding"], custom)
+
+
+def test_sircl_ep_b12x_force_grouped_routing(monkeypatch):
+    pytest.importorskip("torch")
+    import types
+
+    mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
+    spec_b12x = importlib.util.spec_from_file_location("sircl_ep_b12x_test_grp", mod_path)
+    mod = importlib.util.module_from_spec(spec_b12x)
+    spec_b12x.loader.exec_module(mod)
+
+    fake_impl = types.ModuleType("b12x.moe.fused_moe._impl")
+    fake_impl._DIRECT_ROUTING_MAX_ROUTED_ROWS = 32
+    fake_impl._dynamic_direct_routing_selected = lambda *, route_mode, **_kw: route_mode == "direct"
+    fake_impl._heuristic_dynamic_route_mode = lambda *_a, **_kw: "direct"
+    for name, m in (
+        ("b12x", types.ModuleType("b12x")),
+        ("b12x.moe", types.ModuleType("b12x.moe")),
+        ("b12x.moe.fused_moe", types.ModuleType("b12x.moe.fused_moe")),
+        ("b12x.moe.fused_moe._impl", fake_impl),
+    ):
+        monkeypatch.setitem(sys.modules, name, m)
+    sys.modules["b12x.moe.fused_moe"]._impl = fake_impl
+
+    monkeypatch.setenv("SIRCL_EP_FORCE_GROUPED_ROUTING", "0")
+    mod._patch_ep_grouped_routing()
+    assert fake_impl._dynamic_direct_routing_selected(route_mode="direct") is True
+    assert fake_impl._heuristic_dynamic_route_mode() == "direct"
+
+    monkeypatch.setenv("SIRCL_EP_FORCE_GROUPED_ROUTING", "1")
+    mod._patch_ep_grouped_routing()
+    assert fake_impl._dynamic_direct_routing_selected(route_mode="direct") is False
+    assert fake_impl._heuristic_dynamic_route_mode() == "grouped"
+    assert fake_impl._DIRECT_ROUTING_MAX_ROUTED_ROWS == 32
+
+

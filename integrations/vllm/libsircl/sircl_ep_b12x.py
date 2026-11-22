@@ -37,13 +37,54 @@ except ImportError:
     logger = logging.getLogger(__name__)
 
 ENV_FLAG = "SIRCL_B12X_EP_MOE"
+TRITON_REMAP_ENV = "SIRCL_EP_TRITON_REMAP"
+ROUTER_SKIP_PADDING_ENV = "SIRCL_EP_ROUTER_SKIP_PADDING"
+FORCE_GROUPED_ROUTING_ENV = "SIRCL_EP_FORCE_GROUPED_ROUTING"
 _INSTALLED = False
 _NEG_ONE_CACHE: dict[tuple[int, torch.dtype], torch.Tensor] = {}
+_TRITON_REMAP_WARMED: set[tuple[int, torch.dtype, torch.dtype]] = set()
+
+try:
+    import triton
+    import triton.language as tl
+
+    @triton.jit
+    def _remap_expert_ids_kernel(
+        ids_ptr,
+        map_ptr,
+        out_ptr,
+        n_elements,
+        global_num_experts,
+        BLOCK_SIZE: tl.constexpr,
+    ):
+        pid = tl.program_id(0)
+        offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offs < n_elements
+        eid = tl.load(ids_ptr + offs, mask=mask, other=-1)
+        valid = (eid >= 0) & (eid < global_num_experts)
+        safe_eid = tl.where(valid, eid, 0)
+        mapped = tl.load(map_ptr + safe_eid, mask=mask & valid, other=-1)
+        out = tl.where(valid, mapped, -1)
+        tl.store(out_ptr + offs, out, mask=mask)
+
+    _TRITON_AVAILABLE = True
+except ImportError:
+    triton = None
+    _remap_expert_ids_kernel = None
+    _TRITON_AVAILABLE = False
 
 
 def enabled(environ=None) -> bool:
     env = os.environ if environ is None else environ
     return env.get(ENV_FLAG, "").strip().lower() in ("1", "true", "on", "yes")
+
+
+def _triton_remap_enabled(environ=None) -> bool:
+    if not _TRITON_AVAILABLE:
+        return False
+    env = os.environ if environ is None else environ
+    raw = env.get(TRITON_REMAP_ENV, "1").strip().lower()
+    return raw not in ("0", "false", "off", "no")
 
 
 def _is_capturing() -> bool:
@@ -61,6 +102,21 @@ def _neg_one_scalar(device: torch.device, dtype: torch.dtype) -> torch.Tensor:
     return tensor
 
 
+def _warmup_triton_remap(device: torch.device, global_num_experts: int = 384) -> None:
+    """Compile Triton remap kernels before CUDA graph capture for int32 & int64 IDs."""
+    if not _triton_remap_enabled() or device.type != "cuda":
+        return
+    dev_idx = -1 if device.index is None else int(device.index)
+    emap = torch.full((max(global_num_experts, 1),), -1, dtype=torch.int32, device=device)
+    for id_dtype in (torch.int32, torch.int64):
+        key = (dev_idx, id_dtype, torch.int32)
+        if key in _TRITON_REMAP_WARMED:
+            continue
+        dummy_ids = torch.zeros((6, 6), dtype=id_dtype, device=device)
+        _remap_expert_ids(dummy_ids, emap, max(global_num_experts, 1))
+        _TRITON_REMAP_WARMED.add(key)
+
+
 def _remap_expert_ids(
     topk_ids: torch.Tensor,
     expert_map: torch.Tensor,
@@ -69,9 +125,32 @@ def _remap_expert_ids(
     """Map global ``topk_ids`` to rank-local IDs (``-1`` for non-local/padding).
 
     Guards against negative or out-of-range IDs (e.g. ``-1`` padding rows from
-    DP all2all dispatch) before indexing ``expert_map`` so negative indices
-    never wrap around to the last expert on rank ``EP-1``. CUDA-graph safe.
+    ``dsv4_topk`` or DP all2all dispatch) before indexing ``expert_map`` so
+    negative indices never wrap around to the last expert on rank ``EP-1``.
+    Uses a single fused Triton kernel on CUDA (eliminating 6-8 ATen ops/layer
+    under ``compilation_config.mode=NONE``) with an identical PyTorch fallback.
     """
+    if (
+        _triton_remap_enabled()
+        and topk_ids.is_cuda
+        and expert_map.is_cuda
+        and topk_ids.is_contiguous()
+        and expert_map.is_contiguous()
+    ):
+        n_elements = int(topk_ids.numel())
+        out = torch.empty(topk_ids.shape, dtype=expert_map.dtype, device=topk_ids.device)
+        if n_elements > 0:
+            block_size = 256
+            grid = ((n_elements + block_size - 1) // block_size,)
+            _remap_expert_ids_kernel[grid](
+                topk_ids,
+                expert_map,
+                out,
+                n_elements,
+                int(global_num_experts),
+                BLOCK_SIZE=block_size,
+            )
+        return out
     neg_one = _neg_one_scalar(expert_map.device, expert_map.dtype)
     valid = (topk_ids >= 0) & (topk_ids < global_num_experts)
     safe_ids = topk_ids.clamp(0, max(global_num_experts - 1, 0))
@@ -372,12 +451,11 @@ def install_b12x_ep_moe() -> bool:
             _patch_dp_sync_cudagraph_num_reqs()
             _patch_dp_speculator_propose_sync()
         if _is_w4a8_ep(self):
-            # Pre-populate cached -1 scalar before CUDA graph capture.
+            # Pre-populate cached -1 scalar and compile Triton remap before CUDA graph capture.
             if torch.cuda.is_available():
-                _neg_one_scalar(
-                    torch.device("cuda", torch.cuda.current_device()),
-                    torch.int32,
-                )
+                dev = torch.device("cuda", torch.cuda.current_device())
+                _neg_one_scalar(dev, torch.int32)
+                _warmup_triton_remap(dev, int(self.moe_config.num_experts))
             ep_mult = int(ep_cfg.ep_size) if ep_cfg.use_all2all_kernels else 1
             prep_workload = (
                 _widen_workload_for_ep(workload, ep_mult)
@@ -561,6 +639,8 @@ def install_b12x_ep_moe() -> bool:
     _patch_modular_kernel_dp_workspace()
     _patch_dp_sync_cudagraph_num_reqs()
     _patch_dp_speculator_propose_sync()
+    _patch_router_skip_padding()
+    _patch_ep_grouped_routing()
 
     _INSTALLED = True
     logger.info("Installed SIRCL b12x EP W4A8/W4A16 MoE extension on B12xExperts")
@@ -1024,4 +1104,69 @@ def _patch_dp_speculator_propose_sync() -> None:
     logger.info("Patched GPUModelRunner.sample_tokens for DP>1 speculator propose sync")
 
 
+def _patch_router_skip_padding() -> None:
+    """Forward ``is_padding`` in text-only ``dsv4_topk`` when ``VLLM_MOE_SKIP_PADDING=1``."""
+    raw = os.environ.get(ROUTER_SKIP_PADDING_ENV, "1").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return
+    try:
+        from vllm.model_executor.layers.fused_moe.router import (
+            fused_topk_bias_router as router_mod,
+        )
+    except ImportError:
+        return
+    orig_dsv4 = getattr(router_mod, "dsv4_topk", None)
+    get_pad = getattr(router_mod, "_get_padding_mask", None)
+    if orig_dsv4 is None or get_pad is None or getattr(orig_dsv4, "_sircl_pad_patched", False):
+        return
 
+    def _wrapped_dsv4_topk(gating_output: torch.Tensor, *args: Any, **kwargs: Any):
+        if kwargs.get("is_padding") is None:
+            pad = get_pad(gating_output.shape[0])
+            if pad is not None:
+                kwargs["is_padding"] = pad
+        return orig_dsv4(gating_output, *args, **kwargs)
+
+    _wrapped_dsv4_topk._sircl_pad_patched = True
+    router_mod.dsv4_topk = _wrapped_dsv4_topk
+    logger.info("Patched fused_topk_bias_router.dsv4_topk to forward is_padding mask")
+
+
+def _patch_ep_grouped_routing() -> None:
+    """Prefer grouped over direct W4A8 dynamic routing on EP small batches (e.g. M=5).
+
+    On EP4, 75% of routed slots are ``-1`` and consecutive speculative tokens share
+    hot experts; grouped routing compacts out ``-1`` slots and coalesces duplicate
+    expert loads into one tile, beating direct routing by ~0.9-1.6 ms/step at M=5.
+
+    Overrides ``_dynamic_direct_routing_selected`` and ``_heuristic_dynamic_route_mode``
+    rather than zeroing ``_DIRECT_ROUTING_MAX_ROUTED_ROWS`` so cached ``b12x``
+    preparation plans that recorded ``dynamic_route_mode="direct"`` still validate
+    cleanly during ``_materialize_tuning`` and compile/execute as grouped.
+    """
+    raw = os.environ.get(FORCE_GROUPED_ROUTING_ENV, "1").strip().lower()
+    if raw in ("0", "false", "off", "no"):
+        return
+    try:
+        from b12x.moe.fused_moe import _impl as fm_impl
+    except ImportError:
+        return
+    orig_sel = getattr(fm_impl, "_dynamic_direct_routing_selected", None)
+    if orig_sel is not None and not getattr(orig_sel, "_sircl_grouped_patched", False):
+        def _always_grouped_selected(*_args: Any, **_kwargs: Any) -> bool:
+            return False
+
+        _always_grouped_selected._sircl_grouped_patched = True
+        fm_impl._dynamic_direct_routing_selected = _always_grouped_selected
+
+        orig_heur = getattr(fm_impl, "_heuristic_dynamic_route_mode", None)
+        if orig_heur is not None and not getattr(orig_heur, "_sircl_grouped_patched", False):
+            def _always_grouped_heuristic(*_args: Any, **_kwargs: Any) -> str:
+                return "grouped"
+
+            _always_grouped_heuristic._sircl_grouped_patched = True
+            fm_impl._heuristic_dynamic_route_mode = _always_grouped_heuristic
+
+        logger.info(
+            "Patched b12x _dynamic_direct_routing_selected -> grouped for EP routing"
+        )
