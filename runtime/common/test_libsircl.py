@@ -310,12 +310,13 @@ def test_the_expert_parallel_switch_reaches_the_container_beside_libsircls_own_s
         assert both.environment["SIRCL_BOOTSTRAP_ADDR"] == both.environment["VLLM_HOST_IP"]
         assert {key for key in both.environment if key.startswith("SIRCL_") and key not in ROUTES} == {
             "SIRCL_GID_INDEX", "SIRCL_BOOTSTRAP_ADDR", "SIRCL_ENABLED", "SIRCL_B12X_EP_MOE",
-            *serving.EXPERT_PARALLEL_LINK}
-        # The link geometry of the measured deployment is the row-owned pairing's;
-        # expert parallelism alone keeps libsircl's defaults.
+            *(key for key in serving.EXPERT_PARALLEL_LINK if key.startswith("SIRCL_") and key not in ROUTES)}
+        # The link geometry and Leg-2 decode tuning of the measured deployment belong to
+        # the row-owned pairing; expert parallelism alone keeps base/libsircl defaults.
         assert {name: both.environment[name] for name in serving.EXPERT_PARALLEL_LINK} == serving.EXPERT_PARALLEL_LINK
-        assert not set(only.environment) & set(serving.EXPERT_PARALLEL_LINK)
-        assert not set(base.environment) & set(serving.EXPERT_PARALLEL_LINK)
+        for name in serving.EXPERT_PARALLEL_LINK:
+            assert only.environment.get(name) == base.environment.get(name)
+            assert base.environment.get(name) != serving.EXPERT_PARALLEL_LINK[name]
         assert (both.command[both.command.index("--max-model-len") + 1],
                 base.command[base.command.index("--max-model-len") + 1]) == (str(serving.ROW_OWNED_PREFILL_CONTEXT),
                                                                              "1048576")

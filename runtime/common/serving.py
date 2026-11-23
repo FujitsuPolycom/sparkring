@@ -101,28 +101,34 @@ EXPERT_PARALLEL = "expert_parallel"
 EXPERT_ALL2ALL = "allgather_reducescatter"
 EXPERT_LOADER_EP = False
 EXPERT_LOADER_PLUGINS = ("b12x_loader",)
-# The libsircl link geometry of the row-owned expert-parallel deployment on ring
-# 4-7: a 1 MiB link slot, 1 MiB pieces for the grouped all-gather, reduce-scatter
-# and all-reduce, and a 64 KiB one-shot ceiling, against the untuned deployment's
-# 4 MiB slot and pieces and 131,072-byte ceiling. The `path-4` row of
-# `runtime/common/sircl-tuning-defaults.json` records the same geometry for SIRCL
-# sessions; libsircl applies no tuning row, so a libsircl deployment takes these
-# values from its environment alone. On the row-owned expert-parallel deployment
-# the geometry raised cold-prefill medians of seven samples by 5.6%, 9.7% and
-# 11.5% at 16,384, 65,536 and 131,072 tokens, left decode at parity (87.95,
-# 192.16, 279.43 and 404.22 tok/s at one, four, eight and sixteen requests,
-# against 86.55, 185.11, 255.41 and 418.76) and the KV pool 0.05 GiB larger (17.77
-# against 17.72 GiB)
+# The libsircl link geometry and Leg-2 decode tuning of the row-owned
+# expert-parallel deployment on ring 4-7: a 1 MiB link slot and 1 MiB pieces
+# for grouped all-gather, reduce-scatter and all-reduce; a 256 KiB one-shot
+# ceiling (eliminating ~290K decode twoshot phases caused by 64 KiB); a 64 KiB
+# forwarding chunk; P-core progress thread pinning (CPU 9 on GB10); W4A8 shared
+# input quantization across experts; text-only MoE padding skip; and 4 OpenMP
+# threads. The 1 MiB link geometry raised cold-prefill medians of seven samples
+# by 5.6%, 9.7% and 11.5% at 16K, 64K and 128K tokens, and the Leg-2 decode
+# tuning (paired with the plugin's Triton expert-ID remap, router padding skip,
+# and EP grouped routing) raised 15-cell coding-matrix throughput by +9.0% on
+# Coding Peak (76.0 -> 82.8 tok/s median, 84.2 -> 91.6 max), +7.9% to +11.6% at
+# C=2, and +9.3% to +11.9% at C=4 (+13.8% to +15.2% steps/s) while keeping
+# prefill at 6.4-6.8 ktok/s and 18.5 GiB KV headroom at 256K
 # (performance/records/deepseek-v41-flash/row-owned-tp4-ep4-libsircl-20261121.md).
 # A 16,384-token prefill batch on top of it measured 0.8 to 5.1 points higher
 # but cost 10 to 17% of decode at one, four and sixteen requests, so the batch
 # stays the profile's 8,192.
 EXPERT_PARALLEL_LINK = {
-    "SIRCL_ONESHOT_MAX_BYTES": "65536",
+    "SIRCL_ONESHOT_MAX_BYTES": "262144",
     "SIRCL_LINK_SLOT_BYTES": "1048576",
     "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
     "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
     "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+    "SIRCL_FORWARD_CHUNK_BYTES": "65536",
+    "SIRCL_PROGRESS_CPU": "9",
+    "B12X_DYNAMIC_W4A8_SHARE_INPUT": "1",
+    "VLLM_MOE_SKIP_PADDING": "1",
+    "OMP_NUM_THREADS": "4",
 }
 # name: (container environment variable, value, help). save_cpu shortens the
 # time vLLM's shared-memory readers poll after a read from one second to 2 ms,

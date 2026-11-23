@@ -369,11 +369,21 @@ def test_expert_parallel_is_a_switch_that_names_the_grouped_all_to_all():
 
 
 def test_the_row_owned_expert_parallel_pairing_sets_the_measured_link_geometry():
-    # The geometry of the deployment the transport sweep left running: a 1 MiB
-    # link slot and pieces with a 64 KiB one-shot ceiling.
-    link = {"SIRCL_ONESHOT_MAX_BYTES": "65536", "SIRCL_LINK_SLOT_BYTES": "1048576",
-            "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576", "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
-            "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576"}
+    # The balanced link geometry and Leg-2 decode tuning measured on ring 4-7:
+    # 1 MiB link slot/pieces, 256 KiB one-shot ceiling, 64 KiB forward chunk,
+    # P-core progress pinning, W4A8 shared input, MoE padding skip, and 4 OMP threads.
+    link = {
+        "SIRCL_ONESHOT_MAX_BYTES": "262144",
+        "SIRCL_LINK_SLOT_BYTES": "1048576",
+        "SIRCL_GATHER_LINK_CHUNK_BYTES": "1048576",
+        "SIRCL_REDUCE_LINK_CHUNK_BYTES": "1048576",
+        "SIRCL_SCATTER_LINK_CHUNK_BYTES": "1048576",
+        "SIRCL_FORWARD_CHUNK_BYTES": "65536",
+        "SIRCL_PROGRESS_CPU": "9",
+        "B12X_DYNAMIC_W4A8_SHARE_INPUT": "1",
+        "VLLM_MOE_SKIP_PADDING": "1",
+        "OMP_NUM_THREADS": "4",
+    }
     assert serving.EXPERT_PARALLEL_LINK == link
     assert {name: value for name, value in serving.environment(
         {"expert_parallel": True, "row_owned_prefill": True}).items() if name in link} == link

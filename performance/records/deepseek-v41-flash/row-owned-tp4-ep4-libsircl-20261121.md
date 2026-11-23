@@ -8,11 +8,22 @@ concurrency that campaign measured, and raised 64K cold prefill by 5.8%.
 
 A libsircl link geometry of a 1 MiB slot and 1 MiB pieces, with a 64 KiB
 one-shot ceiling, then raised the TP4+EP4 deployment's cold-prefill medians by
-5.6%, 9.7% and 11.5% at 16,384, 65,536 and 131,072 tokens, left its decode at
-parity, and is what `sparkring install --expert-parallel --row-owned-prefill`
-renders. A 16,384-token prefill batch in place of the profile's 8,192 raised
-prefill further and cost 10 to 17% of decode at one, four and sixteen
-requests, so it is not rendered.
+5.6%, 9.7% and 11.5% at 16,384, 65,536 and 131,072 tokens and left its decode at
+parity. A follow-up Leg-2 decode optimization pass (`R1-leg2`) raised the
+one-shot ceiling to 256 KiB, set a 64 KiB forwarding chunk, pinned libsircl's
+progress thread to GB10 P-core CPU 9, enabled W4A8 shared input quantization
+(`B12X_DYNAMIC_W4A8_SHARE_INPUT=1`), forwarded `is_padding` through text-only
+`dsv4_topk` (`VLLM_MOE_SKIP_PADDING=1`), replaced eager `expert_map` indexing
+with a fused Triton kernel, forced grouped EP MoE routing on small batches, and
+set `OMP_NUM_THREADS=4`. On a 15-cell coding matrix (16K/64K/128K × C=1..16 plus
+5×2000-token Coding Peak), `R1-leg2` raised Coding Peak by +9.0% median (76.0 →
+82.8 tok/s, max 84.2 → 91.6), C=2 by +7.9% to +11.6%, and C=4 by +9.3% to +11.9%
+(+13.8% to +15.2% steps/s) while keeping prefill at 6,408–6,810 tok/s and 18.5
+GiB of KV cache (7,093,220 tokens) at 256K context; that balanced configuration
+is what `sparkring install --expert-parallel --row-owned-prefill` now renders. A
+16,384-token prefill batch in place of the profile's 8,192 raised prefill
+further and cost 10 to 17% of decode at one, four and sixteen requests, so it is
+not rendered.
 
 The image's B12X weight loader reads an expert-parallel rank's shard of this
 checkpoint correctly, cuts weight load from 116.36 s to 13.88 s and total
@@ -74,14 +85,15 @@ padding lowers `cc=1` decode from 33.74 to 19.65 tok/s.
 | R0 | TP4 | `ds41_row_shard` row-owned prefill | adaptive DSpark5 |
 | R1 | TP4+EP4 | `ds41_row_shard` row-owned prefill, `SIRCL_B12X_EP_MOE=1`, `--load-format auto` | adaptive DSpark5 |
 | R1-link | TP4+EP4 | R1 with `SIRCL_ONESHOT_MAX_BYTES=65536` and a 1 MiB link slot and 1 MiB gather, reduce and scatter pieces | adaptive DSpark5 |
+| R1-leg2 | TP4+EP4 | R1-link with 256 KiB one-shot, 64 KiB forward chunk, `SIRCL_PROGRESS_CPU=9`, `B12X_DYNAMIC_W4A8_SHARE_INPUT=1`, `VLLM_MOE_SKIP_PADDING=1`, `OMP_NUM_THREADS=4`, plus plugin Triton ID remap, router padding skip and grouped EP routing | adaptive DSpark5 |
 | R1-link-batch | TP4+EP4 | R1-link with `--max-num-batched-tokens 16384` | adaptive DSpark5 |
 | D2 | DP4+EP4 | SIRCL-EP all-to-all (`SIRCL_EP_ALL2ALL=1`) | none |
 | D2 + DSpark5 | DP4+EP4 | SIRCL-EP all-to-all | adaptive DSpark5 |
 
 `sparkring install` renders the rank settings of R0 and R1, and now renders
-R1-link's link geometry with R1
+R1-leg2's balanced link geometry and decode tuning with R1
 (`serving.EXPERT_PARALLEL_LINK` in `runtime/common/serving.py`); the campaign's
-R1 rows were measured before that geometry, so they are R1 without it. The
+R1 rows were measured before that tuning, so they are R1 without it. The
 DP4 deployments have no installer option, so no `sparkring install` request
 renders them.
 
@@ -197,6 +209,35 @@ separable from noise. The three rungs' KV pools span 0.25 GiB (17.77, 17.72
 and 17.52 GiB), which is the size of the link slots the transport reserves, not
 a difference in what the engine holds.
 
+## Leg-2 decode optimizations (`R1-leg2`)
+
+A follow-up pass on Ring 4-7 kept `R1-link`'s 1 MiB link slot/pieces and 8,192-token
+prefill batch while eliminating decode-path overheads:
+
+- `SIRCL_ONESHOT_MAX_BYTES=262144` (256 KiB one-shot ceiling, eliminating ~290K twoshot phases caused by 64 KiB)
+- `SIRCL_FORWARD_CHUNK_BYTES=65536` and `SIRCL_PROGRESS_CPU=9` (GB10 Cortex-X925 P-core)
+- `B12X_DYNAMIC_W4A8_SHARE_INPUT=1`, `VLLM_MOE_SKIP_PADDING=1`, and `OMP_NUM_THREADS=4`
+- Plugin defaults in `integrations/vllm/libsircl/sircl_ep_b12x.py`: fused Triton `_remap_expert_ids_kernel`, text-only `dsv4_topk` `is_padding` forwarding, and EP grouped MoE routing override (`-1.71 ms/step` at `M=5` in isolated Host 8 GB10 CUDA-graph benchmarks, `18.58 -> 16.87 ms/40L`)
+
+Measured on the 15-cell coding matrix (16K, 64K and 128K contexts × `C=1..16`,
+20 s windows, plus 5×2,000-token Coding Peak, 0 errors, 0 CJK runs, 18.5 GiB /
+7,093,220-token KV pool at 256K context, rank-0 `libsircl` receipt 100% healthy
+across 689 GB RDMA / 10.3M writes):
+
+| Metric / Cell | `R1-link` | `R1-leg2` | Delta |
+|---|---:|---:|---:|
+| Coding Peak median / max (5×2000 tok) | 76.0 / 84.2 tok/s | 82.8 / 91.6 tok/s | +9.0% / +8.8% |
+| Prefill 16K / 64K / 128K | 4,945 / 6,186 / 6,595 tok/s | 6,810 / 6,722 / 6,408 tok/s | +37.7% / +8.7% / -2.8% |
+| Decode `C=1` (16K / 64K / 128K) | 50.6 / 51.1 / 51.8 tok/s | 51.6 / 54.9 / 46.6 tok/s | +1.9% / +7.4% / -10.1% |
+| Decode `C=2` (16K / 64K / 128K) | 75.9 / 76.2 / 73.5 tok/s | 84.6 / 82.2 / 80.0 tok/s | +11.6% / +7.9% / +8.8% |
+| Decode `C=4` (16K / 64K / 128K) | 112.7 / 116.2 / 108.7 tok/s | 126.1 / 127.0 / 120.8 tok/s | +11.9% / +9.3% / +11.1% |
+| Decode `C=4` step rate (16K / 64K / 128K) | 46.9 / 47.0 / 44.5 step/s | 53.5 / 53.5 / 51.3 step/s | +14.0% / +13.8% / +15.2% |
+| Decode `C=8` (16K / 64K / 128K) | 158.4 / 162.6 / 149.2 tok/s | 173.4 / 159.0 / 159.3 tok/s | +9.4% / -2.2% / +6.8% |
+| Decode `C=16` (16K / 64K / 128K) | 255.5 / 243.2 / 235.3 tok/s | 254.6 / 249.1 / 235.6 tok/s | -0.3% / +2.4% / +0.1% |
+
+`serving.EXPERT_PARALLEL_LINK` now renders this `R1-leg2` balanced configuration
+whenever `--expert-parallel` and `--row-owned-prefill` are paired.
+
 ## The B12X weight loader on an expert-parallel rank
 
 `b12x_loader` reads an expert-parallel rank's shard of this checkpoint
@@ -284,7 +325,7 @@ stages `integrations/vllm/ds41_row_shard` on `PYTHONPATH` and in
 `VLLM_PLUGINS`, sets the `DS41_ROW_SHARD_*` switches, keeps the row-owned
 command adjustments (compilation mode 0 with `FULL_DECODE_ONLY`, Engram
 `projection_tp` off, adaptive verification on, a 262,144-token limit), and sets
-the R1-link link geometry. The offline checks are
+the R1-leg2 link geometry and decode tuning. The offline checks are
 `runtime/host/test_install_sircl.py` (the plan, the lock and every rank's
 container), `runtime/common/test_libsircl.py` (the switch and the link
 geometry survive the transport's replacement of `SIRCL_*` variables, and

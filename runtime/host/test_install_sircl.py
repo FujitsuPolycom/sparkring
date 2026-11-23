@@ -303,8 +303,10 @@ def test_expert_parallel_is_a_locked_deepseek_libsircl_experiment(machine, spark
         assert spec.environment["VLLM_PLUGINS"].split(",") == [
             name for name in base_spec.environment["VLLM_PLUGINS"].split(",") if name != "b12x_loader"]
         assert "DS41_ROW_SHARD_PREFILL" not in spec.environment
-        # Expert parallelism alone keeps libsircl's link defaults.
-        assert not set(spec.environment) & set(serving.EXPERT_PARALLEL_LINK)
+        # Expert parallelism alone keeps base/libsircl defaults.
+        for name in serving.EXPERT_PARALLEL_LINK:
+            assert spec.environment.get(name) == base_spec.environment.get(name)
+            assert base_spec.environment.get(name) != serving.EXPERT_PARALLEL_LINK[name]
         assert [mount.target for mount in spec.mounts] == [mount.target for mount in base_spec.mounts]
 
     assert sparkring.main([*request, "--expert-parallel", "--row-owned-prefill"]) == 0
