@@ -598,6 +598,7 @@ def test_sircl_ep_b12x_router_skip_padding(monkeypatch):
 
 def test_sircl_ep_b12x_force_grouped_routing(monkeypatch):
     pytest.importorskip("torch")
+    import dataclasses
     import types
 
     mod_path = Path(__file__).with_name("sircl_ep_b12x.py")
@@ -605,28 +606,88 @@ def test_sircl_ep_b12x_force_grouped_routing(monkeypatch):
     mod = importlib.util.module_from_spec(spec_b12x)
     spec_b12x.loader.exec_module(mod)
 
+    @dataclasses.dataclass(frozen=True)
+    class FakeConfig:
+        backend: str
+        dynamic_route_mode: str | None = None
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeSelection:
+        config: FakeConfig
+
+    @dataclasses.dataclass(frozen=True)
+    class FakePlan:
+        _compile_jobs: object
+        _memory_requirements: object
+        _materialize: object
+
+    @dataclasses.dataclass(frozen=True)
+    class FakeCompositePlan:
+        variants: dict
+
+    seen: dict[str, list[FakeConfig]] = {"compile": [], "memory": [], "materialize": []}
+
+    def make_plan():
+        leaf = FakePlan(
+            _compile_jobs=lambda cfg, dev: seen["compile"].append(cfg) or cfg.dynamic_route_mode,
+            _memory_requirements=lambda cfg, dev: seen["memory"].append(cfg) or cfg.dynamic_route_mode,
+            _materialize=lambda sel, dev: seen["materialize"].append(sel.config) or sel.config.dynamic_route_mode,
+        )
+        return FakeCompositePlan(variants={5: leaf})
+
     fake_impl = types.ModuleType("b12x.moe.fused_moe._impl")
     fake_impl._DIRECT_ROUTING_MAX_ROUTED_ROWS = 32
-    fake_impl._dynamic_direct_routing_selected = lambda *, route_mode, **_kw: route_mode == "direct"
+    def orig_sel(*, route_mode, **_kw):
+        return route_mode == "direct"
+
+    fake_impl._dynamic_direct_routing_selected = orig_sel
     fake_impl._heuristic_dynamic_route_mode = lambda *_a, **_kw: "direct"
+
+    fake_prep = types.ModuleType("b12x.moe.fused_moe._preparation")
+    fake_prep.plan = make_plan
+
+    fake_fm = types.ModuleType("b12x.moe.fused_moe")
+    fake_fm._impl = fake_impl
+    fake_fm._preparation = fake_prep
+    fake_fm._canonical_plan_execution = make_plan
+    fake_fm.plan_execution = lambda **kw: fake_fm._canonical_plan_execution(**kw)
+
     for name, m in (
         ("b12x", types.ModuleType("b12x")),
         ("b12x.moe", types.ModuleType("b12x.moe")),
-        ("b12x.moe.fused_moe", types.ModuleType("b12x.moe.fused_moe")),
+        ("b12x.moe.fused_moe", fake_fm),
         ("b12x.moe.fused_moe._impl", fake_impl),
+        ("b12x.moe.fused_moe._preparation", fake_prep),
     ):
         monkeypatch.setitem(sys.modules, name, m)
-    sys.modules["b12x.moe.fused_moe"]._impl = fake_impl
 
     monkeypatch.setenv("SIRCL_EP_FORCE_GROUPED_ROUTING", "0")
     mod._patch_ep_grouped_routing()
-    assert fake_impl._dynamic_direct_routing_selected(route_mode="direct") is True
+    assert fake_impl._dynamic_direct_routing_selected is orig_sel
     assert fake_impl._heuristic_dynamic_route_mode() == "direct"
+    unpatched_leaf = fake_fm.plan_execution().variants[5]
+    assert unpatched_leaf._compile_jobs(FakeConfig("dynamic", "direct"), None) == "direct"
 
+    seen["compile"].clear()
     monkeypatch.setenv("SIRCL_EP_FORCE_GROUPED_ROUTING", "1")
     mod._patch_ep_grouped_routing()
-    assert fake_impl._dynamic_direct_routing_selected(route_mode="direct") is False
-    assert fake_impl._heuristic_dynamic_route_mode() == "grouped"
+    # _dynamic_direct_routing_selected stays unpatched so parent planning and
+    # unpatched b12x compilation subprocesses agree on program keys.
+    assert fake_impl._dynamic_direct_routing_selected is orig_sel
     assert fake_impl._DIRECT_ROUTING_MAX_ROUTED_ROWS == 32
+    assert fake_impl._heuristic_dynamic_route_mode() == "grouped"
+
+    leaf = fake_fm.plan_execution().variants[5]
+    direct_cfg = FakeConfig("dynamic", "direct")
+    assert leaf._compile_jobs(direct_cfg, None) == "grouped"
+    assert leaf._memory_requirements(direct_cfg, None) == "grouped"
+    assert leaf._materialize(FakeSelection(direct_cfg), None) == "grouped"
+    assert [c.dynamic_route_mode for c in seen["compile"]] == ["grouped"]
+    assert [c.dynamic_route_mode for c in seen["memory"]] == ["grouped"]
+    assert [c.dynamic_route_mode for c in seen["materialize"]] == ["grouped"]
+
+    # Non-dynamic configs (e.g. w4a16) pass through untouched.
+    a16_cfg = FakeConfig("w4a16", None)
+    assert leaf._compile_jobs(a16_cfg, None) is None
 
 

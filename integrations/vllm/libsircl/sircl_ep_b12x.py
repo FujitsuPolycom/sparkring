@@ -18,6 +18,7 @@ Supports:
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 import dataclasses
 import inspect
 import logging
@@ -1132,6 +1133,62 @@ def _patch_router_skip_padding() -> None:
     logger.info("Patched fused_topk_bias_router.dsv4_topk to forward is_padding mask")
 
 
+def _force_grouped_moe_config(config: Any) -> Any:
+    """Normalize ``dynamic_route_mode='direct'`` -> ``'grouped'`` on dynamic MoE configs."""
+    if (
+        config is not None
+        and getattr(config, "backend", None) == "dynamic"
+        and getattr(config, "dynamic_route_mode", None) == "direct"
+    ):
+        return dataclasses.replace(config, dynamic_route_mode="grouped")
+    return config
+
+
+def _wrap_grouped_moe_plan(plan_obj: Any) -> Any:
+    """Wrap a b12x ``Plan`` or ``_CompositePlan`` to normalize ``dynamic_route_mode``.
+
+    Rewriting ``config.dynamic_route_mode`` from ``"direct"`` to ``"grouped"``
+    before ``_compile_jobs`` encodes ``config_payload`` guarantees that both the
+    parent vLLM worker (planning) and unpatched ``b12x`` compilation subprocesses
+    (``compile_fused_moe``) see identical ``"grouped"`` configs and compute
+    identical program keys, while cached ``"direct"`` policy entries still
+    validate cleanly during ``_materialize_tuning``.
+    """
+    variants = getattr(plan_obj, "variants", None)
+    if isinstance(variants, Mapping):
+        wrapped_variants = {k: _wrap_grouped_moe_plan(v) for k, v in variants.items()}
+        return dataclasses.replace(plan_obj, variants=wrapped_variants)
+
+    orig_compile_jobs = getattr(plan_obj, "_compile_jobs", None)
+    orig_memory = getattr(plan_obj, "_memory_requirements", None)
+    orig_materialize = getattr(plan_obj, "_materialize", None)
+    if orig_compile_jobs is None or orig_materialize is None:
+        return plan_obj
+
+    def _compile_jobs(config: Any, device: Any):
+        return orig_compile_jobs(_force_grouped_moe_config(config), device)
+
+    def _materialize(selection: Any, device: Any):
+        cfg = getattr(selection, "config", None)
+        new_cfg = _force_grouped_moe_config(cfg)
+        if new_cfg is not cfg:
+            selection = dataclasses.replace(selection, config=new_cfg)
+        return orig_materialize(selection, device)
+
+    updates: dict[str, Any] = {
+        "_compile_jobs": _compile_jobs,
+        "_materialize": _materialize,
+    }
+    if orig_memory is not None:
+
+        def _memory_requirements(config: Any, device: Any):
+            return orig_memory(_force_grouped_moe_config(config), device)
+
+        updates["_memory_requirements"] = _memory_requirements
+
+    return dataclasses.replace(plan_obj, **updates)
+
+
 def _patch_ep_grouped_routing() -> None:
     """Prefer grouped over direct W4A8 dynamic routing on EP small batches (e.g. M=5).
 
@@ -1139,34 +1196,51 @@ def _patch_ep_grouped_routing() -> None:
     hot experts; grouped routing compacts out ``-1`` slots and coalesces duplicate
     expert loads into one tile, beating direct routing by ~0.9-1.6 ms/step at M=5.
 
-    Overrides ``_dynamic_direct_routing_selected`` and ``_heuristic_dynamic_route_mode``
-    rather than zeroing ``_DIRECT_ROUTING_MAX_ROUTED_ROWS`` so cached ``b12x``
-    preparation plans that recorded ``dynamic_route_mode="direct"`` still validate
-    cleanly during ``_materialize_tuning`` and compile/execute as grouped.
+    Normalizes ``dynamic_route_mode`` from ``"direct"`` to ``"grouped"`` in the
+    returned ``b12x`` ``Plan`` callbacks (``_compile_jobs``, ``_memory_requirements``,
+    ``_materialize``) and overrides ``_heuristic_dynamic_route_mode`` instead of
+    patching ``_dynamic_direct_routing_selected`` or zeroing
+    ``_DIRECT_ROUTING_MAX_ROUTED_ROWS``. That keeps parent planning and unpatched
+    ``b12x`` compilation subprocesses 100% consistent on program keys while
+    preserving validation of cached ``"direct"`` policy files.
     """
     raw = os.environ.get(FORCE_GROUPED_ROUTING_ENV, "1").strip().lower()
     if raw in ("0", "false", "off", "no"):
         return
     try:
+        from b12x.moe import fused_moe as fm_pkg
         from b12x.moe.fused_moe import _impl as fm_impl
+        from b12x.moe.fused_moe import _preparation as fm_prep
     except ImportError:
         return
-    orig_sel = getattr(fm_impl, "_dynamic_direct_routing_selected", None)
-    if orig_sel is not None and not getattr(orig_sel, "_sircl_grouped_patched", False):
-        def _always_grouped_selected(*_args: Any, **_kwargs: Any) -> bool:
-            return False
 
-        _always_grouped_selected._sircl_grouped_patched = True
-        fm_impl._dynamic_direct_routing_selected = _always_grouped_selected
+    patched = False
 
-        orig_heur = getattr(fm_impl, "_heuristic_dynamic_route_mode", None)
-        if orig_heur is not None and not getattr(orig_heur, "_sircl_grouped_patched", False):
-            def _always_grouped_heuristic(*_args: Any, **_kwargs: Any) -> str:
-                return "grouped"
+    orig_heur = getattr(fm_impl, "_heuristic_dynamic_route_mode", None)
+    if orig_heur is not None and not getattr(orig_heur, "_sircl_grouped_patched", False):
 
-            _always_grouped_heuristic._sircl_grouped_patched = True
-            fm_impl._heuristic_dynamic_route_mode = _always_grouped_heuristic
+        def _always_grouped_heuristic(*_args: Any, **_kwargs: Any) -> str:
+            return "grouped"
 
+        _always_grouped_heuristic._sircl_grouped_patched = True
+        fm_impl._heuristic_dynamic_route_mode = _always_grouped_heuristic
+        patched = True
+
+    orig_plan = getattr(fm_prep, "plan", None)
+    if orig_plan is not None and not getattr(orig_plan, "_sircl_grouped_patched", False):
+
+        def _wrapped_plan(*args: Any, **kwargs: Any):
+            return _wrap_grouped_moe_plan(orig_plan(*args, **kwargs))
+
+        _wrapped_plan._sircl_grouped_patched = True
+        fm_prep.plan = _wrapped_plan
+        if getattr(fm_pkg, "_canonical_plan_execution", None) is orig_plan:
+            fm_pkg._canonical_plan_execution = _wrapped_plan
+        elif getattr(fm_pkg, "plan_execution", None) is orig_plan:
+            fm_pkg.plan_execution = _wrapped_plan
+        patched = True
+
+    if patched:
         logger.info(
-            "Patched b12x _dynamic_direct_routing_selected -> grouped for EP routing"
+            "Patched b12x MoE preparation plan + heuristic to force grouped EP routing"
         )
