@@ -3,5 +3,5 @@
   "profile": "mimo-v26-flash-mopd-tp2",
   "checkpoint": null,
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "82f9d92a3a85d38a3b51512f3a591cc2bbfb474f93302696f1624aafd3d56de4"
+  "deployment": "be78213baf7b635bc7239436d0695e52da10523afb08d087567ca8b15e52d3a5"
 }

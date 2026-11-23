@@ -353,12 +353,12 @@ typedef struct {
 
 /* One direction of the channel with one peer on this rank: its own stream (a receive waits on its stream
  * until the peer sends, so no other work may queue behind it), the event that joins the stream back to the
- * caller's, the channel's next item, whether the group being issued uses it, its staging buffer (drivers
- * without stream-ordered allocation) and its counts. */
+ * caller's, whether the group being issued uses it, its staging buffer (drivers without stream-ordered
+ * allocation) and its counts. The channel's item sequence counter lives on the device (e->p2p_counters), so
+ * CUDA graphs captured on the channel advance it on every replay. */
 typedef struct {
   sccl_CUstream stream;
   sccl_CUevent done;
-  uint32_t next;
   int joined;
   sccl_CUdeviceptr stage;
   uint64_t stage_bytes;
@@ -468,15 +468,17 @@ struct sccl_engine {
   int watched;
   struct sccl_engine *watch_next;
   /* Point-to-point channels (see "point-to-point channels" below): the native library and context, the
-   * arena (host and device addresses, bytes, p2p_layout words, control line), every rank's p2p_out mask and
-   * this rank's channels, the windows of this rank's lanes (LIBSIRCL_P2P_WINDOWS), the kernels, the
-   * channels by direction (0: receive, 1: send) and peer, the event that orders a group's channels after
-   * the caller's stream, the lane check's duration, a failure to enqueue (which poisons the channels), the
-   * messages staged and the calls refused (no channel with the peer, or under CUDA graph capture). */
+   * arena (host and device addresses, bytes, p2p_layout words, control line), the per-channel device
+   * counters ({seq, arrival} pairs, 2 * MAX_WORLD * 8 bytes), every rank's p2p_out mask and this rank's
+   * channels, the windows of this rank's lanes (LIBSIRCL_P2P_WINDOWS), the kernels, the channels by direction
+   * (0: receive, 1: send) and peer, the event that orders a group's channels after the caller's stream, the
+   * lane check's duration, a failure to enqueue (which poisons the channels), the messages staged and the
+   * calls refused (no channel with the peer, or graph staging without stream-ordered allocation). */
   const p2p_ops *p2p_transport;
   void *p2p;
   uint8_t *p2p_host;
   sccl_CUdeviceptr p2p_dev;
+  sccl_CUdeviceptr p2p_counters;
   uint64_t p2p_bytes, p2p_layout[P2P_LAYOUT_WORDS];
   int p2p_host_registered, p2p_host_emulated;
   volatile uint32_t *p2p_ctrl;
@@ -484,11 +486,12 @@ struct sccl_engine {
   uint32_t p2p_window[MAX_WORLD][MAX_LANES];
   int p2p_windowed;
   sccl_CUfunction p2p_fn[2];
+  sccl_CUfunction ep_dispatch_fn, ep_combine_xfer_fn, ep_combine_reduce_fn[SCCL_DT_COUNT];
   p2p_channel p2p_ch[2][MAX_WORLD];
   sccl_CUevent p2p_ready;
   uint64_t p2p_check_ns;
   char p2p_fault[300];
-  _Atomic uint64_t p2p_staged, p2p_refused;
+  _Atomic uint64_t p2p_staged, p2p_refused, ep_dispatches, ep_combines;
   /* receipts */
   _Atomic uint64_t ops[SCCL_ALG_COUNT][SCCL_DT_COUNT];
   _Atomic uint64_t gather_calls, gather_ops, gather_bytes, gather_padded;
@@ -1925,6 +1928,8 @@ static int p2p_close(sccl_engine *e, int free_memory) {
     }
   if (e->p2p_ready) cu->EventDestroy(e->p2p_ready);
   e->p2p_ready = NULL;
+  if (e->p2p_counters) cu->MemFree(e->p2p_counters);
+  e->p2p_counters = 0;
   if (e->p2p_host) {
     if (e->p2p_host_registered) cu->MemHostUnregister(e->p2p_host);
     if (e->p2p_host_emulated) {
@@ -1999,16 +2004,40 @@ static int p2p_open(sccl_engine *e, const route_table *routes, char *err, size_t
   if (cuda_check(cu->MemHostGetDevicePointer(&e->p2p_dev, e->p2p_host, 0), "mapping the point-to-point arena", err,
                  len))
     return -1;
+  uint32_t counter_zeros[2 * MAX_WORLD * 2] = {0};
+  if (cuda_check(cu->MemAlloc(&e->p2p_counters, sizeof counter_zeros), "allocating the point-to-point counters", err,
+                 len) ||
+      cuda_check(cu->MemcpyHtoD(e->p2p_counters, counter_zeros, sizeof counter_zeros),
+                 "zeroing the point-to-point counters", err, len))
+    return -1;
   e->p2p_ctrl = (volatile uint32_t *)e->p2p_host;
   e->p2p_ctrl[P2P_C_WAIT_LIMIT_US] = e->serving ? s->serving_wait_us : s->startup_wait_us;
   if (sccl_kp_p2p_function(e->ctx, 1, (int)s->p2p_unroll, &e->p2p_fn[1]) ||
-      sccl_kp_p2p_function(e->ctx, 0, (int)s->p2p_unroll, &e->p2p_fn[0])) {
+      sccl_kp_p2p_function(e->ctx, 0, (int)s->p2p_unroll, &e->p2p_fn[0]) ||
+      sccl_kp_ep_functions(e->ctx, &e->ep_dispatch_fn, &e->ep_combine_xfer_fn, e->ep_combine_reduce_fn)) {
     put_error(err, len, "%s", sccl_kp_error());
     return -1;
   }
   if (cuda_check(cu->EventCreate(&e->p2p_ready, SCCL_CU_EVENT_DISABLE_TIMING), "creating the point-to-point "
                  "order event", err, len))
     return -1;
+  /* Eagerly create every enabled channel's stream and join event here (outside CUDA graph capture), so a
+   * first send or receive inside a CUDA graph capture never creates CUDA objects. */
+  for (int d = 0; d < 2; ++d)
+    for (int p = 0; p < e->world; ++p) {
+      if (!(e->p2p_channels >> p & 1u)) continue;
+      p2p_channel *ch = &e->p2p_ch[d][p];
+      if (cuda_check(cu->StreamCreate(&ch->stream, SCCL_CU_STREAM_NON_BLOCKING),
+                     "creating a point-to-point channel stream", err, len)) {
+        ch->stream = NULL;
+        return -1;
+      }
+      if (cuda_check(cu->EventCreate(&ch->done, SCCL_CU_EVENT_DISABLE_TIMING),
+                     "creating a point-to-point channel event", err, len)) {
+        ch->done = NULL;
+        return -1;
+      }
+    }
   const char *names[MAX_DEVICES];
   for (int d = 0; d < routes->n_devices; ++d) names[d] = routes->devices[d];
   int lane_devices[MAX_WORLD * MAX_LANES], channels[MAX_WORLD];
@@ -4328,9 +4357,11 @@ static ncclResult_t p2p_channel_ready(sccl_engine *e, p2p_channel *ch, char *err
 /* A staging buffer of `bytes` on the channel's stream, for a message that is not 16-byte aligned or not whole
  * packs (SIRCL's session stages these too): a stream-ordered allocation that the caller frees on the stream
  * after the launch where the driver and device have them (`*ordered` set), else the channel's own buffer,
- * grown when too small (the old one is kept until destroy: work queued on the stream may still use it). */
-static ncclResult_t p2p_stage(sccl_engine *e, p2p_channel *ch, uint64_t bytes, sccl_CUdeviceptr *out, int *ordered,
-                              char *err, size_t len) {
+ * grown when too small (the old one is kept until destroy: work queued on the stream may still use it). Under
+ * CUDA graph capture without stream-ordered allocation, a size larger than the channel's existing buffer is
+ * refused until an eager call grows it. */
+static ncclResult_t p2p_stage(sccl_engine *e, p2p_channel *ch, uint64_t bytes, int capturing, sccl_CUdeviceptr *out,
+                              int *ordered, char *err, size_t len) {
   *ordered = 0;
   if (e->shared.graph_staging) {
     if (cuda_check(cu->MemAllocAsync(out, bytes, ch->stream), "allocating point-to-point staging", err, len))
@@ -4339,6 +4370,12 @@ static ncclResult_t p2p_stage(sccl_engine *e, p2p_channel *ch, uint64_t bytes, s
     return ncclSuccess;
   }
   if (bytes > ch->stage_bytes) {
+    if (capturing) {
+      put_error(err, len, "a point-to-point channel op on unaligned or non-pack-multiple buffers needs %" PRIu64
+                " bytes of staging, and this driver or device has no stream-ordered allocation for CUDA graph "
+                "capture; issue one such call eagerly before capturing", bytes);
+      return ncclInvalidUsage;
+    }
     if (ch->stage && reserve_retired(e, err, len)) return ncclSystemError;
     uint64_t size = ch->stage_bytes * 2 > bytes ? ch->stage_bytes * 2 : bytes;
     sccl_CUdeviceptr fresh = 0;
@@ -4352,11 +4389,11 @@ static ncclResult_t p2p_stage(sccl_engine *e, p2p_channel *ch, uint64_t bytes, s
   return ncclSuccess;
 }
 
-/* One message on its channel's stream: items(n) items from the channel's next item (SIRCL's protocol.items),
- * one launch of min(SIRCL_P2P_BLOCKS, items) blocks; a buffer that is not 16-byte aligned or not whole packs
- * goes through staging (a send copies into it first, a receive lands in it and copies out). The channel's
- * counter advances only when the launch was enqueued. */
-static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, char *err, size_t len) {
+/* One message on its channel's stream: items(n) items from the channel's device sequence counter (SIRCL's
+ * protocol.items), one launch of min(SIRCL_P2P_BLOCKS, items) blocks; a buffer that is not 16-byte aligned or
+ * not whole packs goes through staging (a send copies into it first, a receive lands in it and copies out).
+ * The kernel reads and advances the channel's device counter on every execution (eager or CUDA-graph replay). */
+static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, int capturing, char *err, size_t len) {
   const shared_settings *s = &e->shared;
   p2p_channel *ch = &e->p2p_ch[send][op->peer];
   uint64_t n = op->bytes, padded = round_up(n, PACK);
@@ -4365,7 +4402,7 @@ static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, 
   int ordered = 0, direct = n == 0 || (buffer % PACK == 0 && n % PACK == 0);
   ncclResult_t result = ncclSuccess;
   if (!direct) {
-    result = p2p_stage(e, ch, padded, &stage, &ordered, err, len);
+    result = p2p_stage(e, ch, padded, capturing, &stage, &ordered, err, len);
     if (result != ncclSuccess) return result;
     if (send && cuda_check(copy_async(e, stage, buffer, n, ch->stream), "staging a channel send", err, len))
       result = ncclUnhandledCudaError;
@@ -4378,11 +4415,11 @@ static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, 
   a.block_base = e->p2p_dev + e->p2p_layout[P2P_L_CONTROL] + (uint64_t)op->peer * e->p2p_layout[P2P_L_BLOCK];
   a.ctrl_base = e->p2p_dev;
   a.slot_bytes = s->p2p_slot_bytes;
+  a.counter_ptr = e->p2p_counters + (uint64_t)(send * MAX_WORLD + op->peer) * 8u;
   a.packs = (int32_t)(padded / PACK);
   a.tail = (int32_t)(n % PACK);
   a.items = (int32_t)items;
   a.peer = op->peer;
-  a.first = ch->next;
   a.slots = s->p2p_slots;
   a.lanes = (uint32_t)e->lanes;
   a.recv_off = e->p2p_layout[P2P_L_RECV];
@@ -4399,7 +4436,6 @@ static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, 
                         send ? "launching a channel send" : "launching a channel receive", err, len)) {
     result = ncclUnhandledCudaError;
   } else {
-    ch->next += (uint32_t)items;
     atomic_fetch_add_explicit(&ch->messages, 1, memory_order_relaxed);
     atomic_fetch_add_explicit(&ch->bytes, n, memory_order_relaxed);
     atomic_fetch_add_explicit(&ch->items, items, memory_order_relaxed);
@@ -4421,9 +4457,10 @@ static ncclResult_t p2p_launch(sccl_engine *e, int send, const sccl_p2p_op *op, 
  * issue order on its channel's stream after `stream` reached the group (so a receive waiting for its peer holds
  * back nothing but later items of its own channel, and every send of the group is queued ahead of the group's
  * receives); then `stream` waits for every channel stream the group used, so later work on it, and the
- * stream's completion, follow the group's transfers. A failure to enqueue poisons the channels. */
-static ncclResult_t p2p_group(sccl_engine *e, const sccl_p2p_op *ops, unsigned count, sccl_CUstream stream, char *err,
-                              size_t len) {
+ * stream's completion, follow the group's transfers. Under CUDA graph capture, the event fork/join captures
+ * every channel stream's work into `stream`'s graph. A failure to enqueue poisons the channels. */
+static ncclResult_t p2p_group(sccl_engine *e, const sccl_p2p_op *ops, unsigned count, int capturing,
+                              sccl_CUstream stream, char *err, size_t len) {
   if (cuda_check(cu->EventRecord(e->p2p_ready, stream), "recording the point-to-point order event", err, len)) {
     p2p_fault(e, err);
     return ncclUnhandledCudaError;
@@ -4441,7 +4478,7 @@ static ncclResult_t p2p_group(sccl_engine *e, const sccl_p2p_op *ops, unsigned c
         else
           ch->joined = 1;
       }
-      if (result == ncclSuccess) result = p2p_launch(e, send, op, err, len);
+      if (result == ncclSuccess) result = p2p_launch(e, send, op, capturing, err, len);
     }
   for (int d = 0; d < 2; ++d)
     for (int p = 0; p < e->world; ++p) {
@@ -4522,18 +4559,28 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
   call_state call;
   ncclResult_t result = begin_call(e, ops[0].send ? "ncclSend" : "ncclRecv", stream, &call, err, len);
   if (result != ncclSuccess) return result;
-  /* Communicators of more than two ranks: the calls to other ranks as channel items (not under CUDA graph
-   * capture: a replay would reuse the item numbers fixed at enqueue), the sends to the rank itself as copies. */
+  /* Communicators of more than two ranks: the calls to other ranks as channel items (eager or CUDA-graph
+   * captured; each channel advances its device sequence counter on every launch/replay), the sends to the
+   * rank itself as copies. Pre-check graph staging without stream-ordered allocation before touching any
+   * channel stream so a refusal never poisons the communicator. */
   if (e->world > 2 && nsend[0] + nrecv[0]) {
-    if (call.capturing) {
-      atomic_fetch_add_explicit(&e->p2p_refused, 1, memory_order_relaxed);
-      put_error(err, len, "%s: point-to-point channel items cannot be captured in a CUDA graph (a replay would reuse "
-                "the item numbers fixed at enqueue); issue them outside the capture", ops[0].send ? "ncclSend"
-                                                                                                 : "ncclRecv");
-      result = ncclInvalidUsage;
-    } else {
-      result = p2p_group(e, ops, count, stream, err, len);
+    if (call.capturing && !e->shared.graph_staging) {
+      for (unsigned i = 0; i < count && result == ncclSuccess; ++i) {
+        const sccl_p2p_op *op = &ops[i];
+        if (op->peer == e->rank) continue;
+        uint64_t n = op->bytes, padded = round_up(n, PACK);
+        sccl_CUdeviceptr buffer = (sccl_CUdeviceptr)(uintptr_t)op->buff;
+        int direct = n == 0 || (buffer % PACK == 0 && n % PACK == 0);
+        if (!direct && padded > e->p2p_ch[op->send][op->peer].stage_bytes) {
+          atomic_fetch_add_explicit(&e->p2p_refused, 1, memory_order_relaxed);
+          put_error(err, len, "a point-to-point channel op on unaligned or non-pack-multiple buffers needs %" PRIu64
+                    " bytes of staging, and this driver or device has no stream-ordered allocation for CUDA graph "
+                    "capture; issue one such call eagerly before capturing", padded);
+          result = ncclInvalidUsage;
+        }
+      }
     }
+    if (result == ncclSuccess) result = p2p_group(e, ops, count, call.capturing, stream, err, len);
   }
   /* The all-to-all of two ranks as point-to-point calls (torch's pattern, and nccl-tests' below NCCL API
    * level 22800): one send to and one receive from the peer and one send to and receive from this rank
@@ -4582,6 +4629,215 @@ ncclResult_t sccl_engine_p2p(sccl_engine *e, const sccl_p2p_op *ops, unsigned co
                                 memory_order_relaxed);
     }
     if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, count, memory_order_relaxed);
+  }
+  return end_call(e, &call, result, err, len);
+}
+
+/* -- SIRCL-EP: GPU-driven dynamic variable-length MoE dispatch & combine ------------------------------- */
+
+size_t sccl_engine_ep_workspace_bytes(int world, int max_tokens, size_t hidden_bytes) {
+  if (world < 1 || world > MAX_WORLD || max_tokens < 1 || hidden_bytes < PACK || (hidden_bytes % PACK) != 0) return 0;
+  uint64_t w = (uint64_t)world, m = (uint64_t)max_tokens, h = (uint64_t)hidden_bytes;
+  if (m > UINT64_MAX / w / 4u) return 0;
+  uint64_t idx_bytes = round_up(w * m * 4u, 64u);
+  if (h > (UINT64_MAX - 64u - 2u * idx_bytes) / (w * m)) return 0;
+  uint64_t recv_bytes = round_up(w * m * h, 64u);
+  return (size_t)(64u + 2u * idx_bytes + recv_bytes);
+}
+
+static ncclResult_t ep_check_ready(sccl_engine *e, const char *what, char *err, size_t len) {
+  if (e->world < 3 || !e->shared.p2p_on || !e->p2p) {
+    put_error(err, len, "%s: requires a communicator of 3 to %d ranks created with LIBSIRCL_P2P_CHANNELS=on", what,
+              MAX_WORLD);
+    return ncclInvalidUsage;
+  }
+  for (int p = 0; p < e->world; ++p) {
+    if (p == e->rank) continue;
+    char why[400];
+    if (p2p_refusal(e, p, why, sizeof why)) {
+      atomic_fetch_add_explicit(&e->p2p_refused, 1, memory_order_relaxed);
+      put_error(err, len, "%s: rank %d: %s", what, p, why);
+      return ncclInvalidUsage;
+    }
+  }
+  char message[400];
+  ncclResult_t health = sccl_engine_async_error(e, message, sizeof message);
+  if (health != ncclSuccess) {
+    put_error(err, len, "%s", message);
+    return health;
+  }
+  return ncclSuccess;
+}
+
+static void ep_fill_common(const sccl_engine *e, sccl_ep_args *a, void *workspace, int num_tokens, int max_tokens,
+                           size_t hidden_bytes, int top_k, int num_experts, uint32_t wire_row_bytes) {
+  memset(a, 0, sizeof *a);
+  a->workspace = (sccl_CUdeviceptr)(uintptr_t)workspace;
+  a->p2p_dev = e->p2p_dev;
+  a->p2p_counters = e->p2p_counters;
+  a->layout_control = e->p2p_layout[P2P_L_CONTROL];
+  a->layout_block = e->p2p_layout[P2P_L_BLOCK];
+  a->slot_bytes = e->shared.p2p_slot_bytes;
+  a->recv_off = e->p2p_layout[P2P_L_RECV];
+  a->send_off = e->p2p_layout[P2P_L_SEND];
+  a->flag_off = e->p2p_layout[P2P_L_FLAG];
+  a->desc_off = e->p2p_layout[P2P_L_DESC];
+  a->ready_off = e->p2p_layout[P2P_L_READY];
+  a->consumed_off = e->p2p_layout[P2P_L_CONSUMED];
+  a->sent_off = e->p2p_layout[P2P_L_SENT];
+  a->world = e->world;
+  a->rank = e->rank;
+  a->num_tokens = num_tokens;
+  a->max_tokens = max_tokens;
+  a->hidden_bytes = (int32_t)hidden_bytes;
+  a->top_k = top_k;
+  a->num_experts = num_experts;
+  a->slots = e->shared.p2p_slots;
+  a->lanes = (uint32_t)e->lanes;
+  a->wire_row_bytes = wire_row_bytes;
+}
+
+ncclResult_t sccl_engine_ep_dispatch(sccl_engine *e, const void *hidden_in, const int *topk_ids_in,
+                                     const float *topk_weights_in, void *hidden_out, int *topk_ids_out,
+                                     float *topk_weights_out, int *recv_counts_out, void *workspace,
+                                     size_t workspace_bytes, int num_tokens, int max_tokens, size_t hidden_bytes,
+                                     int top_k, int num_experts, cudaStream_t stream_handle, char *err, size_t len) {
+  ncclResult_t ready = ep_check_ready(e, "sirclEpDispatch", err, len);
+  if (ready != ncclSuccess) return ready;
+  if (max_tokens < 1 || num_tokens < 0 || num_tokens > max_tokens) {
+    put_error(err, len, "sirclEpDispatch: invalid num_tokens=%d max_tokens=%d", num_tokens, max_tokens);
+    return ncclInvalidArgument;
+  }
+  if (hidden_bytes < PACK || (hidden_bytes % PACK) != 0 || hidden_bytes > (size_t)INT32_MAX) {
+    put_error(err, len, "sirclEpDispatch: hidden_bytes=%zu must be a positive multiple of 16", hidden_bytes);
+    return ncclInvalidArgument;
+  }
+  if (top_k < 1 || top_k > SCCL_EP_MAX_TOPK) {
+    put_error(err, len, "sirclEpDispatch: top_k=%d must be in 1..%d", top_k, SCCL_EP_MAX_TOPK);
+    return ncclInvalidArgument;
+  }
+  if (num_experts < e->world || (num_experts % e->world) != 0) {
+    put_error(err, len, "sirclEpDispatch: num_experts=%d must be a positive multiple of world=%d", num_experts,
+              e->world);
+    return ncclInvalidArgument;
+  }
+  uint64_t wire_row = round_up((uint64_t)hidden_bytes + (uint64_t)top_k * 8u, PACK);
+  if (wire_row > e->shared.p2p_slot_bytes || wire_row > UINT32_MAX) {
+    put_error(err, len, "sirclEpDispatch: wire row (%" PRIu64 " bytes) exceeds SIRCL_P2P_SLOT_BYTES (%" PRIu64 ")",
+              wire_row, e->shared.p2p_slot_bytes);
+    return ncclInvalidArgument;
+  }
+  size_t need = sccl_engine_ep_workspace_bytes(e->world, max_tokens, hidden_bytes);
+  if (!workspace || workspace_bytes < need || ((uintptr_t)workspace % PACK) != 0) {
+    put_error(err, len, "sirclEpDispatch: workspace must be 16-byte aligned and at least %zu bytes (got %zu)", need,
+              workspace_bytes);
+    return ncclInvalidArgument;
+  }
+  if (!hidden_out || !topk_ids_out || !topk_weights_out || ((uintptr_t)hidden_out % PACK) != 0) {
+    put_error(err, len, "sirclEpDispatch: output buffers must be non-NULL and hidden_out 16-byte aligned");
+    return ncclInvalidArgument;
+  }
+  if (num_tokens > 0 &&
+      (!hidden_in || !topk_ids_in || !topk_weights_in || ((uintptr_t)hidden_in % PACK) != 0)) {
+    put_error(err, len, "sirclEpDispatch: input buffers must be non-NULL and hidden_in 16-byte aligned");
+    return ncclInvalidArgument;
+  }
+  sccl_CUstream stream = (sccl_CUstream)stream_handle;
+  call_state call;
+  ncclResult_t result = begin_call(e, "sirclEpDispatch", stream, &call, err, len);
+  if (result != ncclSuccess) return result;
+  sccl_ep_args a;
+  ep_fill_common(e, &a, workspace, num_tokens, max_tokens, hidden_bytes, top_k, num_experts, (uint32_t)wire_row);
+  a.hidden_in = (sccl_CUdeviceptr)(uintptr_t)hidden_in;
+  a.topk_ids_in = (sccl_CUdeviceptr)(uintptr_t)topk_ids_in;
+  a.topk_weights_in = (sccl_CUdeviceptr)(uintptr_t)topk_weights_in;
+  a.hidden_out = (sccl_CUdeviceptr)(uintptr_t)hidden_out;
+  a.topk_ids_out = (sccl_CUdeviceptr)(uintptr_t)topk_ids_out;
+  a.topk_weights_out = (sccl_CUdeviceptr)(uintptr_t)topk_weights_out;
+  a.recv_counts_out = (sccl_CUdeviceptr)(uintptr_t)recv_counts_out;
+  if (cuda_check(sccl_kp_launch_ep(e->ep_dispatch_fn, &a, (unsigned)(2 * e->world), SCCL_EP_THREADS, stream),
+                 "launching sircl_ep_dispatch", err, len)) {
+    p2p_fault(e, err);
+    result = ncclUnhandledCudaError;
+  } else {
+    atomic_fetch_add_explicit(&e->ep_dispatches, 1, memory_order_relaxed);
+    if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
+  }
+  return end_call(e, &call, result, err, len);
+}
+
+ncclResult_t sccl_engine_ep_combine(sccl_engine *e, const void *expert_out_in, void *hidden_out, void *workspace,
+                                    size_t workspace_bytes, int num_tokens, int max_tokens, size_t hidden_dim,
+                                    ncclDataType_t datatype, cudaStream_t stream_handle, char *err, size_t len) {
+  ncclResult_t ready = ep_check_ready(e, "sirclEpCombine", err, len);
+  if (ready != ncclSuccess) return ready;
+  int dt = -1;
+  size_t elem_bytes = 0;
+  if (datatype == ncclFloat32) {
+    dt = SCCL_DT_F32;
+    elem_bytes = 4;
+  } else if (datatype == ncclFloat16) {
+    dt = SCCL_DT_F16;
+    elem_bytes = 2;
+  } else if (datatype == ncclBfloat16) {
+    dt = SCCL_DT_BF16;
+    elem_bytes = 2;
+  } else {
+    put_error(err, len, "sirclEpCombine: unsupported datatype %d (expected float32, float16, or bfloat16)",
+              (int)datatype);
+    return ncclInvalidArgument;
+  }
+  if (max_tokens < 1 || num_tokens < 0 || num_tokens > max_tokens) {
+    put_error(err, len, "sirclEpCombine: invalid num_tokens=%d max_tokens=%d", num_tokens, max_tokens);
+    return ncclInvalidArgument;
+  }
+  if (hidden_dim == 0 || hidden_dim > (size_t)INT32_MAX / elem_bytes) {
+    put_error(err, len, "sirclEpCombine: invalid hidden_dim=%zu", hidden_dim);
+    return ncclInvalidArgument;
+  }
+  size_t hidden_bytes = hidden_dim * elem_bytes;
+  if (hidden_bytes < PACK || (hidden_bytes % PACK) != 0 || hidden_bytes > e->shared.p2p_slot_bytes) {
+    put_error(err, len, "sirclEpCombine: hidden_bytes=%zu must be a positive multiple of 16 within slot bytes",
+              hidden_bytes);
+    return ncclInvalidArgument;
+  }
+  size_t need = sccl_engine_ep_workspace_bytes(e->world, max_tokens, hidden_bytes);
+  if (!workspace || workspace_bytes < need || ((uintptr_t)workspace % PACK) != 0) {
+    put_error(err, len, "sirclEpCombine: workspace must be 16-byte aligned and at least %zu bytes (got %zu)", need,
+              workspace_bytes);
+    return ncclInvalidArgument;
+  }
+  if (!expert_out_in || ((uintptr_t)expert_out_in % PACK) != 0) {
+    put_error(err, len, "sirclEpCombine: expert_out_in must be non-NULL and 16-byte aligned");
+    return ncclInvalidArgument;
+  }
+  if (num_tokens > 0 && (!hidden_out || ((uintptr_t)hidden_out % PACK) != 0)) {
+    put_error(err, len, "sirclEpCombine: hidden_out must be non-NULL and 16-byte aligned");
+    return ncclInvalidArgument;
+  }
+  sccl_CUstream stream = (sccl_CUstream)stream_handle;
+  call_state call;
+  ncclResult_t result = begin_call(e, "sirclEpCombine", stream, &call, err, len);
+  if (result != ncclSuccess) return result;
+  sccl_ep_args a;
+  ep_fill_common(e, &a, workspace, num_tokens, max_tokens, hidden_bytes, 0, 0, (uint32_t)hidden_bytes);
+  a.hidden_in = (sccl_CUdeviceptr)(uintptr_t)expert_out_in;
+  a.hidden_out = (sccl_CUdeviceptr)(uintptr_t)hidden_out;
+  if (cuda_check(sccl_kp_launch_ep(e->ep_combine_xfer_fn, &a, (unsigned)(2 * e->world), SCCL_EP_THREADS, stream),
+                 "launching sircl_ep_combine_xfer", err, len)) {
+    p2p_fault(e, err);
+    result = ncclUnhandledCudaError;
+  } else if (num_tokens > 0) {
+    unsigned grid = num_tokens < 64 ? (unsigned)num_tokens : 64u;
+    if (cuda_check(sccl_kp_launch_ep(e->ep_combine_reduce_fn[dt], &a, grid, SCCL_EP_THREADS, stream),
+                   "launching sircl_ep_combine_reduce", err, len)) {
+      p2p_fault(e, err);
+      result = ncclUnhandledCudaError;
+    }
+  }
+  if (result == ncclSuccess) {
+    atomic_fetch_add_explicit(&e->ep_combines, 1, memory_order_relaxed);
+    if (call.capturing) atomic_fetch_add_explicit(&e->captured_calls, 1, memory_order_relaxed);
   }
   return end_call(e, &call, result, err, len);
 }
@@ -4708,7 +4964,7 @@ static void p2p_receipt(sccl_engine *e, char *out, size_t len) {
            "{\"on\":true,\"context\":%s,\"peers\":[%s],\"slots\":%u,\"slot_bytes\":%" PRIu64 ",\"blocks\":%u,"
            "\"threads\":%u,\"unroll\":%u,\"chunk_bytes\":%u,\"arena_bytes\":%" PRIu64 ",\"windows\":{%s},"
            "\"lane_check_s\":%.4f,\"staged\":%" PRIu64 ",\"refused\":%" PRIu64
-           ",\"sent\":{%s},\"received\":{%s},\"native\":{"
+           ",\"sent\":{%s},\"received\":{%s},\"ep\":{\"dispatches\":%" PRIu64 ",\"combines\":%" PRIu64 "},\"native\":{"
            "\"items_posted\":%" PRIu64 ",\"bytes_posted\":%" PRIu64 ",\"items_released\":%" PRIu64
            ",\"credits_sent\":%" PRIu64 ",\"writes_completed\":%" PRIu64 ",\"window_waits\":%" PRIu64
            ",\"window_wait_max_ns\":%" PRIu64 ",\"window_max_unacked_bytes\":%" PRIu64 ",\"proven_bytes\":%" PRIu64
@@ -4716,6 +4972,7 @@ static void p2p_receipt(sccl_engine *e, char *out, size_t len) {
            c ? "true" : "false", peers, e->shared.p2p_slots, e->shared.p2p_slot_bytes, e->shared.p2p_blocks,
            e->shared.p2p_threads, e->shared.p2p_unroll, e->shared.p2p_chunk, e->p2p_bytes, windows,
            e->p2p_check_ns / 1e9, atomic_load(&e->p2p_staged), atomic_load(&e->p2p_refused), flows[1], flows[0],
+           atomic_load(&e->ep_dispatches), atomic_load(&e->ep_combines),
            c ? t->stat(c, 0) : 0,
            c ? t->stat(c, 1) : 0, c ? t->stat(c, 2) : 0, c ? t->stat(c, 3) : 0, c ? t->stat(c, 4) : 0,
            c ? t->stat(c, 5) : 0, c ? t->stat(c, 7) : 0, c ? t->stat(c, 8) : 0, c ? t->stat(c, 9) : 0,

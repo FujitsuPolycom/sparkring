@@ -446,6 +446,21 @@ def test_save_cpu_is_refused_on_an_image_without_the_reader_window():
     assert manifest["serving"] == {"save_cpu": True}
 
 
+def test_the_installer_only_switches_are_refused_and_name_themselves():
+    # The row-owned prefill and expert parallelism run only on the deployment
+    # `sparkring install` makes on a SIRCL ring session.
+    profile = "deepseek-v41-flash-tp4"
+    site = example_site(profile)
+    for settings, flag in (({"row_owned_prefill": True}, "--row-owned-prefill"),
+                           ({"expert_parallel": True}, "--expert-parallel"),
+                           ({"expert_parallel": True, "row_owned_prefill": True}, "--row-owned-prefill")):
+        with pytest.raises(ValueError, match=f"{flag} requires sparkring install"):
+            compose.build(profile, site, serving=settings)
+    # Either switch beside a setting Compose does render still names the switch first.
+    with pytest.raises(ValueError, match="--expert-parallel requires sparkring install"):
+        compose.build(profile, site, serving={"expert_parallel": True, "max_images": 2})
+
+
 def test_profiles_without_checkpoint_choice_refuse_one():
     profile = "mimo-v26-flash-mopd-tp2"
     with pytest.raises(ValueError, match="no checkpoint choice"):

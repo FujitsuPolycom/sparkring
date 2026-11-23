@@ -694,6 +694,8 @@ def select_deployment(args, cluster, state_root, *, mesh_hint="", placement=None
     try:
         serving_settings.check_row_owned_prefill(serving_settings.from_arguments(args), (profile, card["target_variant"]),
                                                 view, choice["section"])
+        serving_settings.check_expert_parallel(serving_settings.from_arguments(args), (profile, card["target_variant"]),
+                                              view, choice["section"])
     except ValueError as error:
         raise NeedsInput(str(error), field="serving") from None
     notice = image_lock.checkpoint_notice(image, profile, card,
@@ -1898,6 +1900,8 @@ def main(argv=None):
         parser.error("--row-owned-prefill requires a SparkRing installer image name")
     if stock and args.serving_chain_all_gather:
         parser.error("--chain-all-gather requires --row-owned-prefill on a SparkRing installer image")
+    if stock and args.serving_expert_parallel:
+        parser.error("--expert-parallel requires a SparkRing installer image name")
     if vllm_arguments and not stock:
         parser.error("arguments after -- are a stock image's vLLM arguments: use them with --image REF")
     if args.ring_only and args.transport != transports.LIBSIRCL:

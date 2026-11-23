@@ -438,8 +438,14 @@ def specifications(profile_id, site, *, local_image_id=None, local_source_extens
                                        source_root=rank["repository"])
         specs.append(replace(spec, name=f"sr-{site['name']}-r{rank['rank']}"))
     settings = serving_settings.effective(profile_id, serving, checkpoint)
-    if settings.get(serving_settings.ROW_OWNED_PREFILL):
-        raise ValueError(f"{serving_settings.option(serving_settings.ROW_OWNED_PREFILL)} requires sparkring install")
+    installed = [name for name in (serving_settings.ROW_OWNED_PREFILL, serving_settings.EXPERT_PARALLEL)
+                 if settings.get(name)]
+    if installed:
+        # Both run only on the deployment `sparkring install` makes on a SIRCL ring
+        # session: the row-owned prefill mounts plugins from the retained source,
+        # and expert parallelism needs the libsircl transport a Compose deployment
+        # has no section for.
+        raise ValueError(f"{serving_settings.option(installed[0])} requires sparkring install")
     if settings:
         if local_source_extension is not None:
             raise ValueError("Serving settings apply to published images; a local source-extension trial "

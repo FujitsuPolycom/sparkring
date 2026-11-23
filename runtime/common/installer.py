@@ -375,6 +375,7 @@ def make_lock(profile, raw_site, revision, bundle_sha256, variant=None, *, image
         raise ValueError(f"{card['profile']} runs only on SIRCL ring sessions; its deployment needs a transport "
                          "section")
     serving.check_row_owned_prefill(settings, (profile, card["target_variant"]), image_runtime, value.get("transport"))
+    serving.check_expert_parallel(settings, (profile, card["target_variant"]), image_runtime, value.get("transport"))
     value["id"] = compose.digest(compose.encoded(value))
     return value
 
@@ -818,10 +819,15 @@ def export(directory, output, *, share=False):
         files["site.example.json"] = compose.encoded(example)
         files["profile.json"] = compose.encoded(lock["selection"])
         if settings.get(serving.ROW_OWNED_PREFILL):
+            # Expert parallelism runs on libsircl, whose transport names the
+            # library and needs no --nccl; the tensor-parallel experiment runs
+            # on SIRCL's own sessions with NCCL off.
+            transport_flags = (" --transport libsircl" if settings.get(serving.EXPERT_PARALLEL)
+                               else " --transport sircl --nccl never")
             files["README.txt"] = (
                 "Configure a four-Spark path with sparkring setup. Then run sudo sparkring install --profile "
                 + lock["selection"]["profile"] + " --checkpoint " + lock["selection"]["target_variant"]
-                + " --image " + runtime["name"] + " --transport sircl --nccl never" + flags + ".\n"
+                + " --image " + runtime["name"] + transport_flags + flags + ".\n"
                 "The installer stages the plugin and SIRCL adapter from its retained source checkout on every rank. "
                 "The Compose files show the resulting rank settings with example paths.\n"
             )

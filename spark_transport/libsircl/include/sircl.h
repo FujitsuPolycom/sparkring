@@ -20,6 +20,18 @@ ncclResult_t sirclSetWaitRegime(ncclComm_t comm, const char *regime);
  * between a call that sizes it and the next: the output is whole only when
  * *needed <= length, and a caller retries with a larger buffer otherwise. */
 ncclResult_t sirclGetReceipt(ncclComm_t comm, char *out, size_t length, size_t *needed);
+/* SIRCL-EP: GPU-driven dynamic variable-length MoE token dispatch and combine over
+ * SIRCL's point-to-point channels. Zero CPU synchronization, zero wasted RDMA bytes,
+ * and CUDA-graph capturable. Requires a communicator of 3 to 8 ranks created with
+ * LIBSIRCL_P2P_CHANNELS=on and channels to every peer. */
+size_t sirclEpWorkspaceBytes(int world, int max_tokens, size_t hidden_bytes);
+ncclResult_t sirclEpDispatch(const void *hidden_in, const int *topk_ids_in, const float *topk_weights_in,
+                             void *hidden_out, int *topk_ids_out, float *topk_weights_out, int *recv_counts_out,
+                             void *workspace, size_t workspace_bytes, int num_tokens, int max_tokens,
+                             size_t hidden_bytes, int top_k, int num_experts, ncclComm_t comm, cudaStream_t stream);
+ncclResult_t sirclEpCombine(const void *expert_out_in, void *hidden_out, void *workspace, size_t workspace_bytes,
+                            int num_tokens, int max_tokens, size_t hidden_dim, ncclDataType_t datatype,
+                            ncclComm_t comm, cudaStream_t stream);
 #ifdef __cplusplus
 }
 #endif
