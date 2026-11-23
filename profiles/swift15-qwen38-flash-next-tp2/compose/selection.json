@@ -3,5 +3,5 @@
   "profile": "swift15-qwen38-flash-next-tp2",
   "checkpoint": null,
   "image_lock": "runtime/releases/dev-20261016-sparkcache-4a17f1f5198e-status038/installer-image.json",
-  "deployment": "aea50636264ef72c39871541c58daee24a0f71373f6e4230873cedd98360f725"
+  "deployment": "d8ce5902f8e4b889f31a570604f6e049b22ac6f9c9dbf29716605f5e983567ea"
 }

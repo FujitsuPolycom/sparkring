@@ -181,7 +181,7 @@ services:
       VLLM_WORKER_MULTIPROC_METHOD: spawn
       XDG_CACHE_HOME: /cache/glm53-flash-nvfp4-spark-f625053225d4-dec48abd33ef
     labels:
-      io.sparkring.deployment: bbb7a23e71f8cf60981d3d43267d4c536f53706c06b983d7155b6d9d4bce56d3
+      io.sparkring.deployment: 20bcd69b9f8305d51c2f4d84a9937e53b4690c0795f4d02ee8fcc30a2593e274
       io.sparkring.rank: '0'
     network_mode: host
     ipc: host
